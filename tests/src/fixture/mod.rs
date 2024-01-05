@@ -419,10 +419,15 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     }
 }
 
+pub struct TestInfo {
+    pub test_dir: String,
+    pub test_name: String,
+    pub subgraph_name: SubgraphName,
+    pub hash: DeploymentHash,
+}
+
 pub async fn setup<C: Blockchain>(
-    test_name: &str,
-    subgraph_name: SubgraphName,
-    hash: &DeploymentHash,
+    test_info: &TestInfo,
     stores: &Stores,
     chain: &impl TestChainTrait<C>,
     graft_block: Option<BlockPtr>,
@@ -433,14 +438,14 @@ pub async fn setup<C: Blockchain>(
         None => EnvVars::from_env().unwrap(),
     });
 
-    let logger = test_logger(test_name);
+    let logger = test_logger(&test_info.test_name);
     let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 
     // Make sure we're starting from a clean state.
     let subgraph_store = stores.network_store.subgraph_store();
-    cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
+    cleanup(&subgraph_store, &test_info.subgraph_name, &test_info.hash).unwrap();
 
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain.chain());
@@ -526,14 +531,17 @@ pub async fn setup<C: Blockchain>(
         Arc::new(Settings::default()),
     ));
 
-    SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone())
-        .await
-        .expect("unable to create subgraph");
+    SubgraphRegistrar::create_subgraph(
+        subgraph_registrar.as_ref(),
+        test_info.subgraph_name.clone(),
+    )
+    .await
+    .expect("unable to create subgraph");
 
     let deployment = SubgraphRegistrar::create_subgraph_version(
         subgraph_registrar.as_ref(),
-        subgraph_name.clone(),
-        hash.clone(),
+        test_info.subgraph_name.clone(),
+        test_info.hash.clone(),
         node_id.clone(),
         None,
         None,
@@ -550,7 +558,7 @@ pub async fn setup<C: Blockchain>(
         provider: subgraph_provider,
         store: subgraph_store,
         deployment,
-        subgraph_name,
+        subgraph_name: test_info.subgraph_name.clone(),
         graphql_runner,
         instance_manager: subgraph_instance_manager,
         link_resolver,

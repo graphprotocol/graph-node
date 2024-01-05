@@ -28,16 +28,14 @@ use graph_tests::fixture::ethereum::{
 use graph_tests::fixture::substreams::chain as substreams_chain;
 use graph_tests::fixture::{
     self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
-    TestChainTrait, TestContext,
+    TestChainTrait, TestContext, TestInfo,
 };
 use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
 
 struct RunnerTestRecipe {
     pub stores: Stores,
-    test_name: String,
-    subgraph_name: SubgraphName,
-    hash: DeploymentHash,
+    pub test_info: TestInfo,
 }
 
 impl RunnerTestRecipe {
@@ -52,9 +50,12 @@ impl RunnerTestRecipe {
 
         Self {
             stores,
-            test_name: test_name.to_string(),
-            subgraph_name,
-            hash,
+            test_info: TestInfo {
+                test_dir,
+                test_name: test_name.to_string(),
+                subgraph_name,
+                hash,
+            },
         }
     }
 
@@ -70,9 +71,12 @@ impl RunnerTestRecipe {
 
         Self {
             stores,
-            subgraph_name,
-            test_name: name.to_string(),
-            hash,
+            test_info: TestInfo {
+                test_dir,
+                test_name: name.to_string(),
+                subgraph_name,
+                hash,
+            },
         }
     }
 }
@@ -104,12 +108,8 @@ fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("data_source_revert", "data-source-revert").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("data_source_revert", "data-source-revert").await;
 
     let blocks = {
         let block0 = genesis();
@@ -125,45 +125,36 @@ async fn data_source_revert() -> anyhow::Result<()> {
         vec![block0, block1, block1_reorged, block2, block3, block4]
     };
 
-    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    {
+        let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
-    let stop_block = test_ptr(2);
-    ctx.start_and_sync_to(stop_block).await;
-    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+        let stop_block = test_ptr(2);
+        ctx.start_and_sync_to(stop_block).await;
+        ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
 
-    // Test loading data sources from DB.
-    let stop_block = test_ptr(3);
-    ctx.start_and_sync_to(stop_block).await;
+        // Test loading data sources from DB.
+        let stop_block = test_ptr(3);
+        ctx.start_and_sync_to(stop_block).await;
+    }
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
     let hash = build_subgraph_with_yarn_cmd_and_arg(
         "./runner-tests/data-source-revert",
         "deploy:test-grafted",
-        Some(&hash),
+        Some(&test_info.hash),
     )
     .await;
+    let test_info = TestInfo {
+        test_dir: test_info.test_dir.clone(),
+        test_name: test_info.test_name.clone(),
+        subgraph_name,
+        hash,
+    };
+
     let graft_block = Some(test_ptr(3));
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        graft_block,
-        None,
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, graft_block, None).await;
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
 
@@ -188,12 +179,8 @@ async fn data_source_revert() -> anyhow::Result<()> {
 }
 
 async fn data_source_long_revert() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("data_source_long_revert", "data-source-revert").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("data_source_long_revert", "data-source-revert").await;
 
     let blocks = {
         let block0 = genesis();
@@ -207,17 +194,8 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
     };
     let last = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     // We sync up to block 5 twice, after the first time there is a revert back to block 1.
     // This tests reverts across more than than a single block.
@@ -246,12 +224,8 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn typename() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("typename", "typename").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("typename", "typename").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -268,17 +242,8 @@ async fn typename() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks, &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -287,12 +252,7 @@ async fn typename() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn api_version_0_0_7() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new_with_custom_cmd(
+    let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_custom_cmd(
         "api_version_0_0_7",
         "api-version",
         "deploy:test-0-0-7",
@@ -312,17 +272,8 @@ async fn api_version_0_0_7() {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks, &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -343,12 +294,7 @@ async fn api_version_0_0_7() {
 
 #[tokio::test]
 async fn api_version_0_0_8() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new_with_custom_cmd(
+    let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_custom_cmd(
         "api_version_0_0_8",
         "api-version",
         "deploy:test-0-0-8",
@@ -365,17 +311,8 @@ async fn api_version_0_0_8() {
         vec![block_0, block_1]
     };
 
-    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
     let stop_block = blocks.last().unwrap().block.ptr();
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.".to_string();
@@ -391,12 +328,8 @@ async fn api_version_0_0_8() {
 
 #[tokio::test]
 async fn derived_loaders() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("derived_loaders", "derived-loaders").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("derived_loaders", "derived-loaders").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -410,17 +343,8 @@ async fn derived_loaders() {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks, &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -564,25 +488,11 @@ async fn derived_loaders() {
 // This test tests that the TriggerFilter is built correctly for substreams
 #[tokio::test]
 async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("substreams", "substreams").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("substreams", "substreams").await;
 
-    let chain = substreams_chain(&test_name, &stores).await;
-
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = substreams_chain(&test_info.test_name, &stores).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     let runner = ctx.runner_substreams(test_ptr(0)).await;
     let filter = runner.build_filter_for_test();
@@ -596,12 +506,8 @@ async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn end_block() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("end_block", "end-block").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("end_block", "end-block").await;
     // This test is to test the end_block feature which enables datasources to stop indexing
     // At a user specified block, this test tests whether the subgraph stops indexing at that
     // block, rebuild the filters accurately when a revert occurs etc
@@ -645,17 +551,8 @@ async fn end_block() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     let addr = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
 
@@ -729,12 +626,8 @@ async fn end_block() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_data_sources() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("file_data_sources", "file-data-sources").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("file_data_sources", "file-data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -762,22 +655,13 @@ async fn file_data_sources() {
         triggers_in_block_sleep: Duration::from_millis(150),
     };
     let chain = chain(
-        &test_name,
+        &test_info.test_name,
         blocks.clone(),
         &stores,
         Some(Arc::new(adapter_selector)),
     )
     .await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
     ctx.start_and_sync_to(test_ptr(1)).await;
 
     // CID of `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
@@ -951,12 +835,8 @@ async fn file_data_sources() {
 
 #[tokio::test]
 async fn block_handlers() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("block_handlers", "block-handlers").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("block_handlers", "block-handlers").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1008,21 +888,12 @@ async fn block_handlers() {
             .collect()
     };
 
-    let chain = chain(&test_name, blocks, &stores, None).await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.experimental_static_filters = true;
 
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        Some(env_vars),
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, Some(env_vars)).await;
 
     ctx.start_and_sync_to(test_ptr(10)).await;
 
@@ -1088,12 +959,7 @@ async fn block_handlers() {
 
 #[tokio::test]
 async fn template_static_filters_false_positives() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new(
+    let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new(
         "template_static_filters_false_positives",
         "dynamic-data-source",
     )
@@ -1106,21 +972,12 @@ async fn template_static_filters_false_positives() {
         vec![block_0, block_1, block_2]
     };
     let stop_block = test_ptr(1);
-    let chain = chain(&test_name, blocks, &stores, None).await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.experimental_static_filters = true;
 
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        Some(env_vars),
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, Some(env_vars)).await;
     ctx.start_and_sync_to(stop_block).await;
 
     let poi = ctx
@@ -1142,12 +999,8 @@ async fn template_static_filters_false_positives() {
 
 #[tokio::test]
 async fn parse_data_source_context() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("parse_data_source_context", "data-sources").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("parse_data_source_context", "data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1156,18 +1009,9 @@ async fn parse_data_source_context() {
         vec![block_0, block_1, block_2]
     };
     let stop_block = blocks.last().unwrap().block.ptr();
-    let chain = chain(&test_name, blocks, &stores, None).await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
 
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
     ctx.start_and_sync_to(stop_block).await;
 
     let query_res = ctx
@@ -1183,12 +1027,8 @@ async fn parse_data_source_context() {
 
 #[tokio::test]
 async fn retry_create_ds() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("retry_create_ds", "data-source-revert2").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("retry_create_ds", "data-source-revert2").await;
 
     let blocks = {
         let block0 = genesis();
@@ -1220,21 +1060,18 @@ async fn retry_create_ds() {
         triggers_in_block_sleep: Duration::ZERO,
         triggers_in_block,
     });
-    let chain = chain(&test_name, blocks, &stores, Some(triggers_adapter)).await;
+    let chain = chain(
+        &test_info.test_name,
+        blocks,
+        &stores,
+        Some(triggers_adapter),
+    )
+    .await;
 
     let mut env_vars = EnvVars::default();
     env_vars.subgraph_error_retry_ceil = Duration::from_secs(1);
 
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        Some(env_vars),
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, Some(env_vars)).await;
 
     let runner = ctx
         .runner(stop_block)
@@ -1247,12 +1084,8 @@ async fn retry_create_ds() {
 
 #[tokio::test]
 async fn fatal_error() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("fatal_error", "fatal-error").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("fatal_error", "fatal-error").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1264,17 +1097,8 @@ async fn fatal_error() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks, &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to_error(stop_block).await;
 
@@ -1297,12 +1121,8 @@ async fn fatal_error() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn arweave_file_data_sources() {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("arweave_file_data_sources", "arweave-file-data-sources").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("arweave_file_data_sources", "arweave-file-data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1324,22 +1144,13 @@ async fn arweave_file_data_sources() {
         triggers_in_block_sleep: Duration::from_millis(1500),
     };
     let chain = chain(
-        &test_name,
+        &test_info.test_name,
         blocks.clone(),
         &stores,
         Some(Arc::new(adapter_selector)),
     )
     .await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
     ctx.start_and_sync_to(test_ptr(2)).await;
 
     let store = ctx.store.cheap_clone();
@@ -1372,12 +1183,8 @@ async fn arweave_file_data_sources() {
 
 #[tokio::test]
 async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
-    let RunnerTestRecipe {
-        stores,
-        test_name,
-        subgraph_name,
-        hash,
-    } = RunnerTestRecipe::new("poi_for_deterministically_failed_sg", "fatal-error").await;
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("poi_for_deterministically_failed_sg", "fatal-error").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1390,17 +1197,8 @@ async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(
-        &test_name,
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        &chain,
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to_error(stop_block).await;
 
@@ -1415,26 +1213,26 @@ async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
     let sg_store = stores.network_store.subgraph_store();
 
     let poi2 = sg_store
-        .get_proof_of_indexing(&hash, &None, test_ptr(2))
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(2))
         .await
         .unwrap();
 
     // All POIs past this point should be the same
     let poi3 = sg_store
-        .get_proof_of_indexing(&hash, &None, test_ptr(3))
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(3))
         .await
         .unwrap();
     assert!(poi2 != poi3);
 
     let poi4 = sg_store
-        .get_proof_of_indexing(&hash, &None, test_ptr(4))
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(4))
         .await
         .unwrap();
     assert_eq!(poi3, poi4);
     assert!(poi2 != poi4);
 
     let poi100 = sg_store
-        .get_proof_of_indexing(&hash, &None, test_ptr(100))
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(100))
         .await
         .unwrap();
     assert_eq!(poi4, poi100);
