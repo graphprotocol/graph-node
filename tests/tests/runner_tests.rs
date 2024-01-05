@@ -1110,6 +1110,34 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(err.block.number == 3.into());
     assert!(err.deterministic);
 
+    let sg_store = stores.network_store.subgraph_store();
+
+    let poi2 = sg_store
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(2))
+        .await
+        .unwrap();
+
+    // All POIs past this point should be the same
+    let poi3 = sg_store
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(3))
+        .await
+        .unwrap();
+    assert!(poi2 != poi3);
+
+    let poi4 = sg_store
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(4))
+        .await
+        .unwrap();
+    assert_eq!(poi3, poi4);
+    assert!(poi2 != poi4);
+
+    let poi100 = sg_store
+        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(100))
+        .await
+        .unwrap();
+    assert_eq!(poi4, poi100);
+    assert!(poi2 != poi100);
+
     // Test that rewind unfails the subgraph.
     ctx.rewind(test_ptr(1));
     let status = ctx.indexing_status().await;
@@ -1179,66 +1207,6 @@ async fn arweave_file_data_sources() {
         query_res,
         Some(object! { file: object!{ id: id, content: content.clone() } })
     );
-}
-
-#[tokio::test]
-async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
-    let RunnerTestRecipe { stores, test_info } =
-        RunnerTestRecipe::new("poi_for_deterministically_failed_sg", "fatal-error").await;
-
-    let blocks = {
-        let block_0 = genesis();
-        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
-        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
-        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
-        // let block_4 = empty_block(block_3.ptr(), test_ptr(4));
-        vec![block_0, block_1, block_2, block_3]
-    };
-
-    let stop_block = blocks.last().unwrap().block.ptr();
-
-    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
-
-    ctx.start_and_sync_to_error(stop_block).await;
-
-    // Go through the indexing status API to also test it.
-    let status = ctx.indexing_status().await;
-    assert!(status.health == SubgraphHealth::Failed);
-    assert!(status.entity_count == 1.into()); // Only PoI
-    let err = status.fatal_error.unwrap();
-    assert!(err.block.number == 3.into());
-    assert!(err.deterministic);
-
-    let sg_store = stores.network_store.subgraph_store();
-
-    let poi2 = sg_store
-        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(2))
-        .await
-        .unwrap();
-
-    // All POIs past this point should be the same
-    let poi3 = sg_store
-        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(3))
-        .await
-        .unwrap();
-    assert!(poi2 != poi3);
-
-    let poi4 = sg_store
-        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(4))
-        .await
-        .unwrap();
-    assert_eq!(poi3, poi4);
-    assert!(poi2 != poi4);
-
-    let poi100 = sg_store
-        .get_proof_of_indexing(&test_info.hash, &None, test_ptr(100))
-        .await
-        .unwrap();
-    assert_eq!(poi4, poi100);
-    assert!(poi2 != poi100);
-
-    Ok(())
 }
 
 /// deploy_cmd is the command to run to deploy the subgraph. If it is None, the
