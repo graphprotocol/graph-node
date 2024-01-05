@@ -863,6 +863,44 @@ impl<'a> Connection<'a> {
         Ok(changes)
     }
 
+    /// Remove IPFS hash from current/pending deployment
+    pub fn unlink_deployments(&self, deployments: Vec<(&DeploymentHash, String)>) -> Result<Vec<EntityChange>, StoreError> {
+        use subgraph as s;
+
+        let conn = self.conn.as_ref();
+
+        // Switch the pending version to the current version
+        for (deployment, status) in deployments {
+            match status.as_str() {
+                "pending" => {
+                    update(s::table.filter(s::id.eq(deployment)))
+                        .set((
+                            s::pending_version.eq::<Option<&str>>(None),
+                        ))
+                        .execute(conn)?;
+                },
+                "current" => {
+                    update(s::table.filter(s::id.eq(deployment)))
+                        .set((
+                            s::current_version.eq::<Option<&str>>(None),
+                        ))
+                        .execute(conn)?;
+                    self.promote_deployment(deployment)?;
+                },
+                _ => (),
+            }
+        }
+
+        // Clean up assignments if we could possibly have changed any
+        // subgraph versions
+        let changes = if deployments.is_empty() {
+            vec![]
+        } else {
+            self.remove_unused_assignments()?
+        };
+        Ok(changes)
+    }
+
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
     /// subgraph

@@ -1316,6 +1316,16 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
+    fn unlink_deployment(&self, deployments: Vec<(&DeploymentHash, String)>) -> Result<(), StoreError> {
+
+        let pconn = self.primary_conn()?;
+
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.unlink_deployments(deployments)?;
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+        })
+    }
+
     fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
         let site = self.find_site(deployment.id.into())?;
         self.mirror.assigned_node(site.as_ref())

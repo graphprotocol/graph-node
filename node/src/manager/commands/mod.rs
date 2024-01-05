@@ -10,6 +10,7 @@ pub mod drop;
 pub mod index;
 pub mod info;
 pub mod listen;
+pub mod unlink;
 pub mod prune;
 pub mod query;
 pub mod remove;
