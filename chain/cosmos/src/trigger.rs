@@ -87,7 +87,15 @@ impl PartialEq for CosmosTrigger {
                 },
             ) => {
                 if let (Ok(a_event), Ok(b_event)) = (a_event_data.event(), b_event_data.event()) {
-                    a_event.event_type == b_event.event_type && a_origin == b_origin
+                    let mut attributes_a = a_event.attributes.clone();
+                    attributes_a.sort_by(|a, b| a.key.cmp(&b.key));
+
+                    let mut attributes_b = b_event.attributes.clone();
+                    attributes_b.sort_by(|a, b| a.key.cmp(&b.key));
+                    
+                    a_event.event_type == b_event.event_type &&
+                     a_origin == b_origin &&
+                     attributes_a == attributes_b
                 } else {
                     false
                 }
