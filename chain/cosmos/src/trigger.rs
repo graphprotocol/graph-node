@@ -92,10 +92,10 @@ impl PartialEq for CosmosTrigger {
 
                     let mut attributes_b = b_event.attributes.clone();
                     attributes_b.sort_by(|a, b| a.key.cmp(&b.key));
-                    
-                    a_event.event_type == b_event.event_type &&
-                     a_origin == b_origin &&
-                     attributes_a == attributes_b
+
+                    a_event.event_type == b_event.event_type
+                        && a_origin == b_origin
+                        && attributes_a == attributes_b
                 } else {
                     false
                 }
