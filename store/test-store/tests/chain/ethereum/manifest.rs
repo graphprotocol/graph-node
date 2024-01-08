@@ -205,10 +205,7 @@ indexerHints:
 
     let manifest = resolve_manifest(YAML, SPEC_VERSION_0_1_0).await;
 
-    assert!(matches!(
-        manifest.indexer_hints.unwrap().history_blocks.unwrap(),
-        HistoryBlocks::Blocks(100)
-    ));
+    assert_eq!(manifest.history_blocks(), 100);
 
     let yaml: &str = "
     dataSources: []
@@ -224,11 +221,11 @@ indexerHints:
     ";
 
     let manifest = resolve_manifest(yaml, SPEC_VERSION_0_1_0).await;
-
-    assert!(matches!(
-        manifest.indexer_hints.unwrap().history_blocks.unwrap(),
-        HistoryBlocks::Min
-    ));
+    HistoryBlocks::Min.history_blocks();
+    assert_eq!(
+        manifest.history_blocks(),
+        HistoryBlocks::Min.history_blocks()
+    );
 
     let yaml: &str = "
     dataSources: []
@@ -245,10 +242,10 @@ indexerHints:
 
     let manifest = resolve_manifest(yaml, SPEC_VERSION_0_1_0).await;
 
-    assert!(matches!(
-        manifest.indexer_hints.unwrap().history_blocks.unwrap(),
-        HistoryBlocks::All
-    ));
+    assert_eq!(
+        manifest.history_blocks(),
+        HistoryBlocks::All.history_blocks()
+    );
 }
 
 #[test]

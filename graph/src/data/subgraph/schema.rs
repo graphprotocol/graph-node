@@ -105,7 +105,7 @@ pub struct DeploymentCreate {
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
-    pub history_blocks: Option<i32>,
+    pub history_blocks_override: Option<i32>,
 }
 
 impl DeploymentCreate {
@@ -120,12 +120,12 @@ impl DeploymentCreate {
             graft_base: None,
             graft_block: None,
             debug_fork: None,
-            history_blocks: None,
+            history_blocks_override: None,
         }
     }
 
-    pub fn with_history_blocks(mut self, blocks: i32) -> Self {
-        self.history_blocks = Some(blocks);
+    pub fn with_history_blocks_override(mut self, blocks: i32) -> Self {
+        self.history_blocks_override = Some(blocks);
         self
     }
 
@@ -201,7 +201,7 @@ impl SubgraphManifestEntity {
             schema: manifest.schema.document_string(),
             raw_yaml: Some(raw_yaml),
             entities_with_causality_region,
-            history_blocks: BLOCK_NUMBER_MAX,
+            history_blocks: manifest.history_blocks(),
         }
     }
 

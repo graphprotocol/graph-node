@@ -10,7 +10,7 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::object;
+use crate::{components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
@@ -551,14 +551,15 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
-    pub history_blocks: Option<HistoryBlocks>,
+    history_blocks: Option<HistoryBlocks>,
 }
 
 impl IndexerHints {
-    pub fn history_blocks(&self) -> Option<BlockNumber> {
-        self.history_blocks
-            .as_ref()
-            .and_then(|x| x.history_blocks())
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self.history_blocks {
+            Some(ref hb) => hb.history_blocks(),
+            None => BLOCK_NUMBER_MAX,
+        }
     }
 }
 
@@ -570,12 +571,11 @@ pub enum HistoryBlocks {
 }
 
 impl HistoryBlocks {
-    pub fn history_blocks(&self) -> Option<BlockNumber> {
+    pub fn history_blocks(&self) -> BlockNumber {
         match self {
-            HistoryBlocks::All => None,
-            // TODO: Set the minimum number of blocks from env
-            HistoryBlocks::Min => Some(1),
-            HistoryBlocks::Blocks(x) => Some(*x),
+            HistoryBlocks::All => BLOCK_NUMBER_MAX,
+            HistoryBlocks::Min => ENV_VARS.min_history_blocks,
+            HistoryBlocks::Blocks(x) => *x,
         }
     }
 }
@@ -760,10 +760,10 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect()
     }
 
-    pub fn history_blocks(&self) -> Option<BlockNumber> {
+    pub fn history_blocks(&self) -> BlockNumber {
         match self.indexer_hints {
             Some(ref hints) => hints.history_blocks(),
-            None => None,
+            None => BLOCK_NUMBER_MAX,
         }
     }
 
