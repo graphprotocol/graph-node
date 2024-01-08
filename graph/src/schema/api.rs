@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::data::store::IdType;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
+use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_NAME};
 
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
@@ -347,6 +347,7 @@ pub(in crate::schema) fn api_schema(input_schema: &Schema) -> Result<Document, A
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
     add_meta_field_type(&mut schema.document);
+    add_sql_field_type(&mut schema.document);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema.document, &input_schema.document)?;
@@ -363,6 +364,21 @@ pub(in crate::schema) fn api_schema(input_schema: &Schema) -> Result<Document, A
     });
 
     Ok(schema.document)
+}
+
+/// Adds a global `SqlOutput` type to the schema. The `sql` field
+/// accepts values of this type
+fn add_sql_field_type(schema: &mut Document) {
+    lazy_static! {
+        static ref SQL_FIELD_SCHEMA: Document = {
+            let schema = include_str!("sql.graphql");
+            parse_schema(schema).expect("the schema `sql.graphql` is invalid")
+        };
+    }
+
+    schema
+        .definitions
+        .extend(SQL_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
 /// Adds a global `_Meta_` type to the schema. The `_meta` field
@@ -851,6 +867,7 @@ fn add_query_type(
         .collect();
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
+    fields.push(sql_field());
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
@@ -1046,6 +1063,30 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
     ]
 }
 
+fn sql_field() -> Field {
+    lazy_static! {
+        static ref SQL_FIELD: Field = Field {
+            position: Pos::default(),
+            description: Some("Execute SQL into a specific subgraph".to_string()),
+            name: SQL_FIELD_NAME.to_string(),
+            arguments: vec![
+                // block: BlockHeight
+                InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: String::from("input"),
+                    value_type: Type::NonNullType(Box::new(Type::NamedType("SqlInput".to_string()))),
+                    default_value: None,
+                    directives: vec![],
+                },
+            ],
+            field_type: Type::NonNullType(Box::new(Type::NamedType("SqlOutput".to_string()))),
+            directives: vec![],
+        };
+    }
+    SQL_FIELD.clone()
+}
+
 fn meta_field() -> Field {
     lazy_static! {
         static ref META_FIELD: Field = Field {
@@ -1197,6 +1238,33 @@ mod tests {
         input_schema
             .api_schema()
             .expect("Failed to derive API schema")
+    }
+
+    #[test]
+    fn api_check_for_sql_field() {
+        let schema = parse("type User @entity { id: ID! }");
+        let query = match schema.get_root_query_type_def().unwrap() {
+            TypeDefinition::Object(obj) => obj,
+            _ => unreachable!(),
+        };
+        let field = query.fields.iter().find(|field| field.name == "sql");
+        assert!(field.is_some());
+        let field = field.unwrap();
+
+        assert!(!field.arguments.is_empty());
+        assert_eq!(
+            field.field_type,
+            Type::NonNullType(Box::new(Type::NamedType("SqlOutput".into())))
+        );
+        let sql_arg = field
+            .arguments
+            .iter()
+            .find(|arg| arg.name == "input")
+            .unwrap();
+        assert_eq!(
+            sql_arg.value_type,
+            Type::NonNullType(Box::new(Type::NamedType("SqlInput".into())))
+        );
     }
 
     #[test]
