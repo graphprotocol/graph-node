@@ -9,7 +9,7 @@ use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
-    SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
+    HistoryBlocks, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
     SPEC_VERSION_0_1_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
@@ -205,7 +205,50 @@ indexerHints:
 
     let manifest = resolve_manifest(YAML, SPEC_VERSION_0_1_0).await;
 
-    assert_eq!(manifest.history_blocks().unwrap(), 100);
+    assert!(matches!(
+        manifest.indexer_hints.unwrap().history_blocks.unwrap(),
+        HistoryBlocks::Blocks(100)
+    ));
+
+    let yaml: &str = "
+    dataSources: []
+    schema:
+      file:
+        /: /ipfs/Qmschema
+    graft:
+      base: Qmbase
+      block: 12345
+    specVersion: 0.1.0
+    indexerHints:
+      historyBlocks: min
+    ";
+
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_0_1_0).await;
+
+    assert!(matches!(
+        manifest.indexer_hints.unwrap().history_blocks.unwrap(),
+        HistoryBlocks::Min
+    ));
+
+    let yaml: &str = "
+    dataSources: []
+    schema:
+      file:
+        /: /ipfs/Qmschema
+    graft:
+      base: Qmbase
+      block: 12345
+    specVersion: 0.1.0
+    indexerHints:
+      historyBlocks: all
+    ";
+
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_0_1_0).await;
+
+    assert!(matches!(
+        manifest.indexer_hints.unwrap().history_blocks.unwrap(),
+        HistoryBlocks::All
+    ));
 }
 
 #[test]

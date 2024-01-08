@@ -613,7 +613,8 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         .await
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
-    let history_blocks = history_blocks.or(manifest.history_blocks());
+    let history_blocks_from_manifest = manifest.history_blocks();
+    let history_blocks = history_blocks.or(history_blocks_from_manifest);
 
     let network_name = manifest.network_name();
 

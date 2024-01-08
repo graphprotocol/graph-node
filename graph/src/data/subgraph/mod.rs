@@ -15,7 +15,10 @@ use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
 use semver::Version;
-use serde::{de, ser};
+use serde::{
+    de::{self, Visitor},
+    ser,
+};
 use serde_yaml;
 use slog::Logger;
 use stable_hash::{FieldAddress, StableHash};
@@ -548,7 +551,83 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
-    pub history_blocks: Option<BlockNumber>,
+    pub history_blocks: Option<HistoryBlocks>,
+}
+
+impl IndexerHints {
+    pub fn history_blocks(&self) -> Option<BlockNumber> {
+        self.history_blocks
+            .as_ref()
+            .and_then(|x| x.history_blocks())
+    }
+}
+
+#[derive(Debug)]
+pub enum HistoryBlocks {
+    All,
+    Min,
+    Blocks(BlockNumber),
+}
+
+impl HistoryBlocks {
+    pub fn history_blocks(&self) -> Option<BlockNumber> {
+        match self {
+            HistoryBlocks::All => None,
+            // TODO: Set the minimum number of blocks from env
+            HistoryBlocks::Min => Some(1),
+            HistoryBlocks::Blocks(x) => Some(*x),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for HistoryBlocks {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct HistoryBlocksVisitor;
+
+        impl<'de> Visitor<'de> for HistoryBlocksVisitor {
+            type Value = HistoryBlocks;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or an integer for history blocks")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<HistoryBlocks, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "all" => Ok(HistoryBlocks::All),
+                    "min" => Ok(HistoryBlocks::Min),
+                    _ => value
+                        .parse::<i32>()
+                        .map(HistoryBlocks::Blocks)
+                        .map_err(|_| E::custom("expected 'all', 'min', or an integer")),
+                }
+            }
+
+            fn visit_i32<E>(self, value: i32) -> Result<HistoryBlocks, E>
+            where
+                E: de::Error,
+            {
+                Ok(HistoryBlocks::Blocks(value))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let i = v
+                    .try_into()
+                    .map_err(|_| E::custom("expected 'all', 'min', or an integer"))?;
+                Ok(HistoryBlocks::Blocks(i))
+            }
+        }
+
+        deserializer.deserialize_any(HistoryBlocksVisitor)
+    }
 }
 
 /// SubgraphManifest with IPFS links unresolved
@@ -682,9 +761,10 @@ impl<C: Blockchain> SubgraphManifest<C> {
     }
 
     pub fn history_blocks(&self) -> Option<BlockNumber> {
-        self.indexer_hints
-            .as_ref()
-            .and_then(|hints| hints.history_blocks)
+        match self.indexer_hints {
+            Some(ref hints) => hints.history_blocks(),
+            None => None,
+        }
     }
 
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
