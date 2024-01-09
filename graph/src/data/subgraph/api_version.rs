@@ -42,7 +42,7 @@ pub const SPEC_VERSION_0_0_8: Version = Version::new(0, 0, 8);
 pub const SPEC_VERSION_0_0_9: Version = Version::new(0, 0, 9);
 
 // Enables `indexerHints` feature.
-pub const SPEC_VERSION_0_1_0: Version = Version::new(0, 1, 0);
+pub const SPEC_VERSION_1_0_0: Version = Version::new(1, 0, 0);
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 

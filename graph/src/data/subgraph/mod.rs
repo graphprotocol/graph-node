@@ -952,10 +952,10 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        if spec_version < SPEC_VERSION_0_1_0 && indexer_hints.is_some() {
+        if spec_version < SPEC_VERSION_1_0_0 && indexer_hints.is_some() {
             bail!(
                 "`indexerHints` are not supported prior to {}",
-                SPEC_VERSION_0_1_0
+                SPEC_VERSION_1_0_0
             );
         }
 

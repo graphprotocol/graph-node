@@ -10,7 +10,7 @@ use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
     HistoryBlocks, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
-    SPEC_VERSION_0_1_0,
+    SPEC_VERSION_1_0_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
@@ -203,7 +203,7 @@ indexerHints:
   historyBlocks: 100
 ";
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_1_0).await;
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_1_0_0).await;
 
     assert_eq!(manifest.history_blocks(), 100);
 
@@ -220,7 +220,7 @@ indexerHints:
       historyBlocks: min
     ";
 
-    let manifest = resolve_manifest(yaml, SPEC_VERSION_0_1_0).await;
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_1_0_0).await;
     HistoryBlocks::Min.history_blocks();
     assert_eq!(
         manifest.history_blocks(),
@@ -240,7 +240,7 @@ indexerHints:
       historyBlocks: all
     ";
 
-    let manifest = resolve_manifest(yaml, SPEC_VERSION_0_1_0).await;
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_1_0_0).await;
 
     assert_eq!(
         manifest.history_blocks(),
