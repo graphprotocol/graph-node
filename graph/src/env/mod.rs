@@ -267,7 +267,9 @@ impl EnvVars {
             enable_gas_metrics: inner.enable_gas_metrics.0,
             enable_timeseries: inner.enable_timeseries.unwrap_or(cfg!(debug_assertions)),
             history_blocks_override: inner.history_blocks_override,
-            min_history_blocks: inner.min_history_blocks,
+            min_history_blocks: inner
+                .min_history_blocks
+                .unwrap_or(2 * inner.reorg_threshold),
         })
     }
 
@@ -403,9 +405,8 @@ struct Inner {
     enable_timeseries: Option<bool>,
     #[envconfig(from = "GRAPH_HISTORY_BLOCKS_OVERRIDE")]
     history_blocks_override: Option<BlockNumber>,
-    // TODO: Find a good default value
-    #[envconfig(from = "GRAPH_MIN_HISTORY_BLOCKS", default = "10000")]
-    min_history_blocks: BlockNumber,
+    #[envconfig(from = "GRAPH_MIN_HISTORY_BLOCKS")]
+    min_history_blocks: Option<BlockNumber>,
 }
 
 #[derive(Clone, Debug)]
