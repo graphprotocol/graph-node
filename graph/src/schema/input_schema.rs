@@ -19,7 +19,9 @@ use crate::schema::api::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SCHEMA_TYPE_NAME};
+use super::{
+    ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError, SCHEMA_TYPE_NAME,
+};
 
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
@@ -463,6 +465,17 @@ impl InputSchema {
                 pool,
             }),
         })
+    }
+
+    pub fn validate(raw: &str, id: DeploymentHash) -> Vec<SchemaValidationError> {
+        let schema = match Schema::parse(raw, id.clone()) {
+            Ok(schema) => schema,
+            Err(err) => return vec![SchemaValidationError::InvalidSchema(err.to_string())],
+        };
+        match validations::validate(&schema) {
+            Ok(_) => vec![],
+            Err(errors) => errors,
+        }
     }
 
     /// Convenience for tests to construct an `InputSchema`

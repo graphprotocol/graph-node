@@ -3,6 +3,7 @@ members = [
     "core",
     "chain/*",
     "graphql",
+    "napi",
     "node",
     "runtime/*",
     "server/*",
@@ -38,4 +39,3 @@ incremental = false
 lto = true
 opt-level = 's'
 strip = "debuginfo"
-
