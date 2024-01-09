@@ -21,3 +21,10 @@ alter table
     subgraphs.subgraph_deployment
 rename column
     health_new to health;
+
+alter table
+    subgraphs.subgraph_deployment
+alter column
+    health
+set
+    not null;
