@@ -35,7 +35,7 @@ use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
 };
-use graph::blockchain::block_stream::{BlockStream, FirehoseCursor, SubstreamsMapper};
+use graph::blockchain::block_stream::{BlockStream, BlockStreamMapper, FirehoseCursor};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -258,13 +258,10 @@ pub struct FirehoseMapper {
 }
 
 #[async_trait]
-impl SubstreamsMapper<Chain> for FirehoseMapper {
-    fn decode_block(
-        &self,
-        output: Option<&prost_types::Any>,
-    ) -> Result<Option<codec::Block>, Error> {
+impl BlockStreamMapper<Chain> for FirehoseMapper {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<codec::Block>, Error> {
         let block = match output {
-            Some(block) => codec::Block::decode(block.value.as_ref())?,
+            Some(block) => codec::Block::decode(block)?,
             None => anyhow::bail!("Arweave mapper is expected to always have a block"),
         };
 
@@ -280,12 +277,13 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
     }
-    async fn decode_triggers(
+    async fn handle_substreams_block(
         &self,
         _logger: &Logger,
-        _clock: &Clock,
-        _block: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        _clock: Clock,
+        _cursor: FirehoseCursor,
+        _block: Vec<u8>,
+    ) -> Result<BlockStreamEvent<Chain>, Error> {
         unimplemented!()
     }
 }
@@ -321,7 +319,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode_block(Some(&any_block))?.unwrap();
+        let block = self.decode_block(Some(&any_block.value.as_ref()))?.unwrap();
 
         use ForkStep::*;
         match step {

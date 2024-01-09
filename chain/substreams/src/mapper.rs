@@ -3,18 +3,70 @@ use std::str::FromStr;
 
 use crate::codec::{entity_change, EntityChanges};
 use anyhow::{anyhow, Error};
-use graph::blockchain::block_stream::{BlockWithTriggers, SubstreamsError, SubstreamsMapper};
+use graph::blockchain::block_stream::{
+    BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor, SubstreamsError,
+};
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::BigDecimal;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
+use graph::prelude::{BigDecimal, BlockPtr};
 use graph::schema::InputSchema;
 use graph::substreams::Clock;
 use prost::Message;
 
 use crate::{Block, Chain, ParsedChanges, TriggerData};
+
+// WasmBlockMapper will not perform any transformation to the block and cannot make assumptions
+// about the block format. This mode just works a passthrough from the block stream to the subgraph
+// mapping which will do the decoding and store actions.
+pub struct WasmBlockMapper {
+    pub handler: String,
+}
+
+#[async_trait]
+impl BlockStreamMapper<Chain> for WasmBlockMapper {
+    fn decode_block(&self, _output: Option<&[u8]>) -> Result<Option<crate::Block>, Error> {
+        unreachable!("WasmBlockMapper does not do block decoding")
+    }
+
+    async fn block_with_triggers(
+        &self,
+        _logger: &Logger,
+        _block: crate::Block,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        unreachable!("WasmBlockMapper does not do trigger decoding")
+    }
+
+    async fn handle_substreams_block(
+        &self,
+        _logger: &Logger,
+        clock: Clock,
+        cursor: FirehoseCursor,
+        block: Vec<u8>,
+    ) -> Result<BlockStreamEvent<Chain>, Error> {
+        let Clock {
+            id,
+            number,
+            timestamp: _,
+        } = clock;
+
+        let block_ptr = BlockPtr {
+            hash: BlockHash::from(id.into_bytes()),
+            number: BlockNumber::from(TryInto::<i32>::try_into(number)?),
+        };
+
+        let block_data = block.into_boxed_slice();
+
+        Ok(BlockStreamEvent::ProcessWasmBlock(
+            block_ptr,
+            block_data,
+            self.handler.clone(),
+            cursor,
+        ))
+    }
+}
 
 // Mapper will transform the proto content coming from substreams in the graph-out format
 // into the internal Block representation. If schema is passed then additional transformation
@@ -29,12 +81,10 @@ pub struct Mapper {
 }
 
 #[async_trait]
-impl SubstreamsMapper<Chain> for Mapper {
-    fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<Block>, Error> {
+impl BlockStreamMapper<Chain> for Mapper {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<Block>, Error> {
         let changes: EntityChanges = match output {
-            Some(msg) => {
-                Message::decode(msg.value.as_slice()).map_err(SubstreamsError::DecodingError)?
-            }
+            Some(msg) => Message::decode(msg).map_err(SubstreamsError::DecodingError)?,
             None => EntityChanges {
                 entity_changes: [].to_vec(),
             },
@@ -71,25 +121,29 @@ impl SubstreamsMapper<Chain> for Mapper {
         Ok(BlockWithTriggers::new(block, triggers, logger))
     }
 
-    async fn decode_triggers(
+    async fn handle_substreams_block(
         &self,
         logger: &Logger,
-        clock: &Clock,
-        block: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        clock: Clock,
+        cursor: FirehoseCursor,
+        block: Vec<u8>,
+    ) -> Result<BlockStreamEvent<Chain>, Error> {
         let block_number: BlockNumber = clock.number.try_into()?;
         let block_hash = clock.id.as_bytes().to_vec().try_into()?;
 
         let block = self
-            .decode_block(Some(block))?
+            .decode_block(Some(&block))?
             .ok_or_else(|| anyhow!("expected block to not be empty"))?;
-        self.block_with_triggers(logger, block).await.map(|bt| {
+
+        let block = self.block_with_triggers(logger, block).await.map(|bt| {
             let mut block = bt;
 
             block.block.number = block_number;
             block.block.hash = block_hash;
             block
-        })
+        })?;
+
+        Ok(BlockStreamEvent::ProcessBlock(block, cursor))
     }
 }
 

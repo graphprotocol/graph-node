@@ -21,6 +21,7 @@ binaries:
 modules:
   - name: near_filter
     kind: map
+    initialBlock: 9820214
     inputs:
       - params: string
       - source: sf.near.type.v1.Block

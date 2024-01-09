@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
 use graph::prometheus::{CounterVec, GaugeVec};
@@ -1454,6 +1455,17 @@ impl ChainStoreMetrics {
             .unwrap()
             .inc();
     }
+
+    pub fn record_hit_and_miss(&self, network: &str, hits: usize, misses: usize) {
+        self.chain_head_cache_hits
+            .get_metric_with_label_values(&[network])
+            .unwrap()
+            .inc_by(hits as f64);
+        self.chain_head_cache_misses
+            .get_metric_with_label_values(&[network])
+            .unwrap()
+            .inc_by(misses as f64);
+    }
 }
 
 pub struct ChainStore {
@@ -1816,8 +1828,27 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
-        let mut conn = self.get_conn()?;
-        self.storage.blocks(&mut conn, &self.chain, hashes)
+        if ENV_VARS.store.disable_block_cache_for_lookup {
+            let mut conn = self.get_conn()?;
+            self.storage.blocks(&mut conn, &self.chain, &hashes)
+        } else {
+            let cached = self.recent_blocks_cache.get_blocks_by_hash(hashes);
+            let stored = if cached.len() < hashes.len() {
+                let hashes = hashes
+                    .iter()
+                    .filter(|hash| cached.iter().find(|(ptr, _)| &ptr.hash == *hash).is_none())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let mut conn = self.get_conn()?;
+                self.storage.blocks(&mut conn, &self.chain, &hashes)?
+            } else {
+                Vec::new()
+            };
+
+            let mut result = cached.into_iter().map(|(_, data)| data).collect::<Vec<_>>();
+            result.extend(stored);
+            Ok(result)
+        }
     }
 
     async fn ancestor_block(
@@ -1998,6 +2029,13 @@ mod recent_blocks_cache {
     }
 
     impl Inner {
+        fn get_block_by_hash(&self, hash: &BlockHash) -> Option<(&BlockPtr, &json::Value)> {
+            self.blocks
+                .values()
+                .find(|block| &block.ptr.hash == hash)
+                .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
+        }
+
         fn get_block(
             &self,
             child: &BlockPtr,
@@ -2150,6 +2188,21 @@ mod recent_blocks_cache {
             }
 
             block_opt
+        }
+
+        pub fn get_blocks_by_hash(&self, hashes: &[BlockHash]) -> Vec<(BlockPtr, json::Value)> {
+            let inner = self.inner.read();
+            let blocks: Vec<_> = hashes
+                .iter()
+                .filter_map(|hash| inner.get_block_by_hash(hash))
+                .map(|(ptr, value)| (ptr.clone(), value.clone()))
+                .collect();
+            inner.metrics.record_hit_and_miss(
+                &inner.network,
+                blocks.len(),
+                hashes.len() - blocks.len(),
+            );
+            blocks
         }
 
         /// Tentatively caches the `ancestor` of a [`BlockPtr`] (`child`), together with
