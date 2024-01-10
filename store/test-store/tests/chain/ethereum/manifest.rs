@@ -198,7 +198,7 @@ schema:
 graft:
   base: Qmbase
   block: 12345
-specVersion: 0.1.0
+specVersion: 1.0.0
 indexerHints:
   historyBlocks: 100
 ";
@@ -215,7 +215,7 @@ indexerHints:
     graft:
       base: Qmbase
       block: 12345
-    specVersion: 0.1.0
+    specVersion: 1.0.0
     indexerHints:
       historyBlocks: min
     ";
@@ -235,7 +235,7 @@ indexerHints:
     graft:
       base: Qmbase
       block: 12345
-    specVersion: 0.1.0
+    specVersion: 1.0.0
     indexerHints:
       historyBlocks: all
     ";
