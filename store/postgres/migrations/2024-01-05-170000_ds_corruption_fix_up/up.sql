@@ -24,7 +24,7 @@ CREATE TEMPORARY TABLE temp_sgd_last_block (
 INSERT INTO temp_sgd_last_block (deployment_schema, last_block_from_registry)
 SELECT d.name, latest_ethereum_block_number
   FROM subgraphs.subgraph_deployment AS sd
-  JOIN deployment_schemas AS d ON sd.deployment = d.subgraph
+  JOIN primary_public.deployment_schemas AS d ON sd.deployment = d.subgraph
  WHERE d.name IN (SELECT relnamespace::regnamespace::name
                     FROM pg_class
                    WHERE relname LIKE 'data_sources$%' AND relkind = 'r'
@@ -62,8 +62,8 @@ BEGIN
 END;
 $do$;
 
-SELECT * FROM temp_sgd_last_block WHERE NOT is_ok;
-
+-- DELETE rows where the block range is past the last known block
+-- and set the upper bound to infinity where the range is a closed one, and the upper limit is past that value2
 DO $do$
 DECLARE
     schema text;
@@ -86,7 +86,7 @@ BEGIN
                                           WHERE NOT is_ok AND is_upper_limit_too_high
     LOOP
         EXECUTE format($$UPDATE %I."data_sources$" 
-                            SET block_range = range_merge(block_range, (%2$s,))
+                            SET block_range = int4range(lower(block_range), null)
                           WHERE upper(block_range) > %2$s 
                                                     AND lower(block_range) <= %2$s $$, schema, last_block_from_registry);
         GET DIAGNOSTICS cnt = ROW_COUNT;
