@@ -491,6 +491,19 @@ impl Graft {
                 "failed to graft onto `{}` at block {} since it has only processed block {}",
                 self.base, self.block, ptr.number
             ))),
+            // The graft point must be at least `reorg_threshold` blocks
+            // behind the subgraph head so that a reorg can not affect the
+            // data that we copy for grafting
+            //
+            // This is pretty nasty: we have tests in the subgraph runner
+            // tests that graft onto the subgraph head directly. We
+            // therefore skip this check in debug builds and only turn it on
+            // in release builds
+            #[cfg(not(debug_assertions))]
+            (Some(ptr), true) if self.block + ENV_VARS.reorg_threshold >= ptr.number => Err(GraftBaseInvalid(format!(
+                "failed to graft onto `{}` at block {} since it's only at block {} which is within the reorg threshold of {} blocks",
+                self.base, self.block, ptr.number, ENV_VARS.reorg_threshold
+            ))),
             // If the base deployment is failed *and* the `graft.block` is not
             // less than the `base.block`, the graft shouldn't be permitted.
             //
