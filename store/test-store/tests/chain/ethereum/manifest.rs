@@ -5,16 +5,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use graph::blockchain::DataSource;
+use graph::components::store::BLOCK_NUMBER_MAX;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
-    HistoryBlocks, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
+    Prune, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
     SPEC_VERSION_1_0_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
 use graph::entity;
+use graph::env::ENV_VARS;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, Logger,
     SubgraphManifest, SubgraphManifestValidationError, SubgraphStore, UnvalidatedSubgraphManifest,
@@ -200,7 +202,7 @@ graft:
   block: 12345
 specVersion: 1.0.0
 indexerHints:
-  historyBlocks: 100
+  prune: 100
 ";
 
     let manifest = resolve_manifest(YAML, SPEC_VERSION_1_0_0).await;
@@ -217,15 +219,12 @@ indexerHints:
       block: 12345
     specVersion: 1.0.0
     indexerHints:
-      historyBlocks: min
+      prune: auto
     ";
 
     let manifest = resolve_manifest(yaml, SPEC_VERSION_1_0_0).await;
-    HistoryBlocks::Min.history_blocks();
-    assert_eq!(
-        manifest.history_blocks(),
-        HistoryBlocks::Min.history_blocks()
-    );
+    Prune::Auto.history_blocks();
+    assert_eq!(manifest.history_blocks(), ENV_VARS.min_history_blocks);
 
     let yaml: &str = "
     dataSources: []
@@ -237,15 +236,12 @@ indexerHints:
       block: 12345
     specVersion: 1.0.0
     indexerHints:
-      historyBlocks: all
+      prune: never
     ";
 
     let manifest = resolve_manifest(yaml, SPEC_VERSION_1_0_0).await;
 
-    assert_eq!(
-        manifest.history_blocks(),
-        HistoryBlocks::All.history_blocks()
-    );
+    assert_eq!(manifest.history_blocks(), BLOCK_NUMBER_MAX);
 }
 
 #[test]

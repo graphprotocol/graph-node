@@ -551,12 +551,12 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
-    history_blocks: Option<HistoryBlocks>,
+    prune: Option<Prune>,
 }
 
 impl IndexerHints {
     pub fn history_blocks(&self) -> BlockNumber {
-        match self.history_blocks {
+        match self.prune {
             Some(ref hb) => hb.history_blocks(),
             None => BLOCK_NUMBER_MAX,
         }
@@ -564,65 +564,65 @@ impl IndexerHints {
 }
 
 #[derive(Debug)]
-pub enum HistoryBlocks {
-    All,
-    Min,
+pub enum Prune {
+    Auto,
+    Never,
     Blocks(BlockNumber),
 }
 
-impl HistoryBlocks {
+impl Prune {
     pub fn history_blocks(&self) -> BlockNumber {
         match self {
-            HistoryBlocks::All => BLOCK_NUMBER_MAX,
-            HistoryBlocks::Min => ENV_VARS.min_history_blocks,
-            HistoryBlocks::Blocks(x) => *x,
+            Prune::Never => BLOCK_NUMBER_MAX,
+            Prune::Auto => ENV_VARS.min_history_blocks,
+            Prune::Blocks(x) => *x,
         }
     }
 }
 
-impl<'de> de::Deserialize<'de> for HistoryBlocks {
+impl<'de> de::Deserialize<'de> for Prune {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: de::Deserializer<'de>,
     {
         struct HistoryBlocksVisitor;
 
+        const ERROR_MSG: &str = "expected 'all', 'min', or a number for history blocks";
+
         impl<'de> Visitor<'de> for HistoryBlocksVisitor {
-            type Value = HistoryBlocks;
+            type Value = Prune;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a string or an integer for history blocks")
             }
 
-            fn visit_str<E>(self, value: &str) -> Result<HistoryBlocks, E>
+            fn visit_str<E>(self, value: &str) -> Result<Prune, E>
             where
                 E: de::Error,
             {
                 match value {
-                    "all" => Ok(HistoryBlocks::All),
-                    "min" => Ok(HistoryBlocks::Min),
+                    "never" => Ok(Prune::Never),
+                    "auto" => Ok(Prune::Auto),
                     _ => value
                         .parse::<i32>()
-                        .map(HistoryBlocks::Blocks)
-                        .map_err(|_| E::custom("expected 'all', 'min', or an integer")),
+                        .map(Prune::Blocks)
+                        .map_err(|_| E::custom(ERROR_MSG)),
                 }
             }
 
-            fn visit_i32<E>(self, value: i32) -> Result<HistoryBlocks, E>
+            fn visit_i32<E>(self, value: i32) -> Result<Prune, E>
             where
                 E: de::Error,
             {
-                Ok(HistoryBlocks::Blocks(value))
+                Ok(Prune::Blocks(value))
             }
 
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                let i = v
-                    .try_into()
-                    .map_err(|_| E::custom("expected 'all', 'min', or an integer"))?;
-                Ok(HistoryBlocks::Blocks(i))
+                let i = v.try_into().map_err(|_| E::custom(ERROR_MSG))?;
+                Ok(Prune::Blocks(i))
             }
         }
 
