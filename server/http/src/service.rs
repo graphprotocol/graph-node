@@ -339,6 +339,16 @@ where
             }
         }
 
+        // Filter out empty strings from path segments
+        fn filter_and_join_segments(segments: &[&str]) -> String {
+            segments
+                .iter()
+                .filter(|&&segment| !segment.is_empty())
+                .map(|&segment| segment)
+                .collect::<Vec<&str>>()
+                .join("/")
+        }
+
         let is_mutation = req
             .uri()
             .query()
@@ -351,23 +361,21 @@ where
             .trim()
             .to_lowercase()
             .starts_with("mutation");
-
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
             (Method::GET, &["subgraphs", "id", _, "graphql"])
-            | (Method::GET, &["subgraphs", "name", _, "graphql"])
-            | (Method::GET, &["subgraphs", "name", _, _, "graphql"])
+            | (Method::GET, &["subgraphs", "name", .., "graphql"])
             | (Method::GET, &["subgraphs", "network", _, _, "graphql"])
             | (Method::GET, &["subgraphs", "graphql"]) => self.handle_graphiql(),
 
-            (Method::GET, _path @ ["subgraphs", "name", _, _]) if is_mutation => {
+            (Method::GET, _path @ ["subgraphs", "name", ..]) if is_mutation => {
                 self.handle_mutations()
             }
             (Method::GET, path @ ["subgraphs", "id", _])
-            | (Method::GET, path @ ["subgraphs", "name", _])
-            | (Method::GET, path @ ["subgraphs", "name", _, _])
+            | (Method::GET, path @ ["subgraphs", "name", ..])
             | (Method::GET, path @ ["subgraphs", "network", _, _]) => {
-                let dest = format!("/{}/graphql", path.join("/"));
+                let filtered_path = filter_and_join_segments(path);
+                let dest = format!("/{}/graphql", filtered_path);
                 self.handle_temp_redirect(dest).boxed()
             }
 
@@ -375,17 +383,13 @@ where
                 self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
             }
             (Method::OPTIONS, ["subgraphs", "id", _]) => self.handle_graphql_options(req),
-            (Method::POST, &["subgraphs", "name", subgraph_name]) => self
-                .handle_graphql_query_by_name(subgraph_name.to_owned(), req)
-                .boxed(),
-            (Method::POST, ["subgraphs", "name", ..]) => {
-                let subgraph_name = path_segments[2..].join("/");
+            (Method::POST, path @ ["subgraphs", "name", ..]) => {
+                let subgraph_name = filter_and_join_segments(&path[2..]);
                 self.handle_graphql_query_by_name(subgraph_name, req)
                     .boxed()
             }
 
-            (Method::OPTIONS, ["subgraphs", "name", _])
-            | (Method::OPTIONS, ["subgraphs", "name", _, _]) => self.handle_graphql_options(req),
+            (Method::OPTIONS, ["subgraphs", "name", ..]) => self.handle_graphql_options(req),
 
             _ => self.handle_not_found(),
         }
