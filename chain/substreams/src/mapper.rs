@@ -14,6 +14,7 @@ use graph::data_source::CausalityRegion;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::prelude::{BigDecimal, BlockPtr};
 use graph::schema::InputSchema;
+use graph::slog::error;
 use graph::substreams::Clock;
 use prost::Message;
 
@@ -42,7 +43,7 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
 
     async fn handle_substreams_block(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         clock: Clock,
         cursor: FirehoseCursor,
         block: Vec<u8>,
@@ -60,12 +61,20 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
 
         let block_data = block.into_boxed_slice();
 
-        // This is not a great idea: we really always need a timestamp; if
-        // substreams doesn't give us one, we use a fixed one which will
-        // lead to all kinds of strange behavior
-        let timestamp = timestamp
-            .map(|ts| BlockTime::since_epoch(ts.seconds, ts.nanos as u32))
-            .unwrap_or(BlockTime::NONE);
+        // `timestamp` is an `Option`, but it should always be set
+        let timestamp = match timestamp {
+            None => {
+                error!(logger,
+                    "Substream block is missing a timestamp";
+                    "cursor" => cursor.to_string(),
+                    "number" => number,
+                );
+                return Err(anyhow!(
+                    "Substream block is missing a timestamp at cursor {cursor}, block number {number}"
+                ));
+            }
+            Some(ts) => BlockTime::since_epoch(ts.seconds, ts.nanos as u32),
+        };
 
         Ok(BlockStreamEvent::ProcessWasmBlock(
             block_ptr,
