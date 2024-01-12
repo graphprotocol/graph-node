@@ -10,7 +10,6 @@ use crate::data::value::Word;
 use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
-use wasmtime::StoreContextMut;
 use web3::types::H160;
 
 use crate::data::store::{self};
@@ -28,8 +27,10 @@ use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
 
-use crate::runtime::module::{WasmInstance, WasmInstanceContext};
+use crate::runtime::module::WasmInstance;
 use crate::{runtime::error::DeterminismLevel, runtime::module::IntoTrap};
+
+use super::module::WasmInstanceData;
 
 fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
@@ -476,7 +477,7 @@ impl HostExports {
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
         link_resolver: &Arc<dyn LinkResolver>,
-        store: &mut StoreContextMut<'_, WasmInstanceContext>,
+        wasm_ctx: &WasmInstanceData,
         link: String,
         callback: &str,
         user_data: store::Value,
@@ -486,17 +487,15 @@ impl HostExports {
         // Ideally we would consume gas the same as ipfs_cat and then share
         // gas across the spawned modules for callbacks.
 
-        let wasm_ctx = store.data_mut();
-
         const JSON_FLAG: &str = "json";
         ensure!(
             flags.contains(&JSON_FLAG.to_string()),
             "Flags must contain 'json'"
         );
 
-        let host_metrics = wasm_ctx.as_ref().host_metrics.clone();
-        let valid_module = wasm_ctx.as_ref().valid_module.clone();
-        let ctx = wasm_ctx.as_ref().ctx.derive_with_empty_block_state();
+        let host_metrics = wasm_ctx.host_metrics.clone();
+        let valid_module = wasm_ctx.valid_module.clone();
+        let ctx = wasm_ctx.ctx.derive_with_empty_block_state();
         let callback = callback.to_owned();
         // Create a base error message to avoid borrowing headaches
         let errmsg = format!(
@@ -518,8 +517,8 @@ impl HostExports {
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
-                    wasm_ctx.as_ref().timeout,
-                    wasm_ctx.as_ref().experimental_features,
+                    wasm_ctx.timeout,
+                    wasm_ctx.experimental_features,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s

@@ -5,7 +5,7 @@ use crate::slog::SendSyncRefUnwindSafeKV;
 use anyhow::Error;
 
 use semver::Version;
-use wasmtime::{AsContext, AsContextMut, Store, Trap};
+use wasmtime::{AsContextMut, Store, Trap};
 
 use crate::blockchain::{Blockchain, HostFnCtx};
 use crate::data::store;
@@ -22,10 +22,9 @@ use crate::{components::subgraph::MappingError, runtime::AscPtr};
 use super::IntoWasmRet;
 use super::{IntoTrap, WasmInstanceContext};
 use crate::runtime::error::DeterminismLevel;
-pub use crate::runtime::host_exports;
 use crate::runtime::mapping::MappingContext;
 use crate::runtime::mapping::ValidModule;
-use crate::runtime::module::TimeoutStopwatch;
+use crate::runtime::module::{TimeoutStopwatch, WasmInstanceData};
 use crate::runtime::ExperimentalFeatures;
 
 use super::{asc_get, is_trap_deterministic, AscHeapCtx, ToAscPtr};
@@ -33,7 +32,7 @@ use super::{asc_get, is_trap_deterministic, AscHeapCtx, ToAscPtr};
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub struct WasmInstance {
     pub instance: wasmtime::Instance,
-    pub store: wasmtime::Store<WasmInstanceContext>,
+    pub store: wasmtime::Store<WasmInstanceData>,
 
     // A reference to the gas counter used for reporting the gas used.
     pub gas: GasCounter,
@@ -45,12 +44,7 @@ impl WasmInstance {
         P: AscType + AscIndexId,
         T: FromAscObj<P>,
     {
-        asc_get(
-            &self.store.as_context(),
-            self.store.data().as_ref().asc_heap_ref(),
-            asc_ptr,
-            &self.gas,
-        )
+        asc_get(self.store.data().asc_heap_ref(), asc_ptr, &self.gas)
     }
 
     pub fn asc_new<P, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
@@ -59,14 +53,8 @@ impl WasmInstance {
         T: ToAscObj<P>,
     {
         let ctx = self.store.data().clone();
-        ctx.with_mut(|ctx| {
-            asc_new(
-                &mut self.store.as_context_mut(),
-                ctx.asc_heap_mut(),
-                rust_obj,
-                &self.gas,
-            )
-        })
+
+        asc_new(ctx.as_mut().asc_heap_mut(), rust_obj, &self.gas)
     }
 }
 
@@ -81,19 +69,9 @@ impl WasmInstance {
         let gas = GasCounter::new(gas_metrics);
         let ctx = self.store.data().clone();
         let (value, user_data) = ctx.with_mut(|ctx| {
-            let value = asc_new(
-                &mut self.store.as_context_mut(),
-                ctx.asc_heap_mut(),
-                value,
-                &gas,
-            );
+            let value = asc_new(ctx.asc_heap_mut(), value, &gas);
 
-            let user_data = asc_new(
-                &mut self.store.as_context_mut(),
-                ctx.asc_heap_mut(),
-                user_data,
-                &gas,
-            );
+            let user_data = asc_new(ctx.asc_heap_mut(), user_data, &gas);
 
             (value, user_data)
         });
@@ -112,7 +90,7 @@ impl WasmInstance {
             .with_context(|| format!("Failed to handle callback '{}'", handler_name))?;
 
         let wasm_ctx = self.store.into_data();
-        wasm_ctx.as_mut().ctx.state.exit_handler();
+        wasm_ctx.ctx.state.exit_handler();
 
         Ok(wasm_ctx.take_state())
     }
@@ -124,18 +102,11 @@ impl WasmInstance {
         block_data: Box<[u8]>,
     ) -> Result<(BlockState, Gas), MappingError> {
         let ctx = self.store.data().clone();
-        let obj = block_data.to_vec().to_asc_obj(
-            &mut self.store.as_context_mut(),
-            ctx.as_mut().asc_heap_mut(),
-            &self.gas,
-        )?;
+        let obj = block_data
+            .to_vec()
+            .to_asc_obj(ctx.as_mut().asc_heap_mut(), &self.gas)?;
 
-        let obj = AscPtr::alloc_obj(
-            &mut self.store.as_context_mut(),
-            obj,
-            ctx.as_mut().asc_heap_mut(),
-            &self.gas,
-        )?;
+        let obj = AscPtr::alloc_obj(obj, ctx.as_mut().asc_heap_mut(), &self.gas)?;
 
         self.invoke_handler(handler_name, obj, Arc::new(o!()), None)
     }
@@ -152,16 +123,12 @@ impl WasmInstance {
         let logging_extras = trigger.logging_extras().cheap_clone();
         let error_context = trigger.trigger.error_context();
         let ctx = self.store.data().clone();
-        let asc_trigger = trigger.to_asc_ptr(
-            &mut self.store.as_context_mut(),
-            ctx.as_mut().asc_heap_mut(),
-            &gas,
-        )?;
+        let asc_trigger = trigger.to_asc_ptr(ctx.as_mut().asc_heap_mut(), &gas)?;
 
         self.invoke_handler(&handler_name, asc_trigger, logging_extras, error_context)
     }
 
-    pub fn take_ctx(self) -> WasmInstanceContext {
+    pub fn take_ctx(self) -> WasmInstanceData {
         self.store.into_data()
     }
 
@@ -298,14 +265,14 @@ impl WasmInstance {
         // // Start the timeout watchdog task.
         let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
 
-        let wasm_ctx = WasmInstanceContext::from_instance(
+        let wasm_ctx = WasmInstanceData::from_instance(
             ctx,
             valid_module.cheap_clone(),
             host_metrics.cheap_clone(),
             timeout,
             timeout_stopwatch.clone(),
             experimental_features,
-        )?;
+        );
         let mut store = Store::new(engine, wasm_ctx);
         // The epoch on the engine will only ever be incremeted if increment_epoch() is explicitly
         // called, we only do so if a timeout has been set, otherwise 1 means it will run forever.
@@ -351,7 +318,6 @@ impl WasmInstance {
                             let host_metrics = instance.as_ref().host_metrics.cheap_clone();
                             let _section = host_metrics.stopwatch.start_section($section);
                             let result = instance.$rust_name(
-                                &mut caller.as_context_mut(),
                                 &gas,
                                 $($param.into()),*
                             );

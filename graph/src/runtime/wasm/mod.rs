@@ -20,5 +20,4 @@ mod gas_rules;
 pub use host::RuntimeHostBuilder;
 pub use host_exports::HostExports;
 pub use mapping::{MappingContext, ValidModule};
-pub use module::WasmInstanceContext;
 pub use module::{ExperimentalFeatures, WasmInstance};

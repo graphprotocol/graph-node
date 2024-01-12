@@ -6,7 +6,6 @@ use crate::util::mem::init_slice;
 use anyhow::anyhow;
 use anyhow::Error;
 use semver::Version;
-use wasmtime::StoreContext;
 use wasmtime::StoreContextMut;
 use wasmtime::{AsContextMut, Memory};
 
@@ -35,7 +34,6 @@ pub mod stopwatch;
 
 // Convenience for a 'top-level' asc_get, with depth 0.
 fn asc_get<T, C: AscType, H: AscHeap + ?Sized>(
-    store: &StoreContext<WasmInstanceContext>,
     heap: &H,
     ptr: AscPtr<C>,
     gas: &GasCounter,
@@ -44,7 +42,7 @@ where
     C: AscType + AscIndexId,
     T: FromAscObj<C>,
 {
-    crate::runtime::asc_get(&store, heap, ptr, gas, 0)
+    crate::runtime::asc_get(heap, ptr, gas, 0)
 }
 
 pub trait IntoTrap {
@@ -57,7 +55,6 @@ pub trait IntoTrap {
 pub trait ToAscPtr {
     fn to_asc_ptr<H: AscHeap>(
         self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError>;
@@ -66,11 +63,10 @@ pub trait ToAscPtr {
 impl ToAscPtr for offchain::TriggerData {
     fn to_asc_ptr<H: AscHeap>(
         self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        asc_new(store, heap, self.data.as_ref() as &[u8], gas).map(|ptr| ptr.erase())
+        asc_new(heap, self.data.as_ref() as &[u8], gas).map(|ptr| ptr.erase())
     }
 }
 
@@ -80,13 +76,12 @@ where
 {
     fn to_asc_ptr<H: AscHeap>(
         self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
         match self {
-            MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(store, heap, gas),
-            MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(store, heap, gas),
+            MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas),
+            MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas),
         }
     }
 }
@@ -94,11 +89,10 @@ where
 impl<T: ToAscPtr> ToAscPtr for TriggerWithHandler<T> {
     fn to_asc_ptr<H: AscHeap>(
         self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        self.trigger.to_asc_ptr(store, heap, gas)
+        self.trigger.to_asc_ptr(heap, gas)
     }
 }
 
@@ -143,8 +137,6 @@ pub struct AscHeapCtx {
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
 
     api_version: semver::Version,
-
-    // store: &'a wasmtime::Store<WasmInstanceContext<C>>,
 
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
@@ -211,13 +203,8 @@ fn host_export_error_from_trap(trap: Error, context: String) -> HostExportError 
     }
 }
 
-impl AscHeap for AscHeapCtx {
-    fn raw_new(
-        &mut self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
-        bytes: &[u8],
-        gas: &GasCounter,
-    ) -> Result<u32, DeterministicHostError> {
+impl AscHeap for WasmInstanceContext<'_> {
+    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
         gas.consume_host_fn_with_metrics(
@@ -231,7 +218,7 @@ impl AscHeap for AscHeapCtx {
         static MIN_ARENA_SIZE: i32 = 10_000;
 
         let size = i32::try_from(bytes.len()).unwrap();
-        if size > self.arena_free_size {
+        if size > self.asc_heap_ref().arena_free_size {
             // Allocate a new arena. Any free space left in the previous arena is left unused. This
             // causes at most half of memory to be wasted, which is acceptable.
             let arena_size = size.max(MIN_ARENA_SIZE);
@@ -239,10 +226,8 @@ impl AscHeap for AscHeapCtx {
             // Unwrap: This may panic if more memory needs to be requested from the OS and that
             // fails. This error is not deterministic since it depends on the operating conditions
             // of the node.
-            self.arena_start_ptr = self
-                .memory_allocate
-                .call(store.as_context_mut(), arena_size)
-                .unwrap();
+            let memory_allocate = self.asc_heap_ref().memory_allocate;
+            self.arena_start_ptr = memory_allocate.call(self, arena_size).unwrap();
             self.arena_free_size = arena_size;
 
             match &self.api_version {
@@ -263,25 +248,18 @@ impl AscHeap for AscHeapCtx {
         let ptr = self.arena_start_ptr as usize;
 
         // Unwrap: We have just allocated enough space for `bytes`.
-        self.memory
-            .write(store.as_context_mut(), ptr, bytes)
-            .unwrap();
+        self.memory.write(self, ptr, bytes).unwrap();
         self.arena_start_ptr += size;
         self.arena_free_size -= size;
 
         Ok(ptr as u32)
     }
 
-    fn read_u32(
-        &self,
-        store: &StoreContext<WasmInstanceContext>,
-        offset: u32,
-        gas: &GasCounter,
-    ) -> Result<u32, DeterministicHostError> {
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         gas.consume_host_fn_with_metrics(Gas::new(GAS_COST_LOAD as u64 * 4), "read_u32")?;
         let mut bytes = [0; 4];
         self.memory
-            .read(store, offset as usize, &mut bytes)
+            .read(self, offset as usize, &mut bytes)
             .map_err(|_| {
                 DeterministicHostError::from(anyhow!(
                     "Heap access out of bounds. Offset: {} Size: {}",
@@ -294,7 +272,6 @@ impl AscHeap for AscHeapCtx {
 
     fn read<'a>(
         &self,
-        store: &StoreContext<WasmInstanceContext>,
         offset: u32,
         buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
@@ -311,7 +288,7 @@ impl AscHeap for AscHeapCtx {
         // TODO: Do we still need this? Can we use read directly?
         let src = self
             .memory
-            .data(store)
+            .data(self)
             .get(offset..)
             .and_then(|s| s.get(..buffer.len()))
             .ok_or(DeterministicHostError::from(anyhow!(
@@ -323,19 +300,15 @@ impl AscHeap for AscHeapCtx {
         Ok(init_slice(src, buffer))
     }
 
-    fn api_version(&self, _store: &StoreContext<WasmInstanceContext>) -> Version {
+    fn api_version(&self) -> Version {
         self.api_version.clone()
     }
 
-    fn asc_type_id(
-        &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
-        type_id_index: IndexForAscTypeId,
-    ) -> Result<u32, HostExportError> {
+    fn asc_type_id(&self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
         self.id_of_type
             .as_ref()
             .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
-            .call(store.as_context_mut(), type_id_index as u32)
+            .call(self, type_id_index as u32)
             .map_err(|trap| {
                 host_export_error_from_trap(
                     trap,

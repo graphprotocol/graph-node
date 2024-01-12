@@ -1,11 +1,10 @@
 use ethabi;
-use wasmtime::{AsContext, StoreContext, StoreContextMut};
 
 use crate::{
     data::store,
     runtime::{
         gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, HostExportError,
-        IndexForAscTypeId, ToAscObj, WasmInstanceContext,
+        IndexForAscTypeId, ToAscObj,
     },
 };
 use crate::{prelude::serde_json, runtime::DeterministicHostError};
@@ -64,12 +63,11 @@ impl AscType for ArrayBuffer {
     }
 
     fn asc_size<H: AscHeap + ?Sized>(
-        store: &StoreContext<WasmInstanceContext>,
         ptr: AscPtr<Self>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        v0_0_4::ArrayBuffer::asc_size(&store, AscPtr::new(ptr.wasm_ptr()), heap, gas)
+        v0_0_4::ArrayBuffer::asc_size(AscPtr::new(ptr.wasm_ptr()), heap, gas)
     }
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
@@ -93,30 +91,28 @@ pub enum TypedArray<T> {
 
 impl<T: AscValue> TypedArray<T> {
     pub fn new<H: AscHeap + ?Sized>(
-        store: &mut StoreContextMut<WasmInstanceContext>,
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
-        match heap.api_version(&store.as_context()) {
+        match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::TypedArray::new(store, content, heap, gas)?,
+                v0_0_4::TypedArray::new(content, heap, gas)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::new(
-                store, content, heap, gas,
+                content, heap, gas,
             )?)),
         }
     }
 
     pub fn to_vec<H: AscHeap + ?Sized>(
         &self,
-        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         match self {
-            Self::ApiVersion0_0_4(t) => t.to_vec(&store, heap, gas),
-            Self::ApiVersion0_0_5(t) => t.to_vec(&store, heap, gas),
+            Self::ApiVersion0_0_4(t) => t.to_vec(heap, gas),
+            Self::ApiVersion0_0_5(t) => t.to_vec(heap, gas),
         }
     }
 }
@@ -151,11 +147,10 @@ pub type Uint8Array = TypedArray<u8>;
 impl ToAscObj<Uint8Array> for Bytes<'_> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(store, heap, gas)
+        self.0.to_asc_obj(heap, gas)
     }
 }
 
@@ -252,12 +247,11 @@ impl AscType for AscString {
     }
 
     fn asc_size<H: AscHeap + ?Sized>(
-        store: &StoreContext<WasmInstanceContext>,
         ptr: AscPtr<Self>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        v0_0_4::AscString::asc_size(&store, AscPtr::new(ptr.wasm_ptr()), heap, gas)
+        v0_0_4::AscString::asc_size(AscPtr::new(ptr.wasm_ptr()), heap, gas)
     }
 
     fn content_len(&self, asc_bytes: &[u8]) -> usize {
@@ -277,30 +271,28 @@ pub enum Array<T> {
 
 impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap + ?Sized>(
-        store: &mut StoreContextMut<WasmInstanceContext>,
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
-        match heap.api_version(&store.as_context()) {
+        match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::Array::new(store, content, heap, gas)?,
+                v0_0_4::Array::new(content, heap, gas)?,
             )),
             _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::new(
-                store, content, heap, gas,
+                content, heap, gas,
             )?)),
         }
     }
 
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
-        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         match self {
-            Self::ApiVersion0_0_4(a) => a.to_vec(&store, heap, gas),
-            Self::ApiVersion0_0_5(a) => a.to_vec(&store, heap, gas),
+            Self::ApiVersion0_0_4(a) => a.to_vec(heap, gas),
+            Self::ApiVersion0_0_5(a) => a.to_vec(heap, gas),
         }
     }
 }
