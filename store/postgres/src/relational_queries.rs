@@ -720,22 +720,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     }
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
                     ColumnType::TSVector(config) => {
-                        if values.is_empty() {
-                            out.push_sql("''::tsvector");
-                        } else {
-                            out.push_sql("(");
-                            for (i, value) in values.iter().enumerate() {
-                                if i > 0 {
-                                    out.push_sql(") || ");
-                                }
-                                out.push_sql("to_tsvector(");
-                                out.push_sql(config.language.as_sql());
-                                out.push_sql(", ");
-                                out.push_bind_param::<Text, _>(value)?;
-                            }
-                            out.push_sql("))");
-                        }
-
+                        process_vec_ast(values, &mut out, config.language.as_sql())?;
                         Ok(())
                     }
                     ColumnType::BigDecimal | ColumnType::BigInt => {
@@ -758,6 +743,29 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
             S::Binary(b) => out.push_bind_param::<Binary, _>(b.as_slice()),
         }
     }
+}
+
+fn process_vec_ast<'a, T: diesel::serialize::ToSql<Text, Pg>>(
+    values: &'a Vec<T>,
+    out: &mut AstPass<'_, 'a, Pg>,
+    sql_language: &str,
+) -> Result<(), DieselError> {
+    if values.is_empty() {
+        out.push_sql("''::tsvector");
+    } else {
+        out.push_sql("(");
+        for (i, value) in values.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(") || ");
+            }
+            out.push_sql("to_tsvector(");
+            out.push_sql(sql_language);
+            out.push_sql(", ");
+            out.push_bind_param::<Text, _>(value)?;
+        }
+        out.push_sql("))");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -2239,7 +2247,10 @@ impl<'a> QueryFragment<Pg> for InsertValue<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             InsertValue::Value(qv) => qv.walk_ast(out),
-            InsertValue::Fulltext(qvs) => out.push_bind_param::<Array<Text>, _>(qvs),
+            InsertValue::Fulltext(qvs) => {
+                process_vec_ast(qvs, &mut out, "'simple'")?;
+                Ok(())
+            }
         }
     }
 }
