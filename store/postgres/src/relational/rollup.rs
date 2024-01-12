@@ -51,7 +51,7 @@ impl<'a> Agg<'a> {
             Min => write!(w, "min(\"{}\")", self.src_column.unwrap().name)?,
             First => write!(w, "first(\"{}\")", self.src_column.unwrap().name)?,
             Last => write!(w, "last(\"{}\")", self.src_column.unwrap().name)?,
-            Cnt => write!(w, "count(*)")?,
+            Count => write!(w, "count(*)")?,
         }
         write!(w, " as \"{}\"", self.agg_column.name)
     }

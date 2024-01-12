@@ -440,7 +440,7 @@ pub enum AggregateFn {
     Sum,
     Max,
     Min,
-    Cnt,
+    Count,
     First,
     Last,
 }
@@ -453,7 +453,7 @@ impl FromStr for AggregateFn {
             "sum" => Ok(AggregateFn::Sum),
             "max" => Ok(AggregateFn::Max),
             "min" => Ok(AggregateFn::Min),
-            "count" => Ok(AggregateFn::Cnt),
+            "count" => Ok(AggregateFn::Count),
             "first" => Ok(AggregateFn::First),
             "last" => Ok(AggregateFn::Last),
             _ => Err(anyhow!("invalid aggregate function `{}`", s)),
@@ -466,7 +466,7 @@ impl AggregateFn {
         use AggregateFn::*;
         match self {
             Sum | Max | Min | First | Last => true,
-            Cnt => false,
+            Count => false,
         }
     }
 
@@ -476,7 +476,7 @@ impl AggregateFn {
             Sum => "sum",
             Max => "max",
             Min => "min",
-            Cnt => "count",
+            Count => "count",
             First => "first",
             Last => "last",
         }
