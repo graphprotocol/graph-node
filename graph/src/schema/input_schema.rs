@@ -585,7 +585,7 @@ impl AggregationMapping {
     pub fn aggregation<'a>(&self, schema: &'a InputSchema) -> &'a Aggregation {
         schema.inner.type_infos[self.aggregation]
             .aggregation()
-            .expect("the aggregation source is an object types")
+            .expect("the aggregation source is an object type")
     }
 
     pub fn agg_type(&self, schema: &InputSchema) -> EntityType {
