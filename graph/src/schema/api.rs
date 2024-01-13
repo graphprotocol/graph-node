@@ -350,16 +350,16 @@ pub(in crate::schema) fn api_schema(
         .get_interface_type_definitions();
 
     // Refactor: Don't clone the schema.
-    let mut schema = input_schema.schema().clone();
-    add_meta_field_type(&mut schema.document);
-    add_types_for_object_types(&mut schema, &object_types)?;
-    add_types_for_interface_types(&mut schema, &interface_types)?;
-    add_field_arguments(&mut schema.document, &input_schema.schema().document)?;
-    add_query_type(&mut schema.document, &object_types, &interface_types)?;
-    add_subscription_type(&mut schema.document, &object_types, &interface_types)?;
+    let mut api = input_schema.schema().clone();
+    add_meta_field_type(&mut api.document);
+    add_types_for_object_types(&mut api, &object_types)?;
+    add_types_for_interface_types(&mut api, &interface_types)?;
+    add_field_arguments(&mut api.document, &input_schema.schema().document)?;
+    add_query_type(&mut api.document, &object_types, &interface_types)?;
+    add_subscription_type(&mut api.document, &object_types, &interface_types)?;
 
     // Remove the `_Schema_` type from the generated schema.
-    schema.document.definitions.retain(|d| match d {
+    api.document.definitions.retain(|d| match d {
         Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
             TypeDefinition::Object(t) if t.name.eq(SCHEMA_TYPE_NAME) => false,
             _ => true,
@@ -367,12 +367,12 @@ pub(in crate::schema) fn api_schema(
         _ => true,
     });
 
-    Ok(schema.document)
+    Ok(api.document)
 }
 
 /// Adds a global `_Meta_` type to the schema. The `_meta` field
 /// accepts values of this type
-fn add_meta_field_type(schema: &mut Document) {
+fn add_meta_field_type(api: &mut Document) {
     lazy_static! {
         static ref META_FIELD_SCHEMA: Document = {
             let schema = include_str!("meta.graphql");
@@ -380,19 +380,18 @@ fn add_meta_field_type(schema: &mut Document) {
         };
     }
 
-    schema
-        .definitions
+    api.definitions
         .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
 fn add_types_for_object_types(
-    schema: &mut Schema,
+    api: &mut Schema,
     object_types: &[&ObjectType],
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
         if !object_type.name.eq(SCHEMA_TYPE_NAME) {
-            add_order_by_type(&mut schema.document, &object_type.name, &object_type.fields)?;
-            add_filter_type(schema, &object_type.name, &object_type.fields)?;
+            add_order_by_type(&mut api.document, &object_type.name, &object_type.fields)?;
+            add_filter_type(api, &object_type.name, &object_type.fields)?;
         }
     }
     Ok(())
@@ -400,39 +399,39 @@ fn add_types_for_object_types(
 
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
 fn add_types_for_interface_types(
-    schema: &mut Schema,
+    api: &mut Schema,
     interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
         add_order_by_type(
-            &mut schema.document,
+            &mut api.document,
             &interface_type.name,
             &interface_type.fields,
         )?;
-        add_filter_type(schema, &interface_type.name, &interface_type.fields)?;
+        add_filter_type(api, &interface_type.name, &interface_type.fields)?;
     }
     Ok(())
 }
 
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
-    schema: &mut Document,
+    api: &mut Document,
     type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name);
 
-    match schema.get_named_type(&type_name) {
+    match api.get_named_type(&type_name) {
         None => {
             let typedef = TypeDefinition::Enum(EnumType {
                 position: Pos::default(),
                 description: None,
                 name: type_name,
                 directives: vec![],
-                values: field_enum_values(schema, fields)?,
+                values: field_enum_values(api, fields)?,
             });
             let def = Definition::TypeDefinition(typedef);
-            schema.definitions.push(def);
+            api.definitions.push(def);
         }
         Some(_) => return Err(APISchemaError::TypeExists(type_name)),
     }
@@ -515,14 +514,14 @@ fn field_enum_values_from_child_entity(
 
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
-    schema: &mut Schema,
+    api: &mut Schema,
     type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name);
-    match schema.document.get_named_type(&filter_type_name) {
+    match api.document.get_named_type(&filter_type_name) {
         None => {
-            let mut generated_filter_fields = field_input_values(schema, fields)?;
+            let mut generated_filter_fields = field_input_values(api, fields)?;
             generated_filter_fields.push(block_changed_filter_argument());
 
             if !ENV_VARS.graphql.disable_bool_filters {
@@ -553,7 +552,7 @@ fn add_filter_type(
                 fields: generated_filter_fields,
             });
             let def = Definition::TypeDefinition(typedef);
-            schema.document.definitions.push(def);
+            api.document.definitions.push(def);
         }
         Some(_) => return Err(APISchemaError::TypeExists(filter_type_name)),
     }
@@ -831,13 +830,13 @@ fn input_value(name: &str, suffix: &'static str, value_type: Type) -> InputValue
 
 /// Adds a root `Query` object type to the schema.
 fn add_query_type(
-    schema: &mut Document,
+    api: &mut Document,
     object_types: &[&ObjectType],
     interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
-    if schema.get_named_type(&type_name).is_some() {
+    if api.get_named_type(&type_name).is_some() {
         return Err(APISchemaError::TypeExists(type_name));
     }
 
@@ -848,7 +847,7 @@ fn add_query_type(
         .chain(interface_types.iter().map(|t| t.name.as_str()))
         .flat_map(query_fields_for_type)
         .collect::<Vec<Field>>();
-    let mut fulltext_fields = schema
+    let mut fulltext_fields = api
         .get_fulltext_directives()
         .map_err(|_| APISchemaError::FulltextSearchNonDeterministic)?
         .iter()
@@ -866,7 +865,7 @@ fn add_query_type(
         fields,
     });
     let def = Definition::TypeDefinition(typedef);
-    schema.definitions.push(def);
+    api.definitions.push(def);
     Ok(())
 }
 
@@ -932,13 +931,13 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
 
 /// Adds a root `Subscription` object type to the schema.
 fn add_subscription_type(
-    schema: &mut Document,
+    api: &mut Document,
     object_types: &[&ObjectType],
     interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
-    if schema.get_named_type(&type_name).is_some() {
+    if api.get_named_type(&type_name).is_some() {
         return Err(APISchemaError::TypeExists(type_name));
     }
 
@@ -960,7 +959,7 @@ fn add_subscription_type(
         fields,
     });
     let def = Definition::TypeDefinition(typedef);
-    schema.definitions.push(def);
+    api.definitions.push(def);
     Ok(())
 }
 
@@ -1109,10 +1108,7 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
     args
 }
 
-fn add_field_arguments(
-    schema: &mut Document,
-    input_schema: &Document,
-) -> Result<(), APISchemaError> {
+fn add_field_arguments(api: &mut Document, input_schema: &Document) -> Result<(), APISchemaError> {
     // Refactor: Remove the `input_schema` argument and do a mutable iteration
     // over the definitions in `schema`. Also the duplication between this and
     // the loop for interfaces below.
@@ -1123,7 +1119,7 @@ fn add_field_arguments(
             {
                 if ast::is_list_or_non_null_list_field(input_field) {
                     // Get corresponding object type and field in the output schema
-                    let object_type = ast::get_object_type_mut(schema, &input_object_type.name)
+                    let object_type = ast::get_object_type_mut(api, &input_object_type.name)
                         .expect("object type from input schema is missing in API schema");
                     let mut field = object_type
                         .fields
@@ -1155,7 +1151,7 @@ fn add_field_arguments(
                 if ast::is_list_or_non_null_list_field(input_field) {
                     // Get corresponding interface type and field in the output schema
                     let interface_type =
-                        ast::get_interface_type_mut(schema, &input_interface_type.name)
+                        ast::get_interface_type_mut(api, &input_interface_type.name)
                             .expect("interface type from input schema is missing in API schema");
                     let mut field = interface_type
                         .fields
