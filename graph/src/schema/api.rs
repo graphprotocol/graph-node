@@ -10,7 +10,7 @@ use crate::data::store::IdType;
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
-use crate::prelude::s::{Value, *};
+use crate::prelude::s;
 use crate::prelude::*;
 use thiserror::Error;
 
@@ -94,9 +94,9 @@ pub struct ApiSchema {
     schema: Schema,
 
     // Root types for the api schema.
-    pub query_type: Arc<ObjectType>,
-    pub subscription_type: Option<Arc<ObjectType>>,
-    object_types: HashMap<String, Arc<ObjectType>>,
+    pub query_type: Arc<s::ObjectType>,
+    pub subscription_type: Option<Arc<s::ObjectType>>,
+    object_types: HashMap<String, Arc<s::ObjectType>>,
 }
 
 impl ApiSchema {
@@ -156,12 +156,12 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
         &self.schema.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<s::InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
     }
 
@@ -169,7 +169,7 @@ impl ApiSchema {
     ///
     /// # Panics
     /// If `obj_type` is not part of this schema, this function panics
-    pub fn object_type(&self, obj_type: &ObjectType) -> Arc<ObjectType> {
+    pub fn object_type(&self, obj_type: &s::ObjectType) -> Arc<s::ObjectType> {
         self.object_types
             .get(&obj_type.name)
             .expect("ApiSchema.object_type is only used with existing types")
@@ -249,9 +249,9 @@ impl ApiSchema {
 }
 
 lazy_static! {
-    static ref INTROSPECTION_SCHEMA: Document = {
+    static ref INTROSPECTION_SCHEMA: s::Document = {
         let schema = include_str!("introspection.graphql");
-        parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
+        s::parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
     };
     pub static ref INTROSPECTION_QUERY_TYPE: ast::ObjectType = {
         let root_query_type = INTROSPECTION_SCHEMA
@@ -271,8 +271,8 @@ pub fn is_introspection_field(name: &str) -> bool {
 ///
 /// This results in a schema that combines the original schema with the
 /// introspection schema
-fn add_introspection_schema(schema: &mut Document) {
-    fn introspection_fields() -> Vec<Field> {
+fn add_introspection_schema(schema: &mut s::Document) {
+    fn introspection_fields() -> Vec<s::Field> {
         // Generate fields for the root query fields in an introspection schema,
         // the equivalent of the fields of the `Query` type:
         //
@@ -281,30 +281,32 @@ fn add_introspection_schema(schema: &mut Document) {
         //   __type(name: String!): __Type
         // }
 
-        let type_args = vec![InputValue {
+        let type_args = vec![s::InputValue {
             position: Pos::default(),
             description: None,
             name: "name".to_string(),
-            value_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
+            value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("String".to_string()))),
             default_value: None,
             directives: vec![],
         }];
 
         vec![
-            Field {
+            s::Field {
                 position: Pos::default(),
                 description: None,
                 name: "__schema".to_string(),
                 arguments: vec![],
-                field_type: Type::NonNullType(Box::new(Type::NamedType("__Schema".to_string()))),
+                field_type: s::Type::NonNullType(Box::new(s::Type::NamedType(
+                    "__Schema".to_string(),
+                ))),
                 directives: vec![],
             },
-            Field {
+            s::Field {
                 position: Pos::default(),
                 description: None,
                 name: "__type".to_string(),
                 arguments: type_args,
-                field_type: Type::NamedType("__Type".to_string()),
+                field_type: s::Type::NamedType("__Type".to_string()),
                 directives: vec![],
             },
         ]
@@ -325,7 +327,9 @@ fn add_introspection_schema(schema: &mut Document) {
         .definitions
         .iter_mut()
         .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => Some(t),
+            s::Definition::TypeDefinition(s::TypeDefinition::Object(t)) if t.name == "Query" => {
+                Some(t)
+            }
             _ => None,
         })
         .peekable()
@@ -341,7 +345,7 @@ fn add_introspection_schema(schema: &mut Document) {
 /// all its fields and their input arguments, based on the existing types.
 pub(in crate::schema) fn api_schema(
     input_schema: &InputSchema,
-) -> Result<Document, APISchemaError> {
+) -> Result<s::Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = input_schema.schema().document.get_object_type_definitions();
     let interface_types = input_schema
@@ -360,8 +364,8 @@ pub(in crate::schema) fn api_schema(
 
     // Remove the `_Schema_` type from the generated schema.
     api.document.definitions.retain(|d| match d {
-        Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
-            TypeDefinition::Object(t) if t.name.eq(SCHEMA_TYPE_NAME) => false,
+        s::Definition::TypeDefinition(def @ s::TypeDefinition::Object(_)) => match def {
+            s::TypeDefinition::Object(t) if t.name.eq(SCHEMA_TYPE_NAME) => false,
             _ => true,
         },
         _ => true,
@@ -372,11 +376,11 @@ pub(in crate::schema) fn api_schema(
 
 /// Adds a global `_Meta_` type to the schema. The `_meta` field
 /// accepts values of this type
-fn add_meta_field_type(api: &mut Document) {
+fn add_meta_field_type(api: &mut s::Document) {
     lazy_static! {
-        static ref META_FIELD_SCHEMA: Document = {
+        static ref META_FIELD_SCHEMA: s::Document = {
             let schema = include_str!("meta.graphql");
-            parse_schema(schema).expect("the schema `meta.graphql` is invalid")
+            s::parse_schema(schema).expect("the schema `meta.graphql` is invalid")
         };
     }
 
@@ -386,7 +390,7 @@ fn add_meta_field_type(api: &mut Document) {
 
 fn add_types_for_object_types(
     api: &mut Schema,
-    object_types: &[&ObjectType],
+    object_types: &[&s::ObjectType],
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
         if !object_type.name.eq(SCHEMA_TYPE_NAME) {
@@ -400,7 +404,7 @@ fn add_types_for_object_types(
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
 fn add_types_for_interface_types(
     api: &mut Schema,
-    interface_types: &[&InterfaceType],
+    interface_types: &[&s::InterfaceType],
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
         add_order_by_type(
@@ -415,22 +419,22 @@ fn add_types_for_interface_types(
 
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
-    api: &mut Document,
+    api: &mut s::Document,
     type_name: &str,
-    fields: &[Field],
+    fields: &[s::Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name);
 
     match api.get_named_type(&type_name) {
         None => {
-            let typedef = TypeDefinition::Enum(EnumType {
+            let typedef = s::TypeDefinition::Enum(s::EnumType {
                 position: Pos::default(),
                 description: None,
                 name: type_name,
                 directives: vec![],
                 values: field_enum_values(api, fields)?,
             });
-            let def = Definition::TypeDefinition(typedef);
+            let def = s::Definition::TypeDefinition(typedef);
             api.definitions.push(def);
         }
         Some(_) => return Err(APISchemaError::TypeExists(type_name)),
@@ -440,12 +444,12 @@ fn add_order_by_type(
 
 /// Generates enum values for the given set of fields.
 fn field_enum_values(
-    schema: &Document,
-    fields: &[Field],
-) -> Result<Vec<EnumValue>, APISchemaError> {
+    schema: &s::Document,
+    fields: &[s::Field],
+) -> Result<Vec<s::EnumValue>, APISchemaError> {
     let mut enum_values = vec![];
     for field in fields {
-        enum_values.push(EnumValue {
+        enum_values.push(s::EnumValue {
             position: Pos::default(),
             description: None,
             name: field.name.clone(),
@@ -457,16 +461,16 @@ fn field_enum_values(
 }
 
 fn enum_value_from_child_entity_field(
-    schema: &Document,
+    schema: &s::Document,
     parent_field_name: &str,
-    field: &Field,
-) -> Option<EnumValue> {
+    field: &s::Field,
+) -> Option<s::EnumValue> {
     if ast::is_list_or_non_null_list_field(field) || ast::is_entity_type(schema, &field.field_type)
     {
         // Sorting on lists or entities is not supported.
         None
     } else {
-        Some(EnumValue {
+        Some(s::EnumValue {
             position: Pos::default(),
             description: None,
             name: format!("{}__{}", parent_field_name, field.name),
@@ -476,14 +480,14 @@ fn enum_value_from_child_entity_field(
 }
 
 fn field_enum_values_from_child_entity(
-    schema: &Document,
-    field: &Field,
-) -> Result<Vec<EnumValue>, APISchemaError> {
-    fn resolve_supported_type_name(field_type: &Type) -> Option<&String> {
+    schema: &s::Document,
+    field: &s::Field,
+) -> Result<Vec<s::EnumValue>, APISchemaError> {
+    fn resolve_supported_type_name(field_type: &s::Type) -> Option<&String> {
         match field_type {
-            Type::NamedType(name) => Some(name),
-            Type::ListType(_) => None,
-            Type::NonNullType(of_type) => resolve_supported_type_name(of_type),
+            s::Type::NamedType(name) => Some(name),
+            s::Type::ListType(_) => None,
+            s::Type::NonNullType(of_type) => resolve_supported_type_name(of_type),
         }
     }
 
@@ -498,8 +502,8 @@ fn field_enum_values_from_child_entity(
                 .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             match named_type {
-                TypeDefinition::Object(ObjectType { fields, .. })
-                | TypeDefinition::Interface(InterfaceType { fields, .. }) => fields
+                s::TypeDefinition::Object(s::ObjectType { fields, .. })
+                | s::TypeDefinition::Interface(s::InterfaceType { fields, .. }) => fields
                     .iter()
                     .filter_map(|f| {
                         enum_value_from_child_entity_field(schema, field.name.as_str(), f)
@@ -516,7 +520,7 @@ fn field_enum_values_from_child_entity(
 fn add_filter_type(
     api: &mut Schema,
     type_name: &str,
-    fields: &[Field],
+    fields: &[s::Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name);
     match api.document.get_named_type(&filter_type_name) {
@@ -525,33 +529,37 @@ fn add_filter_type(
             generated_filter_fields.push(block_changed_filter_argument());
 
             if !ENV_VARS.graphql.disable_bool_filters {
-                generated_filter_fields.push(InputValue {
+                generated_filter_fields.push(s::InputValue {
                     position: Pos::default(),
                     description: None,
                     name: "and".to_string(),
-                    value_type: Type::ListType(Box::new(Type::NamedType(filter_type_name.clone()))),
+                    value_type: s::Type::ListType(Box::new(s::Type::NamedType(
+                        filter_type_name.clone(),
+                    ))),
                     default_value: None,
                     directives: vec![],
                 });
 
-                generated_filter_fields.push(InputValue {
+                generated_filter_fields.push(s::InputValue {
                     position: Pos::default(),
                     description: None,
                     name: "or".to_string(),
-                    value_type: Type::ListType(Box::new(Type::NamedType(filter_type_name.clone()))),
+                    value_type: s::Type::ListType(Box::new(s::Type::NamedType(
+                        filter_type_name.clone(),
+                    ))),
                     default_value: None,
                     directives: vec![],
                 });
             }
 
-            let typedef = TypeDefinition::InputObject(InputObjectType {
+            let typedef = s::TypeDefinition::InputObject(s::InputObjectType {
                 position: Pos::default(),
                 description: None,
                 name: filter_type_name,
                 directives: vec![],
                 fields: generated_filter_fields,
             });
-            let def = Definition::TypeDefinition(typedef);
+            let def = s::Definition::TypeDefinition(typedef);
             api.document.definitions.push(def);
         }
         Some(_) => return Err(APISchemaError::TypeExists(filter_type_name)),
@@ -563,8 +571,8 @@ fn add_filter_type(
 /// Generates `*_filter` input values for the given set of fields.
 fn field_input_values(
     schema: &Schema,
-    fields: &[Field],
-) -> Result<Vec<InputValue>, APISchemaError> {
+    fields: &[s::Field],
+) -> Result<Vec<s::InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
         input_values.extend(field_filter_input_values(schema, field, &field.field_type)?);
@@ -575,17 +583,17 @@ fn field_input_values(
 /// Generates `*_filter` input values for the given field.
 fn field_filter_input_values(
     schema: &Schema,
-    field: &Field,
-    field_type: &Type,
-) -> Result<Vec<InputValue>, APISchemaError> {
+    field: &s::Field,
+    field_type: &s::Type,
+) -> Result<Vec<s::InputValue>, APISchemaError> {
     match field_type {
-        Type::NamedType(ref name) => {
+        s::Type::NamedType(ref name) => {
             let named_type = schema
                 .document
                 .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
-                TypeDefinition::Object(_) | TypeDefinition::Interface(_) => {
+                s::TypeDefinition::Object(_) | s::TypeDefinition::Interface(_) => {
                     let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
                     let mut input_values = match ast::get_derived_from_directive(field) {
                         // Only add `where` filter fields for object and interface fields
@@ -602,31 +610,31 @@ fn field_filter_input_values(
                     extend_with_child_filter_input_value(field, name, &mut input_values);
                     input_values
                 }
-                TypeDefinition::Scalar(ref t) => {
+                s::TypeDefinition::Scalar(ref t) => {
                     field_scalar_filter_input_values(&schema.document, field, t)
                 }
-                TypeDefinition::Enum(ref t) => {
+                s::TypeDefinition::Enum(ref t) => {
                     field_enum_filter_input_values(&schema.document, field, t)
                 }
                 _ => vec![],
             })
         }
-        Type::ListType(ref t) => {
+        s::Type::ListType(ref t) => {
             Ok(field_list_filter_input_values(schema, field, t)?.unwrap_or_default())
         }
-        Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
+        s::Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
 }
 
 fn id_type_as_scalar(
     schema: &Schema,
-    typedef: &TypeDefinition,
-) -> Result<Option<ScalarType>, APISchemaError> {
+    typedef: &s::TypeDefinition,
+) -> Result<Option<s::ScalarType>, APISchemaError> {
     let id_type = match typedef {
-        TypeDefinition::Object(obj_type) => IdType::try_from(obj_type)
+        s::TypeDefinition::Object(obj_type) => IdType::try_from(obj_type)
             .map(Option::Some)
             .map_err(|_| APISchemaError::IllegalIdType(obj_type.name.to_owned())),
-        TypeDefinition::Interface(intf_type) => {
+        s::TypeDefinition::Interface(intf_type) => {
             match schema
                 .types_for_interface
                 .get(&intf_type.name)
@@ -641,24 +649,24 @@ fn id_type_as_scalar(
         _ => Ok(None),
     }?;
     let scalar_type = id_type.map(|id_type| match id_type {
-        IdType::String | IdType::Bytes => ScalarType::new(String::from("String")),
+        IdType::String | IdType::Bytes => s::ScalarType::new(String::from("String")),
         // It would be more logical to use "Int8" here, but currently, that
         // leads to values being turned into strings, not i64 which causes
         // database queries to fail in various places. Once this is fixed
         // (check e.g., `Value::coerce_scalar` in `graph/src/data/value.rs`)
         // we can turn that into "Int8". For now, queries can only query
         // Int8 id values up to i32::MAX.
-        IdType::Int8 => ScalarType::new(String::from("Int")),
+        IdType::Int8 => s::ScalarType::new(String::from("Int")),
     });
     Ok(scalar_type)
 }
 
 /// Generates `*_filter` input values for the given scalar field.
 fn field_scalar_filter_input_values(
-    _schema: &Document,
-    field: &Field,
-    field_type: &ScalarType,
-) -> Vec<InputValue> {
+    _schema: &s::Document,
+    field: &s::Field,
+    field_type: &s::ScalarType,
+) -> Vec<s::InputValue> {
     match field_type.name.as_ref() {
         "BigInt" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         "Boolean" => vec!["", "not", "in", "not_in"],
@@ -704,9 +712,11 @@ fn field_scalar_filter_input_values(
     }
     .into_iter()
     .map(|filter_type| {
-        let field_type = Type::NamedType(field_type.name.clone());
+        let field_type = s::Type::NamedType(field_type.name.clone());
         let value_type = match filter_type {
-            "in" | "not_in" => Type::ListType(Box::new(Type::NonNullType(Box::new(field_type)))),
+            "in" | "not_in" => {
+                s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(field_type))))
+            }
             _ => field_type,
         };
         input_value(&field.name, filter_type, value_type)
@@ -716,30 +726,30 @@ fn field_scalar_filter_input_values(
 
 /// Appends a child filter to input values
 fn extend_with_child_filter_input_value(
-    field: &Field,
+    field: &s::Field,
     field_type_name: &String,
-    input_values: &mut Vec<InputValue>,
+    input_values: &mut Vec<s::InputValue>,
 ) {
     input_values.push(input_value(
         &format!("{}_", field.name),
         "",
-        Type::NamedType(format!("{}_filter", field_type_name)),
+        s::Type::NamedType(format!("{}_filter", field_type_name)),
     ));
 }
 
 /// Generates `*_filter` input values for the given enum field.
 fn field_enum_filter_input_values(
-    _schema: &Document,
-    field: &Field,
-    field_type: &EnumType,
-) -> Vec<InputValue> {
+    _schema: &s::Document,
+    field: &s::Field,
+    field_type: &s::EnumType,
+) -> Vec<s::InputValue> {
     vec!["", "not", "in", "not_in"]
         .into_iter()
         .map(|filter_type| {
-            let field_type = Type::NamedType(field_type.name.clone());
+            let field_type = s::Type::NamedType(field_type.name.clone());
             let value_type = match filter_type {
                 "in" | "not_in" => {
-                    Type::ListType(Box::new(Type::NonNullType(Box::new(field_type))))
+                    s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(field_type))))
                 }
                 _ => field_type,
             };
@@ -751,9 +761,9 @@ fn field_enum_filter_input_values(
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
     schema: &Schema,
-    field: &Field,
-    field_type: &Type,
-) -> Result<Option<Vec<InputValue>>, APISchemaError> {
+    field: &s::Field,
+    field_type: &s::Type,
+) -> Result<Option<Vec<s::InputValue>>, APISchemaError> {
     // Only add a filter field if the type of the field exists in the schema
     let typedef = match ast::get_type_definition_from_type(&schema.document, field_type) {
         Some(typedef) => typedef,
@@ -765,22 +775,22 @@ fn field_list_filter_input_values(
     // derived, we allow ID strings to be passed on.
     // Adds child filter only to object types.
     let (input_field_type, parent_type_name) = match typedef {
-        TypeDefinition::Object(ObjectType { name, .. })
-        | TypeDefinition::Interface(InterfaceType { name, .. }) => {
+        s::TypeDefinition::Object(s::ObjectType { name, .. })
+        | s::TypeDefinition::Interface(s::InterfaceType { name, .. }) => {
             if ast::get_derived_from_directive(field).is_some() {
                 (None, Some(name.clone()))
             } else {
                 let scalar_type = id_type_as_scalar(schema, typedef)?.unwrap();
-                let named_type = Type::NamedType(scalar_type.name);
+                let named_type = s::Type::NamedType(scalar_type.name);
                 (Some(named_type), Some(name.clone()))
             }
         }
-        TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.clone())), None),
-        TypeDefinition::Enum(ref t) => (Some(Type::NamedType(t.name.clone())), None),
-        TypeDefinition::InputObject(_) | TypeDefinition::Union(_) => (None, None),
+        s::TypeDefinition::Scalar(ref t) => (Some(s::Type::NamedType(t.name.clone())), None),
+        s::TypeDefinition::Enum(ref t) => (Some(s::Type::NamedType(t.name.clone())), None),
+        s::TypeDefinition::InputObject(_) | s::TypeDefinition::Union(_) => (None, None),
     };
 
-    let mut input_values: Vec<InputValue> = match input_field_type {
+    let mut input_values: Vec<s::InputValue> = match input_field_type {
         None => {
             vec![]
         }
@@ -797,7 +807,7 @@ fn field_list_filter_input_values(
             input_value(
                 &field.name,
                 filter_type,
-                Type::ListType(Box::new(Type::NonNullType(Box::new(
+                s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(
                     input_field_type.clone(),
                 )))),
             )
@@ -813,8 +823,8 @@ fn field_list_filter_input_values(
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
-fn input_value(name: &str, suffix: &'static str, value_type: Type) -> InputValue {
-    InputValue {
+fn input_value(name: &str, suffix: &'static str, value_type: s::Type) -> s::InputValue {
+    s::InputValue {
         position: Pos::default(),
         description: None,
         name: if suffix.is_empty() {
@@ -830,9 +840,9 @@ fn input_value(name: &str, suffix: &'static str, value_type: Type) -> InputValue
 
 /// Adds a root `Query` object type to the schema.
 fn add_query_type(
-    api: &mut Document,
-    object_types: &[&ObjectType],
-    interface_types: &[&InterfaceType],
+    api: &mut s::Document,
+    object_types: &[&s::ObjectType],
+    interface_types: &[&s::InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
@@ -846,7 +856,7 @@ fn add_query_type(
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| t.name.as_str()))
         .flat_map(query_fields_for_type)
-        .collect::<Vec<Field>>();
+        .collect::<Vec<s::Field>>();
     let mut fulltext_fields = api
         .get_fulltext_directives()
         .map_err(|_| APISchemaError::FulltextSearchNonDeterministic)?
@@ -856,7 +866,7 @@ fn add_query_type(
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
 
-    let typedef = TypeDefinition::Object(ObjectType {
+    let typedef = s::TypeDefinition::Object(s::ObjectType {
         position: Pos::default(),
         description: None,
         name: type_name,
@@ -864,12 +874,12 @@ fn add_query_type(
         directives: vec![],
         fields,
     });
-    let def = Definition::TypeDefinition(typedef);
+    let def = s::Definition::TypeDefinition(typedef);
     api.definitions.push(def);
     Ok(())
 }
 
-fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
+fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
     let name = fulltext.argument("name").unwrap().as_str().unwrap().into();
 
     let includes = fulltext.argument("include").unwrap().as_list().unwrap();
@@ -880,30 +890,30 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
 
     let mut arguments = vec![
         // text: String
-        InputValue {
+        s::InputValue {
             position: Pos::default(),
             description: None,
             name: String::from("text"),
-            value_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
+            value_type: s::Type::NonNullType(Box::new(s::Type::NamedType(String::from("String")))),
             default_value: None,
             directives: vec![],
         },
         // first: Int
-        InputValue {
+        s::InputValue {
             position: Pos::default(),
             description: None,
             name: String::from("first"),
-            value_type: Type::NamedType(String::from("Int")),
-            default_value: Some(Value::Int(100.into())),
+            value_type: s::Type::NamedType(String::from("Int")),
+            default_value: Some(s::Value::Int(100.into())),
             directives: vec![],
         },
         // skip: Int
-        InputValue {
+        s::InputValue {
             position: Pos::default(),
             description: None,
             name: String::from("skip"),
-            value_type: Type::NamedType(String::from("Int")),
-            default_value: Some(Value::Int(0.into())),
+            value_type: s::Type::NamedType(String::from("Int")),
+            default_value: Some(s::Value::Int(0.into())),
             directives: vec![],
         },
         // block: BlockHeight
@@ -911,29 +921,29 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
         input_value(
             "where",
             "",
-            Type::NamedType(format!("{}_filter", entity_name)),
+            s::Type::NamedType(format!("{}_filter", entity_name)),
         ),
     ];
 
     arguments.push(subgraph_error_argument());
 
-    Some(Field {
+    Some(s::Field {
         position: Pos::default(),
         description: None,
         name,
         arguments,
-        field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-            Box::new(Type::NamedType(entity_name.into())),
-        ))))), // included entity type name
+        field_type: s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(
+            s::Type::NonNullType(Box::new(s::Type::NamedType(entity_name.into()))),
+        )))), // included entity type name
         directives: vec![fulltext.clone()],
     })
 }
 
 /// Adds a root `Subscription` object type to the schema.
 fn add_subscription_type(
-    api: &mut Document,
-    object_types: &[&ObjectType],
-    interface_types: &[&InterfaceType],
+    api: &mut s::Document,
+    object_types: &[&s::ObjectType],
+    interface_types: &[&s::InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
@@ -941,7 +951,7 @@ fn add_subscription_type(
         return Err(APISchemaError::TypeExists(type_name));
     }
 
-    let mut fields: Vec<Field> = object_types
+    let mut fields: Vec<s::Field> = object_types
         .iter()
         .map(|t| &t.name)
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
@@ -950,7 +960,7 @@ fn add_subscription_type(
         .collect();
     fields.push(meta_field());
 
-    let typedef = TypeDefinition::Object(ObjectType {
+    let typedef = s::TypeDefinition::Object(s::ObjectType {
         position: Pos::default(),
         description: None,
         name: type_name,
@@ -958,13 +968,13 @@ fn add_subscription_type(
         directives: vec![],
         fields,
     });
-    let def = Definition::TypeDefinition(typedef);
+    let def = s::Definition::TypeDefinition(typedef);
     api.definitions.push(def);
     Ok(())
 }
 
-fn block_argument() -> InputValue {
-    InputValue {
+fn block_argument() -> s::InputValue {
+    s::InputValue {
         position: Pos::default(),
         description: Some(
             "The block at which the query should be executed. \
@@ -977,48 +987,48 @@ fn block_argument() -> InputValue {
                 .to_owned(),
         ),
         name: "block".to_string(),
-        value_type: Type::NamedType(BLOCK_HEIGHT.to_owned()),
+        value_type: s::Type::NamedType(BLOCK_HEIGHT.to_owned()),
         default_value: None,
         directives: vec![],
     }
 }
 
-fn block_changed_filter_argument() -> InputValue {
-    InputValue {
+fn block_changed_filter_argument() -> s::InputValue {
+    s::InputValue {
         position: Pos::default(),
         description: Some("Filter for the block changed event.".to_owned()),
         name: "_change_block".to_string(),
-        value_type: Type::NamedType(CHANGE_BLOCK_FILTER_NAME.to_owned()),
+        value_type: s::Type::NamedType(CHANGE_BLOCK_FILTER_NAME.to_owned()),
         default_value: None,
         directives: vec![],
     }
 }
 
-fn subgraph_error_argument() -> InputValue {
-    InputValue {
+fn subgraph_error_argument() -> s::InputValue {
+    s::InputValue {
         position: Pos::default(),
         description: Some(
             "Set to `allow` to receive data even if the subgraph has skipped over errors while syncing."
                 .to_owned(),
         ),
         name: "subgraphError".to_string(),
-        value_type: Type::NonNullType(Box::new(Type::NamedType(ERROR_POLICY_TYPE.to_string()))),
-        default_value: Some(Value::Enum("deny".to_string())),
+        value_type: s::Type::NonNullType(Box::new(s::Type::NamedType(ERROR_POLICY_TYPE.to_string()))),
+        default_value: Some(s::Value::Enum("deny".to_string())),
         directives: vec![],
     }
 }
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(type_name: &str) -> Vec<Field> {
+fn query_fields_for_type(type_name: &str) -> Vec<s::Field> {
     let mut collection_arguments = collection_arguments_for_named_type(type_name);
     collection_arguments.push(block_argument());
 
     let mut by_id_arguments = vec![
-        InputValue {
+        s::InputValue {
             position: Pos::default(),
             description: None,
             name: "id".to_string(),
-            value_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
+            value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("ID".to_string()))),
             default_value: None,
             directives: vec![],
         },
@@ -1029,45 +1039,45 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
     by_id_arguments.push(subgraph_error_argument());
 
     vec![
-        Field {
+        s::Field {
             position: Pos::default(),
             description: None,
             name: type_name.to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
             arguments: by_id_arguments,
-            field_type: Type::NamedType(type_name.to_owned()),
+            field_type: s::Type::NamedType(type_name.to_owned()),
             directives: vec![],
         },
-        Field {
+        s::Field {
             position: Pos::default(),
             description: None,
             name: type_name.to_plural().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
             arguments: collection_arguments,
-            field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-                Box::new(Type::NamedType(type_name.to_owned())),
-            ))))),
+            field_type: s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(
+                s::Type::NonNullType(Box::new(s::Type::NamedType(type_name.to_owned()))),
+            )))),
             directives: vec![],
         },
     ]
 }
 
-fn meta_field() -> Field {
+fn meta_field() -> s::Field {
     lazy_static! {
-        static ref META_FIELD: Field = Field {
+        static ref META_FIELD: s::Field = s::Field {
             position: Pos::default(),
             description: Some("Access to subgraph metadata".to_string()),
             name: META_FIELD_NAME.to_string(),
             arguments: vec![
                 // block: BlockHeight
-                InputValue {
+                s::InputValue {
                     position: Pos::default(),
                     description: None,
                     name: String::from("block"),
-                    value_type: Type::NamedType(BLOCK_HEIGHT.to_string()),
+                    value_type: s::Type::NamedType(BLOCK_HEIGHT.to_string()),
                     default_value: None,
                     directives: vec![],
                 },
             ],
-            field_type: Type::NamedType(META_FIELD_TYPE.to_string()),
+            field_type: s::Type::NamedType(META_FIELD_TYPE.to_string()),
             directives: vec![],
         };
     }
@@ -1075,15 +1085,15 @@ fn meta_field() -> Field {
 }
 
 /// Generates arguments for collection queries of a named type (e.g. User).
-fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
+fn collection_arguments_for_named_type(type_name: &str) -> Vec<s::InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
     // non-nullable field, regardless of the presence of a default.
-    let mut skip = input_value("skip", "", Type::NamedType("Int".to_string()));
-    skip.default_value = Some(Value::Int(0.into()));
+    let mut skip = input_value("skip", "", s::Type::NamedType("Int".to_string()));
+    skip.default_value = Some(s::Value::Int(0.into()));
 
-    let mut first = input_value("first", "", Type::NamedType("Int".to_string()));
-    first.default_value = Some(Value::Int(100.into()));
+    let mut first = input_value("first", "", s::Type::NamedType("Int".to_string()));
+    first.default_value = Some(s::Value::Int(100.into()));
 
     let args = vec![
         skip,
@@ -1091,24 +1101,27 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
         input_value(
             "orderBy",
             "",
-            Type::NamedType(format!("{}_orderBy", type_name)),
+            s::Type::NamedType(format!("{}_orderBy", type_name)),
         ),
         input_value(
             "orderDirection",
             "",
-            Type::NamedType("OrderDirection".to_string()),
+            s::Type::NamedType("OrderDirection".to_string()),
         ),
         input_value(
             "where",
             "",
-            Type::NamedType(format!("{}_filter", type_name)),
+            s::Type::NamedType(format!("{}_filter", type_name)),
         ),
     ];
 
     args
 }
 
-fn add_field_arguments(api: &mut Document, input_schema: &Document) -> Result<(), APISchemaError> {
+fn add_field_arguments(
+    api: &mut s::Document,
+    input_schema: &s::Document,
+) -> Result<(), APISchemaError> {
     // Refactor: Remove the `input_schema` argument and do a mutable iteration
     // over the definitions in `schema`. Also the duplication between this and
     // the loop for interfaces below.
@@ -1128,10 +1141,10 @@ fn add_field_arguments(api: &mut Document, input_schema: &Document) -> Result<()
                         .expect("field from input schema is missing in API schema");
 
                     match input_reference_type {
-                        TypeDefinition::Object(ot) => {
+                        s::TypeDefinition::Object(ot) => {
                             field.arguments = collection_arguments_for_named_type(&ot.name);
                         }
-                        TypeDefinition::Interface(it) => {
+                        s::TypeDefinition::Interface(it) => {
                             field.arguments = collection_arguments_for_named_type(&it.name);
                         }
                         _ => unreachable!(
@@ -1160,10 +1173,10 @@ fn add_field_arguments(api: &mut Document, input_schema: &Document) -> Result<()
                         .expect("field from input schema is missing in API schema");
 
                     match input_reference_type {
-                        TypeDefinition::Object(ot) => {
+                        s::TypeDefinition::Object(ot) => {
                             field.arguments = collection_arguments_for_named_type(&ot.name);
                         }
-                        TypeDefinition::Interface(it) => {
+                        s::TypeDefinition::Interface(it) => {
                             field.arguments = collection_arguments_for_named_type(&it.name);
                         }
                         _ => unreachable!(
