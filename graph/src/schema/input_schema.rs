@@ -1084,6 +1084,20 @@ impl InputSchema {
         }
     }
 
+    pub(in crate::schema) fn object_types(&self) -> impl Iterator<Item = &ObjectType> {
+        self.inner.type_infos.iter().filter_map(|ti| match ti {
+            TypeInfo::Object(obj_type) => Some(obj_type),
+            TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
+        })
+    }
+
+    pub(in crate::schema) fn interface_types(&self) -> impl Iterator<Item = &InterfaceType> {
+        self.inner.type_infos.iter().filter_map(|ti| match ti {
+            TypeInfo::Interface(intf_type) => Some(intf_type),
+            TypeInfo::Object(_) | TypeInfo::Aggregation(_) => None,
+        })
+    }
+
     /// Return a list of the names of all enum types
     pub fn enum_types(&self) -> impl Iterator<Item = &str> {
         self.inner.enum_map.names()

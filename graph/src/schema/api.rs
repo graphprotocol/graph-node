@@ -17,7 +17,7 @@ use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::{q, r, s, DeploymentHash};
 
-use super::{InputSchema, Schema, SCHEMA_TYPE_NAME};
+use super::{Field, InputSchema, InterfaceType, ObjectType, Schema, SCHEMA_TYPE_NAME};
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {
@@ -350,20 +350,27 @@ pub(in crate::schema) fn api_schema(
     input_schema: &InputSchema,
 ) -> Result<s::Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
-    let object_types = input_schema.schema().document.get_object_type_definitions();
-    let interface_types = input_schema
-        .schema()
-        .document
-        .get_interface_type_definitions();
+    let object_types = input_schema.object_types().collect::<Vec<_>>();
+    let interface_types = input_schema.interface_types().collect::<Vec<_>>();
 
     // Refactor: Don't clone the schema.
     let mut api = input_schema.schema().clone();
     add_meta_field_type(&mut api.document);
-    add_types_for_object_types(&mut api, &object_types)?;
-    add_types_for_interface_types(&mut api, &interface_types)?;
+    add_types_for_object_types(&mut api, input_schema)?;
+    add_types_for_interface_types(&mut api, input_schema, &interface_types)?;
     add_field_arguments(&mut api.document, &input_schema.schema().document)?;
-    add_query_type(&mut api.document, &object_types, &interface_types)?;
-    add_subscription_type(&mut api.document, &object_types, &interface_types)?;
+    add_query_type(
+        &mut api.document,
+        input_schema,
+        &object_types,
+        &interface_types,
+    )?;
+    add_subscription_type(
+        &mut api.document,
+        input_schema,
+        &object_types,
+        &interface_types,
+    )?;
 
     // Remove the `_Schema_` type from the generated schema.
     api.document.definitions.retain(|d| match d {
@@ -393,13 +400,12 @@ fn add_meta_field_type(api: &mut s::Document) {
 
 fn add_types_for_object_types(
     api: &mut Schema,
-    object_types: &[&s::ObjectType],
+    schema: &InputSchema,
 ) -> Result<(), APISchemaError> {
-    for object_type in object_types {
-        if !object_type.name.eq(SCHEMA_TYPE_NAME) {
-            add_order_by_type(&mut api.document, &object_type.name, &object_type.fields)?;
-            add_filter_type(api, &object_type.name, &object_type.fields)?;
-        }
+    for object_type in schema.object_types() {
+        let name = schema.pool().get(object_type.name).unwrap();
+        add_order_by_type(&mut api.document, name, &object_type.fields)?;
+        add_filter_type(api, name, &object_type.fields)?;
     }
     Ok(())
 }
@@ -407,15 +413,13 @@ fn add_types_for_object_types(
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
 fn add_types_for_interface_types(
     api: &mut Schema,
-    interface_types: &[&s::InterfaceType],
+    input_schema: &InputSchema,
+    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
-        add_order_by_type(
-            &mut api.document,
-            &interface_type.name,
-            &interface_type.fields,
-        )?;
-        add_filter_type(api, &interface_type.name, &interface_type.fields)?;
+        let name = input_schema.pool().get(interface_type.name).unwrap();
+        add_order_by_type(&mut api.document, name, &interface_type.fields)?;
+        add_filter_type(api, name, &interface_type.fields)?;
     }
     Ok(())
 }
@@ -424,7 +428,7 @@ fn add_types_for_interface_types(
 fn add_order_by_type(
     api: &mut s::Document,
     type_name: &str,
-    fields: &[s::Field],
+    fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let type_name = format!("{}_orderBy", type_name);
 
@@ -448,14 +452,14 @@ fn add_order_by_type(
 /// Generates enum values for the given set of fields.
 fn field_enum_values(
     schema: &s::Document,
-    fields: &[s::Field],
+    fields: &[Field],
 ) -> Result<Vec<s::EnumValue>, APISchemaError> {
     let mut enum_values = vec![];
     for field in fields {
         enum_values.push(s::EnumValue {
             position: Pos::default(),
             description: None,
-            name: field.name.clone(),
+            name: field.name.to_string(),
             directives: vec![],
         });
         enum_values.extend(field_enum_values_from_child_entity(schema, field)?);
@@ -484,7 +488,7 @@ fn enum_value_from_child_entity_field(
 
 fn field_enum_values_from_child_entity(
     schema: &s::Document,
-    field: &s::Field,
+    field: &Field,
 ) -> Result<Vec<s::EnumValue>, APISchemaError> {
     fn resolve_supported_type_name(field_type: &s::Type) -> Option<&String> {
         match field_type {
@@ -523,7 +527,7 @@ fn field_enum_values_from_child_entity(
 fn add_filter_type(
     api: &mut Schema,
     type_name: &str,
-    fields: &[s::Field],
+    fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name);
     match api.document.get_named_type(&filter_type_name) {
@@ -574,7 +578,7 @@ fn add_filter_type(
 /// Generates `*_filter` input values for the given set of fields.
 fn field_input_values(
     schema: &Schema,
-    fields: &[s::Field],
+    fields: &[Field],
 ) -> Result<Vec<s::InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
@@ -586,7 +590,7 @@ fn field_input_values(
 /// Generates `*_filter` input values for the given field.
 fn field_filter_input_values(
     schema: &Schema,
-    field: &s::Field,
+    field: &Field,
     field_type: &s::Type,
 ) -> Result<Vec<s::InputValue>, APISchemaError> {
     match field_type {
@@ -598,17 +602,16 @@ fn field_filter_input_values(
             Ok(match named_type {
                 s::TypeDefinition::Object(_) | s::TypeDefinition::Interface(_) => {
                     let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
-                    let mut input_values = match ast::get_derived_from_directive(field) {
+                    let mut input_values = if field.is_derived {
                         // Only add `where` filter fields for object and interface fields
                         // if they are not @derivedFrom
-                        Some(_) => vec![],
+                        vec![]
+                    } else {
                         // We allow filtering with `where: { other: "some-id" }` and
                         // `where: { others: ["some-id", "other-id"] }`. In both cases,
                         // we allow ID strings as the values to be passed to these
                         // filters.
-                        None => {
-                            field_scalar_filter_input_values(&schema.document, field, &scalar_type)
-                        }
+                        field_scalar_filter_input_values(&schema.document, field, &scalar_type)
                     };
                     extend_with_child_filter_input_value(field, name, &mut input_values);
                     input_values
@@ -667,7 +670,7 @@ fn id_type_as_scalar(
 /// Generates `*_filter` input values for the given scalar field.
 fn field_scalar_filter_input_values(
     _schema: &s::Document,
-    field: &s::Field,
+    field: &Field,
     field_type: &s::ScalarType,
 ) -> Vec<s::InputValue> {
     match field_type.name.as_ref() {
@@ -729,7 +732,7 @@ fn field_scalar_filter_input_values(
 
 /// Appends a child filter to input values
 fn extend_with_child_filter_input_value(
-    field: &s::Field,
+    field: &Field,
     field_type_name: &String,
     input_values: &mut Vec<s::InputValue>,
 ) {
@@ -743,7 +746,7 @@ fn extend_with_child_filter_input_value(
 /// Generates `*_filter` input values for the given enum field.
 fn field_enum_filter_input_values(
     _schema: &s::Document,
-    field: &s::Field,
+    field: &Field,
     field_type: &s::EnumType,
 ) -> Vec<s::InputValue> {
     vec!["", "not", "in", "not_in"]
@@ -764,7 +767,7 @@ fn field_enum_filter_input_values(
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
     schema: &Schema,
-    field: &s::Field,
+    field: &Field,
     field_type: &s::Type,
 ) -> Result<Option<Vec<s::InputValue>>, APISchemaError> {
     // Only add a filter field if the type of the field exists in the schema
@@ -780,7 +783,7 @@ fn field_list_filter_input_values(
     let (input_field_type, parent_type_name) = match typedef {
         s::TypeDefinition::Object(s::ObjectType { name, .. })
         | s::TypeDefinition::Interface(s::InterfaceType { name, .. }) => {
-            if ast::get_derived_from_directive(field).is_some() {
+            if field.is_derived {
                 (None, Some(name.clone()))
             } else {
                 let scalar_type = id_type_as_scalar(schema, typedef)?.unwrap();
@@ -844,8 +847,9 @@ fn input_value(name: &str, suffix: &'static str, value_type: s::Type) -> s::Inpu
 /// Adds a root `Query` object type to the schema.
 fn add_query_type(
     api: &mut s::Document,
-    object_types: &[&s::ObjectType],
-    interface_types: &[&s::InterfaceType],
+    input_schema: &InputSchema,
+    object_types: &[&ObjectType],
+    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
@@ -855,10 +859,12 @@ fn add_query_type(
 
     let mut fields = object_types
         .iter()
-        .map(|t| t.name.as_str())
-        .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
-        .chain(interface_types.iter().map(|t| t.name.as_str()))
-        .flat_map(query_fields_for_type)
+        .map(|t| t.name)
+        .chain(interface_types.iter().map(|t| t.name))
+        .flat_map(|name| {
+            let name = input_schema.pool().get(name).unwrap();
+            query_fields_for_type(name)
+        })
         .collect::<Vec<s::Field>>();
     let mut fulltext_fields = api
         .get_fulltext_directives()
@@ -945,8 +951,9 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
 /// Adds a root `Subscription` object type to the schema.
 fn add_subscription_type(
     api: &mut s::Document,
-    object_types: &[&s::ObjectType],
-    interface_types: &[&s::InterfaceType],
+    input_schema: &InputSchema,
+    object_types: &[&ObjectType],
+    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
@@ -956,10 +963,12 @@ fn add_subscription_type(
 
     let mut fields: Vec<s::Field> = object_types
         .iter()
-        .map(|t| &t.name)
-        .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
-        .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(name))
+        .map(|t| t.name)
+        .chain(interface_types.iter().map(|t| t.name))
+        .flat_map(|name| {
+            let name = input_schema.pool().get(name).unwrap();
+            query_fields_for_type(name)
+        })
         .collect();
     fields.push(meta_field());
 
