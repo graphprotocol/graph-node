@@ -14,7 +14,7 @@ use crate::prelude::s::{Value, *};
 use crate::prelude::*;
 use thiserror::Error;
 
-use super::{Schema, SCHEMA_TYPE_NAME};
+use super::{InputSchema, Schema, SCHEMA_TYPE_NAME};
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {
@@ -339,17 +339,22 @@ fn add_introspection_schema(schema: &mut Document) {
 /// The input schema should only have type/enum/interface/union definitions
 /// and must not include a root Query type. This Query type is derived, with
 /// all its fields and their input arguments, based on the existing types.
-pub(in crate::schema) fn api_schema(input_schema: &Schema) -> Result<Document, APISchemaError> {
+pub(in crate::schema) fn api_schema(
+    input_schema: &InputSchema,
+) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
-    let object_types = input_schema.document.get_object_type_definitions();
-    let interface_types = input_schema.document.get_interface_type_definitions();
+    let object_types = input_schema.schema().document.get_object_type_definitions();
+    let interface_types = input_schema
+        .schema()
+        .document
+        .get_interface_type_definitions();
 
     // Refactor: Don't clone the schema.
-    let mut schema = input_schema.clone();
+    let mut schema = input_schema.schema().clone();
     add_meta_field_type(&mut schema.document);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
-    add_field_arguments(&mut schema.document, &input_schema.document)?;
+    add_field_arguments(&mut schema.document, &input_schema.schema().document)?;
     add_query_type(&mut schema.document, &object_types, &interface_types)?;
     add_subscription_type(&mut schema.document, &object_types, &interface_types)?;
 
