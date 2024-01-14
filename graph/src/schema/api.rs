@@ -17,7 +17,7 @@ use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::{q, r, s, DeploymentHash};
 
-use super::{Field, InputSchema, InterfaceType, ObjectType, Schema, SCHEMA_TYPE_NAME};
+use super::{Field, InputSchema, Schema, SCHEMA_TYPE_NAME};
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {
@@ -349,28 +349,14 @@ fn add_introspection_schema(schema: &mut s::Document) {
 pub(in crate::schema) fn api_schema(
     input_schema: &InputSchema,
 ) -> Result<s::Document, APISchemaError> {
-    // Refactor: Take `input_schema` by value.
-    let object_types = input_schema.object_types().collect::<Vec<_>>();
-    let interface_types = input_schema.interface_types().collect::<Vec<_>>();
-
     // Refactor: Don't clone the schema.
     let mut api = input_schema.schema().clone();
     add_meta_field_type(&mut api.document);
     add_types_for_object_types(&mut api, input_schema)?;
-    add_types_for_interface_types(&mut api, input_schema, &interface_types)?;
+    add_types_for_interface_types(&mut api, input_schema)?;
     add_field_arguments(&mut api.document, &input_schema.schema().document)?;
-    add_query_type(
-        &mut api.document,
-        input_schema,
-        &object_types,
-        &interface_types,
-    )?;
-    add_subscription_type(
-        &mut api.document,
-        input_schema,
-        &object_types,
-        &interface_types,
-    )?;
+    add_query_type(&mut api.document, input_schema)?;
+    add_subscription_type(&mut api.document, input_schema)?;
 
     // Remove the `_Schema_` type from the generated schema.
     api.document.definitions.retain(|d| match d {
@@ -402,8 +388,7 @@ fn add_types_for_object_types(
     api: &mut Schema,
     schema: &InputSchema,
 ) -> Result<(), APISchemaError> {
-    for object_type in schema.object_types() {
-        let name = schema.pool().get(object_type.name).unwrap();
+    for (name, object_type) in schema.object_types() {
         add_order_by_type(&mut api.document, name, &object_type.fields)?;
         add_filter_type(api, name, &object_type.fields)?;
     }
@@ -414,10 +399,8 @@ fn add_types_for_object_types(
 fn add_types_for_interface_types(
     api: &mut Schema,
     input_schema: &InputSchema,
-    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
-    for interface_type in interface_types {
-        let name = input_schema.pool().get(interface_type.name).unwrap();
+    for (name, interface_type) in input_schema.interface_types() {
         add_order_by_type(&mut api.document, name, &interface_type.fields)?;
         add_filter_type(api, name, &interface_type.fields)?;
     }
@@ -845,26 +828,18 @@ fn input_value(name: &str, suffix: &'static str, value_type: s::Type) -> s::Inpu
 }
 
 /// Adds a root `Query` object type to the schema.
-fn add_query_type(
-    api: &mut s::Document,
-    input_schema: &InputSchema,
-    object_types: &[&ObjectType],
-    interface_types: &[&InterfaceType],
-) -> Result<(), APISchemaError> {
+fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(), APISchemaError> {
     let type_name = String::from("Query");
 
     if api.get_named_type(&type_name).is_some() {
         return Err(APISchemaError::TypeExists(type_name));
     }
 
-    let mut fields = object_types
-        .iter()
-        .map(|t| t.name)
-        .chain(interface_types.iter().map(|t| t.name))
-        .flat_map(|name| {
-            let name = input_schema.pool().get(name).unwrap();
-            query_fields_for_type(name)
-        })
+    let mut fields = input_schema
+        .object_types()
+        .map(|(name, _)| name)
+        .chain(input_schema.interface_types().map(|(name, _)| name))
+        .flat_map(query_fields_for_type)
         .collect::<Vec<s::Field>>();
     let mut fulltext_fields = api
         .get_fulltext_directives()
@@ -952,8 +927,6 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
 fn add_subscription_type(
     api: &mut s::Document,
     input_schema: &InputSchema,
-    object_types: &[&ObjectType],
-    interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     let type_name = String::from("Subscription");
 
@@ -961,14 +934,11 @@ fn add_subscription_type(
         return Err(APISchemaError::TypeExists(type_name));
     }
 
-    let mut fields: Vec<s::Field> = object_types
-        .iter()
-        .map(|t| t.name)
-        .chain(interface_types.iter().map(|t| t.name))
-        .flat_map(|name| {
-            let name = input_schema.pool().get(name).unwrap();
-            query_fields_for_type(name)
-        })
+    let mut fields: Vec<s::Field> = input_schema
+        .object_types()
+        .map(|(name, _)| name)
+        .chain(input_schema.interface_types().map(|(name, _)| name))
+        .flat_map(query_fields_for_type)
         .collect();
     fields.push(meta_field());
 
