@@ -17,7 +17,7 @@ use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::{q, r, s, DeploymentHash};
 
-use super::{Field, InputSchema, Schema, SCHEMA_TYPE_NAME};
+use super::{Field, InputSchema, Schema};
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {
@@ -357,16 +357,6 @@ pub(in crate::schema) fn api_schema(
     add_field_arguments(&mut api.document, &input_schema.schema().document)?;
     add_query_type(&mut api.document, input_schema)?;
     add_subscription_type(&mut api.document, input_schema)?;
-
-    // Remove the `_Schema_` type from the generated schema.
-    api.document.definitions.retain(|d| match d {
-        s::Definition::TypeDefinition(def @ s::TypeDefinition::Object(_)) => match def {
-            s::TypeDefinition::Object(t) if t.name.eq(SCHEMA_TYPE_NAME) => false,
-            _ => true,
-        },
-        _ => true,
-    });
-
     Ok(api.document)
 }
 
