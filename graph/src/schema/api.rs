@@ -504,47 +504,41 @@ fn add_filter_type(
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name);
-    match api.document.get_named_type(&filter_type_name) {
-        None => {
-            let mut generated_filter_fields = field_input_values(api, fields)?;
-            generated_filter_fields.push(block_changed_filter_argument());
-
-            if !ENV_VARS.graphql.disable_bool_filters {
-                generated_filter_fields.push(s::InputValue {
-                    position: Pos::default(),
-                    description: None,
-                    name: "and".to_string(),
-                    value_type: s::Type::ListType(Box::new(s::Type::NamedType(
-                        filter_type_name.clone(),
-                    ))),
-                    default_value: None,
-                    directives: vec![],
-                });
-
-                generated_filter_fields.push(s::InputValue {
-                    position: Pos::default(),
-                    description: None,
-                    name: "or".to_string(),
-                    value_type: s::Type::ListType(Box::new(s::Type::NamedType(
-                        filter_type_name.clone(),
-                    ))),
-                    default_value: None,
-                    directives: vec![],
-                });
-            }
-
-            let typedef = s::TypeDefinition::InputObject(s::InputObjectType {
-                position: Pos::default(),
-                description: None,
-                name: filter_type_name,
-                directives: vec![],
-                fields: generated_filter_fields,
-            });
-            let def = s::Definition::TypeDefinition(typedef);
-            api.document.definitions.push(def);
-        }
-        Some(_) => return Err(APISchemaError::TypeExists(filter_type_name)),
+    if api.document.get_named_type(&filter_type_name).is_some() {
+        return Err(APISchemaError::TypeExists(filter_type_name));
     }
+    let mut generated_filter_fields = field_input_values(api, fields)?;
+    generated_filter_fields.push(block_changed_filter_argument());
+
+    if !ENV_VARS.graphql.disable_bool_filters {
+        generated_filter_fields.push(s::InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "and".to_string(),
+            value_type: s::Type::ListType(Box::new(s::Type::NamedType(filter_type_name.clone()))),
+            default_value: None,
+            directives: vec![],
+        });
+
+        generated_filter_fields.push(s::InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "or".to_string(),
+            value_type: s::Type::ListType(Box::new(s::Type::NamedType(filter_type_name.clone()))),
+            default_value: None,
+            directives: vec![],
+        });
+    }
+
+    let typedef = s::TypeDefinition::InputObject(s::InputObjectType {
+        position: Pos::default(),
+        description: None,
+        name: filter_type_name,
+        directives: vec![],
+        fields: generated_filter_fields,
+    });
+    let def = s::Definition::TypeDefinition(typedef);
+    api.document.definitions.push(def);
 
     Ok(())
 }
@@ -599,8 +593,8 @@ fn field_filter_input_values(
                 _ => vec![],
             })
         }
-        s::Type::ListType(ref t) => {
-            Ok(field_list_filter_input_values(schema, field, t)?.unwrap_or_default())
+        s::Type::ListType(_) => {
+            Ok(field_list_filter_input_values(schema, field)?.unwrap_or_default())
         }
         s::Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
@@ -742,10 +736,9 @@ fn field_enum_filter_input_values(
 fn field_list_filter_input_values(
     schema: &Schema,
     field: &Field,
-    field_type: &s::Type,
 ) -> Result<Option<Vec<s::InputValue>>, APISchemaError> {
     // Only add a filter field if the type of the field exists in the schema
-    let typedef = match ast::get_type_definition_from_type(&schema.document, field_type) {
+    let typedef = match ast::get_type_definition_from_type(&schema.document, &field.field_type) {
         Some(typedef) => typedef,
         None => return Ok(None),
     };

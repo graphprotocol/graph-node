@@ -269,6 +269,10 @@ impl Field {
             s::Type::ListType(inner) => Self::scalar_value_type(schema, inner),
         }
     }
+
+    pub fn is_list(&self) -> bool {
+        self.field_type.is_list()
+    }
 }
 
 #[derive(PartialEq, Debug)]
