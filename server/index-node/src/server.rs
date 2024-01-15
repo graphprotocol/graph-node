@@ -1,12 +1,13 @@
-use hyper::service::make_service_fn;
-use hyper::Server;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use graph::{
     blockchain::BlockchainMap,
     components::store::Store,
     prelude::{IndexNodeServer as IndexNodeServerTrait, *},
+    tokio::net::TcpListener,
 };
+use hyper::service::{service_fn, Service};
+use hyper_util::rt::TokioIo;
 
 use crate::service::IndexNodeService;
 use thiserror::Error;
@@ -15,7 +16,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum IndexNodeServeError {
     #[error("Bind error: {0}")]
-    BindError(#[from] hyper::Error),
+    BindError(String),
 }
 
 /// A GraphQL server based on Hyper.
@@ -55,6 +56,7 @@ impl<Q, S> IndexNodeServer<Q, S> {
     }
 }
 
+#[async_trait]
 impl<Q, S> IndexNodeServerTrait for IndexNodeServer<Q, S>
 where
     Q: GraphQlRunner,
@@ -62,10 +64,7 @@ where
 {
     type ServeError = IndexNodeServeError;
 
-    fn serve(
-        &mut self,
-        port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    async fn serve(&mut self, port: u16) -> Result<Result<(), ()>, Self::ServeError> {
         let logger = self.logger.clone();
 
         info!(
@@ -73,7 +72,14 @@ where
             "Starting index node server at: http://localhost:{}", port
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port))
+            .await
+            .map_err(|e| Self::ServeError::BindError(format!("unable to bind: {}", e)))?;
+
+        let (stream, _) = listener.accept().await.map_err(|e| {
+            Self::ServeError::BindError(format!("unable to accept connections: {}", e))
+        })?;
+        let stream = TokioIo::new(stream);
 
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
@@ -87,14 +93,18 @@ where
             store,
             self.link_resolver.clone(),
         );
-        let new_service =
-            make_service_fn(move |_| futures03::future::ok::<_, Error>(service.clone()));
+        let new_service = service_fn(move |req| service.clone().call(req));
+
+        let mut builder =
+            hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
 
         // Create a task to run the server and handle HTTP requests
-        let task = Server::try_bind(&addr.into())?
-            .serve(new_service)
-            .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
-
-        Ok(Box::new(task.compat()))
+        Ok(builder
+            .http1()
+            .serve_connection(stream, new_service)
+            .await
+            .map_err(
+                move |e| error!(logger, "Index Node Server error"; "error" => format!("{}", e)),
+            ))
     }
 }

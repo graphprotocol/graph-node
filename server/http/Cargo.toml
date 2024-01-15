@@ -6,11 +6,15 @@ edition.workspace = true
 [dependencies]
 futures = "0.1.21"
 graphql-parser = "0.4.0"
-http = "0.2"
-hyper = "1.1"
+http.workspace = true 
+hyper.workspace = true 
+hyper-util.workspace = true 
+http-body-util = "0.1.0"
 serde = "1.0"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
+anyhow = "1"
 
 [dev-dependencies]
 graph-core = { path = "../../core" }
+bytes = "1.5.0"

@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=path/to/Cargo.lock");
     println!("cargo:rerun-if-changed=proto");
     tonic_build::configure()
         .out_dir("src/firehose")

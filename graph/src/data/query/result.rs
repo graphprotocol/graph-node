@@ -71,8 +71,7 @@ impl QueryResults {
     pub fn deployment_hash(&self) -> Option<&DeploymentHash> {
         self.results
             .iter()
-            .filter_map(|result| result.deployment.as_ref())
-            .next()
+            .find_map(|result| result.deployment.as_ref())
     }
 
     pub fn traces(&self) -> Vec<&Trace> {

@@ -324,7 +324,7 @@ impl TestContext {
             &self.subgraph_name
         );
         let body = json!({ "query": query }).to_string();
-        let req = hyper::Request::new(body.into());
+        let req = hyper::Request::new(body);
         let res = self.indexing_status_service.handle_graphql_query(req).await;
         let value = res
             .unwrap()

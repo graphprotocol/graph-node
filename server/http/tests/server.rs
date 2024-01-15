@@ -1,5 +1,5 @@
 use http::StatusCode;
-use hyper::{Body, Client, Request};
+use hyper_util::client::legacy::Client;
 use std::time::Duration;
 
 use graph::data::{
@@ -82,6 +82,9 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use http::header::CONTENT_TYPE;
+    use http::Request;
+    use http_body_util::{BodyExt, Full};
+    use hyper_util::rt::TokioExecutor;
 
     use super::*;
 
@@ -89,203 +92,162 @@ mod test {
         static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();
     }
 
-    #[test]
-    fn rejects_empty_json() {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime
-            .block_on(async {
-                let logger = Logger::root(slog::Discard, o!());
-                let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
-                let id = USERS.clone();
-                let query_runner = Arc::new(TestGraphQlRunner);
-                let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
-                let http_server = server
-                    .serve(8007, 8008)
-                    .expect("Failed to start GraphQL server");
+    #[tokio::test]
+    async fn rejects_empty_json() {
+        let logger = Logger::root(slog::Discard, o!());
+        let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
+        let id = USERS.clone();
+        let query_runner = Arc::new(TestGraphQlRunner);
+        let node_id = NodeId::new("test").unwrap();
+        let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
 
-                // Launch the server to handle a single request
-                tokio::spawn(http_server.fuse().compat());
-                // Give some time for the server to start.
-                sleep(Duration::from_secs(2))
-                    .then(move |()| {
-                        // Send an empty JSON POST request
-                        let client = Client::new();
-                        let request =
-                            Request::post(format!("http://localhost:8007/subgraphs/id/{}", id)).header(CONTENT_TYPE, "text/plain")
-                                .body(Body::from("{}"))
-                                .unwrap();
+        // Launch the server to handle a single request
+        tokio::spawn(async move { server.serve(8007, 8008).await });
+        // Give some time for the server to start.
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
-                        // The response must be a query error
-                        client.request(request)
-                    })
-                    .map_ok(|response| {
-                        let errors =
-                            test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
+        // Send an empty JSON POST request
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let request = Request::post(format!("http://localhost:8007/subgraphs/id/{}", id))
+            .header(CONTENT_TYPE, "text/plain")
+            .body("{}".to_string())
+            .unwrap();
 
-                        let message = errors[0]
-                            .as_str()
-                            .expect("Error message is not a string");
-                        assert_eq!(message, "{\"error\":\"GraphQL server error (client error): The \\\"query\\\" field is missing in request data\"}");
-                    }).await.unwrap()
-            })
+        // The response must be a query error
+        let (parts, body) = client.request(request).await.unwrap().into_parts();
+        let body = String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
+
+        let errors =
+            test_utils::assert_error_response(parts, body, StatusCode::BAD_REQUEST, false).await;
+
+        let message = errors[0].as_str().expect("Error message is not a string");
+        assert_eq!(message, "{\"error\":\"GraphQL server error (client error): The \\\"query\\\" field is missing in request data\"}");
     }
 
-    #[test]
-    fn rejects_invalid_queries() {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime.block_on(async {
-            let logger = Logger::root(slog::Discard, o!());
-            let logger_factory =
-                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
-            let id = USERS.clone();
-            let query_runner = Arc::new(TestGraphQlRunner);
-            let node_id = NodeId::new("test").unwrap();
-            let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
-            let http_server = server
-                .serve(8002, 8003)
-                .expect("Failed to start GraphQL server");
+    #[tokio::test]
+    async fn rejects_invalid_queries() {
+        let logger = Logger::root(slog::Discard, o!());
+        let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
+        let id = USERS.clone();
+        let query_runner = Arc::new(TestGraphQlRunner);
+        let node_id = NodeId::new("test").unwrap();
+        let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
 
-            // Launch the server to handle a single request
-            tokio::spawn(http_server.fuse().compat());
-            // Give some time for the server to start.
-            sleep(Duration::from_secs(2))
-                .then(move |()| {
-                    // Send an broken query request
-                    let client = Client::new();
-                    let request =
-                        Request::post(format!("http://localhost:8002/subgraphs/id/{}", id))
-                            .header(CONTENT_TYPE, "text/plain")
-                            .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
-                            .unwrap();
+        // Launch the server to handle a single request
+        tokio::spawn(async move { server.serve(8002, 8003).await });
+        // Give some time for the server to start.
+        sleep(Duration::from_secs(2)).await;
+        // Send an broken query request
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let request = Request::post(format!("http://localhost:8002/subgraphs/id/{}", id))
+            .header(CONTENT_TYPE, "text/plain")
+            .body("{\"query\": \"<L<G<>M>\"}".to_string())
+            .unwrap();
 
-                    // The response must be a query error
-                    client.request(request)
-                })
-                .map_ok(|response| {
-                    let errors = test_utils::assert_error_response(response, StatusCode::OK, true);
+        // The response must be a query error
+        let (parts, body) = client.request(request).await.unwrap().into_parts();
+        let body = String::from_utf8(body.collect().await.unwrap().to_bytes().to_vec()).unwrap();
 
-                    let message = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("message")
-                        .expect("Error contains no message")
-                        .as_str()
-                        .expect("Error message is not a string");
+        let errors = test_utils::assert_error_response(parts, body, StatusCode::OK, true).await;
 
-                    assert_eq!(
-                        message,
-                        "Unexpected `unexpected character \
+        let message = errors[0]
+            .as_object()
+            .expect("Query error is not an object")
+            .get("message")
+            .expect("Error contains no message")
+            .as_str()
+            .expect("Error message is not a string");
+
+        assert_eq!(
+            message,
+            "Unexpected `unexpected character \
                          \'<\'`\nExpected `{`, `query`, `mutation`, \
                          `subscription` or `fragment`"
-                    );
+        );
 
-                    let locations = errors[0]
-                        .as_object()
-                        .expect("Query error is not an object")
-                        .get("locations")
-                        .expect("Query error contains not locations")
-                        .as_array()
-                        .expect("Query error \"locations\" field is not an array");
+        let locations = errors[0]
+            .as_object()
+            .expect("Query error is not an object")
+            .get("locations")
+            .expect("Query error contains not locations")
+            .as_array()
+            .expect("Query error \"locations\" field is not an array");
 
-                    let location = locations[0]
-                        .as_object()
-                        .expect("Query error location is not an object");
+        let location = locations[0]
+            .as_object()
+            .expect("Query error location is not an object");
 
-                    let line = location
-                        .get("line")
-                        .expect("Query error location is missing a \"line\" field")
-                        .as_u64()
-                        .expect("Query error location \"line\" field is not a u64");
+        let line = location
+            .get("line")
+            .expect("Query error location is missing a \"line\" field")
+            .as_u64()
+            .expect("Query error location \"line\" field is not a u64");
 
-                    assert_eq!(line, 1);
+        assert_eq!(line, 1);
 
-                    let column = location
-                        .get("column")
-                        .expect("Query error location is missing a \"column\" field")
-                        .as_u64()
-                        .expect("Query error location \"column\" field is not a u64");
+        let column = location
+            .get("column")
+            .expect("Query error location is missing a \"column\" field")
+            .as_u64()
+            .expect("Query error location \"column\" field is not a u64");
 
-                    assert_eq!(column, 1);
-                })
-                .await
-                .unwrap()
-        })
+        assert_eq!(column, 1);
     }
 
-    #[test]
-    fn accepts_valid_queries() {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime.block_on(async {
-            let logger = Logger::root(slog::Discard, o!());
-            let logger_factory =
-                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
-            let id = USERS.clone();
-            let query_runner = Arc::new(TestGraphQlRunner);
-            let node_id = NodeId::new("test").unwrap();
-            let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
-            let http_server = server
-                .serve(8003, 8004)
-                .expect("Failed to start GraphQL server");
+    #[tokio::test]
+    async fn accepts_valid_queries() {
+        let logger = Logger::root(slog::Discard, o!());
+        let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
+        let id = USERS.clone();
+        let query_runner = Arc::new(TestGraphQlRunner);
+        let node_id = NodeId::new("test").unwrap();
+        let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
 
-            // Launch the server to handle a single request
-            tokio::spawn(http_server.fuse().compat());
-            // Give some time for the server to start.
-            sleep(Duration::from_secs(2))
-                .then(move |()| {
-                    // Send a valid example query
-                    let client = Client::new();
-                    let request =
-                        Request::post(format!("http://localhost:8003/subgraphs/id/{}", id))
-                            .header(CONTENT_TYPE, "plain/text")
-                            .body(Body::from("{\"query\": \"{ name }\"}"))
-                            .unwrap();
+        // Launch the server to handle a single request
+        tokio::spawn(async move { server.serve(8003, 8004).await });
+        // Give some time for the server to start.
+        sleep(Duration::from_secs(2)).await;
 
-                    // The response must be a 200
-                    client.request(request)
-                })
-                .map_ok(|response| {
-                    let data = test_utils::assert_successful_response(response);
+        // Send a valid example query
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let request = Request::post(format!("http://localhost:8003/subgraphs/id/{}", id))
+            .header(CONTENT_TYPE, "plain/text")
+            .body(Full::new(&b"{\"query\": \"{ name }\"}"[..]))
+            .unwrap();
 
-                    // The JSON response should match the simulated query result
-                    let name = data
-                        .get("name")
-                        .expect("Query result data has no \"name\" field")
-                        .as_str()
-                        .expect("Query result field \"name\" is not a string");
-                    assert_eq!(name, "Jordi".to_string());
-                })
-                .await
-                .unwrap()
-        });
+        // The response must be a 200
+        let rsp = client.request(request).await.unwrap();
+
+        let data = test_utils::assert_successful_response(rsp).await;
+
+        // The JSON response should match the simulated query result
+        let name = data
+            .get("name")
+            .expect("Query result data has no \"name\" field")
+            .as_str()
+            .expect("Query result field \"name\" is not a string");
+        assert_eq!(name, "Jordi".to_string());
     }
 
-    #[test]
-    fn accepts_valid_queries_with_variables() {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let _ = runtime.block_on(async {
-            let logger = Logger::root(slog::Discard, o!());
-            let logger_factory =
-                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
-            let id = USERS.clone();
-            let query_runner = Arc::new(TestGraphQlRunner);
-            let node_id = NodeId::new("test").unwrap();
-            let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
-            let http_server = server
-                .serve(8005, 8006)
-                .expect("Failed to start GraphQL server");
+    #[tokio::test]
+    async fn accepts_valid_queries_with_variables() {
+        let logger = Logger::root(slog::Discard, o!());
+        let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
+        let id = USERS.clone();
+        let query_runner = Arc::new(TestGraphQlRunner);
+        let node_id = NodeId::new("test").unwrap();
+        let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
 
-            // Launch the server to handle a single request
-            tokio::spawn(http_server.fuse().compat());
-            // Give some time for the server to start.
-            sleep(Duration::from_secs(2))
-                .then(move |()| {
-                    // Send a valid example query
-                    let client = Client::new();
-                    let request =
-                        Request::post(format!("http://localhost:8005/subgraphs/id/{}", id))
-                            .body(Body::from(
-                                "
+        // Launch the server to handle a single request
+        tokio::spawn(async move { server.serve(8005, 8006).await });
+        // Give some time for the server to start.
+        sleep(Duration::from_secs(2)).await;
+
+        // Send a valid example query
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let request = Request::post(format!("http://localhost:8005/subgraphs/id/{}", id))
+            .body(Full::new(
+                &b"
                             {
                               \"query\": \" \
                                 query name($equals: String!) { \
@@ -294,28 +256,21 @@ mod test {
                               \",
                               \"variables\": { \"equals\": \"John\" }
                             }
-                            ",
-                            ))
-                            .unwrap();
+                            "[..],
+            ))
+            .unwrap();
 
-                    // The response must be a 200
-                    client.request(request)
-                })
-                .map_ok(|response| {
-                    async {
-                        let data = test_utils::assert_successful_response(response);
+        // The response must be a 200
+        let rsp = client.request(request).await.unwrap();
 
-                        // The JSON response should match the simulated query result
-                        let name = data
-                            .get("name")
-                            .expect("Query result data has no \"name\" field")
-                            .as_str()
-                            .expect("Query result field \"name\" is not a string");
-                        assert_eq!(name, "John".to_string());
-                    }
-                })
-                .await
-                .unwrap()
-        });
+        let data = test_utils::assert_successful_response(rsp).await;
+
+        // The JSON response should match the simulated query result
+        let name = data
+            .get("name")
+            .expect("Query result data has no \"name\" field")
+            .as_str()
+            .expect("Query result field \"name\" is not a string");
+        assert_eq!(name, "John".to_string());
     }
 }

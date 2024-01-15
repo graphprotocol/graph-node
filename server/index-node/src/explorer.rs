@@ -7,7 +7,6 @@ use hyper::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
 };
-use hyper::Body;
 use std::{sync::Arc, time::Instant};
 
 use graph::{
@@ -51,7 +50,7 @@ where
         &self,
         logger: &Logger,
         req: &[&str],
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    ) -> Result<Response<String>, GraphQLServerError> {
         match req {
             ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id),
             ["subgraph-version", version] => self.handle_subgraph_version(version),
@@ -67,7 +66,7 @@ where
     fn handle_subgraph_versions(
         &self,
         subgraph_id: &str,
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    ) -> Result<Response<String>, GraphQLServerError> {
         if let Some(value) = self.versions.get(subgraph_id) {
             return Ok(as_http_response(value.as_ref()));
         }
@@ -84,7 +83,10 @@ where
         Ok(resp)
     }
 
-    fn handle_subgraph_version(&self, version: &str) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_subgraph_version(
+        &self,
+        version: &str,
+    ) -> Result<Response<String>, GraphQLServerError> {
         let vi = self.version_info(version)?;
 
         let latest_ethereum_block_number = vi.latest_ethereum_block_number;
@@ -104,7 +106,7 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_subgraph_repo(&self, version: &str) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_subgraph_repo(&self, version: &str) -> Result<Response<String>, GraphQLServerError> {
         let vi = self.version_info(version)?;
 
         let value = object! {
@@ -119,7 +121,7 @@ where
         &self,
         logger: &Logger,
         deployment: &str,
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    ) -> Result<Response<String>, GraphQLServerError> {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
         if start.elapsed() > ENV_VARS.explorer_lock_threshold {
@@ -191,7 +193,7 @@ where
     fn handle_subgraphs_for_deployment(
         &self,
         deployment_hash: &str,
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    ) -> Result<Response<String>, GraphQLServerError> {
         let name_version_pairs: Vec<r::Value> = self
             .store
             .subgraphs_for_deployment_hash(deployment_hash)?
@@ -208,16 +210,16 @@ where
     }
 }
 
-fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
+fn handle_not_found() -> Result<Response<String>, GraphQLServerError> {
     Ok(Response::builder()
         .status(StatusCode::NOT_FOUND)
         .header(CONTENT_TYPE, "text/plain")
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .body(Body::from("Not found\n"))
+        .body("Not found\n".to_string())
         .unwrap())
 }
 
-fn as_http_response(value: &r::Value) -> http::Response<Body> {
+fn as_http_response(value: &r::Value) -> http::Response<String> {
     let status_code = http::StatusCode::OK;
     let json = serde_json::to_string(&value).expect("Failed to serialize response to JSON");
     http::Response::builder()
@@ -226,6 +228,6 @@ fn as_http_response(value: &r::Value) -> http::Response<Body> {
         .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
         .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(json))
+        .body(json)
         .unwrap()
 }

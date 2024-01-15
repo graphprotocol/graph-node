@@ -28,6 +28,11 @@ pub struct LoggerFactory {
 }
 
 impl LoggerFactory {
+    #[cfg(debug_assertions)]
+    pub fn for_test() -> Self {
+        let logger = Logger::root(slog::Discard, o!());
+        LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()))
+    }
     /// Creates a new factory using a parent logger and optional Elasticsearch configuration.
     pub fn new(
         logger: Logger,

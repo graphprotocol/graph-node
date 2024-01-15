@@ -5,4 +5,5 @@ edition.workspace = true
 
 [dependencies]
 graph = { path = "../../graph" }
-hyper = { version = "1.1", features = ["server"] }
+hyper.workspace = true
+hyper-util.workspace = true 

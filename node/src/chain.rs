@@ -16,6 +16,7 @@ use graph::util::futures::retry;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
 use std::collections::{btree_map, BTreeMap};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -497,10 +498,28 @@ pub async fn create_ethereum_networks_for_chain(
 
         use crate::config::Transport::*;
 
+        // Create http02 version fo the headers which will work with the current version
+        // of reqwest
+        let http2headers = http02::HeaderMap::from_iter(
+            web3.headers
+                .clone()
+                .into_iter()
+                // The API is designed in a way that some headers may contain non printable ASCII
+                // characters, to my knowledge this is not used in the Graph Node.
+                .flat_map(|(key, value)| {
+                    key.map(|k| {
+                        (
+                            http02::HeaderName::from_str(k.as_str()).unwrap(),
+                            value.to_str().unwrap().parse().unwrap(),
+                        )
+                    })
+                }),
+        );
+
         let transport = match web3.transport {
             Rpc => Transport::new_rpc(
                 Url::parse(&web3.url)?,
-                web3.headers.clone(),
+                http2headers,
                 endpoint_metrics.cheap_clone(),
                 &provider.label,
             ),

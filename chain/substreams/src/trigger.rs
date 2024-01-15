@@ -194,10 +194,10 @@ impl<T> graph::prelude::TriggerProcessor<Chain, T> for TriggerProcessor
 where
     T: RuntimeHostBuilder<Chain>,
 {
-    async fn process_trigger(
-        &self,
+    async fn process_trigger<'a>(
+        &'a self,
         logger: &Logger,
-        _: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
+        _: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
         block: &Arc<Block>,
         _trigger: &data_source::TriggerData<Chain>,
         mut state: BlockState<Chain>,

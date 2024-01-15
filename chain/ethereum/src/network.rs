@@ -277,7 +277,7 @@ mod tests {
         tokio,
         url::Url,
     };
-    use http::HeaderMap;
+    use http02::HeaderMap;
     use std::sync::Arc;
     use uuid::Uuid;
 

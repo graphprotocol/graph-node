@@ -2,9 +2,11 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use anyhow::Error;
+use graph::tokio::net::TcpListener;
 use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Response, Server};
+use hyper::service::service_fn;
+use hyper::Response;
+use hyper_util::rt::TokioIo;
 use thiserror::Error;
 
 use graph::prelude::*;
@@ -14,7 +16,7 @@ use graph::prometheus::{Encoder, Registry, TextEncoder};
 #[derive(Debug, Error)]
 pub enum PrometheusMetricsServeError {
     #[error("Bind error: {0}")]
-    BindError(#[from] hyper::Error),
+    BindError(String),
 }
 
 #[derive(Clone)]
@@ -43,33 +45,40 @@ impl PrometheusMetricsServer {
             "Starting metrics server at: http://localhost:{}", port,
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port))
+            .await
+            .map_err(|e| {
+                PrometheusMetricsServeError::BindError(format!("unable to bind: {}", e))
+            })?;
 
         let server = self.clone();
-        let new_service = make_service_fn(move |_req| {
-            let server = server.clone();
-            async move {
-                Ok::<_, Error>(service_fn(move |_| {
+        let (stream, _) = listener.accept().await.map_err(|e| {
+            PrometheusMetricsServeError::BindError(format!("unable to accept connections: {}", e))
+        })?;
+        let stream = TokioIo::new(stream);
+
+        let mut builder =
+            hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+
+        Ok(builder
+            .http1()
+            .serve_connection(
+                stream,
+                service_fn(move |_| {
                     let metric_families = server.registry.gather();
-                    let mut buffer = vec![];
                     let encoder = TextEncoder::new();
-                    encoder.encode(&metric_families, &mut buffer).unwrap();
+                    let body = encoder.encode_to_string(&metric_families).unwrap();
                     futures03::future::ok::<_, Error>(
                         Response::builder()
                             .status(200)
                             .header(CONTENT_TYPE, encoder.format_type())
                             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(buffer))
+                            .body(body)
                             .unwrap(),
                     )
-                }))
-            }
-        });
-
-        let task = Server::try_bind(&addr.into())?
-            .serve(new_service)
-            .map_err(move |e| error!(logger, "Metrics server error"; "error" => format!("{}", e)));
-
-        Ok(task.await)
+                }),
+            )
+            .await
+            .map_err(move |e| error!(logger, "Metrics Server error"; "error" => format!("{}", e))))
     }
 }

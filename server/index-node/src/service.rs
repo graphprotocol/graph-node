@@ -3,12 +3,10 @@ use http::header::{
     self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE, LOCATION,
 };
-use hyper::body::Bytes;
+use http_body_util::BodyExt;
+use hyper::body::{Body, Bytes, Incoming};
 use hyper::service::Service;
-use hyper::{Body, Method, Request, Response, StatusCode};
-
-use std::task::Context;
-use std::task::Poll;
+use hyper::{Method, Request, Response, StatusCode};
 
 use graph::components::{server::query::GraphQLServerError, store::Store};
 use graph::data::query::QueryResults;
@@ -32,7 +30,7 @@ impl GraphQLMetrics for NoopGraphQLMetrics {
 }
 
 /// An asynchronous response to a GraphQL request.
-pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQLServerError>;
+pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<String>, GraphQLServerError>;
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
@@ -90,31 +88,31 @@ where
     }
 
     /// Serves a static file.
-    fn serve_file(contents: &'static str, content_type: &'static str) -> Response<Body> {
+    fn serve_file(contents: &'static str, content_type: &'static str) -> Response<String> {
         Response::builder()
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, content_type)
             .status(200)
-            .body(Body::from(contents))
+            .body(contents.to_string())
             .unwrap()
     }
 
-    fn index() -> Response<Body> {
+    fn index() -> Response<String> {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/html")
-            .body(Body::from("OK"))
+            .body("OK".to_string())
             .unwrap()
     }
 
-    fn handle_graphiql() -> Response<Body> {
+    fn handle_graphiql() -> Response<String> {
         Self::serve_file(Self::graphiql_html(), "text/html")
     }
 
     pub async fn handle_graphql_query(
         &self,
-        request: Request<Body>,
+        request: Request<impl Body>,
     ) -> Result<QueryResults, GraphQLServerError> {
         let (req_parts, req_body) = request.into_parts();
         let store = self.store.clone();
@@ -122,9 +120,11 @@ where
         // Obtain the schema for the index node GraphQL API
         let schema = SCHEMA.clone();
 
-        let body = hyper::body::to_bytes(req_body)
-            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
-            .await?;
+        let body = req_body
+            .collect()
+            .await
+            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))?
+            .to_bytes();
 
         let validated = ValidatedRequest::new(body, &req_parts.headers)?;
         let query = validated.query;
@@ -170,19 +170,19 @@ where
     }
 
     // Handles OPTIONS requests
-    fn handle_graphql_options(_request: Request<Body>) -> Response<Body> {
+    fn handle_graphql_options(_request: Request<Incoming>) -> Response<String> {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/plain")
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
-            .body(Body::from(""))
+            .body(String::new())
             .unwrap()
     }
 
     /// Handles 302 redirects
-    fn handle_temp_redirect(destination: &str) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_temp_redirect(destination: &str) -> Result<Response<String>, GraphQLServerError> {
         header::HeaderValue::from_str(destination)
             .map_err(|_| {
                 GraphQLServerError::ClientError("invalid characters in redirect URL".into())
@@ -193,22 +193,25 @@ where
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .header(CONTENT_TYPE, "text/plain")
                     .header(LOCATION, loc_header_val)
-                    .body(Body::from("Redirecting..."))
+                    .body("Redirecting...".to_string())
                     .unwrap()
             })
     }
 
     /// Handles 404s.
-    pub(crate) fn handle_not_found() -> Response<Body> {
+    pub(crate) fn handle_not_found() -> Response<String> {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/plain")
-            .body(Body::from("Not found\n"))
+            .body("Not found\n".to_string())
             .unwrap()
     }
 
-    async fn handle_call(self, req: Request<Body>) -> Result<Response<Body>, GraphQLServerError> {
+    async fn handle_call(
+        self,
+        req: Request<Incoming>,
+    ) -> Result<Response<String>, GraphQLServerError> {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -250,20 +253,21 @@ where
     }
 }
 
-impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
+pub type GraphQLServiceResult = Result<Response<String>, GraphQLServerError>;
+
+pub type GraphQLServiceResponse =
+    Pin<Box<dyn std::future::Future<Output = GraphQLServiceResult> + Send>>;
+
+impl<Q, S> Service<Request<Incoming>> for IndexNodeService<Q, S>
 where
     Q: GraphQlRunner,
     S: Store,
 {
-    type Response = Response<Body>;
+    type Response = Response<String>;
     type Error = GraphQLServerError;
-    type Future = IndexNodeServiceResponse;
+    type Future = GraphQLServiceResponse;
 
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
+    fn call(&self, req: Request<Incoming>) -> Self::Future {
         let logger = self.logger.clone();
 
         // Returning Err here will prevent the client from receiving any response.
@@ -280,7 +284,7 @@ where
                             .status(400)
                             .header(CONTENT_TYPE, "text/plain")
                             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(format!("Invalid request: {}", err)))
+                            .body(format!("Invalid request: {}", err).to_string())
                             .unwrap())
                     }
                     Err(err @ GraphQLServerError::QueryError(_)) => {
@@ -290,7 +294,7 @@ where
                             .status(400)
                             .header(CONTENT_TYPE, "text/plain")
                             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(format!("Query error: {}", err)))
+                            .body(format!("Query error: {}", err).to_string())
                             .unwrap())
                     }
                     Err(err @ GraphQLServerError::InternalError(_)) => {
@@ -300,7 +304,7 @@ where
                             .status(500)
                             .header(CONTENT_TYPE, "text/plain")
                             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(format!("Internal server error: {}", err)))
+                            .body(format!("Internal server error: {}", err).to_string())
                             .unwrap())
                     }
                 }),

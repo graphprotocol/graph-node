@@ -1,10 +1,9 @@
 use graph::prelude::serde_json;
-use hyper::body::Bytes;
 
 use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
 
-pub fn parse_graphql_request(body: &Bytes, trace: bool) -> Result<Query, GraphQLServerError> {
+pub fn parse_graphql_request(body: &[u8], trace: bool) -> Result<Query, GraphQLServerError> {
     // Parse request body as JSON
     let json: serde_json::Value = serde_json::from_slice(body)
         .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;

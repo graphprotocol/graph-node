@@ -1,22 +1,24 @@
+use bytes::Bytes;
 use graph::data::value::Object;
 use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
+use http_body_util::Full;
 
-#[test]
-fn generates_200_for_query_results() {
+#[tokio::test]
+async fn generates_200_for_query_results() {
     let data = Object::from_iter([]);
-    let query_result = QueryResults::from(data).as_http_response();
-    test_utils::assert_expected_headers(&query_result);
-    test_utils::assert_successful_response(query_result);
+    let query_result: http::Response<Full<Bytes>> = QueryResults::from(data).as_http_response();
+    test_utils::assert_expected_headers(&query_result.headers());
+    test_utils::assert_successful_response(query_result).await;
 }
 
-#[test]
-fn generates_valid_json_for_an_empty_result() {
+#[tokio::test]
+async fn generates_valid_json_for_an_empty_result() {
     let data = Object::from_iter([]);
-    let query_result = QueryResults::from(data).as_http_response();
-    test_utils::assert_expected_headers(&query_result);
-    let data = test_utils::assert_successful_response(query_result);
+    let query_result: http::Response<Full<Bytes>> = QueryResults::from(data).as_http_response();
+    test_utils::assert_expected_headers(&query_result.headers());
+    let data = test_utils::assert_successful_response(query_result).await;
     assert!(data.is_empty());
 }
 

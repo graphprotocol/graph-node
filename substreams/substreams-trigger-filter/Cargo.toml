@@ -19,4 +19,5 @@ anyhow = "1"
 trigger-filters.path = "../trigger-filters"
 
 [build-dependencies]
-tonic-build = { version = "0.8.4", features = ["prost"] }
+tonic-build.workspace = true 
+
