@@ -131,6 +131,20 @@ impl TypeInfo {
         }
     }
 
+    fn object_type(&self) -> Option<&ObjectType> {
+        match self {
+            TypeInfo::Object(obj_type) => Some(obj_type),
+            TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
+        }
+    }
+
+    fn interface_type(&self) -> Option<&InterfaceType> {
+        match self {
+            TypeInfo::Interface(intf_type) => Some(intf_type),
+            TypeInfo::Object(_) | TypeInfo::Aggregation(_) => None,
+        }
+    }
+
     fn aggregation(&self) -> Option<&Aggregation> {
         match self {
             TypeInfo::Aggregation(agg_type) => Some(agg_type),
@@ -1084,40 +1098,40 @@ impl InputSchema {
         }
     }
 
-    /// Return a list of all object types, i.e., types defined with an
-    /// `@entity` annotation. This does not include the type for the PoI
-    pub(in crate::schema) fn object_types(&self) -> impl Iterator<Item = (&str, &ObjectType)> {
+    fn types_with_kind(&self, kind: TypeKind) -> impl Iterator<Item = (&str, &TypeInfo)> {
         self.inner
             .type_infos
             .iter()
-            .filter_map(|ti| match ti {
-                TypeInfo::Object(obj_type) => Some(obj_type),
-                TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
+            .filter(move |ti| ti.kind() == kind)
+            .map(|ti| {
+                let name = self.inner.pool.get(ti.name()).unwrap();
+                (name, ti)
             })
-            .map(|obj_type| {
-                let name = self.inner.pool.get(obj_type.name).unwrap();
-                (name, obj_type)
-            })
+    }
+
+    /// Return a list of all object types, i.e., types defined with an
+    /// `@entity` annotation. This does not include the type for the PoI
+    pub(in crate::schema) fn object_types(&self) -> impl Iterator<Item = (&str, &ObjectType)> {
+        self.types_with_kind(TypeKind::Object)
             .filter(|(name, _)| {
                 // Filter out the POI object type
                 name != &POI_OBJECT
             })
+            .filter_map(|(name, ti)| ti.object_type().map(|obj| (name, obj)))
     }
 
     pub(in crate::schema) fn interface_types(
         &self,
     ) -> impl Iterator<Item = (&str, &InterfaceType)> {
-        self.inner
-            .type_infos
-            .iter()
-            .filter_map(|ti| match ti {
-                TypeInfo::Interface(intf_type) => Some(intf_type),
-                TypeInfo::Object(_) | TypeInfo::Aggregation(_) => None,
-            })
-            .map(|intf_type| {
-                let name = self.inner.pool.get(intf_type.name).unwrap();
-                (name, intf_type)
-            })
+        self.types_with_kind(TypeKind::Interface)
+            .filter_map(|(name, ti)| ti.interface_type().map(|intf| (name, intf)))
+    }
+
+    pub(in crate::schema) fn aggregation_types(
+        &self,
+    ) -> impl Iterator<Item = (&str, &Aggregation)> {
+        self.types_with_kind(TypeKind::Aggregation)
+            .filter_map(|(name, ti)| ti.aggregation().map(|intf| (name, intf)))
     }
 
     /// Return a list of the names of all enum types
