@@ -8,7 +8,7 @@ use lazy_static::lazy_static;
 use thiserror::Error;
 
 use crate::cheap_clone::CheapClone;
-use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
+use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt, TypeExt};
 use crate::data::store::IdType;
 use crate::env::ENV_VARS;
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
@@ -550,7 +550,7 @@ fn field_input_values(
 ) -> Result<Vec<s::InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
-        input_values.extend(field_filter_input_values(schema, field, &field.field_type)?);
+        input_values.extend(field_filter_input_values(schema, field)?);
     }
     Ok(input_values)
 }
@@ -559,44 +559,40 @@ fn field_input_values(
 fn field_filter_input_values(
     schema: &Schema,
     field: &Field,
-    field_type: &s::Type,
 ) -> Result<Vec<s::InputValue>, APISchemaError> {
-    match field_type {
-        s::Type::NamedType(ref name) => {
-            let named_type = schema
-                .document
-                .get_named_type(name)
-                .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
-            Ok(match named_type {
-                s::TypeDefinition::Object(_) | s::TypeDefinition::Interface(_) => {
-                    let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
-                    let mut input_values = if field.is_derived {
-                        // Only add `where` filter fields for object and interface fields
-                        // if they are not @derivedFrom
-                        vec![]
-                    } else {
-                        // We allow filtering with `where: { other: "some-id" }` and
-                        // `where: { others: ["some-id", "other-id"] }`. In both cases,
-                        // we allow ID strings as the values to be passed to these
-                        // filters.
-                        field_scalar_filter_input_values(&schema.document, field, &scalar_type)
-                    };
-                    extend_with_child_filter_input_value(field, name, &mut input_values);
-                    input_values
-                }
-                s::TypeDefinition::Scalar(ref t) => {
-                    field_scalar_filter_input_values(&schema.document, field, t)
-                }
-                s::TypeDefinition::Enum(ref t) => {
-                    field_enum_filter_input_values(&schema.document, field, t)
-                }
-                _ => vec![],
-            })
-        }
-        s::Type::ListType(_) => {
-            Ok(field_list_filter_input_values(schema, field)?.unwrap_or_default())
-        }
-        s::Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
+    let type_name = field.field_type.get_base_type();
+    if field.is_list() {
+        Ok(field_list_filter_input_values(schema, field)?.unwrap_or_default())
+    } else {
+        let named_type = schema
+            .document
+            .get_named_type(type_name)
+            .ok_or_else(|| APISchemaError::TypeNotFound(type_name.to_string()))?;
+        Ok(match named_type {
+            s::TypeDefinition::Object(_) | s::TypeDefinition::Interface(_) => {
+                let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
+                let mut input_values = if field.is_derived {
+                    // Only add `where` filter fields for object and interface fields
+                    // if they are not @derivedFrom
+                    vec![]
+                } else {
+                    // We allow filtering with `where: { other: "some-id" }` and
+                    // `where: { others: ["some-id", "other-id"] }`. In both cases,
+                    // we allow ID strings as the values to be passed to these
+                    // filters.
+                    field_scalar_filter_input_values(&schema.document, field, &scalar_type)
+                };
+                extend_with_child_filter_input_value(field, type_name, &mut input_values);
+                input_values
+            }
+            s::TypeDefinition::Scalar(ref t) => {
+                field_scalar_filter_input_values(&schema.document, field, t)
+            }
+            s::TypeDefinition::Enum(ref t) => {
+                field_enum_filter_input_values(&schema.document, field, t)
+            }
+            _ => vec![],
+        })
     }
 }
 
@@ -701,7 +697,7 @@ fn field_scalar_filter_input_values(
 /// Appends a child filter to input values
 fn extend_with_child_filter_input_value(
     field: &Field,
-    field_type_name: &String,
+    field_type_name: &str,
     input_values: &mut Vec<s::InputValue>,
 ) {
     input_values.push(input_value(
