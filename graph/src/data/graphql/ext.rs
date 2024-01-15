@@ -1,4 +1,5 @@
 use anyhow::Error;
+use inflector::Inflector;
 
 use super::ObjectOrInterface;
 use crate::prelude::s::{
@@ -378,15 +379,33 @@ impl TypeDefinitionExt for TypeDefinition {
     }
 }
 
+/// Return the singular and plural names for `name` for use in queries
+pub fn camel_cased_names(name: &str) -> (String, String) {
+    let singular = name.to_camel_case();
+    let mut plural = name.to_plural().to_camel_case();
+    if plural == singular {
+        plural.push_str("_collection");
+    }
+    (singular, plural)
+}
+
 pub trait FieldExt {
     // Return `true` if this is the name of one of the query fields from the
     // introspection schema
     fn is_introspection(&self) -> bool;
+
+    /// Return the singular and plural names for this field for use in
+    /// queries
+    fn camel_cased_names(&self) -> (String, String);
 }
 
 impl FieldExt for Field {
     fn is_introspection(&self) -> bool {
         &self.name == "__schema" || &self.name == "__type"
+    }
+
+    fn camel_cased_names(&self) -> (String, String) {
+        camel_cased_names(&self.name)
     }
 }
 

@@ -1377,14 +1377,14 @@ fn atom_pool(document: &s::Document) -> AtomPool {
 mod validations {
     use std::{collections::HashSet, str::FromStr};
 
-    use inflector::Inflector;
     use itertools::Itertools;
     use semver::Version;
 
     use crate::{
         data::{
             graphql::{
-                ext::DirectiveFinder, DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt,
+                ext::{DirectiveFinder, FieldExt},
+                DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt,
             },
             store::{IdType, ValueType, ID},
             subgraph::SPEC_VERSION_1_1_0,
@@ -1520,9 +1520,8 @@ mod validations {
             // to create the field names in `graphql::schema::api::query_fields_for_type()`.
             if self.entity_types.iter().any(|typ| {
                 typ.fields.iter().any(|field| {
-                    name == &field.name.as_str().to_camel_case()
-                        || name == &field.name.to_plural().to_camel_case()
-                        || field.name.eq(name)
+                    let (singular, plural) = field.camel_cased_names();
+                    name == &singular || name == &plural || field.name.eq(name)
                 })
             }) {
                 return vec![SchemaValidationError::FulltextNameCollision(

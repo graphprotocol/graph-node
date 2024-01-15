@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use graphql_parser::Pos;
-use inflector::Inflector;
 use lazy_static::lazy_static;
 use thiserror::Error;
 
@@ -14,7 +13,9 @@ use crate::data::store::IdType;
 use crate::env::ENV_VARS;
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
-use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
+use crate::data::graphql::ext::{
+    camel_cased_names, DefinitionExt, DirectiveExt, DocumentExt, ValueExt,
+};
 use crate::prelude::{q, r, s, DeploymentHash};
 
 use super::{Field, InputSchema, Schema};
@@ -1010,11 +1011,13 @@ fn query_fields_for_type(type_name: &str) -> Vec<s::Field> {
     collection_arguments.push(subgraph_error_argument());
     by_id_arguments.push(subgraph_error_argument());
 
+    // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+    let (singular, plural) = camel_cased_names(type_name);
     vec![
         s::Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+            name: singular,
             arguments: by_id_arguments,
             field_type: s::Type::NamedType(type_name.to_owned()),
             directives: vec![],
@@ -1022,7 +1025,7 @@ fn query_fields_for_type(type_name: &str) -> Vec<s::Field> {
         s::Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_plural().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+            name: plural,
             arguments: collection_arguments,
             field_type: s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(
                 s::Type::NonNullType(Box::new(s::Type::NamedType(type_name.to_owned()))),
@@ -1165,7 +1168,11 @@ fn add_field_arguments(
 
 #[cfg(test)]
 mod tests {
-    use crate::{data::subgraph::LATEST_VERSION, prelude::DeploymentHash, schema::InputSchema};
+    use crate::{
+        data::subgraph::LATEST_VERSION,
+        prelude::{s, DeploymentHash},
+        schema::InputSchema,
+    };
     use graphql_parser::schema::*;
     use lazy_static::lazy_static;
 
@@ -2003,5 +2010,31 @@ type Gravatar @entity {
         // implements another interface which we tried to look up as an
         // object type
         let _schema = parse(SCHEMA);
+    }
+
+    #[test]
+    fn pluralize_plural_name() {
+        #[track_caller]
+        fn query_field<'a>(schema: &'a ApiSchema, name: &str) -> &'a s::Field {
+            let query_type = schema
+                .get_named_type("Query")
+                .expect("Query type is missing in derived API schema");
+
+            match query_type {
+                TypeDefinition::Object(t) => ast::get_field(t, name),
+                _ => None,
+            }
+            .expect(&format!("Schema should contain a field named `{}`", name))
+        }
+
+        const SCHEMA: &str = r#"
+        type Stats @entity {
+            id: Bytes!
+        }
+        "#;
+        let schema = parse(SCHEMA);
+
+        query_field(&schema, "stats");
+        query_field(&schema, "stats_collection");
     }
 }
