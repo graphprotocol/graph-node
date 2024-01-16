@@ -30,6 +30,8 @@ pub enum APISchemaError {
     FulltextSearchNonDeterministic,
     #[error("Illegal type for `id`: {0}")]
     IllegalIdType(String),
+    #[error("Failed to create API schema: {0}")]
+    SchemaCreationFailed(String),
 }
 
 // The followoing types are defined in meta.graphql
@@ -351,14 +353,112 @@ pub(in crate::schema) fn api_schema(
     input_schema: &InputSchema,
 ) -> Result<s::Document, APISchemaError> {
     // Refactor: Don't clone the schema.
-    let mut api = input_schema.schema().clone();
+    let mut api = init_api_schema(input_schema)?;
     add_meta_field_type(&mut api.document);
     add_types_for_object_types(&mut api, input_schema)?;
     add_types_for_interface_types(&mut api, input_schema)?;
-    add_field_arguments(&mut api.document, &input_schema.schema().document)?;
     add_query_type(&mut api.document, input_schema)?;
     add_subscription_type(&mut api.document, input_schema)?;
     Ok(api.document)
+}
+
+/// Initialize the API schema by copying type definitions from the input
+/// schema. The copies of the type definitions are modified to allow
+/// filtering and ordering of collections of entities.
+fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError> {
+    fn fail(msg: &str) -> APISchemaError {
+        APISchemaError::SchemaCreationFailed(msg.to_string())
+    }
+
+    /// Add arguments to fields that reference collections of other entities to
+    /// allow e.g. filtering and ordering the collections. The `fields` should
+    /// be the fields of an object or interface type
+    fn add_collection_arguments(fields: &mut [s::Field], input_schema: &InputSchema) {
+        let document = &input_schema.schema().document;
+        for field in fields
+            .iter_mut()
+            .filter(|field| ast::is_list_or_non_null_list_field(field))
+        {
+            if let Some(input_reference_type) = ast::get_referenced_entity_type(document, field) {
+                match input_reference_type {
+                    s::TypeDefinition::Object(ot) => {
+                        field.arguments = collection_arguments_for_named_type(&ot.name);
+                    }
+                    s::TypeDefinition::Interface(it) => {
+                        field.arguments = collection_arguments_for_named_type(&it.name);
+                    }
+                    _ => unreachable!(
+                        "referenced entity types can only be object or interface types"
+                    ),
+                }
+            }
+        }
+    }
+
+    fn add_type_def(
+        api: &mut s::Document,
+        type_def: &s::TypeDefinition,
+        input_schema: &InputSchema,
+    ) -> Result<(), APISchemaError> {
+        match type_def {
+            s::TypeDefinition::Object(ot) => {
+                let mut ot = ot.clone();
+                add_collection_arguments(&mut ot.fields, input_schema);
+                let typedef = s::TypeDefinition::Object(ot);
+                let def = s::Definition::TypeDefinition(typedef);
+                api.definitions.push(def);
+            }
+            s::TypeDefinition::Interface(it) => {
+                let mut it = it.clone();
+                add_collection_arguments(&mut it.fields, input_schema);
+                let typedef = s::TypeDefinition::Interface(it);
+                let def = s::Definition::TypeDefinition(typedef);
+                api.definitions.push(def);
+            }
+            s::TypeDefinition::Enum(et) => {
+                let typedef = s::TypeDefinition::Enum(et.clone());
+                let def = s::Definition::TypeDefinition(typedef);
+                api.definitions.push(def);
+            }
+            s::TypeDefinition::Scalar(_) => {
+                return Err(fail("Subgraph schemas can not contain scalar definitions"));
+            }
+            s::TypeDefinition::Union(_) => {
+                return Err(fail("Subgraph schemas can not contain union definitions"));
+            }
+            s::TypeDefinition::InputObject(_) => {
+                return Err(fail(
+                    "Subgraph schemas can not contain input object definitions",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    let mut api = s::Document::default();
+    for defn in input_schema.schema().document.definitions.iter() {
+        match defn {
+            s::Definition::SchemaDefinition(_) => {
+                return Err(fail(
+                    "Subgraph schemas can not contain a `schema` statement",
+                ));
+            }
+            s::Definition::TypeExtension(_) => {
+                return Err(fail("Subgraph schemas can not contain type extensions"));
+            }
+            s::Definition::DirectiveDefinition(_) => {
+                // We don't really allow directove definitions in subgraph
+                // schemas, but the tests for introspection schemas create
+                // an input schema with a directive definition, and it's
+                // safer to allow it here rather than fail
+                api.definitions.push(defn.clone());
+            }
+            s::Definition::TypeDefinition(td) => add_type_def(&mut api, td, input_schema)?,
+        }
+    }
+
+    Schema::new(input_schema.id().clone(), api)
+        .map_err(|e| APISchemaError::SchemaCreationFailed(e.to_string()))
 }
 
 /// Adds a global `_Meta_` type to the schema. The `_meta` field
@@ -1080,79 +1180,6 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<s::InputValue> {
     ];
 
     args
-}
-
-fn add_field_arguments(
-    api: &mut s::Document,
-    input_schema: &s::Document,
-) -> Result<(), APISchemaError> {
-    // Refactor: Remove the `input_schema` argument and do a mutable iteration
-    // over the definitions in `schema`. Also the duplication between this and
-    // the loop for interfaces below.
-    for input_object_type in input_schema.get_object_type_definitions() {
-        for input_field in &input_object_type.fields {
-            if let Some(input_reference_type) =
-                ast::get_referenced_entity_type(input_schema, input_field)
-            {
-                if ast::is_list_or_non_null_list_field(input_field) {
-                    // Get corresponding object type and field in the output schema
-                    let object_type = ast::get_object_type_mut(api, &input_object_type.name)
-                        .expect("object type from input schema is missing in API schema");
-                    let mut field = object_type
-                        .fields
-                        .iter_mut()
-                        .find(|field| field.name == input_field.name)
-                        .expect("field from input schema is missing in API schema");
-
-                    match input_reference_type {
-                        s::TypeDefinition::Object(ot) => {
-                            field.arguments = collection_arguments_for_named_type(&ot.name);
-                        }
-                        s::TypeDefinition::Interface(it) => {
-                            field.arguments = collection_arguments_for_named_type(&it.name);
-                        }
-                        _ => unreachable!(
-                            "referenced entity types can only be object or interface types"
-                        ),
-                    }
-                }
-            }
-        }
-    }
-
-    for input_interface_type in input_schema.get_interface_type_definitions() {
-        for input_field in &input_interface_type.fields {
-            if let Some(input_reference_type) =
-                ast::get_referenced_entity_type(input_schema, input_field)
-            {
-                if ast::is_list_or_non_null_list_field(input_field) {
-                    // Get corresponding interface type and field in the output schema
-                    let interface_type =
-                        ast::get_interface_type_mut(api, &input_interface_type.name)
-                            .expect("interface type from input schema is missing in API schema");
-                    let mut field = interface_type
-                        .fields
-                        .iter_mut()
-                        .find(|field| field.name == input_field.name)
-                        .expect("field from input schema is missing in API schema");
-
-                    match input_reference_type {
-                        s::TypeDefinition::Object(ot) => {
-                            field.arguments = collection_arguments_for_named_type(&ot.name);
-                        }
-                        s::TypeDefinition::Interface(it) => {
-                            field.arguments = collection_arguments_for_named_type(&it.name);
-                        }
-                        _ => unreachable!(
-                            "referenced entity types can only be object or interface types"
-                        ),
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
