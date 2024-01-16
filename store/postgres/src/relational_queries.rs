@@ -927,7 +927,6 @@ impl PrefixType {
         column: &'b QualColumn<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        self.push_prefix(column, out)?;
         match self {
             PrefixType::String => {
                 out.push_sql("left(");
