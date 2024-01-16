@@ -3,6 +3,7 @@ use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::endpoint::EndpointMetrics;
+use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
@@ -310,9 +311,10 @@ pub enum Command {
         /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
         #[clap(long, short)]
         delete_threshold: Option<f64>,
-        /// How much history to keep in blocks
-        #[clap(long, short = 'y', default_value = "10000")]
-        history: usize,
+        /// How much history to keep in blocks. Defaults to
+        /// GRAPH_MIN_HISTORY_BLOCKS
+        #[clap(long, short = 'y')]
+        history: Option<usize>,
         /// Prune only this once
         #[clap(long, short)]
         once: bool,
@@ -1493,6 +1495,7 @@ async fn main() -> anyhow::Result<()> {
             once,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
+            let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
             commands::prune::run(
                 store,
                 primary_pool,

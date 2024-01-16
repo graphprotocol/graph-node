@@ -190,6 +190,16 @@ impl DeploymentStore {
             // Create (or update) the metadata. Update only happens in tests
             let entities_with_causality_region =
                 deployment.manifest.entities_with_causality_region.clone();
+
+            // If `GRAPH_HISTORY_BLOCKS_OVERRIDE` is set, override the history_blocks
+            // setting with the value of the environment variable.
+            let deployment =
+                if let Some(history_blocks_global_override) = ENV_VARS.history_blocks_override {
+                    deployment.with_history_blocks_override(history_blocks_global_override)
+                } else {
+                    deployment
+                };
+
             if replace || !exists {
                 deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
             };

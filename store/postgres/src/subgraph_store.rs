@@ -630,8 +630,6 @@ impl SubgraphStoreInner {
             )));
         }
 
-        let history_blocks = deployment.manifest.history_blocks;
-
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
@@ -639,7 +637,7 @@ impl SubgraphStoreInner {
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
-            history_blocks: Some(history_blocks),
+            history_blocks_override: None,
         };
 
         let graft_base = self.layout(&src.deployment)?;

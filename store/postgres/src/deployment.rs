@@ -1088,7 +1088,7 @@ pub fn create_deployment(
         graft_base,
         graft_block,
         debug_fork,
-        history_blocks: history_blocks_override,
+        history_blocks_override,
     } = deployment;
     let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
     let entities_with_causality_region = Vec::from_iter(

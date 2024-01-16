@@ -193,6 +193,14 @@ pub struct EnvVars {
     /// is there to simplify development and will be changed to `false` when
     /// we get closer to release
     pub enable_timeseries: bool,
+    /// Set by the env var `GRAPH_HISTORY_BLOCKS_OVERRIDE`. Defaults to None
+    /// Sets an override for the amount history to keep regardless of the
+    /// historyBlocks set in the manifest
+    pub history_blocks_override: Option<BlockNumber>,
+    /// Set by the env var `GRAPH_MIN_HISTORY_BLOCKS`
+    /// The amount of history to keep when using 'min' historyBlocks
+    /// in the manifest
+    pub min_history_blocks: BlockNumber,
 }
 
 impl EnvVars {
@@ -258,6 +266,10 @@ impl EnvVars {
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
             enable_gas_metrics: inner.enable_gas_metrics.0,
             enable_timeseries: inner.enable_timeseries.unwrap_or(cfg!(debug_assertions)),
+            history_blocks_override: inner.history_blocks_override,
+            min_history_blocks: inner
+                .min_history_blocks
+                .unwrap_or(2 * inner.reorg_threshold),
         })
     }
 
@@ -310,7 +322,7 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.9")]
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "1.0.0")]
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
     load_window_size_in_secs: u64,
@@ -391,6 +403,10 @@ struct Inner {
     enable_gas_metrics: EnvVarBoolean,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_TIMESERIES")]
     enable_timeseries: Option<bool>,
+    #[envconfig(from = "GRAPH_HISTORY_BLOCKS_OVERRIDE")]
+    history_blocks_override: Option<BlockNumber>,
+    #[envconfig(from = "GRAPH_MIN_HISTORY_BLOCKS")]
+    min_history_blocks: Option<BlockNumber>,
 }
 
 #[derive(Clone, Debug)]

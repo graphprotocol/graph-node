@@ -10,12 +10,15 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::object;
+use crate::{components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
 use semver::Version;
-use serde::{de, ser};
+use serde::{
+    de::{self, Visitor},
+    ser,
+};
 use serde_yaml;
 use slog::Logger;
 use stable_hash::{FieldAddress, StableHash};
@@ -548,7 +551,83 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
-    pub history_blocks: Option<BlockNumber>,
+    prune: Option<Prune>,
+}
+
+impl IndexerHints {
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self.prune {
+            Some(ref hb) => hb.history_blocks(),
+            None => BLOCK_NUMBER_MAX,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Prune {
+    Auto,
+    Never,
+    Blocks(BlockNumber),
+}
+
+impl Prune {
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self {
+            Prune::Never => BLOCK_NUMBER_MAX,
+            Prune::Auto => ENV_VARS.min_history_blocks,
+            Prune::Blocks(x) => *x,
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for Prune {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct HistoryBlocksVisitor;
+
+        const ERROR_MSG: &str = "expected 'all', 'min', or a number for history blocks";
+
+        impl<'de> Visitor<'de> for HistoryBlocksVisitor {
+            type Value = Prune;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or an integer for history blocks")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Prune, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "never" => Ok(Prune::Never),
+                    "auto" => Ok(Prune::Auto),
+                    _ => value
+                        .parse::<i32>()
+                        .map(Prune::Blocks)
+                        .map_err(|_| E::custom(ERROR_MSG)),
+                }
+            }
+
+            fn visit_i32<E>(self, value: i32) -> Result<Prune, E>
+            where
+                E: de::Error,
+            {
+                Ok(Prune::Blocks(value))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let i = v.try_into().map_err(|_| E::custom(ERROR_MSG))?;
+                Ok(Prune::Blocks(i))
+            }
+        }
+
+        deserializer.deserialize_any(HistoryBlocksVisitor)
+    }
 }
 
 /// SubgraphManifest with IPFS links unresolved
@@ -681,10 +760,11 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect()
     }
 
-    pub fn history_blocks(&self) -> Option<BlockNumber> {
-        self.indexer_hints
-            .as_ref()
-            .and_then(|hints| hints.history_blocks)
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self.indexer_hints {
+            Some(ref hints) => hints.history_blocks(),
+            None => BLOCK_NUMBER_MAX,
+        }
     }
 
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
@@ -872,10 +952,10 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        if spec_version < SPEC_VERSION_0_1_0 && indexer_hints.is_some() {
+        if spec_version < SPEC_VERSION_1_0_0 && indexer_hints.is_some() {
             bail!(
                 "`indexerHints` are not supported prior to {}",
-                SPEC_VERSION_0_1_0
+                SPEC_VERSION_1_0_0
             );
         }
 
