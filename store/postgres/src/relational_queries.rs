@@ -895,30 +895,6 @@ impl PrefixType {
         }
     }
 
-    fn push_prefix<'b>(
-        &'b self,
-        column: &'b dyn QueryFragment<Pg>,
-        out: &mut AstPass<'_, 'b, Pg>,
-    ) -> QueryResult<()> {
-        match self {
-            PrefixType::String => {
-                out.push_sql("left(");
-                column.walk_ast(out.reborrow())?;
-                out.push_sql(", ");
-                out.push_sql(&STRING_PREFIX_SIZE.to_string());
-                out.push_sql(")");
-            }
-            PrefixType::Bytes => {
-                out.push_sql("substring(");
-                column.walk_ast(out.reborrow())?;
-                out.push_sql(", 1, ");
-                out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
-                out.push_sql(")");
-            }
-        }
-        Ok(())
-    }
-
     /// Push the SQL expression for a prefix of values in our column. That
     /// should be the same expression that we used when creating an index
     /// for the column
