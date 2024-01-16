@@ -13,7 +13,6 @@
 - **GraphiQL V2 Update** - Updated GraphiQL query interface of graph-node to version 2. [(#4677)](https://github.com/graphprotocol/graph-node/pull/4677)
 - **Sharding Guide for Graph-Node** - A new guide has been added to graph-node documentation, explaining how to scale graph-node installations using sharding with multiple Postgres instances. [Sharding Guide](https://github.com/graphprotocol/graph-node/blob/master/docs/sharding.md)
 - Configurable Polling Intervals for RPC Block Ingestors - Graph-node introduces adjustable polling intervals for RPC-based block ingestors, enabling more precise control over block fetching. [(#5066)](https://github.com/graphprotocol/graph-node/pull/5066)
-- Configurable Timeout for Unresponsive graph-node - A new feature in graph-node allows for configurable timeouts for unresponsive graphs, improving system responsiveness and monitoring. [(#4991)](https://github.com/graphprotocol/graph-node/pull/4991)
 - Metrics Enhancements[(#5055)](https://github.com/graphprotocol/graph-node/pull/5055) [(#4937)](https://github.com/graphprotocol/graph-node/pull/4937)
 - graph-node now avoids creating GIN indexes on array attributes to enhance database write performance, addressing the issue of expensive updates and underutilization in queries. [(#4933)](https://github.com/graphprotocol/graph-node/pull/4933)
 - The `subgraphFeatures` endpoint in graph-node has been updated to load features from subgraphs prior to their deployment. [(#4864)](https://github.com/graphprotocol/graph-node/pull/4864)
