@@ -52,6 +52,10 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
             timestamp: _,
         } = clock;
 
+        if number > 12008300 {
+            panic!("end block")
+        }
+
         let block_ptr = BlockPtr {
             hash: BlockHash::from(id.into_bytes()),
             number: BlockNumber::from(TryInto::<i32>::try_into(number)?),

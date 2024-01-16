@@ -23,7 +23,7 @@ use crate::{prelude::*, prometheus::labels};
 
 pub const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 pub const FIREHOSE_BUFFER_STREAM_SIZE: usize = 1;
-pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 1;
+pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 100;
 
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
@@ -412,6 +412,11 @@ pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
                     Some(Any { type_url: _, value }) => value,
                     None => return Ok(None),
                 };
+
+                // If block content is empty just skip ahead to improve the speed.
+                if value.is_empty() {
+                    return Ok(None);
+                }
 
                 log_data.last_seen_block = clock.number;
                 let cursor = FirehoseCursor::from(cursor);
