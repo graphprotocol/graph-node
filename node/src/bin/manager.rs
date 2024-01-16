@@ -311,7 +311,8 @@ pub enum Command {
         /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
         #[clap(long, short)]
         delete_threshold: Option<f64>,
-        /// How much history to keep in blocks
+        /// How much history to keep in blocks. Defaults to
+        /// GRAPH_MIN_HISTORY_BLOCKS
         #[clap(long, short = 'y')]
         history: Option<usize>,
         /// Prune only this once
