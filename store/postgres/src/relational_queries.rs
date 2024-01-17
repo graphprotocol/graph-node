@@ -2225,7 +2225,7 @@ impl<'a> QueryFragment<Pg> for InsertValue<'a> {
         match self {
             InsertValue::Value(qv) => qv.walk_ast(out),
             InsertValue::Fulltext(qvs) => {
-                process_vec_ast(qvs, &mut out, "'simple'")?; // TODO: insted of 'simple' add proper config here as in the other call
+                process_vec_ast(qvs, &mut out, "'english'")?; // TODO: insted of 'simple'/'english' add proper config here as its done in the other call
                 Ok(())
             }
         }
