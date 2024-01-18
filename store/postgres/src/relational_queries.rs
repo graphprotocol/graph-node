@@ -14,6 +14,7 @@ use diesel::Connection;
 
 use graph::components::store::write::WriteChunk;
 use graph::components::store::DerivedEntityQuery;
+use graph::data::graphql::IntoValue;
 use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
@@ -454,6 +455,47 @@ pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreErr
             json,
             id_type
         ))
+    }
+}
+
+#[derive(QueryableByName, Debug)]
+pub struct JSONData {
+    #[sql_type = "Jsonb"]
+    pub data: serde_json::Value,
+}
+
+impl IntoValue for JSONData {
+    fn into_value(self) -> r::Value {
+        JSONData::to_value(self.data)
+    }
+}
+
+impl JSONData {
+    pub fn to_value(data: serde_json::Value) -> r::Value {
+        match data {
+            serde_json::Value::Null => r::Value::Null,
+            serde_json::Value::Bool(b) => r::Value::Boolean(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    r::Value::Int(i)
+                } else {
+                    r::Value::Float(n.as_f64().unwrap())
+                }
+            }
+            serde_json::Value::String(s) => r::Value::String(s),
+            serde_json::Value::Array(vals) => {
+                let vals: Vec<_> = vals.into_iter().map(JSONData::to_value).collect::<Vec<_>>();
+                r::Value::List(vals)
+            }
+            serde_json::Value::Object(map) => {
+                let mut m = std::collections::BTreeMap::new();
+                for (k, v) in map {
+                    let value = JSONData::to_value(v);
+                    m.insert(Word::from(k), value);
+                }
+                r::Value::object(m)
+            }
+        }
     }
 }
 

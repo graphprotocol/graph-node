@@ -11,9 +11,11 @@ use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph::schema::{
     ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
-    META_FIELD_NAME, META_FIELD_TYPE,
+    META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_TYPE,
 };
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
+use graph_sql::parser::SqlParser;
+
 
 use crate::execution::{ast as a, Query};
 use crate::metrics::GraphQLMetrics;
@@ -34,6 +36,7 @@ pub struct StoreResolver {
     error_policy: ErrorPolicy,
     graphql_metrics: Arc<GraphQLMetrics>,
     load_manager: Arc<LoadManager>,
+    pub sql_parser: Arc<SqlParser>,
 }
 
 #[derive(Clone, Debug)]
@@ -84,6 +87,7 @@ impl StoreResolver {
             error_policy: ErrorPolicy::Deny,
             graphql_metrics,
             load_manager,
+            sql_parser: Arc::new(SqlParser::new()),
         }
     }
 
@@ -123,6 +127,7 @@ impl StoreResolver {
             error_policy,
             graphql_metrics,
             load_manager,
+            sql_parser: Arc::new(SqlParser::new()),
         };
         Ok(resolver)
     }
@@ -284,6 +289,44 @@ impl StoreResolver {
         }
         Ok((prefetched_object, None))
     }
+
+    fn handle_sql(
+        &self,
+        prefetched_object: Option<r::Value>,
+        field: &a::Field,
+        object_type: &ObjectOrInterface<'_>,
+    ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
+        if !object_type.is_sql() {
+            return Ok((prefetched_object, None));
+        }
+
+        let query = field
+            .argument_value("query")
+            .ok_or_else(|| QueryExecutionError::EmptyQuery)?;
+
+        let query = match query {
+            graph::data::value::Value::String(s) => s,
+            _ => {
+                return Err(QueryExecutionError::SqlError(
+                    "Query must be a string".into(),
+                ))
+            }
+        };
+
+        let query = self
+            .sql_parser
+            .parse_and_validate(query, self.store.deployment_id().0)?;
+
+        let result = self.store.execute_sql(&query)?;
+        let result = result.into_iter().map(|q| q.0).collect::<Vec<_>>();
+        let sql_result = object! {
+            __typename: SQL_FIELD_TYPE,
+            columns: r::Value::List(vec![]),
+            rows: result
+        };
+
+        Ok((prefetched_object, Some(sql_result)))
+    }
 }
 
 #[async_trait]
@@ -333,6 +376,13 @@ impl Resolver for StoreResolver {
         if let Some(meta) = meta {
             return Ok(meta);
         }
+
+        let (prefetched_object, sql_result) =
+            self.handle_sql(prefetched_object, &field, &object_type)?;
+        if let Some(sql_result) = sql_result {
+            return Ok(sql_result);
+        }
+
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
                 let derived_from_field =

@@ -1,0 +1,13 @@
+scalar String
+scalar JSONObject
+
+
+# The type names are purposely awkward to minimize the risk of them
+# colliding with user-supplied types
+"The type for the top-level _sql field"
+type _SqlQueryResult_ {
+  "The columns returned by the query"
+  columns: [String!]!
+  "The rows returned by the query"
+  rows: JSONObject!
+}
