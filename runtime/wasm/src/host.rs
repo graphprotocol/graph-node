@@ -5,20 +5,20 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use crate::blockchain::{Blockchain, HostFn, RuntimeAdapter};
-use crate::components::store::{EnsLookup, SubgraphFork};
-use crate::components::subgraph::{MappingError, SharedProofOfIndexing};
-use crate::data_source::{
+use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
+use graph::components::store::{EnsLookup, SubgraphFork};
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
-use crate::prelude::{
+use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
-use crate::runtime::gas::Gas;
-use crate::runtime::mapping::{MappingContext, WasmRequest};
-use crate::runtime::module::ToAscPtr;
-use crate::runtime::{host_exports::HostExports, module::ExperimentalFeatures};
+use crate::mapping::{MappingContext, WasmRequest};
+use crate::module::ToAscPtr;
+use crate::{host_exports::HostExports, module::ExperimentalFeatures};
+use graph::runtime::gas::Gas;
 
 use super::host_exports::DataSourceDetails;
 
@@ -68,7 +68,7 @@ where
         let experimental_features = ExperimentalFeatures {
             allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
         };
-        crate::runtime::mapping::spawn_module(
+        crate::mapping::spawn_module(
             raw_module,
             logger,
             subgraph_id,

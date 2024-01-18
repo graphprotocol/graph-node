@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
 
-use graph::data_source::DataSourceTemplateInfo;
-use graph::prelude::InstanceDSTemplateInfo;
+use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
@@ -394,12 +393,6 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         _manifest_idx: u32,
     ) -> Result<DataSourceTemplate> {
         Err(anyhow!(TEMPLATE_ERROR))
-    }
-}
-
-impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
-        unimplemented!("{}", TEMPLATE_ERROR)
     }
 }
 

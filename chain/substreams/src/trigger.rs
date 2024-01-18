@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Error;
-use graph::runtime::wasm::module::ToAscPtr;
-use graph::runtime::WasmInstanceContext;
-use graph::wasmtime::StoreContextMut;
 use graph::{
     blockchain::{
         self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
@@ -19,6 +16,7 @@ use graph::{
     slog::Logger,
     substreams::Modules,
 };
+use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
@@ -47,7 +45,6 @@ impl ToAscPtr for TriggerData {
     // substreams doesn't rely on wasm on the graph-node so this is not needed.
     fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
-        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &graph::runtime::gas::GasCounter,
     ) -> Result<graph::runtime::AscPtr<()>, graph::runtime::HostExportError> {
@@ -200,7 +197,7 @@ where
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        _hosts: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
+        _: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
         block: &Arc<Block>,
         _trigger: &data_source::TriggerData<Chain>,
         mut state: BlockState,

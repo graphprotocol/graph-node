@@ -1,7 +1,7 @@
 use anyhow::Error;
 use never::Never;
 
-use crate::runtime::AscPtr;
+use graph::runtime::AscPtr;
 
 /// Helper trait for the `link!` macro.
 pub trait IntoWasmRet {

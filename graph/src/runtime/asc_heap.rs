@@ -30,7 +30,7 @@ pub trait AscHeap {
 
     fn api_version(&self) -> Version;
 
-    fn asc_type_id(&self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError>;
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError>;
 }
 
 /// Instantiate `rust_obj` as an Asc object of class `C`.

@@ -18,8 +18,6 @@ use semver::Version;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
-pub mod wasm;
-pub use wasm::*;
 
 use self::gas::GasCounter;
 

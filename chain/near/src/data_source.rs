@@ -1,9 +1,9 @@
 use graph::anyhow::Context;
-use graph::blockchain::{Block, DataSourceTemplate as _, TriggerWithHandler};
+use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
+use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::data::subgraph::DataSourceContext;
-use graph::data_source::DataSourceTemplateInfo;
-use graph::prelude::{InstanceDSTemplateInfo, SubgraphManifestValidationError};
+use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
@@ -34,7 +34,7 @@ pub struct DataSource {
 
 impl blockchain::DataSource<Chain> for DataSource {
     fn from_template_info(
-        _template_info: InstanceDSTemplateInfo,
+        _info: InstanceDSTemplateInfo,
         _template: &graph::data_source::DataSourceTemplate<Chain>,
     ) -> Result<Self, Error> {
         Err(anyhow!("Near subgraphs do not support templates"))
@@ -364,18 +364,6 @@ pub struct BaseDataSourceTemplate<M> {
 
 pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
 pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
-
-impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
-        DataSourceTemplateInfo {
-            api_version: self.api_version(),
-            runtime: self.runtime(),
-            name: self.name().to_string(),
-            manifest_idx: None,
-            kind: self.kind().to_string(),
-        }
-    }
-}
 
 #[async_trait]
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {

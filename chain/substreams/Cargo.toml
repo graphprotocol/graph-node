@@ -13,6 +13,7 @@ futures = "0.1.21"
 http = "0.2.4"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
+graph-runtime-wasm = { path = "../../runtime/wasm" }
 lazy_static = "1.2.0"
 serde = "1.0"
 prost = { workspace = true }

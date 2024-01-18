@@ -1,6 +1,6 @@
-use crate::data::value::Word;
-use crate::runtime::gas;
-use crate::util::lfu_cache::LfuCache;
+use graph::data::value::Word;
+use graph::runtime::gas;
+use graph::util::lfu_cache::LfuCache;
 use std::collections::HashMap;
 use wasmtime::AsContext;
 use wasmtime::AsContextMut;
@@ -9,22 +9,22 @@ use wasmtime::StoreContextMut;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::components::store::GetScope;
 use anyhow::Error;
+use graph::components::store::GetScope;
 use never::Never;
 
-use crate::data::store;
-use crate::runtime::asc_abi::class::*;
-use crate::runtime::HostExports;
+use crate::asc_abi::class::*;
+use crate::HostExports;
+use graph::data::store;
 
-use crate::prelude::*;
-use crate::runtime::asc_abi::class::AscEntity;
-use crate::runtime::asc_abi::class::AscString;
-use crate::runtime::mapping::MappingContext;
-use crate::runtime::mapping::ValidModule;
-use crate::runtime::AscPtr;
-use crate::runtime::ExperimentalFeatures;
-use crate::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
+use crate::asc_abi::class::AscEntity;
+use crate::asc_abi::class::AscString;
+use crate::mapping::MappingContext;
+use crate::mapping::ValidModule;
+use crate::ExperimentalFeatures;
+use graph::prelude::*;
+use graph::runtime::AscPtr;
+use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
 
 use super::asc_get;
 use super::AscHeapCtx;
@@ -35,27 +35,26 @@ pub(crate) struct WasmInstanceContext<'a> {
 }
 
 impl WasmInstanceContext<'_> {
+    pub fn new(ctx: &mut impl AsContextMut<Data = WasmInstanceData>) -> WasmInstanceContext<'_> {
+        WasmInstanceContext {
+            inner: ctx.as_context_mut(),
+        }
+    }
+
     pub fn as_ref(&self) -> &WasmInstanceData {
         self.inner.data()
     }
-    pub fn as_mut(&self) -> &mut WasmInstanceData {
+
+    pub fn as_mut(&mut self) -> &mut WasmInstanceData {
         self.inner.data_mut()
     }
 
     pub fn asc_heap_ref(&self) -> &AscHeapCtx {
         self.as_ref().asc_heap_ref()
     }
+
     pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
         self.as_mut().asc_heap_mut()
-    }
-
-    pub fn take_state(self) -> BlockState {
-        let state = &mut self.as_mut().ctx.state;
-
-        std::mem::replace(
-            state,
-            BlockState::new(state.entity_cache.store.cheap_clone(), LfuCache::default()),
-        )
     }
 }
 
@@ -69,7 +68,7 @@ impl AsContext for WasmInstanceContext<'_> {
 
 impl AsContextMut for WasmInstanceContext<'_> {
     fn as_context_mut(&mut self) -> wasmtime::StoreContextMut<'_, Self::Data> {
-        self.inner
+        self.inner.as_context_mut()
     }
 }
 
@@ -126,6 +125,15 @@ impl WasmInstanceData {
     }
     pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
         self.asc_heap.as_mut().unwrap()
+    }
+
+    pub fn take_state(mut self) -> BlockState {
+        let state = &mut self.ctx.state;
+
+        std::mem::replace(
+            state,
+            BlockState::new(state.entity_cache.store.cheap_clone(), LfuCache::default()),
+        )
     }
 }
 
@@ -236,7 +244,7 @@ impl WasmInstanceContext<'_> {
 
     /// function store.set(entity: string, id: string, data: Entity): void
     pub fn store_set(
-        &self,
+        &mut self,
         gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -277,8 +285,7 @@ impl WasmInstanceContext<'_> {
 
     /// function store.remove(entity: string, id: string): void
     pub fn store_remove(
-        &self,
-
+        &mut self,
         gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -306,7 +313,7 @@ impl WasmInstanceContext<'_> {
 
     /// function store.get(entity: string, id: string): Entity | null
     pub fn store_get(
-        &self,
+        &mut self,
         gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -316,7 +323,7 @@ impl WasmInstanceContext<'_> {
 
     /// function store.get_in_block(entity: string, id: string): Entity | null
     pub fn store_get_in_block(
-        &self,
+        &mut self,
         gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -943,7 +950,7 @@ impl WasmInstanceContext<'_> {
 
     /// function dataSource.create(name: string, params: Array<string>): void
     pub fn data_source_create(
-        &self,
+        &mut self,
         gas: &GasCounter,
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,
@@ -966,7 +973,7 @@ impl WasmInstanceContext<'_> {
 
     /// function createWithContext(name: string, params: Array<string>, context: DataSourceContext): void
     pub fn data_source_create_with_context(
-        &self,
+        &mut self,
         gas: &GasCounter,
         name_ptr: AscPtr<AscString>,
         params_ptr: AscPtr<Array<AscPtr<AscString>>>,

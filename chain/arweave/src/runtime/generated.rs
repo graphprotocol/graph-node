@@ -1,7 +1,7 @@
-use graph::runtime::wasm::asc_abi::class::{Array, AscString, Uint8Array};
 use graph::runtime::{AscIndexId, AscPtr, AscType, DeterministicHostError, IndexForAscTypeId};
 use graph::semver::Version;
 use graph_runtime_derive::AscType;
+use graph_runtime_wasm::asc_abi::class::{Array, AscString, Uint8Array};
 
 #[repr(C)]
 #[derive(AscType, Default)]

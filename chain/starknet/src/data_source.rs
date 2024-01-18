@@ -1,10 +1,12 @@
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Block as BlockchainBlock, TriggerWithHandler},
-    components::{link_resolver::LinkResolver, store::StoredDynamicDataSource},
+    components::{
+        link_resolver::LinkResolver, store::StoredDynamicDataSource,
+        subgraph::InstanceDSTemplateInfo,
+    },
     data::subgraph::DataSourceContext,
-    data_source::DataSourceTemplateInfo,
-    prelude::{async_trait, BlockNumber, Deserialize, InstanceDSTemplateInfo, Link, Logger},
+    prelude::{async_trait, BlockNumber, Deserialize, Link, Logger},
     semver,
 };
 use sha3::{Digest, Keccak256};
@@ -84,18 +86,13 @@ pub struct UnresolvedMappingEventHandler {
 
 #[derive(Debug, Clone)]
 pub struct DataSourceTemplate;
-impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
-        unimplemented!();
-    }
-}
 
 #[derive(Clone, Default, Deserialize)]
 pub struct UnresolvedDataSourceTemplate;
 
 impl blockchain::DataSource<Chain> for DataSource {
     fn from_template_info(
-        _template_info: InstanceDSTemplateInfo,
+        _info: InstanceDSTemplateInfo,
         _template: &graph::data_source::DataSourceTemplate<Chain>,
     ) -> Result<Self, Error> {
         Err(anyhow!("StarkNet subgraphs do not support templates"))

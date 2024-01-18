@@ -1,16 +1,16 @@
 use ethabi;
 
-use crate::data::value::Word;
-use crate::prelude::{BigDecimal, BigInt};
-use crate::runtime::gas::GasCounter;
-use crate::runtime::{
+use graph::data::value::Word;
+use graph::prelude::{BigDecimal, BigInt};
+use graph::runtime::gas::GasCounter;
+use graph::runtime::{
     asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
 };
-use crate::{data::store, runtime::DeterministicHostError};
-use crate::{prelude::serde_json, runtime::FromAscObj};
-use crate::{prelude::web3::types as web3, runtime::AscHeap};
+use graph::{data::store, runtime::DeterministicHostError};
+use graph::{prelude::serde_json, runtime::FromAscObj};
+use graph::{prelude::web3::types as web3, runtime::AscHeap};
 
-use crate::runtime::asc_abi::class::*;
+use crate::asc_abi::class::*;
 
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap + ?Sized>(

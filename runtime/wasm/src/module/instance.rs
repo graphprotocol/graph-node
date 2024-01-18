@@ -1,33 +1,33 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use crate::slog::SendSyncRefUnwindSafeKV;
 use anyhow::Error;
+use graph::slog::SendSyncRefUnwindSafeKV;
 
 use semver::Version;
-use wasmtime::{AsContextMut, Store, Trap};
+use wasmtime::{AsContextMut, Linker, Store, Trap};
 
-use crate::blockchain::{Blockchain, HostFnCtx};
-use crate::data::store;
-use crate::data::subgraph::schema::SubgraphError;
-use crate::data_source::{MappingTrigger, TriggerWithHandler};
-use crate::prelude::*;
-use crate::runtime::{
+use graph::blockchain::{Blockchain, HostFnCtx};
+use graph::data::store;
+use graph::data::subgraph::schema::SubgraphError;
+use graph::data_source::{MappingTrigger, TriggerWithHandler};
+use graph::prelude::*;
+use graph::runtime::{
     asc_new,
     gas::{Gas, GasCounter, SaturatingInto},
-    AscIndexId, AscType, DeterministicHostError, FromAscObj, HostExportError, ToAscObj,
+    HostExportError, ToAscObj,
 };
-use crate::{components::subgraph::MappingError, runtime::AscPtr};
+use graph::{components::subgraph::MappingError, runtime::AscPtr};
 
 use super::IntoWasmRet;
 use super::{IntoTrap, WasmInstanceContext};
-use crate::runtime::error::DeterminismLevel;
-use crate::runtime::mapping::MappingContext;
-use crate::runtime::mapping::ValidModule;
-use crate::runtime::module::{TimeoutStopwatch, WasmInstanceData};
-use crate::runtime::ExperimentalFeatures;
+use crate::error::DeterminismLevel;
+use crate::mapping::MappingContext;
+use crate::mapping::ValidModule;
+use crate::module::{TimeoutStopwatch, WasmInstanceData};
+use crate::ExperimentalFeatures;
 
-use super::{asc_get, is_trap_deterministic, AscHeapCtx, ToAscPtr};
+use super::{is_trap_deterministic, AscHeapCtx, ToAscPtr};
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
 pub struct WasmInstance {
@@ -39,23 +39,23 @@ pub struct WasmInstance {
 }
 
 impl WasmInstance {
-    pub fn asc_get<T, P>(&self, asc_ptr: AscPtr<P>) -> Result<T, DeterministicHostError>
-    where
-        P: AscType + AscIndexId,
-        T: FromAscObj<P>,
-    {
-        asc_get(self.store.data().asc_heap_ref(), asc_ptr, &self.gas)
-    }
+    // pub fn asc_get<T, P>(&self, asc_ptr: AscPtr<P>) -> Result<T, DeterministicHostError>
+    // where
+    //     P: AscType + AscIndexId,
+    //     T: FromAscObj<P>,
+    // {
+    //     asc_get(&self.store.as_context(), asc_ptr, &self.gas)
+    // }
 
-    pub fn asc_new<P, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
-    where
-        P: AscType + AscIndexId,
-        T: ToAscObj<P>,
-    {
-        let ctx = self.store.data().clone();
+    // pub fn asc_new<P, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
+    // where
+    //     P: AscType + AscIndexId,
+    //     T: ToAscObj<P>,
+    // {
+    //     let ctx = self.store.data().clone();
 
-        asc_new(ctx.as_mut().asc_heap_mut(), rust_obj, &self.gas)
-    }
+    //     asc_new(ctx.as_mut().asc_heap_mut(), rust_obj, &self.gas)
+    // }
 }
 
 impl WasmInstance {
@@ -65,16 +65,16 @@ impl WasmInstance {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState, anyhow::Error> {
-        let gas_metrics = self.store.data().as_ref().host_metrics.gas_metrics.clone();
+        let gas_metrics = self.store.data().host_metrics.gas_metrics.clone();
         let gas = GasCounter::new(gas_metrics);
-        let ctx = self.store.data().clone();
-        let (value, user_data) = ctx.with_mut(|ctx| {
-            let value = asc_new(ctx.asc_heap_mut(), value, &gas);
+        let mut ctx = self.instance_ctx();
+        let (value, user_data) = {
+            let value = asc_new(&mut ctx, value, &gas);
 
-            let user_data = asc_new(ctx.asc_heap_mut(), user_data, &gas);
+            let user_data = asc_new(&mut ctx, user_data, &gas);
 
             (value, user_data)
-        });
+        };
 
         self.instance_ctx().as_mut().ctx.state.enter_handler();
 
@@ -89,7 +89,7 @@ impl WasmInstance {
             )
             .with_context(|| format!("Failed to handle callback '{}'", handler_name))?;
 
-        let wasm_ctx = self.store.into_data();
+        let mut wasm_ctx = self.store.into_data();
         wasm_ctx.ctx.state.exit_handler();
 
         Ok(wasm_ctx.take_state())
@@ -101,12 +101,11 @@ impl WasmInstance {
         handler_name: &str,
         block_data: Box<[u8]>,
     ) -> Result<(BlockState, Gas), MappingError> {
-        let ctx = self.store.data().clone();
-        let obj = block_data
-            .to_vec()
-            .to_asc_obj(ctx.as_mut().asc_heap_mut(), &self.gas)?;
+        let gas = self.gas.clone();
+        let mut ctx = self.instance_ctx();
+        let obj = block_data.to_vec().to_asc_obj(&mut ctx, &gas)?;
 
-        let obj = AscPtr::alloc_obj(obj, ctx.as_mut().asc_heap_mut(), &self.gas)?;
+        let obj = AscPtr::alloc_obj(obj, &mut ctx, &gas)?;
 
         self.invoke_handler(handler_name, obj, Arc::new(o!()), None)
     }
@@ -122,8 +121,8 @@ impl WasmInstance {
         let gas = self.gas.clone();
         let logging_extras = trigger.logging_extras().cheap_clone();
         let error_context = trigger.trigger.error_context();
-        let ctx = self.store.data().clone();
-        let asc_trigger = trigger.to_asc_ptr(ctx.as_mut().asc_heap_mut(), &gas)?;
+        let mut ctx = self.instance_ctx();
+        let asc_trigger = trigger.to_asc_ptr(&mut ctx, &gas)?;
 
         self.invoke_handler(&handler_name, asc_trigger, logging_extras, error_context)
     }
@@ -132,8 +131,8 @@ impl WasmInstance {
         self.store.into_data()
     }
 
-    pub(crate) fn instance_ctx(&self) -> &WasmInstanceContext {
-        self.store.data()
+    pub(crate) fn instance_ctx(&mut self) -> WasmInstanceContext {
+        WasmInstanceContext::new(&mut self.store)
     }
 
     #[cfg(debug_assertions)]
@@ -258,7 +257,7 @@ impl WasmInstance {
         experimental_features: ExperimentalFeatures,
     ) -> Result<WasmInstance, anyhow::Error> {
         let engine = valid_module.module.engine();
-        let mut linker = wasmtime::Linker::new(engine);
+        let mut linker: Linker<WasmInstanceData> = wasmtime::Linker::new(engine);
         let host_fns = ctx.host_fns.cheap_clone();
         let api_version = ctx.host_exports.data_source.api_version.clone();
 
@@ -282,7 +281,7 @@ impl WasmInstance {
         if let Some(timeout) = timeout {
             let timeout = timeout.clone();
             let engine = engine.clone();
-            crate::spawn(async move {
+            graph::spawn(async move {
                 tokio::time::sleep(timeout).await;
                 engine.increment_epoch();
             });
@@ -311,26 +310,26 @@ impl WasmInstance {
                     linker.func_wrap(
                         module,
                         $wasm_name,
-                        move |mut caller: wasmtime::Caller<'_, WasmInstanceContext>,
+                        move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
                               $($param: u32),*|  {
-
-                            let instance = caller.data().clone();
-                            let host_metrics = instance.as_ref().host_metrics.cheap_clone();
+                            let host_metrics = caller.data().host_metrics.cheap_clone();
                             let _section = host_metrics.stopwatch.start_section($section);
-                            let result = instance.$rust_name(
+
+                            #[allow(unused_mut)]
+                            let mut ctx = WasmInstanceContext::new(&mut caller);
+                            let result = ctx.$rust_name(
                                 &gas,
                                 $($param.into()),*
                             );
                             match result {
                                 Ok(result) => Ok(result.into_wasm_ret()),
                                 Err(e) => {
-                                    let instance = caller.data();
                                     match IntoTrap::determinism_level(&e) {
                                         DeterminismLevel::Deterministic => {
-                                            instance.as_mut().deterministic_host_trap = true;
+                                            ctx.as_mut().deterministic_host_trap = true;
                                         }
                                         DeterminismLevel::PossibleReorg => {
-                                            instance.as_mut().possible_reorg = true;
+                                            ctx.as_mut().possible_reorg = true;
                                         }
                                         DeterminismLevel::Unimplemented
                                         | DeterminismLevel::NonDeterministic => {}
@@ -359,33 +358,33 @@ impl WasmInstance {
                 linker.func_wrap(
                     module,
                     host_fn.name,
-                    move |mut caller: wasmtime::Caller<'_, WasmInstanceContext>, call_ptr: u32| {
+                    move |mut caller: wasmtime::Caller<'_, WasmInstanceData>, call_ptr: u32| {
                         let start = Instant::now();
 
                         let name_for_metrics = host_fn.name.replace('.', "_");
-                        let host_metrics = caller.data().as_ref().host_metrics.cheap_clone();
+                        let host_metrics = caller.data().host_metrics.cheap_clone();
                         let stopwatch = host_metrics.stopwatch.cheap_clone();
                         let _section =
                             stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
 
                         let ctx = HostFnCtx {
-                            logger: caller.data().as_ref().ctx.logger.cheap_clone(),
-                            block_ptr: caller.data().as_ref().ctx.block_ptr.cheap_clone(),
+                            logger: caller.data().ctx.logger.cheap_clone(),
+                            block_ptr: caller.data().ctx.block_ptr.cheap_clone(),
                             gas: gas.cheap_clone(),
                             metrics: host_metrics.cheap_clone(),
+                            heap: &mut WasmInstanceContext::new(&mut caller),
                         };
-                        let ret = (host_fn.func)(ctx, &mut caller.as_context_mut(), call_ptr)
-                            .map_err(|e| match e {
-                                HostExportError::Deterministic(e) => {
-                                    caller.data().as_mut().deterministic_host_trap = true;
-                                    e
-                                }
-                                HostExportError::PossibleReorg(e) => {
-                                    caller.data().as_mut().possible_reorg = true;
-                                    e
-                                }
-                                HostExportError::Unknown(e) => e,
-                            })?;
+                        let ret = (host_fn.func)(ctx, call_ptr).map_err(|e| match e {
+                            HostExportError::Deterministic(e) => {
+                                caller.data_mut().deterministic_host_trap = true;
+                                e
+                            }
+                            HostExportError::PossibleReorg(e) => {
+                                caller.data_mut().possible_reorg = true;
+                                e
+                            }
+                            HostExportError::Unknown(e) => e,
+                        })?;
                         host_metrics.observe_host_fn_execution_time(
                             start.elapsed().as_secs_f64(),
                             &name_for_metrics,
@@ -509,7 +508,7 @@ impl WasmInstance {
         // `arweave and `box` functionality was removed, but apiVersion <= 0.0.4 must link it.
         if api_version <= Version::new(0, 0, 4) {
             link!("arweave.transactionData", arweave_transaction_data, ptr);
-            // link!("box.profile", box_profile, ptr);
+            link!("box.profile", box_profile, ptr);
         }
 
         // link the `gas` function
@@ -531,13 +530,14 @@ impl WasmInstance {
             })?;
         }
 
-        let instance = linker.instantiate(&mut store, &valid_module.module)?;
-        let asc_heap =
-            AscHeapCtx::new(&instance, &mut store.as_context_mut(), api_version.clone())?;
+        let instance = linker.instantiate(store.as_context_mut(), &valid_module.module)?;
 
-        // couldn't figure out a better way to do this unfortunately.
+        let asc_heap = AscHeapCtx::new(
+            &instance,
+            &mut WasmInstanceContext::new(&mut store),
+            api_version.clone(),
+        )?;
         store.data_mut().set_asc_heap(asc_heap);
-        store.data().as_ref().asc_heap_ref();
 
         // See start_function comment for more information
         // TL;DR; we need the wasmtime::Instance to create the heap, therefore

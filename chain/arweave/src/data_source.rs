@@ -1,9 +1,9 @@
 use graph::anyhow::Context;
-use graph::blockchain::{Block, DataSourceTemplate as _, TriggerWithHandler};
+use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
+use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::data::subgraph::DataSourceContext;
-use graph::data_source::DataSourceTemplateInfo;
-use graph::prelude::{InstanceDSTemplateInfo, SubgraphManifestValidationError};
+use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
@@ -326,18 +326,6 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
 
     fn kind(&self) -> &str {
         &self.kind
-    }
-}
-
-impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
-        DataSourceTemplateInfo {
-            api_version: self.api_version(),
-            runtime: self.runtime(),
-            name: self.name().to_string(),
-            manifest_idx: None,
-            kind: self.kind().to_string(),
-        }
     }
 }
 

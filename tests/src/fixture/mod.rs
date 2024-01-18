@@ -37,7 +37,6 @@ use graph::prelude::{
     SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
-use graph::runtime::wasm::RuntimeHostBuilder;
 use graph::schema::InputSchema;
 use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
@@ -47,6 +46,7 @@ use graph_core::{
 };
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
+use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use serde::Deserialize;

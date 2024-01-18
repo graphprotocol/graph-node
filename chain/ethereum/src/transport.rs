@@ -98,6 +98,7 @@ impl web3::Transport for Transport {
                     conn_type: graph::endpoint::ConnectionType::Rpc,
                 };
                 let out = async move {
+                    let labels = labels;
                     let out = client.send(id, request).await;
                     match out {
                         Ok(_) => metrics.success(&labels),

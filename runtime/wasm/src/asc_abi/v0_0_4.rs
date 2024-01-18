@@ -1,4 +1,4 @@
-use crate::runtime::gas::GasCounter;
+use graph::runtime::gas::GasCounter;
 use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
@@ -6,11 +6,10 @@ use std::mem::{size_of, size_of_val};
 use anyhow::anyhow;
 use semver::Version;
 
-use crate::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError};
+use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError};
 use graph_runtime_derive::AscType;
 
-use crate as graph;
-use crate::runtime::asc_abi::class;
+use crate::asc_abi::class;
 
 /// Module related to AssemblyScript version v0.6.
 

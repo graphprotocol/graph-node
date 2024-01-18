@@ -1,6 +1,6 @@
-use crate::runtime::DeterministicHostError;
+use graph::runtime::DeterministicHostError;
 
-use crate::runtime::module::IntoTrap;
+use crate::module::IntoTrap;
 
 pub enum DeterminismLevel {
     /// This error is known to be deterministic. For example, divide by zero.

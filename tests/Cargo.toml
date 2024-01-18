@@ -16,6 +16,7 @@ graph-core = { path = "../core" }
 graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
 graph-server-index-node = { path = "../server/index-node" }
+graph-runtime-wasm = { path = "../runtime/wasm" }
 graphql-parser = "0.4.0"
 hyper = "0.14"
 serde = "1.0"

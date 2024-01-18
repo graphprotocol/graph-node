@@ -6,12 +6,10 @@ use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
 use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::wasm::module::ToAscPtr;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
-use graph::runtime::WasmInstanceContext;
-use graph::wasmtime::StoreContextMut;
+use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -39,13 +37,12 @@ impl std::fmt::Debug for ArweaveTrigger {
 impl ToAscPtr for ArweaveTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
-            ArweaveTrigger::Block(block) => asc_new(store, heap, block.as_ref(), gas)?.erase(),
-            ArweaveTrigger::Transaction(tx) => asc_new(store, heap, tx.as_ref(), gas)?.erase(),
+            ArweaveTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
+            ArweaveTrigger::Transaction(tx) => asc_new(heap, tx.as_ref(), gas)?.erase(),
         })
     }
 }

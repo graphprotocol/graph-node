@@ -1,9 +1,9 @@
-use graph::runtime::wasm::asc_abi::class::{Array, AscBigInt, AscEnum, Uint8Array};
 use graph::runtime::{
     AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError, IndexForAscTypeId,
 };
 use graph::semver::Version;
 use graph_runtime_derive::AscType;
+use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEnum, Uint8Array};
 
 pub struct AscBytesArray(pub(crate) Array<AscPtr<Uint8Array>>);
 

@@ -2,26 +2,21 @@ use crate::codec;
 use crate::trigger::ReceiptWithOutcome;
 use graph::anyhow::anyhow;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
-use graph::runtime::{
-    asc_new, AscHeap, AscPtr, DeterministicHostError, HostExportError, ToAscObj,
-    WasmInstanceContext,
-};
-use graph::wasmtime::StoreContextMut;
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, HostExportError, ToAscObj};
+use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
 
 impl ToAscObj<AscBlock> for codec::Block {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBlock, HostExportError> {
         Ok(AscBlock {
-            author: asc_new(store, heap, &self.author, gas)?,
-            header: asc_new(store, heap, self.header(), gas)?,
-            chunks: asc_new(store, heap, &self.chunk_headers, gas)?,
+            author: asc_new(heap, &self.author, gas)?,
+            header: asc_new(heap, self.header(), gas)?,
+            chunks: asc_new(heap, &self.chunk_headers, gas)?,
         })
     }
 }
@@ -29,56 +24,40 @@ impl ToAscObj<AscBlock> for codec::Block {
 impl ToAscObj<AscBlockHeader> for codec::BlockHeader {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBlockHeader, HostExportError> {
-        let chunk_mask = Array::new(store, self.chunk_mask.as_ref(), heap, gas)?;
+        let chunk_mask = Array::new(self.chunk_mask.as_ref(), heap, gas)?;
 
         Ok(AscBlockHeader {
             height: self.height,
             prev_height: self.prev_height,
-            epoch_id: asc_new(store, heap, self.epoch_id.as_ref().unwrap(), gas)?,
-            next_epoch_id: asc_new(store, heap, self.next_epoch_id.as_ref().unwrap(), gas)?,
-            hash: asc_new(store, heap, self.hash.as_ref().unwrap(), gas)?,
-            prev_hash: asc_new(store, heap, self.prev_hash.as_ref().unwrap(), gas)?,
-            prev_state_root: asc_new(store, heap, self.prev_state_root.as_ref().unwrap(), gas)?,
-            chunk_receipts_root: asc_new(
-                store,
-                heap,
-                self.chunk_receipts_root.as_ref().unwrap(),
-                gas,
-            )?,
-            chunk_headers_root: asc_new(
-                store,
-                heap,
-                self.chunk_headers_root.as_ref().unwrap(),
-                gas,
-            )?,
-            chunk_tx_root: asc_new(store, heap, self.chunk_tx_root.as_ref().unwrap(), gas)?,
-            outcome_root: asc_new(store, heap, self.outcome_root.as_ref().unwrap(), gas)?,
+            epoch_id: asc_new(heap, self.epoch_id.as_ref().unwrap(), gas)?,
+            next_epoch_id: asc_new(heap, self.next_epoch_id.as_ref().unwrap(), gas)?,
+            hash: asc_new(heap, self.hash.as_ref().unwrap(), gas)?,
+            prev_hash: asc_new(heap, self.prev_hash.as_ref().unwrap(), gas)?,
+            prev_state_root: asc_new(heap, self.prev_state_root.as_ref().unwrap(), gas)?,
+            chunk_receipts_root: asc_new(heap, self.chunk_receipts_root.as_ref().unwrap(), gas)?,
+            chunk_headers_root: asc_new(heap, self.chunk_headers_root.as_ref().unwrap(), gas)?,
+            chunk_tx_root: asc_new(heap, self.chunk_tx_root.as_ref().unwrap(), gas)?,
+            outcome_root: asc_new(heap, self.outcome_root.as_ref().unwrap(), gas)?,
             chunks_included: self.chunks_included,
-            challenges_root: asc_new(store, heap, self.challenges_root.as_ref().unwrap(), gas)?,
+            challenges_root: asc_new(heap, self.challenges_root.as_ref().unwrap(), gas)?,
             timestamp_nanosec: self.timestamp_nanosec,
-            random_value: asc_new(store, heap, self.random_value.as_ref().unwrap(), gas)?,
-            validator_proposals: asc_new(store, heap, &self.validator_proposals, gas)?,
-            chunk_mask: AscPtr::alloc_obj(store, chunk_mask, heap, gas)?,
-            gas_price: asc_new(store, heap, self.gas_price.as_ref().unwrap(), gas)?,
+            random_value: asc_new(heap, self.random_value.as_ref().unwrap(), gas)?,
+            validator_proposals: asc_new(heap, &self.validator_proposals, gas)?,
+            chunk_mask: AscPtr::alloc_obj(chunk_mask, heap, gas)?,
+            gas_price: asc_new(heap, self.gas_price.as_ref().unwrap(), gas)?,
             block_ordinal: self.block_ordinal,
-            total_supply: asc_new(store, heap, self.total_supply.as_ref().unwrap(), gas)?,
-            challenges_result: asc_new(store, heap, &self.challenges_result, gas)?,
-            last_final_block: asc_new(store, heap, self.last_final_block.as_ref().unwrap(), gas)?,
-            last_ds_final_block: asc_new(
-                store,
-                heap,
-                self.last_ds_final_block.as_ref().unwrap(),
-                gas,
-            )?,
-            next_bp_hash: asc_new(store, heap, self.next_bp_hash.as_ref().unwrap(), gas)?,
-            block_merkle_root: asc_new(store, heap, self.block_merkle_root.as_ref().unwrap(), gas)?,
-            epoch_sync_data_hash: asc_new(store, heap, self.epoch_sync_data_hash.as_slice(), gas)?,
-            approvals: asc_new(store, heap, &self.approvals, gas)?,
-            signature: asc_new(store, heap, &self.signature.as_ref().unwrap(), gas)?,
+            total_supply: asc_new(heap, self.total_supply.as_ref().unwrap(), gas)?,
+            challenges_result: asc_new(heap, &self.challenges_result, gas)?,
+            last_final_block: asc_new(heap, self.last_final_block.as_ref().unwrap(), gas)?,
+            last_ds_final_block: asc_new(heap, self.last_ds_final_block.as_ref().unwrap(), gas)?,
+            next_bp_hash: asc_new(heap, self.next_bp_hash.as_ref().unwrap(), gas)?,
+            block_merkle_root: asc_new(heap, self.block_merkle_root.as_ref().unwrap(), gas)?,
+            epoch_sync_data_hash: asc_new(heap, self.epoch_sync_data_hash.as_slice(), gas)?,
+            approvals: asc_new(heap, &self.approvals, gas)?,
+            signature: asc_new(heap, &self.signature.as_ref().unwrap(), gas)?,
             latest_protocol_version: self.latest_protocol_version,
         })
     }
@@ -87,31 +66,25 @@ impl ToAscObj<AscBlockHeader> for codec::BlockHeader {
 impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscChunkHeader, HostExportError> {
         Ok(AscChunkHeader {
-            chunk_hash: asc_new(store, heap, self.chunk_hash.as_slice(), gas)?,
-            signature: asc_new(store, heap, &self.signature.as_ref().unwrap(), gas)?,
-            prev_block_hash: asc_new(store, heap, self.prev_block_hash.as_slice(), gas)?,
-            prev_state_root: asc_new(store, heap, self.prev_state_root.as_slice(), gas)?,
-            encoded_merkle_root: asc_new(store, heap, self.encoded_merkle_root.as_slice(), gas)?,
+            chunk_hash: asc_new(heap, self.chunk_hash.as_slice(), gas)?,
+            signature: asc_new(heap, &self.signature.as_ref().unwrap(), gas)?,
+            prev_block_hash: asc_new(heap, self.prev_block_hash.as_slice(), gas)?,
+            prev_state_root: asc_new(heap, self.prev_state_root.as_slice(), gas)?,
+            encoded_merkle_root: asc_new(heap, self.encoded_merkle_root.as_slice(), gas)?,
             encoded_length: self.encoded_length,
             height_created: self.height_created,
             height_included: self.height_included,
             shard_id: self.shard_id,
             gas_used: self.gas_used,
             gas_limit: self.gas_limit,
-            balance_burnt: asc_new(store, heap, self.balance_burnt.as_ref().unwrap(), gas)?,
-            outgoing_receipts_root: asc_new(
-                store,
-                heap,
-                self.outgoing_receipts_root.as_slice(),
-                gas,
-            )?,
-            tx_root: asc_new(store, heap, self.tx_root.as_slice(), gas)?,
-            validator_proposals: asc_new(store, heap, &self.validator_proposals, gas)?,
+            balance_burnt: asc_new(heap, self.balance_burnt.as_ref().unwrap(), gas)?,
+            outgoing_receipts_root: asc_new(heap, self.outgoing_receipts_root.as_slice(), gas)?,
+            tx_root: asc_new(heap, self.tx_root.as_slice(), gas)?,
+            validator_proposals: asc_new(heap, &self.validator_proposals, gas)?,
 
             _padding: 0,
         })
@@ -121,28 +94,25 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
 impl ToAscObj<AscChunkHeaderArray> for Vec<codec::ChunkHeader> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscChunkHeaderArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscChunkHeaderArray(Array::new(store, &content, heap, gas)?))
+        Ok(AscChunkHeaderArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<AscReceiptWithOutcome> for ReceiptWithOutcome {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscReceiptWithOutcome, HostExportError> {
         Ok(AscReceiptWithOutcome {
-            outcome: asc_new(store, heap, &self.outcome, gas)?,
-            receipt: asc_new(store, heap, &self.receipt, gas)?,
-            block: asc_new(store, heap, self.block.as_ref(), gas)?,
+            outcome: asc_new(heap, &self.outcome, gas)?,
+            receipt: asc_new(heap, &self.receipt, gas)?,
+            block: asc_new(heap, self.block.as_ref(), gas)?,
         })
     }
 }
@@ -150,7 +120,6 @@ impl ToAscObj<AscReceiptWithOutcome> for ReceiptWithOutcome {
 impl ToAscObj<AscActionReceipt> for codec::Receipt {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscActionReceipt, HostExportError> {
@@ -164,20 +133,15 @@ impl ToAscObj<AscActionReceipt> for codec::Receipt {
         };
 
         Ok(AscActionReceipt {
-            id: asc_new(store, heap, &self.receipt_id.as_ref().unwrap(), gas)?,
-            predecessor_id: asc_new(store, heap, &self.predecessor_id, gas)?,
-            receiver_id: asc_new(store, heap, &self.receiver_id, gas)?,
-            signer_id: asc_new(store, heap, &action.signer_id, gas)?,
-            signer_public_key: asc_new(
-                store,
-                heap,
-                action.signer_public_key.as_ref().unwrap(),
-                gas,
-            )?,
-            gas_price: asc_new(store, heap, action.gas_price.as_ref().unwrap(), gas)?,
-            output_data_receivers: asc_new(store, heap, &action.output_data_receivers, gas)?,
-            input_data_ids: asc_new(store, heap, &action.input_data_ids, gas)?,
-            actions: asc_new(store, heap, &action.actions, gas)?,
+            id: asc_new(heap, &self.receipt_id.as_ref().unwrap(), gas)?,
+            predecessor_id: asc_new(heap, &self.predecessor_id, gas)?,
+            receiver_id: asc_new(heap, &self.receiver_id, gas)?,
+            signer_id: asc_new(heap, &action.signer_id, gas)?,
+            signer_public_key: asc_new(heap, action.signer_public_key.as_ref().unwrap(), gas)?,
+            gas_price: asc_new(heap, action.gas_price.as_ref().unwrap(), gas)?,
+            output_data_receivers: asc_new(heap, &action.output_data_receivers, gas)?,
+            input_data_ids: asc_new(heap, &action.input_data_ids, gas)?,
+            actions: asc_new(heap, &action.actions, gas)?,
         })
     }
 }
@@ -185,42 +149,41 @@ impl ToAscObj<AscActionReceipt> for codec::Receipt {
 impl ToAscObj<AscActionEnum> for codec::Action {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscActionEnum, HostExportError> {
         let (kind, payload) = match self.action.as_ref().unwrap() {
             codec::action::Action::CreateAccount(action) => (
                 AscActionKind::CreateAccount,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::DeployContract(action) => (
                 AscActionKind::DeployContract,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::FunctionCall(action) => (
                 AscActionKind::FunctionCall,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::Transfer(action) => (
                 AscActionKind::Transfer,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::Stake(action) => (
                 AscActionKind::Stake,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::AddKey(action) => (
                 AscActionKind::AddKey,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::DeleteKey(action) => (
                 AscActionKind::DeleteKey,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
             codec::action::Action::DeleteAccount(action) => (
                 AscActionKind::DeleteAccount,
-                asc_new(store, heap, action, gas)?.to_payload(),
+                asc_new(heap, action, gas)?.to_payload(),
             ),
         };
 
@@ -235,21 +198,18 @@ impl ToAscObj<AscActionEnum> for codec::Action {
 impl ToAscObj<AscActionEnumArray> for Vec<codec::Action> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscActionEnumArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscActionEnumArray(Array::new(store, &content, heap, gas)?))
+        Ok(AscActionEnumArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<AscCreateAccountAction> for codec::CreateAccountAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscCreateAccountAction, HostExportError> {
@@ -260,12 +220,11 @@ impl ToAscObj<AscCreateAccountAction> for codec::CreateAccountAction {
 impl ToAscObj<AscDeployContractAction> for codec::DeployContractAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscDeployContractAction, HostExportError> {
         Ok(AscDeployContractAction {
-            code: asc_new(store, heap, self.code.as_slice(), gas)?,
+            code: asc_new(heap, self.code.as_slice(), gas)?,
         })
     }
 }
@@ -273,15 +232,14 @@ impl ToAscObj<AscDeployContractAction> for codec::DeployContractAction {
 impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscFunctionCallAction, HostExportError> {
         Ok(AscFunctionCallAction {
-            method_name: asc_new(store, heap, &self.method_name, gas)?,
-            args: asc_new(store, heap, self.args.as_slice(), gas)?,
+            method_name: asc_new(heap, &self.method_name, gas)?,
+            args: asc_new(heap, self.args.as_slice(), gas)?,
             gas: self.gas,
-            deposit: asc_new(store, heap, self.deposit.as_ref().unwrap(), gas)?,
+            deposit: asc_new(heap, self.deposit.as_ref().unwrap(), gas)?,
             _padding: 0,
         })
     }
@@ -290,12 +248,11 @@ impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
 impl ToAscObj<AscTransferAction> for codec::TransferAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscTransferAction, HostExportError> {
         Ok(AscTransferAction {
-            deposit: asc_new(store, heap, self.deposit.as_ref().unwrap(), gas)?,
+            deposit: asc_new(heap, self.deposit.as_ref().unwrap(), gas)?,
         })
     }
 }
@@ -303,13 +260,12 @@ impl ToAscObj<AscTransferAction> for codec::TransferAction {
 impl ToAscObj<AscStakeAction> for codec::StakeAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscStakeAction, HostExportError> {
         Ok(AscStakeAction {
-            stake: asc_new(store, heap, self.stake.as_ref().unwrap(), gas)?,
-            public_key: asc_new(store, heap, self.public_key.as_ref().unwrap(), gas)?,
+            stake: asc_new(heap, self.stake.as_ref().unwrap(), gas)?,
+            public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
         })
     }
 }
@@ -317,13 +273,12 @@ impl ToAscObj<AscStakeAction> for codec::StakeAction {
 impl ToAscObj<AscAddKeyAction> for codec::AddKeyAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscAddKeyAction, HostExportError> {
         Ok(AscAddKeyAction {
-            public_key: asc_new(store, heap, self.public_key.as_ref().unwrap(), gas)?,
-            access_key: asc_new(store, heap, self.access_key.as_ref().unwrap(), gas)?,
+            public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
+            access_key: asc_new(heap, self.access_key.as_ref().unwrap(), gas)?,
         })
     }
 }
@@ -331,13 +286,12 @@ impl ToAscObj<AscAddKeyAction> for codec::AddKeyAction {
 impl ToAscObj<AscAccessKey> for codec::AccessKey {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscAccessKey, HostExportError> {
         Ok(AscAccessKey {
             nonce: self.nonce,
-            permission: asc_new(store, heap, self.permission.as_ref().unwrap(), gas)?,
+            permission: asc_new(heap, self.permission.as_ref().unwrap(), gas)?,
             _padding: 0,
         })
     }
@@ -346,18 +300,17 @@ impl ToAscObj<AscAccessKey> for codec::AccessKey {
 impl ToAscObj<AscAccessKeyPermissionEnum> for codec::AccessKeyPermission {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscAccessKeyPermissionEnum, HostExportError> {
         let (kind, payload) = match self.permission.as_ref().unwrap() {
             codec::access_key_permission::Permission::FunctionCall(permission) => (
                 AscAccessKeyPermissionKind::FunctionCall,
-                asc_new(store, heap, permission, gas)?.to_payload(),
+                asc_new(heap, permission, gas)?.to_payload(),
             ),
             codec::access_key_permission::Permission::FullAccess(permission) => (
                 AscAccessKeyPermissionKind::FullAccess,
-                asc_new(store, heap, permission, gas)?.to_payload(),
+                asc_new(heap, permission, gas)?.to_payload(),
             ),
         };
 
@@ -372,18 +325,17 @@ impl ToAscObj<AscAccessKeyPermissionEnum> for codec::AccessKeyPermission {
 impl ToAscObj<AscFunctionCallPermission> for codec::FunctionCallPermission {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscFunctionCallPermission, HostExportError> {
         Ok(AscFunctionCallPermission {
             // The `allowance` field is one of the few fields that can actually be None for real
             allowance: match self.allowance.as_ref() {
-                Some(allowance) => asc_new(store, heap, allowance, gas)?,
+                Some(allowance) => asc_new(heap, allowance, gas)?,
                 None => AscPtr::null(),
             },
-            receiver_id: asc_new(store, heap, &self.receiver_id, gas)?,
-            method_names: asc_new(store, heap, &self.method_names, gas)?,
+            receiver_id: asc_new(heap, &self.receiver_id, gas)?,
+            method_names: asc_new(heap, &self.method_names, gas)?,
         })
     }
 }
@@ -391,7 +343,6 @@ impl ToAscObj<AscFunctionCallPermission> for codec::FunctionCallPermission {
 impl ToAscObj<AscFullAccessPermission> for codec::FullAccessPermission {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscFullAccessPermission, HostExportError> {
@@ -402,12 +353,11 @@ impl ToAscObj<AscFullAccessPermission> for codec::FullAccessPermission {
 impl ToAscObj<AscDeleteKeyAction> for codec::DeleteKeyAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscDeleteKeyAction, HostExportError> {
         Ok(AscDeleteKeyAction {
-            public_key: asc_new(store, heap, self.public_key.as_ref().unwrap(), gas)?,
+            public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
         })
     }
 }
@@ -415,12 +365,11 @@ impl ToAscObj<AscDeleteKeyAction> for codec::DeleteKeyAction {
 impl ToAscObj<AscDeleteAccountAction> for codec::DeleteAccountAction {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscDeleteAccountAction, HostExportError> {
         Ok(AscDeleteAccountAction {
-            beneficiary_id: asc_new(store, heap, &self.beneficiary_id, gas)?,
+            beneficiary_id: asc_new(heap, &self.beneficiary_id, gas)?,
         })
     }
 }
@@ -428,13 +377,12 @@ impl ToAscObj<AscDeleteAccountAction> for codec::DeleteAccountAction {
 impl ToAscObj<AscDataReceiver> for codec::DataReceiver {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscDataReceiver, HostExportError> {
         Ok(AscDataReceiver {
-            data_id: asc_new(store, heap, self.data_id.as_ref().unwrap(), gas)?,
-            receiver_id: asc_new(store, heap, &self.receiver_id, gas)?,
+            data_id: asc_new(heap, self.data_id.as_ref().unwrap(), gas)?,
+            receiver_id: asc_new(heap, &self.receiver_id, gas)?,
         })
     }
 }
@@ -442,38 +390,33 @@ impl ToAscObj<AscDataReceiver> for codec::DataReceiver {
 impl ToAscObj<AscDataReceiverArray> for Vec<codec::DataReceiver> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscDataReceiverArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscDataReceiverArray(Array::new(
-            store, &content, heap, gas,
-        )?))
+        Ok(AscDataReceiverArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<AscExecutionOutcome> for codec::ExecutionOutcomeWithId {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscExecutionOutcome, HostExportError> {
         let outcome = self.outcome.as_ref().unwrap();
 
         Ok(AscExecutionOutcome {
-            proof: asc_new(store, heap, &self.proof.as_ref().unwrap().path, gas)?,
-            block_hash: asc_new(store, heap, self.block_hash.as_ref().unwrap(), gas)?,
-            id: asc_new(store, heap, self.id.as_ref().unwrap(), gas)?,
-            logs: asc_new(store, heap, &outcome.logs, gas)?,
-            receipt_ids: asc_new(store, heap, &outcome.receipt_ids, gas)?,
+            proof: asc_new(heap, &self.proof.as_ref().unwrap().path, gas)?,
+            block_hash: asc_new(heap, self.block_hash.as_ref().unwrap(), gas)?,
+            id: asc_new(heap, self.id.as_ref().unwrap(), gas)?,
+            logs: asc_new(heap, &outcome.logs, gas)?,
+            receipt_ids: asc_new(heap, &outcome.receipt_ids, gas)?,
             gas_burnt: outcome.gas_burnt,
-            tokens_burnt: asc_new(store, heap, outcome.tokens_burnt.as_ref().unwrap(), gas)?,
-            executor_id: asc_new(store, heap, &outcome.executor_id, gas)?,
-            status: asc_new(store, heap, outcome.status.as_ref().unwrap(), gas)?,
+            tokens_burnt: asc_new(heap, outcome.tokens_burnt.as_ref().unwrap(), gas)?,
+            executor_id: asc_new(heap, &outcome.executor_id, gas)?,
+            status: asc_new(heap, outcome.status.as_ref().unwrap(), gas)?,
         })
     }
 }
@@ -481,7 +424,6 @@ impl ToAscObj<AscExecutionOutcome> for codec::ExecutionOutcomeWithId {
 impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscSuccessStatusEnum, HostExportError> {
@@ -491,12 +433,12 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
 
                 (
                     AscSuccessStatusKind::Value,
-                    asc_new(store, heap, bytes.as_slice(), gas)?.to_payload(),
+                    asc_new(heap, bytes.as_slice(), gas)?.to_payload(),
                 )
             }
             codec::execution_outcome::Status::SuccessReceiptId(receipt_id) => (
                 AscSuccessStatusKind::ReceiptId,
-                asc_new(store, heap, receipt_id.id.as_ref().unwrap(), gas)?.to_payload(),
+                asc_new(heap, receipt_id.id.as_ref().unwrap(), gas)?.to_payload(),
             ),
             codec::execution_outcome::Status::Failure(_) => {
                 return Err(DeterministicHostError::from(anyhow!(
@@ -523,12 +465,11 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
 impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscMerklePathItem, HostExportError> {
         Ok(AscMerklePathItem {
-            hash: asc_new(store, heap, self.hash.as_ref().unwrap(), gas)?,
+            hash: asc_new(heap, self.hash.as_ref().unwrap(), gas)?,
             direction: match self.direction {
                 0 => AscDirection::Left,
                 1 => AscDirection::Right,
@@ -547,23 +488,18 @@ impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
 impl ToAscObj<AscMerklePathItemArray> for Vec<codec::MerklePathItem> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscMerklePathItemArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscMerklePathItemArray(Array::new(
-            store, &content, heap, gas,
-        )?))
+        Ok(AscMerklePathItemArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<AscSignature> for codec::Signature {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscSignature, HostExportError> {
@@ -579,7 +515,7 @@ impl ToAscObj<AscSignature> for codec::Signature {
                     .into())
                 }
             },
-            bytes: asc_new(store, heap, self.bytes.as_slice(), gas)?,
+            bytes: asc_new(heap, self.bytes.as_slice(), gas)?,
         })
     }
 }
@@ -587,21 +523,18 @@ impl ToAscObj<AscSignature> for codec::Signature {
 impl ToAscObj<AscSignatureArray> for Vec<codec::Signature> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscSignatureArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscSignatureArray(Array::new(store, &content, heap, gas)?))
+        Ok(AscSignatureArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<AscPublicKey> for codec::PublicKey {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPublicKey, HostExportError> {
@@ -617,7 +550,7 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
                     .into())
                 }
             },
-            bytes: asc_new(store, heap, self.bytes.as_slice(), gas)?,
+            bytes: asc_new(heap, self.bytes.as_slice(), gas)?,
         })
     }
 }
@@ -625,14 +558,13 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
 impl ToAscObj<AscValidatorStake> for codec::ValidatorStake {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscValidatorStake, HostExportError> {
         Ok(AscValidatorStake {
-            account_id: asc_new(store, heap, &self.account_id, gas)?,
-            public_key: asc_new(store, heap, self.public_key.as_ref().unwrap(), gas)?,
-            stake: asc_new(store, heap, self.stake.as_ref().unwrap(), gas)?,
+            account_id: asc_new(heap, &self.account_id, gas)?,
+            public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
+            stake: asc_new(heap, self.stake.as_ref().unwrap(), gas)?,
         })
     }
 }
@@ -640,28 +572,23 @@ impl ToAscObj<AscValidatorStake> for codec::ValidatorStake {
 impl ToAscObj<AscValidatorStakeArray> for Vec<codec::ValidatorStake> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscValidatorStakeArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscValidatorStakeArray(Array::new(
-            store, &content, heap, gas,
-        )?))
+        Ok(AscValidatorStakeArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<AscSlashedValidator> for codec::SlashedValidator {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscSlashedValidator, HostExportError> {
         Ok(AscSlashedValidator {
-            account_id: asc_new(store, heap, &self.account_id, gas)?,
+            account_id: asc_new(heap, &self.account_id, gas)?,
             is_double_sign: self.is_double_sign,
         })
     }
@@ -670,54 +597,46 @@ impl ToAscObj<AscSlashedValidator> for codec::SlashedValidator {
 impl ToAscObj<AscSlashedValidatorArray> for Vec<codec::SlashedValidator> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscSlashedValidatorArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscSlashedValidatorArray(Array::new(
-            store, &content, heap, gas,
-        )?))
+        Ok(AscSlashedValidatorArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<Uint8Array> for codec::CryptoHash {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscCryptoHash, HostExportError> {
-        self.bytes.to_asc_obj(store, heap, gas)
+        self.bytes.to_asc_obj(heap, gas)
     }
 }
 
 impl ToAscObj<AscCryptoHashArray> for Vec<codec::CryptoHash> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscCryptoHashArray, HostExportError> {
-        let content: Result<Vec<_>, _> =
-            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscCryptoHashArray(Array::new(store, &content, heap, gas)?))
+        Ok(AscCryptoHashArray(Array::new(&content, heap, gas)?))
     }
 }
 
 impl ToAscObj<Uint8Array> for codec::BigInt {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Uint8Array, HostExportError> {
         // Bytes are reversed to align with BigInt bytes endianess
         let reversed: Vec<u8> = self.bytes.iter().rev().copied().collect();
 
-        reversed.to_asc_obj(store, heap, gas)
+        reversed.to_asc_obj(heap, gas)
     }
 }

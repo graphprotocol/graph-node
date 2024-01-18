@@ -1,13 +1,13 @@
-use crate::blockchain::{Blockchain, HostFn};
-use crate::components::store::SubgraphFork;
-use crate::components::subgraph::{MappingError, SharedProofOfIndexing};
-use crate::data_source::{MappingTrigger, TriggerWithHandler};
-use crate::prelude::*;
-use crate::runtime::gas::Gas;
-use crate::runtime::wasm::gas_rules::GasRules;
-use crate::runtime::wasm::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
+use crate::gas_rules::GasRules;
+use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
+use graph::blockchain::{Blockchain, HostFn};
+use graph::components::store::SubgraphFork;
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::{MappingTrigger, TriggerWithHandler};
+use graph::prelude::*;
+use graph::runtime::gas::Gas;
 use parity_wasm::elements::ExportEntry;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
@@ -196,7 +196,7 @@ pub struct BlockRequest {
 
 pub struct MappingContext {
     pub logger: Logger,
-    pub host_exports: Arc<crate::runtime::wasm::host_exports::HostExports>,
+    pub host_exports: Arc<crate::host_exports::HostExports>,
     pub block_ptr: BlockPtr,
     pub timestamp: BlockTime,
     pub state: BlockState,

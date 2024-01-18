@@ -25,7 +25,7 @@ use crate::{
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
     data_source::{self, DataSourceTemplateInfo},
     prelude::DataSourceContext,
-    runtime::{gas::GasCounter, HostExportError, WasmInstanceContext},
+    runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
     components::store::{BlockNumber, ChainStore},
@@ -43,7 +43,6 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use wasmtime::StoreContextMut;
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
@@ -370,9 +369,10 @@ pub trait MappingTriggerTrait {
     fn error_context(&self) -> String;
 }
 
-pub struct HostFnCtx {
+pub struct HostFnCtx<'a> {
     pub logger: Logger,
     pub block_ptr: BlockPtr,
+    pub heap: &'a mut dyn AscHeap,
     pub gas: GasCounter,
     pub metrics: Arc<HostMetrics>,
 }
@@ -382,15 +382,7 @@ pub struct HostFnCtx {
 #[derive(Clone)]
 pub struct HostFn {
     pub name: &'static str,
-    pub func: Arc<
-        dyn Send
-            + Sync
-            + Fn(
-                HostFnCtx,
-                &mut StoreContextMut<WasmInstanceContext>,
-                u32,
-            ) -> Result<u32, HostExportError>,
-    >,
+    pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
 }
 
 impl CheapClone for HostFn {

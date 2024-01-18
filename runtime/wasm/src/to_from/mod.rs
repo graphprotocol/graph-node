@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
-use crate::{
+use graph::{
     data::value::Word,
     runtime::{
         asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-use crate::runtime::asc_abi::class::*;
+use crate::asc_abi::class::*;
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
 ///! Standard Rust types go in `mod.rs` and external types in `external.rs`.

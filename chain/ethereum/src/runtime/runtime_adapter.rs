@@ -15,9 +15,7 @@ use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
-use graph::runtime::wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
-use graph::runtime::{AscHeap, AscIndexId, IndexForAscTypeId, WasmInstanceContext};
-use graph::wasmtime::{AsContext, StoreContextMut};
+use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
@@ -82,14 +80,13 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
 
         let ethereum_call = HostFn {
             name: "ethereum.call",
-            func: Arc::new(move |ctx, store, wasm_ptr| {
+            func: Arc::new(move |ctx, wasm_ptr| {
                 // Ethereum calls should prioritise call-only adapters if one is available.
                 let eth_adapter = eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
                     archive,
                     traces: false,
                 }))?;
                 ethereum_call(
-                    store,
                     &eth_adapter,
                     call_cache.cheap_clone(),
                     ctx,
@@ -119,7 +116,6 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
 
 /// function ethereum.call(call: SmartContractCall): Array<Token> | null
 fn ethereum_call(
-    store: &mut StoreContextMut<WasmInstanceContext>,
     eth_adapter: &EthereumAdapter,
     call_cache: Arc<dyn EthereumCallCache>,
     ctx: HostFnCtx,
@@ -129,32 +125,14 @@ fn ethereum_call(
 ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
     ctx.gas
         .consume_host_fn_with_metrics(ETHEREUM_CALL, "ethereum_call")?;
-    let wasm_ctx = store.data().clone();
 
     // For apiVersion >= 0.0.4 the call passed from the mapping includes the
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
     // the signature along with the call.
-    let call: UnresolvedContractCall = if wasm_ctx
-        .as_ref()
-        .asc_heap_ref()
-        .api_version(&store.as_context())
-        >= Version::new(0, 0, 4)
-    {
-        asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(
-            &store.as_context(),
-            wasm_ctx.as_ref().asc_heap_ref(),
-            wasm_ptr.into(),
-            &ctx.gas,
-            0,
-        )?
+    let call: UnresolvedContractCall = if ctx.heap.api_version() >= Version::new(0, 0, 4) {
+        asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
     } else {
-        asc_get::<_, AscUnresolvedContractCall, _>(
-            &store.as_context(),
-            wasm_ctx.as_ref().asc_heap_ref(),
-            wasm_ptr.into(),
-            &ctx.gas,
-            0,
-        )?
+        asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
     };
 
     let result = eth_call(
@@ -168,12 +146,7 @@ fn ethereum_call(
         ctx.metrics.cheap_clone(),
     )?;
     match result {
-        Some(tokens) => Ok(asc_new(
-            store,
-            wasm_ctx.as_mut().asc_heap_mut(),
-            tokens.as_slice(),
-            &ctx.gas,
-        )?),
+        Some(tokens) => Ok(asc_new(ctx.heap, tokens.as_slice(), &ctx.gas)?),
         None => Ok(AscPtr::null()),
     }
 }

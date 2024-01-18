@@ -139,7 +139,7 @@ impl<C: AscType> AscPtr<C> {
     /// - rt_size: u32 -> content size
     /// Only used for version >= 0.0.5.
     fn generate_header<H: AscHeap + ?Sized>(
-        heap: &H,
+        heap: &mut H,
         type_id_index: IndexForAscTypeId,
         content_length: usize,
         full_length: usize,

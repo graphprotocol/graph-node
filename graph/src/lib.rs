@@ -57,7 +57,6 @@ pub use tokio;
 pub use tokio_retry;
 pub use tokio_stream;
 pub use url;
-pub use wasmtime;
 
 /// A prelude that makes all system component traits and data types available.
 ///
@@ -155,7 +154,6 @@ pub mod prelude {
     pub use crate::data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryTarget, QueryVariables,
     };
-    pub use crate::data::store::ethereum::*;
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
         AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, Value, ValueType,
@@ -170,6 +168,7 @@ pub mod prelude {
     pub use crate::data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
+    pub use crate::data_source::DataSourceTemplateInfo;
     pub use crate::ext::futures::{
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,

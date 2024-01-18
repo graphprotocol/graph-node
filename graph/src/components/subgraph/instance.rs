@@ -38,6 +38,13 @@ impl InstanceDSTemplate {
         }
     }
 
+    pub fn into_onchain(self) -> Option<DataSourceTemplateInfo> {
+        match self {
+            Self::Onchain(ds) => Some(ds),
+            Self::Offchain(_) => None,
+        }
+    }
+
     pub fn manifest_idx(&self) -> Option<u32> {
         match self {
             InstanceDSTemplate::Onchain(info) => info.manifest_idx,

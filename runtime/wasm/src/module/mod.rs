@@ -1,18 +1,19 @@
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
-use crate::blockchain::Blockchain;
-use crate::util::mem::init_slice;
 use anyhow::anyhow;
 use anyhow::Error;
+use graph::blockchain::Blockchain;
+use graph::util::mem::init_slice;
 use semver::Version;
-use wasmtime::StoreContextMut;
-use wasmtime::{AsContextMut, Memory};
+use wasmtime::AsContext;
+use wasmtime::AsContextMut;
+use wasmtime::Memory;
 
-use crate::data_source::{offchain, MappingTrigger, TriggerWithHandler};
-use crate::prelude::*;
-use crate::runtime::AscPtr;
-use crate::runtime::{
+use graph::data_source::{offchain, MappingTrigger, TriggerWithHandler};
+use graph::prelude::*;
+use graph::runtime::AscPtr;
+use graph::runtime::{
     asc_new,
     gas::{Gas, GasCounter},
     AscHeap, AscIndexId, AscType, DeterministicHostError, FromAscObj, HostExportError,
@@ -21,9 +22,9 @@ use crate::runtime::{
 pub use into_wasm_ret::IntoWasmRet;
 pub use stopwatch::TimeoutStopwatch;
 
-use crate::runtime::error::DeterminismLevel;
-pub use crate::runtime::host_exports;
-use crate::runtime::wasm::gas_rules::{GAS_COST_LOAD, GAS_COST_STORE};
+use crate::error::DeterminismLevel;
+use crate::gas_rules::{GAS_COST_LOAD, GAS_COST_STORE};
+pub use crate::host_exports;
 
 pub use context::*;
 pub use instance::*;
@@ -42,7 +43,7 @@ where
     C: AscType + AscIndexId,
     T: FromAscObj<C>,
 {
-    crate::runtime::asc_get(heap, ptr, gas, 0)
+    graph::runtime::asc_get(heap, ptr, gas, 0)
 }
 
 pub trait IntoTrap {
@@ -151,34 +152,34 @@ pub struct AscHeapCtx {
 }
 
 impl AscHeapCtx {
-    pub fn new(
+    pub(crate) fn new(
         instance: &wasmtime::Instance,
-        store: &mut StoreContextMut<WasmInstanceContext>,
+        ctx: &mut WasmInstanceContext<'_>,
         api_version: Version,
     ) -> anyhow::Result<AscHeapCtx> {
         // Provide access to the WASM runtime linear memory
         let memory = instance
-            .get_memory(store.as_context_mut(), "memory")
+            .get_memory(ctx.as_context_mut(), "memory")
             .context("Failed to find memory export in the WASM module")?;
 
         let memory_allocate = match &api_version {
             version if *version <= Version::new(0, 0, 4) => instance
-                .get_func(store.as_context_mut(), "memory.allocate")
+                .get_func(ctx.as_context_mut(), "memory.allocate")
                 .context("`memory.allocate` function not found"),
             _ => instance
-                .get_func(store.as_context_mut(), "allocate")
+                .get_func(ctx.as_context_mut(), "allocate")
                 .context("`allocate` function not found"),
         }?
-        .typed(store.as_context_mut())?
+        .typed(ctx.as_context())?
         .clone();
 
         let id_of_type = match &api_version {
             version if *version <= Version::new(0, 0, 4) => None,
             _ => Some(
                 instance
-                    .get_func(store.as_context_mut(), "id_of_type")
+                    .get_func(ctx.as_context_mut(), "id_of_type")
                     .context("`id_of_type` function not found")?
-                    .typed(store.as_context_mut())?
+                    .typed(ctx)?
                     .clone(),
             ),
         };
@@ -227,10 +228,12 @@ impl AscHeap for WasmInstanceContext<'_> {
             // fails. This error is not deterministic since it depends on the operating conditions
             // of the node.
             let memory_allocate = self.asc_heap_ref().memory_allocate;
-            self.arena_start_ptr = memory_allocate.call(self, arena_size).unwrap();
-            self.arena_free_size = arena_size;
+            self.asc_heap_mut().arena_start_ptr = memory_allocate
+                .call(self.as_context_mut(), arena_size)
+                .unwrap();
+            self.asc_heap_mut().arena_free_size = arena_size;
 
-            match &self.api_version {
+            match &self.asc_heap_ref().api_version {
                 version if *version <= Version::new(0, 0, 4) => {}
                 _ => {
                     // This arithmetic is done because when you call AssemblyScripts's `__alloc`
@@ -239,18 +242,19 @@ impl AscHeap for WasmInstanceContext<'_> {
                     // `mmInfo` has size of 4, and everything allocated on AssemblyScript memory
                     // should have alignment of 16, this means we need to do a 12 offset on these
                     // big chunks of untyped allocation.
-                    self.arena_start_ptr += 12;
-                    self.arena_free_size -= 12;
+                    self.asc_heap_mut().arena_start_ptr += 12;
+                    self.asc_heap_mut().arena_free_size -= 12;
                 }
             };
         };
 
-        let ptr = self.arena_start_ptr as usize;
+        let ptr = self.asc_heap_ref().arena_start_ptr as usize;
 
         // Unwrap: We have just allocated enough space for `bytes`.
-        self.memory.write(self, ptr, bytes).unwrap();
-        self.arena_start_ptr += size;
-        self.arena_free_size -= size;
+        let memory = self.asc_heap_ref().memory;
+        memory.write(self.as_context_mut(), ptr, bytes).unwrap();
+        self.asc_heap_mut().arena_start_ptr += size;
+        self.asc_heap_mut().arena_free_size -= size;
 
         Ok(ptr as u32)
     }
@@ -258,7 +262,8 @@ impl AscHeap for WasmInstanceContext<'_> {
     fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         gas.consume_host_fn_with_metrics(Gas::new(GAS_COST_LOAD as u64 * 4), "read_u32")?;
         let mut bytes = [0; 4];
-        self.memory
+        self.asc_heap_ref()
+            .memory
             .read(self, offset as usize, &mut bytes)
             .map_err(|_| {
                 DeterministicHostError::from(anyhow!(
@@ -287,6 +292,7 @@ impl AscHeap for WasmInstanceContext<'_> {
 
         // TODO: Do we still need this? Can we use read directly?
         let src = self
+            .asc_heap_ref()
             .memory
             .data(self)
             .get(offset..)
@@ -301,14 +307,14 @@ impl AscHeap for WasmInstanceContext<'_> {
     }
 
     fn api_version(&self) -> Version {
-        self.api_version.clone()
+        self.asc_heap_ref().api_version.clone()
     }
 
-    fn asc_type_id(&self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
-        self.id_of_type
-            .as_ref()
-            .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
-            .call(self, type_id_index as u32)
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
+        let func = self.asc_heap_ref().id_of_type.unwrap();
+
+        // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
+        func.call(self.as_context_mut(), type_id_index as u32)
             .map_err(|trap| {
                 host_export_error_from_trap(
                     trap,
