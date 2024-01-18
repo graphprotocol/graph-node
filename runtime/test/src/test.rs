@@ -5,16 +5,16 @@ use graph::data::subgraph::*;
 use graph::data::value::Word;
 use graph::prelude::web3::types::U256;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
-use graph::runtime::wasm::{
-    host_exports, ExperimentalFeatures, MappingContext, ValidModule, WasmInstance,
-};
 use graph::runtime::{AscIndexId, AscType, HostExportError};
 use graph::runtime::{AscPtr, ToAscObj};
 use graph::schema::{EntityType, InputSchema};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph::{entity, prelude::*};
 use graph_chain_ethereum::DataSource;
+use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
+use graph_runtime_wasm::{
+    host_exports, ExperimentalFeatures, MappingContext, ValidModule, WasmInstance,
+};
 
 use semver::Version;
 use std::borrow::Cow;
@@ -954,14 +954,17 @@ async fn run_data_source_create(
     )
     .await;
 
-    let ctx = instance.store.data().clone();
-    ctx.as_mut().ctx.state.enter_handler();
+    instance.store.data_mut().ctx.state.enter_handler();
     instance.invoke_export2_void("dataSourceCreate", &name, &params)?;
-    ctx.as_mut().ctx.state.exit_handler();
+    instance.store.data_mut().ctx.state.exit_handler();
 
     assert_eq!(instance.gas_used(), gas_used);
 
-    Ok(ctx.take_state().drain_created_data_sources())
+    Ok(instance
+        .store
+        .into_data()
+        .take_state()
+        .drain_created_data_sources())
 }
 
 #[tokio::test]
@@ -1067,9 +1070,9 @@ async fn test_entity_store(api_version: Version) {
         .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await
         .unwrap();
-    let ctx = instance.store.data().clone();
+    let ctx = instance.store.data_mut();
     let cache = std::mem::replace(
-        &mut ctx.as_mut().ctx.state.entity_cache,
+        &mut ctx.ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),
     );
     let mut mods = cache.as_modifications(0).unwrap().modifications;

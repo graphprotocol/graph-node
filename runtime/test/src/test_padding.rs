@@ -76,7 +76,7 @@ pub mod data {
     #[repr(C)]
     pub struct AscBad {
         pub nonce: u64,
-        pub str_suff: graph::runtime::AscPtr<graph::runtime::asc_abi::class::AscString>,
+        pub str_suff: AscPtr<AscString>,
         pub tail: u64,
     }
 
@@ -110,23 +110,22 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
+    use graph::runtime::HostExportError;
     pub use graph::runtime::{
         asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
         DeterministicHostError, IndexForAscTypeId, ToAscObj,
     };
-    use graph::runtime::{HostExportError, WasmInstanceContext};
-    use wasmtime::StoreContextMut;
+    use graph_runtime_wasm::asc_abi::class::AscString;
 
     impl ToAscObj<AscBad> for Bad {
         fn to_asc_obj<H: AscHeap + ?Sized>(
             &self,
-            mut store: &mut StoreContextMut<WasmInstanceContext>,
             heap: &mut H,
             gas: &GasCounter,
         ) -> Result<AscBad, HostExportError> {
             Ok(AscBad {
                 nonce: self.nonce,
-                str_suff: asc_new(&mut store, heap, &self.str_suff, gas)?,
+                str_suff: asc_new(heap, &self.str_suff, gas)?,
                 tail: self.tail,
             })
         }
@@ -140,7 +139,7 @@ pub mod data {
     #[repr(C)]
     pub struct AscBadFixed {
         pub nonce: u64,
-        pub str_suff: graph::runtime::AscPtr<graph::runtime::asc_abi::class::AscString>,
+        pub str_suff: graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>,
         pub _padding: u32,
         pub tail: u64,
     }
@@ -180,13 +179,12 @@ pub mod data {
     impl ToAscObj<AscBadFixed> for BadFixed {
         fn to_asc_obj<H: AscHeap + ?Sized>(
             &self,
-            mut store: &mut StoreContextMut<'_, WasmInstanceContext>,
             heap: &mut H,
             gas: &GasCounter,
         ) -> Result<AscBadFixed, HostExportError> {
             Ok(AscBadFixed {
                 nonce: self.nonce,
-                str_suff: asc_new(&mut store, heap, &self.str_suff, gas)?,
+                str_suff: asc_new(heap, &self.str_suff, gas)?,
                 _padding: 0,
                 tail: self.tail,
             })

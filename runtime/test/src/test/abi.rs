@@ -1,5 +1,5 @@
 use graph::prelude::{ethabi::Token, web3::types::U256};
-use graph::runtime::wasm::asc_abi::class::{
+use graph_runtime_wasm::asc_abi::class::{
     ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
 };
 

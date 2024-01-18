@@ -7,11 +7,11 @@ use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
 use graph::prelude::*;
-use graph::runtime::host_exports::DataSourceDetails;
-use graph::runtime::{HostExports, MappingContext};
 use graph_chain_ethereum::{
     Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
 };
+use graph_runtime_wasm::host_exports::DataSourceDetails;
+use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::env;
 use std::str::FromStr;

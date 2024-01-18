@@ -38,24 +38,34 @@ pub struct WasmInstance {
     pub gas: GasCounter,
 }
 
-impl WasmInstance {
-    // pub fn asc_get<T, P>(&self, asc_ptr: AscPtr<P>) -> Result<T, DeterministicHostError>
-    // where
-    //     P: AscType + AscIndexId,
-    //     T: FromAscObj<P>,
-    // {
-    //     asc_get(&self.store.as_context(), asc_ptr, &self.gas)
-    // }
+#[cfg(debug_assertions)]
+mod impl_for_tests {
+    use graph::runtime::{
+        asc_new, AscIndexId, AscPtr, AscType, DeterministicHostError, FromAscObj, HostExportError,
+        ToAscObj,
+    };
 
-    // pub fn asc_new<P, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
-    // where
-    //     P: AscType + AscIndexId,
-    //     T: ToAscObj<P>,
-    // {
-    //     let ctx = self.store.data().clone();
+    use crate::module::{asc_get, WasmInstanceContext};
 
-    //     asc_new(ctx.as_mut().asc_heap_mut(), rust_obj, &self.gas)
-    // }
+    impl super::WasmInstance {
+        pub fn asc_get<T, P>(&mut self, asc_ptr: AscPtr<P>) -> Result<T, DeterministicHostError>
+        where
+            P: AscType + AscIndexId,
+            T: FromAscObj<P>,
+        {
+            let ctx = WasmInstanceContext::new(&mut self.store);
+            asc_get(&ctx, asc_ptr, &self.gas)
+        }
+
+        pub fn asc_new<P, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
+        where
+            P: AscType + AscIndexId,
+            T: ToAscObj<P>,
+        {
+            let mut ctx = WasmInstanceContext::new(&mut self.store);
+            asc_new(&mut ctx, rust_obj, &self.gas)
+        }
+    }
 }
 
 impl WasmInstance {
