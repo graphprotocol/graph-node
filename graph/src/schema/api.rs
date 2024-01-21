@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
+use graphql_parser::schema::InputValue;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use thiserror::Error;
@@ -18,7 +19,7 @@ use crate::data::graphql::ext::{
 };
 use crate::prelude::{q, r, s, DeploymentHash};
 
-use super::{Field, InputSchema, Schema};
+use super::{Aggregation, Field, InputSchema, Schema, TypeKind};
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {
@@ -357,6 +358,7 @@ pub(in crate::schema) fn api_schema(
     add_meta_field_type(&mut api.document);
     add_types_for_object_types(&mut api, input_schema)?;
     add_types_for_interface_types(&mut api, input_schema)?;
+    add_types_for_aggregation_types(&mut api, input_schema)?;
     add_query_type(&mut api.document, input_schema)?;
     add_subscription_type(&mut api.document, input_schema)?;
     Ok(api.document)
@@ -374,23 +376,15 @@ fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError>
     /// allow e.g. filtering and ordering the collections. The `fields` should
     /// be the fields of an object or interface type
     fn add_collection_arguments(fields: &mut [s::Field], input_schema: &InputSchema) {
-        let document = &input_schema.schema().document;
-        for field in fields
-            .iter_mut()
-            .filter(|field| ast::is_list_or_non_null_list_field(field))
-        {
-            if let Some(input_reference_type) = ast::get_referenced_entity_type(document, field) {
-                match input_reference_type {
-                    s::TypeDefinition::Object(ot) => {
-                        field.arguments = collection_arguments_for_named_type(&ot.name);
-                    }
-                    s::TypeDefinition::Interface(it) => {
-                        field.arguments = collection_arguments_for_named_type(&it.name);
-                    }
-                    _ => unreachable!(
-                        "referenced entity types can only be object or interface types"
-                    ),
-                }
+        for field in fields.iter_mut().filter(|field| field.field_type.is_list()) {
+            let field_type = field.field_type.get_base_type();
+            // `field_type`` could be an enum or scalar, in which case
+            // `type_kind_str` will return `None``
+            if let Some(ops) = input_schema
+                .type_kind_str(field_type)
+                .map(FilterOps::for_kind)
+            {
+                field.arguments = ops.collection_arguments(field_type);
             }
         }
     }
@@ -498,6 +492,16 @@ fn add_types_for_interface_types(
     Ok(())
 }
 
+fn add_types_for_aggregation_types(
+    api: &mut Schema,
+    input_schema: &InputSchema,
+) -> Result<(), APISchemaError> {
+    for (name, agg_type) in input_schema.aggregation_types() {
+        add_aggregation_filter_type(api, name, agg_type)?;
+    }
+    Ok(())
+}
+
 /// Adds a `<type_name>_orderBy` enum type for the given fields to the schema.
 fn add_order_by_type(
     api: &mut s::Document,
@@ -597,7 +601,122 @@ fn field_enum_values_from_child_entity(
     })
 }
 
-/// Adds a `<type_name>_filter` enum type for the given fields to the schema.
+/// Create an input object type definition for the `where` argument of a
+/// collection. The `name` is the name of the filter type, e.g.,
+/// `User_filter` and the fields are all the possible filters. This function
+/// adds fields for boolean `and` and `or` filters and for filtering by
+/// block change to the given fields.
+fn filter_type_defn(name: String, mut fields: Vec<s::InputValue>) -> s::Definition {
+    fields.push(block_changed_filter_argument());
+
+    if !ENV_VARS.graphql.disable_bool_filters {
+        fields.push(s::InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "and".to_string(),
+            value_type: s::Type::ListType(Box::new(s::Type::NamedType(name.clone()))),
+            default_value: None,
+            directives: vec![],
+        });
+
+        fields.push(s::InputValue {
+            position: Pos::default(),
+            description: None,
+            name: "or".to_string(),
+            value_type: s::Type::ListType(Box::new(s::Type::NamedType(name.clone()))),
+            default_value: None,
+            directives: vec![],
+        });
+    }
+
+    let typedef = s::TypeDefinition::InputObject(s::InputObjectType {
+        position: Pos::default(),
+        description: None,
+        name,
+        directives: vec![],
+        fields,
+    });
+    s::Definition::TypeDefinition(typedef)
+}
+
+/// Selector for the kind of field filters to generate
+#[derive(Copy, Clone)]
+enum FilterOps {
+    /// Use ops for object and interface types
+    Object,
+    /// Use ops for aggregation types
+    Aggregation,
+}
+
+impl FilterOps {
+    fn for_type<'a>(&self, scalar_type: &'a s::ScalarType) -> FilterOpsSet<'a> {
+        match self {
+            Self::Object => FilterOpsSet::Object(&scalar_type.name),
+            Self::Aggregation => FilterOpsSet::Aggregation(&scalar_type.name),
+        }
+    }
+
+    fn for_kind(kind: TypeKind) -> FilterOps {
+        match kind {
+            TypeKind::Object | TypeKind::Interface => FilterOps::Object,
+            TypeKind::Aggregation => FilterOps::Aggregation,
+        }
+    }
+
+    /// Generates arguments for collection queries of a named type (e.g. User).
+    fn collection_arguments(&self, type_name: &str) -> Vec<s::InputValue> {
+        // `first` and `skip` should be non-nullable, but the Apollo graphql client
+        // exhibts non-conforming behaviour by erroing if no value is provided for a
+        // non-nullable field, regardless of the presence of a default.
+        let mut skip = input_value("skip", "", s::Type::NamedType("Int".to_string()));
+        skip.default_value = Some(s::Value::Int(0.into()));
+
+        let mut first = input_value("first", "", s::Type::NamedType("Int".to_string()));
+        first.default_value = Some(s::Value::Int(100.into()));
+
+        let filter_type = s::Type::NamedType(format!("{}_filter", type_name));
+        let filter = input_value("where", "", filter_type);
+
+        let order_by = match self {
+            FilterOps::Object => vec![
+                input_value(
+                    "orderBy",
+                    "",
+                    s::Type::NamedType(format!("{}_orderBy", type_name)),
+                ),
+                input_value(
+                    "orderDirection",
+                    "",
+                    s::Type::NamedType("OrderDirection".to_string()),
+                ),
+            ],
+            FilterOps::Aggregation => vec![],
+        };
+
+        let mut args = vec![skip, first];
+        args.extend(order_by);
+        args.push(filter);
+
+        args
+    }
+}
+
+#[derive(Copy, Clone)]
+enum FilterOpsSet<'a> {
+    Object(&'a str),
+    Aggregation(&'a str),
+}
+
+impl<'a> FilterOpsSet<'a> {
+    fn type_name(&self) -> &'a str {
+        match self {
+            Self::Object(type_name) | Self::Aggregation(type_name) => type_name,
+        }
+    }
+}
+
+/// Adds a `<type_name>_filter` enum type for the given fields to the
+/// schema. Used for object and interface types
 fn add_filter_type(
     api: &mut Schema,
     type_name: &str,
@@ -607,38 +726,27 @@ fn add_filter_type(
     if api.document.get_named_type(&filter_type_name).is_some() {
         return Err(APISchemaError::TypeExists(filter_type_name));
     }
-    let mut generated_filter_fields = field_input_values(api, fields)?;
-    generated_filter_fields.push(block_changed_filter_argument());
+    let filter_fields = field_input_values(api, fields, FilterOps::Object)?;
 
-    if !ENV_VARS.graphql.disable_bool_filters {
-        generated_filter_fields.push(s::InputValue {
-            position: Pos::default(),
-            description: None,
-            name: "and".to_string(),
-            value_type: s::Type::ListType(Box::new(s::Type::NamedType(filter_type_name.clone()))),
-            default_value: None,
-            directives: vec![],
-        });
+    let defn = filter_type_defn(filter_type_name, filter_fields);
+    api.document.definitions.push(defn);
 
-        generated_filter_fields.push(s::InputValue {
-            position: Pos::default(),
-            description: None,
-            name: "or".to_string(),
-            value_type: s::Type::ListType(Box::new(s::Type::NamedType(filter_type_name.clone()))),
-            default_value: None,
-            directives: vec![],
-        });
+    Ok(())
+}
+
+fn add_aggregation_filter_type(
+    api: &mut Schema,
+    type_name: &str,
+    agg: &Aggregation,
+) -> Result<(), APISchemaError> {
+    let filter_type_name = format!("{}_filter", type_name);
+    if api.document.get_named_type(&filter_type_name).is_some() {
+        return Err(APISchemaError::TypeExists(filter_type_name));
     }
+    let filter_fields = field_input_values(api, &agg.fields, FilterOps::Aggregation)?;
 
-    let typedef = s::TypeDefinition::InputObject(s::InputObjectType {
-        position: Pos::default(),
-        description: None,
-        name: filter_type_name,
-        directives: vec![],
-        fields: generated_filter_fields,
-    });
-    let def = s::Definition::TypeDefinition(typedef);
-    api.document.definitions.push(def);
+    let defn = filter_type_defn(filter_type_name, filter_fields);
+    api.document.definitions.push(defn);
 
     Ok(())
 }
@@ -647,10 +755,11 @@ fn add_filter_type(
 fn field_input_values(
     schema: &Schema,
     fields: &[Field],
+    ops: FilterOps,
 ) -> Result<Vec<s::InputValue>, APISchemaError> {
     let mut input_values = vec![];
     for field in fields {
-        input_values.extend(field_filter_input_values(schema, field)?);
+        input_values.extend(field_filter_input_values(schema, field, ops)?);
     }
     Ok(input_values)
 }
@@ -659,6 +768,7 @@ fn field_input_values(
 fn field_filter_input_values(
     schema: &Schema,
     field: &Field,
+    ops: FilterOps,
 ) -> Result<Vec<s::InputValue>, APISchemaError> {
     let type_name = field.field_type.get_base_type();
     if field.is_list() {
@@ -680,13 +790,17 @@ fn field_filter_input_values(
                     // `where: { others: ["some-id", "other-id"] }`. In both cases,
                     // we allow ID strings as the values to be passed to these
                     // filters.
-                    field_scalar_filter_input_values(&schema.document, field, &scalar_type)
+                    field_scalar_filter_input_values(
+                        &schema.document,
+                        field,
+                        ops.for_type(&scalar_type),
+                    )
                 };
                 extend_with_child_filter_input_value(field, type_name, &mut input_values);
                 input_values
             }
             s::TypeDefinition::Scalar(ref t) => {
-                field_scalar_filter_input_values(&schema.document, field, t)
+                field_scalar_filter_input_values(&schema.document, field, ops.for_type(t))
             }
             s::TypeDefinition::Enum(ref t) => {
                 field_enum_filter_input_values(&schema.document, field, t)
@@ -731,16 +845,12 @@ fn id_type_as_scalar(
     Ok(scalar_type)
 }
 
-/// Generates `*_filter` input values for the given scalar field.
-fn field_scalar_filter_input_values(
-    _schema: &s::Document,
-    field: &Field,
-    field_type: &s::ScalarType,
-) -> Vec<s::InputValue> {
-    match field_type.name.as_ref() {
-        "BigInt" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        "Boolean" => vec!["", "not", "in", "not_in"],
-        "Bytes" => vec![
+fn field_filter_ops(set: FilterOpsSet<'_>) -> &'static [&'static str] {
+    use FilterOpsSet::*;
+
+    match set {
+        Object("Boolean") => &["", "not", "in", "not_in"],
+        Object("Bytes") => &[
             "",
             "not",
             "gt",
@@ -752,11 +862,11 @@ fn field_scalar_filter_input_values(
             "contains",
             "not_contains",
         ],
-        "BigDecimal" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        "ID" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        "Int" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        "Int8" => vec!["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        "String" => vec![
+        Object("ID") => &["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
+        Object("BigInt") | Object("BigDecimal") | Object("Int") | Object("Int8") => {
+            &["", "not", "gt", "lt", "gte", "lte", "in", "not_in"]
+        }
+        Object("String") => &[
             "",
             "not",
             "gt",
@@ -778,20 +888,34 @@ fn field_scalar_filter_input_values(
             "not_ends_with",
             "not_ends_with_nocase",
         ],
-        _ => vec!["", "not"],
+        Aggregation("BigInt")
+        | Aggregation("BigDecimal")
+        | Aggregation("Int")
+        | Aggregation("Int8") => &["", "gt", "lt", "gte", "lte", "in"],
+        Object(_) => &["", "not"],
+        Aggregation(_) => &[""],
     }
-    .into_iter()
-    .map(|filter_type| {
-        let field_type = s::Type::NamedType(field_type.name.clone());
-        let value_type = match filter_type {
-            "in" | "not_in" => {
-                s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(field_type))))
-            }
-            _ => field_type,
-        };
-        input_value(&field.name, filter_type, value_type)
-    })
-    .collect()
+}
+
+/// Generates `*_filter` input values for the given scalar field.
+fn field_scalar_filter_input_values(
+    _schema: &s::Document,
+    field: &Field,
+    set: FilterOpsSet<'_>,
+) -> Vec<s::InputValue> {
+    field_filter_ops(set)
+        .into_iter()
+        .map(|filter_type| {
+            let field_type = s::Type::NamedType(set.type_name().to_string());
+            let value_type = match *filter_type {
+                "in" | "not_in" => {
+                    s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(field_type))))
+                }
+                _ => field_type,
+            };
+            input_value(&field.name, filter_type, value_type)
+        })
+        .collect()
 }
 
 /// Appends a child filter to input values
@@ -919,7 +1043,12 @@ fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(
         .object_types()
         .map(|(name, _)| name)
         .chain(input_schema.interface_types().map(|(name, _)| name))
-        .flat_map(query_fields_for_type)
+        .flat_map(|name| query_fields_for_type(name, FilterOps::Object))
+        .collect::<Vec<s::Field>>();
+    let mut agg_fields = input_schema
+        .aggregation_types()
+        .map(|(name, _)| name)
+        .flat_map(query_fields_for_agg_type)
         .collect::<Vec<s::Field>>();
     let mut fulltext_fields = api
         .get_fulltext_directives()
@@ -927,6 +1056,7 @@ fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(
         .iter()
         .filter_map(|fulltext| query_field_for_fulltext(fulltext))
         .collect();
+    fields.append(&mut agg_fields);
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
 
@@ -1018,8 +1148,14 @@ fn add_subscription_type(
         .object_types()
         .map(|(name, _)| name)
         .chain(input_schema.interface_types().map(|(name, _)| name))
-        .flat_map(query_fields_for_type)
+        .flat_map(|name| query_fields_for_type(name, FilterOps::Object))
         .collect();
+    let mut agg_fields = input_schema
+        .aggregation_types()
+        .map(|(name, _)| name)
+        .flat_map(query_fields_for_agg_type)
+        .collect::<Vec<s::Field>>();
+    fields.append(&mut agg_fields);
     fields.push(meta_field());
 
     let typedef = s::TypeDefinition::Object(s::ObjectType {
@@ -1081,8 +1217,8 @@ fn subgraph_error_argument() -> s::InputValue {
 }
 
 /// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(type_name: &str) -> Vec<s::Field> {
-    let mut collection_arguments = collection_arguments_for_named_type(type_name);
+fn query_fields_for_type(type_name: &str, ops: FilterOps) -> Vec<s::Field> {
+    let mut collection_arguments = ops.collection_arguments(type_name);
     collection_arguments.push(block_argument());
 
     let mut by_id_arguments = vec![
@@ -1124,6 +1260,34 @@ fn query_fields_for_type(type_name: &str) -> Vec<s::Field> {
     ]
 }
 
+fn query_fields_for_agg_type(type_name: &str) -> Vec<s::Field> {
+    let mut collection_arguments = FilterOps::Aggregation.collection_arguments(type_name);
+    collection_arguments.push(block_argument());
+    collection_arguments.push(subgraph_error_argument());
+
+    let interval = InputValue {
+        position: Pos::default(),
+        description: Some(format!("The aggregation interval for the query")),
+        name: "interval".to_string(),
+        value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("String".to_string()))),
+        default_value: None,
+        directives: vec![],
+    };
+    collection_arguments.push(interval);
+
+    let (_, plural) = camel_cased_names(type_name);
+    vec![s::Field {
+        position: Pos::default(),
+        description: Some(format!("Collection of aggregated `{}` values", type_name)),
+        name: plural,
+        arguments: collection_arguments,
+        field_type: s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(
+            s::Type::NonNullType(Box::new(s::Type::NamedType(type_name.to_owned()))),
+        )))),
+        directives: vec![],
+    }]
+}
+
 fn meta_field() -> s::Field {
     lazy_static! {
         static ref META_FIELD: s::Field = s::Field {
@@ -1148,44 +1312,13 @@ fn meta_field() -> s::Field {
     META_FIELD.clone()
 }
 
-/// Generates arguments for collection queries of a named type (e.g. User).
-fn collection_arguments_for_named_type(type_name: &str) -> Vec<s::InputValue> {
-    // `first` and `skip` should be non-nullable, but the Apollo graphql client
-    // exhibts non-conforming behaviour by erroing if no value is provided for a
-    // non-nullable field, regardless of the presence of a default.
-    let mut skip = input_value("skip", "", s::Type::NamedType("Int".to_string()));
-    skip.default_value = Some(s::Value::Int(0.into()));
-
-    let mut first = input_value("first", "", s::Type::NamedType("Int".to_string()));
-    first.default_value = Some(s::Value::Int(100.into()));
-
-    let args = vec![
-        skip,
-        first,
-        input_value(
-            "orderBy",
-            "",
-            s::Type::NamedType(format!("{}_orderBy", type_name)),
-        ),
-        input_value(
-            "orderDirection",
-            "",
-            s::Type::NamedType("OrderDirection".to_string()),
-        ),
-        input_value(
-            "where",
-            "",
-            s::Type::NamedType(format!("{}_filter", type_name)),
-        ),
-    ];
-
-    args
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{
-        data::subgraph::LATEST_VERSION,
+        data::{
+            graphql::{ext::FieldExt, ObjectTypeExt, TypeExt as _},
+            subgraph::LATEST_VERSION,
+        },
         prelude::{s, DeploymentHash},
         schema::InputSchema,
     };
@@ -1206,6 +1339,21 @@ mod tests {
         input_schema
             .api_schema()
             .expect("Failed to derive API schema")
+    }
+
+    /// Return a field from the `Query` type. If the field does not exist,
+    /// fail the test
+    #[track_caller]
+    fn query_field<'a>(schema: &'a ApiSchema, name: &str) -> &'a s::Field {
+        let query_type = schema
+            .get_named_type("Query")
+            .expect("Query type is missing in derived API schema");
+
+        match query_type {
+            TypeDefinition::Object(t) => ast::get_field(t, name),
+            _ => None,
+        }
+        .expect(&format!("Schema should contain a field named `{}`", name))
     }
 
     #[test]
@@ -2030,19 +2178,6 @@ type Gravatar @entity {
 
     #[test]
     fn pluralize_plural_name() {
-        #[track_caller]
-        fn query_field<'a>(schema: &'a ApiSchema, name: &str) -> &'a s::Field {
-            let query_type = schema
-                .get_named_type("Query")
-                .expect("Query type is missing in derived API schema");
-
-            match query_type {
-                TypeDefinition::Object(t) => ast::get_field(t, name),
-                _ => None,
-            }
-            .expect(&format!("Schema should contain a field named `{}`", name))
-        }
-
         const SCHEMA: &str = r#"
         type Stats @entity {
             id: Bytes!
@@ -2052,5 +2187,31 @@ type Gravatar @entity {
 
         query_field(&schema, "stats");
         query_field(&schema, "stats_collection");
+    }
+
+    #[test]
+    fn nested_filters() {
+        const SCHEMA: &str = r#"
+        type Musician @entity {
+            id: Bytes!
+            bands: [Band!]!
+        }
+
+        type Band @entity {
+            id: Bytes!
+            name: String!
+            musicians: [Musician!]!
+        }
+        "#;
+        let schema = parse(SCHEMA);
+
+        let musicians = query_field(&schema, "musicians");
+        let s::TypeDefinition::Object(musicians) =
+            schema.get_type_definition_from_field(musicians).unwrap() else { panic!("Can not find type for 'musicians' field")};
+        let bands = musicians.field("bands").unwrap();
+        let filter = bands.argument("where").unwrap();
+        assert_eq!("Band_filter", filter.value_type.get_base_type());
+
+        query_field(&schema, "bands");
     }
 }

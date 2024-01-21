@@ -1313,6 +1313,11 @@ impl InputSchema {
     pub(in crate::schema) fn type_kind(&self, atom: Atom) -> Option<TypeKind> {
         self.type_info(atom).ok().map(|ti| ti.kind())
     }
+
+    pub(in crate::schema) fn type_kind_str(&self, name: &str) -> Option<TypeKind> {
+        let name = self.inner.pool.lookup(name)?;
+        self.type_kind(name)
+    }
 }
 
 /// Create a new pool that contains the names of all the types defined

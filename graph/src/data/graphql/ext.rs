@@ -3,7 +3,7 @@ use inflector::Inflector;
 
 use super::ObjectOrInterface;
 use crate::prelude::s::{
-    Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
+    self, Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
 use crate::prelude::{ValueType, ENV_VARS};
@@ -397,6 +397,8 @@ pub trait FieldExt {
     /// Return the singular and plural names for this field for use in
     /// queries
     fn camel_cased_names(&self) -> (String, String);
+
+    fn argument(&self, name: &str) -> Option<&s::InputValue>;
 }
 
 impl FieldExt for Field {
@@ -406,6 +408,10 @@ impl FieldExt for Field {
 
     fn camel_cased_names(&self) -> (String, String) {
         camel_cased_names(&self.name)
+    }
+
+    fn argument(&self, name: &str) -> Option<&s::InputValue> {
+        self.arguments.iter().find(|iv| &iv.name == name)
     }
 }
 
