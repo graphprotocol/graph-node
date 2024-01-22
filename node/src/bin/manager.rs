@@ -376,8 +376,12 @@ pub enum UnusedCommand {
     /// List unused deployments
     List {
         /// Only list unused deployments that still exist
-        #[clap(short, long)]
+        #[clap(short, long, conflicts_with = "deployment")]
         existing: bool,
+
+        /// Deployment
+        #[clap(short, long)]
+        deployment: Option<DeploymentSearch>,
     },
     /// Update and record currently unused deployments
     Record,
@@ -1116,7 +1120,10 @@ async fn main() -> anyhow::Result<()> {
             use UnusedCommand::*;
 
             match cmd {
-                List { existing } => commands::unused_deployments::list(store, existing),
+                List {
+                    existing,
+                    deployment,
+                } => commands::unused_deployments::list(store, existing, deployment),
                 Record => commands::unused_deployments::record(store),
                 Remove {
                     count,
