@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use graph::prelude::{anyhow::Error, chrono};
 use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
 
-use crate::manager::display::List;
+use crate::manager::{deployment::DeploymentSearch, display::List};
 
 fn make_list() -> List {
     List::new(vec!["id", "shard", "namespace", "subgraphs", "entities"])
@@ -29,13 +29,19 @@ fn add_row(list: &mut List, deployment: UnusedDeployment) {
     ])
 }
 
-pub fn list(store: Arc<SubgraphStore>, existing: bool) -> Result<(), Error> {
+pub fn list(
+    store: Arc<SubgraphStore>,
+    existing: bool,
+    deployment: Option<DeploymentSearch>,
+) -> Result<(), Error> {
     let mut list = make_list();
 
-    let filter = if existing {
-        unused::Filter::New
-    } else {
-        unused::Filter::All
+    let filter = match deployment {
+        Some(deployment) => deployment.to_unused_filter(existing),
+        None => match existing {
+            true => unused::Filter::New,
+            false => unused::Filter::All,
+        },
     };
 
     for deployment in store.list_unused_deployments(filter)? {
