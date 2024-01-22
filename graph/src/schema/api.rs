@@ -7,7 +7,9 @@ use lazy_static::lazy_static;
 
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::data::store::IdType;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_NAME, SQL_FIELD_TYPE, SQL_INPUT_TYPE};
+use crate::schema::{
+    ast, META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_NAME, SQL_FIELD_TYPE, SQL_INPUT_TYPE,
+};
 
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
