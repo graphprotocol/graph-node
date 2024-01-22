@@ -301,11 +301,18 @@ impl StoreResolver {
         }
 
         let query = field
-            .argument_value("query")
+            .argument_value("input")
             .ok_or_else(|| QueryExecutionError::EmptyQuery)?;
 
         let query = match query {
-            graph::data::value::Value::String(s) => s,
+            graph::data::value::Value::Object(s) => match s.get("query") {
+                Some(graph::data::value::Value::String(s)) => s,
+                _ => {
+                    return Err(QueryExecutionError::SqlError(
+                        "Query must be a string".into(),
+                    ))
+                }
+            },
             _ => {
                 return Err(QueryExecutionError::SqlError(
                     "Query must be a string".into(),
