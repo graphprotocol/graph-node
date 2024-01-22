@@ -7,7 +7,9 @@ use lazy_static::lazy_static;
 
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::data::store::IdType;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_NAME, SQL_FIELD_TYPE};
+use crate::schema::{
+    ast, META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_NAME, SQL_FIELD_TYPE, SQL_INPUT_TYPE,
+};
 
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
@@ -1099,8 +1101,8 @@ fn sql_field() -> Field {
                 InputValue {
                     position: Pos::default(),
                     description: None,
-                    name: String::from("query"),
-                    value_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
+                    name: String::from("input"),
+                    value_type: Type::NonNullType(Box::new(Type::NamedType(SQL_INPUT_TYPE.to_string()))),
                     default_value: None,
                     directives: vec![],
 

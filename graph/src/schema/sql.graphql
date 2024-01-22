@@ -1,5 +1,20 @@
 scalar String
 scalar JSONObject
+scalar SqlVariable
+
+input SqlInput {
+  """
+  The SQL query to execute. The query may contain positional parameters
+  that are passed in the `parameters` field.
+  """
+  query: String!
+  """
+  The SQL query parameters. The parameters are passed to the SQL query
+  as positional parameters. The parameters are converted to the SQL
+  types based on the GraphQL types of the parameters.
+  """
+  parameters: [SqlVariable]
+}
 
 
 # The type names are purposely awkward to minimize the risk of them
