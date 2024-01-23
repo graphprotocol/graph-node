@@ -425,3 +425,75 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use graph::blockchain::DataSource as _;
+
+    use crate::{
+        data_source::{
+            DataSource, Mapping, MappingBlockHandler, MappingEventHandler, STARKNET_KIND,
+        },
+        felt::Felt,
+    };
+
+    #[test]
+    fn validate_no_handler() {
+        let ds = new_data_source(None);
+
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 1, "{:?}", ds);
+        assert_eq!(
+            errs[0].to_string(),
+            "data source does not define any handler"
+        );
+    }
+
+    #[test]
+    fn validate_address_without_event_handler() {
+        let mut ds = new_data_source(Some([1u8; 32].into()));
+        ds.mapping.block_handler = Some(MappingBlockHandler {
+            handler: "asdf".into(),
+        });
+
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 1, "{:?}", ds);
+        assert_eq!(
+            errs[0].to_string(),
+            "data source cannot have source address without event handlers"
+        );
+    }
+
+    #[test]
+    fn validate_no_address_with_event_handler() {
+        let mut ds = new_data_source(None);
+        ds.mapping.event_handlers.push(MappingEventHandler {
+            handler: "asdf".into(),
+            event_selector: [2u8; 32].into(),
+        });
+
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 1, "{:?}", ds);
+        assert_eq!(errs[0].to_string(), "subgraph source address is required");
+    }
+
+    fn new_data_source(address: Option<Felt>) -> DataSource {
+        DataSource {
+            kind: STARKNET_KIND.to_string(),
+            network: "starknet-mainnet".into(),
+            name: "asd".to_string(),
+            source: crate::data_source::Source {
+                start_block: 10,
+                end_block: None,
+                address,
+            },
+            mapping: Mapping {
+                block_handler: None,
+                event_handlers: vec![],
+                runtime: Arc::new(vec![]),
+            },
+        }
+    }
+}
