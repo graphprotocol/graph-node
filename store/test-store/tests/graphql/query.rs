@@ -1,3 +1,4 @@
+use graph::blockchain::{Block, BlockTime};
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::{SubscriptionResult, Value};
@@ -10,6 +11,9 @@ use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
+};
+use test_store::block_store::{
+    FakeBlock, BLOCK_FOUR, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
 };
 
 use graph::{
@@ -32,8 +36,8 @@ use graph::{
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
     deployment_state, execute_subgraph_query, execute_subgraph_query_with_deadline,
-    graphql_metrics, revert_block, run_test_sequentially, transact_errors, Store, BLOCK_ONE,
-    GENESIS_PTR, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
+    graphql_metrics, revert_block, run_test_sequentially, transact_errors, Store, LOAD_MANAGER,
+    LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
 
 /// Ids for the various entities that we create in `insert_entities` and
@@ -49,6 +53,11 @@ const MEDIA_INT: [&str; 7] = ["52", "53", "54", "55", "56", "57", "58"];
 lazy_static! {
     /// The id of the sole publisher in the test data
     static ref PUB1: IdVal = IdType::Bytes.parse("0xb1");
+    /// The chain we actually put into the chain store, blocks 0 to 3
+    static ref CHAIN: Vec<FakeBlock> = vec![GENESIS_BLOCK.clone(), BLOCK_ONE.clone(), BLOCK_TWO.clone(), BLOCK_THREE.clone()];
+    /// The known block pointers for blocks 0 to 3 from the chain plus a
+    /// nonexistent block 4
+    static ref BLOCKS: Vec<BlockPtr> = CHAIN.iter().map(|b| b.ptr().clone()).chain(Some(BLOCK_FOUR.ptr().clone())).collect();
 }
 
 /// A convenience wrapper for `Value` and `r::Value` that clones a lot,
@@ -174,7 +183,7 @@ async fn setup(
     features: BTreeSet<SubgraphFeature>,
     id_type: IdType,
 ) -> DeploymentLocator {
-    use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
+    use test_store::block_store;
 
     /// Make sure we get rid of all subgraphs once for the entire test run
     async fn global_init() {
@@ -182,7 +191,7 @@ async fn setup(
             static ref STORE_CLEAN: AtomicBool = AtomicBool::new(false);
         }
         if !STORE_CLEAN.load(Ordering::SeqCst) {
-            let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+            let chain = CHAIN.iter().collect();
             block_store::set_chain(chain, NETWORK_NAME).await;
             test_store::remove_subgraphs();
             STORE_CLEAN.store(true, Ordering::SeqCst);
@@ -535,8 +544,16 @@ async fn insert_test_entities(
     )];
     let entities1 = insert_ops(&manifest.schema, entities1);
 
-    insert_at(entities0, &deployment, GENESIS_PTR.clone()).await;
-    insert_at(entities1, &deployment, BLOCK_ONE.clone()).await;
+    insert_at(entities0, &deployment, BLOCKS[0].clone()).await;
+    insert_at(entities1, &deployment, BLOCKS[1].clone()).await;
+
+    // We ingest block 2 with no changes to the subgraph solely to trigger
+    // an hourly rollup. Make sure that the block times between genesis and
+    // block 2 actually span an hour.
+    let t0 = BlockTime::for_test(&BLOCKS[0]).as_secs_since_epoch();
+    let t2 = BlockTime::for_test(&BLOCKS[2]).as_secs_since_epoch();
+    assert!(t2 - t0 > 3600);
+    insert_at(vec![], &deployment, BLOCKS[2].clone()).await;
     deployment
 }
 
@@ -656,7 +673,6 @@ where
                 let repl = id.as_gql(id_type);
                 query = query.replace(&pat, &repl);
             }
-            dbg!(&query);
 
             let result = {
                 let id = &deployment.hash;
@@ -2342,37 +2358,34 @@ fn check_musicians_at(query0: &str, block_var: r::Value, expected: Expected, qid
 
 #[test]
 fn query_at_block() {
-    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
-
     fn musicians_at(block: &str, expected: Expected, qid: &'static str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
         check_musicians_at(&query, object! {}, expected, qid);
     }
 
-    fn hash(block: &FakeBlock) -> String {
+    fn hash(block: &BlockPtr) -> String {
         format!("hash : \"0x{}\"", block.hash)
     }
 
     const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 7000 is therefore not yet available";
+         up to block number 2 and data for block number 7000 is therefore not yet available";
     const BLOCK_NOT_INDEXED2: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 2 is therefore not yet available";
+         up to block number 2 and data for block number 3 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
     musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
     musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
 
-    musicians_at(&hash(&GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
-    musicians_at(&hash(&BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
-    musicians_at(&hash(&BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at(&hash(&BLOCKS[0]), Ok(vec!["m1", "m2"]), "h0");
+    musicians_at(&hash(&BLOCKS[1]), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at(&hash(&BLOCKS[2]), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at(&hash(&BLOCKS[3]), Err(BLOCK_NOT_INDEXED2), "h3");
+    musicians_at(&hash(&BLOCKS[4]), Err(BLOCK_HASH_NOT_FOUND), "h4");
 }
 
 #[test]
 fn query_at_block_with_vars() {
-    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
-
     fn musicians_at_nr(block: i32, expected: Expected, qid: &'static str) {
         let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
         let var = object! { block: block };
@@ -2392,7 +2405,7 @@ fn query_at_block_with_vars() {
         check_musicians_at(query, var, expected, qid);
     }
 
-    fn musicians_at_hash(block: &FakeBlock, expected: Expected, qid: &'static str) {
+    fn musicians_at_hash(block: &BlockPtr, expected: Expected, qid: &'static str) {
         let query = "query by_hash($block: Bytes!) { musicians(block: { hash: $block }) { id } }";
         let var = object! { block: block.hash.to_string() };
 
@@ -2400,9 +2413,9 @@ fn query_at_block_with_vars() {
     }
 
     const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 7000 is therefore not yet available";
+         up to block number 2 and data for block number 7000 is therefore not yet available";
     const BLOCK_NOT_INDEXED2: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 2 is therefore not yet available";
+         up to block number 2 and data for block number 3 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
@@ -2413,10 +2426,11 @@ fn query_at_block_with_vars() {
     musicians_at_nr_gte(0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0");
     musicians_at_nr_gte(1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1");
 
-    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
-    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at_hash(&BLOCK_TWO, Err(BLOCK_NOT_INDEXED2), "h2");
-    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at_hash(&BLOCKS[0], Ok(vec!["m1", "m2"]), "h0");
+    musicians_at_hash(&BLOCKS[1], Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at_hash(&BLOCKS[2], Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at_hash(&BLOCKS[3], Err(BLOCK_NOT_INDEXED2), "h3");
+    musicians_at_hash(&BLOCKS[4], Err(BLOCK_HASH_NOT_FOUND), "h4");
 }
 
 #[test]
@@ -2435,7 +2449,7 @@ fn query_detects_reorg() {
             IdType::String,
         )
         .await;
-        // Initial state with latest block at block 1
+        // Initial state with latest block at block 2
         let state = deployment_state(STORE.as_ref(), &deployment.hash).await;
 
         // Inject a fake initial state; c435c25decbc4ad7bbbadf8e0ced0ff2
@@ -2444,7 +2458,7 @@ fn query_detects_reorg() {
             .unwrap() = Some(state);
 
         // When there is no revert, queries work fine
-        let result = query_at(&deployment, 1).await;
+        let result = query_at(&deployment, 2).await;
 
         assert_eq!(
             extract_data!(result),
@@ -2452,10 +2466,10 @@ fn query_detects_reorg() {
         );
 
         // Revert one block
-        revert_block(&STORE, &deployment, &GENESIS_PTR).await;
+        revert_block(&STORE, &deployment, &BLOCKS[1]).await;
 
         // A query is still fine since we query at block 0; we were at block
-        // 1 when we got `state`, and reorged once by one block, which can
+        // 2 when we got `state`, and reorged once by one block, which can
         // not affect block 0, and it's therefore ok to query at block 0
         // even with a concurrent reorg
         let result = query_at(&deployment, 0).await;
@@ -2465,18 +2479,18 @@ fn query_detects_reorg() {
         );
 
         // We move the subgraph head forward. The state we have is also for
-        // block 1, but with a smaller reorg count and we therefore report
+        // block 2, but with a smaller reorg count and we therefore report
         // an error
         test_store::transact_and_wait(
             &STORE.subgraph_store(),
             &deployment,
-            BLOCK_ONE.clone(),
+            BLOCKS[2].clone(),
             vec![],
         )
         .await
         .unwrap();
 
-        let result = query_at(&deployment, 1).await;
+        let result = query_at(&deployment, 2).await;
         match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */
             }
@@ -2492,7 +2506,7 @@ fn query_detects_reorg() {
 
 #[test]
 fn can_query_meta() {
-    // metadata for the latest block (block 1)
+    // metadata for the latest block (block 2)
     const QUERY1: &str =
         "query { _meta { deployment block { hash number __typename } __typename } }";
     run_query(QUERY1, |result, id_type| {
@@ -2500,8 +2514,8 @@ fn can_query_meta() {
             _meta: object! {
                 deployment: id_type.deployment_id(),
                 block: object! {
-                    hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
-                    number: 1,
+                    hash: "0xf8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6",
+                    number: 2,
                     __typename: "_Block_"
                 },
                 __typename: "_Meta_"
@@ -2542,9 +2556,9 @@ fn can_query_meta() {
         assert_eq!(extract_data!(result), Some(exp));
     });
 
-    // metadata for block 2, which is beyond what the subgraph has indexed
+    // metadata for block 3, which is beyond what the subgraph has indexed
     const QUERY4: &str =
-        "query { _meta(block: { number: 2 }) { deployment block { hash number } } }";
+        "query { _meta(block: { number: 3 }) { deployment block { hash number } } }";
     run_query(QUERY4, |result, _| {
         assert!(result.has_errors());
     });
@@ -2553,7 +2567,6 @@ fn can_query_meta() {
 #[test]
 fn non_fatal_errors() {
     use serde_json::json;
-    use test_store::block_store::BLOCK_TWO;
 
     run_test_sequentially(|store| async move {
         let deployment = setup(
@@ -2572,7 +2585,7 @@ fn non_fatal_errors() {
             deterministic: true,
         };
 
-        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err], true)
+        transact_errors(&STORE, &deployment, BLOCKS[3].clone(), vec![err], true)
             .await
             .unwrap();
 
@@ -2667,7 +2680,7 @@ fn non_fatal_errors() {
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
         // Test error reverts.
-        revert_block(&STORE, &deployment, &BLOCK_ONE).await;
+        revert_block(&STORE, &deployment, &BLOCKS[1]).await;
         let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
         let result = execute_query(&deployment, query).await;
         let expected = json!({
@@ -2698,7 +2711,7 @@ fn can_query_root_typename() {
 #[test]
 fn deterministic_error() {
     use serde_json::json;
-    use test_store::block_store::BLOCK_TWO;
+    use test_store::block_store::BLOCK_THREE;
 
     run_test_sequentially(|store| async move {
         let deployment = setup(
@@ -2712,14 +2725,20 @@ fn deterministic_error() {
         let err = SubgraphError {
             subgraph_id: deployment.hash.clone(),
             message: "cow template handler could not moo event transaction".to_string(),
-            block_ptr: Some(BLOCK_TWO.block_ptr()),
+            block_ptr: Some(BLOCK_THREE.block_ptr()),
             handler: Some("handleMoo".to_string()),
             deterministic: true,
         };
 
-        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err], false)
-            .await
-            .unwrap();
+        transact_errors(
+            &STORE,
+            &deployment,
+            BLOCK_THREE.block_ptr(),
+            vec![err],
+            false,
+        )
+        .await
+        .unwrap();
 
         // `subgraphError` is implicitly `deny`, data is omitted.
         let query = "query { musician(id: \"m1\") { id } }";

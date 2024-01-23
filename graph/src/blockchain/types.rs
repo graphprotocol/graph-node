@@ -348,10 +348,12 @@ impl BlockTime {
         )
     }
 
-    /// Construct a block time for tests where blocks are exactly 10s apart
+    /// Construct a block time for tests where blocks are exactly 45 minutes
+    /// apart. We use that big a timespan to make it easier to trigger
+    /// hourly rollups in tests
     #[cfg(debug_assertions)]
     pub fn for_test(ptr: &BlockPtr) -> Self {
-        Self::since_epoch(ptr.number as i64 * 10, 0)
+        Self::since_epoch(ptr.number as i64 * 45 * 60, 0)
     }
 
     pub fn as_secs_since_epoch(&self) -> i64 {
