@@ -2216,4 +2216,58 @@ type Gravatar @entity {
 
         query_field(&schema, "bands");
     }
+
+    #[test]
+    fn aggregation() {
+        const SCHEMA: &str = r#"
+        type Data @entity(timeseries: true) {
+            id: Bytes!
+            timestamp: Int8!
+            value: BigDecimal!
+        }
+
+        type Stats @aggregation(source: "Data", intervals: ["hour", "day"]) {
+            id: Bytes!
+            timestamp: Int8!
+            sum: BigDecimal! @aggregate(fn: "sum", arg: "value")
+        }
+        "#;
+
+        let schema = parse(SCHEMA);
+        let stats = query_field(&schema, "stats_collection");
+        let interval = stats.argument("interval").unwrap();
+        assert_eq!("Aggregation_interval", interval.value_type.get_base_type());
+        let filter = stats.argument("where").unwrap();
+        assert_eq!("Stats_filter", filter.value_type.get_base_type());
+
+        let s::TypeDefinition::Object(stats) =
+            schema.get_type_definition_from_field(stats).unwrap() else { panic!("Can not find type for 'stats' field")};
+        assert_eq!("Stats", &stats.name);
+
+        let s::TypeDefinition::InputObject(filter) = schema
+            .get_type_definition_from_type(&filter.value_type)
+            .unwrap()
+            else { panic!("Can not find type for 'where' filter")};
+        let mut fields = filter
+            .fields
+            .iter()
+            .map(|f| f.name.clone())
+            .collect::<Vec<_>>();
+        fields.sort();
+        assert_eq!(
+            [
+                "_change_block",
+                "and",
+                "id",
+                "or",
+                "timestamp",
+                "timestamp_gt",
+                "timestamp_gte",
+                "timestamp_in",
+                "timestamp_lt",
+                "timestamp_lte",
+            ],
+            fields.as_slice()
+        );
+    }
 }
