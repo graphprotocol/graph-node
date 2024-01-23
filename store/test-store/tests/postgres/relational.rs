@@ -1116,7 +1116,10 @@ fn check_fulltext_search_syntax_error() {
     run_test(move |mut conn, layout| {
         QueryChecker::new(&mut conn, layout).check(
             vec!["1"],
-            user_query().filter(EntityFilter::Equal("userSearch".into(), "Jono 'a".into())),
+            user_query().filter(EntityFilter::Fulltext(
+                "userSearch".into(),
+                "Jono 'a".into(),
+            )),
         );
     });
 }
