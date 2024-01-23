@@ -87,7 +87,7 @@
 
  -->
 
-**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.33.0...3b599593d9f8fe2253a01d541d7accfaa2b326df
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.33.0...v0.34.0
 
 ## v0.33.0
 
