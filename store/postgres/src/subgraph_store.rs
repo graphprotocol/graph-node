@@ -1114,7 +1114,7 @@ impl SubgraphStoreInner {
         deployment: &DeploymentLocator,
         entity_name: &str,
         field_names: Vec<String>,
-        index_method: Method,
+        index_method: Option<Method>,
         after: Option<BlockNumber>,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;

@@ -34,15 +34,22 @@ pub async fn create(
     search: DeploymentSearch,
     entity_name: &str,
     field_names: Vec<String>,
-    index_method: String,
+    index_method: Option<String>,
     after: Option<i32>,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
     let deployment_locator = search.locate_unique(&pool)?;
     println!("Index creation started. Please wait.");
-    let index_method = index_method
-        .parse::<Method>()
-        .map_err(|()| anyhow!("unknown index method `{}`", index_method))?;
+
+    let index_method = match index_method {
+        Some(method) => Some(
+            method
+                .parse::<Method>()
+                .map_err(|()| anyhow!("unknown index method `{}`", method))?,
+        ),
+        None => None,
+    };
+
     match store
         .create_manual_index(
             &deployment_locator,

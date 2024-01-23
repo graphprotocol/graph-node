@@ -674,12 +674,14 @@ pub enum IndexCommand {
         /// case (as its SQL colmun name).
         #[clap(min_values = 1, required = true)]
         fields: Vec<String>,
-        /// The index method. Defaults to `btree`.
+        /// The index method.
+        /// For immutable tables, the default method is `btree`.
+        /// For mutable tables, `gist` is used as the default indexing method.
         #[clap(
-            short, long, default_value = "btree",
+            short, long,
             possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
         )]
-        method: String,
+        method: Option<String>,
 
         #[clap(long)]
         /// Specifies a starting block number for creating a partial index.
@@ -1427,6 +1429,10 @@ async fn main() -> anyhow::Result<()> {
                     method,
                     after,
                 } => {
+                    if method.is_none() && fields.len() > 1 {
+                        bail!("The `--method` argument is required when specifying more than one field.")
+                    };
+
                     commands::index::create(
                         subgraph_store,
                         primary_pool,

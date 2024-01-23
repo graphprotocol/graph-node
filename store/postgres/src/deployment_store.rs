@@ -693,7 +693,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         entity_name: &str,
         field_names: Vec<String>,
-        index_method: Method,
+        index_method: Option<Method>,
         after: Option<BlockNumber>,
     ) -> Result<(), StoreError> {
         let store = self.clone();
@@ -702,6 +702,17 @@ impl DeploymentStore {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let table = resolve_table_name(&layout, &entity_name)?;
+
+            // If no index method is specified, we default to BTree if the
+            // table is not immutable, and GIST otherwise
+            let index_method = index_method.unwrap_or_else(|| {
+                if table.immutable {
+                    Method::BTree
+                } else {
+                    Method::Gist
+                }
+            });
+
             let (column_names, index_exprs) =
                 resolve_column_names_and_index_exprs(table, &field_names)?;
 
