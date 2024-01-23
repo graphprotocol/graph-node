@@ -325,10 +325,12 @@ impl StoreResolver {
 
         let result = self.store.execute_sql(&query)?;
         let result = result.into_iter().map(|q| q.0).collect::<Vec<_>>();
+        let row_count = result.len();
         let sql_result = object! {
             __typename: SQL_FIELD_TYPE,
             columns: r::Value::List(vec![]),
-            rows: result
+            rows: result,
+            rowCount: r::Value::Int(row_count as i64),
         };
 
         Ok((prefetched_object, Some(sql_result)))
