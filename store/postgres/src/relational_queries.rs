@@ -1432,7 +1432,7 @@ impl<'a> Filter<'a> {
 
             op.suitable(value)?;
 
-            if column.use_prefix_comparison {
+            if column.use_prefix_comparison && !value.is_null() {
                 let column_type = &column.column_type;
                 let column = qual.with(column);
                 PrefixComparison::new(op, column, column_type, value)
