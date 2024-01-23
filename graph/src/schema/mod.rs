@@ -36,9 +36,9 @@ pub const INTROSPECTION_SCHEMA_FIELD_NAME: &str = "__schema";
 pub const META_FIELD_TYPE: &str = "_Meta_";
 pub const META_FIELD_NAME: &str = "_meta";
 
-pub const SQL_FIELD_TYPE: &str = "_SqlQueryResult_";
-pub const SQL_FIELD_NAME: &str = "_sql";
+pub const SQL_FIELD_TYPE: &str = "SqlOutput";
 pub const SQL_INPUT_TYPE: &str = "SqlInput";
+pub const SQL_FIELD_NAME: &str = "sql";
 
 pub const INTROSPECTION_TYPE_FIELD_NAME: &str = "__type";
 

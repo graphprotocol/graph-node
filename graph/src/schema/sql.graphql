@@ -19,10 +19,19 @@ input SqlInput {
 
 # The type names are purposely awkward to minimize the risk of them
 # colliding with user-supplied types
-"The type for the top-level _sql field"
-type _SqlQueryResult_ {
+"The type for the top-level sql field"
+type SqlOutput {
   "The columns returned by the query"
   columns: [String!]!
-  "The rows returned by the query"
-  rows: JSONObject!
+
+  """
+  The SQL query result row count.
+  """
+  rowCount: Int!
+
+  """
+  The SQL query result rows. Each row is represented as a list of values.
+  The values are represented as JSON values.
+  """
+  rows: [JSONObject!]!
 }

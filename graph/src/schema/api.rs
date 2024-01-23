@@ -383,7 +383,7 @@ fn add_meta_field_type(schema: &mut Document) {
         .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
-// Adds a global `_SqlQueryResult_` type to the schema. The `_sql` field
+// Adds a global `SqlOutput` type to the schema. The `sql` field
 // accepts values of this type
 fn add_sql_field_type(schema: &mut Document) {
     lazy_static! {
