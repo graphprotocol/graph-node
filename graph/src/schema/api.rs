@@ -1269,7 +1269,9 @@ fn query_fields_for_agg_type(type_name: &str) -> Vec<s::Field> {
         position: Pos::default(),
         description: Some(format!("The aggregation interval for the query")),
         name: "interval".to_string(),
-        value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("String".to_string()))),
+        value_type: s::Type::NonNullType(Box::new(s::Type::NamedType(
+            "Aggregation_interval".to_string(),
+        ))),
         default_value: None,
         directives: vec![],
     };
