@@ -326,9 +326,20 @@ impl StoreResolver {
         let result = self.store.execute_sql(&query)?;
         let result = result.into_iter().map(|q| q.0).collect::<Vec<_>>();
         let row_count = result.len();
+        // columns should be available even if there's no data
+        // diesel doesn't support "dynamic query" so it doesn't return column names
+        // we are using this hacky way to get column names
+        // from the first row of the result
+        let columns = match result.first() {
+            Some(r::Value::Object(obj)) => obj
+                .iter()
+                .map(|(key, _)| r::Value::String(key.into()))
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        };
         let sql_result = object! {
             __typename: SQL_FIELD_TYPE,
-            columns: r::Value::List(vec![]),
+            columns: r::Value::List(columns),
             rows: result,
             rowCount: r::Value::Int(row_count as i64),
         };
