@@ -1,5 +1,12 @@
 # Timeseries and aggregations
 
+**This feature is experimental. We very much encourage users to try this
+out, but we might still need to make material changes to what's described
+here in a manner that is not backwards compatible. That might require
+deleting and redeploying any subgraph that uses the features here.**
+
+_This feature is available from spec version 1.1.0 onwards_
+
 ## Overview
 
 Aggregations are declared in the subgraph schema through two types: one that
