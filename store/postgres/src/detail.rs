@@ -299,6 +299,8 @@ pub(crate) fn deployment_statuses(
     };
 
     let mut non_fatal_errors = {
+        #[allow(deprecated)]
+        // TODO: sunstitute any with eq_any
         let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
 
         if sites.is_empty() {
