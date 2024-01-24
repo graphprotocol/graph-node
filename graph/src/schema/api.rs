@@ -381,7 +381,7 @@ fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError>
             // `field_type`` could be an enum or scalar, in which case
             // `type_kind_str` will return `None``
             if let Some(ops) = input_schema
-                .type_kind_str(field_type)
+                .kind_of_declared_type(field_type)
                 .map(FilterOps::for_kind)
             {
                 field.arguments = ops.collection_arguments(field_type);

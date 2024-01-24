@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    input_schema::{ObjectType, TypeKind, POI_OBJECT},
+    input_schema::{ObjectType, POI_OBJECT},
     EntityKey, InputSchema, InterfaceType,
 };
 
@@ -126,11 +126,11 @@ impl EntityType {
         self.schema.share_interfaces(self.atom)
     }
 
-    /// Return what kind of type `self` represents
-    pub fn kind(&self) -> TypeKind {
-        self.schema
-            .type_kind(self.atom)
-            .expect("the type must exist")
+    /// Return `true` if `self` is an object type, i.e., a type that is
+    /// declared with an `@entity` directive in the input schema. This
+    /// specifically excludes interfaces and aggregations.
+    pub fn is_object_type(&self) -> bool {
+        self.schema.is_object_type(self.atom)
     }
 }
 

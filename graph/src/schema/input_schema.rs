@@ -1310,13 +1310,29 @@ impl InputSchema {
         }
     }
 
-    pub(in crate::schema) fn type_kind(&self, atom: Atom) -> Option<TypeKind> {
-        self.type_info(atom).ok().map(|ti| ti.kind())
+    /// For the `name` of a type declared in the input schema, return
+    /// whether it is a normal object, declared with `@entity`, an
+    /// interface, or an aggregation. If there is no type `name`, or it is
+    /// not one of these three kinds, return `None`
+    pub(in crate::schema) fn kind_of_declared_type(&self, name: &str) -> Option<TypeKind> {
+        let name = self.inner.pool.lookup(name)?;
+        self.inner.type_infos.iter().find_map(|ti| {
+            if ti.name() == name {
+                Some(ti.kind())
+            } else {
+                None
+            }
+        })
     }
 
-    pub(in crate::schema) fn type_kind_str(&self, name: &str) -> Option<TypeKind> {
-        let name = self.inner.pool.lookup(name)?;
-        self.type_kind(name)
+    /// Return `true` if `atom` is an object type, i.e., a type that is
+    /// declared with an `@entity` directive in the input schema. This
+    /// specifically excludes interfaces and aggregations.
+    pub(crate) fn is_object_type(&self, atom: Atom) -> bool {
+        self.inner.type_infos.iter().any(|ti| match ti {
+            TypeInfo::Object(obj_type) => obj_type.name == atom,
+            _ => false,
+        })
     }
 }
 

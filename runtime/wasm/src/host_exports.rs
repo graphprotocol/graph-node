@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
-use graph::schema::{EntityType, TypeKind};
+use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;
@@ -202,14 +202,13 @@ impl<C: Blockchain> HostExports<C> {
 
     /// Ensure that `entity_type` is of the right kind
     fn expect_object_type(entity_type: &EntityType, op: &str) -> Result<(), HostExportError> {
-        if entity_type.kind() != TypeKind::Object {
-            Err(HostExportError::Deterministic(anyhow!(
-                "Cannot {op} entity of type `{}`. The type must be an @entity type",
-                entity_type.as_str()
-            )))
-        } else {
-            Ok(())
+        if entity_type.is_object_type() {
+            return Ok(());
         }
+        Err(HostExportError::Deterministic(anyhow!(
+            "Cannot {op} entity of type `{}`. The type must be an @entity type",
+            entity_type.as_str()
+        )))
     }
 
     pub(crate) fn store_set(
