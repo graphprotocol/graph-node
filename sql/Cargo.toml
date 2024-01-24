@@ -7,4 +7,4 @@ edition.workspace = true
 
 [dependencies]
 anyhow = "1.0.75"
-sqlparser = "0.40.0"
+sqlparser = { version = "0.40.0", features = ["visitor"] }
