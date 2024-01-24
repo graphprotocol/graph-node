@@ -2,6 +2,7 @@
 //!
 // For git_testament_macros
 #![allow(unused_macros)]
+use diesel::dsl;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl,
@@ -298,8 +299,7 @@ pub(crate) fn deployment_statuses(
     };
 
     let mut non_fatal_errors = {
-        // TODO: check if it's correct (used to be non_fatal_error)
-        let join = e::table.on(e::id.nullable().eq(d::fatal_error));
+        let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
 
         if sites.is_empty() {
             d::table
