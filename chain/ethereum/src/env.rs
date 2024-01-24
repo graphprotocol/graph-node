@@ -84,6 +84,14 @@ pub struct EnvVars {
     /// This is a comma separated list of chain ids for which the gas field will not be set
     /// when calling `eth_call`.
     pub eth_call_no_gas: Vec<String>,
+    /// Gas limit for `eth_call`. Default value of 50_000_000 is a protocol-wide parameter so this
+    /// should be changed only for debugging purposes or when you have confirmed that your network uses
+    /// a lower gas limit. 
+    /// Default value was chosen because it is the Geth default
+    /// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
+    /// If set to something higher then Geth will silently override the gas limit with the default.
+    // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
+    pub eth_call_gas: u32,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -130,6 +138,7 @@ impl From<Inner> for EnvVars {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect(),
+            eth_call_gas: x.eth_call_gas,
         }
     }
 }
@@ -177,4 +186,6 @@ struct Inner {
     genesis_block_number: u64,
     #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613")]
     eth_call_no_gas: String,
+    #[envconfig(from = "ETH_CALL_GAS", default = "50000000")]
+    eth_call_gas: u32,
 }

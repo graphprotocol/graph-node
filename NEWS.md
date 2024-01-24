@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Environment Variables
+
+- Restored `GRAPH_ETH_CALL_GAS` to support networks with lower gas limit cap, its default value
+  is set to 50 million.
+  
 ## v0.34.0
 ### What's New
 
