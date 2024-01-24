@@ -6,17 +6,11 @@ use sqlparser::parser::Parser;
 use crate::formatter::SqlFormatter;
 use crate::validator::SqlValidator;
 
-pub struct SqlParser {
-    formatter: SqlFormatter,
-    validator: SqlValidator,
-}
+pub struct SqlParser;
 
 impl SqlParser {
     pub fn new() -> Self {
-        Self {
-            formatter: SqlFormatter::new(),
-            validator: SqlValidator::new(),
-        }
+        Self
     }
 
     pub fn parse_and_validate(&self, sql: &str, deployment_id: i32) -> Result<String> {
@@ -28,11 +22,13 @@ impl SqlParser {
         match statement {
             Statement::Query(query) => {
                 let prefix = format!("sgd{}", deployment_id);
+                let mut formatter = SqlFormatter::new(&prefix);
+                let validator = SqlValidator::new();
 
-                self.validator.validate_query(query)?;
-                let result = self.formatter.format(&mut *query, Some(&prefix));
+                validator.validate_query(query)?;
+                let result = formatter.format(&mut *query);
 
-                Ok(format!("{}", result))
+                Ok(result)
             }
             _ => Err(anyhow!("Only SELECT queries are supported")),
         }
