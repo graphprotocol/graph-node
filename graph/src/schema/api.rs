@@ -3,7 +3,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use graphql_parser::schema::InputValue;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use thiserror::Error;
@@ -690,7 +689,13 @@ impl FilterOps {
                     s::Type::NamedType("OrderDirection".to_string()),
                 ),
             ],
-            FilterOps::Aggregation => vec![],
+            FilterOps::Aggregation => vec![input_value(
+                "interval",
+                "",
+                s::Type::NonNullType(Box::new(s::Type::NamedType(
+                    "Aggregation_interval".to_string(),
+                ))),
+            )],
         };
 
         let mut args = vec![skip, first];
@@ -1264,18 +1269,6 @@ fn query_fields_for_agg_type(type_name: &str) -> Vec<s::Field> {
     let mut collection_arguments = FilterOps::Aggregation.collection_arguments(type_name);
     collection_arguments.push(block_argument());
     collection_arguments.push(subgraph_error_argument());
-
-    let interval = InputValue {
-        position: Pos::default(),
-        description: Some(format!("The aggregation interval for the query")),
-        name: "interval".to_string(),
-        value_type: s::Type::NonNullType(Box::new(s::Type::NamedType(
-            "Aggregation_interval".to_string(),
-        ))),
-        default_value: None,
-        directives: vec![],
-    };
-    collection_arguments.push(interval);
 
     let (_, plural) = camel_cased_names(type_name);
     vec![s::Field {
@@ -2231,43 +2224,65 @@ type Gravatar @entity {
             timestamp: Int8!
             sum: BigDecimal! @aggregate(fn: "sum", arg: "value")
         }
+
+        type Stuff @entity {
+            id: Bytes!
+            stats: [Stats!]!
+        }
         "#;
 
-        let schema = parse(SCHEMA);
-        let stats = query_field(&schema, "stats_collection");
-        let interval = stats.argument("interval").unwrap();
-        assert_eq!("Aggregation_interval", interval.value_type.get_base_type());
-        let filter = stats.argument("where").unwrap();
-        assert_eq!("Stats_filter", filter.value_type.get_base_type());
+        #[track_caller]
+        fn assert_aggregation_field(schema: &ApiSchema, field: &s::Field, typename: &str) {
+            let filter_type = format!("{typename}_filter");
+            let interval = field.argument("interval").unwrap();
+            assert_eq!("Aggregation_interval", interval.value_type.get_base_type());
+            let filter = field.argument("where").unwrap();
+            assert_eq!(&filter_type, filter.value_type.get_base_type());
 
-        let s::TypeDefinition::Object(stats) =
-            schema.get_type_definition_from_field(stats).unwrap() else { panic!("Can not find type for 'stats' field")};
-        assert_eq!("Stats", &stats.name);
-
-        let s::TypeDefinition::InputObject(filter) = schema
+            let s::TypeDefinition::InputObject(filter) = schema
             .get_type_definition_from_type(&filter.value_type)
             .unwrap()
             else { panic!("Can not find type for 'where' filter")};
-        let mut fields = filter
-            .fields
-            .iter()
-            .map(|f| f.name.clone())
-            .collect::<Vec<_>>();
-        fields.sort();
-        assert_eq!(
-            [
-                "_change_block",
-                "and",
-                "id",
-                "or",
-                "timestamp",
-                "timestamp_gt",
-                "timestamp_gte",
-                "timestamp_in",
-                "timestamp_lt",
-                "timestamp_lte",
-            ],
-            fields.as_slice()
-        );
+
+            let mut fields = filter
+                .fields
+                .iter()
+                .map(|f| f.name.clone())
+                .collect::<Vec<_>>();
+            fields.sort();
+            assert_eq!(
+                [
+                    "_change_block",
+                    "and",
+                    "id",
+                    "or",
+                    "timestamp",
+                    "timestamp_gt",
+                    "timestamp_gte",
+                    "timestamp_in",
+                    "timestamp_lt",
+                    "timestamp_lte",
+                ],
+                fields.as_slice()
+            );
+
+            let s::TypeDefinition::Object(field_type) =
+            schema.get_type_definition_from_field(field).unwrap() else { panic!("Can not find type for 'stats' field")};
+            assert_eq!("Stats", &field_type.name);
+        }
+
+        // The `Query` type must have a `stats_collection` field, and it
+        // must look right for filtering an aggregation
+        let schema = parse(SCHEMA);
+        let stats = query_field(&schema, "stats_collection");
+        assert_aggregation_field(&schema, stats, "Stats");
+
+        // Make sure that Stuff.stats has collection arguments, in
+        // particular a `where` filter
+        let s::TypeDefinition::Object(stuff) = schema
+            .get_type_definition_from_type(&s::Type::NamedType("Stuff".to_string()))
+            .unwrap() else { panic!("Stuff type is missing") };
+        let stats = stuff.field("stats").unwrap();
+        assert_aggregation_field(&schema, stats, "Stats");
     }
 }
