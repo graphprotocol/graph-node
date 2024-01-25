@@ -930,17 +930,20 @@ impl PrefixType {
             (PrefixType::String, S::Text(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
             (PrefixType::Bytes, S::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
             (PrefixType::Bytes, S::Binary(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
-            (PrefixType::Bytes, S::String(s)) => {
-                let len = if s.starts_with("0x") {
-                    (s.len() - 2) / 2
-                } else {
-                    s.len() / 2
-                };
-                Ok(len > BYTE_ARRAY_PREFIX_SIZE - 1)
-            }
+            (PrefixType::Bytes, S::Text(s)) => is_large_string(s),
+            (PrefixType::Bytes, S::String(s)) => is_large_string(s),
             _ => Err(()),
         }
     }
+}
+
+fn is_large_string(s: &String) -> Result<bool, ()> {
+    let len = if s.starts_with("0x") {
+        (s.len() - 2) / 2
+    } else {
+        s.len() / 2
+    };
+    Ok(len > BYTE_ARRAY_PREFIX_SIZE - 1)
 }
 
 /// Produce a comparison between the string column `column` and the string
