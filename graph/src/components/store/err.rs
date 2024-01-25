@@ -49,6 +49,8 @@ pub enum StoreError {
     UnknownShard(String),
     #[error("Fulltext search not yet deterministic")]
     FulltextSearchNonDeterministic,
+    #[error("Fulltext search column missing configuration")]
+    FulltextColumnMissingConfig,
     #[error("operation was canceled")]
     Canceled,
     #[error("database unavailable")]
@@ -113,6 +115,7 @@ impl Clone for StoreError {
             Self::DeploymentNotFound(arg0) => Self::DeploymentNotFound(arg0.clone()),
             Self::UnknownShard(arg0) => Self::UnknownShard(arg0.clone()),
             Self::FulltextSearchNonDeterministic => Self::FulltextSearchNonDeterministic,
+            Self::FulltextColumnMissingConfig => Self::FulltextColumnMissingConfig,
             Self::Canceled => Self::Canceled,
             Self::DatabaseUnavailable => Self::DatabaseUnavailable,
             Self::DatabaseDisabled => Self::DatabaseDisabled,

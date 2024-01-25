@@ -22,7 +22,7 @@ use graph::prelude::{
     EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
     ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, InputSchema};
+use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
@@ -2217,15 +2217,15 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 #[derive(Debug)]
 enum InsertValue<'a> {
     Value(QueryValue<'a>),
-    Fulltext(Vec<&'a String>),
+    Fulltext(Vec<&'a String>, &'a FulltextConfig),
 }
 
 impl<'a> QueryFragment<Pg> for InsertValue<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             InsertValue::Value(qv) => qv.walk_ast(out),
-            InsertValue::Fulltext(qvs) => {
-                process_vec_ast(qvs, &mut out, "'english'")?; // TODO: insted of 'simple'/'english' add proper config here as its done in the other call
+            InsertValue::Fulltext(qvs, config) => {
+                process_vec_ast(qvs, &mut out, config.language.as_sql())?;
                 Ok(())
             }
         }
@@ -2261,7 +2261,11 @@ impl<'a> InsertRow<'a> {
                         )),
                     })
                     .collect::<Result<_, _>>()?;
-                InsertValue::Fulltext(fulltext_field_values)
+                if let ColumnType::TSVector(config) = &column.column_type {
+                    InsertValue::Fulltext(fulltext_field_values, &config)
+                } else {
+                    return Err(StoreError::FulltextColumnMissingConfig);
+                }
             } else {
                 let value = row.entity.get(&column.field).unwrap_or(&NULL);
                 let qv = QueryValue::new(value, &column.column_type)?;
