@@ -748,10 +748,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::
     } = error;
 
     let block_num = match &block_ptr {
-        None => {
-            assert_eq!(*deterministic, false);
-            crate::block_range::BLOCK_UNVERSIONED
-        }
+        None => crate::block_range::BLOCK_UNVERSIONED,
         Some(block) => crate::block_range::block_number(block),
     };
 

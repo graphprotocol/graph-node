@@ -8,8 +8,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use super::block_stream::{
-    BlockStream, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream, FirehoseCursor,
-    TriggersAdapter, BUFFERED_BLOCK_STREAM_SIZE,
+    BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
+    FirehoseCursor, TriggersAdapter, BUFFERED_BLOCK_STREAM_SIZE,
 };
 use super::{Block, BlockPtr, Blockchain};
 
@@ -470,7 +470,7 @@ impl<C: Blockchain> BlockStream<C> for PollingBlockStream<C> {
 }
 
 impl<C: Blockchain> Stream for PollingBlockStream<C> {
-    type Item = Result<BlockStreamEvent<C>, Error>;
+    type Item = Result<BlockStreamEvent<C>, BlockStreamError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let result = loop {
@@ -599,8 +599,8 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
                         // Chain head update stream ended
                         Poll::Ready(None) => {
                             // Should not happen
-                            return Poll::Ready(Some(Err(anyhow::anyhow!(
-                                "chain head update stream ended unexpectedly"
+                            return Poll::Ready(Some(Err(BlockStreamError::from(
+                                anyhow::anyhow!("chain head update stream ended unexpectedly"),
                             ))));
                         }
 
@@ -610,6 +610,6 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
             }
         };
 
-        result
+        result.map_err(BlockStreamError::from)
     }
 }
