@@ -1452,7 +1452,7 @@ impl<'a> Connection<'a> {
             .filter(a::node_id.eq_any(&nodes))
             .select((a::node_id, sql::<BigInt>("count(*)")))
             .group_by(a::node_id)
-            .order_by(sql::<BigInt>("count(*)")) // TODO: check proper type (Integer?)
+            .order_by(sql::<Integer>("count(*)"))
             .load::<(String, i64)>(self.conn.as_mut())?;
 
         // Any nodes without assignments will be missing from `assigned`

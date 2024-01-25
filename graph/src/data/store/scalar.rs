@@ -131,7 +131,7 @@ impl From<u64> for BigDecimal {
 
 impl From<f64> for BigDecimal {
     fn from(n: f64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from_f64(n).unwrap()) // TODO: remove unwrap
+        Self::from(bigdecimal::BigDecimal::from_f64(n).unwrap_or_default())
     }
 }
 
