@@ -757,13 +757,10 @@ impl Connection {
     }
 
     pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
-        // TODO: check removed transaction
-        let mut state = CopyState::new(
-            &mut self.conn,
-            self.src.clone(),
-            self.dst.clone(),
-            self.target_block.clone(),
-        )?;
+        let src = self.src.clone();
+        let dst = self.dst.clone();
+        let target_block = self.target_block.clone();
+        let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
 
         let logger = &self.logger.clone();
         let mut progress = CopyProgress::new(logger, &state);
