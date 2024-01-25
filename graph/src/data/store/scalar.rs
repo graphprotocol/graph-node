@@ -3,7 +3,6 @@ use diesel::expression::AsExpression;
 use diesel::serialize::ToSql;
 use hex;
 use num_bigint;
-use num_traits::FromPrimitive;
 use serde::{self, Deserialize, Serialize};
 use stable_hash::utils::AsInt;
 use stable_hash::{FieldAddress, StableHash};
@@ -126,12 +125,6 @@ impl From<i64> for BigDecimal {
 impl From<u64> for BigDecimal {
     fn from(n: u64) -> Self {
         Self::from(bigdecimal::BigDecimal::from(n))
-    }
-}
-
-impl From<f64> for BigDecimal {
-    fn from(n: f64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from_f64(n).unwrap_or_default())
     }
 }
 
