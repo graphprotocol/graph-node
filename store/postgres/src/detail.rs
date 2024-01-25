@@ -2,7 +2,7 @@
 //!
 // For git_testament_macros
 #![allow(unused_macros)]
-use diesel::dsl;
+use diesel::dsl::sql;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl,
@@ -300,8 +300,8 @@ pub(crate) fn deployment_statuses(
 
     let mut non_fatal_errors = {
         #[allow(deprecated)]
-        // TODO: substitute any with eq_any and disallow the deprecated again
-        let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
+        let join =
+            e::table.on(e::id.eq(sql("any(subgraphs.subgraph_deployment.non_fatal_errors)")));
 
         if sites.is_empty() {
             d::table
