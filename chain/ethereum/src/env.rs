@@ -86,7 +86,7 @@ pub struct EnvVars {
     pub eth_call_no_gas: Vec<String>,
     /// Gas limit for `eth_call`. Default value of 50_000_000 is a protocol-wide parameter so this
     /// should be changed only for debugging purposes or when you have confirmed that your network uses
-    /// a lower gas limit. 
+    /// a lower gas limit.
     /// Default value was chosen because it is the Geth default
     /// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
     /// If set to something higher then Geth will silently override the gas limit with the default.
