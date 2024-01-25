@@ -300,7 +300,7 @@ pub(crate) fn deployment_statuses(
 
     let mut non_fatal_errors = {
         #[allow(deprecated)]
-        // TODO: sunstitute any with eq_any
+        // TODO: substitute any with eq_any and disallow the deprecated again
         let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
 
         if sites.is_empty() {
