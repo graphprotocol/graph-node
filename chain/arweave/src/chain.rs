@@ -1,3 +1,5 @@
+// Portions copyright (2023) Vulcanize, Inc.
+
 use graph::anyhow;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
@@ -188,7 +190,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _from: BlockNumber,
         _to: BlockNumber,
         _filter: &TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
+    ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
@@ -237,6 +239,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
+        _root: Option<BlockHash>,
     ) -> Result<Option<codec::Block>, Error> {
         panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }

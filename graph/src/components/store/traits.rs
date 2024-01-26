@@ -1,3 +1,5 @@
+// Portions copyright (2023) Vulcanize, Inc.
+
 use web3::types::{Address, H256};
 
 use super::*;
@@ -450,14 +452,16 @@ pub trait ChainStore: Send + Sync + 'static {
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
-    /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
-    /// missing blocks in the chain store.
+    /// `block_hash` and offset=1 means its parent. If `root` is passed, short-circuit upon finding
+    /// a child of `root`. Returns None if unable to complete due to missing blocks in the chain
+    /// store.
     ///
     /// Returns an error if the offset would reach past the genesis block.
     async fn ancestor_block(
         self: Arc<Self>,
         block_ptr: BlockPtr,
         offset: BlockNumber,
+        root: Option<BlockHash>,
     ) -> Result<Option<serde_json::Value>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and

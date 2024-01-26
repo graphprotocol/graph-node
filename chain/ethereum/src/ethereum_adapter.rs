@@ -1,3 +1,5 @@
+// Portions copyright (2023) Vulcanize, Inc.
+
 use futures::future;
 use futures::prelude::*;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
@@ -42,6 +44,7 @@ use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
+// use back_to_the_future::futures_await;
 
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
@@ -611,6 +614,7 @@ impl EthereumAdapter {
         stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
             let web3 = web3.clone();
             retry(format!("load block ptr {}", block_num), &logger)
+                .when(|res| !res.is_ok() && !detect_null_block(res))
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
@@ -630,9 +634,17 @@ impl EthereumAdapter {
                 .boxed()
                 .compat()
                 .from_err()
+                .then(|res| {
+                    if detect_null_block(&res) {
+                        Ok(None)
+                    } else {
+                        Some(res).transpose()
+                    }
+                })
         }))
-        .buffered(ENV_VARS.block_batch_size)
-        .map(|b| b.into())
+            .buffered(ENV_VARS.block_batch_size)
+            .filter_map(|b| b)
+            .map(|b| b.into())
     }
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
@@ -650,13 +662,12 @@ impl EthereumAdapter {
         logger: &Logger,
         block_ptr: BlockPtr,
     ) -> Result<bool, Error> {
-        let block_hash = self
-            .block_hash_by_block_number(logger, block_ptr.number)
-            .compat()
+        // TODO: This considers null blocks, but we could instead bail if we encounter one as a
+        // small optimization.
+        let canonical_block = self
+            .nearest_block_hash_to_number(logger, block_ptr.number)
             .await?;
-        block_hash
-            .ok_or_else(|| anyhow!("Ethereum node is missing block #{}", block_ptr.number))
-            .map(|block_hash| block_hash == block_ptr.hash_as_h256())
+        Ok(canonical_block == block_ptr)
     }
 
     pub(crate) fn logs_in_block_range(
@@ -814,7 +825,17 @@ impl EthereumAdapter {
                 })
                 .await?,
         )
-        .map_err(Error::msg)
+            .map_err(Error::msg)
+    }
+}
+
+// Detects null blocks as can occur on Filecoin EVM chains, by checking for the FEVM-specific
+// error returned when requesting such a null round. Ideally there should be a defined reponse or
+// message for this case, or a check that is less dependent on the Filecoin implementation.
+fn detect_null_block<T>(res: &Result<T, Error>) -> bool {
+    match res {
+        Ok(_) => false,
+        Err(e) => e.to_string().contains("requested epoch was a null round")
     }
 }
 
@@ -1107,26 +1128,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::pin(block_future)
     }
 
-    fn block_pointer_from_number(
-        &self,
-        logger: &Logger,
-        block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = BlockPtr, Error = IngestorError> + Send> {
-        Box::new(
-            self.block_hash_by_block_number(logger, block_number)
-                .and_then(move |block_hash_opt| {
-                    block_hash_opt.ok_or_else(|| {
-                        anyhow!(
-                            "Ethereum node could not find start block hash by block number {}",
-                            &block_number
-                        )
-                    })
-                })
-                .from_err()
-                .map(move |block_hash| BlockPtr::from((block_hash, block_number))),
-        )
-    }
-
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
@@ -1162,6 +1163,54 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     })
                 }),
         )
+    }
+
+    async fn nearest_block_hash_to_number(
+        &self,
+        logger: &Logger,
+        block_number: BlockNumber
+    ) -> Result<BlockPtr, Error> {
+        let mut next_number = block_number;
+        loop {
+            let retry_log_message = format!(
+                "eth_getBlockByNumber RPC call for block number {}",
+                next_number
+            );
+            let web3 = self.web3.clone();
+            let logger = logger.clone();
+            let res = retry(retry_log_message, &logger)
+                .when(|res| !res.is_ok() && !detect_null_block(res))
+                .no_limit()
+                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                .run(move || {
+                    let web3 = web3.cheap_clone();
+                    async move {
+                        web3.eth()
+                            .block(BlockId::Number(next_number.into()))
+                            .await
+                            .map(|block_opt| block_opt.and_then(|block| block.hash))
+                            .map_err(Error::from)
+                    }
+                })
+                .await
+                .map_err(move |e| {
+                    e.into_inner().unwrap_or_else(move || {
+                        anyhow!(
+                            "Ethereum node took too long to return data for block #{}",
+                            next_number
+                        )
+                    })
+                });
+            if detect_null_block(&res) {
+                next_number += 1;
+                continue;
+            }
+            return match res {
+                Ok(Some(hash)) => Ok(BlockPtr::new(hash.into(), next_number)),
+                Ok(None) => Err(anyhow!("Block {} does not contain hash", next_number)),
+                Err(e) => Err(e),
+            }
+        }
     }
 
     fn contract_call(
@@ -1304,9 +1353,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 }
 
-/// Returns blocks with triggers, corresponding to the specified range and filters.
+/// Returns blocks with triggers, corresponding to the specified range and filters; and the resolved
+/// `to` block, which is the nearest non-null block greater than or equal to the passed `to` block.
 /// If a block contains no triggers, there may be no corresponding item in the stream.
-/// However the `to` block will always be present, even if triggers are empty.
+/// However the (resolved) `to` block will always be present, even if triggers are empty.
 ///
 /// Careful: don't use this function without considering race conditions.
 /// Chain reorgs could happen at any time, and could affect the answer received.
@@ -1326,7 +1376,7 @@ pub(crate) async fn blocks_with_triggers(
     to: BlockNumber,
     filter: &TriggerFilter,
     unified_api_version: UnifiedMappingApiVersion,
-) -> Result<Vec<BlockWithTriggers<crate::Chain>>, Error> {
+) -> Result<(Vec<BlockWithTriggers<crate::Chain>>, BlockNumber), Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
@@ -1336,6 +1386,15 @@ pub(crate) async fn blocks_with_triggers(
     // Scan the block range to find relevant triggers
     let trigger_futs: FuturesUnordered<BoxFuture<Result<Vec<EthereumTrigger>, anyhow::Error>>> =
         FuturesUnordered::new();
+
+    // Resolve the nearest non-null "to" block
+    debug!(logger, "Finding nearest valid `to` block to {}", to);
+
+    let to_ptr = eth
+        .nearest_block_hash_to_number(&logger, to)
+        .await?;
+    let to_hash = to_ptr.hash_as_h256();
+    let to = to_ptr.block_number();
 
     // Scan for Logs
     if !filter.log.is_empty() {
@@ -1393,28 +1452,10 @@ pub(crate) async fn blocks_with_triggers(
         trigger_futs.push(block_future)
     }
 
-    // Get hash for "to" block
-    let to_hash_fut = eth
-        .block_hash_by_block_number(&logger, to)
-        .and_then(|hash| match hash {
-            Some(hash) => Ok(hash),
-            None => {
-                warn!(logger,
-                      "Ethereum endpoint is behind";
-                      "url" => eth.provider()
-                );
-                bail!("Block {} not found in the chain", to)
-            }
-        })
-        .compat();
-
-    // Join on triggers and block hash resolution
-    let (triggers, to_hash) = futures03::join!(trigger_futs.try_concat(), to_hash_fut);
-
-    // Unpack and handle possible errors in the previously joined futures
-    let triggers =
-        triggers.with_context(|| format!("Failed to obtain triggers for block {}", to))?;
-    let to_hash = to_hash.with_context(|| format!("Failed to infer hash for block {}", to))?;
+    // Join on triggers, unpack and handle possible errors
+    let triggers = trigger_futs.try_concat()
+        .await
+        .with_context(|| format!("Failed to obtain triggers for block {}", to))?;
 
     let mut block_hashes: HashSet<H256> =
         triggers.iter().map(EthereumTrigger::block_hash).collect();
@@ -1478,7 +1519,7 @@ pub(crate) async fn blocks_with_triggers(
         ));
     }
 
-    Ok(blocks)
+    Ok((blocks, to))
 }
 
 pub(crate) async fn get_calls(

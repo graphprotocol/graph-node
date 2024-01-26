@@ -1,3 +1,5 @@
+// Portions copyright (2023) Vulcanize, Inc.
+
 use std::sync::Arc;
 
 use graph::blockchain::BlockPtr;
@@ -100,7 +102,7 @@ pub async fn info(
     let ancestor = match &head_block {
         None => None,
         Some(head_block) => chain_store
-            .ancestor_block(head_block.clone(), offset)
+            .ancestor_block(head_block.clone(), offset, None)
             .await?
             .map(json::from_value::<EthereumBlock>)
             .transpose()?

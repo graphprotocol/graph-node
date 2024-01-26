@@ -1,3 +1,5 @@
+// Portions copyright (2023) Vulcanize, Inc.
+
 pub mod ethereum;
 
 use std::marker::PhantomData;
@@ -748,6 +750,7 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
+        _root: Option<BlockHash>,
     ) -> Result<Option<<C as Blockchain>::Block>, Error> {
         todo!()
     }
@@ -757,7 +760,7 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         _from: BlockNumber,
         _to: BlockNumber,
         _filter: &<C as Blockchain>::TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
+    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         todo!()
     }
 
