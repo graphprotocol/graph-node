@@ -44,22 +44,26 @@ pub(crate) fn build_query<'a>(
     schema: &SchemaPair,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
-    let entity_types = EntityCollection::All(match &entity {
+    let object_types = match &entity {
         ObjectOrInterface::Object(object) => {
-            let selected_columns = field.selected_attrs(object)?;
-            let entity_type = schema.input.entity_type(*object).unwrap();
-            vec![(entity_type, selected_columns)]
+            vec![*object]
         }
         ObjectOrInterface::Interface(interface) => schema.api.types_for_interface()
             [&interface.name]
             .iter()
-            .map(|o| {
-                let selected_columns = field.selected_attrs(o);
-                let entity_type = schema.input.entity_type(o).unwrap();
+            .map(|o| o)
+            .collect(),
+    };
+    let entity_types = EntityCollection::All(
+        object_types
+            .iter()
+            .map(|object_type| {
+                let selected_columns = field.selected_attrs(object_type);
+                let entity_type = schema.input.entity_type(*object_type).unwrap();
                 selected_columns.map(|selected_columns| (entity_type, selected_columns))
             })
             .collect::<Result<_, _>>()?,
-    });
+    );
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
     if let Some(filter) = build_filter(entity, field, schema)? {
