@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 use std::sync::Arc;
 
@@ -39,7 +39,6 @@ pub(crate) fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
     field: &a::Field,
-    types_for_interface: &'a BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
     schema: &SchemaPair,
@@ -51,7 +50,8 @@ pub(crate) fn build_query<'a>(
             let entity_type = schema.input.entity_type(*object).unwrap();
             vec![(entity_type, selected_columns)]
         }
-        ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
+        ObjectOrInterface::Interface(interface) => schema.api.types_for_interface()
+            [&interface.name]
             .iter()
             .map(|o| {
                 let selected_columns = field.selected_attrs(o);
@@ -809,7 +809,7 @@ mod tests {
         schema::InputSchema,
     };
     use graphql_parser::Pos;
-    use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};
+    use std::{iter::FromIterator, sync::Arc};
 
     use super::{a, build_query, SchemaPair};
 
@@ -936,7 +936,6 @@ mod tests {
                 &object("Entity1"),
                 BLOCK_NUMBER_MAX,
                 &default_field(),
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -953,7 +952,6 @@ mod tests {
                 &object("Entity2"),
                 BLOCK_NUMBER_MAX,
                 &default_field(),
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -975,7 +973,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &default_field(),
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -995,7 +992,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -1011,7 +1007,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -1031,7 +1026,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -1047,7 +1041,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -1070,7 +1063,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -1089,7 +1081,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema,
@@ -1111,7 +1102,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema
@@ -1131,7 +1121,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema
@@ -1150,7 +1139,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &default_field(),
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema
@@ -1172,7 +1160,6 @@ mod tests {
                 &default_object(),
                 BLOCK_NUMBER_MAX,
                 &field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema
@@ -1204,7 +1191,6 @@ mod tests {
                 },
                 BLOCK_NUMBER_MAX,
                 &query_field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema
@@ -1239,7 +1225,6 @@ mod tests {
                 },
                 BLOCK_NUMBER_MAX,
                 &query_field,
-                &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
                 &schema

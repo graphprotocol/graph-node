@@ -681,7 +681,6 @@ impl<'a> Loader<'a> {
             join.child_type(),
             self.resolver.block_number(),
             field,
-            self.ctx.query.schema.types_for_interface(),
             self.ctx.max_first,
             self.ctx.max_skip,
             &super::query::SchemaPair {
