@@ -18,6 +18,10 @@ use crate::codec;
 use crate::trigger::CosmosTrigger;
 
 pub const COSMOS_KIND: &str = "cosmos";
+const BLOCK_HANDLER_KIND: &str = "block";
+const EVENT_HANDLER_KIND: &str = "event";
+const TRANSACTION_HANDLER_KIND: &str = "transaction";
+const MESSAGE_HANDLER_KIND: &str = "message";
 
 const DYNAMIC_DATA_SOURCE_ERROR: &str = "Cosmos subgraphs do not support dynamic data sources";
 const TEMPLATE_ERROR: &str = "Cosmos subgraphs do not support templates";
@@ -47,6 +51,40 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn start_block(&self) -> BlockNumber {
         self.source.start_block
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        let Mapping {
+            block_handlers,
+            event_handlers,
+            transaction_handlers,
+            message_handlers,
+            ..
+        } = &self.mapping;
+
+        if !block_handlers.is_empty() {
+            kinds.insert(BLOCK_HANDLER_KIND);
+        }
+
+        if !event_handlers.is_empty() {
+            kinds.insert(EVENT_HANDLER_KIND);
+        }
+
+        if !transaction_handlers.is_empty() {
+            kinds.insert(TRANSACTION_HANDLER_KIND);
+        }
+
+        if !message_handlers.is_empty() {
+            kinds.insert(MESSAGE_HANDLER_KIND);
+        }
+
+        kinds
+    }
+
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.source.end_block
     }
 
     fn match_and_decode(
@@ -89,6 +127,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             trigger.cheap_clone(),
             handler,
             block.ptr(),
+            block.timestamp(),
         )))
     }
 
@@ -468,9 +507,11 @@ pub struct MappingMessageHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Source {
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub start_block: BlockNumber,
+    pub(crate) end_block: Option<BlockNumber>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -623,7 +664,10 @@ mod tests {
                 kind: "cosmos".to_string(),
                 network: None,
                 name: "Test".to_string(),
-                source: Source { start_block: 1 },
+                source: Source {
+                    start_block: 1,
+                    end_block: None,
+                },
                 mapping: Mapping {
                     api_version: semver::Version::new(0, 0, 0),
                     language: "".to_string(),
@@ -645,7 +689,10 @@ mod tests {
                 kind: "cosmos".to_string(),
                 network: None,
                 name: "Test".to_string(),
-                source: Source { start_block: 1 },
+                source: Source {
+                    start_block: 1,
+                    end_block: None,
+                },
                 mapping: Mapping {
                     api_version: semver::Version::new(0, 0, 0),
                     language: "".to_string(),

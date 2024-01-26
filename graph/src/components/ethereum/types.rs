@@ -5,7 +5,10 @@ use web3::types::{
     U64,
 };
 
-use crate::{blockchain::BlockPtr, prelude::BlockNumber};
+use crate::{
+    blockchain::{BlockPtr, BlockTime},
+    prelude::BlockNumber,
+};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -16,6 +19,7 @@ pub trait LightEthereumBlockExt {
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
     fn block_ptr(&self) -> BlockPtr;
+    fn timestamp(&self) -> BlockTime;
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
@@ -54,6 +58,11 @@ impl LightEthereumBlockExt for LightEthereumBlock {
 
     fn block_ptr(&self) -> BlockPtr {
         BlockPtr::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        let ts = i64::try_from(self.timestamp.as_u64()).unwrap();
+        BlockTime::since_epoch(ts, 0)
     }
 }
 

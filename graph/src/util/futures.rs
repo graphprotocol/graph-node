@@ -9,6 +9,12 @@ use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
+// Use different limits for test and production code to speed up tests
+#[cfg(debug_assertions)]
+pub const RETRY_DEFAULT_LIMIT: Duration = Duration::from_secs(1);
+#[cfg(not(debug_assertions))]
+pub const RETRY_DEFAULT_LIMIT: Duration = Duration::from_secs(30);
+
 /// Generic helper function for retrying async operations with built-in logging.
 ///
 /// To use this helper, do the following:
@@ -271,7 +277,7 @@ where
 
     let mut attempt_count = 0;
 
-    Retry::spawn(retry_strategy(limit_opt), move || {
+    Retry::spawn(retry_strategy(limit_opt, RETRY_DEFAULT_LIMIT), move || {
         let operation_name = operation_name.clone();
         let logger = logger.clone();
         let condition = condition.clone();
@@ -347,11 +353,17 @@ where
     })
 }
 
-fn retry_strategy(limit_opt: Option<usize>) -> Box<dyn Iterator<Item = Duration> + Send> {
+pub fn retry_strategy(
+    limit_opt: Option<usize>,
+    max_delay: Duration,
+) -> Box<dyn Iterator<Item = Duration> + Send> {
     // Exponential backoff, but with a maximum
-    let max_delay_ms = 30_000;
-    let backoff = ExponentialBackoff::from_millis(2)
-        .max_delay(Duration::from_millis(max_delay_ms))
+    let backoff = ExponentialBackoff::from_millis(10)
+        .max_delay(Duration::from_millis(
+            // This should be fine, if the value is too high it will crash during
+            // testing.
+            max_delay.as_millis().try_into().unwrap(),
+        ))
         .map(jitter);
 
     // Apply limit (maximum retry count)
@@ -432,15 +444,11 @@ mod tests {
     use slog::o;
     use std::sync::Mutex;
 
-    #[test]
-    fn test() {
+    #[tokio::test]
+    async fn test() {
         let logger = Logger::root(::slog::Discard, o!());
 
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let result = runtime.block_on(async {
+        let result = {
             let c = Mutex::new(0);
             retry("test", &logger)
                 .no_logging()
@@ -457,19 +465,15 @@ mod tests {
                     }
                 })
                 .await
-        });
+        };
         assert_eq!(result, Ok(10));
     }
 
-    #[test]
-    fn limit_reached() {
+    #[tokio::test]
+    async fn limit_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
 
-        let result = runtime.block_on({
+        let result = {
             let c = Mutex::new(0);
             retry("test", &logger)
                 .no_logging()
@@ -485,19 +489,16 @@ mod tests {
                         future::err(*c_guard).compat()
                     }
                 })
-        });
+                .await
+        };
         assert_eq!(result, Err(5));
     }
 
-    #[test]
-    fn limit_not_reached() {
+    #[tokio::test]
+    async fn limit_not_reached() {
         let logger = Logger::root(::slog::Discard, o!());
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
 
-        let result = runtime.block_on({
+        let result = {
             let c = Mutex::new(0);
             retry("test", &logger)
                 .no_logging()
@@ -513,20 +514,17 @@ mod tests {
                         future::err(*c_guard).compat()
                     }
                 })
-        });
+                .await
+        };
         assert_eq!(result, Ok(10));
     }
 
-    #[test]
-    fn custom_when() {
+    #[tokio::test]
+    async fn custom_when() {
         let logger = Logger::root(::slog::Discard, o!());
         let c = Mutex::new(0);
 
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let result = runtime.block_on({
+        let result = {
             retry("test", &logger)
                 .when(|result| result.unwrap() < 10)
                 .no_logging()
@@ -541,7 +539,8 @@ mod tests {
                         future::ok(*c_guard).compat()
                     }
                 })
-        });
+                .await
+        };
 
         assert_eq!(result, Ok(10));
     }

@@ -1,4 +1,5 @@
 use ethabi::Contract;
+use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
@@ -102,6 +103,7 @@ pub fn mock_context(
             hash: Default::default(),
             number: 0,
         },
+        timestamp: BlockTime::NONE,
         host_exports: Arc::new(mock_host_exports(
             deployment.hash.clone(),
             data_source,
@@ -135,6 +137,7 @@ pub fn mock_data_source(path: &str, api_version: Version) -> DataSource {
         network: Some(String::from("mainnet")),
         address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
         start_block: 0,
+        end_block: None,
         mapping: Mapping {
             kind: String::from("ethereum/events"),
             api_version,

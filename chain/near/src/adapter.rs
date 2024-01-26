@@ -4,6 +4,7 @@ use crate::data_source::PartialAccounts;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
 use graph::firehose::{BasicReceiptFilter, PrefixSuffixPair};
+use graph::itertools::Itertools;
 use graph::prelude::*;
 use prost::Message;
 use prost_types::Any;
@@ -15,6 +16,31 @@ const BASIC_RECEIPT_FILTER_TYPE_URL: &str =
 pub struct TriggerFilter {
     pub(crate) block_filter: NearBlockFilter,
     pub(crate) receipt_filter: NearReceiptFilter,
+}
+
+impl TriggerFilter {
+    pub fn to_module_params(&self) -> String {
+        let matches = self.receipt_filter.accounts.iter().join(",");
+        let partial_matches = self
+            .receipt_filter
+            .partial_accounts
+            .iter()
+            .map(|(starts_with, ends_with)| match (starts_with, ends_with) {
+                (None, None) => unreachable!(),
+                (None, Some(e)) => format!(",{}", e),
+                (Some(s), None) => format!("{},", s),
+                (Some(s), Some(e)) => format!("{},{}", s, e),
+            })
+            .join("\n");
+
+        format!(
+            "{},{}\n{}\n{}",
+            self.receipt_filter.accounts.len(),
+            self.receipt_filter.partial_accounts.len(),
+            matches,
+            partial_matches
+        )
+    }
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
@@ -225,13 +251,14 @@ mod test {
     use std::collections::HashSet;
 
     use super::NearBlockFilter;
-    use crate::adapter::{TriggerFilter, BASIC_RECEIPT_FILTER_TYPE_URL};
+    use crate::adapter::{NearReceiptFilter, TriggerFilter, BASIC_RECEIPT_FILTER_TYPE_URL};
     use graph::{
         blockchain::TriggerFilter as _,
         firehose::{BasicReceiptFilter, PrefixSuffixPair},
     };
     use prost::Message;
     use prost_types::Any;
+    use trigger_filters::NearFilter;
 
     #[test]
     fn near_trigger_empty_filter() {
@@ -244,6 +271,7 @@ mod test {
                 partial_accounts: HashSet::new(),
             },
         };
+        assert_eq!(filter.to_module_params(), "0,0\n\n");
         assert_eq!(filter.to_firehose_filter(), vec![]);
     }
 
@@ -335,6 +363,124 @@ mod test {
             "{:?}",
             pairs
         );
+    }
+
+    #[test]
+    fn test_near_filter_params_serialization() -> anyhow::Result<()> {
+        struct Case<'a> {
+            name: &'a str,
+            input: NearReceiptFilter,
+            expected: NearFilter<'a>,
+        }
+
+        let cases = vec![
+            Case {
+                name: "empty",
+                input: NearReceiptFilter::default(),
+                expected: NearFilter::default(),
+            },
+            Case {
+                name: "only full matches",
+                input: super::NearReceiptFilter {
+                    accounts: HashSet::from_iter(vec!["acc1".into()]),
+                    partial_accounts: HashSet::new(),
+                },
+                expected: NearFilter {
+                    accounts: HashSet::from_iter(vec!["acc1"]),
+                    partial_accounts: HashSet::default(),
+                },
+            },
+            Case {
+                name: "only partial matches",
+                input: super::NearReceiptFilter {
+                    accounts: HashSet::new(),
+                    partial_accounts: HashSet::from_iter(vec![(Some("acc1".into()), None)]),
+                },
+                expected: NearFilter {
+                    accounts: HashSet::default(),
+                    partial_accounts: HashSet::from_iter(vec![(Some("acc1"), None)]),
+                },
+            },
+            Case {
+                name: "both 1len matches",
+                input: super::NearReceiptFilter {
+                    accounts: HashSet::from_iter(vec!["acc1".into()]),
+                    partial_accounts: HashSet::from_iter(vec![(Some("s1".into()), None)]),
+                },
+                expected: NearFilter {
+                    accounts: HashSet::from_iter(vec!["acc1"]),
+                    partial_accounts: HashSet::from_iter(vec![(Some("s1"), None)]),
+                },
+            },
+            Case {
+                name: "more partials matches",
+                input: super::NearReceiptFilter {
+                    accounts: HashSet::from_iter(vec!["acc1".into()]),
+                    partial_accounts: HashSet::from_iter(vec![
+                        (Some("s1".into()), None),
+                        (None, Some("s3".into())),
+                        (Some("s2".into()), Some("s2".into())),
+                    ]),
+                },
+                expected: NearFilter {
+                    accounts: HashSet::from_iter(vec!["acc1"]),
+                    partial_accounts: HashSet::from_iter(vec![
+                        (Some("s1"), None),
+                        (None, Some("s3")),
+                        (Some("s2"), Some("s2")),
+                    ]),
+                },
+            },
+            Case {
+                name: "both matches",
+                input: NearReceiptFilter {
+                    accounts: HashSet::from_iter(vec![
+                        "acc1".into(),
+                        "=12-30786jhasdgmasd".into(),
+                        "^&%^&^$".into(),
+                        "acc3".into(),
+                    ]),
+                    partial_accounts: HashSet::from_iter(vec![
+                        (Some("1.2.2.3.45.5".into()), None),
+                        (None, Some("kjysdfoiua6sd".into())),
+                        (Some("120938pokasd".into()), Some("102938poai[sd]".into())),
+                    ]),
+                },
+                expected: NearFilter {
+                    accounts: HashSet::from_iter(vec![
+                        "acc1",
+                        "=12-30786jhasdgmasd",
+                        "^&%^&^$",
+                        "acc3",
+                    ]),
+                    partial_accounts: HashSet::from_iter(vec![
+                        (Some("1.2.2.3.45.5"), None),
+                        (None, Some("kjysdfoiua6sd")),
+                        (Some("120938pokasd"), Some("102938poai[sd]")),
+                    ]),
+                },
+            },
+        ];
+
+        for case in cases.into_iter() {
+            let tf = TriggerFilter {
+                block_filter: NearBlockFilter::default(),
+                receipt_filter: case.input,
+            };
+            let param = tf.to_module_params();
+            let filter = NearFilter::try_from(param.as_str()).expect(&format!(
+                "case: {}, the filter to parse params correctly",
+                case.name
+            ));
+
+            assert_eq!(
+                filter, case.expected,
+                "case {},param:\n{}",
+                case.name, param
+            );
+        }
+
+        Ok(())
     }
 
     fn decode_filter(firehose_filter: Vec<Any>) -> BasicReceiptFilter {

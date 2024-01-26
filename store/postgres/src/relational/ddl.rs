@@ -3,7 +3,7 @@ use std::{
     iter,
 };
 
-use graph::prelude::BLOCK_NUMBER_MAX;
+use graph::prelude::{BLOCK_NUMBER_MAX, ENV_VARS};
 
 use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
@@ -45,9 +45,10 @@ impl Layout {
     }
 
     pub(crate) fn write_enum_ddl(&self, out: &mut dyn Write) -> Result<(), fmt::Error> {
-        for (name, values) in &self.enums {
+        for name in self.input_schema.enum_types() {
+            let values = self.input_schema.enum_values(name).unwrap();
             let mut sep = "";
-            let name = SqlName::from(name.as_str());
+            let name = SqlName::from(name);
             write!(
                 out,
                 "create type {}.{}\n    as enum (",
@@ -198,6 +199,56 @@ impl Table {
         }
     }
 
+    /// Calculates the indexing method and expression for a database column.
+    ///
+    /// ### Parameters
+    /// * `immutable`: A boolean flag indicating whether the table is immutable.
+    /// * `column`: A reference to the `Column` struct, representing the database column for which the index method and expression are being calculated.
+    ///
+    /// ### Returns
+    /// A tuple `(String, String)` where:
+    /// - The first element is the indexing method ("btree", "gist", or "gin"),
+    /// - The second element is the index expression as a string.
+    pub fn calculate_index_method_and_expression(
+        immutable: bool,
+        column: &Column,
+    ) -> (String, String) {
+        if column.is_reference() && !column.is_list() {
+            if immutable {
+                let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_COLUMN);
+                ("btree".to_string(), index_expr)
+            } else {
+                let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
+                ("gist".to_string(), index_expr)
+            }
+        } else {
+            let index_expr = if column.use_prefix_comparison {
+                match column.column_type {
+                    ColumnType::String => {
+                        format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                    }
+                    ColumnType::Bytes => format!(
+                        "substring({}, 1, {})",
+                        column.name.quoted(),
+                        BYTE_ARRAY_PREFIX_SIZE
+                    ),
+                    // Handle other types if necessary, or maintain the unreachable statement
+                    _ => unreachable!("only String and Bytes can have arbitrary size"),
+                }
+            } else {
+                column.name.quoted()
+            };
+
+            let method = if column.is_list() || column.is_fulltext() {
+                "gin".to_string()
+            } else {
+                "btree".to_string()
+            };
+
+            (method, index_expr)
+        }
+    }
+
     fn create_attribute_indexes(&self, out: &mut String) -> fmt::Result {
         // Create indexes.
 
@@ -225,60 +276,24 @@ impl Table {
             .filter(not_immutable_pk)
             .filter(not_numeric_list);
 
-        for (i, column) in columns.enumerate() {
-            let (method, index_expr) = if column.is_reference() && !column.is_list() {
-                // For foreign keys, index the key together with the block range
-                // since we almost always also have a block_range clause in
-                // queries that look for specific foreign keys
-                if self.immutable {
-                    let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_COLUMN);
-                    ("btree", index_expr)
-                } else {
-                    let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
-                    ("gist", index_expr)
-                }
-            } else {
-                // Attributes that are plain strings or bytes are
-                // indexed with a BTree; but they can be too large for
-                // Postgres' limit on values that can go into a BTree.
-                // For those attributes, only index the first
-                // STRING_PREFIX_SIZE or BYTE_ARRAY_PREFIX_SIZE characters
-                // see: attr-bytea-prefix
-                let index_expr = if column.use_prefix_comparison {
-                    match column.column_type {
-                        ColumnType::String => {
-                            format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
-                        }
-                        ColumnType::Bytes => format!(
-                            "substring({}, 1, {})",
-                            column.name.quoted(),
-                            BYTE_ARRAY_PREFIX_SIZE
-                        ),
-                        _ => unreachable!("only String and Bytes can have arbitrary size"),
-                    }
-                } else {
-                    column.name.quoted()
-                };
-
-                let method = if column.is_list() || column.is_fulltext() {
-                    "gin"
-                } else {
-                    "btree"
-                };
-
-                (method, index_expr)
-            };
-            write!(
-            out,
-            "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
-            table_index = self.position,
-            table_name = self.name,
-            column_index = i,
-            column_name = column.name,
-            qname = self.qualified_name,
-            method = method,
-            index_expr = index_expr,
-        )?;
+        for (column_index, column) in columns.enumerate() {
+            let (method, index_expr) =
+                Self::calculate_index_method_and_expression(self.immutable, column);
+            // If `create_gin_indexes` is set to false, we don't create
+            // indexes on array attributes. Experience has shown that these
+            // indexes are very expensive to update and can have a very bad
+            // impact on the write performance of the database, but are
+            // hardly ever used or needed by queries.
+            if !column.is_list() || ENV_VARS.store.create_gin_indexes {
+                write!(
+                    out,
+                    "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
+                    table_index = self.position,
+                    table_name = self.name,
+                    column_name = column.name,
+                    qname = self.qualified_name,
+                )?;
+            }
         }
         writeln!(out)
     }

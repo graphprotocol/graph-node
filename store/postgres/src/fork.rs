@@ -1,20 +1,18 @@
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 use graph::{
     block_on,
-    components::store::{EntityType, SubgraphFork as SubgraphForkTrait},
-    data::graphql::ext::DirectiveFinder,
+    components::store::SubgraphFork as SubgraphForkTrait,
+    constraint_violation,
     prelude::{
-        info,
-        r::Value as RValue,
-        reqwest,
-        s::{Field, ObjectType},
-        serde_json, DeploymentHash, Entity, Logger, Serialize, StoreError, Value, ValueType,
+        info, r::Value as RValue, reqwest, serde_json, DeploymentHash, Entity, Logger, Serialize,
+        StoreError, Value, ValueType,
     },
+    schema::Field,
     url::Url,
 };
 use graph::{data::value::Word, schema::InputSchema};
@@ -41,13 +39,13 @@ struct Variables {
 pub(crate) struct SubgraphFork {
     client: reqwest::Client,
     endpoint: Url,
-    schema: Arc<InputSchema>,
+    schema: InputSchema,
     fetched_ids: Mutex<HashSet<String>>,
     logger: Logger,
 }
 
 impl SubgraphForkTrait for SubgraphFork {
-    fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError> {
+    fn fetch(&self, entity_type_name: String, id: String) -> Result<Option<Entity>, StoreError> {
         {
             let mut fids = self.fetched_ids.lock().map_err(|e| {
                 StoreError::ForkFailure(format!(
@@ -56,22 +54,28 @@ impl SubgraphForkTrait for SubgraphFork {
                 ))
             })?;
             if fids.contains(&id) {
-                info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type, "id" => id);
+                info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type_name, "id" => id);
                 return Ok(None);
             }
             fids.insert(id.clone());
         }
 
-        info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type, "id" => &id);
+        info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type_name, "id" => &id);
 
         // NOTE: Subgraph fork compatibility checking (similar to the grafting compatibility checks)
         // will be added in the future (in a separate PR).
         // Currently, forking incompatible subgraphs is allowed, but, for example, storing the
         // incompatible fetched entities in the local store results in an error.
+        let entity_type = self.schema.entity_type(&entity_type_name)?;
+        let fields = &entity_type
+            .object_type()
+            .map_err(|_| {
+                constraint_violation!("no object type called `{}` found", entity_type_name)
+            })?
+            .fields;
 
-        let fields = self.get_fields_of(&entity_type)?;
         let query = Query {
-            query: self.query_string(&entity_type, fields)?,
+            query: self.query_string(&entity_type_name, fields)?,
             variables: Variables { id },
         };
         let raw_json = block_on(self.send(&query))?;
@@ -82,7 +86,8 @@ impl SubgraphForkTrait for SubgraphFork {
             )));
         }
 
-        let entity = SubgraphFork::extract_entity(&self.schema, &raw_json, &entity_type, fields)?;
+        let entity =
+            SubgraphFork::extract_entity(&self.schema, &raw_json, &entity_type_name, fields)?;
         Ok(entity)
     }
 }
@@ -91,7 +96,7 @@ impl SubgraphFork {
     pub(crate) fn new(
         base: Url,
         id: DeploymentHash,
-        schema: Arc<InputSchema>,
+        schema: InputSchema,
         logger: Logger,
     ) -> Result<Self, StoreError> {
         Ok(Self {
@@ -127,20 +132,6 @@ impl SubgraphFork {
                 ))
             })?;
         Ok(res)
-    }
-
-    fn get_fields_of(&self, entity_type: &str) -> Result<&Vec<Field>, StoreError> {
-        let entity_type = EntityType::new(entity_type.to_string());
-        let entity: Option<&ObjectType> = self.schema.find_object_type(&entity_type);
-
-        if entity.is_none() {
-            return Err(StoreError::ForkFailure(format!(
-                "No object type definition with entity type `{}` found in the GraphQL schema supplied by the user.",
-                entity_type
-            )));
-        }
-
-        Ok(&entity.unwrap().fields)
     }
 
     fn query_string(&self, entity_type: &str, fields: &[Field]) -> Result<String, StoreError> {
@@ -186,12 +177,12 @@ query Query ($id: String) {{
         let map: HashMap<Word, Value> = {
             let mut map = HashMap::new();
             for f in fields {
-                if f.is_derived() {
+                if f.is_derived {
                     // Derived fields are not resolved, so it's safe to ignore them.
                     continue;
                 }
 
-                let value = entity.get(&f.name).unwrap().clone();
+                let value = entity.get(f.name.as_str()).unwrap().clone();
                 let value = if let Some(id) = value.get("id") {
                     RValue::String(id.as_str().unwrap().to_string())
                 } else if let Some(list) = value.as_array() {
@@ -220,7 +211,11 @@ query Query ($id: String) {{
             map
         };
 
-        Ok(Some(schema.make_entity(map)?))
+        Ok(Some(
+            schema
+                .make_entity(map)
+                .map_err(|e| StoreError::EntityValidationError(e))?,
+        ))
     }
 }
 
@@ -235,7 +230,6 @@ mod tests {
         prelude::{s::Type, DeploymentHash},
         slog::{self, o},
     };
-    use graphql_parser::parse_schema;
 
     fn test_base() -> Url {
         Url::parse("https://api.thegraph.com/subgraph/id/").unwrap()
@@ -245,74 +239,45 @@ mod tests {
         DeploymentHash::new("test").unwrap()
     }
 
-    fn test_schema() -> Arc<InputSchema> {
-        let schema = InputSchema::new(
-            DeploymentHash::new("test").unwrap(),
-            parse_schema::<String>(
-                r#"type Gravatar @entity {
+    fn test_schema() -> InputSchema {
+        InputSchema::parse_latest(
+            r#"type Gravatar @entity {
   id: ID!
   owner: Bytes!
   displayName: String!
   imageUrl: String!
 }"#,
-            )
-            .unwrap(),
+            DeploymentHash::new("test").unwrap(),
         )
-        .unwrap();
-        Arc::new(schema)
+        .unwrap()
     }
 
     fn test_logger() -> Logger {
         Logger::root(slog::Discard, o!())
     }
 
-    fn test_fields() -> Vec<Field> {
+    fn test_fields(schema: &InputSchema) -> Vec<Field> {
+        fn non_null_type(name: &str) -> Type {
+            Type::NonNullType(Box::new(Type::NamedType(name.to_string())))
+        }
+
+        let schema = schema.schema();
         vec![
-            Field {
-                position: graphql_parser::Pos { line: 2, column: 3 },
-                description: None,
-                name: "id".to_string(),
-                arguments: vec![],
-                field_type: Type::NonNullType(Box::new(Type::NamedType("ID".to_string()))),
-                directives: vec![],
-            },
-            Field {
-                position: graphql_parser::Pos { line: 3, column: 3 },
-                description: None,
-                name: "owner".to_string(),
-                arguments: vec![],
-                field_type: Type::NonNullType(Box::new(Type::NamedType("Bytes".to_string()))),
-                directives: vec![],
-            },
-            Field {
-                position: graphql_parser::Pos { line: 4, column: 3 },
-                description: None,
-                name: "displayName".to_string(),
-                arguments: vec![],
-                field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
-                directives: vec![],
-            },
-            Field {
-                position: graphql_parser::Pos { line: 5, column: 3 },
-                description: None,
-                name: "imageUrl".to_string(),
-                arguments: vec![],
-                field_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
-                directives: vec![],
-            },
+            Field::new(schema, "id", &non_null_type("ID"), false),
+            Field::new(schema, "owner", &non_null_type("Bytes"), false),
+            Field::new(schema, "displayName", &non_null_type("String"), false),
+            Field::new(schema, "imageUrl", &non_null_type("String"), false),
         ]
     }
 
     #[test]
     fn test_get_fields_of() {
-        let base = test_base();
-        let id = test_id();
         let schema = test_schema();
-        let logger = test_logger();
 
-        let fork = SubgraphFork::new(base, id, schema, logger).unwrap();
+        let entity_type = schema.entity_type("Gravatar").unwrap();
+        let fields = &entity_type.object_type().unwrap().fields;
 
-        assert_eq!(fork.get_fields_of("Gravatar").unwrap(), &test_fields());
+        assert_eq!(fields, &test_fields(&schema).into_boxed_slice());
     }
 
     #[test]
@@ -322,10 +287,12 @@ mod tests {
         let schema = test_schema();
         let logger = test_logger();
 
-        let fork = SubgraphFork::new(base, id, schema, logger).unwrap();
+        let fork = SubgraphFork::new(base, id, schema.clone(), logger).unwrap();
 
         let query = Query {
-            query: fork.query_string("Gravatar", &test_fields()).unwrap(),
+            query: fork
+                .query_string("Gravatar", &test_fields(&schema))
+                .unwrap(),
             variables: Variables {
                 id: "0x00".to_string(),
             },
@@ -362,7 +329,7 @@ mod tests {
     }
 }"#,
             "Gravatar",
-            &test_fields(),
+            &test_fields(&schema),
         )
         .unwrap();
 

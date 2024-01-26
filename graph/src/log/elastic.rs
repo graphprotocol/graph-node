@@ -139,8 +139,6 @@ pub struct ElasticDrainConfig {
     pub general: ElasticLoggingConfig,
     /// The Elasticsearch index to log to.
     pub index: String,
-    /// The Elasticsearch type to use for logs.
-    pub document_type: String,
     /// The name of the custom object id that the drain is for.
     pub custom_id_key: String,
     /// The custom id for the object that the drain is for.
@@ -156,8 +154,7 @@ pub struct ElasticDrainConfig {
 /// Writes logs to Elasticsearch using the following format:
 /// ```ignore
 /// {
-///   "_index": "subgraph-logs"
-///   "_type": "log",
+///   "_index": "subgraph-logs",
 ///   "_id": "Qmb31zcpzqga7ERaUTp83gVdYcuBasz4rXUHFufikFTJGU-2018-11-08T00:54:52.589258000Z",
 ///   "_source": {
 ///     "level": "debug",
@@ -245,7 +242,6 @@ impl ElasticDrain {
                             let action_line = json!({
                                 "index": {
                                     "_index": config.index,
-                                    "_type": config.document_type,
                                     "_id": log.id,
                                 }
                             })

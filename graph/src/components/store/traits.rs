@@ -1,16 +1,22 @@
 // Portions copyright (2023) Vulcanize, Inc.
 
+use anyhow::Error;
+use async_trait::async_trait;
 use web3::types::{Address, H256};
 
 use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
+use crate::blockchain::BlockTime;
+use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
+use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
+use crate::data::store::QueryObject;
 use crate::data::subgraph::{status, DeploymentFeatures};
-use crate::data::value::Object;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
+use crate::prelude::{DeploymentState, NodeId, QueryExecutionError, SubgraphName};
 use crate::schema::{ApiSchema, InputSchema};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
@@ -134,7 +140,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError>;
+    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<InputSchema, StoreError>;
 
     /// Return a bool represeting whether there is a pending graft for the subgraph
     fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
@@ -222,7 +228,7 @@ pub trait ReadStore: Send + Sync + 'static {
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
-    fn input_schema(&self) -> Arc<InputSchema>;
+    fn input_schema(&self) -> InputSchema;
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
@@ -245,12 +251,14 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_derived(entity_derived)
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         (**self).input_schema()
     }
 }
 
 pub trait DeploymentCursorTracker: Sync + Send + 'static {
+    fn input_schema(&self) -> InputSchema;
+
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
 
@@ -267,6 +275,10 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
 
     fn firehose_cursor(&self) -> FirehoseCursor {
         (**self).firehose_cursor()
+    }
+
+    fn input_schema(&self) -> InputSchema {
+        (**self).input_schema()
     }
 }
 
@@ -316,6 +328,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        block_time: BlockTime,
         firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
@@ -430,9 +443,6 @@ pub trait ChainStore: Send + Sync + 'static {
     /// The head block pointer will be None on initial set up.
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
 
-    /// In-memory time cached version of `chain_head_ptr`.
-    async fn cached_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
-
     /// Get the current head block cursor for this chain.
     ///
     /// The head block cursor will be None on initial set up.
@@ -449,7 +459,10 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<serde_json::Value>, Error>;
+    async fn blocks(
+        self: Arc<Self>,
+        hashes: Vec<BlockHash>,
+    ) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. If `root` is passed, short-circuit upon finding
@@ -524,13 +537,18 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     ) -> Result<(), Error>;
 }
 
+pub struct QueryPermit {
+    pub permit: tokio::sync::OwnedSemaphorePermit,
+    pub wait: Duration,
+}
+
 /// Store operations used when serving queries for a specific deployment
 #[async_trait]
 pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<Object>, Trace), QueryExecutionError>;
+    ) -> Result<(Vec<QueryObject>, Trace), QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
@@ -557,10 +575,19 @@ pub trait QueryStore: Send + Sync {
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
+    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError>;
+
     fn network_name(&self) -> &str;
 
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
+    async fn query_permit(&self) -> Result<QueryPermit, StoreError>;
+
+    /// Report the name of the shard in which the subgraph is stored. This
+    /// should only be used for reporting and monitoring
+    fn shard(&self) -> &str;
+
+    /// Return the deployment id that is queried by this `QueryStore`
+    fn deployment_id(&self) -> DeploymentId;
 }
 
 /// A view of the store that can provide information about the indexing status
@@ -568,7 +595,7 @@ pub trait QueryStore: Send + Sync {
 #[async_trait]
 pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
+    async fn query_permit(&self) -> Result<QueryPermit, StoreError>;
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 

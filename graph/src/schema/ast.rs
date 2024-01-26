@@ -405,11 +405,10 @@ pub fn is_list(field_type: &s::Type) -> bool {
 
 #[test]
 fn entity_validation() {
-    use crate::components::store::EntityKey;
     use crate::data::store;
     use crate::entity;
     use crate::prelude::{DeploymentHash, Entity};
-    use crate::schema::InputSchema;
+    use crate::schema::{EntityType, InputSchema};
 
     const DOCUMENT: &str = "
     enum Color { red, yellow, blue }
@@ -432,6 +431,7 @@ fn entity_validation() {
     lazy_static! {
         static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
         static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
+        static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
 
     fn make_thing(name: &str) -> Entity {
@@ -440,9 +440,9 @@ fn entity_validation() {
 
     fn check(thing: Entity, errmsg: &str) {
         let id = thing.id();
-        let key = EntityKey::data("Thing".to_owned(), id.clone());
+        let key = THING_TYPE.key(id.clone());
 
-        let err = thing.validate(&SCHEMA, &key);
+        let err = thing.validate(&key);
         if errmsg.is_empty() {
             assert!(
                 err.is_ok(),
@@ -513,6 +513,6 @@ fn entity_validation() {
     thing.set("cruft", "wat").unwrap();
     check(
         thing,
-        "Entity Thing[t8]: field `cruft` is derived and can not be set",
+        "Entity Thing[t8]: field `cruft` is derived and cannot be set",
     );
 }

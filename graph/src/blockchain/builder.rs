@@ -1,7 +1,7 @@
 use super::Blockchain;
 use crate::{
-    components::store::ChainStore, firehose::FirehoseEndpoints, prelude::LoggerFactory,
-    prelude::MetricsRegistry,
+    components::store::ChainStore, env::EnvVars, firehose::FirehoseEndpoints,
+    prelude::LoggerFactory, prelude::MetricsRegistry,
 };
 use std::sync::Arc;
 
@@ -20,5 +20,5 @@ pub trait BlockchainBuilder<C>
 where
     C: Blockchain,
 {
-    fn build(self) -> C;
+    fn build(self, config: &Arc<EnvVars>) -> C;
 }

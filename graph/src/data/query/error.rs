@@ -49,6 +49,7 @@ pub enum QueryExecutionError {
     EntityFieldError(String, String),
     ListTypesError(String, Vec<String>),
     ListFilterError(String),
+    ChildFilterNestingNotSupportedError(String, String),
     ValueParseError(String, String),
     AttributeTypeError(String, String),
     EntityParseError(String),
@@ -74,6 +75,8 @@ pub enum QueryExecutionError {
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
     DeploymentNotFound(String),
+    IdMissing,
+    IdNotString,
 }
 
 impl QueryExecutionError {
@@ -94,6 +97,7 @@ impl QueryExecutionError {
             | OrderByNotSupportedError(_, _)
             | OrderByNotSupportedForType(_)
             | FilterNotSupportedError(_, _)
+            | ChildFilterNestingNotSupportedError(_, _)
             | UnknownField(_, _, _)
             | EmptyQuery
             | MultipleSubscriptionFields
@@ -130,7 +134,9 @@ impl QueryExecutionError {
             | InvalidSubgraphManifest
             | ValidationError(_, _)
             | ResultTooBig(_, _)
-            | DeploymentNotFound(_) => false,
+            | DeploymentNotFound(_)
+            | IdMissing
+            | IdNotString => false,
         }
     }
 }
@@ -196,6 +202,9 @@ impl fmt::Display for QueryExecutionError {
             }
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
+            }
+            ChildFilterNestingNotSupportedError(value, filter) => {
+                write!(f, "Child filter nesting not supported by value `{}`: `{}`", value, filter)
             }
             UnknownField(_, t, s) => {
                 write!(f, "Type `{}` has no field `{}`", t, s)
@@ -274,7 +283,9 @@ impl fmt::Display for QueryExecutionError {
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
             ResultTooBig(actual, limit) => write!(f, "the result size of {} is larger than the allowed limit of {}", actual, limit),
-            DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name)
+            DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name),
+            IdMissing => write!(f, "entity is missing an `id` attribute"),
+            IdNotString => write!(f, "entity `id` attribute is not a string"),
         }
     }
 }
@@ -303,6 +314,9 @@ impl From<StoreError> for QueryExecutionError {
             StoreError::DeploymentNotFound(id_or_name) => {
                 QueryExecutionError::DeploymentNotFound(id_or_name)
             }
+            StoreError::ChildFilterNestingNotSupportedError(attr, filter) => {
+                QueryExecutionError::ChildFilterNestingNotSupportedError(attr, filter)
+            }
             _ => QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into()))),
         }
     }
@@ -311,6 +325,18 @@ impl From<StoreError> for QueryExecutionError {
 impl From<SubgraphManifestResolveError> for QueryExecutionError {
     fn from(e: SubgraphManifestResolveError) -> Self {
         QueryExecutionError::SubgraphManifestResolveError(Arc::new(e))
+    }
+}
+
+impl From<anyhow::Error> for QueryExecutionError {
+    fn from(e: anyhow::Error) -> Self {
+        QueryExecutionError::Panic(e.to_string())
+    }
+}
+
+impl From<QueryExecutionError> for diesel::result::Error {
+    fn from(e: QueryExecutionError) -> Self {
+        diesel::result::Error::QueryBuilderError(Box::new(e))
     }
 }
 

@@ -1,20 +1,31 @@
 // Portions copyright (2023) Vulcanize, Inc.
 
+use crate::substreams::Clock;
+use crate::substreams_rpc::response::Message as SubstreamsMessage;
+use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
+use prost_types::Any;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use super::{Block, BlockPtr, Blockchain};
+use super::substreams_block_stream::SubstreamsLogData;
+use super::{Block, BlockPtr, BlockTime, Blockchain};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
+use crate::schema::InputSchema;
 use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};
+
+pub const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
+pub const FIREHOSE_BUFFER_STREAM_SIZE: usize = 1;
+pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 1;
 
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
@@ -22,8 +33,8 @@ pub struct BufferedBlockStream<C: Blockchain> {
 
 impl<C: Blockchain + 'static> BufferedBlockStream<C> {
     pub fn spawn_from_stream(
-        stream: Box<dyn BlockStream<C>>,
         size_hint: usize,
+        stream: Box<dyn BlockStream<C>>,
     ) -> Box<dyn BlockStream<C>> {
         let (sender, receiver) = mpsc::channel::<Result<BlockStreamEvent<C>, Error>>(size_hint);
         crate::spawn(async move { BufferedBlockStream::stream_blocks(stream, sender).await });
@@ -68,7 +79,11 @@ impl<C: Blockchain + 'static> BufferedBlockStream<C> {
     }
 }
 
-impl<C: Blockchain> BlockStream<C> for BufferedBlockStream<C> {}
+impl<C: Blockchain> BlockStream<C> for BufferedBlockStream<C> {
+    fn buffer_size_hint(&self) -> usize {
+        unreachable!()
+    }
+}
 
 impl<C: Blockchain> Stream for BufferedBlockStream<C> {
     type Item = Result<BlockStreamEvent<C>, Error>;
@@ -84,6 +99,7 @@ impl<C: Blockchain> Stream for BufferedBlockStream<C> {
 pub trait BlockStream<C: Blockchain>:
     Stream<Item = Result<BlockStreamEvent<C>, Error>> + Unpin + Send
 {
+    fn buffer_size_hint(&self) -> usize;
 }
 
 /// BlockRefetcher abstraction allows a chain to decide if a block must be refetched after a dynamic data source was added
@@ -111,6 +127,16 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<C::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<C>>>;
+
+    async fn build_substreams(
+        &self,
+        chain: &C,
+        schema: InputSchema,
+        deployment: DeploymentLocator,
+        block_cursor: FirehoseCursor,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<C::TriggerFilter>,
     ) -> Result<Box<dyn BlockStream<C>>>;
 
     async fn build_polling(
@@ -276,12 +302,12 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 
 #[async_trait]
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
+    fn trigger_filter(&self) -> &C::TriggerFilter;
+
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &Arc<dyn TriggersAdapter<C>>,
-        filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 
     /// Returns the [BlockPtr] value for this given block number. This is the block pointer
@@ -316,14 +342,110 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 }
 
 #[async_trait]
-pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
-    async fn to_block_stream_event(
+pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<C::Block>, Error>;
+
+    async fn block_with_triggers(
         &self,
         logger: &Logger,
-        response: Option<Message>,
-        // adapter: &Arc<dyn TriggersAdapter<C>>,
-        // filter: &C::TriggerFilter,
-    ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError>;
+        block: C::Block,
+    ) -> Result<BlockWithTriggers<C>, Error>;
+
+    async fn handle_substreams_block(
+        &self,
+        logger: &Logger,
+        clock: Clock,
+        cursor: FirehoseCursor,
+        block: Vec<u8>,
+    ) -> Result<BlockStreamEvent<C>, Error>;
+
+    async fn to_block_stream_event(
+        &self,
+        logger: &mut Logger,
+        message: Option<Message>,
+        log_data: &mut SubstreamsLogData,
+    ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError> {
+        match message {
+            Some(SubstreamsMessage::Session(session_init)) => {
+                info!(
+                    &logger,
+                    "Received session init";
+                    "session" => format!("{:?}", session_init),
+                );
+                log_data.trace_id = session_init.trace_id;
+                return Ok(None);
+            }
+            Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
+                let valid_block = match undo.last_valid_block {
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::InvalidUndoError),
+                };
+                let valid_ptr = BlockPtr {
+                    hash: valid_block.id.trim_start_matches("0x").try_into()?,
+                    number: valid_block.number as i32,
+                };
+                log_data.last_seen_block = valid_block.number;
+                return Ok(Some(BlockStreamEvent::Revert(
+                    valid_ptr,
+                    FirehoseCursor::from(undo.last_valid_cursor.clone()),
+                )));
+            }
+
+            Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
+                let BlockScopedData {
+                    output,
+                    clock,
+                    cursor,
+                    final_block_height: _,
+                    debug_map_outputs: _,
+                    debug_store_outputs: _,
+                } = block_scoped_data;
+
+                let module_output = match output {
+                    Some(out) => out,
+                    None => return Ok(None),
+                };
+
+                let clock = match clock {
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::MissingClockError),
+                };
+
+                let value = match module_output.map_output {
+                    Some(Any { type_url: _, value }) => value,
+                    None => return Ok(None),
+                };
+
+                log_data.last_seen_block = clock.number;
+                let cursor = FirehoseCursor::from(cursor);
+
+                let event = self
+                    .handle_substreams_block(&logger, clock, cursor, value)
+                    .await?;
+
+                Ok(Some(event))
+            }
+
+            Some(SubstreamsMessage::Progress(progress)) => {
+                if log_data.last_progress.elapsed() > Duration::from_secs(30) {
+                    info!(&logger, "{}", log_data.info_string(&progress); "trace_id" => &log_data.trace_id);
+                    debug!(&logger, "{}", log_data.debug_string(&progress); "trace_id" => &log_data.trace_id);
+                    trace!(
+                        &logger,
+                        "Received progress update";
+                        "progress" => format!("{:?}", progress),
+                        "trace_id" => &log_data.trace_id,
+                    );
+                    log_data.last_progress = Instant::now();
+                }
+                Ok(None)
+            }
+
+            // ignoring Progress messages and SessionInit
+            // We are only interested in Data and Undo signals
+            _ => Ok(None),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -369,6 +491,7 @@ pub enum BlockStreamEvent<C: Blockchain> {
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
+    ProcessWasmBlock(BlockPtr, BlockTime, Box<[u8]>, String, FirehoseCursor),
 }
 
 impl<C: Blockchain> Clone for BlockStreamEvent<C>
@@ -379,6 +502,13 @@ where
         match self {
             Self::Revert(arg0, arg1) => Self::Revert(arg0.clone(), arg1.clone()),
             Self::ProcessBlock(arg0, arg1) => Self::ProcessBlock(arg0.clone(), arg1.clone()),
+            Self::ProcessWasmBlock(arg0, arg1, arg2, arg3, arg4) => Self::ProcessWasmBlock(
+                arg0.clone(),
+                arg1.clone(),
+                arg2.clone(),
+                arg3.clone(),
+                arg4.clone(),
+            ),
         }
     }
 }
@@ -466,7 +596,11 @@ mod test {
         number: u64,
     }
 
-    impl BlockStream<MockBlockchain> for TestStream {}
+    impl BlockStream<MockBlockchain> for TestStream {
+        fn buffer_size_hint(&self) -> usize {
+            1
+        }
+    }
 
     impl Stream for TestStream {
         type Item = Result<BlockStreamEvent<MockBlockchain>, Error>;
@@ -498,7 +632,7 @@ mod test {
         });
         let guard = SharedCancelGuard::new();
 
-        let mut stream = BufferedBlockStream::spawn_from_stream(stream, buffer_size)
+        let mut stream = BufferedBlockStream::spawn_from_stream(buffer_size, stream)
             .map_err(CancelableError::Error)
             .cancelable(&guard, || Err(CancelableError::Cancel));
 

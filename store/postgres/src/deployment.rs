@@ -13,14 +13,9 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
 use graph::{
-    components::store::EntityType,
-    prelude::{
-        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-        DeploymentHash, DeploymentState, StoreError,
-    },
-    schema::InputSchema,
+    blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError,
+    schema::EntityType,
 };
 use graph::{
     data::subgraph::{
@@ -28,6 +23,13 @@ use graph::{
         SubgraphFeature,
     },
     util::backoff::ExponentialBackoff,
+};
+use graph::{
+    prelude::{
+        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
+        DeploymentHash, DeploymentState, StoreError,
+    },
+    schema::InputSchema,
 };
 use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};
@@ -38,6 +40,7 @@ use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::constraint_violation;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
+#[PgType = "text"]
 pub enum SubgraphHealth {
     Failed,
     Healthy,
@@ -301,7 +304,7 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<(InputSchema, bool), S
         .select((sm::schema, sm::use_bytea_prefix))
         .filter(sm::id.eq(site.id))
         .first::<(String, bool)>(conn)?;
-    InputSchema::parse(s.as_str(), site.deployment.clone())
+    InputSchema::parse_latest(s.as_str(), site.deployment.clone())
         .map_err(StoreError::Unknown)
         .map(|schema| (schema, use_bytea_prefix))
 }
@@ -333,7 +336,7 @@ impl ManifestInfo {
             ))
             .filter(sm::id.eq(site.id))
             .first(conn)?;
-        let input_schema = InputSchema::parse(s.as_str(), site.deployment.clone())?;
+        let input_schema = InputSchema::parse_latest(s.as_str(), site.deployment.clone())?;
 
         // Using the features field to store the instrument flag is a bit
         // backhanded, but since this will be used very rarely, should not
@@ -907,14 +910,23 @@ pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHe
 pub(crate) fn entities_with_causality_region(
     conn: &PgConnection,
     id: DeploymentId,
+    schema: &InputSchema,
 ) -> Result<Vec<EntityType>, StoreError> {
     use subgraph_manifest as sm;
 
     sm::table
         .filter(sm::id.eq(id))
         .select(sm::entities_with_causality_region)
-        .get_result(conn)
+        .get_result::<Vec<String>>(conn)
         .map_err(|e| e.into())
+        .map(|ents| {
+            // It is possible to have entity types in
+            // `entities_with_causality_region` that are not mentioned in
+            // the schema.
+            ents.into_iter()
+                .filter_map(|ent| schema.entity_type(&ent).ok())
+                .collect()
+        })
 }
 
 /// Reverts the errors and updates the subgraph health if necessary.
@@ -1077,10 +1089,14 @@ pub fn create_deployment(
         graft_base,
         graft_block,
         debug_fork,
-        history_blocks: history_blocks_override,
+        history_blocks_override,
     } = deployment;
     let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
-    let entities_with_causality_region = Vec::from_iter(entities_with_causality_region.into_iter());
+    let entities_with_causality_region = Vec::from_iter(
+        entities_with_causality_region
+            .into_iter()
+            .map(|et| et.as_str().to_owned()),
+    );
 
     let deployment_values = (
         d::id.eq(site.id),

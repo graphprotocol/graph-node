@@ -1,6 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
+    env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
     prelude::{
@@ -18,11 +19,11 @@ use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use http::{HeaderMap, Uri};
-use std::fs::read_to_string;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
 };
+use std::{fs::read_to_string, time::Duration};
 use url::Url;
 
 const ANY_NAME: &str = ".*";
@@ -495,6 +496,7 @@ impl ChainSection {
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
+                    polling_interval: default_polling_interval(),
                     providers: vec![],
                 });
                 entry.providers.push(provider);
@@ -509,6 +511,11 @@ pub struct Chain {
     pub shard: String,
     #[serde(default = "default_blockchain_kind")]
     pub protocol: BlockchainKind,
+    #[serde(
+        default = "default_polling_interval",
+        deserialize_with = "deserialize_duration_millis"
+    )]
+    pub polling_interval: Duration,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
 }
@@ -530,6 +537,31 @@ impl Chain {
         for provider in self.providers.iter_mut() {
             provider.validate()?
         }
+
+        if !matches!(self.protocol, BlockchainKind::Substreams) {
+            let has_only_substreams_providers = self
+                .providers
+                .iter()
+                .all(|provider| matches!(provider.details, ProviderDetails::Substreams(_)));
+            if has_only_substreams_providers {
+                bail!(
+                    "{} protocol requires an rpc or firehose endpoint defined",
+                    self.protocol
+                );
+            }
+        }
+
+        // When using substreams protocol, only substreams endpoints are allowed
+        if matches!(self.protocol, BlockchainKind::Substreams) {
+            let has_non_substreams_providers = self
+                .providers
+                .iter()
+                .any(|provider| !matches!(provider.details, ProviderDetails::Substreams(_)));
+            if has_non_substreams_providers {
+                bail!("Substreams protocol only supports substreams providers");
+            }
+        }
+
         Ok(())
     }
 }
@@ -1119,6 +1151,18 @@ fn default_node_id() -> NodeId {
     NodeId::new("default").unwrap()
 }
 
+fn default_polling_interval() -> Duration {
+    ENV_VARS.ingestor_polling_interval
+}
+
+fn deserialize_duration_millis<'de, D>(data: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let millis = u64::deserialize(data)?;
+    Ok(Duration::from_millis(millis))
+}
+
 // From https://github.com/serde-rs/serde/issues/889#issuecomment-295988865
 fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
@@ -1154,7 +1198,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::config::{ChainSection, Web3Rule};
+    use crate::config::{default_polling_interval, ChainSection, Web3Rule};
 
     use super::{
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
@@ -1198,6 +1242,7 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Ethereum,
+                polling_interval: default_polling_interval(),
                 providers: vec![],
             },
             actual
@@ -1219,6 +1264,7 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Near,
+                polling_interval: default_polling_interval(),
                 providers: vec![],
             },
             actual
@@ -1310,6 +1356,47 @@ mod tests {
             true,
             "{}",
             err_str
+        );
+    }
+
+    #[test]
+    fn fails_if_non_substreams_provider_for_substreams_protocol() {
+        let mut actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            protocol = "substreams"
+            provider = [
+              { label = "firehose", details = { type = "firehose", url = "http://127.0.0.1:8888", token = "TOKEN", features = ["filters"] }},
+            ]
+        "#,
+        )
+        .unwrap();
+        let err = actual.validate().unwrap_err().to_string();
+
+        assert!(err.contains("only supports substreams providers"), "{err}");
+    }
+
+    #[test]
+    fn fails_if_only_substreams_provider_for_non_substreams_protocol() {
+        let mut actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            protocol = "ethereum"
+            provider = [
+              { label = "firehose", details = { type = "substreams", url = "http://127.0.0.1:8888", token = "TOKEN", features = ["filters"] }},
+            ]
+        "#,
+        )
+        .unwrap();
+        let err = actual.validate().unwrap_err().to_string();
+
+        assert!(
+            err.contains("ethereum protocol requires an rpc or firehose endpoint defined"),
+            "{err}"
         );
     }
 
@@ -1759,5 +1846,46 @@ mod tests {
 
         let result = actual.validate();
         assert_eq!(true, result.is_ok(), "error: {:?}", result.unwrap_err());
+    }
+
+    #[test]
+    fn polling_interval() {
+        let default = default_polling_interval();
+        let different = 2 * default;
+
+        // Polling interval not set explicitly, use default
+        let actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "vip"
+            provider = []"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            default,
+            actual.chains.get("mainnet").unwrap().polling_interval
+        );
+
+        // Polling interval set explicitly, use that
+        let actual = toml::from_str::<ChainSection>(
+            format!(
+                r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "vip"
+            provider = []
+            polling_interval = {}"#,
+                different.as_millis()
+            )
+            .as_str(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            different,
+            actual.chains.get("mainnet").unwrap().polling_interval
+        );
     }
 }

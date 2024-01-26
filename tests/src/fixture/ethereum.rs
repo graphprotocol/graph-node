@@ -3,20 +3,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::{
-    test_ptr, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
-    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain, NODE_ID,
+    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
+    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
-use graph::endpoint::EndpointMetrics;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{
-    ethabi, tiny_keccak, LightEthereumBlock, LoggerFactory, MetricsRegistry, NodeId, ENV_VARS,
-};
+use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
+use graph_chain_ethereum::trigger::LogRef;
 use graph_chain_ethereum::Chain;
 use graph_chain_ethereum::{
     chain::BlockFinality,
@@ -24,6 +21,7 @@ use graph_chain_ethereum::{
 };
 
 pub async fn chain(
+    test_name: &str,
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &Stores,
     triggers_adapter: Option<Arc<dyn TriggersAdapterSelector<Chain>>>,
@@ -32,25 +30,14 @@ pub async fn chain(
         triggers_in_block_sleep: Duration::ZERO,
         x: PhantomData,
     }));
-    let logger = graph::log::logger(true);
-    let mock_registry = Arc::new(MetricsRegistry::mock());
-    let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
-    let node_id = NodeId::new(NODE_ID).unwrap();
 
-    let chain_store = stores.chain_store.cheap_clone();
-
-    // This is needed because the stream builder only works for firehose and this will only be called if there
-    // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
-    let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
-        "",
-        "https://example.com",
-        None,
-        true,
-        false,
-        SubgraphLimit::Unlimited,
-        Arc::new(EndpointMetrics::mock()),
-    ))]
-    .into();
+    let CommonChainConfig {
+        logger_factory,
+        mock_registry,
+        chain_store,
+        firehose_endpoints,
+        node_id,
+    } = CommonChainConfig::new(test_name, stores).await;
 
     let client = Arc::new(ChainClient::<Chain>::new_firehose(firehose_endpoints));
 
@@ -71,7 +58,7 @@ pub async fn chain(
         triggers_adapter,
         Arc::new(NoopRuntimeAdapter { x: PhantomData }),
         ENV_VARS.reorg_threshold,
-        graph_chain_ethereum::ENV_VARS.ingestor_polling_interval,
+        ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
     );
@@ -90,14 +77,31 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
             number: Some(U64::from(ptr.number)),
             ..Default::default()
         })),
-        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every)],
+        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End)],
     }
 }
 
-pub fn empty_block(
+pub fn generate_empty_blocks_for_range(
     parent_ptr: BlockPtr,
-    ptr: BlockPtr,
-) -> BlockWithTriggers<graph_chain_ethereum::Chain> {
+    start: i32,
+    end: i32,
+    add_to_hash: u64, // Use to differentiate forks
+) -> Vec<BlockWithTriggers<Chain>> {
+    let mut blocks: Vec<BlockWithTriggers<Chain>> = vec![];
+
+    for i in start..(end + 1) {
+        let parent_ptr = blocks.last().map(|b| b.ptr()).unwrap_or(parent_ptr.clone());
+        let ptr = BlockPtr {
+            number: i,
+            hash: H256::from_low_u64_be(i as u64 + add_to_hash).into(),
+        };
+        blocks.push(empty_block(parent_ptr, ptr));
+    }
+
+    blocks
+}
+
+pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Chain> {
     assert!(ptr != parent_ptr);
     assert!(ptr.number > parent_ptr.number);
 
@@ -120,25 +124,32 @@ pub fn empty_block(
             transactions,
             ..Default::default()
         })),
-        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every)],
+        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End)],
     }
 }
 
 pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<String>) {
-    block.trigger_data.push(EthereumTrigger::Log(
-        Arc::new(Log {
-            address: Address::zero(),
-            topics: vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
-            data: ethabi::encode(&[ethabi::Token::String(payload.into())]).into(),
-            block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
-            block_number: Some(block.ptr().number.into()),
-            transaction_hash: Some(H256::from_low_u64_be(0)),
-            transaction_index: Some(0.into()),
-            log_index: Some(0.into()),
-            transaction_log_index: Some(0.into()),
-            log_type: None,
-            removed: None,
-        }),
-        None,
+    let log = Arc::new(Log {
+        address: Address::zero(),
+        topics: vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
+        data: ethabi::encode(&[ethabi::Token::String(payload.into())]).into(),
+        block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
+        block_number: Some(block.ptr().number.into()),
+        transaction_hash: Some(H256::from_low_u64_be(0)),
+        transaction_index: Some(0.into()),
+        log_index: Some(0.into()),
+        transaction_log_index: Some(0.into()),
+        log_type: None,
+        removed: None,
+    });
+    block
+        .trigger_data
+        .push(EthereumTrigger::Log(LogRef::FullLog(log, None)))
+}
+
+pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>) {
+    block.trigger_data.push(EthereumTrigger::Block(
+        block.ptr(),
+        EthereumBlockTriggerType::End,
     ))
 }

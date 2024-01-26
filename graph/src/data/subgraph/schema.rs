@@ -2,7 +2,6 @@
 
 use anyhow::{anyhow, bail, Error};
 use hex;
-use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
 use std::collections::BTreeSet;
@@ -10,20 +9,15 @@ use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
 use super::DeploymentHash;
+use crate::blockchain::Blockchain;
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
-use crate::data::value::Word;
 use crate::prelude::*;
+use crate::schema::EntityType;
 use crate::util::stable_hash_glue::impl_stable_hash;
-use crate::{blockchain::Blockchain, components::store::EntityType};
 
 pub const POI_TABLE: &str = "poi2$";
-lazy_static! {
-    pub static ref POI_OBJECT: EntityType = EntityType::new("Poi$".to_string());
-    /// The name of the digest attribute of POI entities
-    pub static ref POI_DIGEST: Word = Word::from("digest");
-}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -111,7 +105,7 @@ pub struct DeploymentCreate {
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
-    pub history_blocks: Option<i32>,
+    pub history_blocks_override: Option<i32>,
 }
 
 impl DeploymentCreate {
@@ -126,12 +120,12 @@ impl DeploymentCreate {
             graft_base: None,
             graft_block: None,
             debug_fork: None,
-            history_blocks: None,
+            history_blocks_override: None,
         }
     }
 
-    pub fn with_history_blocks(mut self, blocks: i32) -> Self {
-        self.history_blocks = Some(blocks);
+    pub fn with_history_blocks_override(mut self, blocks: i32) -> Self {
+        self.history_blocks_override = Some(blocks);
         self
     }
 
@@ -207,7 +201,7 @@ impl SubgraphManifestEntity {
             schema: manifest.schema.document_string(),
             raw_yaml: Some(raw_yaml),
             entities_with_causality_region,
-            history_blocks: BLOCK_NUMBER_MAX,
+            history_blocks: manifest.history_blocks(),
         }
     }
 

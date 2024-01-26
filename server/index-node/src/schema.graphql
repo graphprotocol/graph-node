@@ -40,11 +40,17 @@ type Query {
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
   blockData(network: String!, blockHash: Bytes!): JSONObject
   blockHashFromNumber(network: String!, blockNumber: Int!): Bytes
+  version: Version!
   cachedEthereumCalls(
     network: String!
     blockHash: Bytes!
   ): [CachedEthereumCall!]
   apiVersions(subgraphId: String!): [ApiVersion!]!
+}
+
+type Version {
+  version: String!
+  commit: String!
 }
 
 type SubgraphIndexingStatus {
@@ -65,6 +71,7 @@ type SubgraphIndexingStatus {
   chains: [ChainIndexingStatus!]!
   entityCount: BigInt!
   node: String
+  paused: Boolean!
   historyBlocks: Int!
 }
 
@@ -141,6 +148,7 @@ type SubgraphFeatures {
   specVersion: String!
   features: [Feature!]!
   dataSources: [String!]!
+  handlers: [String!]!
   network: String
 }
 

@@ -38,6 +38,7 @@ impl ToSql<Int8, Pg> for Value {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
         match self {
             Value::Int8(i) => <i64 as ToSql<Int8, Pg>>::to_sql(i, out),
+            Value::Int(i) => <i64 as ToSql<Int8, Pg>>::to_sql(&(*i as i64), out),
             v => Err(anyhow!(
                 "Failed to convert non-int8 attribute value to int8 in SQL: {}",
                 v

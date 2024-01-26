@@ -6,6 +6,8 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::blockchain::BlockTime;
+use crate::components::metrics::gas::GasMetrics;
 use crate::components::store::SubgraphFork;
 use crate::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
@@ -60,10 +62,22 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error>;
 
-    async fn process_mapping_trigger(
+    async fn process_block(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
+        block_data: Box<[u8]>,
+        handler: String,
+        state: BlockState<C>,
+        proof_of_indexing: SharedProofOfIndexing,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        instrument: bool,
+    ) -> Result<BlockState<C>, MappingError>;
+
+    async fn process_mapping_trigger(
+        &self,
+        logger: &Logger,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
@@ -87,6 +101,8 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
 pub struct HostMetrics {
     handler_execution_time: Box<HistogramVec>,
     host_fn_execution_time: Box<HistogramVec>,
+    eth_call_execution_time: Box<HistogramVec>,
+    pub gas_metrics: GasMetrics,
     pub stopwatch: StopwatchMetrics,
 }
 
@@ -95,6 +111,7 @@ impl HostMetrics {
         registry: Arc<MetricsRegistry>,
         subgraph: &str,
         stopwatch: StopwatchMetrics,
+        gas_metrics: GasMetrics,
     ) -> Self {
         let handler_execution_time = registry
             .new_deployment_histogram_vec(
@@ -105,6 +122,20 @@ impl HostMetrics {
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `deployment_handler_execution_time` histogram");
+        let eth_call_execution_time = registry
+            .new_deployment_histogram_vec(
+                "deployment_eth_call_execution_time",
+                "Measures the execution time for eth_call",
+                subgraph,
+                vec![
+                    String::from("contract_name"),
+                    String::from("address"),
+                    String::from("method"),
+                ],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `deployment_eth_call_execution_time` histogram");
+
         let host_fn_execution_time = registry
             .new_deployment_histogram_vec(
                 "deployment_host_fn_execution_time",
@@ -118,6 +149,8 @@ impl HostMetrics {
             handler_execution_time,
             host_fn_execution_time,
             stopwatch,
+            gas_metrics,
+            eth_call_execution_time,
         }
     }
 
@@ -130,6 +163,18 @@ impl HostMetrics {
     pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: &str) {
         self.host_fn_execution_time
             .with_label_values(&[fn_name][..])
+            .observe(duration);
+    }
+
+    pub fn observe_eth_call_execution_time(
+        &self,
+        duration: f64,
+        contract_name: &str,
+        address: &str,
+        method: &str,
+    ) {
+        self.eth_call_execution_time
+            .with_label_values(&[contract_name, address, method][..])
             .observe(duration);
     }
 

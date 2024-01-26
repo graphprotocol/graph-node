@@ -1,10 +1,15 @@
+use crate::block_ingestor::SubstreamsBlockIngestor;
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter};
+use graph::blockchain::{
+    BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopRuntimeAdapter,
+};
 use graph::components::store::DeploymentCursorTracker;
+use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
-use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
+use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
+use graph::schema::EntityKey;
 use graph::{
     blockchain::{
         self,
@@ -16,13 +21,29 @@ use graph::{
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
+
 use std::sync::Arc;
+
+// ParsedChanges are an internal representation of the equivalent operations defined on the
+// graph-out format used by substreams.
+// Unset serves as a sentinel value, if for some reason an unknown value is sent or the value
+// was empty then it's probably an unintended behaviour. This code was moved here for performance
+// reasons, but the validation is still performed during trigger processing so while Unset will
+// very likely just indicate an error somewhere, as far as the stream is concerned we just pass
+// that along and let the downstream components deal with it.
+#[derive(Debug, Clone)]
+pub enum ParsedChanges {
+    Unset,
+    Delete(EntityKey),
+    Upsert { key: EntityKey, entity: Entity },
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct Block {
     pub hash: BlockHash,
     pub number: BlockNumber,
     pub changes: EntityChanges,
+    pub parsed_changes: Vec<ParsedChanges>,
 }
 
 impl blockchain::Block for Block {
@@ -35,6 +56,10 @@ impl blockchain::Block for Block {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         None
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        BlockTime::NONE
     }
 }
 
@@ -108,19 +133,18 @@ impl Blockchain for Chain {
         &self,
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
-        start_blocks: Vec<BlockNumber>,
+        _start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
-        unified_api_version: UnifiedMappingApiVersion,
+        _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
-            .build_firehose(
+            .build_substreams(
                 self,
+                store.input_schema(),
                 deployment,
                 store.firehose_cursor(),
-                start_blocks,
                 store.block_ptr(),
                 filter,
-                unified_api_version,
             )
             .await
     }
@@ -163,6 +187,32 @@ impl Blockchain for Chain {
     }
 
     fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
-        unreachable!("Substreams rely on the block ingestor from the network they are processing")
+        Ok(Box::new(SubstreamsBlockIngestor::new(
+            self.chain_store.cheap_clone(),
+            self.client.cheap_clone(),
+            self.logger_factory.component_logger("", None),
+            "substreams".to_string(),
+            self.metrics_registry.cheap_clone(),
+        )))
+    }
+}
+
+impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
+    fn build(self, _config: &Arc<EnvVars>) -> Chain {
+        let BasicBlockchainBuilder {
+            logger_factory,
+            name: _,
+            chain_store,
+            firehose_endpoints,
+            metrics_registry,
+        } = self;
+
+        Chain {
+            chain_store,
+            block_stream_builder: Arc::new(crate::BlockStreamBuilder::new()),
+            logger_factory,
+            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
+            metrics_registry,
+        }
     }
 }

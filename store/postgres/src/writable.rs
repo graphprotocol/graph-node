@@ -6,17 +6,17 @@ use std::time::{Duration, Instant};
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{
-    Batch, DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore,
-};
+use graph::blockchain::BlockTime;
+use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
+use graph::data::store::IdList;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
     BlockNumber, CacheWeight, Entity, MetricsRegistry, SubgraphDeploymentEntity,
     SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
-use graph::schema::InputSchema;
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::slog::{info, warn};
 use graph::tokio::select;
 use graph::tokio::sync::Notify;
@@ -24,7 +24,7 @@ use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
-    components::store::{self, write::EntityOp, EntityType, WritableStore as WritableStoreTrait},
+    components::store::{self, write::EntityOp, WritableStore as WritableStoreTrait},
     data::subgraph::schema::SubgraphError,
     prelude::{
         BlockPtr, DeploymentHash, EntityModification, Error, Logger, StopwatchMetrics, StoreError,
@@ -59,12 +59,87 @@ impl WritableSubgraphStore {
         self.0.layout(id)
     }
 
-    fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
+    fn load_deployment(&self, site: Arc<Site>) -> Result<SubgraphDeploymentEntity, StoreError> {
         self.0.load_deployment(site)
     }
 
     fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         self.0.find_site(id)
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum LastRollup {
+    /// We do not need to track the block time since the subgraph doesn't
+    /// use timeseries
+    NotNeeded,
+    /// We do not know the block time yet
+    Unknown,
+    /// The block time
+    Some(BlockTime),
+}
+
+impl LastRollup {
+    fn new(
+        store: Arc<DeploymentStore>,
+        site: Arc<Site>,
+        has_aggregations: bool,
+        block: Option<BlockNumber>,
+    ) -> Result<Self, StoreError> {
+        let kind = match (has_aggregations, block) {
+            (false, _) => LastRollup::NotNeeded,
+            (true, None) => LastRollup::Unknown,
+            (true, Some(block)) => {
+                let block_time = store.block_time(site, block)?;
+                block_time
+                    .map(|b| LastRollup::Some(b))
+                    .unwrap_or(LastRollup::Unknown)
+            }
+        };
+        Ok(kind)
+    }
+}
+
+pub struct LastRollupTracker(Mutex<LastRollup>);
+
+impl LastRollupTracker {
+    fn new(
+        store: Arc<DeploymentStore>,
+        site: Arc<Site>,
+        has_aggregations: bool,
+        block: Option<BlockNumber>,
+    ) -> Result<Self, StoreError> {
+        let rollup = LastRollup::new(
+            store.cheap_clone(),
+            site.cheap_clone(),
+            has_aggregations,
+            block,
+        )
+        .map(|kind| Mutex::new(kind))?;
+        Ok(Self(rollup))
+    }
+
+    fn set(&self, block_time: Option<BlockTime>) -> Result<(), StoreError> {
+        let mut last = self.0.lock().unwrap();
+        match (&*last, block_time) {
+            (LastRollup::NotNeeded, _) => { /* nothing to do */ }
+            (LastRollup::Some(_) | LastRollup::Unknown, Some(block_time)) => {
+                *last = LastRollup::Some(block_time);
+            }
+            (LastRollup::Some(_) | LastRollup::Unknown, None) => {
+                constraint_violation!("block time cannot be unset");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get(&self) -> Option<BlockTime> {
+        let last = self.0.lock().unwrap();
+        match &*last {
+            LastRollup::NotNeeded | LastRollup::Unknown => None,
+            LastRollup::Some(block_time) => Some(*block_time),
+        }
     }
 }
 
@@ -76,20 +151,29 @@ struct SyncStore {
     store: WritableSubgraphStore,
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
-    input_schema: Arc<InputSchema>,
+    input_schema: InputSchema,
     manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+    last_rollup: LastRollupTracker,
 }
 
 impl SyncStore {
-    fn new(
+    async fn new(
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+        block: Option<BlockNumber>,
     ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
         let input_schema = subgraph_store.input_schema(&site.deployment)?;
+        let last_rollup = LastRollupTracker::new(
+            writable.cheap_clone(),
+            site.cheap_clone(),
+            input_schema.has_aggregations(),
+            block,
+        )?;
+
         Ok(Self {
             logger,
             store,
@@ -97,6 +181,7 @@ impl SyncStore {
             site,
             input_schema,
             manifest_idx_and_name,
+            last_rollup,
         })
     }
 
@@ -136,7 +221,7 @@ impl SyncStore {
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
-                    let deployment_entity = self.store.load_deployment(&src.site)?;
+                    let deployment_entity = self.store.load_deployment(src.site.clone())?;
                     Some((src, base_ptr, deployment_entity))
                 }
                 None => None,
@@ -158,6 +243,11 @@ impl SyncStore {
                 block_ptr_to.clone(),
                 firehose_cursor,
             )?;
+
+            let block_time = self
+                .writable
+                .block_time(self.site.cheap_clone(), block_ptr_to.number)?;
+            self.last_rollup.set(block_time)?;
 
             self.try_send_store_event(event)
         })
@@ -222,9 +312,13 @@ impl SyncStore {
                 &self.logger,
                 self.site.clone(),
                 batch,
+                self.last_rollup.get(),
                 stopwatch,
                 &self.manifest_idx_and_name,
             )?;
+            // unwrap: batch.block_times is never empty
+            let last_block_time = batch.block_times.last().unwrap().1;
+            self.last_rollup.set(Some(last_block_time))?;
 
             let _section = stopwatch.start_section("send_store_event");
             self.try_send_store_event(event)?;
@@ -237,12 +331,13 @@ impl SyncStore {
         keys: BTreeSet<EntityKey>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let mut by_type: BTreeMap<(EntityType, CausalityRegion), Vec<String>> = BTreeMap::new();
+        let mut by_type: BTreeMap<(EntityType, CausalityRegion), IdList> = BTreeMap::new();
         for key in keys {
+            let id_type = key.entity_type.id_type()?;
             by_type
                 .entry((key.entity_type, key.causality_region))
-                .or_default()
-                .push(key.entity_id.into());
+                .or_insert_with(|| IdList::new(id_type))
+                .push(key.entity_id)?;
         }
 
         retry::forever(&self.logger, "get_many", || {
@@ -366,8 +461,8 @@ impl SyncStore {
         .await
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
-        self.input_schema.clone()
+    fn input_schema(&self) -> InputSchema {
+        self.input_schema.cheap_clone()
     }
 }
 
@@ -729,6 +824,16 @@ pub(crate) mod test_support {
             queue.push(()).await
         }
     }
+
+    pub async fn flush_steps(deployment: graph::components::store::DeploymentId) {
+        let queue = {
+            let mut map = STEPS.lock().unwrap();
+            map.remove(&deployment)
+        };
+        if let Some(queue) = queue {
+            queue.push(()).await;
+        }
+    }
 }
 
 impl std::fmt::Debug for Queue {
@@ -849,6 +954,7 @@ impl Queue {
             store.site.deployment.clone(),
             "writer",
             registry,
+            store.shard().to_string(),
         );
 
         let batch_ready_notify = Arc::new(Notify::new());
@@ -991,6 +1097,10 @@ impl Queue {
     /// Wait for the background writer to finish processing queued entries
     async fn flush(&self) -> Result<(), StoreError> {
         self.check_err()?;
+
+        #[cfg(debug_assertions)]
+        test_support::flush_steps(self.store.site.id.into()).await;
+
         // Turn off batching so the queue doesn't wait for a batch to become
         // full, but restore the old behavior once the queue is empty.
         let batching = self.batch_writes.load(Ordering::SeqCst);
@@ -1062,8 +1172,14 @@ impl Queue {
             &self.queue,
             BTreeMap::new(),
             |mut map: BTreeMap<EntityKey, Option<Entity>>, batch, at| {
-                // See if we have changes for any of the keys.
+                // See if we have changes for any of the keys. Since we are
+                // going from newest to oldest block, do not clobber already
+                // existing entries in map as that would make us use an
+                // older value.
                 for key in &keys {
+                    if map.contains_key(key) {
+                        continue;
+                    }
                     match batch.last_op(key, at) {
                         Some(EntityOp::Write { key: _, entity }) => {
                             map.insert(key.clone(), Some(entity.clone()));
@@ -1100,7 +1216,7 @@ impl Queue {
         fn is_related(derived_query: &DerivedEntityQuery, entity: &Entity) -> bool {
             entity
                 .get(&derived_query.entity_field)
-                .map(|related_id| related_id.as_str() == Some(&derived_query.value))
+                .map(|v| &derived_query.value == v)
                 .unwrap_or(false)
         }
 
@@ -1125,7 +1241,14 @@ impl Queue {
             &self.queue,
             BTreeMap::new(),
             |mut map: BTreeMap<EntityKey, Option<Entity>>, batch, at| {
-                map.extend(effective_ops(batch, derived_query, at));
+                // Since we are going newest to oldest, do not clobber
+                // already existing entries in map as that would make us
+                // produce stale values
+                for (k, v) in effective_ops(batch, derived_query, at) {
+                    if !map.contains_key(&k) {
+                        map.insert(k, v);
+                    }
+                }
                 map
             },
         );
@@ -1358,13 +1481,21 @@ impl WritableStore {
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
         registry: Arc<MetricsRegistry>,
     ) -> Result<Self, StoreError> {
-        let store = Arc::new(SyncStore::new(
-            subgraph_store,
-            logger.clone(),
-            site,
-            manifest_idx_and_name,
-        )?);
-        let block_ptr = Mutex::new(store.block_ptr().await?);
+        let block_ptr = subgraph_store
+            .for_site(&site)?
+            .block_ptr(site.cheap_clone())
+            .await?;
+        let store = Arc::new(
+            SyncStore::new(
+                subgraph_store,
+                logger.clone(),
+                site,
+                manifest_idx_and_name,
+                block_ptr.as_ref().map(|ptr| ptr.number),
+            )
+            .await?,
+        );
+        let block_ptr = Mutex::new(block_ptr);
         let block_cursor = Mutex::new(store.block_cursor().await?);
         let writer = Writer::new(
             logger,
@@ -1409,7 +1540,7 @@ impl ReadStore for WritableStore {
         self.writer.get_derived(key)
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         self.store.input_schema()
     }
 }
@@ -1421,6 +1552,10 @@ impl DeploymentCursorTracker for WritableStore {
 
     fn firehose_cursor(&self) -> FirehoseCursor {
         self.block_cursor.lock().unwrap().clone()
+    }
+
+    fn input_schema(&self) -> InputSchema {
+        self.store.input_schema()
     }
 }
 
@@ -1489,6 +1624,7 @@ impl WritableStoreTrait for WritableStore {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        block_time: BlockTime,
         firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
@@ -1498,8 +1634,8 @@ impl WritableStoreTrait for WritableStore {
         is_non_fatal_errors_active: bool,
     ) -> Result<(), StoreError> {
         let batch = Batch::new(
-            self.store.input_schema.cheap_clone(),
             block_ptr_to.clone(),
+            block_time,
             firehose_cursor.clone(),
             mods,
             data_sources,

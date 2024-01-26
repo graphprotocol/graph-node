@@ -200,6 +200,7 @@ impl Deployment {
         ];
         if !statuses.is_empty() {
             rows.extend(vec![
+                "paused",
                 "synced",
                 "health",
                 "earliest block",
@@ -228,6 +229,10 @@ impl Deployment {
             if let Some(status) = status {
                 let chain = &status.chains[0];
                 rows.extend(vec![
+                    status
+                        .paused
+                        .map(|b| b.to_string())
+                        .unwrap_or("---".to_string()),
                     status.synced.to_string(),
                     status.health.as_str().to_string(),
                     chain.earliest_block_number.to_string(),

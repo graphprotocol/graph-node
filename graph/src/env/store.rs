@@ -109,6 +109,13 @@ pub struct EnvVarsStore {
     /// is 10_000 which corresponds to 10MB. Setting this to 0 disables
     /// write batching.
     pub write_batch_size: usize,
+    /// Whether to create GIN indexes for array attributes. Set by
+    /// `GRAPH_STORE_CREATE_GIN_INDEXES`. The default is `false`
+    pub create_gin_indexes: bool,
+    /// Temporary env var in case we need to quickly rollback PR #5010
+    pub use_brin_for_all_query_types: bool,
+    /// Temporary env var to disable certain lookups in the chain store
+    pub disable_block_cache_for_lookup: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -150,6 +157,9 @@ impl From<InnerStore> for EnvVarsStore {
             history_slack_factor: x.history_slack_factor.0,
             write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
             write_batch_size: x.write_batch_size * 1_000,
+            create_gin_indexes: x.create_gin_indexes,
+            use_brin_for_all_query_types: x.use_brin_for_all_query_types,
+            disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
         }
     }
 }
@@ -203,6 +213,12 @@ pub struct InnerStore {
     write_batch_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_SIZE", default = "10000")]
     write_batch_size: usize,
+    #[envconfig(from = "GRAPH_STORE_CREATE_GIN_INDEXES", default = "false")]
+    create_gin_indexes: bool,
+    #[envconfig(from = "GRAPH_STORE_USE_BRIN_FOR_ALL_QUERY_TYPES", default = "false")]
+    use_brin_for_all_query_types: bool,
+    #[envconfig(from = "GRAPH_STORE_DISABLE_BLOCK_CACHE_FOR_LOOKUP", default = "false")]
+    disable_block_cache_for_lookup: bool,
 }
 
 #[derive(Clone, Copy, Debug)]

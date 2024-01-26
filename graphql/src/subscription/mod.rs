@@ -2,6 +2,7 @@ use std::result::Result;
 use std::time::{Duration, Instant};
 
 use graph::components::store::UnitStream;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::schema::ApiSchema;
 use graph::{components::store::SubscriptionManager, prelude::*, schema::ErrorPolicy};
 
@@ -38,6 +39,8 @@ pub struct SubscriptionExecutionOptions {
     pub max_skip: u32,
 
     pub graphql_metrics: Arc<GraphQLMetrics>,
+
+    pub load_manager: Arc<LoadManager>,
 }
 
 pub fn execute_subscription(
@@ -88,6 +91,7 @@ fn create_source_event_stream(
         options.store.clone(),
         options.subscription_manager.cheap_clone(),
         options.graphql_metrics.cheap_clone(),
+        options.load_manager.cheap_clone(),
     );
     let ctx = ExecutionContext {
         logger: options.logger.cheap_clone(),
@@ -155,6 +159,7 @@ fn map_source_to_response_stream(
         max_first,
         max_skip,
         graphql_metrics,
+        load_manager,
     } = options;
 
     trigger_stream
@@ -169,6 +174,7 @@ fn map_source_to_response_stream(
                 max_first,
                 max_skip,
                 graphql_metrics.cheap_clone(),
+                load_manager.cheap_clone(),
             )
             .boxed()
         })
@@ -184,6 +190,7 @@ async fn execute_subscription_event(
     max_first: u32,
     max_skip: u32,
     metrics: Arc<GraphQLMetrics>,
+    load_manager: Arc<LoadManager>,
 ) -> Arc<QueryResult> {
     async fn make_resolver(
         store: Arc<dyn QueryStore>,
@@ -191,6 +198,7 @@ async fn execute_subscription_event(
         subscription_manager: Arc<dyn SubscriptionManager>,
         query: &Arc<crate::execution::Query>,
         metrics: Arc<GraphQLMetrics>,
+        load_manager: Arc<LoadManager>,
     ) -> Result<StoreResolver, QueryExecutionError> {
         let state = store.deployment_state().await?;
         StoreResolver::at_block(
@@ -202,11 +210,20 @@ async fn execute_subscription_event(
             ErrorPolicy::Deny,
             query.schema.id().clone(),
             metrics,
+            load_manager,
         )
         .await
     }
 
-    let resolver = match make_resolver(store, &logger, subscription_manager, &query, metrics).await
+    let resolver = match make_resolver(
+        store,
+        &logger,
+        subscription_manager,
+        &query,
+        metrics,
+        load_manager,
+    )
+    .await
     {
         Ok(resolver) => resolver,
         Err(e) => return Arc::new(e.into()),

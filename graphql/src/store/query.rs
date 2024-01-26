@@ -2,22 +2,25 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 
 use graph::data::graphql::ext::DirectiveFinder;
+use graph::data::graphql::ObjectOrInterface;
 use graph::data::graphql::TypeExt as _;
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::*;
 use graph::schema::ast::{self as sast, FilterOp};
-use graph::schema::ApiSchema;
-use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
+use graph::schema::{ApiSchema, EntityType, InputSchema};
 
 use crate::execution::ast as a;
-
-use super::prefetch::SelectedAttributes;
 
 #[derive(Debug)]
 enum OrderDirection {
     Ascending,
     Descending,
+}
+
+pub(crate) struct SchemaPair {
+    pub api: Arc<ApiSchema>,
+    pub input: InputSchema,
 }
 
 /// Builds a EntityQuery from GraphQL arguments.
@@ -27,26 +30,26 @@ pub(crate) fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
     field: &a::Field,
-    types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
+    types_for_interface: &'a BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
-    mut column_names: SelectedAttributes,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
-            let selected_columns = column_names.get(object);
-            vec![((*object).into(), selected_columns)]
+            let selected_columns = field.selected_attrs(object)?;
+            let entity_type = schema.input.entity_type(*object).unwrap();
+            vec![(entity_type, selected_columns)]
         }
-        ObjectOrInterface::Interface(interface) => types_for_interface
-            [&EntityType::from(*interface)]
+        ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
             .iter()
             .map(|o| {
-                let selected_columns = column_names.get(o);
-                (o.into(), selected_columns)
+                let selected_columns = field.selected_attrs(o);
+                let entity_type = schema.input.entity_type(o).unwrap();
+                selected_columns.map(|selected_columns| (entity_type, selected_columns))
             })
-            .collect(),
+            .collect::<Result<_, _>>()?,
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
@@ -173,7 +176,7 @@ fn build_range(
 fn build_filter(
     entity: ObjectOrInterface,
     field: &a::Field,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     let where_filter = match field.argument_value("where") {
         Some(r::Value::Object(object)) => match build_filter_from_object(entity, object, schema) {
@@ -269,7 +272,7 @@ fn build_entity_filter(
 /// Iterate over the list and generate an EntityFilter from it
 fn build_list_filter_from_value(
     entity: ObjectOrInterface,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
     value: &r::Value,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     // We have object like this
@@ -294,10 +297,10 @@ fn build_list_filter_from_value(
 }
 
 /// build a filter which has list of nested filters
-fn build_list_filter_from_object(
+fn build_list_filter_from_object<'a>(
     entity: ObjectOrInterface,
     object: &Object,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     Ok(object
         .iter()
@@ -310,10 +313,10 @@ fn build_list_filter_from_object(
 }
 
 /// Parses a GraphQL input object into an EntityFilter, if present.
-fn build_filter_from_object(
+fn build_filter_from_object<'a>(
     entity: ObjectOrInterface,
     object: &Object,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     object
         .iter()
@@ -390,15 +393,17 @@ fn build_child_filter_from_object(
     entity: ObjectOrInterface,
     field_name: String,
     object: &Object,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
 ) -> Result<EntityFilter, QueryExecutionError> {
     let field = entity
         .field(&field_name)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
     let type_name = &field.field_type.get_base_type();
     let child_entity = schema
+        .api
         .object_or_interface(type_name)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
+    let child_entity_type = schema.input.entity_type(child_entity)?;
     let filter = Box::new(EntityFilter::And(build_filter_from_object(
         child_entity,
         object,
@@ -416,25 +421,27 @@ fn build_child_filter_from_object(
     if child_entity.is_interface() {
         Ok(EntityFilter::Or(
             child_entity
-                .object_types(schema.schema())
+                .object_types(schema.api.schema())
                 .ok_or(QueryExecutionError::AbstractTypeError(
                     "Interface is not implemented by any types".to_string(),
                 ))?
                 .iter()
                 .map(|object_type| {
-                    EntityFilter::Child(Child {
-                        attr: attr.clone(),
-                        entity_type: EntityType::new(object_type.name.to_string()),
-                        filter: filter.clone(),
-                        derived,
+                    schema.input.entity_type(*object_type).map(|entity_type| {
+                        EntityFilter::Child(Child {
+                            attr: attr.clone(),
+                            entity_type,
+                            filter: filter.clone(),
+                            derived,
+                        })
                     })
                 })
-                .collect(),
+                .collect::<Result<_, _>>()?,
         ))
     } else if entity.is_interface() {
         Ok(EntityFilter::Or(
             entity
-                .object_types(schema.schema())
+                .object_types(schema.api.schema())
                 .ok_or(QueryExecutionError::AbstractTypeError(
                     "Interface is not implemented by any types".to_string(),
                 ))?
@@ -457,7 +464,7 @@ fn build_child_filter_from_object(
 
                     Ok(EntityFilter::Child(Child {
                         attr,
-                        entity_type: EntityType::new(child_entity.name().to_string()),
+                        entity_type: child_entity_type.clone(),
                         filter: filter.clone(),
                         derived,
                     }))
@@ -467,7 +474,7 @@ fn build_child_filter_from_object(
     } else {
         Ok(EntityFilter::Child(Child {
             attr,
-            entity_type: EntityType::new(type_name.to_string()),
+            entity_type: schema.input.entity_type(*type_name)?,
             filter,
             derived,
         }))
@@ -544,7 +551,7 @@ enum OrderByChild {
 fn build_order_by(
     entity: ObjectOrInterface,
     field: &a::Field,
-    schema: &ApiSchema,
+    schema: &SchemaPair,
 ) -> Result<Option<(String, ValueType, Option<OrderByChild>)>, QueryExecutionError> {
     match field.argument_value("orderBy") {
         Some(r::Value::Enum(name)) => match parse_order_by(name)? {
@@ -575,13 +582,13 @@ fn build_order_by(
                         })?
                     }
                     ObjectOrInterface::Interface(_) => {
-                        let object_types = schema
-                            .types_for_interface()
-                            .get(&EntityType::new(entity.name().to_string()))
-                            .ok_or(QueryExecutionError::EntityFieldError(
-                                entity.name().to_owned(),
-                                parent_field_name.clone(),
-                            ))?;
+                        let object_types =
+                            schema.api.types_for_interface().get(entity.name()).ok_or(
+                                QueryExecutionError::EntityFieldError(
+                                    entity.name().to_owned(),
+                                    parent_field_name.clone(),
+                                ),
+                            )?;
 
                         if let Some(first_entity) = object_types.first() {
                             sast::get_field(first_entity, parent_field_name.as_str()).ok_or_else(
@@ -604,6 +611,7 @@ fn build_order_by(
                 let base_type = field.field_type.get_base_type();
 
                 let child_entity = schema
+                    .api
                     .object_or_interface(base_type)
                     .ok_or_else(|| QueryExecutionError::NamedTypeError(base_type.into()))?;
                 let child_field = sast::get_field(child_entity, child_field_name.as_str())
@@ -629,23 +637,24 @@ fn build_order_by(
 
                 let child = match child_entity {
                     ObjectOrInterface::Object(_) => OrderByChild::Object(ObjectOrderDetails {
-                        entity_type: EntityType::new(base_type.into()),
+                        entity_type: schema.input.entity_type(base_type)?,
                         join_attribute,
                         derived,
                     }),
                     ObjectOrInterface::Interface(interface) => {
                         let entity_types = schema
+                            .api
                             .types_for_interface()
-                            .get(&EntityType::new(interface.name.to_string()))
+                            .get(&interface.name)
                             .map(|object_types| {
                                 object_types
                                     .iter()
-                                    .map(|object_type| EntityType::new(object_type.name.clone()))
-                                    .collect::<Vec<EntityType>>()
+                                    .map(|object_type| schema.input.entity_type(object_type))
+                                    .collect::<Result<Vec<EntityType>, _>>()
                             })
                             .ok_or(QueryExecutionError::AbstractTypeError(
                                 "Interface not implemented by any object type".to_string(),
-                            ))?;
+                            ))??;
                         OrderByChild::Interface(InterfaceOrderDetails {
                             entity_types,
                             join_attribute,
@@ -722,6 +731,7 @@ pub fn parse_subgraph_id<'a>(
 
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
 pub(crate) fn collect_entities_from_query_field(
+    input_schema: &InputSchema,
     schema: &ApiSchema,
     object_type: sast::ObjectType,
     field: &a::Field,
@@ -763,16 +773,21 @@ pub(crate) fn collect_entities_from_query_field(
         }
     }
 
-    Ok(entities
+    entities
         .into_iter()
-        .map(|(id, entity_type)| SubscriptionFilter::Entities(id, EntityType::new(entity_type)))
-        .collect())
+        .map(|(id, entity_type)| {
+            input_schema
+                .entity_type(&entity_type)
+                .map(|entity_type| SubscriptionFilter::Entities(id, entity_type))
+        })
+        .collect::<Result<_, _>>()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
 mod tests {
     use graph::{
-        components::store::EntityType,
+        components::store::ChildMultiplicity,
         data::value::Object,
         prelude::{
             r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Value,
@@ -782,12 +797,12 @@ mod tests {
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
             EntityOrder,
         },
-        schema::{ApiSchema, Schema},
+        schema::InputSchema,
     };
     use graphql_parser::Pos;
     use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};
 
-    use super::{a, build_query};
+    use super::{a, build_query, SchemaPair};
 
     fn default_object() -> ObjectType {
         let subgraph_id_argument = (
@@ -827,7 +842,7 @@ mod tests {
         ObjectType {
             position: Default::default(),
             description: None,
-            name: String::new(),
+            name: "DefaultObject".to_string(),
             implements_interfaces: vec![],
             directives: vec![subgraph_id_directive],
             fields: vec![name_field, email_field],
@@ -865,6 +880,7 @@ mod tests {
             arguments,
             directives: vec![],
             selection_set: a::SelectionSet::new(vec![obj_type]),
+            multiplicity: ChildMultiplicity::Single,
         }
     }
 
@@ -882,28 +898,25 @@ mod tests {
         field
     }
 
-    fn build_schema(raw_schema: &str) -> ApiSchema {
-        let document = graphql_parser::parse_schema(raw_schema)
-            .expect("Failed to parse raw schema")
-            .into_static();
+    fn build_default_schema() -> SchemaPair {
+        const INPUT_SCHEMA: &str = r#"
+        type Entity1 @entity { id: ID! }
+        type Entity2 @entity { id: ID! }
+        type DefaultObject @entity {
+            id: ID!
+            name: String
+            email: String
+        }
+    "#;
 
-        let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-        ApiSchema::from_api_schema(schema).expect("Failed to build schema")
-    }
+        let id = DeploymentHash::new("id").unwrap();
+        let input_schema = InputSchema::parse_latest(INPUT_SCHEMA, id.clone()).unwrap();
+        let api_schema = input_schema.api_schema().unwrap();
 
-    fn build_default_schema() -> ApiSchema {
-        build_schema(
-            r#"
-                type Query {
-                    aField(first: Int, skip: Int): [SomeType]
-                }
-
-                type SomeType @entity {
-                    id: ID!
-                    name: String!
-                }
-            "#,
-        )
+        SchemaPair {
+            input: input_schema,
+            api: Arc::new(api_schema),
+        }
     }
 
     #[test]
@@ -917,12 +930,14 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
-                &schema
+                &schema,
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec![(EntityType::from("Entity1"), AttributeNames::All)])
+            EntityCollection::All(vec![(
+                schema.input.entity_type("Entity1").unwrap(),
+                AttributeNames::All
+            )])
         );
         assert_eq!(
             build_query(
@@ -932,12 +947,14 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec![(EntityType::from("Entity2"), AttributeNames::All)])
+            EntityCollection::All(vec![(
+                schema.input.entity_type("Entity2").unwrap(),
+                AttributeNames::All
+            )])
         );
     }
 
@@ -952,7 +969,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -973,7 +989,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -990,7 +1005,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1011,8 +1025,7 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
-                &schema
+                &schema,
             )
             .unwrap()
             .order,
@@ -1028,7 +1041,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1052,7 +1064,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1072,7 +1083,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1095,8 +1105,7 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
-                &schema,
+                &schema
             )
             .unwrap()
             .order,
@@ -1116,7 +1125,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1136,7 +1144,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1159,7 +1166,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1192,7 +1198,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1228,7 +1233,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()

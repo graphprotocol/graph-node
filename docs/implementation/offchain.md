@@ -22,3 +22,4 @@ Automated testing for this functionality can be tricky, and will need to be disc
 
 - Offchain data sources currently can only exist as dynamic data sources, instantiated from templates, and not as static data sources configured in the manifest.
 - Some parts of the existing support for offchain data sources assumes they are 'one shot', meaning only a single trigger is ever handled by each offchain data source. This works well for files, the file is found, handled, and that's it. More complex offchain data sources will require additional planning.
+- Entities from offchain data sources do not currently influence the PoI. Causality region ids are not deterministic. 

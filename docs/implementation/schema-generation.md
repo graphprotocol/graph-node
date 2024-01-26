@@ -5,13 +5,13 @@ table definition in Postgres.
 
 Schema generation follows a few simple rules:
 
-* the data for a subgraph is entirely stored in a Postgres namespace whose
+- the data for a subgraph is entirely stored in a Postgres namespace whose
   name is `sgdNNNN`. The mapping between namespace name and deployment id is
   kept in `deployment_schemas`
-* the data for each entity type is stored in a table whose structure follows
+- the data for each entity type is stored in a table whose structure follows
   the declaration of the type in the GraphQL schema
-* enums in the GraphQL schema are stored as enum types in Postgres
-* interfaces are not stored in the database, only the concrete types that
+- enums in the GraphQL schema are stored as enum types in Postgres
+- interfaces are not stored in the database, only the concrete types that
   implement the interface are stored
 
 Any table for an entity type has the following structure:
@@ -32,20 +32,20 @@ queries](./time-travel.md).
 The attributes of the GraphQL type correspond directly to columns in the
 generated table. The types of these columns are
 
-* the `id` column can have type `ID`, `String`, and `Bytes`, where `ID` is
+- the `id` column can have type `ID`, `String`, and `Bytes`, where `ID` is
   an alias for `String` for historical reasons.
-* if the attribute has a primitive type, the column has the SQL type that
+- if the attribute has a primitive type, the column has the SQL type that
   most closely mirrors the GraphQL type. `BigDecimal` and `BigInt` are
   stored as `numeric`, `Bytes` is stored as `bytea`, etc.
-* if the attribute references another entity, the column has the type of the
+- if the attribute references another entity, the column has the type of the
   `id` type of the referenced entity type. We do not use foreign key
   constraints to allow storing an entity that references an entity that will
   only be created later. Foreign key constraint violations will therefore
   only be detected when a query is issued, or simply lead to the reference
   missing from the query result.
-* if the attribute has an enum type, we generate a SQL enum type and use
+- if the attribute has an enum type, we generate a SQL enum type and use
   that as the type of the column.
-* if the attribute has a list type, like `[String]`, the corresponding
+- if the attribute has a list type, like `[String]`, the corresponding
   column uses an array type. We do not allow nested arrays like `[[String]]`
   in GraphQL, so arrays will only ever contain entries of a primitive type.
 
@@ -70,6 +70,22 @@ constraint `unique(id)` to such tables, and can avoid expensive GiST
 indexes in favor of simple BTree indexes since the `block$` column is an
 integer.
 
+### Timeseries
+
+Entity types declared with `@entity(timeseries: true)` are represented in
+the same way as immutable entities. The only difference is that timeseries
+also must have a `timestamp` attribute.
+
+### Aggregations
+
+Entity types declared with `@aggregation` are represented by several tables,
+one for each `interval` from the `@aggregation` directive. The tables are
+named `TYPE_INTERVAL` where `TYPE` is the name of the aggregation, and
+`INTERVAL` is the name of the interval; they do not support mutating
+entities as aggregations are never updated, only appended to. The tables
+have one column for each dimension and aggregate. The type of the columns is
+determined in the same way as for those of normal entity types.
+
 ## Indexing
 
 We do not know ahead of time which queries will be issued and therefore
@@ -79,17 +95,17 @@ are open issues at this time.
 
 We generate the following indexes for each table:
 
-* for mutable entity types
-  * an exclusion index over `(id, block_range)` that ensures that the
+- for mutable entity types
+  - an exclusion index over `(id, block_range)` that ensures that the
     versions for the same entity `id` have disjoint block ranges
-  * a BRIN index on `(lower(block_range), COALESCE(upper(block_range),
-    2147483647), vid)` that helps speed up some operations, especially
+  - a BRIN index on `(lower(block_range), COALESCE(upper(block_range),
+2147483647), vid)` that helps speed up some operations, especially
     reversion, in tables that have good data locality, for example, tables
     where entities are never updated or deleted
-* for immutable entity types
-  * a unique index on `id`
-  * a BRIN index on `(block$, vid)`
-* for each attribute, an index called `attr_N_M_..` where `N` is the number
+- for immutable and timeseries entity types
+  - a unique index on `id`
+  - a BRIN index on `(block$, vid)`
+- for each attribute, an index called `attr_N_M_..` where `N` is the number
   of the entity type in the GraphQL schema, and `M` is the number of the
   attribute within that type. For attributes of a primitive type, the index
   is a BTree index. For attributes that reference other entities, the index

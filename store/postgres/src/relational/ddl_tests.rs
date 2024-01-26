@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use pretty_assertions::assert_eq;
+// use pretty_assertions::assert_eq;
 
 use super::*;
 
@@ -9,11 +9,16 @@ const ID_TYPE: ColumnType = ColumnType::String;
 
 fn test_layout(gql: &str) -> Layout {
     let subgraph = DeploymentHash::new("subgraph").unwrap();
-    let schema = InputSchema::parse(gql, subgraph.clone()).expect("Test schema invalid");
+    let schema = InputSchema::parse_latest(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
-    let catalog = Catalog::for_tests(site.clone(), BTreeSet::from_iter(["FileThing".into()]))
-        .expect("Can not create catalog");
+    let ents = {
+        match schema.entity_type("FileThing") {
+            Ok(entity_type) => BTreeSet::from_iter(vec![entity_type]),
+            Err(_) => BTreeSet::new(),
+        }
+    };
+    let catalog = Catalog::for_tests(site.clone(), ents).expect("Can not create catalog");
     Layout::new(site, &schema, catalog).expect("Failed to construct Layout")
 }
 
@@ -76,13 +81,17 @@ fn generate_ddl() {
     let layout = test_layout(FORWARD_ENUM_GQL);
     let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(FORWARD_ENUM_SQL, &sql);
+
+    let layout = test_layout(TS_GQL);
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    check_eqv(TS_SQL, &sql);
 }
 
 #[test]
 fn exlusion_ddl() {
     let layout = test_layout(THING_GQL);
     let table = layout
-        .table_for_entity(&EntityType::new("Thing".to_string()))
+        .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
         .unwrap();
 
     // When `as_constraint` is false, just create an index
@@ -126,15 +135,16 @@ fn can_copy_from() {
 
     // We allow leaving out and adding types, and leaving out attributes
     // of existing types
-    let dest = test_layout("type Scalar { id: ID } type Other { id: ID, int: Int! }");
+    let dest =
+        test_layout("type Scalar @entity { id: ID } type Other @entity { id: ID, int: Int! }");
     assert!(dest.can_copy_from(&source).is_empty());
 
     // We allow making a non-nullable attribute nullable
-    let dest = test_layout("type Thing { id: ID! }");
+    let dest = test_layout("type Thing @entity { id: ID! }");
     assert!(dest.can_copy_from(&source).is_empty());
 
     // We can not turn a non-nullable attribute into a nullable attribute
-    let dest = test_layout("type Scalar { id: ID! }");
+    let dest = test_layout("type Scalar @entity { id: ID! }");
     assert_eq!(
         vec![
             "The attribute Scalar.id is non-nullable, but the \
@@ -144,7 +154,7 @@ fn can_copy_from() {
     );
 
     // We can not change a scalar field to an array
-    let dest = test_layout("type Scalar { id: ID, string: [String] }");
+    let dest = test_layout("type Scalar @entity { id: ID, string: [String] }");
     assert_eq!(
         vec![
             "The attribute Scalar.string has type [String], \
@@ -161,7 +171,7 @@ fn can_copy_from() {
         source.can_copy_from(&dest)
     );
     // We can not change the underlying type of a field
-    let dest = test_layout("type Scalar { id: ID, color: Int }");
+    let dest = test_layout("type Scalar @entity { id: ID, color: Int }");
     assert_eq!(
         vec![
             "The attribute Scalar.color has type Int, but \
@@ -170,8 +180,8 @@ fn can_copy_from() {
         dest.can_copy_from(&source)
     );
     // We can not change the underlying type of a field in arrays
-    let source = test_layout("type Scalar { id: ID, color: [Int!]! }");
-    let dest = test_layout("type Scalar { id: ID, color: [String!]! }");
+    let source = test_layout("type Scalar @entity { id: ID, color: [Int!]! }");
+    let dest = test_layout("type Scalar @entity { id: ID, color: [String!]! }");
     assert_eq!(
         vec![
             "The attribute Scalar.color has type [String!]!, but \
@@ -191,7 +201,7 @@ const THING_GQL: &str = r#"
 
         enum Size { small, medium, large }
 
-        type Scalar {
+        type Scalar @entity {
             id: ID,
             bool: Boolean,
             int: Int,
@@ -341,8 +351,6 @@ create index attr_0_1_musician_name
     on "sgd0815"."musician" using btree(left("name", 256));
 create index attr_0_2_musician_main_band
     on "sgd0815"."musician" using gist("main_band", block_range);
-create index attr_0_3_musician_bands
-    on "sgd0815"."musician" using gin("bands");
 
 create table "sgd0815"."band" (
         vid                  bigserial primary key,
@@ -363,8 +371,6 @@ create index attr_1_0_band_id
     on "sgd0815"."band" using btree("id");
 create index attr_1_1_band_name
     on "sgd0815"."band" using btree(left("name", 256));
-create index attr_1_2_band_original_songs
-    on "sgd0815"."band" using gin("original_songs");
 
 create table "sgd0815"."song" (
         vid                    bigserial primary key,
@@ -479,8 +485,6 @@ create index attr_2_0_habitat_id
     on "sgd0815"."habitat" using btree("id");
 create index attr_2_1_habitat_most_common
     on "sgd0815"."habitat" using gist("most_common", block_range);
-create index attr_2_2_habitat_dwellers
-    on "sgd0815"."habitat" using gin("dwellers");
 
 "#;
 const FULLTEXT_GQL: &str = r#"
@@ -578,8 +582,6 @@ create index attr_2_0_habitat_id
     on "sgd0815"."habitat" using btree("id");
 create index attr_2_1_habitat_most_common
     on "sgd0815"."habitat" using gist("most_common", block_range);
-create index attr_2_2_habitat_dwellers
-    on "sgd0815"."habitat" using gin("dwellers");
 
 "#;
 
@@ -616,3 +618,73 @@ create index attr_0_1_thing_orientation
     on "sgd0815"."thing" using btree("orientation");
 
 "#;
+
+const TS_GQL: &str = r#"
+type Data @entity(timeseries: true) {
+    id: Int8!
+    timestamp: Int8!
+    amount: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+    id:        Int8!
+    timestamp: Int8!
+    volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount")
+    maxPrice:  BigDecimal! @aggregate(fn: "max", arg: "amount")
+}
+"#;
+
+const TS_SQL: &str = r#"
+create table "sgd0815"."data" (
+    vid                  bigserial primary key,
+    block$                int not null,
+    "id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "amount"             numeric not null,
+    unique(id)
+);
+create index brin_data
+    on "sgd0815"."data"
+ using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index attr_0_0_data_timestamp
+    on "sgd0815"."data" using btree("timestamp");
+create index attr_0_1_data_amount
+    on "sgd0815"."data" using btree("amount");
+
+create table "sgd0815"."stats_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+    "id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "volume"             numeric not null,
+    "max_price"          numeric not null,
+    unique(id)
+);
+create index brin_stats_hour
+    on "sgd0815"."stats_hour"
+ using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index attr_1_0_stats_hour_timestamp
+    on "sgd0815"."stats_hour" using btree("timestamp");
+create index attr_1_1_stats_hour_volume
+    on "sgd0815"."stats_hour" using btree("volume");
+create index attr_1_2_stats_hour_max_price
+    on "sgd0815"."stats_hour" using btree("max_price");
+
+create table "sgd0815"."stats_day" (
+    vid                  bigserial primary key,
+    block$               int not null,
+    "id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "volume"             numeric not null,
+    "max_price"          numeric not null,
+    unique(id)
+);
+create index brin_stats_day
+    on "sgd0815"."stats_day"
+ using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index attr_2_0_stats_day_timestamp
+    on "sgd0815"."stats_day" using btree("timestamp");
+create index attr_2_1_stats_day_volume
+    on "sgd0815"."stats_day" using btree("volume");
+create index attr_2_2_stats_day_max_price
+    on "sgd0815"."stats_day" using btree("max_price");"#;

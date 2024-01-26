@@ -1,4 +1,4 @@
-use super::cache::{QueryBlockCache, QueryCache};
+use super::cache::QueryBlockCache;
 use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
 use graph::{
@@ -7,8 +7,8 @@ use graph::{
         value::{Object, Word},
     },
     prelude::{s, CheapClone},
-    schema::META_FIELD_NAME,
-    util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
+    schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME},
+    util::{herd_cache::HerdCache, lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
 use parking_lot::MutexGuard;
@@ -24,7 +24,6 @@ use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
 
 use super::QueryHash;
 use crate::execution::ast as a;
-use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
 use crate::prelude::*;
 
 lazy_static! {
@@ -43,7 +42,7 @@ lazy_static! {
             }
             caches
     };
-    static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
+    static ref QUERY_HERD_CACHE: HerdCache<Arc<QueryResult>> = HerdCache::new("query_herd_cache");
 }
 
 struct WeightedResult {
@@ -376,6 +375,9 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
             // Unwrap: In practice should never fail, but if it does we will catch the panic.
             execute_ctx.resolver.post_process(&mut query_res).unwrap();
             query_res.deployment = Some(execute_ctx.query.schema.id().clone());
+            if let Ok(qp) = _permit {
+                query_res.trace.permit_wait(qp.wait);
+            }
             Arc::new(query_res)
         })
         .await

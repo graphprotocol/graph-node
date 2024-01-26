@@ -1,9 +1,11 @@
+use std::time::Instant;
+
 use crate::deployment_store::{DeploymentStore, ReplicaId};
-use graph::components::store::QueryStore as QueryStoreTrait;
+use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
-use graph::data::value::Object;
+use graph::data::store::QueryObject;
 use graph::prelude::*;
-use graph::schema::ApiSchema;
+use graph::schema::{ApiSchema, InputSchema};
 
 use crate::primary::Site;
 
@@ -38,13 +40,20 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<Object>, Trace), graph::prelude::QueryExecutionError> {
+    ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
+        let start = Instant::now();
         let conn = self
             .store
             .get_replica_conn(self.replica_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.store.execute_query(&conn, self.site.clone(), query)
+        let wait = start.elapsed();
+        self.store
+            .execute_query(&conn, self.site.clone(), query)
+            .map(|(entities, mut trace)| {
+                trace.conn_wait(wait);
+                (entities, trace)
+            })
     }
 
     /// Return true if the deployment with the given id is fully synced,
@@ -120,11 +129,24 @@ impl QueryStoreTrait for QueryStore {
         Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
+    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
+        let info = self.store.subgraph_info(&self.site)?;
+        Ok(info.input)
+    }
+
     fn network_name(&self) -> &str {
         &self.site.network
     }
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
+    async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
         self.store.query_permit(self.replica_id).await
+    }
+
+    fn shard(&self) -> &str {
+        self.site.shard.as_str()
+    }
+
+    fn deployment_id(&self) -> DeploymentId {
+        self.site.id.into()
     }
 }

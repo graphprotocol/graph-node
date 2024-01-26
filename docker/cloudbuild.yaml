@@ -1,5 +1,5 @@
 options:
-  machineType: "N1_HIGHCPU_32"
+  machineType: "E2_HIGHCPU_32"
 timeout: 1800s
 steps:
 - name: 'gcr.io/cloud-builders/docker'

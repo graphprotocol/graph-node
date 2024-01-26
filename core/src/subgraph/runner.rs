@@ -5,16 +5,15 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
-use graph::components::store::{EmptyStore, EntityKey, GetScope, StoredDynamicDataSource};
+use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
+use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::schema::POI_DIGEST;
 use graph::data::subgraph::{
-    schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
+    schema::{SubgraphError, SubgraphHealth},
     SubgraphFeature,
 };
 use graph::data_source::{
@@ -22,6 +21,7 @@ use graph::data_source::{
 };
 use graph::env::EnvVars;
 use graph::prelude::*;
+use graph::schema::EntityKey;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -31,6 +31,7 @@ const MINUTE: Duration = Duration::from_secs(60);
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 const HANDLE_REVERT_SECTION_NAME: &str = "handle_revert";
 const PROCESS_BLOCK_SECTION_NAME: &str = "process_block";
+const PROCESS_WASM_BLOCK_SECTION_NAME: &str = "process_wasm_block";
 const PROCESS_TRIGGERS_SECTION_NAME: &str = "process_triggers";
 const HANDLE_CREATED_DS_SECTION_NAME: &str = "handle_new_data_sources";
 
@@ -71,6 +72,7 @@ where
                     env_vars.subgraph_error_retry_jitter,
                 ),
                 entity_lfu_cache: LfuCache::new(),
+                cached_head_ptr: None,
             },
             logger,
             metrics,
@@ -81,18 +83,18 @@ where
     /// or failed block processing, it is necessary to remove part of the existing
     /// in-memory state to keep it constent with DB changes.
     /// During block processing new dynamic data sources are added directly to the
-    /// SubgraphInstance of the runner. This means that if, for whatever reason,
+    /// IndexingContext of the runner. This means that if, for whatever reason,
     /// the changes don;t complete then the remnants of that block processing must
     /// be removed. The same thing also applies to the block cache.
     /// This function must be called before continuing to process in order to avoid
     /// duplicated host insertion and POI issues with dirty entity changes.
-    fn revert_state(&mut self, block_number: BlockNumber) -> Result<(), Error> {
+    fn revert_state_to(&mut self, block_number: BlockNumber) -> Result<(), Error> {
         self.state.entity_lfu_cache = LfuCache::new();
 
-        // 1. Revert all hosts(created by DDS) up to block_number inclusively.
+        // 1. Revert all hosts(created by DDS) at a block higher than `block_number`.
         // 2. Unmark any offchain data sources that were marked done on the blocks being removed.
         // When no offchain datasources are present, 2. should be a noop.
-        self.ctx.revert_data_sources(block_number)?;
+        self.ctx.revert_data_sources(block_number + 1)?;
         Ok(())
     }
 
@@ -104,6 +106,57 @@ where
     #[cfg(debug_assertions)]
     pub async fn run_for_test(self, break_on_restart: bool) -> Result<Self, Error> {
         self.run_inner(break_on_restart).await
+    }
+
+    fn build_filter(&self) -> C::TriggerFilter {
+        let current_ptr = self.inputs.store.block_ptr();
+        let static_filters =
+            self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold;
+
+        // Filter out data sources that have reached their end block
+        let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
+            // We filter out datasources for which the current block is at or past their end block.
+            Some(block) => ds.end_block().map_or(true, |end| block.number < end),
+            // If there is no current block, we keep all datasources.
+            None => true,
+        };
+
+        // if static_filters is not enabled we just stick to the filter based on all the data sources.
+        if !static_filters {
+            return C::TriggerFilter::from_data_sources(
+                self.ctx.onchain_data_sources().filter(end_block_filter),
+            );
+        }
+
+        // if static_filters is enabled, build a minimal filter with the static data sources and
+        // add the necessary filters based on templates.
+        // This specifically removes dynamic data sources based filters because these can be derived
+        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
+
+        if !self.inputs.static_filters {
+            info!(self.logger, "forcing subgraph to use static filters.")
+        }
+
+        let data_sources = self.ctx.static_data_sources();
+
+        let mut filter = C::TriggerFilter::from_data_sources(
+            data_sources
+                .iter()
+                .filter_map(|ds| ds.as_onchain())
+                // Filter out data sources that have reached their end block if the block is final.
+                .filter(end_block_filter),
+        );
+
+        let templates = self.ctx.templates();
+
+        filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
+
+        filter
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn build_filter_for_test(&self) -> C::TriggerFilter {
+        self.build_filter()
     }
 
     pub async fn run(self) -> Result<(), Error> {
@@ -144,12 +197,17 @@ where
 
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
+            // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
+            self.ctx.filter = Some(self.build_filter());
 
-            let mut block_stream =
-                new_block_stream(&self.inputs, &self.ctx.filter, &self.metrics.subgraph)
-                    .await?
-                    .map_err(CancelableError::Error)
-                    .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let mut block_stream = new_block_stream(
+                &self.inputs,
+                self.ctx.filter.as_ref().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+                &self.metrics.subgraph,
+            )
+            .await?
+            .map_err(CancelableError::Error)
+            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned
@@ -169,10 +227,16 @@ where
 
                 // TODO: move cancel handle to the Context
                 // This will require some code refactor in how the BlockStream is created
+                let block_start = Instant::now();
                 match self
                     .handle_stream_event(event, &block_stream_cancel_handle)
-                    .await?
-                {
+                    .await
+                    .map(|res| {
+                        self.metrics
+                            .subgraph
+                            .observe_block_processed(block_start.elapsed(), res.block_finished());
+                        res
+                    })? {
                     Action::Continue => continue,
                     Action::Stop => {
                         info!(self.logger, "Stopping subgraph");
@@ -191,7 +255,7 @@ where
                         if let Some(store) = store.restart().await? {
                             let last_good_block =
                                 store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
-                            self.revert_state(last_good_block)?;
+                            self.revert_state_to(last_good_block)?;
                             self.inputs = Arc::new(self.inputs.with_store(store));
                             self.state.synced = self.inputs.store.is_deployment_synced().await?;
                         }
@@ -275,10 +339,18 @@ where
             }
         };
 
+        // Check if there are any datasources that have expired in this block. ie: the end_block
+        // of that data source is equal to the block number of the current block.
+        let has_expired_data_sources = self.inputs.end_blocks.contains(&block_ptr.number);
+
         // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
-        let needs_restart =
-            block_state.has_created_on_chain_data_sources() && !self.inputs.static_filters;
+        let created_data_sources_needs_restart =
+            !self.inputs.static_filters && block_state.has_created_on_chain_data_sources();
+
+        // Determine if the block stream needs to be restarted due to newly created on-chain data sources
+        // or data sources that have reached their end block.
+        let needs_restart = created_data_sources_needs_restart || has_expired_data_sources;
 
         {
             let _section = self
@@ -403,6 +475,7 @@ where
             let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
             update_proof_of_indexing(
                 proof_of_indexing,
+                block.timestamp(),
                 &self.metrics.host.stopwatch,
                 &mut block_state.entity_cache,
             )
@@ -437,9 +510,9 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, processed_data_sources, persisted_off_chain_data_sources) = self
-            .handle_offchain_triggers(offchain_events, &block)
-            .await?;
+        let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
+            self.handle_offchain_triggers(offchain_events, &block)
+                .await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -490,12 +563,13 @@ where
         store
             .transact_block_operations(
                 block_ptr,
+                block.timestamp(),
                 firehose_cursor,
                 mods,
                 &self.metrics.host.stopwatch,
                 persisted_data_sources,
                 deterministic_errors,
-                processed_data_sources,
+                processed_offchain_data_sources,
                 is_non_fatal_errors_active,
             )
             .await
@@ -574,6 +648,36 @@ where
         }
         Ok(block_state)
     }
+    async fn process_wasm_block(
+        &mut self,
+        proof_of_indexing: &SharedProofOfIndexing,
+        block_ptr: BlockPtr,
+        block_time: BlockTime,
+        block_data: Box<[u8]>,
+        handler: String,
+        causality_region: &str,
+    ) -> Result<BlockState<C>, MappingError> {
+        let block_state = BlockState::new(
+            self.inputs.store.clone(),
+            std::mem::take(&mut self.state.entity_lfu_cache),
+        );
+
+        self.ctx
+            .process_block(
+                &self.logger,
+                block_ptr,
+                block_time,
+                block_data,
+                handler,
+                block_state,
+                proof_of_indexing,
+                causality_region,
+                &self.inputs.debug_fork,
+                &self.metrics.subgraph,
+                self.inputs.instrument,
+            )
+            .await
+    }
 
     fn create_dynamic_data_sources(
         &mut self,
@@ -633,6 +737,145 @@ where
         Ok((data_sources, runtime_hosts))
     }
 
+    async fn handle_action(
+        &mut self,
+        start: Instant,
+        block_ptr: BlockPtr,
+        action: Result<Action, BlockProcessingError>,
+    ) -> Result<Action, Error> {
+        self.state.skip_ptr_updates_timer = Instant::now();
+
+        let elapsed = start.elapsed().as_secs_f64();
+        self.metrics
+            .subgraph
+            .block_processing_duration
+            .observe(elapsed);
+
+        match action {
+            Ok(action) => {
+                // Once synced, no need to try to update the status again.
+                if !self.state.synced
+                    && close_to_chain_head(
+                        &block_ptr,
+                        self.inputs.chain.chain_store().chain_head_ptr().await?,
+                        // We consider a subgraph synced when it's at most 1 block behind the
+                        // chain head.
+                        1,
+                    )
+                {
+                    // Updating the sync status is an one way operation.
+                    // This state change exists: not synced -> synced
+                    // This state change does NOT: synced -> not synced
+                    self.inputs.store.deployment_synced()?;
+
+                    // Stop trying to update the sync status.
+                    self.state.synced = true;
+
+                    // Stop recording time-to-sync metrics.
+                    self.metrics.stream.stopwatch.disable();
+                }
+
+                // Keep trying to unfail subgraph for everytime it advances block(s) until it's
+                // health is not Failed anymore.
+                if self.state.should_try_unfail_non_deterministic {
+                    // If the deployment head advanced, we can unfail
+                    // the non-deterministic error (if there's any).
+                    let outcome = self
+                        .inputs
+                        .store
+                        .unfail_non_deterministic_error(&block_ptr)?;
+
+                    if let UnfailOutcome::Unfailed = outcome {
+                        // Stop trying to unfail.
+                        self.state.should_try_unfail_non_deterministic = false;
+                        self.metrics.stream.deployment_failed.set(0.0);
+                        self.state.backoff.reset();
+                    }
+                }
+
+                if let Some(stop_block) = &self.inputs.stop_block {
+                    if block_ptr.number >= *stop_block {
+                        info!(self.logger, "stop block reached for subgraph");
+                        return Ok(Action::Stop);
+                    }
+                }
+
+                return Ok(action);
+            }
+            Err(BlockProcessingError::Canceled) => {
+                debug!(self.logger, "Subgraph block stream shut down cleanly");
+                return Ok(Action::Stop);
+            }
+
+            // Handle unexpected stream errors by marking the subgraph as failed.
+            Err(e) => {
+                self.metrics.stream.deployment_failed.set(1.0);
+
+                let message = format!("{:#}", e).replace('\n', "\t");
+                let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
+                let deterministic = e.is_deterministic();
+
+                let error = SubgraphError {
+                    subgraph_id: self.inputs.deployment.hash.clone(),
+                    message,
+                    block_ptr: Some(block_ptr),
+                    handler: None,
+                    deterministic,
+                };
+
+                match deterministic {
+                    true => {
+                        // Fail subgraph:
+                        // - Change status/health.
+                        // - Save the error to the database.
+                        self.inputs
+                            .store
+                            .fail_subgraph(error)
+                            .await
+                            .context("Failed to set subgraph status to `failed`")?;
+
+                        return Err(err);
+                    }
+                    false => {
+                        // Shouldn't fail subgraph if it's already failed for non-deterministic
+                        // reasons.
+                        //
+                        // If we don't do this check we would keep adding the same error to the
+                        // database.
+                        let should_fail_subgraph =
+                            self.inputs.store.health().await? != SubgraphHealth::Failed;
+
+                        if should_fail_subgraph {
+                            // Fail subgraph:
+                            // - Change status/health.
+                            // - Save the error to the database.
+                            self.inputs
+                                .store
+                                .fail_subgraph(error)
+                                .await
+                                .context("Failed to set subgraph status to `failed`")?;
+                        }
+
+                        // Retry logic below:
+
+                        let message = format!("{:#}", e).replace('\n', "\t");
+                        error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
+                            "attempt" => self.state.backoff.attempt,
+                            "retry_delay_s" => self.state.backoff.delay().as_secs());
+
+                        // Sleep before restarting.
+                        self.state.backoff.sleep_async().await;
+
+                        self.state.should_try_unfail_non_deterministic = true;
+
+                        // And restart the subgraph.
+                        return Ok(Action::Restart);
+                    }
+                }
+            }
+        }
+    }
+
     fn persist_dynamic_data_sources(
         &mut self,
         block_state: &mut BlockState<C>,
@@ -657,11 +900,6 @@ where
             );
             block_state.persist_data_source(data_source.as_stored_dynamic_data_source());
         }
-
-        // Merge filters from data sources into the block stream builder
-        self.ctx
-            .filter
-            .extend(data_sources.iter().filter_map(|ds| ds.as_onchain()));
     }
 }
 
@@ -676,6 +914,28 @@ where
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let action = match event {
+            Some(Ok(BlockStreamEvent::ProcessWasmBlock(
+                block_ptr,
+                block_time,
+                data,
+                handler,
+                cursor,
+            ))) => {
+                let _section = self
+                    .metrics
+                    .stream
+                    .stopwatch
+                    .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
+                self.handle_process_wasm_block(
+                    block_ptr,
+                    block_time,
+                    data,
+                    handler,
+                    cursor,
+                    cancel_handle,
+                )
+                .await?
+            }
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
                 let _section = self
                     .metrics
@@ -723,7 +983,7 @@ where
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
             // get causality region isolation.
-            let schema = self.inputs.store.input_schema();
+            let schema = ReadStore::input_schema(&self.inputs.store);
             let mut block_state = BlockState::<C>::new(EmptyStore::new(schema), LfuCache::new());
 
             // PoI ignores offchain events.
@@ -793,8 +1053,27 @@ enum Action {
     Restart,
 }
 
+impl Action {
+    /// Return `true` if the action indicates that we are done with a block
+    fn block_finished(&self) -> bool {
+        match self {
+            Action::Continue | Action::Restart => false,
+            Action::Stop => true,
+        }
+    }
+}
+
 #[async_trait]
 trait StreamEventHandler<C: Blockchain> {
+    async fn handle_process_wasm_block(
+        &mut self,
+        block_ptr: BlockPtr,
+        block_time: BlockTime,
+        block_data: Box<[u8]>,
+        handler: String,
+        cursor: FirehoseCursor,
+        cancel_handle: &CancelHandle,
+    ) -> Result<Action, Error>;
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
@@ -811,6 +1090,7 @@ trait StreamEventHandler<C: Blockchain> {
         err: CancelableError<Error>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
+    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
 }
 
 #[async_trait]
@@ -819,6 +1099,211 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
+    async fn handle_process_wasm_block(
+        &mut self,
+        block_ptr: BlockPtr,
+        block_time: BlockTime,
+        block_data: Box<[u8]>,
+        handler: String,
+        cursor: FirehoseCursor,
+        cancel_handle: &CancelHandle,
+    ) -> Result<Action, Error> {
+        let logger = self.logger.new(o!(
+                "block_number" => format!("{:?}", block_ptr.number),
+                "block_hash" => format!("{}", block_ptr.hash)
+        ));
+
+        debug!(logger, "Start processing wasm block";);
+
+        let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
+            Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
+                block_ptr.number,
+                self.inputs.poi_version,
+            ))))
+        } else {
+            None
+        };
+
+        // Causality region for onchain triggers.
+        let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
+
+        let mut block_state = {
+            match self
+                .process_wasm_block(
+                    &proof_of_indexing,
+                    block_ptr.clone(),
+                    block_time,
+                    block_data,
+                    handler,
+                    &causality_region,
+                )
+                .await
+            {
+                // Triggers processed with no errors or with only deterministic errors.
+                Ok(block_state) => block_state,
+
+                // Some form of unknown or non-deterministic error ocurred.
+                Err(MappingError::Unknown(e)) => {
+                    return Err(BlockProcessingError::Unknown(e).into())
+                }
+                Err(MappingError::PossibleReorg(e)) => {
+                    info!(logger,
+                        "Possible reorg detected, retrying";
+                        "error" => format!("{:#}", e),
+                    );
+
+                    // In case of a possible reorg, we want this function to do nothing and restart the
+                    // block stream so it has a chance to detect the reorg.
+                    //
+                    // The state is unchanged at this point, except for having cleared the entity cache.
+                    // Losing the cache is a bit annoying but not an issue for correctness.
+                    //
+                    // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                    return Ok(Action::Restart);
+                }
+            }
+        };
+
+        let has_errors = block_state.has_errors();
+        let is_non_fatal_errors_active = self
+            .inputs
+            .features
+            .contains(&SubgraphFeature::NonFatalErrors);
+
+        // Apply entity operations and advance the stream
+
+        // Avoid writing to store if block stream has been canceled
+        if cancel_handle.is_canceled() {
+            return Err(BlockProcessingError::Canceled.into());
+        }
+
+        if let Some(proof_of_indexing) = proof_of_indexing {
+            let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
+            update_proof_of_indexing(
+                proof_of_indexing,
+                block_time,
+                &self.metrics.host.stopwatch,
+                &mut block_state.entity_cache,
+            )
+            .await?;
+        }
+
+        let section = self
+            .metrics
+            .host
+            .stopwatch
+            .start_section("as_modifications");
+        let ModificationsAndCache {
+            modifications: mut mods,
+            entity_lfu_cache: cache,
+            evict_stats,
+        } = block_state
+            .entity_cache
+            .as_modifications(block_ptr.number)
+            .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+        section.end();
+
+        debug!(self.logger, "Entity cache statistics";
+            "weight" => evict_stats.new_weight,
+            "evicted_weight" => evict_stats.evicted_weight,
+            "count" => evict_stats.new_count,
+            "evicted_count" => evict_stats.evicted_count,
+            "stale_update" => evict_stats.stale_update,
+            "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
+            "accesses" => evict_stats.accesses,
+            "evict_time_ms" => evict_stats.evict_time.as_millis());
+
+        // Put the cache back in the state, asserting that the placeholder cache was not used.
+        assert!(self.state.entity_lfu_cache.is_empty());
+        self.state.entity_lfu_cache = cache;
+
+        if !mods.is_empty() {
+            info!(&logger, "Applying {} entity operation(s)", mods.len());
+        }
+
+        let err_count = block_state.deterministic_errors.len();
+        for (i, e) in block_state.deterministic_errors.iter().enumerate() {
+            let message = format!("{:#}", e).replace('\n', "\t");
+            error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
+                "error" => message,
+                "code" => LogCode::SubgraphSyncingFailure
+            );
+        }
+
+        // Transact entity operations into the store and update the
+        // subgraph's block stream pointer
+        let _section = self.metrics.host.stopwatch.start_section("transact_block");
+        let start = Instant::now();
+
+        let store = &self.inputs.store;
+
+        // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
+        if has_errors && !is_non_fatal_errors_active {
+            let is_poi_entity =
+                |entity_mod: &EntityModification| entity_mod.key().entity_type.is_poi();
+            mods.retain(is_poi_entity);
+            // Confidence check
+            assert!(
+                mods.len() == 1,
+                "There should be only one PoI EntityModification"
+            );
+        }
+
+        let BlockState {
+            deterministic_errors,
+            ..
+        } = block_state;
+
+        let first_error = deterministic_errors.first().cloned();
+
+        store
+            .transact_block_operations(
+                block_ptr,
+                block_time,
+                cursor,
+                mods,
+                &self.metrics.host.stopwatch,
+                vec![],
+                deterministic_errors,
+                vec![],
+                is_non_fatal_errors_active,
+            )
+            .await
+            .context("Failed to transact block operations")?;
+
+        // For subgraphs with `nonFatalErrors` feature disabled, we consider
+        // any error as fatal.
+        //
+        // So we do an early return to make the subgraph stop processing blocks.
+        //
+        // In this scenario the only entity that is stored/transacted is the PoI,
+        // all of the others are discarded.
+        if has_errors && !is_non_fatal_errors_active {
+            // Only the first error is reported.
+            return Err(BlockProcessingError::Deterministic(first_error.unwrap()).into());
+        }
+
+        let elapsed = start.elapsed().as_secs_f64();
+        self.metrics
+            .subgraph
+            .block_ops_transaction_duration
+            .observe(elapsed);
+
+        // To prevent a buggy pending version from replacing a current version, if errors are
+        // present the subgraph will be unassigned.
+        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced().await? {
+            store
+                .unassign_subgraph()
+                .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+
+            // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
+            // just transacted so it will be already be set to unhealthy.
+            return Err(BlockProcessingError::Canceled.into());
+        };
+
+        Ok(Action::Continue)
+    }
+
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
@@ -843,7 +1328,7 @@ where
             && !self.state.synced
             && !close_to_chain_head(
                 &block_ptr,
-                self.inputs.chain.chain_store().cached_head_ptr().await?,
+                self.inputs.chain.chain_store().chain_head_ptr().await?,
                 // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
                 // behind the chain head.
                 1000,
@@ -858,147 +1343,7 @@ where
 
         let res = self.process_block(cancel_handle, block, cursor).await;
 
-        let elapsed = start.elapsed().as_secs_f64();
-        self.metrics
-            .subgraph
-            .block_processing_duration
-            .observe(elapsed);
-
-        match res {
-            Ok(action) => {
-                // Once synced, no need to try to update the status again.
-                if !self.state.synced
-                    && close_to_chain_head(
-                        &block_ptr,
-                        self.inputs.chain.chain_store().cached_head_ptr().await?,
-                        // We consider a subgraph synced when it's at most 1 block behind the
-                        // chain head.
-                        1,
-                    )
-                {
-                    // Updating the sync status is an one way operation.
-                    // This state change exists: not synced -> synced
-                    // This state change does NOT: synced -> not synced
-                    self.inputs.store.deployment_synced()?;
-
-                    // Stop trying to update the sync status.
-                    self.state.synced = true;
-
-                    // Stop recording time-to-sync metrics.
-                    self.metrics.stream.stopwatch.disable();
-                }
-
-                // Keep trying to unfail subgraph for everytime it advances block(s) until it's
-                // health is not Failed anymore.
-                if self.state.should_try_unfail_non_deterministic {
-                    // If the deployment head advanced, we can unfail
-                    // the non-deterministic error (if there's any).
-                    let outcome = self
-                        .inputs
-                        .store
-                        .unfail_non_deterministic_error(&block_ptr)?;
-
-                    if let UnfailOutcome::Unfailed = outcome {
-                        // Stop trying to unfail.
-                        self.state.should_try_unfail_non_deterministic = false;
-                        self.metrics.stream.deployment_failed.set(0.0);
-                        self.state.backoff.reset();
-                    }
-                }
-
-                if let Some(stop_block) = &self.inputs.stop_block {
-                    if block_ptr.number >= *stop_block {
-                        info!(self.logger, "stop block reached for subgraph");
-                        return Ok(Action::Stop);
-                    }
-                }
-
-                if matches!(action, Action::Restart) {
-                    // Cancel the stream for real
-                    self.ctx.instances.remove(&self.inputs.deployment.id);
-
-                    // And restart the subgraph
-                    return Ok(Action::Restart);
-                }
-
-                return Ok(Action::Continue);
-            }
-            Err(BlockProcessingError::Canceled) => {
-                debug!(self.logger, "Subgraph block stream shut down cleanly");
-                return Ok(Action::Stop);
-            }
-
-            // Handle unexpected stream errors by marking the subgraph as failed.
-            Err(e) => {
-                self.metrics.stream.deployment_failed.set(1.0);
-                self.revert_state(block_ptr.block_number())?;
-
-                let message = format!("{:#}", e).replace('\n', "\t");
-                let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
-                let deterministic = e.is_deterministic();
-
-                let error = SubgraphError {
-                    subgraph_id: self.inputs.deployment.hash.clone(),
-                    message,
-                    block_ptr: Some(block_ptr),
-                    handler: None,
-                    deterministic,
-                };
-
-                match deterministic {
-                    true => {
-                        // Fail subgraph:
-                        // - Change status/health.
-                        // - Save the error to the database.
-                        self.inputs
-                            .store
-                            .fail_subgraph(error)
-                            .await
-                            .context("Failed to set subgraph status to `failed`")?;
-
-                        return Err(err);
-                    }
-                    false => {
-                        // Shouldn't fail subgraph if it's already failed for non-deterministic
-                        // reasons.
-                        //
-                        // If we don't do this check we would keep adding the same error to the
-                        // database.
-                        let should_fail_subgraph =
-                            self.inputs.store.health().await? != SubgraphHealth::Failed;
-
-                        if should_fail_subgraph {
-                            // Fail subgraph:
-                            // - Change status/health.
-                            // - Save the error to the database.
-                            self.inputs
-                                .store
-                                .fail_subgraph(error)
-                                .await
-                                .context("Failed to set subgraph status to `failed`")?;
-                        }
-
-                        // Retry logic below:
-
-                        // Cancel the stream for real.
-                        self.ctx.instances.remove(&self.inputs.deployment.id);
-
-                        let message = format!("{:#}", e).replace('\n', "\t");
-                        error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
-                            "attempt" => self.state.backoff.attempt,
-                            "retry_delay_s" => self.state.backoff.delay().as_secs());
-
-                        // Sleep before restarting.
-                        self.state.backoff.sleep_async().await;
-
-                        self.state.should_try_unfail_non_deterministic = true;
-
-                        // And restart the subgraph.
-                        return Ok(Action::Restart);
-                    }
-                }
-            }
-        }
+        self.handle_action(start, block_ptr, res).await
     }
 
     async fn handle_revert(
@@ -1021,7 +1366,7 @@ where
         if let Err(e) = self
             .inputs
             .store
-            .revert_block_operations(revert_to_ptr, cursor)
+            .revert_block_operations(revert_to_ptr.clone(), cursor)
             .await
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);
@@ -1039,9 +1384,17 @@ where
             .deployment_head
             .set(subgraph_ptr.number as f64);
 
-        self.revert_state(subgraph_ptr.number)?;
+        self.revert_state_to(revert_to_ptr.number)?;
 
-        Ok(Action::Continue)
+        let needs_restart: bool = self.needs_restart(revert_to_ptr, subgraph_ptr);
+
+        let action = if needs_restart {
+            Action::Restart
+        } else {
+            Action::Continue
+        };
+
+        Ok(action)
     }
 
     async fn handle_err(
@@ -1062,12 +1415,24 @@ where
 
         Ok(Action::Continue)
     }
+
+    /// Determines if the subgraph needs to be restarted.
+    /// Currently returns true when there are data sources that have reached their end block
+    /// in the range between `revert_to_ptr` and `subgraph_ptr`.
+    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool {
+        self.inputs
+            .end_blocks
+            .range(revert_to_ptr.number..=subgraph_ptr.number)
+            .next()
+            .is_some()
+    }
 }
 
 /// Transform the proof of indexing changes into entity updates that will be
 /// inserted when as_modifications is called.
 async fn update_proof_of_indexing(
     proof_of_indexing: ProofOfIndexing,
+    block_time: BlockTime,
     stopwatch: &StopwatchMetrics,
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
@@ -1076,14 +1441,20 @@ async fn update_proof_of_indexing(
         entity_cache: &mut EntityCache,
         key: EntityKey,
         digest: Bytes,
+        block_time: BlockTime,
     ) -> Result<(), Error> {
-        let data = vec![
+        let digest_name = entity_cache.schema.poi_digest();
+        let mut data = vec![
             (
                 graph::data::store::ID.clone(),
                 Value::from(key.entity_id.to_string()),
             ),
-            (POI_DIGEST.clone(), Value::from(digest)),
+            (digest_name, Value::from(digest)),
         ];
+        if entity_cache.schema.has_aggregations() {
+            let block_time = Value::Int8(block_time.as_secs_since_epoch() as i64);
+            data.push((entity_cache.schema.poi_block_time(), block_time));
+        }
         let poi = entity_cache.make_entity(data)?;
         entity_cache.set(key, poi)
     }
@@ -1094,23 +1465,22 @@ async fn update_proof_of_indexing(
 
     for (causality_region, stream) in proof_of_indexing.drain() {
         // Create the special POI entity key specific to this causality_region
-        let entity_key = EntityKey {
-            entity_type: POI_OBJECT.to_owned(),
-
-            // There are two things called causality regions here, one is the causality region for
-            // the poi which is a string and the PoI entity id. The other is the data source
-            // causality region to which the PoI belongs as an entity. Currently offchain events do
-            // not affect PoI so it is assumed to be `ONCHAIN`.
-            // See also: poi-ignores-offchain
-            entity_id: causality_region.into(),
-            causality_region: CausalityRegion::ONCHAIN,
-        };
+        // There are two things called causality regions here, one is the causality region for
+        // the poi which is a string and the PoI entity id. The other is the data source
+        // causality region to which the PoI belongs as an entity. Currently offchain events do
+        // not affect PoI so it is assumed to be `ONCHAIN`.
+        // See also: poi-ignores-offchain
+        let entity_key = entity_cache
+            .schema
+            .poi_type()
+            .key_in(causality_region, CausalityRegion::ONCHAIN);
 
         // Grab the current digest attribute on this entity
+        let poi_digest = entity_cache.schema.poi_digest().clone();
         let prev_poi = entity_cache
             .get(&entity_key, GetScope::Store)
             .map_err(Error::from)?
-            .map(|entity| match entity.get(POI_DIGEST.as_str()) {
+            .map(|entity| match entity.get(poi_digest.as_str()) {
                 Some(Value::Bytes(b)) => b.clone(),
                 _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
             });
@@ -1121,7 +1491,12 @@ async fn update_proof_of_indexing(
 
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
-        store_poi_entity(entity_cache, entity_key, updated_proof_of_indexing)?;
+        store_poi_entity(
+            entity_cache,
+            entity_key,
+            updated_proof_of_indexing,
+            block_time,
+        )?;
     }
 
     Ok(())

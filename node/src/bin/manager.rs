@@ -3,9 +3,10 @@ use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::endpoint::EndpointMetrics;
+use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
-use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
+use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     prelude::{
         anyhow::{self, Context as AnyhowContextTrait},
@@ -32,7 +33,7 @@ use graph_store_postgres::{
 };
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
-use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::ParseIntError, sync::Arc, time::Duration};
 const VERSION_LABEL_KEY: &str = "version";
 
 git_testament!(TESTAMENT);
@@ -85,6 +86,14 @@ pub struct Opt {
         help = "HTTP addresses of IPFS nodes\n"
     )]
     pub ipfs: Vec<String>,
+    #[clap(
+        long,
+        value_name = "{HOST:PORT|URL}",
+        default_value = "https://arweave.net",
+        env = "GRAPH_NODE_ARWEAVE_URL",
+        help = "HTTP base URL for arweave gateway"
+    )]
+    pub arweave: String,
     #[clap(
         long,
         default_value = "3",
@@ -302,9 +311,10 @@ pub enum Command {
         /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
         #[clap(long, short)]
         delete_threshold: Option<f64>,
-        /// How much history to keep in blocks
-        #[clap(long, short = 'y', default_value = "10000")]
-        history: usize,
+        /// How much history to keep in blocks. Defaults to
+        /// GRAPH_MIN_HISTORY_BLOCKS
+        #[clap(long, short = 'y')]
+        history: Option<usize>,
         /// Prune only this once
         #[clap(long, short)]
         once: bool,
@@ -335,6 +345,20 @@ pub enum Command {
         /// Skip confirmation prompt
         #[clap(long, short)]
         force: bool,
+    },
+
+    // Deploy a subgraph
+    Deploy {
+        name: DeploymentSearch,
+        deployment: DeploymentSearch,
+
+        /// The url of the graph-node
+        #[clap(long, short, default_value = "http://localhost:8020")]
+        url: String,
+
+        /// Create the subgraph name if it does not exist
+        #[clap(long, short)]
+        create: bool,
     },
 }
 
@@ -656,6 +680,10 @@ pub enum IndexCommand {
             possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
         )]
         method: String,
+
+        #[clap(long)]
+        /// Specifies a starting block number for creating a partial index.
+        after: Option<i32>,
     },
     /// Lists existing indexes for a given Entity
     List {
@@ -774,6 +802,7 @@ struct Context {
     node_id: NodeId,
     config: Cfg,
     ipfs_url: Vec<String>,
+    arweave_url: String,
     fork_base: Option<Url>,
     registry: Arc<MetricsRegistry>,
     pub prometheus_registry: Arc<Registry>,
@@ -785,6 +814,7 @@ impl Context {
         node_id: NodeId,
         config: Cfg,
         ipfs_url: Vec<String>,
+        arweave_url: String,
         fork_base: Option<Url>,
         version_label: Option<String>,
     ) -> Self {
@@ -812,6 +842,7 @@ impl Context {
             fork_base,
             registry,
             prometheus_registry,
+            arweave_url,
         }
     }
 
@@ -933,7 +964,7 @@ impl Context {
         let store = self.store();
 
         let subscription_manager = Arc::new(PanicSubscriptionManager);
-        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry.clone()));
+        let load_manager = Arc::new(LoadManager::new(&logger, vec![], vec![], registry.clone()));
 
         Arc::new(GraphQlRunner::new(
             &logger,
@@ -1041,6 +1072,7 @@ async fn main() -> anyhow::Result<()> {
         node,
         config,
         opt.ipfs,
+        opt.arweave,
         fork_base,
         version_label.clone(),
     );
@@ -1171,6 +1203,7 @@ async fn main() -> anyhow::Result<()> {
             let store_builder = ctx.store_builder().await;
             let job_name = version_label.clone();
             let ipfs_url = ctx.ipfs_url.clone();
+            let arweave_url = ctx.arweave_url.clone();
             let metrics_ctx = MetricsContext {
                 prometheus: ctx.prometheus_registry.clone(),
                 registry: registry.clone(),
@@ -1183,6 +1216,7 @@ async fn main() -> anyhow::Result<()> {
                 store_builder,
                 network_name,
                 ipfs_url,
+                arweave_url,
                 config,
                 metrics_ctx,
                 node_id,
@@ -1391,6 +1425,7 @@ async fn main() -> anyhow::Result<()> {
                     entity,
                     fields,
                     method,
+                    after,
                 } => {
                     commands::index::create(
                         subgraph_store,
@@ -1399,6 +1434,7 @@ async fn main() -> anyhow::Result<()> {
                         &entity,
                         fields,
                         method,
+                        after,
                     )
                     .await
                 }
@@ -1459,6 +1495,7 @@ async fn main() -> anyhow::Result<()> {
             once,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
+            let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
             commands::prune::run(
                 store,
                 primary_pool,
@@ -1492,6 +1529,18 @@ async fn main() -> anyhow::Result<()> {
                 force,
             )
             .await
+        }
+
+        Deploy {
+            deployment,
+            name,
+            url,
+            create,
+        } => {
+            let store = ctx.store();
+            let subgraph_store = store.subgraph_store();
+
+            commands::deploy::run(subgraph_store, deployment, name, url, create).await
         }
     }
 }

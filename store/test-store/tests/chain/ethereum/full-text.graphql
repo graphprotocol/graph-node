@@ -18,8 +18,8 @@ type Band @entity {
   name: String!
   description: String!
   bio: String
-  wallet: Address
-  labels: [Label!]!
-  discography: [Album!]!
-  members: [Musician!]!
+  wallet: String
+  labels: [String!]!
+  discography: [String!]!
+  members: [String!]!
 }

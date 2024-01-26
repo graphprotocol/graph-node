@@ -1,5 +1,5 @@
-use crate::schema::Schema;
-use crate::{components::store::EntityType, prelude::s};
+use crate::prelude::s;
+use crate::schema::{EntityType, Schema};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -60,15 +60,6 @@ impl<'a> From<&'a s::ObjectType> for ObjectOrInterface<'a> {
 impl<'a> From<&'a s::InterfaceType> for ObjectOrInterface<'a> {
     fn from(interface: &'a s::InterfaceType) -> Self {
         ObjectOrInterface::Interface(interface)
-    }
-}
-
-impl<'a> From<ObjectOrInterface<'a>> for EntityType {
-    fn from(ooi: ObjectOrInterface) -> Self {
-        match ooi {
-            ObjectOrInterface::Object(ty) => EntityType::from(ty),
-            ObjectOrInterface::Interface(ty) => EntityType::from(ty),
-        }
     }
 }
 

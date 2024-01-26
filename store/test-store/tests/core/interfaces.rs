@@ -4,7 +4,7 @@ use graph::entity;
 use graph::schema::InputSchema;
 use pretty_assertions::assert_eq;
 
-use graph::{components::store::EntityType, data::graphql::object};
+use graph::data::graphql::object;
 use graph::{data::query::QueryTarget, prelude::*};
 use test_store::*;
 
@@ -17,10 +17,10 @@ async fn insert_and_query(
 ) -> Result<QueryResult, StoreError> {
     let subgraph_id = DeploymentHash::new(subgraph_id).unwrap();
     let deployment = create_test_subgraph(&subgraph_id, schema).await;
-
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
     let entities = entities
         .into_iter()
-        .map(|(entity_type, data)| (EntityType::new(entity_type.to_owned()), data))
+        .map(|(entity_type, data)| (schema.entity_type(entity_type).unwrap(), data))
         .collect();
 
     insert_entities(&deployment, entities).await?;
@@ -1298,8 +1298,12 @@ async fn mixed_mutability() {
 
 #[tokio::test]
 async fn derived_interface_bytes() {
+    fn b(s: &str) -> Value {
+        Value::Bytes(s.parse().unwrap())
+    }
+
     let subgraph_id = "DerivedInterfaceBytes";
-    let document = r#" type Pool {
+    let document = r#" type Pool @entity {
         id: Bytes!,
         trades: [Trade!]! @derivedFrom(field: "pool")
       }
@@ -1322,9 +1326,9 @@ async fn derived_interface_bytes() {
     let query = "query { pools { trades { id } } }";
 
     let entities = vec![
-        ("Pool", entity! { schema =>  id: "0xf001" }),
-        ("Sell", entity! { schema =>  id: "0xc0", pool: "0xf001"}),
-        ("Buy", entity! { schema =>  id: "0xb0", pool: "0xf001"}),
+        ("Pool", entity! { schema =>  id: b("0xf001") }),
+        ("Sell", entity! { schema =>  id: b("0xc0"), pool: "0xf001"}),
+        ("Buy", entity! { schema =>  id: b("0xb0"), pool: "0xf001"}),
     ];
 
     let res = insert_and_query(subgraph_id, document, entities, query)

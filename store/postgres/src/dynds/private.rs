@@ -160,7 +160,9 @@ impl DataSourcesTable {
                     causality_region,
                 } = ds;
 
-                if creation_block != &Some(block) {
+                // Nested offchain data sources might not pass this check, as their `creation_block`
+                // will be their parent's `creation_block`, not necessarily `block`.
+                if causality_region == &CausalityRegion::ONCHAIN && creation_block != &Some(block) {
                     return Err(constraint_violation!(
                         "mismatching creation blocks `{:?}` and `{}`",
                         creation_block,
@@ -191,10 +193,13 @@ impl DataSourcesTable {
     }
 
     pub(crate) fn revert(&self, conn: &PgConnection, block: BlockNumber) -> Result<(), StoreError> {
-        // Use `@>` to leverage the gist index.
-        // This assumes all ranges are of the form [x, +inf).
+        // Use the 'does not extend to the left of' operator `&>` to leverage the gist index, this
+        // is equivalent to lower(block_range) >= $1.
+        //
+        // This assumes all ranges are of the form [x, +inf), and thefore no range needs to be
+        // unclamped.
         let query = format!(
-            "delete from {} where block_range @> $1 and lower(block_range) = $1",
+            "delete from {} where block_range &> int4range($1, null)",
             self.qname
         );
         sql_query(query).bind::<Integer, _>(block).execute(conn)?;

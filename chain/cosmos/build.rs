@@ -1,4 +1,4 @@
-const PROTO_FILE: &str = "proto/type.proto";
+const PROTO_FILE: &str = "proto/cosmos.proto";
 
 fn main() {
     println!("cargo:rerun-if-changed=proto");
@@ -49,6 +49,6 @@ fn main() {
     }
 
     builder
-        .compile(&["proto/type.proto"], &["proto"])
+        .compile(&[PROTO_FILE], &["proto"])
         .expect("Failed to compile Firehose Cosmos proto(s)");
 }

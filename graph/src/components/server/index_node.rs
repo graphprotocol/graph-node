@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use futures::prelude::*;
 
 use crate::{prelude::BlockNumber, schema::InputSchema};
@@ -15,7 +13,7 @@ pub struct VersionInfo {
     pub failed: bool,
     pub description: Option<String>,
     pub repository: Option<String>,
-    pub schema: Arc<InputSchema>,
+    pub schema: InputSchema,
     pub network: String,
 }
 

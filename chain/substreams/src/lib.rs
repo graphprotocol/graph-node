@@ -4,8 +4,10 @@ mod codec;
 mod data_source;
 mod trigger;
 
+pub mod block_ingestor;
 pub mod mapper;
 
+pub use crate::chain::Chain;
 pub use block_stream::BlockStreamBuilder;
 pub use chain::*;
 pub use codec::EntityChanges;

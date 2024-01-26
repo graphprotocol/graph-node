@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use super::block_stream::{
     BlockStream, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream, FirehoseCursor,
-    TriggersAdapter,
+    TriggersAdapter, BUFFERED_BLOCK_STREAM_SIZE,
 };
 use super::{Block, BlockPtr, Blockchain};
 
@@ -486,7 +486,11 @@ where
     }
 }
 
-impl<C: Blockchain> BlockStream<C> for PollingBlockStream<C> {}
+impl<C: Blockchain> BlockStream<C> for PollingBlockStream<C> {
+    fn buffer_size_hint(&self) -> usize {
+        BUFFERED_BLOCK_STREAM_SIZE
+    }
+}
 
 impl<C: Blockchain> Stream for PollingBlockStream<C> {
     type Item = Result<BlockStreamEvent<C>, Error>;

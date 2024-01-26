@@ -4,7 +4,9 @@ mod pbcodec;
 
 use anyhow::format_err;
 use graph::{
-    blockchain::{Block as BlockchainBlock, BlockPtr, ChainStoreBlock, ChainStoreData},
+    blockchain::{
+        self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
+    },
     prelude::{
         web3,
         web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
@@ -449,6 +451,11 @@ impl BlockchainBlock for Block {
     fn data(&self) -> Result<jsonrpc_core::serde_json::Value, jsonrpc_core::serde_json::Error> {
         self.header().to_json()
     }
+
+    fn timestamp(&self) -> BlockTime {
+        let ts = self.header().timestamp.as_ref().unwrap();
+        BlockTime::since_epoch(ts.seconds, ts.nanos as u32)
+    }
 }
 
 impl HeaderOnlyBlock {
@@ -501,6 +508,11 @@ impl BlockchainBlock for HeaderOnlyBlock {
     // processed using the block stored by firehose.
     fn data(&self) -> Result<jsonrpc_core::serde_json::Value, jsonrpc_core::serde_json::Error> {
         self.header().to_json()
+    }
+
+    fn timestamp(&self) -> blockchain::BlockTime {
+        let ts = self.header().timestamp.as_ref().unwrap();
+        blockchain::BlockTime::since_epoch(ts.seconds, ts.nanos as u32)
     }
 }
 

@@ -55,8 +55,8 @@ impl Bin {
 /// a `window_size` of 5 minutes and a bin size of one second would use
 /// 300 bins. Each bin has constant size
 pub struct MovingStats {
-    window_size: Duration,
-    bin_size: Duration,
+    pub window_size: Duration,
+    pub bin_size: Duration,
     /// The buffer with measurements. The back has the most recent entries,
     /// and the front has the oldest entries
     bins: VecDeque<Bin>,

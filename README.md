@@ -27,12 +27,17 @@ For Ethereum network data, you can either run your own Ethereum node or use an E
 
 - To build graph-node with `cargo`, 8GB RAM are required.
 
+### Docker
+
+The easiest way to run a Graph Node is to use the official Docker compose setup. This will start a Postgres database, IPFS node, and Graph Node.
+[Follow the instructions here](./docker/README.md).
+
 ### Running a Local Graph Node
 
 This is a quick example to show a working Graph Node. It is a [subgraph for Gravatars](https://github.com/graphprotocol/example-subgraph).
 
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`.
-2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
+2. Install PostgreSQL and run `initdb -D .postgres -E UTF8 --locale=C` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
 4. In the terminal, clone https://github.com/graphprotocol/example-subgraph, and install dependencies and generate types for contract ABIs:
@@ -111,16 +116,16 @@ OPTIONS:
 
         --elasticsearch-user <USER>                   User to use for Elasticsearch logging [env: ELASTICSEARCH_USER=]
         --ethereum-ipc <NETWORK_NAME:[CAPABILITIES]:FILE>
-            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg full,archive), and an Ethereum IPC pipe, separated by a ':'
+            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg full,archive), and an Ethereum IPC pipe, separated by a ':'
 
         --ethereum-polling-interval <MILLISECONDS>
             How often to poll the Ethereum node for new blocks [env: ETHEREUM_POLLING_INTERVAL=]  [default: 500]
 
         --ethereum-rpc <NETWORK_NAME:[CAPABILITIES]:URL>
-            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'
+            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'
 
         --ethereum-ws <NETWORK_NAME:[CAPABILITIES]:URL>
-            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg `full,archive), and an Ethereum WebSocket URL, separated by a ':'
+            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg `full,archive), and an Ethereum WebSocket URL, separated by a ':'
 
         --node-id <NODE_ID>
             A unique identifier for this node instance. Should have the same value between consecutive node restarts [default: default]

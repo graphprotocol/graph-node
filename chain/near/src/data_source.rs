@@ -12,12 +12,15 @@ use graph::{
     },
     semver,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::chain::Chain;
 use crate::trigger::{NearTrigger, ReceiptWithOutcome};
 
 pub const NEAR_KIND: &str = "near";
+const BLOCK_HANDLER_KIND: &str = "block";
+const RECEIPT_HANDLER_KIND: &str = "receipt";
 
 /// Runtime representation of a data source.
 #[derive(Clone, Debug)]
@@ -73,6 +76,24 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn start_block(&self) -> BlockNumber {
         self.source.start_block
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        if self.handler_for_block().is_some() {
+            kinds.insert(BLOCK_HANDLER_KIND);
+        }
+
+        if self.handler_for_receipt().is_some() {
+            kinds.insert(RECEIPT_HANDLER_KIND);
+        }
+
+        kinds
+    }
+
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.source.end_block
     }
 
     fn match_and_decode(
@@ -142,6 +163,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             trigger.cheap_clone(),
             handler.clone(),
             block.ptr(),
+            block.timestamp(),
         )))
     }
 
@@ -476,10 +498,12 @@ impl PartialAccounts {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Source {
     // A data source that does not have an account or accounts can only have block handlers.
     pub(crate) account: Option<String>,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub(crate) start_block: BlockNumber,
+    pub(crate) end_block: Option<BlockNumber>,
     pub(crate) accounts: Option<PartialAccounts>,
 }

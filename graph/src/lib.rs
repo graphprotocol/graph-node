@@ -51,8 +51,10 @@ pub use petgraph;
 pub use prometheus;
 pub use semver;
 pub use slog;
+pub use stable_hash;
 pub use stable_hash_legacy;
 pub use tokio;
+pub use tokio_retry;
 pub use tokio_stream;
 pub use url;
 
@@ -69,6 +71,7 @@ pub mod prelude {
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use chrono;
+    pub use diesel;
     pub use envconfig;
     pub use ethabi;
     pub use futures::future;
@@ -114,9 +117,7 @@ pub mod prelude {
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
         LightEthereumBlockExt,
     };
-    pub use crate::components::graphql::{
-        GraphQLMetrics, GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
-    };
+    pub use crate::components::graphql::{GraphQLMetrics, GraphQlRunner, SubscriptionResultFuture};
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{
         stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter, CounterVec, Gauge, GaugeVec,
@@ -203,11 +204,11 @@ pub mod prelude {
     });
     static_graphql!(s, schema, {
         Field, Directive, InterfaceType, ObjectType, Value, TypeDefinition,
-        EnumType, Type, Document, ScalarType, InputValue, DirectiveDefinition,
+        EnumType, Type, Definition, Document, ScalarType, InputValue, DirectiveDefinition,
         UnionType, InputObjectType, EnumValue,
     });
 
     pub mod r {
-        pub use crate::data::value::Value;
+        pub use crate::data::value::{Object, Value};
     }
 }

@@ -7,12 +7,13 @@ members = [
     "runtime/*",
     "server/*",
     "store/*",
+    "substreams/*",
     "graph",
     "tests",
 ]
 
 [workspace.package]
-version = "0.31.0"
+version = "0.34.0"
 edition = "2021"
 authors = ["The Graph core developers & contributors"]
 readme = "README.md"
@@ -32,3 +33,9 @@ incremental = false
 
 [profile.dev]
 incremental = false
+
+[profile.release]
+lto = true
+opt-level = 's'
+strip = "debuginfo"
+

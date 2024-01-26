@@ -67,7 +67,6 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    mapping_trigger.block_ptr(),
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),

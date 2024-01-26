@@ -1,8 +1,8 @@
 use futures::prelude::*;
 
-use crate::data::query::{CacheStatus, Query, QueryTarget};
+use crate::data::query::QueryResults;
+use crate::data::query::{Query, QueryTarget};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
-use crate::data::{graphql::effort::LoadManager, query::QueryResults};
 use crate::prelude::DeploymentHash;
 
 use async_trait::async_trait;
@@ -41,8 +41,6 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
-    fn load_manager(&self) -> Arc<LoadManager>;
-
     fn metrics(&self) -> Arc<dyn GraphQLMetrics>;
 }
 
@@ -51,9 +49,5 @@ pub trait GraphQLMetrics: Send + Sync + 'static {
     fn observe_query_parsing(&self, duration: Duration, results: &QueryResults);
     fn observe_query_validation(&self, duration: Duration, id: &DeploymentHash);
     fn observe_query_validation_error(&self, error_codes: Vec<&str>, id: &DeploymentHash);
-}
-
-#[async_trait]
-pub trait QueryLoadManager: Send + Sync {
-    fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus);
+    fn observe_query_blocks_behind(&self, blocks_behind: i32, id: &DeploymentHash);
 }

@@ -124,7 +124,12 @@ mod test {
     use tower::ServiceExt;
 
     use cid::Cid;
-    use graph::{ipfs_client::IpfsClient, tokio};
+    use graph::{
+        components::link_resolver::{ArweaveClient, ArweaveResolver},
+        data::value::Word,
+        ipfs_client::IpfsClient,
+        tokio,
+    };
 
     use uuid::Uuid;
 
@@ -155,5 +160,19 @@ mod test {
             .unwrap()
             .unwrap();
         assert_eq!(content.to_vec(), uid.as_bytes().to_vec());
+    }
+
+    #[tokio::test]
+    async fn arweave_get() {
+        const ID: &str = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
+
+        let cl = ArweaveClient::default();
+        let body = cl.get(&Word::from(ID)).await.unwrap();
+        let body = String::from_utf8(body).unwrap();
+
+        let expected = r#"
+            {"name":"Arloader NFT #1","description":"Super dope, one of a kind NFT","collection":{"name":"Arloader NFT","family":"We AR"},"attributes":[{"trait_type":"cx","value":-0.4042198883730073},{"trait_type":"cy","value":0.5641681708263335},{"trait_type":"iters","value":44}],"properties":{"category":"image","files":[{"uri":"https://arweave.net/7gWCr96zc0QQCXOsn5Vk9ROVGFbMaA9-cYpzZI8ZMDs","type":"image/png"},{"uri":"https://arweave.net/URwQtoqrbYlc5183STNy3ZPwSCRY4o8goaF7MJay3xY/1.png","type":"image/png"}]},"image":"https://arweave.net/URwQtoqrbYlc5183STNy3ZPwSCRY4o8goaF7MJay3xY/1.png"}
+        "#.trim_start().trim_end();
+        assert_eq!(expected, body);
     }
 }

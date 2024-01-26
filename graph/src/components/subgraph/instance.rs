@@ -1,9 +1,10 @@
 use crate::{
     blockchain::Blockchain,
-    components::store::{EntityKey, ReadStore, StoredDynamicDataSource},
+    components::store::{ReadStore, StoredDynamicDataSource},
     data::subgraph::schema::SubgraphError,
     data_source::DataSourceTemplate,
     prelude::*,
+    schema::EntityKey,
     util::lfu_cache::LfuCache,
 };
 

@@ -13,8 +13,9 @@ use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Range
 use diesel::Connection;
 
 use graph::components::store::write::WriteChunk;
-use graph::components::store::{DerivedEntityQuery, EntityKey};
-use graph::data::store::NULL;
+use graph::components::store::DerivedEntityQuery;
+use graph::data::store::{Id, IdType, NULL};
+use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -22,11 +23,9 @@ use graph::prelude::{
     EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
     EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::{FulltextAlgorithm, InputSchema};
-use graph::{
-    components::store::{AttributeNames, EntityType},
-    data::store::scalar,
-};
+use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, InputSchema};
+use graph::{components::store::AttributeNames, data::store::scalar};
+use inflector::Inflector;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -36,7 +35,7 @@ use std::str::FromStr;
 
 use crate::block_range::BlockRange;
 use crate::relational::{
-    Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
+    Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
 use crate::{
@@ -54,6 +53,11 @@ const BASE_SQL_COLUMNS: [&str; 2] = ["id", "vid"];
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 
 const SORT_KEY_COLUMN: &str = "sort_key$";
+
+/// The name of the parent_id attribute that we inject into queries. Users
+/// outside of this module should access the parent id through the
+/// `QueryObject` struct
+const PARENT_ID: &str = "g$parent_id";
 
 /// Describes at what level a `SELECT` statement is used.
 enum SelectStatementLevel {
@@ -98,41 +102,6 @@ macro_rules! constraint_violation {
     }}
 }
 
-fn str_as_bytes(id: &str) -> QueryResult<scalar::Bytes> {
-    scalar::Bytes::from_str(id).map_err(|e| DieselError::SerializationError(Box::new(e)))
-}
-
-/// Convert Postgres string representation of bytes "\xdeadbeef"
-/// to ours of just "deadbeef".
-fn bytes_as_str(id: &str) -> String {
-    id.trim_start_matches("\\x").to_owned()
-}
-
-impl IdType {
-    /// Add `ids` as a bind variable to `out`, using the right SQL type
-    fn bind_ids<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
-    where
-        S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
-    {
-        match self {
-            IdType::String => out.push_bind_param::<Array<Text>, _>(&ids)?,
-            IdType::Bytes => {
-                let ids = ids
-                    .iter()
-                    .map(|id| str_as_bytes(id.as_ref()))
-                    .collect::<Result<Vec<scalar::Bytes>, _>>()?;
-                let id_slices = ids.iter().map(|id| id.as_slice()).collect::<Vec<_>>();
-                out.push_bind_param::<Array<Binary>, _>(&id_slices)?;
-            }
-        }
-        // Generate '::text[]' or '::bytea[]'
-        out.push_sql("::");
-        out.push_sql(self.sql_type());
-        out.push_sql("[]");
-        Ok(())
-    }
-}
-
 /// Conveniences for handling foreign keys depending on whether we are using
 /// `IdType::Bytes` or `IdType::String` as the primary key
 ///
@@ -147,96 +116,61 @@ trait ForeignKeyClauses {
     /// The name of the column
     fn name(&self) -> &str;
 
-    /// Add `id` as a bind variable to `out`, using the right SQL type
-    fn bind_id(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        match self.column_type().id_type() {
-            IdType::String => out.push_bind_param::<Text, _>(&id)?,
-            IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(id)?.as_slice())?,
-        }
-        // Generate '::text' or '::bytea'
-        out.push_sql("::");
-        out.push_sql(self.column_type().sql_type());
-        Ok(())
-    }
-
-    /// Add `ids`  as a bind variable to `out`, using the right SQL type
-    fn bind_ids<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
-    where
-        S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
-    {
-        self.column_type().id_type().bind_ids(ids, out)
-    }
-
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
     /// into `out`
-    fn eq(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn eq(&self, id: &Id, out: &mut AstPass<Pg>) -> QueryResult<()> {
         out.push_sql(self.name());
         out.push_sql(" = ");
-        self.bind_id(id, out)
+        id.push_bind_param(out)
     }
 
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
     /// using the right types to bind `$ids` into `out`
-    fn is_in<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
-    where
-        S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
-    {
+    fn is_in(&self, ids: &IdList, out: &mut AstPass<Pg>) -> QueryResult<()> {
         out.push_sql("exists (select 1 from unnest(");
-        self.bind_ids(ids, out)?;
+        ids.push_bind_param(out)?;
         out.push_sql(") as p(g$id) where id = p.g$id)");
         Ok(())
     }
+}
 
-    /// Generate an array of arrays as literal SQL. The `ids` must form a
-    /// valid matrix, i.e. the same numbe of entries in each row. This can
-    /// be achieved by padding them with `None` values. Diesel does not support
-    /// arrays of arrays as bind variables, nor arrays containing nulls, so
-    /// we have to manually serialize the `ids` as literal SQL.
-    fn push_matrix(
-        &self,
-        matrix: &[Vec<Option<SafeString>>],
-        out: &mut AstPass<Pg>,
-    ) -> QueryResult<()> {
-        out.push_sql("array[");
-        if matrix.is_empty() {
-            // If there are no ids, make sure we are producing an
-            // empty array of arrays
-            out.push_sql("array[null]");
-        } else {
-            for (i, ids) in matrix.iter().enumerate() {
-                if i > 0 {
-                    out.push_sql(", ");
-                }
-                out.push_sql("array[");
-                for (j, id) in ids.iter().enumerate() {
-                    if j > 0 {
-                        out.push_sql(", ");
-                    }
-                    match id {
-                        None => out.push_sql("null"),
-                        Some(id) => match self.column_type().id_type() {
-                            IdType::String => {
-                                out.push_sql("'");
-                                out.push_sql(&id.0);
-                                out.push_sql("'");
-                            }
-                            IdType::Bytes => {
-                                out.push_sql("'\\x");
-                                out.push_sql(id.0.trim_start_matches("0x"));
-                                out.push_sql("'");
-                            }
-                        },
-                    }
-                }
-                out.push_sql("]");
-            }
+/// This trait is here to deal with the fact that we can't implement `ToSql`
+/// for `Id` and similar types since `ToSql` can only be implemented when
+/// the SQL type of the bind parameter is known at compile time. For `Id`,
+/// we have to switch between `Text` and `Binary` and therefore use this
+/// trait to make passing `Id` values to the database convenient
+trait PushBindParam {
+    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()>;
+}
+
+impl PushBindParam for Id {
+    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match self {
+            Id::String(s) => out.push_bind_param::<Text, _>(s),
+            Id::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Id::Int8(i) => out.push_bind_param::<Int8, _>(i),
         }
-        // Generate '::text[][]' or '::bytea[][]'
-        out.push_sql("]::");
-        out.push_sql(self.column_type().sql_type());
-        out.push_sql("[][]");
-        Ok(())
+    }
+}
+
+impl PushBindParam for IdList {
+    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match self {
+            IdList::String(ids) => out.push_bind_param::<Array<Text>, _>(ids),
+            IdList::Bytes(ids) => out.push_bind_param::<Array<Binary>, _>(ids),
+            IdList::Int8(ids) => out.push_bind_param::<Array<Int8>, _>(ids),
+        }
+    }
+}
+
+impl<'a> PushBindParam for IdRef<'a> {
+    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+        match self {
+            IdRef::String(s) => out.push_bind_param::<Text, _>(s),
+            IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(b),
+            IdRef::Int8(i) => out.push_bind_param::<Int8, _>(i),
+        }
     }
 }
 
@@ -258,6 +192,7 @@ pub trait FromEntityData: Sized {
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
         schema: &InputSchema,
+        parent_id: Option<Id>,
         iter: I,
     ) -> Result<Self, StoreError>;
 }
@@ -269,22 +204,28 @@ impl FromEntityData for Entity {
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
         schema: &InputSchema,
+        parent_id: Option<Id>,
         iter: I,
     ) -> Result<Self, StoreError> {
+        debug_assert_eq!(None, parent_id);
         schema.try_make_entity(iter).map_err(StoreError::from)
     }
 }
 
-impl FromEntityData for Object {
+impl FromEntityData for QueryObject {
     const WITH_INTERNAL_KEYS: bool = true;
 
     type Value = r::Value;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
         _schema: &InputSchema,
+        parent: Option<Id>,
         iter: I,
     ) -> Result<Self, StoreError> {
-        <Result<Object, StoreError> as FromIterator<Result<(Word, Self::Value), StoreError>>>::from_iter(iter)
+        let entity = <Result<Object, StoreError> as FromIterator<
+            Result<(Word, Self::Value), StoreError>,
+        >>::from_iter(iter)?;
+        Ok(QueryObject { parent, entity })
     }
 }
 
@@ -485,8 +426,8 @@ pub struct EntityDeletion {
 }
 
 impl EntityDeletion {
-    pub fn entity_type(&self) -> EntityType {
-        EntityType::new(self.entity.clone())
+    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
+        schema.entity_type(&self.entity).unwrap()
     }
 
     pub fn id(&self) -> &str {
@@ -495,6 +436,24 @@ impl EntityDeletion {
 
     pub fn causality_region(&self) -> CausalityRegion {
         self.causality_region
+    }
+}
+
+pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreError> {
+    const HEX_PREFIX: &str = "\\x";
+    if let serde_json::Value::String(s) = json {
+        let s = if s.starts_with(HEX_PREFIX) {
+            Word::from(s.trim_start_matches(HEX_PREFIX))
+        } else {
+            Word::from(s)
+        };
+        id_type.parse(s).map_err(StoreError::from)
+    } else {
+        Err(graph::constraint_violation!(
+            "the value {:?} can not be converted into an id of type {}",
+            json,
+            id_type
+        ))
     }
 }
 
@@ -512,8 +471,8 @@ pub struct EntityData {
 }
 
 impl EntityData {
-    pub fn entity_type(&self) -> EntityType {
-        EntityType::new(self.entity.clone())
+    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
+        schema.entity_type(&self.entity).unwrap()
     }
 
     /// Map the `EntityData` using the schema information in `Layout`
@@ -522,12 +481,37 @@ impl EntityData {
         layout: &Layout,
         parent_type: Option<&ColumnType>,
     ) -> Result<T, StoreError> {
-        let entity_type = EntityType::new(self.entity.clone());
+        let entity_type = layout.input_schema.entity_type(&self.entity)?;
         let table = layout.table_for_entity(&entity_type)?;
 
         use serde_json::Value as j;
         match self.data {
-            j::Object(map) => {
+            j::Object(mut map) => {
+                let parent_id = map
+                    .remove(PARENT_ID)
+                    .and_then(|json| {
+                        if !T::WITH_INTERNAL_KEYS {
+                            return None;
+                        }
+                        match &parent_type {
+                            None => {
+                                // A query that does not have parents
+                                // somehow returned parent ids. We have no
+                                // idea how to deserialize that
+                                Some(Err(graph::constraint_violation!(
+                                    "query unexpectedly produces parent ids"
+                                )))
+                            }
+                            Some(parent_type) => Some(
+                                parent_type
+                                    .id_type()
+                                    .map_err(StoreError::from)
+                                    .and_then(|id_type| parse_id(id_type, json)),
+                            ),
+                        }
+                    })
+                    .transpose()?;
+                let map = map;
                 let typname = std::iter::once(self.entity).filter_map(move |e| {
                     if T::WITH_INTERNAL_KEYS {
                         Some(Ok((Word::from("__typename"), T::Value::from_string(e))))
@@ -536,29 +520,11 @@ impl EntityData {
                     }
                 });
                 let entries = map.into_iter().filter_map(move |(key, json)| {
-                    // Simply ignore keys that do not have an underlying table
-                    // column; those will be things like the block_range that
-                    // is used internally for versioning
-                    if key == "g$parent_id" {
-                        if T::WITH_INTERNAL_KEYS {
-                            match &parent_type {
-                                None => {
-                                    // A query that does not have parents
-                                    // somehow returned parent ids. We have no
-                                    // idea how to deserialize that
-                                    Some(Err(graph::constraint_violation!(
-                                        "query unexpectedly produces parent ids"
-                                    )))
-                                }
-                                Some(parent_type) => Some(
-                                    T::Value::from_column_value(parent_type, json)
-                                        .map(|value| (Word::from("g$parent_id"), value)),
-                                ),
-                            }
-                        } else {
-                            None
-                        }
-                    } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
+                    // Simply ignore keys that do not have an underlying
+                    // table column; those will be things like the
+                    // block_range that `select *` pulls in but that we
+                    // don't care about here
+                    if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         match T::Value::from_column_value(&column.column_type, json) {
                             Ok(value) if value.is_null() => None,
                             Ok(value) => Some(Ok((Word::from(column.field.to_string()), value))),
@@ -568,7 +534,7 @@ impl EntityData {
                         None
                     }
                 });
-                T::from_data(&layout.input_schema, typname.chain(entries))
+                T::from_data(&layout.input_schema, parent_id, typname.chain(entries))
             }
             _ => unreachable!(
                 "we use `to_json` in our queries, and will therefore always get an object back"
@@ -972,8 +938,9 @@ impl<'a> QueryFilter<'a> {
             }
             Child(child) => {
                 if child_filter_ancestor {
-                    return Err(StoreError::QueryExecutionError(
-                        "Child filters can not be nested".to_string(),
+                    return Err(StoreError::ChildFilterNestingNotSupportedError(
+                        child.attr.to_string(),
+                        filter.to_string(),
                     ));
                 }
 
@@ -1057,6 +1024,8 @@ impl<'a> QueryFilter<'a> {
 
         out.push_sql(" where ");
 
+        let mut is_type_c_or_d = false;
+
         // Join tables
         if derived {
             // If the parent is derived,
@@ -1092,6 +1061,7 @@ impl<'a> QueryFilter<'a> {
                 .column_for_field(attribute)
                 .expect("Column for an attribute not found");
             let child_column = child_table.primary_key();
+            is_type_c_or_d = true;
 
             if parent_column.is_list() {
                 // Type C: i.id = any(c.child_ids)
@@ -1114,7 +1084,8 @@ impl<'a> QueryFilter<'a> {
         out.push_sql(" and ");
 
         // Match by block
-        BlockRangeColumn::new(child_table, child_prefix, self.block).contains(&mut out)?;
+        BlockRangeColumn::new(child_table, child_prefix, self.block)
+            .contains(&mut out, is_type_c_or_d)?;
 
         out.push_sql(" and ");
 
@@ -1518,12 +1489,6 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let EntityKey {
-            entity_type: _,
-            entity_id,
-            causality_region,
-        } = self.key;
-
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
@@ -1533,14 +1498,14 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        self.table.primary_key().eq(entity_id, &mut out)?;
+        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
         out.push_sql(" and ");
         if self.table.has_causality_region {
             out.push_sql("causality_region = ");
-            out.push_bind_param::<Integer, _>(causality_region)?;
+            out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, true)
     }
 }
 
@@ -1661,11 +1626,10 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
-    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: Vec<(&'a Table, CausalityRegion)>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
+    pub(crate) ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), IdList>,
     pub(crate) block: BlockNumber,
 }
 
@@ -1700,7 +1664,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_bind_param::<Integer, _>(cr)?;
                 out.push_sql(" and ");
             }
-            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out)?;
+            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out, true)?;
         }
         Ok(())
     }
@@ -1739,7 +1703,6 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             entity_field,
             value: entity_id,
             causality_region,
-            id_is_bytes,
         } = self.derived_query;
 
         // Generate
@@ -1760,26 +1723,21 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                out.push_bind_param::<Text, _>(&value.entity_id.as_str())?;
+
+                value.entity_id.push_bind_param(&mut out)?;
             }
             out.push_sql(") and ");
         }
-        out.push_identifier(entity_field.as_str())?;
+        out.push_identifier(entity_field.to_snake_case().as_str())?;
         out.push_sql(" = ");
-        if *id_is_bytes {
-            out.push_sql("decode(");
-            out.push_bind_param::<Text, _>(&entity_id.as_str().strip_prefix("0x").unwrap())?;
-            out.push_sql(", 'hex')");
-        } else {
-            out.push_bind_param::<Text, _>(&entity_id.as_str())?;
-        }
+        entity_id.push_bind_param(&mut out)?;
         out.push_sql(" and ");
         if self.table.has_causality_region {
             out.push_sql("causality_region = ");
             out.push_bind_param::<Integer, _>(causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, false)
     }
 }
 
@@ -1798,14 +1756,13 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindDerivedQuery<'a> {
 impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 
 #[derive(Debug)]
-struct FulltextValues<'a>(HashMap<&'a Word, Vec<(&'a str, Value)>>);
+struct FulltextValues<'a>(HashMap<&'a Id, Vec<(&'a str, Value)>>);
 
 impl<'a> FulltextValues<'a> {
     fn new(table: &'a Table, rows: &'a WriteChunk<'a>) -> Self {
-        let mut map = HashMap::new();
+        let mut map: HashMap<&Id, Vec<(&str, Value)>> = HashMap::new();
         for column in table.columns.iter().filter(|column| column.is_fulltext()) {
             for row in rows {
-                let mut fulltext = Vec::new();
                 if let Some(fields) = column.fulltext_fields.as_ref() {
                     let fulltext_field_values = fields
                         .iter()
@@ -1813,18 +1770,17 @@ impl<'a> FulltextValues<'a> {
                         .cloned()
                         .collect::<Vec<Value>>();
                     if !fulltext_field_values.is_empty() {
-                        fulltext.push((column.field.as_str(), Value::List(fulltext_field_values)));
+                        map.entry(row.id)
+                            .or_default()
+                            .push((column.field.as_str(), Value::List(fulltext_field_values)));
                     }
-                }
-                if !fulltext.is_empty() {
-                    map.insert(row.id, fulltext);
                 }
             }
         }
         Self(map)
     }
 
-    fn get(&self, entity_id: &Word, field: &str) -> &Value {
+    fn get(&self, entity_id: &Id, field: &str) -> &Value {
         self.0
             .get(entity_id)
             .and_then(|values| {
@@ -2007,13 +1963,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 pub struct ConflictingEntityQuery<'a> {
     _layout: &'a Layout,
     tables: Vec<&'a Table>,
-    entity_id: &'a str,
+    entity_id: &'a Id,
 }
 impl<'a> ConflictingEntityQuery<'a> {
     pub fn new(
         layout: &'a Layout,
         entities: Vec<EntityType>,
-        entity_id: &'a str,
+        entity_id: &'a Id,
     ) -> Result<Self, StoreError> {
         let tables = entities
             .iter()
@@ -2046,7 +2002,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
-            table.primary_key().bind_id(self.entity_id, &mut out)?;
+            self.entity_id.push_bind_param(&mut out)?;
         }
         Ok(())
     }
@@ -2072,55 +2028,19 @@ impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQue
 
 impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 
-/// A string where we have checked that it is safe to embed it literally
-/// in a string in a SQL query. In particular, we have escaped any use
-/// of the string delimiter `'`.
-///
-/// This is only needed for `ParentIds::List` since we can't send those to
-/// the database as a bind variable, and therefore need to embed them in
-/// the query literally
-#[derive(Debug, Clone)]
-struct SafeString(String);
-
-/// A `ParentLink` where we've made sure for the `List` variant that each
-/// `Vec<Option<String>>` has the same length
-/// Use the provided constructors to make sure this invariant holds
 #[derive(Debug, Clone)]
 enum ParentIds {
-    List(Vec<Vec<Option<SafeString>>>),
-    Scalar(Vec<String>),
+    List(Vec<IdList>),
+    Scalar(IdList),
 }
 
 impl ParentIds {
-    fn new(link: ParentLink) -> Self {
-        match link {
+    fn new(link: ParentLink) -> Result<Self, QueryExecutionError> {
+        let link = match link {
             ParentLink::Scalar(child_ids) => ParentIds::Scalar(child_ids),
-            ParentLink::List(child_ids) => {
-                // Postgres will only accept child_ids, which is a Vec<Vec<String>>
-                // if all Vec<String> are the same length. We therefore pad
-                // shorter ones with None, which become nulls in the database
-                let maxlen = child_ids.iter().map(|ids| ids.len()).max().unwrap_or(0);
-                let child_ids = child_ids
-                    .into_iter()
-                    .map(|ids| {
-                        let mut ids: Vec<_> = ids
-                            .into_iter()
-                            .map(|s| {
-                                if s.contains('\'') {
-                                    SafeString(s.replace('\'', "''"))
-                                } else {
-                                    SafeString(s)
-                                }
-                            })
-                            .map(Some)
-                            .collect();
-                        ids.resize_with(maxlen, || None);
-                        ids
-                    })
-                    .collect();
-                ParentIds::List(child_ids)
-            }
-        }
+            ParentLink::List(child_ids) => ParentIds::List(child_ids),
+        };
+        Ok(link)
     }
 }
 
@@ -2146,7 +2066,10 @@ impl<'a> TableLink<'a> {
             }
             EntityLink::Parent(parent_type, parent_link) => {
                 let parent_table = layout.table_for_entity(&parent_type)?;
-                Ok(TableLink::Parent(parent_table, ParentIds::new(parent_link)))
+                Ok(TableLink::Parent(
+                    parent_table,
+                    ParentIds::new(parent_link)?,
+                ))
             }
         }
     }
@@ -2211,7 +2134,7 @@ pub struct FilterWindow<'a> {
     /// we always compare these ids with a column in `table`, and that
     /// column must have the same type as the primary key of the parent
     /// table, we can deduce the correct `IdType` that way
-    ids: Vec<String>,
+    ids: IdList,
     /// How to filter by a set of parents
     link: TableLink<'a>,
     column_names: AttributeNames,
@@ -2252,7 +2175,7 @@ impl<'a> FilterWindow<'a> {
         })
     }
 
-    fn parent_type(&self) -> IdType {
+    fn parent_type(&self) -> QueryResult<IdType> {
         match &self.link {
             TableLink::Direct(column, _) => column.column_type.id_type(),
             TableLink::Parent(parent_table, _) => parent_table.primary_key().column_type.id_type(),
@@ -2288,13 +2211,13 @@ impl<'a> FilterWindow<'a> {
         //     order by c.{sort_key}
 
         out.push_sql("\n/* children_type_a */  from unnest(");
-        column.bind_ids(&self.ids, out)?;
+        self.ids.push_bind_param(out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
         write_column_names(&self.column_names, self.table, None, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
@@ -2326,11 +2249,11 @@ impl<'a> FilterWindow<'a> {
         // TYPEA_BATCH_SIZE children and helps Postgres to narrow down the
         // rows it needs to pick from `children` to join with `p(id)`
         out.push_sql("\n/* child_type_a */ from unnest(");
-        column.bind_ids(&self.ids, out)?;
+        self.ids.push_bind_param(out)?;
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
@@ -2339,7 +2262,7 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" and c.");
             out.push_identifier(column.name.as_str())?;
             out.push_sql(" && ");
-            column.bind_ids(&self.ids, out)?;
+            self.ids.push_bind_param(out)?;
         }
         self.and_filter(out.reborrow())?;
         limit.single_limit(self.ids.len(), out);
@@ -2367,13 +2290,13 @@ impl<'a> FilterWindow<'a> {
         //     order by c.{sort_key}
 
         out.push_sql("\n/* children_type_b */  from unnest(");
-        column.bind_ids(&self.ids, out)?;
+        self.ids.push_bind_param(out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
         write_column_names(&self.column_names, self.table, None, out)?;
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -2399,11 +2322,11 @@ impl<'a> FilterWindow<'a> {
         //     limit {parent_ids.len} + 1
 
         out.push_sql("\n/* child_type_b */  from unnest(");
-        column.bind_ids(&self.ids, out)?;
+        self.ids.push_bind_param(out)?;
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -2414,47 +2337,75 @@ impl<'a> FilterWindow<'a> {
 
     fn children_type_c(
         &self,
-        parent_primary_key: &Column,
-        child_ids: &[Vec<Option<SafeString>>],
+        child_ids: &[IdList],
         limit: ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
-        // Generate
-        //      from rows from (unnest({parent_ids}), reduce_dim({child_id_matrix}))
-        //                  as p(id, child_ids)
-        //           cross join lateral
-        //           (select {column names}
-        //              from children c
-        //             where c.id = any(p.child_ids)
-        //               and .. other conditions on c ..
-        //             order by c.{sort_key}
-        //             limit {first} offset {skip}) c
-        //     order by c.{sort_key}
+        out.push_sql("\n/* children_type_c */ ");
 
-        out.push_sql("\n/* children_type_c */  from ");
-        out.push_sql("rows from (unnest(");
-        parent_primary_key.bind_ids(&self.ids, out)?;
-        out.push_sql("), reduce_dim(");
-        self.table.primary_key().push_matrix(child_ids, out)?;
-        out.push_sql(")) as p(id, child_ids)");
-        out.push_sql(" cross join lateral (select ");
-        write_column_names(&self.column_names, self.table, None, out)?;
-        out.push_sql(" from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
-        limit.filter(out);
-        out.push_sql(" and c.id = any(p.child_ids)");
-        self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
-        out.push_sql(") c");
+        // An empty `self.ids` leads to an empty `(values )` clause which is
+        // not legal SQL. In that case we generate some dummy SQL where the
+        // resulting empty table has the same structure as the one we
+        // generate when `self.ids` is not empty
+        if !self.ids.is_empty() {
+            // Generate
+            //      from (values ({parent_id}, {child_ids}), ...)
+            //                     as p(id, child_ids)
+            //           cross join lateral
+            //           (select {column names}
+            //              from children c
+            //             where c.id = any(p.child_ids)
+            //               and .. other conditions on c ..
+            //             order by c.{sort_key}
+            //             limit {first} offset {skip}) c
+            //     order by c.{sort_key}
+
+            out.push_sql("from (values ");
+            for i in 0..self.ids.len() {
+                let parent_id = self.ids.index(i);
+                let child_ids = &child_ids[i];
+                if i > 0 {
+                    out.push_sql(", (");
+                } else {
+                    out.push_sql("(");
+                }
+                parent_id.push_bind_param(out)?;
+                out.push_sql(",");
+                child_ids.push_bind_param(out)?;
+                out.push_sql(")");
+            }
+            out.push_sql(") as p(id, child_ids)");
+            out.push_sql(" cross join lateral (select ");
+            write_column_names(&self.column_names, self.table, None, out)?;
+            out.push_sql(" from ");
+            out.push_sql(self.table.qualified_name.as_str());
+            out.push_sql(" c where ");
+            BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
+            limit.filter(out);
+            out.push_sql(" and c.id = any(p.child_ids)");
+            self.and_filter(out.reborrow())?;
+            limit.restrict(out)?;
+            out.push_sql(") c");
+        } else {
+            // Generate
+            //      from unnest(array[]::text[]) as p(id) cross join
+            //           (select {column names}
+            //              from children c
+            //             where false) c
+
+            out.push_sql("from unnest(array[]::text[]) as p(id) cross join (select ");
+            write_column_names(&self.column_names, self.table, None, out)?;
+            out.push_sql("  from ");
+            out.push_sql(self.table.qualified_name.as_str());
+            out.push_sql(" c where false) c");
+        }
         Ok(())
     }
 
     fn child_type_d(
         &self,
-        child_ids: &[String],
+        child_ids: &IdList,
         limit: ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<Pg>,
@@ -2466,26 +2417,24 @@ impl<'a> FilterWindow<'a> {
         //       and .. other conditions on c ..
 
         out.push_sql("\n/* child_type_d */ from rows from (unnest(");
-        out.push_bind_param::<Array<Text>, _>(&self.ids)?;
+        self.ids.push_bind_param(out)?;
         out.push_sql("), unnest(");
-        self.table.primary_key().bind_ids(child_ids, out)?;
+        child_ids.push_bind_param(out)?;
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
         limit.filter(out);
 
         // Include a constraint on the child IDs as a set if the size of the set
         // is below the threshold set by environment variable. Set it to
         // 0 to turn off this optimization.
         if ENV_VARS.store.typed_children_set_size > 0 {
-            let mut child_set: Vec<&str> = child_ids.iter().map(|id| id.as_str()).collect();
-            child_set.sort_unstable();
-            child_set.dedup();
+            let child_set = child_ids.clone().as_unique();
 
             if child_set.len() <= ENV_VARS.store.typed_children_set_size {
                 out.push_sql(" and c.id = any(");
-                self.table.primary_key().bind_ids(&child_set, out)?;
+                child_set.push_bind_param(out)?;
                 out.push_sql(")");
             }
         }
@@ -2517,13 +2466,9 @@ impl<'a> FilterWindow<'a> {
                     }
                 }
             }
-            TableLink::Parent(parent_table, ParentIds::List(child_ids)) => self.children_type_c(
-                parent_table.primary_key(),
-                child_ids,
-                limit,
-                block,
-                &mut out,
-            ),
+            TableLink::Parent(_, ParentIds::List(child_ids)) => {
+                self.children_type_c(child_ids, limit, block, &mut out)
+            }
             TableLink::Parent(_, ParentIds::Scalar(child_ids)) => {
                 self.child_type_d(child_ids, limit, block, &mut out)
             }
@@ -2541,16 +2486,17 @@ impl<'a> FilterWindow<'a> {
     ) -> QueryResult<()> {
         out.push_sql("select '");
         out.push_sql(self.table.object.as_str());
-        out.push_sql("' as entity, c.id, c.vid, p.id::text as g$parent_id");
+        out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
+        out.push_sql(&*PARENT_ID);
         sort_key.select(&mut out, SelectStatementLevel::InnerStatement)?;
         self.children(ParentLimit::Outer, block, out)
     }
 
     /// Collect all the parent id's from all windows
-    fn collect_parents(windows: &[FilterWindow]) -> Vec<String> {
-        let parent_ids: HashSet<String> =
-            HashSet::from_iter(windows.iter().flat_map(|window| window.ids.iter().cloned()));
-        parent_ids.into_iter().collect()
+    fn collect_parents(windows: &'a [FilterWindow]) -> Result<IdList, QueryExecutionError> {
+        let parent_ids: HashSet<IdRef<'a>> =
+            HashSet::from_iter(windows.iter().flat_map(|window| window.ids.iter()));
+        IdList::try_from_iter_ref(parent_ids.into_iter())
     }
 }
 
@@ -2563,7 +2509,7 @@ pub enum FilterCollection<'a> {
     All(Vec<(&'a Table, Option<QueryFilter<'a>>, AttributeNames)>),
     /// Collection made from windows of the same or different entity types
     SingleWindow(FilterWindow<'a>),
-    MultiWindow(Vec<FilterWindow<'a>>, Vec<String>),
+    MultiWindow(Vec<FilterWindow<'a>>, IdList),
 }
 
 /// String representation that is useful for debugging when `walk_ast` fails
@@ -2601,6 +2547,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
 
                 write!(f, "<")?;
 
+                let ids = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
                 match link {
                     TableLink::Direct(col, Single) => {
                         write!(f, "uniq:{}={}", col.name(), ids.join(","))?
@@ -2611,12 +2558,12 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                     TableLink::Parent(_, ParentIds::List(css)) => {
                         let css = css
                             .iter()
-                            .map(|cs| cs.iter().filter_map(|c| c.as_ref().map(|s| &s.0)).join(","))
+                            .map(|cs| cs.iter().map(|c| c.to_string()).join(","))
                             .join("],[");
                         write!(f, "uniq:id=[{}]", css)?
                     }
                     TableLink::Parent(_, ParentIds::Scalar(cs)) => {
-                        write!(f, "uniq:id={}", cs.join(","))?
+                        write!(f, "uniq:id={}", cs.iter().map(|c| c.to_string()).join(","))?
                     }
                 };
                 write!(f, " for {}>", ids.join(","))?;
@@ -2688,7 +2635,7 @@ impl<'a> FilterCollection<'a> {
                         windows.pop().expect("we just checked there is an element"),
                     )
                 } else {
-                    let parent_ids = FilterWindow::collect_parents(&windows);
+                    let parent_ids = FilterWindow::collect_parents(&windows)?;
                     FilterCollection::MultiWindow(windows, parent_ids)
                 };
                 Ok(collection)
@@ -2728,10 +2675,10 @@ impl<'a> FilterCollection<'a> {
     pub(crate) fn parent_type(&self) -> Result<Option<IdType>, StoreError> {
         match self {
             FilterCollection::All(_) => Ok(None),
-            FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type())),
+            FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type()?)),
             FilterCollection::MultiWindow(windows, _) => {
                 if windows.iter().map(FilterWindow::parent_type).all_equal() {
-                    Ok(Some(windows[0].parent_type()))
+                    Ok(Some(windows[0].parent_type()?))
                 } else {
                     Err(graph::constraint_violation!(
                         "all implementors of an interface must use the same type for their `id`"
@@ -3501,14 +3448,20 @@ impl<'a> SortKey<'a> {
     /// A boolean (use_sort_key_alias) is not a good idea and prone to errors.
     /// We could make it the standard and always use sort_key$ alias.
     fn order_by_parent(&self, out: &mut AstPass<Pg>, use_sort_key_alias: bool) -> QueryResult<()> {
+        fn order_by_parent_id(out: &mut AstPass<Pg>) {
+            out.push_sql("order by ");
+            out.push_sql(&*PARENT_ID);
+            out.push_sql(", ");
+        }
+
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc(_) => {
-                out.push_sql("order by g$parent_id, ");
+                order_by_parent_id(out);
                 out.push_identifier(PRIMARY_KEY_COLUMN)
             }
             SortKey::IdDesc(_) => {
-                out.push_sql("order by g$parent_id, ");
+                order_by_parent_id(out);
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
                 Ok(())
@@ -3518,7 +3471,7 @@ impl<'a> SortKey<'a> {
                 value,
                 direction,
             } => {
-                out.push_sql("order by g$parent_id, ");
+                order_by_parent_id(out);
                 SortKey::sort_expr(
                     column,
                     value,
@@ -3913,7 +3866,13 @@ impl<'a> FilterQuery<'a> {
         self.sort_key.add_child(self.block, &mut out)?;
 
         out.push_sql("\n where ");
-        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out)?;
+
+        let filters_by_id = {
+            let entity_filter = table_filter.as_ref().map(|f| f.filter);
+            matches!(entity_filter, Some(EntityFilter::Equal(attr, _)) if attr == "id")
+        };
+
+        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out, filters_by_id)?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
@@ -3972,7 +3931,8 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
         out.push_sql(" from (\n");
-        out.push_sql("select c.*, p.id::text as g$parent_id");
+        out.push_sql("select c.*, p.id::text as ");
+        out.push_sql(&*PARENT_ID);
         window.children(
             ParentLimit::Ranked(&self.sort_key, &self.range),
             self.block,
@@ -4063,7 +4023,7 @@ impl<'a> FilterQuery<'a> {
     fn query_window(
         &self,
         windows: &[FilterWindow],
-        parent_ids: &[String],
+        parent_ids: &IdList,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         // Note that a CTE is an optimization fence, and since we use
@@ -4095,8 +4055,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("with matches as (");
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
-        // windows always has at least 2 entries
-        windows[0].parent_type().bind_ids(parent_ids, &mut out)?;
+        parent_ids.push_bind_param(&mut out)?;
         out.push_sql(") as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {
@@ -4210,16 +4169,16 @@ impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range
 #[derive(Debug)]
-pub struct ClampRangeQuery<'a, S> {
+pub struct ClampRangeQuery<'a> {
     table: &'a Table,
-    entity_ids: &'a [S],
+    entity_ids: &'a IdList,
     br_column: BlockRangeColumn<'a>,
 }
 
-impl<'a, S> ClampRangeQuery<'a, S> {
+impl<'a> ClampRangeQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entity_ids: &'a [S],
+        entity_ids: &'a IdList,
         block: BlockNumber,
     ) -> Result<Self, StoreError> {
         if table.immutable {
@@ -4238,10 +4197,7 @@ impl<'a, S> ClampRangeQuery<'a, S> {
     }
 }
 
-impl<'a, S> QueryFragment<Pg> for ClampRangeQuery<'a, S>
-where
-    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
-{
+impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
@@ -4254,7 +4210,7 @@ where
         self.br_column.clamp(&mut out)?;
         out.push_sql("\n where ");
 
-        self.table.primary_key().is_in(self.entity_ids, &mut out)?;
+        self.table.primary_key().is_in(&self.entity_ids, &mut out)?;
         out.push_sql(" and (");
         self.br_column.latest(&mut out);
         out.push_sql(")");
@@ -4263,21 +4219,18 @@ where
     }
 }
 
-impl<'a, S> QueryId for ClampRangeQuery<'a, S>
-where
-    S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
-{
+impl<'a> QueryId for ClampRangeQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a, S, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a, S> {}
+impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
 
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
-pub struct ReturnedEntityData {
+struct ReturnedEntityData {
     #[sql_type = "Text"]
     pub id: String,
 }
@@ -4285,16 +4238,16 @@ pub struct ReturnedEntityData {
 impl ReturnedEntityData {
     /// Convert primary key ids from Postgres' internal form to the format we
     /// use by stripping `\\x` off the front of bytes strings
-    fn bytes_as_str(table: &Table, mut data: Vec<ReturnedEntityData>) -> Vec<ReturnedEntityData> {
-        match table.primary_key().column_type.id_type() {
-            IdType::String => data,
-            IdType::Bytes => {
-                for entry in data.iter_mut() {
-                    entry.id = bytes_as_str(&entry.id);
-                }
-                data
-            }
-        }
+    fn as_ids(table: &Table, data: Vec<ReturnedEntityData>) -> QueryResult<Vec<Id>> {
+        let id_type = table.primary_key().column_type.id_type()?;
+
+        data.into_iter()
+            .map(|s| match id_type {
+                IdType::String | IdType::Int8 => id_type.parse(Word::from(s.id)),
+                IdType::Bytes => id_type.parse(Word::from(s.id.trim_start_matches("\\x"))),
+            })
+            .collect::<Result<_, _>>()
+            .map_err(|e| diesel::result::Error::DeserializationError(e.into()))
     }
 }
 
@@ -4338,10 +4291,10 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
+impl<'a> LoadQuery<PgConnection, Id> for RevertRemoveQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<Id>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
+            .and_then(|data| ReturnedEntityData::as_ids(self.table, data))
     }
 }
 
@@ -4421,10 +4374,10 @@ impl<'a> QueryId for RevertClampQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
+impl<'a> LoadQuery<PgConnection, Id> for RevertClampQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<Id>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
+            .and_then(|data| ReturnedEntityData::as_ids(self.table, data))
     }
 }
 

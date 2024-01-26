@@ -10,12 +10,15 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::object;
+use crate::{components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{anyhow, Context, Error};
-use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
+use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
 use semver::Version;
-use serde::{de, ser};
+use serde::{
+    de::{self, Visitor},
+    ser,
+};
 use serde_yaml;
 use slog::Logger;
 use stable_hash::{FieldAddress, StableHash};
@@ -406,6 +409,7 @@ pub struct UnresolvedSchema {
 impl UnresolvedSchema {
     pub async fn resolve(
         self,
+        spec_version: &Version,
         id: DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
@@ -414,11 +418,12 @@ impl UnresolvedSchema {
             .cat(logger, &self.file)
             .await
             .with_context(|| format!("failed to resolve schema {}", &self.file.link))?;
-        InputSchema::parse(&String::from_utf8(schema_bytes)?, id)
+        InputSchema::parse(spec_version, &String::from_utf8(schema_bytes)?, id)
     }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Source {
     /// The contract address for the data source. We allow data sources
     /// without an address for 'wildcard' triggers that catch all possible
@@ -426,8 +431,9 @@ pub struct Source {
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub start_block: BlockNumber,
+    pub end_block: Option<BlockNumber>,
 }
 
 pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {
@@ -507,6 +513,7 @@ pub struct DeploymentFeatures {
     pub features: Vec<String>,
     pub data_source_kinds: Vec<String>,
     pub network: String,
+    pub handler_kinds: Vec<String>,
 }
 
 impl IntoValue for DeploymentFeatures {
@@ -517,6 +524,7 @@ impl IntoValue for DeploymentFeatures {
             apiVersion: self.api_version,
             features: self.features,
             dataSources: self.data_source_kinds,
+            handlers: self.handler_kinds,
             network: self.network,
         }
     }
@@ -538,6 +546,89 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub templates: Vec<T>,
     #[serde(skip_serializing, default)]
     pub chain: PhantomData<C>,
+    pub indexer_hints: Option<IndexerHints>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexerHints {
+    prune: Option<Prune>,
+}
+
+impl IndexerHints {
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self.prune {
+            Some(ref hb) => hb.history_blocks(),
+            None => BLOCK_NUMBER_MAX,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Prune {
+    Auto,
+    Never,
+    Blocks(BlockNumber),
+}
+
+impl Prune {
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self {
+            Prune::Never => BLOCK_NUMBER_MAX,
+            Prune::Auto => ENV_VARS.min_history_blocks,
+            Prune::Blocks(x) => *x,
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for Prune {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct HistoryBlocksVisitor;
+
+        const ERROR_MSG: &str = "expected 'all', 'min', or a number for history blocks";
+
+        impl<'de> Visitor<'de> for HistoryBlocksVisitor {
+            type Value = Prune;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string or an integer for history blocks")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Prune, E>
+            where
+                E: de::Error,
+            {
+                match value {
+                    "never" => Ok(Prune::Never),
+                    "auto" => Ok(Prune::Auto),
+                    _ => value
+                        .parse::<i32>()
+                        .map(Prune::Blocks)
+                        .map_err(|_| E::custom(ERROR_MSG)),
+                }
+            }
+
+            fn visit_i32<E>(self, value: i32) -> Result<Prune, E>
+            where
+                E: de::Error,
+            {
+                Ok(Prune::Blocks(value))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let i = v.try_into().map_err(|_| E::custom(ERROR_MSG))?;
+                Ok(Prune::Blocks(i))
+            }
+        }
+
+        deserializer.deserialize_any(HistoryBlocksVisitor)
+    }
 }
 
 /// SubgraphManifest with IPFS links unresolved
@@ -611,17 +702,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             _ => errors.push(SubgraphManifestValidationError::MultipleEthereumNetworks),
         }
 
-        self.0
-            .schema
-            .validate()
-            .err()
-            .into_iter()
-            .for_each(|schema_errors| {
-                errors.push(SubgraphManifestValidationError::SchemaValidationError(
-                    schema_errors,
-                ));
-            });
-
         if let Some(graft) = &self.0.graft {
             if validate_graft_base {
                 if let Err(graft_err) = graft.validate(store).await {
@@ -681,6 +761,13 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect()
     }
 
+    pub fn history_blocks(&self) -> BlockNumber {
+        match self.indexer_hints {
+            Some(ref hints) => hints.history_blocks(),
+            None => BLOCK_NUMBER_MAX,
+        }
+    }
+
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
         self.templates
             .iter()
@@ -694,6 +781,13 @@ impl<C: Blockchain> SubgraphManifest<C> {
         let api_version = unified_api_version
             .map(|v| v.version().map(|v| v.to_string()))
             .flatten();
+
+        let handler_kinds = self
+            .data_sources
+            .iter()
+            .map(|ds| ds.handler_kinds())
+            .flatten()
+            .collect::<HashSet<_>>();
 
         let features: Vec<String> = self
             .features
@@ -722,7 +816,11 @@ impl<C: Blockchain> SubgraphManifest<C> {
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),
-            network: network,
+            handler_kinds: handler_kinds
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect_vec(),
+            network,
         }
     }
 
@@ -784,6 +882,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             graft,
             templates,
             chain,
+            indexer_hints,
         } = self;
 
         if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
@@ -803,8 +902,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        let (schema, data_sources, templates) = try_join3(
-            schema.resolve(id.clone(), resolver, logger),
+        let schema = schema
+            .resolve(&spec_version, id.clone(), resolver, logger)
+            .await?;
+
+        let (data_sources, templates) = try_join(
             data_sources
                 .into_iter()
                 .enumerate()
@@ -815,7 +917,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .into_iter()
                 .enumerate()
                 .map(|(idx, template)| {
-                    template.resolve(resolver, logger, ds_count as u32 + idx as u32)
+                    template.resolve(resolver, &schema, logger, ds_count as u32 + idx as u32)
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
@@ -836,11 +938,42 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         if spec_version < SPEC_VERSION_0_0_7
             && data_sources
                 .iter()
-                .any(|ds| OFFCHAIN_KINDS.contains(&ds.kind()))
+                .any(|ds| OFFCHAIN_KINDS.contains_key(ds.kind().as_str()))
         {
             bail!(
                 "Offchain data sources not supported prior to {}",
                 SPEC_VERSION_0_0_7
+            );
+        }
+
+        if spec_version < SPEC_VERSION_0_0_9
+            && data_sources.iter().any(|ds| ds.end_block().is_some())
+        {
+            bail!(
+                "Defining `endBlock` in the manifest is not supported prior to {}",
+                SPEC_VERSION_0_0_9
+            );
+        }
+
+        if spec_version < SPEC_VERSION_1_0_0 && indexer_hints.is_some() {
+            bail!(
+                "`indexerHints` are not supported prior to {}",
+                SPEC_VERSION_1_0_0
+            );
+        }
+
+        // Check the min_spec_version of each data source against the spec version of the subgraph
+        let min_spec_version_mismatch = data_sources
+            .iter()
+            .find(|ds| spec_version < ds.min_spec_version());
+
+        if let Some(min_spec_version_mismatch) = min_spec_version_mismatch {
+            bail!(
+                "Subgraph `{}` uses spec version {}, but data source `{}` requires at least version {}",
+                id,
+                spec_version,
+                min_spec_version_mismatch.name(),
+                min_spec_version_mismatch.min_spec_version()
             );
         }
 
@@ -855,6 +988,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             graft,
             templates,
             chain,
+            indexer_hints,
         })
     }
 }

@@ -2,7 +2,6 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use diesel::{debug_query, pg::Pg};
 use graph::{
-    components::store::EntityType,
     prelude::{r, serde_json as json, DeploymentHash, EntityFilter},
     schema::InputSchema,
 };
@@ -31,7 +30,7 @@ fn gql_value_from_bytes() {
 
 fn test_layout(gql: &str) -> Layout {
     let subgraph = DeploymentHash::new("subgraph").unwrap();
-    let schema = InputSchema::parse(gql, subgraph.clone()).expect("Test schema invalid");
+    let schema = InputSchema::parse_latest(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let catalog =
@@ -49,7 +48,7 @@ fn filter_contains(filter: EntityFilter, sql: &str) {
     }";
     let layout = test_layout(SCHEMA);
     let table = layout
-        .table_for_entity(&EntityType::new("Thing".to_string()))
+        .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
         .unwrap();
     let filter = QueryFilter::new(&filter, table.as_ref(), &layout, Default::default()).unwrap();
     let query = debug_query::<Pg, _>(&filter);

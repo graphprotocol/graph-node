@@ -16,22 +16,27 @@ mod query_tests;
 
 pub(crate) mod index;
 mod prune;
+mod rollup;
 
 use diesel::pg::Pg;
 use diesel::serialize::Output;
 use diesel::sql_types::Text;
 use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
-use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
+use diesel::{debug_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
+use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::RowGroup;
+use graph::components::subgraph::PoICausalityRegion;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
-use graph::schema::{FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME};
+use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::schema::{
+    EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
+};
 use graph::slog::warn;
 use inflector::Inflector;
 use itertools::Itertools;
@@ -52,10 +57,9 @@ use crate::{
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
-use graph::components::store::{DerivedEntityQuery, EntityKey, EntityType};
-use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
-use graph::data::store::BYTES_SCALAR;
-use graph::data::subgraph::schema::{POI_DIGEST, POI_OBJECT, POI_TABLE};
+use graph::components::store::DerivedEntityQuery;
+use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
+use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
@@ -65,6 +69,8 @@ use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
 use crate::{catalog, deployment};
+
+use self::rollup::Rollup;
 
 const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 
@@ -186,55 +192,13 @@ impl ToSql<Text, Pg> for SqlName {
     }
 }
 
-/// The SQL type to use for GraphQL ID properties. We support
-/// strings and byte arrays
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) enum IdType {
-    String,
-    Bytes,
-}
+impl std::ops::Deref for SqlName {
+    type Target = str;
 
-impl IdType {
-    pub fn sql_type(&self) -> &str {
-        match self {
-            IdType::String => "text",
-            IdType::Bytes => "bytea",
-        }
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
     }
 }
-
-impl TryFrom<&s::ObjectType> for IdType {
-    type Error = StoreError;
-
-    fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
-        let pk = obj_type
-            .field(PRIMARY_KEY_COLUMN)
-            .expect("Each ObjectType has an `id` field");
-        Self::try_from(&pk.field_type)
-    }
-}
-
-impl TryFrom<&s::Type> for IdType {
-    type Error = StoreError;
-
-    fn try_from(field_type: &s::Type) -> Result<Self, Self::Error> {
-        let name = named_type(field_type);
-
-        match ValueType::from_str(name)? {
-            ValueType::String => Ok(IdType::String),
-            ValueType::Bytes => Ok(IdType::Bytes),
-            _ => Err(anyhow!(
-                "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
-                &name
-            )
-            .into()),
-        }
-    }
-}
-
-type IdTypeMap = HashMap<EntityType, IdType>;
-
-type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
 
 #[derive(Debug, Clone)]
 pub struct Layout {
@@ -244,15 +208,15 @@ pub struct Layout {
     pub tables: HashMap<EntityType, Arc<Table>>,
     /// The database schema for this subgraph
     pub catalog: Catalog,
-    /// Enums defined in the schema and their possible values. The names
-    /// are the original GraphQL names
-    pub enums: EnumMap,
     /// The query to count all entities
     pub count_query: String,
     /// How many blocks of history the subgraph should keep
     pub history_blocks: BlockNumber,
 
     pub input_schema: InputSchema,
+
+    /// The rollups for aggregations in this layout
+    rollups: Vec<Rollup>,
 }
 
 impl Layout {
@@ -264,92 +228,44 @@ impl Layout {
         schema: &InputSchema,
         catalog: Catalog,
     ) -> Result<Self, StoreError> {
-        // Extract enum types
-        let enums: EnumMap = schema
-            .get_enum_definitions()
+        // Check that enum type names are valid for SQL
+        for name in schema.enum_types() {
+            SqlName::check_valid_identifier(name, "enum")?;
+        }
+
+        // Construct a Table struct for each entity type, except for PoI
+        // since we handle that specially
+        let entity_tables = schema.entity_types();
+        let ts_tables = schema.ts_entity_types();
+        let has_ts_tables = !ts_tables.is_empty();
+
+        let mut tables = entity_tables
             .iter()
-            .map(
-                |enum_type| -> Result<(String, Arc<BTreeSet<String>>), StoreError> {
-                    SqlName::check_valid_identifier(&enum_type.name, "enum")?;
-                    Ok((
-                        enum_type.name.clone(),
-                        Arc::new(
-                            enum_type
-                                .values
-                                .iter()
-                                .map(|value| value.name.clone())
-                                .collect::<BTreeSet<_>>(),
-                        ),
-                    ))
-                },
-            )
-            .collect::<Result<_, _>>()?;
-
-        // List of all object types that are not __SCHEMA__
-        let object_types = schema
-            .get_object_type_definitions()
-            .into_iter()
-            .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
-            .collect::<Vec<_>>();
-
-        // For interfaces, check that all implementors use the same IdType
-        // and build a list of name/IdType pairs
-        let id_types_for_interface = schema.interface_types().iter().map(|(interface, types)| {
-            types
-                .iter()
-                .map(IdType::try_from)
-                .collect::<Result<HashSet<_>, _>>()
-                .and_then(move |types| {
-                    if types.len() > 1 {
-                        Err(anyhow!(
-                            "The implementations of interface \
-                            `{}` use different types for the `id` field",
-                            interface
-                        )
-                        .into())
-                    } else {
-                        // For interfaces that are not implemented at all, pretend
-                        // they have a String `id` field
-                        // see also: id-type-for-unimplemented-interfaces
-                        let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
-                        Ok((interface.clone(), id_type))
-                    }
-                })
-        });
-
-        // Map of type name to the type of the ID column for the object_types
-        // and interfaces in the schema
-        let id_types = object_types
-            .iter()
-            .map(|obj_type| IdType::try_from(*obj_type).map(|t| (EntityType::from(*obj_type), t)))
-            .chain(id_types_for_interface)
-            .collect::<Result<IdTypeMap, _>>()?;
-
-        // Construct a Table struct for each ObjectType
-        let mut tables = object_types
-            .iter()
+            .chain(ts_tables.iter())
             .enumerate()
-            .map(|(i, obj_type)| {
+            .map(|(i, entity_type)| {
                 Table::new(
-                    obj_type,
+                    schema,
+                    entity_type,
                     &catalog,
                     schema
-                        .entity_fulltext_definitions(&obj_type.name)
+                        .entity_fulltext_definitions(entity_type.as_str())
                         .map_err(|_| StoreError::FulltextSearchNonDeterministic)?,
-                    &enums,
-                    &id_types,
                     i as u32,
-                    catalog
-                        .entities_with_causality_region
-                        .contains(&EntityType::from(*obj_type)),
+                    catalog.entities_with_causality_region.contains(entity_type),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        if catalog.use_poi {
-            tables.push(Self::make_poi_table(&catalog, tables.len()))
-        }
+        // Construct tables for timeseries
 
-        let tables: Vec<_> = tables.into_iter().map(Arc::new).collect();
+        if catalog.use_poi {
+            tables.push(Self::make_poi_table(
+                &schema,
+                &catalog,
+                has_ts_tables,
+                tables.len(),
+            ))
+        }
 
         let count_query = tables
             .iter()
@@ -373,51 +289,79 @@ impl Layout {
         let tables: HashMap<_, _> = tables
             .into_iter()
             .fold(HashMap::new(), |mut tables, table| {
-                tables.insert(table.object.clone(), table);
+                tables.insert(table.object.clone(), Arc::new(table));
                 tables
             });
+
+        let rollups = Self::rollups(&tables, &schema)?;
 
         Ok(Layout {
             site,
             catalog,
             tables,
-            enums,
             count_query,
             history_blocks: i32::MAX,
             input_schema: schema.cheap_clone(),
+            rollups,
         })
     }
 
-    fn make_poi_table(catalog: &Catalog, position: usize) -> Table {
+    fn make_poi_table(
+        schema: &InputSchema,
+        catalog: &Catalog,
+        has_ts_tables: bool,
+        position: usize,
+    ) -> Table {
+        let poi_type = schema.poi_type();
+        let poi_digest = schema.poi_digest();
+        let poi_block_time = schema.poi_block_time();
+
+        let mut columns = vec![
+            Column {
+                name: SqlName::from(poi_digest.as_str()),
+                field: poi_digest,
+                field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
+                    BYTES_SCALAR.to_owned(),
+                ))),
+                column_type: ColumnType::Bytes,
+                fulltext_fields: None,
+                is_reference: false,
+                use_prefix_comparison: false,
+            },
+            Column {
+                name: SqlName::from(PRIMARY_KEY_COLUMN),
+                field: Word::from(PRIMARY_KEY_COLUMN),
+                field_type: q::Type::NonNullType(Box::new(q::Type::NamedType("String".to_owned()))),
+                column_type: ColumnType::String,
+                fulltext_fields: None,
+                is_reference: false,
+                use_prefix_comparison: false,
+            },
+        ];
+
+        // If the subgraph uses timeseries, store the block time in the PoI
+        // table
+        if has_ts_tables {
+            // FIXME: Use `Timestamp` as the field type when that's
+            // available
+            let ts_column = Column {
+                name: SqlName::from(poi_block_time.as_str()),
+                field: poi_block_time,
+                field_type: q::Type::NonNullType(Box::new(q::Type::NamedType("Int8".to_owned()))),
+                column_type: ColumnType::Int8,
+                fulltext_fields: None,
+                is_reference: false,
+                use_prefix_comparison: false,
+            };
+            columns.push(ts_column);
+        }
+
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
-            object: POI_OBJECT.to_owned(),
+            object: poi_type.to_owned(),
             qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
-            columns: vec![
-                Column {
-                    name: SqlName::from(POI_DIGEST.as_str()),
-                    field: POI_DIGEST.to_string(),
-                    field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                        BYTES_SCALAR.to_owned(),
-                    ))),
-                    column_type: ColumnType::Bytes,
-                    fulltext_fields: None,
-                    is_reference: false,
-                    use_prefix_comparison: false,
-                },
-                Column {
-                    name: SqlName::from(PRIMARY_KEY_COLUMN),
-                    field: PRIMARY_KEY_COLUMN.to_owned(),
-                    field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                        "String".to_owned(),
-                    ))),
-                    column_type: ColumnType::String,
-                    fulltext_fields: None,
-                    is_reference: false,
-                    use_prefix_comparison: false,
-                },
-            ],
+            columns,
             /// The position of this table in all the tables for this layout; this
             /// is really only needed for the tests to make the names of indexes
             /// predictable
@@ -429,7 +373,7 @@ impl Layout {
     }
 
     pub fn supports_proof_of_indexing(&self) -> bool {
-        self.tables.contains_key(&*POI_OBJECT)
+        self.tables.contains_key(&self.input_schema.poi_type())
     }
 
     pub fn create_relational_schema(
@@ -532,7 +476,7 @@ impl Layout {
     pub fn find_many(
         &self,
         conn: &PgConnection,
-        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
+        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {
@@ -543,22 +487,14 @@ impl Layout {
         for (entity_type, cr) in ids_for_type.keys() {
             tables.push((self.table_for_entity(entity_type)?.as_ref(), *cr));
         }
-        let query = FindManyQuery {
-            _namespace: &self.catalog.site.namespace,
-            ids_for_type,
-            tables,
-            block,
-        };
+        let query = FindManyQuery::new(tables, ids_for_type, block);
         let mut entities: BTreeMap<EntityKey, Entity> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
-            let entity_type = data.entity_type();
+            let entity_type = data.entity_type(&self.input_schema);
             let entity_data: Entity = data.deserialize_with_layout(self, None)?;
 
-            let key = EntityKey {
-                entity_type,
-                entity_id: entity_data.id(),
-                causality_region: CausalityRegion::from_entity(&entity_data),
-            };
+            let key =
+                entity_type.key_in(entity_data.id(), CausalityRegion::from_entity(&entity_data));
             if entities.contains_key(&key) {
                 return Err(constraint_violation!(
                     "duplicate entity {}[{}] in result set, block = {}",
@@ -586,13 +522,10 @@ impl Layout {
         let mut entities = BTreeMap::new();
 
         for data in query.load::<EntityData>(conn)? {
-            let entity_type = data.entity_type();
+            let entity_type = data.entity_type(&self.input_schema);
             let entity_data: Entity = data.deserialize_with_layout(self, None)?;
-            let key = EntityKey {
-                entity_type,
-                entity_id: entity_data.id(),
-                causality_region: CausalityRegion::from_entity(&entity_data),
-            };
+            let key =
+                entity_type.key_in(entity_data.id(), CausalityRegion::from_entity(&entity_data));
 
             entities.insert(key, entity_data);
         }
@@ -622,34 +555,26 @@ impl Layout {
         let mut changes = Vec::new();
 
         for entity_data in inserts_or_updates.into_iter() {
-            let entity_type = entity_data.entity_type();
+            let entity_type = entity_data.entity_type(&self.input_schema);
             let data: Entity = entity_data.deserialize_with_layout(self, None)?;
             let entity_id = data.id();
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
             changes.push(EntityOperation::Set {
-                key: EntityKey {
-                    entity_type,
-                    entity_id,
-                    causality_region: CausalityRegion::from_entity(&data),
-                },
+                key: entity_type.key_in(entity_id, CausalityRegion::from_entity(&data)),
                 data,
             });
         }
 
         for del in &deletions {
-            let entity_type = del.entity_type();
-            let entity_id = Word::from(del.id());
+            let entity_type = del.entity_type(&self.input_schema);
 
             // See the doc comment of `FindPossibleDeletionsQuery` for details
             // about why this check is necessary.
+            let entity_id = entity_type.parse_id(del.id())?;
             if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
                 changes.push(EntityOperation::Remove {
-                    key: EntityKey {
-                        entity_type,
-                        entity_id,
-                        causality_region: del.causality_region(),
-                    },
+                    key: entity_type.key_in(entity_id, del.causality_region()),
                 });
             }
         }
@@ -681,7 +606,7 @@ impl Layout {
     pub fn conflicting_entity(
         &self,
         conn: &PgConnection,
-        entity_id: &str,
+        entity_id: &Id,
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
@@ -811,7 +736,11 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable && group.has_clamps() {
-            let ids = group.ids().collect::<Vec<_>>().join(", ");
+            let ids = group
+                .ids()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(constraint_violation!(
                 "entities of type `{}` can not be updated since they are immutable. Entity ids are [{}]",
                 group.entity_type,
@@ -821,8 +750,12 @@ impl Layout {
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
         for (block, rows) in group.clamps_by_block() {
-            let entity_keys: Vec<&str> = rows.iter().map(|row| row.id().as_str()).collect();
-
+            let entity_keys: Vec<_> = rows.iter().map(|row| row.id()).collect();
+            // FIXME: we clone all the ids here
+            let entity_keys = IdList::try_from_iter(
+                &group.entity_type,
+                entity_keys.into_iter().map(|id| id.to_owned()),
+            )?;
             ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
         }
         section.end();
@@ -862,9 +795,14 @@ impl Layout {
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
         for (block, rows) in group.clamps_by_block() {
-            let ids: Vec<_> = rows.iter().map(|eref| eref.id().as_str()).collect();
+            let ids: Vec<_> = rows.iter().map(|eref| eref.id()).collect();
             for chunk in ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-                count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
+                // FIXME: we clone all the ids here
+                let chunk = IdList::try_from_iter(
+                    &group.entity_type,
+                    chunk.into_iter().map(|id| (*id).to_owned()),
+                )?;
+                count += ClampRangeQuery::new(table, &chunk, block)?.execute(conn)?
             }
         }
         Ok(count)
@@ -895,7 +833,6 @@ impl Layout {
             let removed = RevertRemoveQuery::new(table, block)
                 .get_results(conn)?
                 .into_iter()
-                .map(|data| data.id)
                 .collect::<HashSet<_>>();
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
@@ -906,7 +843,6 @@ impl Layout {
                 RevertClampQuery::new(table, block - 1)?
                     .get_results(conn)?
                     .into_iter()
-                    .map(|data| data.id)
                     .collect::<HashSet<_>>()
             };
             // Adjust the entity count; we can tell which operation was
@@ -923,13 +859,13 @@ impl Layout {
                 .filter(|id| !unclamped.contains(id))
                 .map(|_| EntityChange::Data {
                     subgraph_id: self.site.deployment.clone(),
-                    entity_type: table.object.clone(),
+                    entity_type: table.object.to_string(),
                 });
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|_| EntityChange::Data {
                 subgraph_id: self.site.deployment.clone(),
-                entity_type: table.object.clone(),
+                entity_type: table.object.to_string(),
             });
             changes.extend(set);
         }
@@ -996,6 +932,116 @@ impl Layout {
         layout.history_blocks = history_blocks;
         Ok(Arc::new(layout))
     }
+
+    pub(crate) fn block_time(
+        &self,
+        conn: &PgConnection,
+        block: BlockNumber,
+    ) -> Result<Option<BlockTime>, StoreError> {
+        let block_time_name = self.input_schema.poi_block_time();
+        let poi_type = self.input_schema.poi_type();
+        let id = Id::String(Word::from(PoICausalityRegion::from_network(
+            &self.site.network,
+        )));
+        let key = poi_type.key(id);
+
+        let block_time = self
+            .find(conn, &key, block)?
+            .and_then(|entity| {
+                entity.get(&block_time_name).map(|value| {
+                    value
+                        .as_int8()
+                        .ok_or_else(|| constraint_violation!("block_time must have type Int8"))
+                })
+            })
+            .transpose()?
+            .map(|value| BlockTime::since_epoch(value, 0));
+        Ok(block_time)
+    }
+
+    /// Construct `Rolllup` for each of the aggregation mappings
+    /// `schema.agg_mappings()` and return them in the same order as the
+    /// aggregation mappings
+    fn rollups(
+        tables: &HashMap<EntityType, Arc<Table>>,
+        schema: &InputSchema,
+    ) -> Result<Vec<Rollup>, StoreError> {
+        let mut rollups = Vec::new();
+        for mapping in schema.agg_mappings() {
+            let source_type = mapping.source_type(schema);
+            let source_table = tables
+                .get(&source_type)
+                .ok_or_else(|| constraint_violation!("Table for {source_type} is missing"))?;
+            let agg_type = mapping.agg_type(schema);
+            let agg_table = tables
+                .get(&agg_type)
+                .ok_or_else(|| constraint_violation!("Table for {agg_type} is missing"))?;
+            let aggregation = mapping.aggregation(schema);
+            let rollup = Rollup::new(
+                mapping.interval,
+                aggregation,
+                source_table,
+                agg_table.cheap_clone(),
+            )?;
+            rollups.push(rollup);
+        }
+        Ok(rollups)
+    }
+
+    /// Roll up all timeseries for each entry in `block_times`. The overall
+    /// effect is that all buckets that end after `last_rollup` and before
+    /// the last entry in `block_times` are filled. This will fill all
+    /// buckets whose end time `end` is in `last_rollup < end <=
+    /// block_time`. The rollups happen stepwise, for each entry in
+    /// `block_times` so that the buckets are associated with the block
+    /// number for those block times.
+    ///
+    /// We roll up all pending aggregations and mark them as belonging to
+    /// the block where the timestamp first fell into a new time period. We
+    /// only know about blocks where the subgraph actually performs a write.
+    /// That means that the block is not necessarily the block at the end of
+    /// the time period but might be a block after that time period if the
+    /// subgraph skips blocks. This can be a problem for time-travel queries
+    /// by block as it might not find a rollup that had occurred but is
+    /// marked with a later block; this is not an issue when writes happen
+    /// at every block. Queries for aggregations should therefore not do
+    /// time-travel by block number but rather by timestamp.
+    ///
+    /// It can also lead to unnecessarily reverting a rollup, but in that
+    /// case the results will be correct, we just do work that might not
+    /// have been necessary had we marked the rollup with the precise
+    /// smaller block number instead of the one we are using here.
+    ///
+    /// Changing this would require that we have a complete list of block
+    /// numbers and block times which we do not have anywhere in graph-node.
+    pub(crate) fn rollup(
+        &self,
+        conn: &PgConnection,
+        last_rollup: Option<BlockTime>,
+        block_times: &[(BlockNumber, BlockTime)],
+    ) -> Result<(), StoreError> {
+        // The for loop could be eliminated if the rollup queries could deal
+        // with the full `block_times` vector, but the SQL for that will be
+        // very complicated and is left for a future improvement.
+        let mut last_rollup = last_rollup.unwrap_or(BlockTime::NONE);
+        for (block, block_time) in block_times {
+            for rollup in &self.rollups {
+                let buckets = rollup.interval.buckets(last_rollup, *block_time);
+                if buckets.is_empty() {
+                    // The rollups are in increasing order of interval size, so
+                    // if a smaller interval doesn't have a bucket between
+                    // last_rollup and block_time, a larger one can't either and
+                    // we are done with this rollup.
+                    break;
+                }
+                for bucket in buckets {
+                    rollup.insert(conn, &bucket, *block)?;
+                }
+            }
+            last_rollup = *block_time;
+        }
+        Ok(())
+    }
 }
 
 /// A user-defined enum
@@ -1041,28 +1087,33 @@ impl From<IdType> for ColumnType {
         match id_type {
             IdType::Bytes => ColumnType::Bytes,
             IdType::String => ColumnType::String,
+            IdType::Int8 => ColumnType::Int8,
         }
     }
 }
 
 impl ColumnType {
     fn from_field_type(
+        schema: &InputSchema,
         field_type: &q::Type,
         catalog: &Catalog,
-        enums: &EnumMap,
-        id_types: &IdTypeMap,
         is_existing_text_column: bool,
     ) -> Result<ColumnType, StoreError> {
-        let name = named_type(field_type);
+        let name = field_type.get_base_type();
 
         // See if its an object type defined in the schema
-        if let Some(id_type) = id_types.get(&EntityType::new(name.to_string())) {
-            return Ok((*id_type).into());
+        if let Some(id_type) = schema
+            .entity_type(name)
+            .ok()
+            .and_then(|entity_type| Some(entity_type.id_type()))
+            .transpose()?
+        {
+            return Ok(id_type.into());
         }
 
         // Check if it's an enum, and if it is, return an appropriate
         // ColumnType::Enum
-        if let Some(values) = enums.get(name) {
+        if let Some(values) = schema.enum_values(name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
             let name = SqlName::qualified_name(&catalog.site.namespace, &SqlName::from(name));
@@ -1108,15 +1159,19 @@ impl ColumnType {
     }
 
     /// Return the `IdType` corresponding to this column type. This can only
-    /// be called on a column that stores an `ID` and will panic otherwise
-    pub(crate) fn id_type(&self) -> IdType {
+    /// be called on a column that stores an `ID` and will return an error
+    pub(crate) fn id_type(&self) -> QueryResult<IdType> {
         match self {
-            ColumnType::String => IdType::String,
-            ColumnType::Bytes => IdType::Bytes,
-            _ => unreachable!(
-                "only String and BytesId are allowed as primary keys but not {:?}",
-                self
-            ),
+            ColumnType::String => Ok(IdType::String),
+            ColumnType::Bytes => Ok(IdType::Bytes),
+            ColumnType::Int8 => Ok(IdType::Int8),
+            _ => Err(diesel::result::Error::QueryBuilderError(
+                anyhow!(
+                    "only String, Bytes, and Int8 are allowed as primary keys but not {:?}",
+                    self
+                )
+                .into(),
+            )),
         }
     }
 }
@@ -1124,7 +1179,7 @@ impl ColumnType {
 #[derive(Clone, Debug)]
 pub struct Column {
     pub name: SqlName,
-    pub field: String,
+    pub field: Word,
     pub field_type: q::Type,
     pub column_type: ColumnType,
     pub fulltext_fields: Option<HashSet<String>>,
@@ -1136,27 +1191,25 @@ pub struct Column {
 
 impl Column {
     fn new(
+        schema: &InputSchema,
         table_name: &SqlName,
-        field: &s::Field,
+        field: &Field,
         catalog: &Catalog,
-        enums: &EnumMap,
-        id_types: &IdTypeMap,
     ) -> Result<Column, StoreError> {
         SqlName::check_valid_identifier(&field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
-        let is_reference =
-            sql_name.as_str() != PRIMARY_KEY_COLUMN && is_object_type(&field.field_type, enums);
+
+        let is_reference = schema.is_reference(&field.field_type.get_base_type());
 
         let column_type = if sql_name.as_str() == PRIMARY_KEY_COLUMN {
             IdType::try_from(&field.field_type)?.into()
         } else {
             let is_existing_text_column = catalog.is_existing_text_column(table_name, &sql_name);
             ColumnType::from_field_type(
+                schema,
                 &field.field_type,
                 catalog,
-                enums,
-                id_types,
                 is_existing_text_column,
             )?
         };
@@ -1196,7 +1249,7 @@ impl Column {
 
         Ok(Column {
             name: sql_name,
-            field: def.name.to_string(),
+            field: Word::from(def.name.to_string()),
             field_type: q::Type::NamedType("fulltext".to_string()),
             column_type: ColumnType::TSVector(def.config.clone()),
             fulltext_fields: Some(def.included_fields.clone()),
@@ -1228,7 +1281,7 @@ impl Column {
     }
 
     pub fn is_fulltext(&self) -> bool {
-        named_type(&self.field_type) == "fulltext"
+        self.field_type.get_base_type() == "fulltext"
     }
 
     pub fn is_reference(&self) -> bool {
@@ -1310,29 +1363,32 @@ pub struct Table {
 
 impl Table {
     fn new(
-        defn: &s::ObjectType,
+        schema: &InputSchema,
+        defn: &EntityType,
         catalog: &Catalog,
         fulltexts: Vec<FulltextDefinition>,
-        enums: &EnumMap,
-        id_types: &IdTypeMap,
         position: u32,
         has_causality_region: bool,
     ) -> Result<Table, StoreError> {
-        SqlName::check_valid_identifier(&defn.name, "object")?;
+        SqlName::check_valid_identifier(defn.as_str(), "object")?;
 
-        let table_name = SqlName::from(&*defn.name);
-        let columns = defn
+        let object_type = defn.object_type().map_err(|_| {
+            constraint_violation!("The type `{}` is not an object type", defn.as_str())
+        })?;
+
+        let table_name = SqlName::from(defn.as_str());
+        let columns = object_type
             .fields
-            .iter()
-            .filter(|field| !field.is_derived())
-            .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
+            .into_iter()
+            .filter(|field| !field.is_derived)
+            .map(|field| Column::new(schema, &table_name, field, catalog))
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let immutable = defn.is_immutable();
 
         let table = Table {
-            object: EntityType::from(defn),
+            object: defn.cheap_clone(),
             name: table_name,
             qualified_name,
             // Default `is_account_like` to `false`; the caller should call
@@ -1428,22 +1484,6 @@ impl Table {
     }
 }
 
-/// Return the enclosed named type for a field type, i.e., the type after
-/// stripping List and NonNull.
-fn named_type(field_type: &q::Type) -> &str {
-    match field_type {
-        q::Type::NamedType(name) => name.as_str(),
-        q::Type::ListType(child) => named_type(child),
-        q::Type::NonNullType(child) => named_type(child),
-    }
-}
-
-fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
-    let name = named_type(field_type);
-
-    !enums.contains_key(name) && !ValueType::is_scalar(name)
-}
-
 #[derive(Clone)]
 struct CacheEntry {
     value: Arc<Layout>,
@@ -1473,7 +1513,8 @@ impl LayoutCache {
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
-        let has_causality_region = deployment::entities_with_causality_region(conn, site.id)?;
+        let has_causality_region =
+            deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
         let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)

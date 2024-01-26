@@ -110,6 +110,14 @@ pub struct Opt {
     pub ipfs: Vec<String>,
     #[clap(
         long,
+        value_name = "{HOST:PORT|URL}",
+        default_value = "https://arweave.net",
+        env = "GRAPH_NODE_ARWEAVE_URL",
+        help = "HTTP base URL for arweave gateway"
+    )]
+    pub arweave: String,
+    #[clap(
+        long,
         default_value = "8000",
         value_name = "PORT",
         help = "Port for the GraphQL HTTP server",

@@ -14,7 +14,7 @@ use graph::data::value::Word;
 use graph::slog::SendSyncRefUnwindSafeKV;
 use never::Never;
 use semver::Version;
-use wasmtime::{Memory, Trap};
+use wasmtime::{Memory, Trap, TrapCode};
 
 use graph::blockchain::{Blockchain, HostFnCtx};
 use graph::data::store;
@@ -42,8 +42,6 @@ use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
 pub mod stopwatch;
-
-pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
 // Convenience for a 'top-level' asc_get, with depth 0.
 fn asc_get<T, C: AscType, H: AscHeap + ?Sized>(
@@ -178,7 +176,8 @@ impl<C: Blockchain> WasmInstance<C> {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState<C>, anyhow::Error> {
-        let gas = GasCounter::default();
+        let gas_metrics = self.instance_ctx().host_metrics.gas_metrics.clone();
+        let gas = GasCounter::new(gas_metrics);
         let value = asc_new(self.instance_ctx_mut().deref_mut(), value, &gas)?;
         let user_data = asc_new(self.instance_ctx_mut().deref_mut(), user_data, &gas)?;
 
@@ -195,6 +194,21 @@ impl<C: Blockchain> WasmInstance<C> {
         self.instance_ctx_mut().ctx.state.exit_handler();
 
         Ok(self.take_ctx().ctx.state)
+    }
+
+    pub(crate) fn handle_block(
+        mut self,
+        _logger: &Logger,
+        handler_name: &str,
+        block_data: Box<[u8]>,
+    ) -> Result<(BlockState<C>, Gas), MappingError> {
+        let obj = block_data
+            .to_vec()
+            .to_asc_obj(self.instance_ctx_mut().deref_mut(), &self.gas)?;
+
+        let obj = AscPtr::alloc_obj(obj, self.instance_ctx_mut().deref_mut(), &self.gas)?;
+
+        self.invoke_handler(handler_name, obj, Arc::new(o!()), None)
     }
 
     pub(crate) fn handle_trigger(
@@ -245,48 +259,73 @@ impl<C: Blockchain> WasmInstance<C> {
         let func = self
             .instance
             .get_func(handler)
-            .with_context(|| format!("function {} not found", handler))?;
-
-        let func = func
-            .typed()
-            .context("wasm function has incorrect signature")?;
+            .with_context(|| format!("function {} not found", handler));
 
         // Caution: Make sure all exit paths from this function call `exit_handler`.
         self.instance_ctx_mut().ctx.state.enter_handler();
 
-        // This `match` will return early if there was a non-deterministic trap.
-        let deterministic_error: Option<Error> = match func.call(arg.wasm_ptr()) {
-            Ok(()) => {
-                assert!(self.instance_ctx().possible_reorg == false);
-                assert!(self.instance_ctx().deterministic_host_trap == false);
-                None
-            }
-            Err(trap) if self.instance_ctx().possible_reorg => {
-                self.instance_ctx_mut().ctx.state.exit_handler();
-                return Err(MappingError::PossibleReorg(trap.into()));
-            }
+        // `handle_func_call` evaluates the outcome of a WASM function call:
+        // - For non-deterministic traps, it terminates early with a `MappingError`.
+        // - In case of deterministic errors, it returns `Ok(Some(Error))`.
+        // - On successful execution, it returns `Ok(None)`.
+        let handle_func_call = |res: Result<_, Trap>, handler| {
+            match res {
+                Ok(()) => {
+                    assert!(self.instance_ctx().possible_reorg == false);
+                    assert!(self.instance_ctx().deterministic_host_trap == false);
+                    Ok(None)
+                }
+                Err(trap) if self.instance_ctx().possible_reorg => {
+                    self.instance_ctx_mut().ctx.state.exit_handler();
+                    Err(MappingError::PossibleReorg(trap.into()))
+                }
 
-            // Treat as a special case to have a better error message.
-            Err(trap) if trap.to_string().contains(TRAP_TIMEOUT) => {
-                self.instance_ctx_mut().ctx.state.exit_handler();
-                return Err(MappingError::Unknown(Error::from(trap).context(format!(
-                    "Handler '{}' hit the timeout of '{}' seconds",
-                    handler,
-                    self.instance_ctx().timeout.unwrap().as_secs()
-                ))));
-            }
-            Err(trap) => {
-                let trap_is_deterministic =
-                    is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
-                let e = Error::from(trap);
-                match trap_is_deterministic {
-                    true => Some(Error::from(e)),
-                    false => {
-                        self.instance_ctx_mut().ctx.state.exit_handler();
-                        return Err(MappingError::Unknown(e));
+                // Treat timeouts anywhere in the error chain as a special case to have a better error
+                // message. Any `TrapCode::Interrupt` is assumed to be a timeout.
+                Err(trap)
+                    if Error::from(trap.clone()).chain().any(|e| {
+                        e.downcast_ref::<Trap>().and_then(|t| t.trap_code())
+                            == Some(TrapCode::Interrupt)
+                    }) =>
+                {
+                    self.instance_ctx_mut().ctx.state.exit_handler();
+                    Err(MappingError::Unknown(Error::from(trap).context(format!(
+                        "Handler '{}' hit the timeout of '{}' seconds",
+                        handler,
+                        self.instance_ctx().timeout.unwrap().as_secs()
+                    ))))
+                }
+                Err(trap) => {
+                    let trap_is_deterministic =
+                        is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
+                    let e = Error::from(trap);
+                    match trap_is_deterministic {
+                        true => Ok(Some(e)),
+                        false => {
+                            self.instance_ctx_mut().ctx.state.exit_handler();
+                            Err(MappingError::Unknown(e))
+                        }
                     }
                 }
             }
+        };
+
+        let deterministic_error = match func {
+            Ok(func) => match func
+                .typed()
+                .context("wasm function has incorrect signature")
+            {
+                Ok(typed_func) => {
+                    match handle_func_call(typed_func.call(arg.wasm_ptr()), handler) {
+                        Ok(e) => e,
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                }
+                Err(e) => Some(e),
+            },
+            Err(e) => Some(e),
         };
 
         if let Some(deterministic_error) = deterministic_error {
@@ -416,7 +455,7 @@ impl<C: Blockchain> WasmInstance<C> {
 
         // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
         // host fn, they need to be separate from the rest of the context.
-        let gas = GasCounter::default();
+        let gas = GasCounter::new(host_metrics.gas_metrics.clone());
         let deterministic_host_trap = Rc::new(AtomicBool::new(false));
 
         macro_rules! link {
@@ -522,12 +561,14 @@ impl<C: Blockchain> WasmInstance<C> {
                     let stopwatch = &instance.host_metrics.stopwatch;
                     let _section =
                         stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
+                    let metrics = instance.host_metrics.cheap_clone();
 
                     let ctx = HostFnCtx {
                         logger: instance.ctx.logger.cheap_clone(),
                         block_ptr: instance.ctx.block_ptr.cheap_clone(),
                         heap: instance,
                         gas: gas.cheap_clone(),
+                        metrics,
                     };
                     let ret = (host_fn.func)(ctx, call_ptr).map_err(|e| match e {
                         HostExportError::Deterministic(e) => {
@@ -674,7 +715,8 @@ impl<C: Blockchain> WasmInstance<C> {
                 // of times per handler, but it's not worth having a stopwatch section here because
                 // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
                 // time this was benchmarked it took < 100ns to run.
-                if let Err(e) = gas.consume_host_fn(gas_used.saturating_into()) {
+                if let Err(e) = gas.consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
+                {
                     deterministic_host_trap.store(true, Ordering::SeqCst);
                     return Err(e.into_trap());
                 }
@@ -758,7 +800,10 @@ impl AscHeap for AscHeapCtx {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
-        gas.consume_host_fn(Gas::new(GAS_COST_STORE as u64 * bytes.len() as u64))?;
+        gas.consume_host_fn_with_metrics(
+            Gas::new(GAS_COST_STORE as u64 * bytes.len() as u64),
+            "raw_new",
+        )?;
 
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
@@ -803,7 +848,7 @@ impl AscHeap for AscHeapCtx {
     }
 
     fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
-        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * 4))?;
+        gas.consume_host_fn_with_metrics(Gas::new(GAS_COST_LOAD as u64 * 4), "read_u32")?;
         let mut bytes = [0; 4];
         self.memory.read(offset as usize, &mut bytes).map_err(|_| {
             DeterministicHostError::from(anyhow!(
@@ -823,7 +868,10 @@ impl AscHeap for AscHeapCtx {
     ) -> Result<&'a mut [u8], DeterministicHostError> {
         // The cost of reading wasm memory from the host is the same as of reading from wasm using
         // load instructions.
-        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * (buffer.len() as u64)))?;
+        gas.consume_host_fn_with_metrics(
+            Gas::new(GAS_COST_LOAD as u64 * (buffer.len() as u64)),
+            "read",
+        )?;
 
         let offset = offset as usize;
 
@@ -1104,7 +1152,9 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
             &mut self.ctx.state,
+            self.ctx.block_ptr.number,
             &self.ctx.proof_of_indexing,
+            self.ctx.timestamp,
             entity,
             id,
             data,
@@ -1209,7 +1259,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
+        gas.consume_host_fn_with_metrics(
+            gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes),
+            "bytes_to_hex",
+        )?;
 
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
@@ -1224,7 +1277,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Mul, (&n, &n)))?;
+        gas.consume_host_fn_with_metrics(
+            gas::DEFAULT_GAS_OP.with_args(gas::complexity::Mul, (&n, &n)),
+            "big_int_to_string",
+        )?;
         asc_new(self, &n.to_string(), gas)
     }
 

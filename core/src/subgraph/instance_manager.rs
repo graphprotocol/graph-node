@@ -1,13 +1,13 @@
-use crate::polling_monitor::IpfsService;
+use crate::polling_monitor::{ArweaveService, IpfsService};
 use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
+use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::Blockchain;
-use graph::blockchain::NodeCapabilities;
-use graph::blockchain::{BlockchainKind, TriggerFilter};
+use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
+use graph::components::metrics::gas::GasMetrics;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data_source::causality_region::CausalityRegionSeq;
@@ -30,6 +30,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     instances: SubgraphKeepAlive,
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
+    arweave_service: ArweaveService,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
 }
@@ -118,6 +119,20 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
 
                     self.start_subgraph_inner(logger, loc, runner).await
                 }
+                BlockchainKind::Starknet => {
+                    let runner = instance_manager
+                        .build_subgraph_runner::<graph_chain_starknet::Chain>(
+                            logger.clone(),
+                            self.env_vars.cheap_clone(),
+                            loc.clone(),
+                            manifest,
+                            stop_block,
+                            Box::new(SubgraphTriggerProcessor {}),
+                        )
+                        .await?;
+
+                    self.start_subgraph_inner(logger, loc, runner).await
+                }
             }
         };
 
@@ -165,6 +180,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         metrics_registry: Arc<MetricsRegistry>,
         link_resolver: Arc<dyn LinkResolver>,
         ipfs_service: IpfsService,
+        arweave_service: ArweaveService,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -180,6 +196,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ipfs_service,
             static_filters,
             env_vars,
+            arweave_service,
         }
     }
 
@@ -228,7 +245,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             "n_templates" => manifest.templates.len(),
         );
 
-        let mut manifest = manifest
+        let manifest = manifest
             .resolve(&link_resolver, &logger, ENV_VARS.max_spec_version.clone())
             .await?;
 
@@ -272,36 +289,22 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // that is done
         store.start_subgraph_deployment(&logger).await?;
 
-        // Dynamic data sources are loaded by appending them to the manifest.
-        //
-        // Refactor: Preferrably we'd avoid any mutation of the manifest.
-        let (manifest, static_data_sources) = {
-            let data_sources = load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
+        let dynamic_data_sources =
+            load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
                 .await
                 .context("Failed to load dynamic data sources")?;
 
-            let static_data_sources = manifest.data_sources.clone();
+        // Combine the data sources from the manifest with the dynamic data sources
+        let mut data_sources = manifest.data_sources.clone();
+        data_sources.extend(dynamic_data_sources);
 
-            // Add dynamic data sources to the subgraph
-            manifest.data_sources.extend(data_sources);
+        info!(logger, "Data source count at start: {}", data_sources.len());
 
-            info!(
-                logger,
-                "Data source count at start: {}",
-                manifest.data_sources.len()
-            );
-
-            (manifest, static_data_sources)
-        };
-
-        let static_filters =
-            self.static_filters || manifest.data_sources.len() >= ENV_VARS.static_filters_threshold;
-
-        let onchain_data_sources = manifest
-            .data_sources
+        let onchain_data_sources = data_sources
             .iter()
             .filter_map(|d| d.as_onchain().cloned())
             .collect::<Vec<_>>();
+
         let required_capabilities = C::NodeCapabilities::from_data_sources(&onchain_data_sources);
         let network = manifest.network_name();
 
@@ -311,33 +314,20 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        // if static_filters is enabled, build a minimal filter with the static data sources and
-        // add the necessary filters based on templates.
-        // if not enabled we just stick to the filter based on all the data sources.
-        // This specifically removes dynamic data sources based filters because these can be derived
-        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
-        let filter = if static_filters {
-            if !self.static_filters {
-                info!(logger, "forcing subgraph to use static filters.")
-            }
+        let start_blocks: Vec<BlockNumber> = data_sources
+            .iter()
+            .filter_map(|d| d.as_onchain().map(|d: &C::DataSource| d.start_block()))
+            .collect();
 
-            let onchain_data_sources = static_data_sources.iter().filter_map(|d| d.as_onchain());
-
-            let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources);
-
-            filter.extend_with_template(
-                manifest
-                    .templates
-                    .iter()
-                    .filter_map(|ds| ds.as_onchain())
-                    .cloned(),
-            );
-            filter
-        } else {
-            C::TriggerFilter::from_data_sources(onchain_data_sources.iter())
-        };
-
-        let start_blocks = manifest.start_blocks();
+        let end_blocks: BTreeSet<BlockNumber> = manifest
+            .data_sources
+            .iter()
+            .filter_map(|d| {
+                d.as_onchain()
+                    .map(|d: &C::DataSource| d.end_block())
+                    .flatten()
+            })
+            .collect();
 
         let templates = Arc::new(manifest.templates.clone());
 
@@ -353,7 +343,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             deployment.hash.clone(),
             "process",
             self.metrics_registry.clone(),
+            store.shard().to_string(),
         );
+
+        let gas_metrics = GasMetrics::new(deployment.hash.clone(), self.metrics_registry.clone());
 
         let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
         let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version).map_err(|e|
@@ -366,6 +359,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             registry.cheap_clone(),
             deployment.hash.as_str(),
             stopwatch_metrics.clone(),
+            gas_metrics.clone(),
         ));
 
         let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
@@ -382,11 +376,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stopwatch_metrics,
         ));
 
-        let mut offchain_monitor = OffchainMonitor::new(
+        let offchain_monitor = OffchainMonitor::new(
             logger.cheap_clone(),
             registry.cheap_clone(),
             &manifest.id,
             self.ipfs_service.clone(),
+            self.arweave_service.clone(),
         );
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
@@ -412,19 +407,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
         let instrument = self.subgraph_store.instrument(&deployment)?;
-        let instance = super::context::instance::SubgraphInstance::from_manifest(
-            &logger,
-            manifest,
-            host_builder,
-            host_metrics.clone(),
-            &mut offchain_monitor,
-            causality_region_seq,
-        )?;
 
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
             features,
             start_blocks,
+            end_blocks,
             stop_block,
             store,
             debug_fork,
@@ -432,20 +420,30 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             chain,
             templates,
             unified_api_version,
-            static_filters,
+            static_filters: self.static_filters,
             poi_version,
             network,
             instrument,
         };
 
-        // The subgraph state tracks the state of the subgraph instance over time
-        let ctx = IndexingContext::new(
-            instance,
-            self.instances.cheap_clone(),
-            filter,
-            offchain_monitor,
-            tp,
-        );
+        // Initialize the indexing context, including both static and dynamic data sources.
+        // The order of inclusion is the order of processing when a same trigger matches
+        // multiple data sources.
+        let ctx = {
+            let mut ctx = IndexingContext::new(
+                manifest,
+                host_builder,
+                host_metrics.clone(),
+                causality_region_seq,
+                self.instances.cheap_clone(),
+                offchain_monitor,
+                tp,
+            );
+            for data_source in data_sources {
+                ctx.add_dynamic_data_source(&logger, data_source)?;
+            }
+            ctx
+        };
 
         let metrics = RunnerMetrics {
             subgraph: subgraph_metrics,

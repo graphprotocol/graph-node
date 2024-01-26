@@ -1,3 +1,4 @@
+use graph::components::store::QueryPermit;
 use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graph::data::query::Trace;
 use graphql_parser::Pos;
@@ -196,7 +197,7 @@ fn object_interfaces(
 ) -> r::Value {
     r::Value::List(
         schema
-            .interfaces_for_type(&object_type.into())
+            .interfaces_for_type(&object_type.name)
             .unwrap_or(&vec![])
             .iter()
             .map(|typedef| interface_type_object(schema, type_objects, typedef))
@@ -359,7 +360,7 @@ impl Resolver for IntrospectionResolver {
     // see `fn as_introspection_context`, so this value is irrelevant.
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
         unreachable!()
     }
 

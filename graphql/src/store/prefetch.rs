@@ -1,34 +1,36 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
-use anyhow::{anyhow, Error};
-use graph::constraint_violation;
 use graph::data::query::Trace;
+use graph::data::store::Id;
+use graph::data::store::IdList;
+use graph::data::store::IdType;
+use graph::data::store::QueryObject;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
 use graph::util::cache_weight;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::schema::{ast as sast, ApiSchema};
-use graph::{components::store::EntityType, data::graphql::*};
-use graph::{
-    data::graphql::ext::DirectiveFinder,
-    prelude::{
-        s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
-        EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
-        Value as StoreValue, WindowAttribute, ENV_VARS,
-    },
+use graph::data::graphql::*;
+use graph::prelude::{
+    s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
+    EntityWindow, ParentLink, QueryExecutionError, Value as StoreValue, WindowAttribute, ENV_VARS,
 };
+use graph::schema::{ast as sast, EntityType, InputSchema};
 
-use crate::execution::{ast as a, ExecutionContext, Resolver};
+use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 
 pub const ARG_ID: &str = "id";
+
+// Everything in this file only makes sense for an
+// `ExecutionContext<StoreResolver>`
+type ExecutionContext = crate::execution::ExecutionContext<StoreResolver>;
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -39,6 +41,8 @@ struct Node {
     /// field will have the cache weight of the `entity` plus the weight of
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
+
+    parent: Option<Id>,
 
     entity: Object,
     /// We are using an `Rc` here for two reasons: it allows us to defer
@@ -84,11 +88,12 @@ struct Node {
     children: BTreeMap<Word, Vec<Rc<Node>>>,
 }
 
-impl From<Object> for Node {
-    fn from(entity: Object) -> Self {
+impl From<QueryObject> for Node {
+    fn from(object: QueryObject) -> Self {
         Node {
-            children_weight: entity.weight(),
-            entity,
+            children_weight: object.weight(),
+            parent: object.parent,
+            entity: object.entity,
             children: BTreeMap::default(),
         }
     }
@@ -133,6 +138,7 @@ fn make_root_node() -> Vec<Node> {
     let entity = Object::empty();
     vec![Node {
         children_weight: entity.weight(),
+        parent: None,
         entity,
         children: BTreeMap::default(),
     }]
@@ -158,6 +164,7 @@ impl From<Node> for r::Value {
 
 trait ValueExt {
     fn as_str(&self) -> Option<&str>;
+    fn as_id(&self, id_type: IdType) -> Option<Id>;
 }
 
 impl ValueExt for r::Value {
@@ -167,14 +174,25 @@ impl ValueExt for r::Value {
             _ => None,
         }
     }
+
+    fn as_id(&self, id_type: IdType) -> Option<Id> {
+        match self {
+            r::Value::String(s) => id_type.parse(Word::from(s.as_str())).ok(),
+            _ => None,
+        }
+    }
 }
 
 impl Node {
-    fn id(&self) -> Result<String, Error> {
+    fn id(&self, schema: &InputSchema) -> Result<Id, QueryExecutionError> {
+        let entity_type = schema.entity_type(self.typename())?;
         match self.get("id") {
-            None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(r::Value::String(s)) => Ok(s.clone()),
-            _ => Err(anyhow!("Entity has non-string `id` attribute")),
+            None => Err(QueryExecutionError::IdMissing),
+            Some(r::Value::String(s)) => {
+                let id = entity_type.parse_id(s.as_str())?;
+                Ok(id)
+            }
+            _ => Err(QueryExecutionError::IdNotString),
         }
     }
 
@@ -254,6 +272,7 @@ struct JoinCond<'a> {
 
 impl<'a> JoinCond<'a> {
     fn new(
+        schema: &InputSchema,
         parent_type: &'a s::ObjectType,
         child_type: &'a s::ObjectType,
         field_name: &str,
@@ -268,46 +287,53 @@ impl<'a> JoinCond<'a> {
                 JoinRelation::Derived(JoinField::new(field))
             };
         JoinCond {
-            parent_type: parent_type.into(),
-            child_type: child_type.into(),
+            parent_type: schema.entity_type(parent_type).unwrap(),
+            child_type: schema.entity_type(child_type).unwrap(),
             relation,
         }
     }
 
     fn entity_link(
         &self,
-        parents_by_id: Vec<(String, &Node)>,
+        parents_by_id: Vec<(Id, &Node)>,
         multiplicity: ChildMultiplicity,
-    ) -> (Vec<String>, EntityLink) {
+    ) -> Result<(IdList, EntityLink), QueryExecutionError> {
         match &self.relation {
             JoinRelation::Direct(field) => {
                 // we only need the parent ids
-                let ids = parents_by_id.into_iter().map(|(id, _)| id).collect();
-                (
+                let ids = IdList::try_from_iter(
+                    &self.parent_type,
+                    parents_by_id.into_iter().map(|(id, _)| id),
+                )?;
+                Ok((
                     ids,
                     EntityLink::Direct(field.window_attribute(), multiplicity),
-                )
+                ))
             }
             JoinRelation::Derived(field) => {
                 let (ids, parent_link) = match field {
                     JoinField::Scalar(child_field) => {
                         // child_field contains a String id of the child; extract
                         // those and the parent ids
+                        let id_type = self.child_type.id_type().unwrap();
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
                             .filter_map(|(id, node)| {
                                 node.get(child_field)
-                                    .and_then(|value| value.as_str())
+                                    .and_then(|value| value.as_id(id_type))
                                     .map(|child_id| (id, child_id.to_owned()))
                             })
                             .unzip();
-
+                        let ids = IdList::try_from_iter(&self.parent_type, ids.into_iter())?;
+                        let child_ids =
+                            IdList::try_from_iter(&self.child_type, child_ids.into_iter())?;
                         (ids, ParentLink::Scalar(child_ids))
                     }
                     JoinField::List(child_field) => {
                         // child_field stores a list of child ids; extract them,
                         // turn them into a list of strings and combine with the
                         // parent ids
+                        let id_type = self.child_type.id_type().unwrap();
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
                             .filter_map(|(id, node)| {
@@ -316,9 +342,7 @@ impl<'a> JoinCond<'a> {
                                         r::Value::List(values) => {
                                             let values: Vec<_> = values
                                                 .iter()
-                                                .filter_map(|value| {
-                                                    value.as_str().map(|value| value.to_owned())
-                                                })
+                                                .filter_map(|value| value.as_id(id_type))
                                                 .collect();
                                             if values.is_empty() {
                                                 None
@@ -331,13 +355,18 @@ impl<'a> JoinCond<'a> {
                                     .map(|child_ids| (id, child_ids))
                             })
                             .unzip();
+                        let ids = IdList::try_from_iter(&self.parent_type, ids.into_iter())?;
+                        let child_ids = child_ids
+                            .into_iter()
+                            .map(|ids| IdList::try_from_iter(&self.child_type, ids.into_iter()))
+                            .collect::<Result<Vec<_>, _>>()?;
                         (ids, ParentLink::List(child_ids))
                     }
                 };
-                (
+                Ok((
                     ids,
                     EntityLink::Parent(self.parent_type.clone(), parent_link),
-                )
+                ))
             }
         }
     }
@@ -355,7 +384,7 @@ struct Join<'a> {
 impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
     fn new(
-        schema: &'a ApiSchema,
+        schema: &'a InputSchema,
         parent_type: &'a s::ObjectType,
         child_type: ObjectOrInterface<'a>,
         field_name: &str,
@@ -366,78 +395,33 @@ impl<'a> Join<'a> {
 
         let conds = child_types
             .iter()
-            .map(|child_type| JoinCond::new(parent_type, child_type, field_name))
+            .map(|child_type| JoinCond::new(schema, parent_type, child_type, field_name))
             .collect();
 
         Join { child_type, conds }
     }
 
-    /// Perform the join. The child nodes are distributed into the parent nodes
-    /// according to the `parent_id` returned by the database in each child as
-    /// attribute `g$parent_id`, and are stored in the `response_key` entry
-    /// in each parent's `children` map.
-    ///
-    /// The `children` must contain the nodes in the correct order for each
-    /// parent; we simply pick out matching children for each parent but
-    /// otherwise maintain the order in `children`
-    fn perform(parents: &mut [&mut Node], children: Vec<Node>, response_key: &str) {
-        let children: Vec<_> = children.into_iter().map(Rc::new).collect();
-
-        if parents.len() == 1 {
-            let parent = parents.first_mut().expect("we just checked");
-            parent.set_children(response_key.to_owned(), children);
-            return;
-        }
-
-        // Build a map parent_id -> Vec<child> that we will use to add
-        // children to their parent. This relies on the fact that interfaces
-        // make sure that id's are distinct across all implementations of the
-        // interface.
-        let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
-        for child in children.iter() {
-            match child
-                .get("g$parent_id")
-                .expect("the query that produces 'child' ensures there is always a g$parent_id")
-            {
-                r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
-                _ => unreachable!("the parent_id returned by the query is always a string"),
-            }
-        }
-
-        // Add appropriate children using grouped map
-        for parent in parents {
-            // Set the `response_key` field in `parent`. Make sure that even if `parent` has no
-            // matching `children`, the field gets set (to an empty `Vec`).
-            //
-            // This `insert` will overwrite in the case where the response key occurs both at the
-            // interface level and in nested object type conditions. The values for the interface
-            // query are always joined first, and may then be overwritten by the merged selection
-            // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-            let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
-            parent.set_children(response_key.to_owned(), values.unwrap_or_default());
-        }
-    }
-
     fn windows(
         &self,
+        schema: &InputSchema,
         parents: &[&mut Node],
         multiplicity: ChildMultiplicity,
         previous_collection: &EntityCollection,
-    ) -> Vec<EntityWindow> {
+    ) -> Result<Vec<EntityWindow>, QueryExecutionError> {
         let mut windows = vec![];
         let column_names_map = previous_collection.entity_types_and_column_names();
         for cond in &self.conds {
             let mut parents_by_id = parents
                 .iter()
                 .filter(|parent| parent.typename() == cond.parent_type.as_str())
-                .filter_map(|parent| parent.id().ok().map(|id| (id, &**parent)))
+                .filter_map(|parent| parent.id(schema).ok().map(|id| (id, &**parent)))
                 .collect::<Vec<_>>();
 
             if !parents_by_id.is_empty() {
                 parents_by_id.sort_unstable_by(|(id1, _), (id2, _)| id1.cmp(id2));
                 parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
-                let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
+                let (ids, link) = cond.entity_link(parents_by_id, multiplicity)?;
                 let child_type: EntityType = cond.child_type.clone();
                 let column_names = match column_names_map.get(&child_type) {
                     Some(column_names) => column_names.clone(),
@@ -451,8 +435,94 @@ impl<'a> Join<'a> {
                 });
             }
         }
-        windows
+        Ok(windows)
     }
+}
+
+/// Distinguish between a root GraphQL query and nested queries. For root
+/// queries, there is no parent type, and it doesn't really make sense to
+/// worry about join conditions since there is only one parent (the root).
+/// In particular, the parent type for root queries is `Query` which is not
+/// an entity type, and we would create a `Join` with a fake entity type for
+/// the parent type
+enum MaybeJoin<'a> {
+    Root { child_type: ObjectOrInterface<'a> },
+    Nested(Join<'a>),
+}
+
+impl<'a> MaybeJoin<'a> {
+    fn child_type(&self) -> ObjectOrInterface<'_> {
+        match self {
+            MaybeJoin::Root { child_type } => child_type.clone(),
+            MaybeJoin::Nested(Join {
+                child_type,
+                conds: _,
+            }) => child_type.clone(),
+        }
+    }
+}
+
+/// Link children to their parents. The child nodes are distributed into the
+/// parent nodes according to the `parent_id` returned by the database in
+/// each child as attribute `g$parent_id`, and are stored in the
+/// `response_key` entry in each parent's `children` map.
+///
+/// The `children` must contain the nodes in the correct order for each
+/// parent; we simply pick out matching children for each parent but
+/// otherwise maintain the order in `children`
+///
+/// If `parents` only has one entry, add all children to that one parent. In
+/// particular, this is what happens for toplevel queries.
+fn add_children(
+    schema: &InputSchema,
+    parents: &mut [&mut Node],
+    children: Vec<Node>,
+    response_key: &str,
+) -> Result<(), QueryExecutionError> {
+    let children: Vec<_> = children.into_iter().map(Rc::new).collect();
+
+    if parents.len() == 1 {
+        let parent = parents.first_mut().expect("we just checked");
+        parent.set_children(response_key.to_owned(), children);
+        return Ok(());
+    }
+
+    // Build a map parent_id -> Vec<child> that we will use to add
+    // children to their parent. This relies on the fact that interfaces
+    // make sure that id's are distinct across all implementations of the
+    // interface.
+    let mut grouped: HashMap<&Id, Vec<Rc<Node>>> = HashMap::default();
+    for child in children.iter() {
+        let parent = child.parent.as_ref().ok_or_else(|| {
+            QueryExecutionError::Panic(format!(
+                "child {}[{}] is missing a parent id",
+                child.typename(),
+                child
+                    .id(schema)
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|_| "<no id>".to_owned())
+            ))
+        })?;
+        grouped.entry(parent).or_default().push(child.clone());
+    }
+
+    // Add appropriate children using grouped map
+    for parent in parents {
+        // Set the `response_key` field in `parent`. Make sure that even if `parent` has no
+        // matching `children`, the field gets set (to an empty `Vec`).
+        //
+        // This `insert` will overwrite in the case where the response key occurs both at the
+        // interface level and in nested object type conditions. The values for the interface
+        // query are always joined first, and may then be overwritten by the merged selection
+        // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+        let values = parent
+            .id(schema)
+            .ok()
+            .and_then(|id| grouped.get(&id).cloned());
+        parent.set_children(response_key.to_owned(), values.unwrap_or_default());
+    }
+
+    Ok(())
 }
 
 /// Run the query in `ctx` in such a manner that we only perform one query
@@ -474,30 +544,12 @@ impl<'a> Join<'a> {
 /// @derivedFrom fields
 pub fn run(
     resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
+    ctx: &ExecutionContext,
     selection_set: &a::SelectionSet,
     graphql_metrics: &GraphQLMetrics,
 ) -> Result<(r::Value, Trace), Vec<QueryExecutionError>> {
-    execute_root_selection_set(resolver, ctx, selection_set).map(|(nodes, trace)| {
-        graphql_metrics.observe_query_result_size(nodes.weight());
-        let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
-            node.children.into_iter().map(|(key, nodes)| {
-                (
-                    Word::from(format!("prefetch:{}", key)),
-                    node_list_as_value(nodes),
-                )
-            })
-        }));
-        (r::Value::Object(obj), trace)
-    })
-}
+    let loader = Loader::new(resolver, ctx);
 
-/// Executes the root selection set of a query.
-fn execute_root_selection_set(
-    resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
-    selection_set: &a::SelectionSet,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
     let trace = Trace::root(
         &ctx.query.query_text,
         &ctx.query.variables_text,
@@ -505,259 +557,187 @@ fn execute_root_selection_set(
         resolver.block_number(),
         ctx.trace,
     );
+
     // Execute the root selection set against the root query type
-    execute_selection_set(resolver, ctx, make_root_node(), trace, selection_set)
+    let (nodes, trace) = loader.execute_selection_set(make_root_node(), trace, selection_set)?;
+
+    graphql_metrics.observe_query_result_size(nodes.weight());
+    let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
+        node.children.into_iter().map(|(key, nodes)| {
+            (
+                Word::from(format!("prefetch:{}", key)),
+                node_list_as_value(nodes),
+            )
+        })
+    }));
+
+    Ok((r::Value::Object(obj), trace))
 }
 
-fn check_result_size<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
-    size: usize,
-) -> Result<(), QueryExecutionError> {
-    if size > ENV_VARS.graphql.warn_result_size {
-        warn!(ctx.logger, "Large query result"; "size" => size, "query_id" => &ctx.query.query_id);
-    }
-    if size > ENV_VARS.graphql.error_result_size {
-        return Err(QueryExecutionError::ResultTooBig(
-            size,
-            ENV_VARS.graphql.error_result_size,
-        ));
-    }
-    Ok(())
+struct Loader<'a> {
+    resolver: &'a StoreResolver,
+    ctx: &'a ExecutionContext,
 }
 
-fn execute_selection_set<'a>(
-    resolver: &StoreResolver,
-    ctx: &'a ExecutionContext<impl Resolver>,
-    mut parents: Vec<Node>,
-    mut parent_trace: Trace,
-    selection_set: &a::SelectionSet,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let schema = &ctx.query.schema;
-    let mut errors: Vec<QueryExecutionError> = Vec::new();
+impl<'a> Loader<'a> {
+    fn new(resolver: &'a StoreResolver, ctx: &'a ExecutionContext) -> Self {
+        Loader { resolver, ctx }
+    }
 
-    // Process all field groups in order
-    for (object_type, fields) in selection_set.interior_fields() {
-        if let Some(deadline) = ctx.deadline {
-            if deadline < Instant::now() {
-                errors.push(QueryExecutionError::Timeout);
-                break;
+    fn execute_selection_set(
+        &self,
+        mut parents: Vec<Node>,
+        mut parent_trace: Trace,
+        selection_set: &a::SelectionSet,
+    ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
+        let schema = &self.ctx.query.schema;
+        let input_schema = self.resolver.store.input_schema()?;
+        let mut errors: Vec<QueryExecutionError> = Vec::new();
+        let at_root = is_root_node(parents.iter());
+
+        // Process all field groups in order
+        for (object_type, fields) in selection_set.interior_fields() {
+            if let Some(deadline) = self.ctx.deadline {
+                if deadline < Instant::now() {
+                    errors.push(QueryExecutionError::Timeout);
+                    break;
+                }
             }
-        }
 
-        // Filter out parents that do not match the type condition.
-        let mut parents: Vec<&mut Node> = if is_root_node(parents.iter()) {
-            parents.iter_mut().collect()
-        } else {
-            parents
-                .iter_mut()
-                .filter(|p| object_type.name == p.typename())
-                .collect()
-        };
-
-        if parents.is_empty() {
-            continue;
-        }
-
-        for field in fields {
-            let field_type = object_type
-                .field(&field.name)
-                .expect("field names are valid");
-            let child_type = schema
-                .object_or_interface(field_type.field_type.get_base_type())
-                .expect("we only collect fields that are objects or interfaces");
-
-            let join = Join::new(
-                ctx.query.schema.as_ref(),
-                object_type,
-                child_type,
-                &field.name,
-            );
-
-            // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
-            // If this environment variable is set, the program will use an empty collection that,
-            // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
-            // queries.
-            let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes {
-                SelectedAttributes(BTreeMap::new())
+            // Filter out parents that do not match the type condition.
+            let mut parents: Vec<&mut Node> = if at_root {
+                parents.iter_mut().collect()
             } else {
-                SelectedAttributes::for_field(field)?
+                parents
+                    .iter_mut()
+                    .filter(|p| object_type.name == p.typename())
+                    .collect()
             };
 
-            match execute_field(
-                resolver,
-                ctx,
-                &parents,
-                &join,
-                field,
-                field_type,
-                collected_columns,
-            ) {
-                Ok((children, trace)) => {
-                    match execute_selection_set(
-                        resolver,
-                        ctx,
-                        children,
-                        trace,
-                        &field.selection_set,
-                    ) {
-                        Ok((children, trace)) => {
-                            Join::perform(&mut parents, children, field.response_key());
-                            let weight =
-                                parents.iter().map(|parent| parent.weight()).sum::<usize>();
-                            check_result_size(ctx, weight)?;
-                            parent_trace.push(field.response_key(), trace);
+            if parents.is_empty() {
+                continue;
+            }
+
+            for field in fields {
+                let field_type = object_type
+                    .field(&field.name)
+                    .expect("field names are valid");
+                let child_type = schema
+                    .object_or_interface(field_type.field_type.get_base_type())
+                    .expect("we only collect fields that are objects or interfaces");
+
+                let join = if at_root {
+                    MaybeJoin::Root { child_type }
+                } else {
+                    MaybeJoin::Nested(Join::new(
+                        &input_schema,
+                        object_type,
+                        child_type,
+                        &field.name,
+                    ))
+                };
+
+                match self.fetch(&parents, &join, field) {
+                    Ok((children, trace)) => {
+                        match self.execute_selection_set(children, trace, &field.selection_set) {
+                            Ok((children, trace)) => {
+                                add_children(
+                                    &input_schema,
+                                    &mut parents,
+                                    children,
+                                    field.response_key(),
+                                )?;
+                                self.check_result_size(&parents)?;
+                                parent_trace.push(field.response_key(), trace);
+                            }
+                            Err(mut e) => errors.append(&mut e),
                         }
-                        Err(mut e) => errors.append(&mut e),
                     }
-                }
-                Err(mut e) => {
-                    errors.append(&mut e);
-                }
-            };
+                    Err(e) => {
+                        errors.push(e);
+                    }
+                };
+            }
+        }
+
+        if errors.is_empty() {
+            Ok((parents, parent_trace))
+        } else {
+            Err(errors)
         }
     }
 
-    if errors.is_empty() {
-        Ok((parents, parent_trace))
-    } else {
-        Err(errors)
-    }
-}
+    /// Query child entities for `parents` from the store. The `join` indicates
+    /// in which child field to look for the parent's id/join field. When
+    /// `is_single` is `true`, there is at most one child per parent.
+    fn fetch(
+        &self,
+        parents: &[&mut Node],
+        join: &MaybeJoin<'_>,
+        field: &a::Field,
+    ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
+        let input_schema = self.resolver.store.input_schema()?;
+        let mut query = build_query(
+            join.child_type(),
+            self.resolver.block_number(),
+            field,
+            self.ctx.query.schema.types_for_interface(),
+            self.ctx.max_first,
+            self.ctx.max_skip,
+            &super::query::SchemaPair {
+                api: self.ctx.query.schema.clone(),
+                input: input_schema.cheap_clone(),
+            },
+        )?;
+        query.trace = self.ctx.trace;
+        query.query_id = Some(self.ctx.query.query_id.clone());
 
-/// Executes a field.
-fn execute_field(
-    resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
-    parents: &[&mut Node],
-    join: &Join<'_>,
-    field: &a::Field,
-    field_definition: &s::Field,
-    selected_attrs: SelectedAttributes,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
-        ChildMultiplicity::Many
-    } else {
-        ChildMultiplicity::Single
-    };
-
-    fetch(
-        resolver,
-        ctx,
-        parents,
-        join,
-        field,
-        multiplicity,
-        selected_attrs,
-    )
-    .map_err(|e| vec![e])
-}
-
-/// Query child entities for `parents` from the store. The `join` indicates
-/// in which child field to look for the parent's id/join field. When
-/// `is_single` is `true`, there is at most one child per parent.
-fn fetch(
-    resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
-    parents: &[&mut Node],
-    join: &Join<'_>,
-    field: &a::Field,
-    multiplicity: ChildMultiplicity,
-    selected_attrs: SelectedAttributes,
-) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
-    let mut query = build_query(
-        join.child_type,
-        resolver.block_number(),
-        field,
-        ctx.query.schema.types_for_interface(),
-        ctx.max_first,
-        ctx.max_skip,
-        selected_attrs,
-        &ctx.query.schema,
-    )?;
-    query.trace = ctx.trace;
-    query.query_id = Some(ctx.query.query_id.clone());
-
-    if multiplicity == ChildMultiplicity::Single {
-        // Suppress 'order by' in lookups of scalar values since
-        // that causes unnecessary work in the database
-        query.order = EntityOrder::Unordered;
-    }
-
-    query.logger = Some(ctx.logger.cheap_clone());
-    if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
-        query.filter = Some(
-            EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
-                .and_maybe(query.filter),
-        );
-    }
-
-    if !is_root_node(parents.iter().map(|p| &**p)) {
-        // For anything but the root node, restrict the children we select
-        // by the parent list
-        let windows = join.windows(parents, multiplicity, &query.collection);
-        if windows.is_empty() {
-            return Ok((vec![], Trace::None));
+        if field.multiplicity == ChildMultiplicity::Single {
+            // Suppress 'order by' in lookups of scalar values since
+            // that causes unnecessary work in the database
+            query.order = EntityOrder::Unordered;
         }
-        query.collection = EntityCollection::Window(windows);
-    }
-    resolver
-        .store
-        .find_query_values(query)
-        .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
-}
 
-#[derive(Debug, Default, Clone)]
-pub(crate) struct SelectedAttributes(BTreeMap<String, AttributeNames>);
-
-impl SelectedAttributes {
-    /// Extract the attributes we should select from `selection_set`. In
-    /// particular, disregard derived fields since they are not stored
-    fn for_field(field: &a::Field) -> Result<SelectedAttributes, Vec<QueryExecutionError>> {
-        let mut map = BTreeMap::new();
-        for (object_type, fields) in field.selection_set.fields() {
-            let column_names = fields
-                .filter(|field| {
-                    // Keep fields that are not derived and for which we
-                    // can find the field type
-                    sast::get_field(object_type, &field.name)
-                        .map(|field_type| !field_type.is_derived())
-                        .unwrap_or(false)
-                })
-                .filter_map(|field| {
-                    if field.name.starts_with("__") {
-                        None
-                    } else {
-                        Some(field.name.clone())
-                    }
-                })
-                .collect();
-            map.insert(
-                object_type.name().to_string(),
-                AttributeNames::Select(column_names),
+        query.logger = Some(self.ctx.logger.cheap_clone());
+        if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
+            query.filter = Some(
+                EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
+                    .and_maybe(query.filter),
             );
         }
-        // We need to also select the `orderBy` field if there is one.
-        // Because of how the API Schema is set up, `orderBy` can only have
-        // an enum value
-        match field.argument_value("orderBy") {
-            None => { /* nothing to do */ }
-            Some(r::Value::Enum(e)) => {
-                for columns in map.values_mut() {
-                    columns.add_str(e);
-                }
+
+        if let MaybeJoin::Nested(join) = join {
+            // For anything but the root node, restrict the children we select
+            // by the parent list
+            let windows = join.windows(
+                &input_schema,
+                parents,
+                field.multiplicity,
+                &query.collection,
+            )?;
+            if windows.is_empty() {
+                return Ok((vec![], Trace::None));
             }
-            Some(v) => {
-                return Err(vec![constraint_violation!(
-                    "'orderBy' attribute must be an enum but is {:?}",
-                    v
-                )
-                .into()]);
-            }
+            query.collection = EntityCollection::Window(windows);
         }
-        Ok(SelectedAttributes(map))
+        self.resolver
+            .store
+            .find_query_values(query)
+            .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
     }
 
-    pub fn get(&mut self, obj_type: &s::ObjectType) -> AttributeNames {
-        self.0.remove(&obj_type.name).unwrap_or(AttributeNames::All)
+    fn check_result_size(&self, parents: &[&mut Node]) -> Result<(), QueryExecutionError> {
+        let size = parents.iter().map(|parent| parent.weight()).sum::<usize>();
+
+        if size > ENV_VARS.graphql.warn_result_size {
+            warn!(self.ctx.logger, "Large query result"; "size" => size, "query_id" => &self.ctx.query.query_id);
+        }
+        if size > ENV_VARS.graphql.error_result_size {
+            return Err(QueryExecutionError::ResultTooBig(
+                size,
+                ENV_VARS.graphql.error_result_size,
+            ));
+        }
+        Ok(())
     }
 }

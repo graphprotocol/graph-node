@@ -9,6 +9,8 @@ use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
+use std::collections::HashSet;
+use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
 use tiny_keccak::{keccak256, Keccak};
@@ -25,13 +27,18 @@ use graph::{
     },
 };
 
-use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
+use graph::data::subgraph::{
+    calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
+};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
+const EVENT_HANDLER_KIND: &str = "event";
+const CALL_HANDLER_KIND: &str = "call";
+const BLOCK_HANDLER_KIND: &str = "block";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -44,6 +51,7 @@ pub struct DataSource {
     pub manifest_idx: u32,
     pub address: Option<Address>,
     pub start_block: BlockNumber,
+    pub end_block: Option<BlockNumber>,
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
@@ -91,7 +99,8 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name,
             manifest_idx: template.manifest_idx,
             address: Some(address),
-            start_block: 0,
+            start_block: creation_block,
+            end_block: None,
             mapping: template.mapping,
             context: Arc::new(context),
             creation_block: Some(creation_block),
@@ -103,8 +112,35 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.address.as_ref().map(|x| x.as_bytes())
     }
 
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        let Mapping {
+            event_handlers,
+            call_handlers,
+            block_handlers,
+            ..
+        } = &self.mapping;
+
+        if !event_handlers.is_empty() {
+            kinds.insert(EVENT_HANDLER_KIND);
+        }
+        if !call_handlers.is_empty() {
+            kinds.insert(CALL_HANDLER_KIND);
+        }
+        for handler in block_handlers.iter() {
+            kinds.insert(handler.kind());
+        }
+
+        kinds
+    }
+
     fn start_block(&self) -> BlockNumber {
         self.start_block
+    }
+
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.end_block
     }
 
     fn match_and_decode(
@@ -146,12 +182,12 @@ impl blockchain::DataSource<Chain> for DataSource {
             address,
             mapping,
             context,
-
             // The creation block is ignored for detection duplicate data sources.
             // Contract ABI equality is implicit in `mapping.abis` equality.
             creation_block: _,
             contract_abi: _,
             start_block: _,
+            end_block: _,
         } = self;
 
         // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
@@ -216,7 +252,8 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name.clone(),
             manifest_idx,
             address,
-            start_block: 0,
+            start_block: creation_block.unwrap_or(0),
+            end_block: None,
             mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,
@@ -242,23 +279,50 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
 
-        // Validate that there are no more than one of each type of block_handler
-        let has_too_many_block_handlers = {
-            let mut non_filtered_block_handler_count = 0;
-            let mut call_filtered_block_handler_count = 0;
-            self.mapping
-                .block_handlers
-                .iter()
-                .for_each(|block_handler| {
-                    if block_handler.filter.is_none() {
-                        non_filtered_block_handler_count += 1
-                    } else {
-                        call_filtered_block_handler_count += 1
-                    }
-                });
-            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
-        };
-        if has_too_many_block_handlers {
+        // Ensure that there is at most one instance of each type of block handler
+        // and that a combination of a non-filtered block handler and a filtered block handler is not allowed.
+
+        let mut non_filtered_block_handler_count = 0;
+        let mut call_filtered_block_handler_count = 0;
+        let mut polling_filtered_block_handler_count = 0;
+        let mut initialization_handler_count = 0;
+        self.mapping
+            .block_handlers
+            .iter()
+            .for_each(|block_handler| {
+                match block_handler.filter {
+                    None => non_filtered_block_handler_count += 1,
+                    Some(ref filter) => match filter {
+                        BlockHandlerFilter::Call => call_filtered_block_handler_count += 1,
+                        BlockHandlerFilter::Once => initialization_handler_count += 1,
+                        BlockHandlerFilter::Polling { every: _ } => {
+                            polling_filtered_block_handler_count += 1
+                        }
+                    },
+                };
+            });
+
+        let has_non_filtered_block_handler = non_filtered_block_handler_count > 0;
+        // If there is a non-filtered block handler, we need to check if there are any
+        // filtered block handlers except for the ones with call filter
+        // If there are, we do not allow that combination
+        let has_restricted_filtered_and_non_filtered_combination = has_non_filtered_block_handler
+            && (polling_filtered_block_handler_count > 0 || initialization_handler_count > 0);
+
+        if has_restricted_filtered_and_non_filtered_combination {
+            errors.push(anyhow!(
+                "data source has a combination of filtered and non-filtered block handlers that is not allowed"
+            ));
+        }
+
+        // Check the number of handlers for each type
+        // If there is more than one of any type, we have too many handlers
+        let has_too_many = non_filtered_block_handler_count > 1
+            || call_filtered_block_handler_count > 1
+            || initialization_handler_count > 1
+            || polling_filtered_block_handler_count > 1;
+
+        if has_too_many {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
@@ -281,6 +345,20 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn api_version(&self) -> semver::Version {
         self.mapping.api_version.clone()
+    }
+
+    fn min_spec_version(&self) -> semver::Version {
+        self.mapping
+            .block_handlers
+            .iter()
+            .fold(MIN_SPEC_VERSION, |mut min, handler| {
+                min = match handler.filter {
+                    Some(BlockHandlerFilter::Polling { every: _ }) => SPEC_VERSION_0_0_8,
+                    Some(BlockHandlerFilter::Once) => SPEC_VERSION_0_0_8,
+                    _ => min,
+                };
+                min
+            })
     }
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
@@ -311,6 +389,7 @@ impl DataSource {
             manifest_idx,
             address: source.address,
             start_block: source.start_block,
+            end_block: source.end_block,
             mapping,
             context: Arc::new(context),
             creation_block,
@@ -318,19 +397,20 @@ impl DataSource {
         })
     }
 
-    fn handlers_for_log(&self, log: &Log) -> Result<Vec<MappingEventHandler>, Error> {
+    fn handlers_for_log(&self, log: &Log) -> Vec<MappingEventHandler> {
         // Get signature from the log
-        let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
+        let topic0 = match log.topics.get(0) {
+            Some(topic0) => topic0,
+            // Events without a topic should just be be ignored
+            None => return vec![],
+        };
 
-        let handlers = self
-            .mapping
+        self.mapping
             .event_handlers
             .iter()
             .filter(|handler| *topic0 == handler.topic0())
             .cloned()
-            .collect::<Vec<_>>();
-
-        Ok(handlers)
+            .collect::<Vec<_>>()
     }
 
     fn handler_for_call(&self, call: &EthereumCall) -> Result<Option<MappingCallHandler>, Error> {
@@ -358,13 +438,33 @@ impl DataSource {
     fn handler_for_block(
         &self,
         trigger_type: &EthereumBlockTriggerType,
+        block: BlockNumber,
     ) -> Option<MappingBlockHandler> {
         match trigger_type {
-            EthereumBlockTriggerType::Every => self
+            // Start matches only initialization handlers with a `once` filter
+            EthereumBlockTriggerType::Start => self
                 .mapping
                 .block_handlers
                 .iter()
-                .find(move |handler| handler.filter.is_none())
+                .find(move |handler| match handler.filter {
+                    Some(BlockHandlerFilter::Once) => block == self.start_block,
+                    _ => false,
+                })
+                .cloned(),
+            // End matches all handlers without a filter or with a `polling` filter
+            EthereumBlockTriggerType::End => self
+                .mapping
+                .block_handlers
+                .iter()
+                .find(move |handler| match handler.filter {
+                    Some(BlockHandlerFilter::Polling { every }) => {
+                        let start_block = self.start_block;
+                        let should_trigger = (block - start_block) % every.get() as i32 == 0;
+                        should_trigger
+                    }
+                    None => true,
+                    _ => false,
+                })
                 .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self
                 .mapping
@@ -506,11 +606,11 @@ impl DataSource {
     fn matches_trigger_address(&self, trigger: &EthereumTrigger) -> bool {
         let Some(ds_address) = self.address else {
             // 'wildcard' data sources match any trigger address.
-            return true
+            return true;
         };
 
         let Some(trigger_address) = trigger.address() else {
-             return true
+            return true;
         };
 
         ds_address == *trigger_address
@@ -534,7 +634,7 @@ impl DataSource {
 
         match trigger {
             EthereumTrigger::Block(_, trigger_type) => {
-                let handler = match self.handler_for_block(trigger_type) {
+                let handler = match self.handler_for_block(trigger_type, block.number()) {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
@@ -544,10 +644,13 @@ impl DataSource {
                     },
                     handler.handler,
                     block.block_ptr(),
+                    block.timestamp(),
                 )))
             }
-            EthereumTrigger::Log(log, receipt) => {
-                let potential_handlers = self.handlers_for_log(log)?;
+            EthereumTrigger::Log(log_ref) => {
+                let log = Arc::new(log_ref.log().clone());
+                let receipt = log_ref.receipt();
+                let potential_handlers = self.handlers_for_log(&log);
 
                 // Map event handlers to (event handler, event ABI) pairs; fail if there are
                 // handlers that don't exist in the contract ABI
@@ -622,7 +725,7 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 let transaction = if log.transaction_hash != block.hash {
                     block
-                        .transaction_for_log(log)
+                        .transaction_for_log(&log)
                         .context("Found no transaction for event")?
                 } else {
                     // Infer some fields from the log and fill the rest with zeros.
@@ -645,12 +748,13 @@ impl DataSource {
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
                         transaction: Arc::new(transaction),
-                        log: log.cheap_clone(),
+                        log: log,
                         params,
-                        receipt: receipt.clone(),
+                        receipt: receipt.map(|r| r.cheap_clone()),
                     },
                     event_handler.handler,
                     block.block_ptr(),
+                    block.timestamp(),
                     logging_extras,
                 )))
             }
@@ -761,6 +865,7 @@ impl DataSource {
                     },
                     handler.handler,
                     block.block_ptr(),
+                    block.timestamp(),
                     logging_extras,
                 )))
             }
@@ -1026,12 +1131,29 @@ pub struct MappingBlockHandler {
     pub filter: Option<BlockHandlerFilter>,
 }
 
+impl MappingBlockHandler {
+    pub fn kind(&self) -> &str {
+        match &self.filter {
+            Some(filter) => match filter {
+                BlockHandlerFilter::Call => "block_filter_call",
+                BlockHandlerFilter::Once => "block_filter_once",
+                BlockHandlerFilter::Polling { .. } => "block_filter_polling",
+            },
+            None => BLOCK_HANDLER_KIND,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum BlockHandlerFilter {
     // Call filter will trigger on all blocks where the data source contract
     // address has been called
     Call,
+    // This filter will trigger once at the startBlock
+    Once,
+    // This filter will trigger in a recurring interval set by the `every` field.
+    Polling { every: NonZeroU32 },
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]

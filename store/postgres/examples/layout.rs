@@ -140,7 +140,7 @@ pub fn main() {
     let subgraph = DeploymentHash::new("Qmasubgraph").unwrap();
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let schema = ensure(
-        InputSchema::parse(&schema, subgraph.clone()),
+        InputSchema::parse_latest(&schema, subgraph.clone()),
         "Failed to parse schema",
     );
     let namespace = ensure(

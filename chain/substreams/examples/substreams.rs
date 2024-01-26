@@ -68,7 +68,10 @@ async fn main() -> Result<(), Error> {
             client,
             None,
             None,
-            Arc::new(Mapper {}),
+            Arc::new(Mapper {
+                schema: None,
+                skip_empty_blocks: false,
+            }),
             package.modules.clone(),
             module_name.to_string(),
             vec![12369621],
@@ -85,6 +88,9 @@ async fn main() -> Result<(), Error> {
             Some(event) => match event {
                 Err(_) => {}
                 Ok(block_stream_event) => match block_stream_event {
+                    BlockStreamEvent::ProcessWasmBlock(_, _, _, _, _) => {
+                        unreachable!("Cannot happen with this mapper")
+                    }
                     BlockStreamEvent::Revert(_, _) => {}
                     BlockStreamEvent::ProcessBlock(block_with_trigger, _) => {
                         for change in block_with_trigger.block.changes.entity_changes {

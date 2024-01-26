@@ -1,0 +1,5 @@
+# fail @ 0.0.9: IdTypeInt8NotSupported
+type Thing @entity {
+  id: Int8!
+  name: String!
+}

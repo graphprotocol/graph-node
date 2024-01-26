@@ -2,17 +2,22 @@ use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
-use graph::components::store::*;
+use graph::components::graphql::GraphQLMetrics as _;
+use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
+use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
-use graph::data::query::Trace;
+use graph::data::query::{CacheStatus, Trace};
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
-use graph::schema::{ast as sast, ApiSchema, META_FIELD_TYPE};
+use graph::schema::{
+    ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
+    META_FIELD_NAME, META_FIELD_TYPE,
+};
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
-use crate::execution::ast as a;
+use crate::execution::{ast as a, Query};
 use crate::metrics::GraphQLMetrics;
-use crate::prelude::*;
+use crate::prelude::{ExecutionContext, Resolver};
 use crate::query::ext::BlockConstraint;
 use crate::store::query::collect_entities_from_query_field;
 
@@ -28,6 +33,7 @@ pub struct StoreResolver {
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
     graphql_metrics: Arc<GraphQLMetrics>,
+    load_manager: Arc<LoadManager>,
 }
 
 #[derive(Clone, Debug)]
@@ -64,6 +70,7 @@ impl StoreResolver {
         store: Arc<dyn QueryStore>,
         subscription_manager: Arc<dyn SubscriptionManager>,
         graphql_metrics: Arc<GraphQLMetrics>,
+        load_manager: Arc<LoadManager>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -76,6 +83,7 @@ impl StoreResolver {
             has_non_fatal_errors: false,
             error_policy: ErrorPolicy::Deny,
             graphql_metrics,
+            load_manager,
         }
     }
 
@@ -93,9 +101,13 @@ impl StoreResolver {
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
         graphql_metrics: Arc<GraphQLMetrics>,
+        load_manager: Arc<LoadManager>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
+
+        let blocks_behind = state.latest_block.number - block_ptr.ptr.number;
+        graphql_metrics.observe_query_blocks_behind(blocks_behind, &deployment);
 
         let has_non_fatal_errors = store
             .has_deterministic_errors(block_ptr.ptr.block_number())
@@ -110,6 +122,7 @@ impl StoreResolver {
             has_non_fatal_errors,
             error_policy,
             graphql_metrics,
+            load_manager,
         };
         Ok(resolver)
     }
@@ -277,7 +290,7 @@ impl StoreResolver {
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
         self.store.query_permit().await.map_err(Into::into)
     }
 
@@ -353,7 +366,9 @@ impl Resolver for StoreResolver {
     ) -> result::Result<UnitStream, QueryExecutionError> {
         // Collect all entities involved in the query field
         let object_type = schema.object_type(object_type).into();
-        let entities = collect_entities_from_query_field(schema, object_type, field)?;
+        let input_schema = self.store.input_schema()?;
+        let entities =
+            collect_entities_from_query_field(&input_schema, schema, object_type, field)?;
 
         // Subscribe to the store and return the entity change stream
         Ok(self.subscription_manager.subscribe_no_payload(entities))
@@ -374,15 +389,50 @@ impl Resolver for StoreResolver {
             // Note that the meta field could have been queried under a different response key,
             // or a different field queried under the response key `_meta`.
             ErrorPolicy::Deny => {
-                let data = result.take_data();
-                let meta =
-                    data.and_then(|mut d| d.remove("_meta").map(|m| ("_meta".to_string(), m)));
-                result.set_data(
-                    meta.map(|(key, value)| Object::from_iter(Some((Word::from(key), value)))),
-                );
+                let mut data = result.take_data();
+
+                // Only keep the _meta, __schema and __type fields from the data
+                let meta_fields = data.as_mut().and_then(|d| {
+                    let meta_field = d.remove(META_FIELD_NAME);
+                    let schema_field = d.remove(INTROSPECTION_SCHEMA_FIELD_NAME);
+                    let type_field = d.remove(INTROSPECTION_TYPE_FIELD_NAME);
+
+                    // combine the fields into a vector
+                    let mut meta_fields = Vec::new();
+
+                    if let Some(meta_field) = meta_field {
+                        meta_fields.push((Word::from(META_FIELD_NAME), meta_field));
+                    }
+                    if let Some(schema_field) = schema_field {
+                        meta_fields
+                            .push((Word::from(INTROSPECTION_SCHEMA_FIELD_NAME), schema_field));
+                    }
+                    if let Some(type_field) = type_field {
+                        meta_fields.push((Word::from(INTROSPECTION_TYPE_FIELD_NAME), type_field));
+                    }
+
+                    // return the object if it is not empty
+                    if meta_fields.is_empty() {
+                        None
+                    } else {
+                        Some(Object::from_iter(meta_fields))
+                    }
+                });
+
+                result.set_data(meta_fields);
             }
             ErrorPolicy::Allow => (),
         }
         Ok(())
+    }
+
+    fn record_work(&self, query: &Query, elapsed: Duration, cache_status: CacheStatus) {
+        self.load_manager.record_work(
+            self.store.shard(),
+            self.store.deployment_id(),
+            query.shape_hash,
+            elapsed,
+            cache_status,
+        );
     }
 }

@@ -14,7 +14,7 @@ use graph::{
         SubscriptionError, SubscriptionResult, ENV_VARS,
     },
 };
-use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
+use graph::{data::graphql::load_manager::LoadManager, prelude::QueryStoreManager};
 use graph::{
     data::query::{QueryResults, QueryTarget},
     prelude::QueryStore,
@@ -136,6 +136,8 @@ where
         self.load_manager
             .decide(
                 &store.wait_stats().map_err(QueryExecutionError::from)?,
+                store.shard(),
+                store.deployment_id(),
                 query.shape_hash,
                 query.query_text.as_ref(),
             )
@@ -156,6 +158,7 @@ where
                 error_policy,
                 query.schema.id().clone(),
                 metrics.cheap_clone(),
+                self.load_manager.cheap_clone(),
             )
             .await?;
             max_block = max_block.max(resolver.block_number());
@@ -168,7 +171,6 @@ where
                     deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
                     max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
-                    load_manager: self.load_manager.clone(),
                     trace,
                 },
             )
@@ -248,6 +250,8 @@ where
             .load_manager
             .decide(
                 &store.wait_stats().map_err(QueryExecutionError::from)?,
+                store.shard(),
+                store.deployment_id(),
                 query.shape_hash,
                 query.query_text.as_ref(),
             )
@@ -268,12 +272,9 @@ where
                 max_first: ENV_VARS.graphql.max_first,
                 max_skip: ENV_VARS.graphql.max_skip,
                 graphql_metrics: self.graphql_metrics.clone(),
+                load_manager: self.load_manager.cheap_clone(),
             },
         )
-    }
-
-    fn load_manager(&self) -> Arc<LoadManager> {
-        self.load_manager.clone()
     }
 
     fn metrics(&self) -> Arc<dyn GraphQLMetricsTrait> {

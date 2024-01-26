@@ -141,7 +141,7 @@ fn create_subgraph() {
     ) -> (DeploymentLocator, HashSet<EntityChange>) {
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let id = DeploymentHash::new(id.to_string()).unwrap();
-        let schema = InputSchema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
+        let schema = InputSchema::parse_latest(SUBGRAPH_GQL, id.clone()).unwrap();
 
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id,
@@ -154,6 +154,7 @@ fn create_subgraph() {
             graft: None,
             templates: vec![],
             chain: PhantomData,
+            indexer_hints: None,
         };
         let deployment = DeploymentCreate::new(String::new(), &manifest, None);
         let node_id = NodeId::new("left").unwrap();
@@ -457,7 +458,7 @@ fn version_info() {
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        block_store::set_chain(vec![], NETWORK_NAME);
+        block_store::set_chain(vec![], NETWORK_NAME).await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
@@ -499,7 +500,7 @@ fn subgraph_features() {
         let id = DeploymentHash::new(NAME).unwrap();
 
         remove_subgraphs();
-        block_store::set_chain(vec![], NETWORK_NAME);
+        block_store::set_chain(vec![], NETWORK_NAME).await;
         create_test_subgraph_with_features(&id, SUBGRAPH_GQL).await;
 
         let DeploymentFeatures {
@@ -509,6 +510,7 @@ fn subgraph_features() {
             features,
             data_source_kinds,
             network,
+            handler_kinds,
         } = get_subgraph_features(id.to_string()).unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
@@ -523,8 +525,14 @@ fn subgraph_features() {
             features
         );
         assert_eq!(1, data_source_kinds.len());
+        assert_eq!(handler_kinds.len(), 2);
+        assert!(handler_kinds.contains(&"mock_handler_1".to_string()));
+        assert!(handler_kinds.contains(&"mock_handler_2".to_string()));
 
-        test_store::remove_subgraph(&id)
+        test_store::remove_subgraph(&id);
+        let features = get_subgraph_features(id.to_string());
+        // Subgraph was removed, so we expect the entry to be removed from `subgraph_features` table
+        assert!(features.is_none());
     })
 }
 
@@ -533,7 +541,7 @@ fn subgraph_error() {
     test_store::run_test_sequentially(|store| async move {
         let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
         let deployment =
-            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }").await;
+            test_store::create_test_subgraph(&subgraph_id, "type Foo @entity { id: ID! }").await;
 
         let count = || -> usize {
             let store = store.subgraph_store();
@@ -592,7 +600,7 @@ fn subgraph_non_fatal_error() {
         let subgraph_store = store.subgraph_store();
         let subgraph_id = DeploymentHash::new("subgraph_non_fatal_error").unwrap();
         let deployment =
-            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }").await;
+            test_store::create_test_subgraph(&subgraph_id, "type Foo @entity { id: ID! }").await;
 
         let count = || -> usize {
             let store = store.subgraph_store();

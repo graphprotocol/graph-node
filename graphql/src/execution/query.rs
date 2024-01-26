@@ -1,3 +1,4 @@
+use graph::components::store::ChildMultiplicity;
 use graph::data::graphql::DocumentExt as _;
 use graph::data::value::{Object, Word};
 use graph::schema::ApiSchema;
@@ -16,8 +17,8 @@ use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::prelude::{
-    info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
-    TryFromValue, ENV_VARS,
+    info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, EntityRange, GraphQLMetrics,
+    Logger, TryFromValue, ENV_VARS,
 };
 use graph::schema::ast::{self as sast};
 use graph::schema::ErrorPolicy;
@@ -560,7 +561,7 @@ impl<'s> RawQuery<'s> {
                                 q::Value::Int(n) => Some(n.as_i64()? as u64),
                                 _ => None,
                             })
-                            .unwrap_or(100);
+                            .unwrap_or(EntityRange::FIRST as u64);
                         max_entities
                             .checked_add(
                                 max_entities.checked_mul(field_complexity).ok_or(Overflow)?,
@@ -908,6 +909,7 @@ impl Transform {
                 arguments: vec![],
                 directives: vec![],
                 selection_set: a::SelectionSet::new(vec![]),
+                multiplicity: ChildMultiplicity::Single,
             }));
         }
 
@@ -946,6 +948,7 @@ impl Transform {
             self.expand_selection_set(selection_set, &type_set, ty)?
         };
 
+        let multiplicity = ChildMultiplicity::new(field_type);
         Ok(Some(a::Field {
             position,
             alias,
@@ -953,6 +956,7 @@ impl Transform {
             arguments,
             directives,
             selection_set,
+            multiplicity,
         }))
     }
 

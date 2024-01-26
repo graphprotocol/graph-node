@@ -1,9 +1,14 @@
 use crate::prelude::{q, s, CacheWeight};
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
+use diesel::pg::Pg;
+use diesel::serialize::{self, Output};
+use diesel::sql_types::Text;
+use diesel::types::ToSql;
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+use std::io::Write;
 use std::iter::FromIterator;
 
 /// An immutable string that is more memory-efficient since it only has an
@@ -65,6 +70,12 @@ impl<'de> serde::Deserialize<'de> for Word {
         D: serde::Deserializer<'de>,
     {
         String::deserialize(deserializer).map(Into::into)
+    }
+}
+
+impl ToSql<Text, Pg> for Word {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
+        <str as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
 
@@ -160,7 +171,7 @@ impl Object {
         ObjectIter::new(self)
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
@@ -275,11 +286,18 @@ impl CacheWeight for Object {
 
 impl std::fmt::Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        f.debug_map()
+            .entries(self.0.into_iter().map(|e| {
+                (
+                    e.key.as_ref().map(|w| w.as_str()).unwrap_or("---"),
+                    &e.value,
+                )
+            }))
+            .finish()
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -503,6 +521,21 @@ impl From<Value> for q::Value {
                 }
                 q::Value::Object(rmap)
             }
+        }
+    }
+}
+
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Int(i) => f.debug_tuple("Int").field(i).finish(),
+            Value::Float(n) => f.debug_tuple("Float").field(n).finish(),
+            Value::String(s) => write!(f, "{s:?}"),
+            Value::Boolean(b) => write!(f, "{b}"),
+            Value::Null => write!(f, "null"),
+            Value::Enum(e) => write!(f, "{e}"),
+            Value::List(l) => f.debug_list().entries(l).finish(),
+            Value::Object(o) => write!(f, "{o:?}"),
         }
     }
 }

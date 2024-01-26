@@ -32,9 +32,9 @@ use diesel::{
     RunQueryDsl,
 };
 use graph::{
-    components::store::EntityType,
     constraint_violation,
     prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError, ENV_VARS},
+    schema::EntityType,
 };
 
 use crate::{
@@ -485,7 +485,7 @@ impl TableState {
             .into_iter()
             .map(
                 |(id, entity_type, current_vid, target_vid, size, duration_ms)| {
-                    let entity_type = EntityType::new(entity_type);
+                    let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
                     let src =
                         resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id);
                     let dst = resolve_entity(
@@ -617,12 +617,17 @@ impl<'a> CopyProgress<'a> {
             .iter()
             .map(|table| table.batch.target_vid)
             .sum();
+        let current_vid = state
+            .tables
+            .iter()
+            .map(|table| table.batch.next_vid.min(table.batch.target_vid))
+            .sum();
         Self {
             logger,
             last_log: Instant::now(),
             src: state.src.site.clone(),
             dst: state.dst.site.clone(),
-            current_vid: 0,
+            current_vid,
             target_vid,
         }
     }

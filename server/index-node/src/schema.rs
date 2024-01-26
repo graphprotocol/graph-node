@@ -8,7 +8,7 @@ lazy_static! {
         let raw_schema = include_str!("./schema.graphql");
         let document = graphql_parser::parse_schema(raw_schema).unwrap();
         Arc::new(
-            ApiSchema::from_api_schema(
+            ApiSchema::from_graphql_schema(
                 Schema::new(DeploymentHash::new("indexnode").unwrap(), document).unwrap(),
             )
             .unwrap(),

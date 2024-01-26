@@ -21,6 +21,3 @@ pub use host::RuntimeHostBuilder;
 pub use host_exports::HostExports;
 pub use mapping::{MappingContext, ValidModule};
 pub use module::{ExperimentalFeatures, WasmInstance};
-
-#[cfg(debug_assertions)]
-pub use module::TRAP_TIMEOUT;

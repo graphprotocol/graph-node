@@ -177,6 +177,12 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         })
     }
 
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&K, &V)> {
+        self.queue
+            .iter()
+            .map(|entry| (&entry.0.key, &entry.0.value))
+    }
+
     pub fn get(&mut self, key: &K) -> Option<&V> {
         self.get_mut(key.clone()).map(|x| &x.value)
     }

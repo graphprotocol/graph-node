@@ -46,6 +46,7 @@ impl StopwatchMetrics {
         subgraph_id: DeploymentHash,
         stage: &str,
         registry: Arc<MetricsRegistry>,
+        shard: String,
     ) -> Self {
         let stage = stage.to_owned();
         let mut inner = StopwatchInner {
@@ -54,7 +55,7 @@ impl StopwatchMetrics {
                     "deployment_sync_secs",
                     "total time spent syncing",
                     subgraph_id.as_str(),
-                    &["section", "stage"],
+                    &["section", "stage", "shard"],
                 )
                 .unwrap_or_else(|_| {
                     panic!(
@@ -64,6 +65,7 @@ impl StopwatchMetrics {
                 }),
             logger,
             stage,
+            shard,
             section_stack: Vec::new(),
             timer: Instant::now(),
         };
@@ -100,6 +102,10 @@ impl StopwatchMetrics {
             self.inner.lock().unwrap().end_section(id)
         }
     }
+
+    pub fn shard(&self) -> String {
+        self.inner.lock().unwrap().shard.to_string()
+    }
 }
 
 /// We want to account for all subgraph indexing time, based on "wall clock" time. To do this we
@@ -120,6 +126,8 @@ struct StopwatchInner {
     // The processing stage the metrics belong to; for pipelined uses, the
     // pipeline stage
     stage: String,
+
+    shard: String,
 }
 
 impl StopwatchInner {
@@ -128,7 +136,7 @@ impl StopwatchInner {
             // Register the current timer.
             let elapsed = self.timer.elapsed().as_secs_f64();
             self.counter
-                .get_metric_with_label_values(&[section, &self.stage])
+                .get_metric_with_label_values(&[section, &self.stage, &self.shard])
                 .map(|counter| counter.inc_by(elapsed))
                 .unwrap_or_else(|e| {
                     error!(self.logger, "failed to find counter for section";

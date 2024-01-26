@@ -9,6 +9,7 @@ use crate::{
 use anyhow::{Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
+use graph::components::subgraph::HostMetrics;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
@@ -103,7 +104,8 @@ fn ethereum_call(
     abis: &[Arc<MappingABI>],
     eth_call_gas: Option<u32>,
 ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
-    ctx.gas.consume_host_fn(ETHEREUM_CALL)?;
+    ctx.gas
+        .consume_host_fn_with_metrics(ETHEREUM_CALL, "ethereum_call")?;
 
     // For apiVersion >= 0.0.4 the call passed from the mapping includes the
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
@@ -122,6 +124,7 @@ fn ethereum_call(
         call,
         abis,
         eth_call_gas,
+        ctx.metrics.cheap_clone(),
     )?;
     match result {
         Some(tokens) => Ok(asc_new(ctx.heap, tokens.as_slice(), &ctx.gas)?),
@@ -138,6 +141,7 @@ fn eth_call(
     unresolved_call: UnresolvedContractCall,
     abis: &[Arc<MappingABI>],
     eth_call_gas: Option<u32>,
+    metrics: Arc<HostMetrics>,
 ) -> Result<Option<Vec<Token>>, HostExportError> {
     let start_time = Instant::now();
 
@@ -151,7 +155,8 @@ fn eth_call(
                      of the subgraph manifest",
                 unresolved_call.contract_name
             )
-        })?
+        })
+        .map_err(HostExportError::Deterministic)?
         .contract
         .clone();
 
@@ -166,7 +171,8 @@ fn eth_call(
                     "Unknown function \"{}::{}\" called from WASM runtime",
                     unresolved_call.contract_name, unresolved_call.function_name
                 )
-            })?,
+            })
+            .map_err(HostExportError::Deterministic)?,
 
         // Behavior for apiVersion >= 0.0.04: look up function by signature of
         // the form `functionName(uint256,string) returns (bytes32,string)`; this
@@ -178,7 +184,8 @@ fn eth_call(
                     "Unknown function \"{}::{}\" called from WASM runtime",
                     unresolved_call.contract_name, unresolved_call.function_name
                 )
-            })?
+            })
+            .map_err(HostExportError::Deterministic)?
             .iter()
             .find(|f| function_signature == &f.signature())
             .with_context(|| {
@@ -189,7 +196,8 @@ fn eth_call(
                     unresolved_call.function_name,
                     function_signature,
                 )
-            })?,
+            })
+            .map_err(HostExportError::Deterministic)?,
     };
 
     let call = EthereumContractCall {
@@ -237,12 +245,21 @@ fn eth_call(
             ))),
         };
 
+    let elapsed = start_time.elapsed();
+
+    metrics.observe_eth_call_execution_time(
+        elapsed.as_secs_f64(),
+        &unresolved_call.contract_name,
+        &unresolved_call.contract_address.to_string(),
+        &unresolved_call.function_name,
+    );
+
     trace!(logger, "Contract call finished";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
               "function_signature" => &unresolved_call.function_signature,
-              "time" => format!("{}ms", start_time.elapsed().as_millis()));
+              "time" => format!("{}ms", elapsed.as_millis()));
 
     result
 }

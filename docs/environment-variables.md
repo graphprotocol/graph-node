@@ -25,11 +25,11 @@ those.
 - `DISABLE_BLOCK_INGESTOR`: set to `true` to disable block ingestion. Leave
   unset or set to `false` to leave block ingestion enabled.
 - `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in parallel.
-  Also limits other parallel requests such such as trace_filter. Defaults to 10.
+  Also limits other parallel requests such as trace_filter. Defaults to 10.
 - `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`: Maximum number of blocks to scan for
   triggers in each request (defaults to 1000).
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
-  requests that dont filter on contract address, only event signature (defaults to 500).
+  requests that don't filter on contract address, only event signature (defaults to 500).
 - `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`: Timeout for Ethereum JSON-RPC requests.
 - `GRAPH_ETHEREUM_REQUEST_RETRIES`: Number of times to retry JSON-RPC requests
   made against Ethereum. This is used for requests that will not fail the
@@ -160,6 +160,8 @@ those.
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running
   tests. Set to `postgresql://<DBUSER>:<DBPASSWORD>@<DBHOST>:<DBPORT>/<DBNAME>`
 - `GRAPH_KILL_IF_UNRESPONSIVE`: If set, the process will be killed if unresponsive.
+- `GRAPH_KILL_IF_UNRESPONSIVE_TIMEOUT_SECS`: Timeout in seconds before killing
+  the node if `GRAPH_KILL_IF_UNRESPONSIVE` is true. The default value is 10s.
 - `GRAPH_LOG_QUERY_TIMING`: Control whether the process logs details of
   processing GraphQL and SQL queries. The value is a comma separated list
   of `sql`,`gql`, and `cache`. If `gql` is present in the list, each

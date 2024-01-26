@@ -5,6 +5,7 @@ use graph::{
     prometheus::{Counter, Gauge},
 };
 
+#[derive(Clone)]
 pub struct PollingMonitorMetrics {
     pub requests: Counter,
     pub errors: Counter,

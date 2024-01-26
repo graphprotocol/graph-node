@@ -1,20 +1,20 @@
 use diesel::{self, PgConnection};
 use graph::blockchain::mock::MockDataSource;
-use graph::data::graphql::effort::LoadManager;
+use graph::blockchain::BlockTime;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::data::subgraph::SubgraphFeature;
-use graph::data_source::CausalityRegion;
 use graph::data_source::DataSource;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
+use graph::schema::EntityType;
 use graph::schema::InputSchema;
 use graph::semver::Version;
 use graph::{
     blockchain::block_stream::FirehoseCursor, blockchain::ChainIdentifier,
-    components::store::DeploymentLocator, components::store::EntityKey,
-    components::store::EntityType, components::store::StatusStore,
+    components::store::DeploymentLocator, components::store::StatusStore,
     components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
@@ -57,6 +57,7 @@ lazy_static! {
     pub static ref METRICS_REGISTRY: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &LOGGER,
+        CONFIG.stores.keys().cloned().collect(),
         Vec::new(),
         METRICS_REGISTRY.clone(),
     ));
@@ -156,7 +157,7 @@ pub async fn create_subgraph(
     schema: &str,
     base: Option<(DeploymentHash, BlockPtr)>,
 ) -> Result<DeploymentLocator, StoreError> {
-    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
 
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
@@ -169,6 +170,7 @@ pub async fn create_subgraph(
         graft: None,
         templates: vec![],
         chain: PhantomData,
+        indexer_hints: None,
     };
 
     create_subgraph_with_manifest(subgraph_id, schema, manifest, base).await
@@ -211,7 +213,7 @@ pub async fn create_test_subgraph_with_features(
     subgraph_id: &DeploymentHash,
     schema: &str,
 ) -> DeploymentLocator {
-    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
 
     let features = [
         SubgraphFeature::FullTextSearch,
@@ -236,6 +238,7 @@ pub async fn create_test_subgraph_with_features(
         graft: None,
         templates: vec![],
         chain: PhantomData,
+        indexer_hints: None,
     };
 
     let deployment_features = manifest.deployment_features();
@@ -279,13 +282,16 @@ pub async fn transact_errors(
         deployment.hash.clone(),
         "transact",
         metrics_registry.clone(),
+        store.subgraph_store().shard(deployment)?.to_string(),
     );
+    let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .subgraph_store()
         .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await?
         .transact_block_operations(
             block_ptr_to,
+            block_time,
             FirehoseCursor::None,
             Vec::new(),
             &stopwatch_metrics,
@@ -361,10 +367,13 @@ pub async fn transact_entities_and_dynamic_data_sources(
         deployment.hash.clone(),
         "transact",
         metrics_registry.clone(),
+        store.shard().to_string(),
     );
+    let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .transact_block_operations(
             block_ptr_to,
+            block_time,
             FirehoseCursor::None,
             mods,
             &stopwatch_metrics,
@@ -412,11 +421,7 @@ pub async fn insert_entities(
     let insert_ops = entities
         .into_iter()
         .map(|(entity_type, data)| EntityOperation::Set {
-            key: EntityKey {
-                entity_type,
-                entity_id: data.get("id").unwrap().clone().as_string().unwrap().into(),
-                causality_region: CausalityRegion::ONCHAIN,
-            },
+            key: entity_type.key(data.id()),
             data,
         });
 
@@ -536,7 +541,8 @@ async fn execute_subgraph_query_internal(
                 bc,
                 error_policy,
                 query.schema.id().clone(),
-                graphql_metrics()
+                graphql_metrics(),
+                LOAD_MANAGER.clone()
             )
             .await
         );
@@ -548,7 +554,6 @@ async fn execute_subgraph_query_internal(
                 QueryExecutionOptions {
                     resolver,
                     deadline,
-                    load_manager: LOAD_MANAGER.clone(),
                     max_first: std::u32::MAX,
                     max_skip: std::u32::MAX,
                     trace,

@@ -1,7 +1,7 @@
 use crate::{
-    components::store::{EntityKey, EntityType},
     data::value::Word,
     prelude::{q, BigDecimal, BigInt, Value},
+    schema::{EntityKey, EntityType},
 };
 use std::{
     collections::{BTreeMap, HashMap},

@@ -63,26 +63,36 @@ jobs:
         ports:
           - 5001:5001
       postgres:
-        image: postgres
+        image: bitnami/postgresql
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: graph_node_test
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
         ports:
           - 5432:5432
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+      RUNNER_TESTS_WAIT_FOR_SYNC_SECS: "600"
     steps:
       - name: Tune GitHub hosted runner to reduce flakiness
         # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
         run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
+
+      - name: Install Node 20
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: "tests/runner-tests/yarn.lock"
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Install lld
@@ -91,16 +101,33 @@ jobs:
       - name: Run runner tests
         id: runner-tests-1
         uses: actions-rs/cargo@v1
-        env:
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "60"
         with:
           command: test
-          args: --verbose --package graph-tests -- --skip parallel_integration_tests
+          args: --package graph-tests --test runner_tests
 
   integration-tests:
     name: Run integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.10.0
+        ports:
+          - 3001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: graph-node
+          POSTGRES_PASSWORD: let-me-in
+          POSTGRES_DB: graph-node
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 3011:5432
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
@@ -111,49 +138,42 @@ jobs:
         uses: actions/checkout@v2
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install Node 16
+      - name: Install Node 20
         uses: actions/setup-node@v3
         with:
-          node-version: "16"
+          node-version: "20"
           cache: yarn
           cache-dependency-path: "tests/integration-tests/yarn.lock"
 
       - name: Install lld and jq
         run: sudo apt-get install -y lld jq protobuf-compiler
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Start anvil
+        run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --port 3021 &
+
+      - name: Install graph CLI
+        run: curl -sSL http://cli.thegraph.com/install.sh | sudo bash
+
       - name: Build graph-node
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --bin graph-node
+          args: --bin graph-node --test integration_tests
 
-      # Integration tests are a bit flaky, running them twice increases the
-      # chances of one run succeeding.
-      - name: Run integration tests (round 1)
+      - name: Run integration tests
         id: integration-tests-1
         uses: actions-rs/cargo@v1
         env:
-          N_CONCURRENT_TESTS: "4"
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
-          # Reduce how long a batch will stick around to avoid timeouts
-          GRAPH_STORE_WRITE_BATCH_DURATION: 30
+          # Basically, unlimted concurrency
+          N_CONCURRENT_TESTS: "1000"
         with:
           command: test
-          args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
-        continue-on-error: true
-      - name: Run integration tests (round 2)
-        id: integration-tests-2
-        uses: actions-rs/cargo@v1
-        if: ${{ steps.integration-tests-1.outcome == 'failure' }}
-        env:
-          N_CONCURRENT_TESTS: "4"
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
-          # Reduce how long a batch will stick around to avoid timeouts
-          GRAPH_STORE_WRITE_BATCH_DURATION: 30
-        with:
-          command: test
-          args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
-
+          args: --test integration_tests -- --nocapture
+      - name: Cat graph-node.log
+        if: always()
+        run: cat tests/integration-tests/graph-node.log || echo "No graph-node.log"
   rustfmt:
     name: Check rustfmt style
     runs-on: ubuntu-latest

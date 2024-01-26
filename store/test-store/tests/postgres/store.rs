@@ -1,8 +1,9 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use graph_chain_ethereum::{Mapping, MappingABI};
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -11,12 +12,12 @@ use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
+use graph::components::store::{DeploymentLocator, ReadStore, WritableStore};
 use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,
     components::store::{
-        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, EntityType, StatusStore,
+        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, StatusStore,
         SubscriptionManager as _,
     },
     prelude::ethabi::Contract,
@@ -66,7 +67,7 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
-        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: BlockPtr = (
         H256::from(hex!(
@@ -124,6 +125,8 @@ lazy_static! {
         5u64
     )
         .into();
+    static ref USER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(USER).unwrap();
+    static ref PERSON_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type("Person").unwrap();
 }
 
 /// Test harness for running database integration tests.
@@ -168,6 +171,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         graft: None,
         templates: vec![],
         chain: PhantomData,
+        indexer_hints: None,
     };
 
     // Create SubgraphDeploymentEntity
@@ -187,7 +191,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_1 = create_test_entity(
         "1",
-        USER,
+        &*USER_TYPE,
         "Johnton",
         "tonofjohn@email.com",
         67_i32,
@@ -206,7 +210,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_2 = create_test_entity(
         "2",
-        USER,
+        &*USER_TYPE,
         "Cindini",
         "dinici@email.com",
         43_i32,
@@ -216,7 +220,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     );
     let test_entity_3_1 = create_test_entity(
         "3",
-        USER,
+        &*USER_TYPE,
         "Shaqueeena",
         "queensha@email.com",
         28_i32,
@@ -235,7 +239,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_3_2 = create_test_entity(
         "3",
-        USER,
+        &*USER_TYPE,
         "Shaqueeena",
         "teeko@email.com",
         28_i32,
@@ -258,7 +262,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 /// Creates a test entity.
 fn create_test_entity(
     id: &str,
-    entity_type: &str,
+    entity_type: &EntityType,
     name: &str,
     email: &str,
     age: i32,
@@ -280,7 +284,7 @@ fn create_test_entity(
     };
 
     EntityOperation::Set {
-        key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
+        key: entity_type.parse_key(id).unwrap(),
         data: test_entity,
     }
 }
@@ -303,7 +307,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u6
 #[test]
 fn delete_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "3".to_owned());
+        let entity_key = USER_TYPE.parse_key("3").unwrap();
 
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
@@ -330,9 +334,9 @@ fn delete_entity() {
 #[test]
 fn get_entity_1() {
     run_test(|_, writable, _| async move {
-        let schema = writable.input_schema();
+        let schema = ReadStore::input_schema(&writable);
 
-        let key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let key = USER_TYPE.parse_key("1").unwrap();
         let result = writable.get(&key).unwrap();
 
         let bin_name = Value::Bytes("Johnton".as_bytes().into());
@@ -357,8 +361,8 @@ fn get_entity_1() {
 #[test]
 fn get_entity_3() {
     run_test(|_, writable, _| async move {
-        let schema = writable.input_schema();
-        let key = EntityKey::data(USER.to_owned(), "3".to_owned());
+        let schema = ReadStore::input_schema(&writable);
+        let key = USER_TYPE.parse_key("3").unwrap();
         let result = writable.get(&key).unwrap();
 
         let expected_entity = entity! { schema =>
@@ -381,10 +385,10 @@ fn get_entity_3() {
 #[test]
 fn insert_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "7".to_owned());
+        let entity_key = USER_TYPE.parse_key("7").unwrap();
         let test_entity = create_test_entity(
             "7",
-            USER,
+            &*USER_TYPE,
             "Wanjon",
             "wanawana@email.com",
             76_i32,
@@ -411,11 +415,11 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let entity_key = USER_TYPE.parse_key("1").unwrap();
 
         let op = create_test_entity(
             "1",
-            USER,
+            &*USER_TYPE,
             "Wanjon",
             "wanawana@email.com",
             76_i32,
@@ -457,7 +461,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -536,7 +540,7 @@ fn user_query() -> EntityQuery {
     EntityQuery::new(
         TEST_SUBGRAPH_ID.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![(EntityType::from(USER), AttributeNames::All)]),
+        EntityCollection::All(vec![(USER_TYPE.clone(), AttributeNames::All)]),
     )
 }
 
@@ -894,10 +898,10 @@ fn find() {
     });
 }
 
-fn make_entity_change(entity_type: &str) -> EntityChange {
+fn make_entity_change(entity_type: &EntityType) -> EntityChange {
     EntityChange::Data {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: EntityType::new(entity_type.to_owned()),
+        entity_type: entity_type.to_string(),
     }
 }
 
@@ -949,12 +953,12 @@ async fn check_events(
 // Subscribe to store events
 fn subscribe(
     subgraph: &DeploymentHash,
-    entity_type: &str,
+    entity_type: &EntityType,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
     let subscription =
         SUBSCRIPTION_MANAGER.subscribe(FromIterator::from_iter([SubscriptionFilter::Entities(
             subgraph.clone(),
-            EntityType::new(entity_type.to_owned()),
+            entity_type.to_owned(),
         )]));
 
     StoreEventStream::new(subscription)
@@ -964,7 +968,7 @@ async fn check_basic_revert(
     store: Arc<DieselStore>,
     expected: StoreEvent,
     deployment: &DeploymentLocator,
-    entity_type: &str,
+    entity_type: &EntityType,
 ) {
     let this_query = user_query()
         .filter(EntityFilter::Equal(
@@ -1003,10 +1007,10 @@ async fn check_basic_revert(
 #[test]
 fn revert_block_basic_user() {
     run_test(|store, _, deployment| async move {
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         let count = get_entity_count(store.clone(), &deployment.hash);
-        check_basic_revert(store.clone(), expected, &deployment, USER).await;
+        check_basic_revert(store.clone(), expected, &deployment, &*USER_TYPE).await;
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
     })
 }
@@ -1022,7 +1026,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = EntityKey::data(USER.to_owned(), "2".to_owned());
+        let del_key = USER_TYPE.parse_key("2").unwrap();
 
         // Process deletion
         transact_and_wait(
@@ -1034,7 +1038,7 @@ fn revert_block_with_delete() {
         .await
         .unwrap();
 
-        let subscription = subscribe(&deployment.hash, USER);
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -1057,7 +1061,7 @@ fn revert_block_with_delete() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         // The last event is the one for the reversion
         check_events(subscription, vec![expected]).await
@@ -1067,7 +1071,7 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -1087,7 +1091,7 @@ fn revert_block_with_partial_update() {
         .await
         .unwrap();
 
-        let subscription = subscribe(&deployment.hash, USER);
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -1101,7 +1105,7 @@ fn revert_block_with_partial_update() {
         assert_eq!(reverted_entity, original_entity);
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         check_events(subscription, vec![expected]).await
     })
@@ -1115,6 +1119,7 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
         network: Some(String::from("mainnet")),
         address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
         start_block: 0,
+        end_block: None,
         mapping: Mapping {
             kind: String::from("ethereum/events"),
             api_version: Version::parse("0.1.0").unwrap(),
@@ -1163,7 +1168,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let schema = writable.input_schema();
 
         // Create operations to add a user
-        let user_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let user_key = USER_TYPE.parse_key("1").unwrap();
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
@@ -1208,7 +1213,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             **loaded_dds[0].param.as_ref().unwrap()
         );
 
-        let subscription = subscribe(&deployment.hash, USER);
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
 
         // Revert block that added the user and the dynamic data source
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
@@ -1232,7 +1237,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             changes: HashSet::from_iter(
                 vec![EntityChange::Data {
                     subgraph_id: DeploymentHash::new("testsubgraph").unwrap(),
-                    entity_type: EntityType::new(USER.into()),
+                    entity_type: USER_TYPE.to_string(),
                 }]
                 .into_iter(),
             ),
@@ -1245,8 +1250,8 @@ fn revert_block_with_dynamic_data_source_operations() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store, _, _| async move {
         let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
-        let schema =
-            InputSchema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
+        let schema = InputSchema::parse_latest(USER_GQL, subgraph_id.clone())
+            .expect("Failed to parse user schema");
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
             spec_version: Version::new(1, 0, 0),
@@ -1258,6 +1263,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             graft: None,
             templates: vec![],
             chain: PhantomData,
+            indexer_hints: None,
         };
 
         let deployment =
@@ -1276,7 +1282,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
-        let subscription = subscribe(&subgraph_id, USER);
+        let subscription = subscribe(&subgraph_id, &*USER_TYPE);
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1293,7 +1299,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey::data(USER.to_owned(), id.clone()),
+                    key: USER_TYPE.parse_key(id.as_str()).unwrap(),
                     data: data.clone(),
                 })
                 .collect(),
@@ -1304,13 +1310,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Update an entity in the store
         let updated_entity = entity! { schema => id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
-            key: EntityKey::data(USER.to_owned(), "1".to_owned()),
+            key: USER_TYPE.parse_key("1").unwrap(),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: EntityKey::data(USER.to_owned(), "2".to_owned()),
+            key: USER_TYPE.parse_key("2").unwrap(),
         };
 
         // Commit update & delete ops
@@ -1324,26 +1330,25 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // We're expecting two events to be written to the subscription stream
-        let user_type = EntityType::new(USER.to_owned());
         let expected = vec![
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
             ]),
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
             ]),
         ];
@@ -1355,7 +1360,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 #[test]
 fn throttle_subscription_delivers() {
     run_test(|store, _, deployment| async move {
-        let subscription = subscribe(&deployment.hash, USER)
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE)
             .throttle_while_syncing(
                 &LOGGER,
                 store
@@ -1372,7 +1377,7 @@ fn throttle_subscription_delivers() {
 
         let user4 = create_test_entity(
             "4",
-            USER,
+            &*USER_TYPE,
             "Steve",
             "nieve@email.com",
             72_i32,
@@ -1390,7 +1395,7 @@ fn throttle_subscription_delivers() {
         .await
         .unwrap();
 
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         check_events(subscription, vec![expected]).await
     })
@@ -1400,7 +1405,7 @@ fn throttle_subscription_delivers() {
 fn throttle_subscription_throttles() {
     run_test(|store, _, deployment| async move {
         // Throttle for a very long time (30s)
-        let subscription = subscribe(&deployment.hash, USER)
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE)
             .throttle_while_syncing(
                 &LOGGER,
                 store
@@ -1417,7 +1422,7 @@ fn throttle_subscription_throttles() {
 
         let user4 = create_test_entity(
             "4",
-            USER,
+            &*USER_TYPE,
             "Steve",
             "nieve@email.com",
             72_i32,
@@ -1500,7 +1505,7 @@ fn handle_large_string_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, name: name };
 
-        let key = EntityKey::data(USER.to_owned(), id.to_owned());
+        let key = USER_TYPE.parse_key(id).unwrap();
 
         EntityModification::insert(key, data, block)
     }
@@ -1521,12 +1526,14 @@ fn handle_large_string_with_index() {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
 
         let block = TEST_BLOCK_3_PTR.number;
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_text, &schema, block),
@@ -1557,8 +1564,8 @@ fn handle_large_string_with_index() {
             .iter()
             .map(|e| e.id())
             .collect();
-
-        assert_eq!(vec![ONE], ids);
+        let exp = USER_TYPE.parse_ids(vec![ONE]).unwrap().as_ids();
+        assert_eq!(exp, ids);
 
         // Make sure we check the full string and not just a prefix
         let mut prefix = long_text.clone();
@@ -1577,7 +1584,8 @@ fn handle_large_string_with_index() {
             .collect();
 
         // Users with name 'Cindini' and 'Johnton'
-        assert_eq!(vec!["2", "1"], ids);
+        let exp = USER_TYPE.parse_ids(vec!["2", "1"]).unwrap().as_ids();
+        assert_eq!(exp, ids);
     })
 }
 
@@ -1595,7 +1603,7 @@ fn handle_large_bytea_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
-        let key = EntityKey::data(USER.to_owned(), id.to_owned());
+        let key = USER_TYPE.parse_key(id).unwrap();
 
         EntityModification::insert(key, data, block)
     }
@@ -1621,12 +1629,14 @@ fn handle_large_bytea_with_index() {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
 
         let block = TEST_BLOCK_3_PTR.number;
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_bytea, &schema, block),
@@ -1658,7 +1668,8 @@ fn handle_large_bytea_with_index() {
             .map(|e| e.id())
             .collect();
 
-        assert_eq!(vec![ONE], ids);
+        let exp = USER_TYPE.parse_ids(vec![ONE]).unwrap().as_ids();
+        assert_eq!(exp, ids);
 
         // Make sure we check the full string and not just a prefix
         let prefix = scalar::Bytes::from(&long_bytea.as_slice()[..64]);
@@ -1676,7 +1687,8 @@ fn handle_large_bytea_with_index() {
             .collect();
 
         // Users with name 'Cindini' and 'Johnton'
-        assert_eq!(vec!["2", "1"], ids);
+        let exp = USER_TYPE.parse_ids(vec!["2", "1"]).unwrap().as_ids();
+        assert_eq!(exp, ids);
     })
 }
 
@@ -1706,10 +1718,9 @@ impl WindowQuery {
             .map(|(child_type, column_names)| {
                 let attribute = WindowAttribute::Scalar("favorite_color".to_owned());
                 let link = EntityLink::Direct(attribute, ChildMultiplicity::Many);
-                let ids = vec!["red", "green", "yellow", "blue"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect();
+                let ids = child_type
+                    .parse_ids(vec!["red", "green", "yellow", "blue"])
+                    .unwrap();
                 EntityWindow {
                     child_type,
                     ids,
@@ -1761,8 +1772,8 @@ impl WindowQuery {
     fn against_color_and_age(self) -> Self {
         let mut query = self.0;
         query.collection = EntityCollection::All(vec![
-            (EntityType::from(USER), AttributeNames::All),
-            (EntityType::from("Person"), AttributeNames::All),
+            (USER_TYPE.clone(), AttributeNames::All),
+            (PERSON_TYPE.clone(), AttributeNames::All),
         ]);
         WindowQuery(query, self.1).default_window()
     }
@@ -1791,21 +1802,26 @@ impl WindowQuery {
 
 #[test]
 fn window() {
-    fn make_color_and_age(entity_type: &str, id: &str, color: &str, age: i32) -> EntityOperation {
+    fn make_color_and_age(
+        entity_type: &EntityType,
+        id: &str,
+        color: &str,
+        age: i32,
+    ) -> EntityOperation {
         let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
 
         EntityOperation::Set {
-            key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
+            key: entity_type.parse_key(id).unwrap(),
             data: entity,
         }
     }
 
     fn make_user(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_and_age(USER, id, color, age)
+        make_color_and_age(&*USER_TYPE, id, color, age)
     }
 
     fn make_person(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_and_age("Person", id, color, age)
+        make_color_and_age(&*PERSON_TYPE, id, color, age)
     }
 
     let ops = vec![
@@ -1933,7 +1949,8 @@ fn cleanup_cached_blocks() {
         block_store::set_chain(
             vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO, &*BLOCK_THREE],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -1964,7 +1981,8 @@ fn parse_timestamp() {
                 &*BLOCK_THREE_TIMESTAMP,
             ],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -1997,7 +2015,8 @@ fn parse_timestamp_firehose() {
                 &*BLOCK_THREE_TIMESTAMP_FIREHOSE,
             ],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -2030,7 +2049,8 @@ fn parse_null_timestamp() {
                 &*BLOCK_THREE_NO_TIMESTAMP,
             ],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -2055,7 +2075,7 @@ fn reorg_tracking() {
     ) {
         let test_entity_1 = create_test_entity(
             "1",
-            USER,
+            &*USER_TYPE,
             "Johnton",
             "tonofjohn@email.com",
             age,

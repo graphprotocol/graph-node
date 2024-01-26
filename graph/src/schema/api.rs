@@ -1,15 +1,15 @@
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
-use graphql_parser::{schema::TypeDefinition, Pos};
+use graphql_parser::Pos;
 use inflector::Inflector;
 use lazy_static::lazy_static;
 
-use crate::components::store::EntityType;
-use crate::data::graphql::ObjectOrInterface;
+use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
+use crate::data::store::IdType;
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
-use crate::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
+use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
 use crate::prelude::*;
 use thiserror::Error;
@@ -24,6 +24,8 @@ pub enum APISchemaError {
     TypeNotFound(String),
     #[error("Fulltext search is not yet deterministic")]
     FulltextSearchNonDeterministic,
+    #[error("Illegal type for `id`: {0}")]
+    IllegalIdType(String),
 }
 
 // The followoing types are defined in meta.graphql
@@ -73,10 +75,20 @@ impl TryFrom<&r::Value> for ErrorPolicy {
     }
 }
 
-/// The schema used for responding to queries. It is generated from an
-/// `InputSchema` by calling `api_schema` on it. Code that handles GraphQL
-/// queries against a subgraph should use an `ApiSchema` to access the
-/// underlying GraphQL schema
+/// A GraphQL schema used for responding to queries. These schemas can be
+/// generated in one of two ways:
+///
+/// (1) By calling `api_schema()` on an `InputSchema`. This is the way to
+/// generate a query schema for a subgraph.
+///
+/// (2) By parsing an appropriate GraphQL schema from text and calling
+/// `from_graphql_schema`. In that case, it's the caller's responsibility to
+/// make sure that the schema has all the types needed for querying, like
+/// `Query` and `Subscription`
+///
+/// Because of the second point, once constructed, it can not be assumed
+/// that an `ApiSchema` is based on an `InputSchema` and it can only be used
+/// for querying.
 #[derive(Debug)]
 pub struct ApiSchema {
     schema: Schema,
@@ -88,28 +100,28 @@ pub struct ApiSchema {
 }
 
 impl ApiSchema {
-    /// `api_schema` will typically come from `fn api_schema` in the graphql
-    /// crate.
+    /// Set up the `ApiSchema`, mostly by extracting important pieces of
+    /// information from it like `query_type` etc.
     ///
     /// In addition, the API schema has an introspection schema mixed into
     /// `api_schema`. In particular, the `Query` type has fields called
     /// `__schema` and `__type`
-    pub fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
-        add_introspection_schema(&mut api_schema.document);
+    pub(in crate::schema) fn from_api_schema(mut schema: Schema) -> Result<Self, anyhow::Error> {
+        add_introspection_schema(&mut schema.document);
 
-        let query_type = api_schema
+        let query_type = schema
             .document
             .get_root_query_type()
             .context("no root `Query` in the schema")?
             .clone();
-        let subscription_type = api_schema
+        let subscription_type = schema
             .document
             .get_root_subscription_type()
             .cloned()
             .map(Arc::new);
 
         let object_types = HashMap::from_iter(
-            api_schema
+            schema
                 .document
                 .get_object_type_definitions()
                 .into_iter()
@@ -117,11 +129,19 @@ impl ApiSchema {
         );
 
         Ok(Self {
-            schema: api_schema,
+            schema,
             query_type: Arc::new(query_type),
             subscription_type,
             object_types,
         })
+    }
+
+    /// Create an API Schema that can be used to execute GraphQL queries.
+    /// This method is only meant for schemas that are not derived from a
+    /// subgraph schema, like the schema for the index-node server. Use
+    /// `InputSchema::api_schema` to get an API schema for a subgraph
+    pub fn from_graphql_schema(schema: Schema) -> Result<Self, anyhow::Error> {
+        Self::from_api_schema(schema)
     }
 
     pub fn document(&self) -> &s::Document {
@@ -136,12 +156,12 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
         &self.schema.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
     }
 
@@ -223,7 +243,7 @@ impl ApiSchema {
     }
 
     #[cfg(debug_assertions)]
-    pub fn definitions(&self) -> impl Iterator<Item = &s::Definition<'static, String>> {
+    pub fn definitions(&self) -> impl Iterator<Item = &s::Definition> {
         self.schema.document.definitions.iter()
     }
 }
@@ -233,8 +253,24 @@ lazy_static! {
         let schema = include_str!("introspection.graphql");
         parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
     };
+    pub static ref INTROSPECTION_QUERY_TYPE: ast::ObjectType = {
+        let root_query_type = INTROSPECTION_SCHEMA
+            .get_root_query_type()
+            .expect("Schema does not have a root query type");
+        ast::ObjectType::from(Arc::new(root_query_type.clone()))
+    };
 }
 
+pub fn is_introspection_field(name: &str) -> bool {
+    INTROSPECTION_QUERY_TYPE.field(name).is_some()
+}
+
+/// Extend `schema` with the definitions from the introspection schema and
+/// modify the root query type to contain the fields from the introspection
+/// schema's root query type.
+///
+/// This results in a schema that combines the original schema with the
+/// introspection schema
 fn add_introspection_schema(schema: &mut Document) {
     fn introspection_fields() -> Vec<Field> {
         // Generate fields for the root query fields in an introspection schema,
@@ -274,9 +310,16 @@ fn add_introspection_schema(schema: &mut Document) {
         ]
     }
 
-    schema
-        .definitions
-        .extend(INTROSPECTION_SCHEMA.definitions.iter().cloned());
+    // Add all definitions from the introspection schema to the schema,
+    // except for the root query type as that qould clobber the 'real' root
+    // query type
+    schema.definitions.extend(
+        INTROSPECTION_SCHEMA
+            .definitions
+            .iter()
+            .filter(|dfn| !dfn.is_root_query_type())
+            .cloned(),
+    );
 
     let query_type = schema
         .definitions
@@ -296,22 +339,22 @@ fn add_introspection_schema(schema: &mut Document) {
 /// The input schema should only have type/enum/interface/union definitions
 /// and must not include a root Query type. This Query type is derived, with
 /// all its fields and their input arguments, based on the existing types.
-pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
+pub(in crate::schema) fn api_schema(input_schema: &Schema) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
-    let object_types = input_schema.get_object_type_definitions();
-    let interface_types = input_schema.get_interface_type_definitions();
+    let object_types = input_schema.document.get_object_type_definitions();
+    let interface_types = input_schema.document.get_interface_type_definitions();
 
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
-    add_meta_field_type(&mut schema);
+    add_meta_field_type(&mut schema.document);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
-    add_field_arguments(&mut schema, input_schema)?;
-    add_query_type(&mut schema, &object_types, &interface_types)?;
-    add_subscription_type(&mut schema, &object_types, &interface_types)?;
+    add_field_arguments(&mut schema.document, &input_schema.document)?;
+    add_query_type(&mut schema.document, &object_types, &interface_types)?;
+    add_subscription_type(&mut schema.document, &object_types, &interface_types)?;
 
     // Remove the `_Schema_` type from the generated schema.
-    schema.definitions.retain(|d| match d {
+    schema.document.definitions.retain(|d| match d {
         Definition::TypeDefinition(def @ TypeDefinition::Object(_)) => match def {
             TypeDefinition::Object(t) if t.name.eq(SCHEMA_TYPE_NAME) => false,
             _ => true,
@@ -319,7 +362,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
         _ => true,
     });
 
-    Ok(schema)
+    Ok(schema.document)
 }
 
 /// Adds a global `_Meta_` type to the schema. The `_meta` field
@@ -338,12 +381,12 @@ fn add_meta_field_type(schema: &mut Document) {
 }
 
 fn add_types_for_object_types(
-    schema: &mut Document,
+    schema: &mut Schema,
     object_types: &[&ObjectType],
 ) -> Result<(), APISchemaError> {
     for object_type in object_types {
         if !object_type.name.eq(SCHEMA_TYPE_NAME) {
-            add_order_by_type(schema, &object_type.name, &object_type.fields)?;
+            add_order_by_type(&mut schema.document, &object_type.name, &object_type.fields)?;
             add_filter_type(schema, &object_type.name, &object_type.fields)?;
         }
     }
@@ -352,11 +395,15 @@ fn add_types_for_object_types(
 
 /// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
 fn add_types_for_interface_types(
-    schema: &mut Document,
+    schema: &mut Schema,
     interface_types: &[&InterfaceType],
 ) -> Result<(), APISchemaError> {
     for interface_type in interface_types {
-        add_order_by_type(schema, &interface_type.name, &interface_type.fields)?;
+        add_order_by_type(
+            &mut schema.document,
+            &interface_type.name,
+            &interface_type.fields,
+        )?;
         add_filter_type(schema, &interface_type.name, &interface_type.fields)?;
     }
     Ok(())
@@ -463,12 +510,12 @@ fn field_enum_values_from_child_entity(
 
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
 fn add_filter_type(
-    schema: &mut Document,
+    schema: &mut Schema,
     type_name: &str,
     fields: &[Field],
 ) -> Result<(), APISchemaError> {
     let filter_type_name = format!("{}_filter", type_name);
-    match schema.get_named_type(&filter_type_name) {
+    match schema.document.get_named_type(&filter_type_name) {
         None => {
             let mut generated_filter_fields = field_input_values(schema, fields)?;
             generated_filter_fields.push(block_changed_filter_argument());
@@ -501,7 +548,7 @@ fn add_filter_type(
                 fields: generated_filter_fields,
             });
             let def = Definition::TypeDefinition(typedef);
-            schema.definitions.push(def);
+            schema.document.definitions.push(def);
         }
         Some(_) => return Err(APISchemaError::TypeExists(filter_type_name)),
     }
@@ -511,7 +558,7 @@ fn add_filter_type(
 
 /// Generates `*_filter` input values for the given set of fields.
 fn field_input_values(
-    schema: &Document,
+    schema: &Schema,
     fields: &[Field],
 ) -> Result<Vec<InputValue>, APISchemaError> {
     let mut input_values = vec![];
@@ -523,17 +570,19 @@ fn field_input_values(
 
 /// Generates `*_filter` input values for the given field.
 fn field_filter_input_values(
-    schema: &Document,
+    schema: &Schema,
     field: &Field,
     field_type: &Type,
 ) -> Result<Vec<InputValue>, APISchemaError> {
     match field_type {
         Type::NamedType(ref name) => {
             let named_type = schema
+                .document
                 .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
                 TypeDefinition::Object(_) | TypeDefinition::Interface(_) => {
+                    let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
                     let mut input_values = match ast::get_derived_from_directive(field) {
                         // Only add `where` filter fields for object and interface fields
                         // if they are not @derivedFrom
@@ -542,25 +591,62 @@ fn field_filter_input_values(
                         // `where: { others: ["some-id", "other-id"] }`. In both cases,
                         // we allow ID strings as the values to be passed to these
                         // filters.
-                        None => field_scalar_filter_input_values(
-                            schema,
-                            field,
-                            &ScalarType::new(String::from("String")),
-                        ),
+                        None => {
+                            field_scalar_filter_input_values(&schema.document, field, &scalar_type)
+                        }
                     };
                     extend_with_child_filter_input_value(field, name, &mut input_values);
                     input_values
                 }
-                TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
-                TypeDefinition::Enum(ref t) => field_enum_filter_input_values(schema, field, t),
+                TypeDefinition::Scalar(ref t) => {
+                    field_scalar_filter_input_values(&schema.document, field, t)
+                }
+                TypeDefinition::Enum(ref t) => {
+                    field_enum_filter_input_values(&schema.document, field, t)
+                }
                 _ => vec![],
             })
         }
         Type::ListType(ref t) => {
-            Ok(field_list_filter_input_values(schema, field, t).unwrap_or_default())
+            Ok(field_list_filter_input_values(schema, field, t)?.unwrap_or_default())
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
+}
+
+fn id_type_as_scalar(
+    schema: &Schema,
+    typedef: &TypeDefinition,
+) -> Result<Option<ScalarType>, APISchemaError> {
+    let id_type = match typedef {
+        TypeDefinition::Object(obj_type) => IdType::try_from(obj_type)
+            .map(Option::Some)
+            .map_err(|_| APISchemaError::IllegalIdType(obj_type.name.to_owned())),
+        TypeDefinition::Interface(intf_type) => {
+            match schema
+                .types_for_interface
+                .get(&intf_type.name)
+                .and_then(|obj_types| obj_types.first())
+            {
+                None => Ok(Some(IdType::String)),
+                Some(obj_type) => IdType::try_from(obj_type)
+                    .map(Option::Some)
+                    .map_err(|_| APISchemaError::IllegalIdType(obj_type.name.to_owned())),
+            }
+        }
+        _ => Ok(None),
+    }?;
+    let scalar_type = id_type.map(|id_type| match id_type {
+        IdType::String | IdType::Bytes => ScalarType::new(String::from("String")),
+        // It would be more logical to use "Int8" here, but currently, that
+        // leads to values being turned into strings, not i64 which causes
+        // database queries to fail in various places. Once this is fixed
+        // (check e.g., `Value::coerce_scalar` in `graph/src/data/value.rs`)
+        // we can turn that into "Int8". For now, queries can only query
+        // Int8 id values up to i32::MAX.
+        IdType::Int8 => ScalarType::new(String::from("Int")),
+    });
+    Ok(scalar_type)
 }
 
 /// Generates `*_filter` input values for the given scalar field.
@@ -660,61 +746,66 @@ fn field_enum_filter_input_values(
 
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
-    schema: &Document,
+    schema: &Schema,
     field: &Field,
     field_type: &Type,
-) -> Option<Vec<InputValue>> {
+) -> Result<Option<Vec<InputValue>>, APISchemaError> {
     // Only add a filter field if the type of the field exists in the schema
-    ast::get_type_definition_from_type(schema, field_type).map(|typedef| {
-        // Decide what type of values can be passed to the filter. In the case
-        // one-to-many or many-to-many object or interface fields that are not
-        // derived, we allow ID strings to be passed on.
-        // Adds child filter only to object types.
-        let (input_field_type, parent_type_name) = match typedef {
-            TypeDefinition::Object(ObjectType { name, .. })
-            | TypeDefinition::Interface(InterfaceType { name, .. }) => {
-                if ast::get_derived_from_directive(field).is_some() {
-                    (None, Some(name.clone()))
-                } else {
-                    (Some(Type::NamedType("String".into())), Some(name.clone()))
-                }
-            }
-            TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.clone())), None),
-            TypeDefinition::Enum(ref t) => (Some(Type::NamedType(t.name.clone())), None),
-            TypeDefinition::InputObject(_) | TypeDefinition::Union(_) => (None, None),
-        };
+    let typedef = match ast::get_type_definition_from_type(&schema.document, field_type) {
+        Some(typedef) => typedef,
+        None => return Ok(None),
+    };
 
-        let mut input_values: Vec<InputValue> = match input_field_type {
-            None => {
-                vec![]
+    // Decide what type of values can be passed to the filter. In the case
+    // one-to-many or many-to-many object or interface fields that are not
+    // derived, we allow ID strings to be passed on.
+    // Adds child filter only to object types.
+    let (input_field_type, parent_type_name) = match typedef {
+        TypeDefinition::Object(ObjectType { name, .. })
+        | TypeDefinition::Interface(InterfaceType { name, .. }) => {
+            if ast::get_derived_from_directive(field).is_some() {
+                (None, Some(name.clone()))
+            } else {
+                let scalar_type = id_type_as_scalar(schema, typedef)?.unwrap();
+                let named_type = Type::NamedType(scalar_type.name);
+                (Some(named_type), Some(name.clone()))
             }
-            Some(input_field_type) => vec![
-                "",
-                "not",
-                "contains",
-                "contains_nocase",
-                "not_contains",
-                "not_contains_nocase",
-            ]
-            .into_iter()
-            .map(|filter_type| {
-                input_value(
-                    &field.name,
-                    filter_type,
-                    Type::ListType(Box::new(Type::NonNullType(Box::new(
-                        input_field_type.clone(),
-                    )))),
-                )
-            })
-            .collect(),
-        };
-
-        if let Some(parent) = parent_type_name {
-            extend_with_child_filter_input_value(field, &parent, &mut input_values);
         }
+        TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.clone())), None),
+        TypeDefinition::Enum(ref t) => (Some(Type::NamedType(t.name.clone())), None),
+        TypeDefinition::InputObject(_) | TypeDefinition::Union(_) => (None, None),
+    };
 
-        input_values
-    })
+    let mut input_values: Vec<InputValue> = match input_field_type {
+        None => {
+            vec![]
+        }
+        Some(input_field_type) => vec![
+            "",
+            "not",
+            "contains",
+            "contains_nocase",
+            "not_contains",
+            "not_contains_nocase",
+        ]
+        .into_iter()
+        .map(|filter_type| {
+            input_value(
+                &field.name,
+                filter_type,
+                Type::ListType(Box::new(Type::NonNullType(Box::new(
+                    input_field_type.clone(),
+                )))),
+            )
+        })
+        .collect(),
+    };
+
+    if let Some(parent) = parent_type_name {
+        extend_with_child_filter_input_value(field, &parent, &mut input_values);
+    }
+
+    Ok(Some(input_values))
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
@@ -1088,17 +1179,29 @@ fn add_field_arguments(
 
 #[cfg(test)]
 mod tests {
-    use crate::data::graphql::DocumentExt;
+    use crate::{data::subgraph::LATEST_VERSION, prelude::DeploymentHash, schema::InputSchema};
     use graphql_parser::schema::*;
+    use lazy_static::lazy_static;
 
-    use super::api_schema;
+    use super::ApiSchema;
     use crate::schema::ast;
+
+    lazy_static! {
+        static ref ID: DeploymentHash = DeploymentHash::new("apiTest").unwrap();
+    }
+
+    #[track_caller]
+    fn parse(raw: &str) -> ApiSchema {
+        let input_schema = InputSchema::parse(LATEST_VERSION, raw, ID.clone())
+            .expect("Failed to parse input schema");
+        input_schema
+            .api_schema()
+            .expect("Failed to derive API schema")
+    }
 
     #[test]
     fn api_schema_contains_built_in_scalar_types() {
-        let input_schema =
-            parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = parse("type User @entity { id: ID! }");
 
         schema
             .get_named_type("Boolean")
@@ -1122,9 +1225,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_order_direction_enum() {
-        let input_schema = parse_schema("type User { id: ID!, name: String! }")
-            .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = parse("type User @entity { id: ID!, name: String! }");
 
         let order_direction = schema
             .get_named_type("OrderDirection")
@@ -1145,9 +1246,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_query_type() {
-        let input_schema =
-            parse_schema("type User { id: ID! }").expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = parse("type User @entity { id: ID! }");
         schema
             .get_named_type("Query")
             .expect("Root Query type is missing in API schema");
@@ -1155,9 +1254,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_field_order_by_enum() {
-        let input_schema = parse_schema("type User { id: ID!, name: String! }")
-            .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        let schema = parse("type User @entity { id: ID!, name: String! }");
 
         let user_order_by = schema
             .get_named_type("User_orderBy")
@@ -1179,7 +1276,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_field_order_by_enum_for_child_entity() {
-        let input_schema = parse_schema(
+        let schema = parse(
             r#"
               enum FurType {
                   NONE
@@ -1187,7 +1284,7 @@ mod tests {
                   BRISTLY
               }
 
-              type Pet {
+              type Pet @entity {
                   id: ID!
                   name: String!
                   mostHatedBy: [User!]!
@@ -1202,17 +1299,19 @@ mod tests {
                 ingredients: [String!]!
               }
 
-              type FoodRecipe implements Recipe {
+              type FoodRecipe implements Recipe @entity {
                 id: ID!
                 name: String!
                 author: User!
+                lovedBy: [User!]!
                 ingredients: [String!]!
               }
 
-              type DrinkRecipe implements Recipe {
+              type DrinkRecipe implements Recipe @entity {
                 id: ID!
                 name: String!
                 author: User!
+                lovedBy: [User!]!
                 ingredients: [String!]!
               }
 
@@ -1223,7 +1322,7 @@ mod tests {
                 mostLovedBy: [User!]!
               }
 
-              type Pizza implements Meal {
+              type Pizza implements Meal @entity {
                 id: ID!
                 name: String!
                 toppings: [String!]!
@@ -1231,7 +1330,7 @@ mod tests {
                 mostLovedBy: [User!]!
               }
 
-              type Burger implements Meal {
+              type Burger implements Meal @entity {
                 id: ID!
                 name: String!
                 bun: String!
@@ -1239,7 +1338,7 @@ mod tests {
                 mostLovedBy: [User!]!
               }
 
-              type User {
+              type User @entity {
                   id: ID!
                   name: String!
                   favoritePetNames: [String!]
@@ -1254,9 +1353,7 @@ mod tests {
                   recipes: [Recipe!]! @derivedFrom(field: "author")
               }
             "#,
-        )
-        .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        );
 
         let user_order_by = schema
             .get_named_type("User_orderBy")
@@ -1343,8 +1440,6 @@ mod tests {
                 "author__id",
                 "author__name",
                 "author__favoriteFurType",
-                "author__favoritePet",
-                "author__leastFavoritePet",
                 "lovedBy",
                 "ingredients"
             ]
@@ -1353,7 +1448,7 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_type_filter_enum() {
-        let input_schema = parse_schema(
+        let schema = parse(
             r#"
               enum FurType {
                   NONE
@@ -1361,14 +1456,14 @@ mod tests {
                   BRISTLY
               }
 
-              type Pet {
+              type Pet @entity {
                   id: ID!
                   name: String!
                   mostHatedBy: [User!]!
                   mostLovedBy: [User!]!
               }
 
-              type User {
+              type User @entity {
                   id: ID!
                   name: String!
                   favoritePetNames: [String!]
@@ -1379,9 +1474,7 @@ mod tests {
                   mostFavoritePets: [Pet!] @derivedFrom(field: "mostLovedBy")
               }
             "#,
-        )
-        .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        );
 
         let user_filter = schema
             .get_named_type("User_filter")
@@ -1577,34 +1670,34 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_type_with_field_interface() {
-        let input_schema = parse_schema(
+        let schema = parse(
             r#"
               interface Pet {
                   id: ID!
                   name: String!
+                  owner: User!
               }
 
-              type Dog implements Pet {
+              type Dog implements Pet @entity {
                 id: ID!
                 name: String!
-              }
+                owner: User!
+            }
 
-              type Cat implements Pet {
+              type Cat implements Pet @entity {
                 id: ID!
                 name: String!
                 owner: User!
               }
 
-              type User {
+              type User @entity {
                   id: ID!
                   name: String!
                   pets: [Pet!]! @derivedFrom(field: "owner")
                   favoritePet: Pet!
               }
             "#,
-        )
-        .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        );
 
         let user_filter = schema
             .get_named_type("User_filter")
@@ -1703,11 +1796,9 @@ mod tests {
 
     #[test]
     fn api_schema_contains_object_fields_on_query_type() {
-        let input_schema = parse_schema(
-            "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
-        )
-        .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = parse(
+            "type User @entity { id: ID!, name: String! } type UserProfile @entity { id: ID!, title: String! }",
+        );
 
         let query_type = schema
             .get_named_type("Query")
@@ -1797,14 +1888,12 @@ mod tests {
 
     #[test]
     fn api_schema_contains_interface_fields_on_query_type() {
-        let input_schema = parse_schema(
+        let schema = parse(
             "
             interface Node { id: ID!, name: String! }
-            type User implements Node { id: ID!, name: String!, email: String }
+            type User implements Node @entity { id: ID!, name: String!, email: String }
             ",
-        )
-        .expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+        );
 
         let query_type = schema
             .get_named_type("Query")
@@ -1892,8 +1981,7 @@ type Gravatar @entity {
   imageUrl: String!
 }
 "#;
-        let input_schema = parse_schema(SCHEMA).expect("Failed to parse input schema");
-        let schema = api_schema(&input_schema).expect("Failed to derive API schema");
+        let schema = parse(SCHEMA);
 
         let query_type = schema
             .get_named_type("Query")
@@ -1904,5 +1992,30 @@ type Gravatar @entity {
             _ => None,
         }
         .expect("\"metadata\" field is missing on Query type");
+    }
+
+    #[test]
+    fn intf_implements_intf() {
+        const SCHEMA: &str = r#"
+          interface Legged {
+            legs: Int!
+          }
+
+          interface Animal implements Legged {
+            id: Bytes!
+            legs: Int!
+          }
+
+          type Zoo @entity {
+            id: Bytes!
+            animals: [Animal!]
+          }
+          "#;
+        // This used to fail in API schema construction; we just want to
+        // make sure that generating an API schema works. The issue was that
+        // `Zoo.animals` has an interface type, and that interface
+        // implements another interface which we tried to look up as an
+        // object type
+        let _schema = parse(SCHEMA);
     }
 }

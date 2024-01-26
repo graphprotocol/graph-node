@@ -141,3 +141,16 @@ correctly across index node restarts.
 
 The table `subgraphs.table_stats` stores which tables for a deployment
 should have the 'account-like' optimization turned on.
+
+### `subgraphs.subgraph_features`
+
+Details about features that a deployment uses, Maintained in the primary.
+
+| Column         | Type      | Use         |
+|----------------|-----------|-------------|
+| `id`           | `text!`   | primary key |
+| `spec_version` | `text!`   |             |
+| `api_version`  | `text`    |             |
+| `features`     | `text[]!` |             |
+| `data_sources` | `text[]!` |             |
+| `handlers`     | `text[]!` |             |
