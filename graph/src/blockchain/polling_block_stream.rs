@@ -387,7 +387,7 @@ where
             // There were no non-null finalized blocks greater than or equal to `to`.
             // Retry until we find one.
             if to > head_ptr.number - reorg_threshold {
-                return Ok(ReconciliationStep::Retry)
+                return Ok(ReconciliationStep::Retry);
             }
 
             info!(
@@ -431,7 +431,8 @@ where
 
             // In principle this block should be in the store, but we have seen this error for deep
             // reorgs in ropsten.
-            let head_ancestor_opt = self.adapter
+            let head_ancestor_opt = self
+                .adapter
                 .ancestor_block(head_ptr, offset, Some(subgraph_ptr.hash.clone()))
                 .await?;
 
@@ -447,7 +448,11 @@ where
                 Some(head_ancestor) => {
                     // Check if there was an interceding skipped (null) block.
                     if head_ancestor.number() != subgraph_ptr.number + 1 {
-                        warn!(ctx.logger, "skipped block detected: {}", subgraph_ptr.number+1);
+                        warn!(
+                            ctx.logger,
+                            "skipped block detected: {}",
+                            subgraph_ptr.number + 1
+                        );
                     }
 
                     // We stopped one block short, so we'll compare the parent hash to the

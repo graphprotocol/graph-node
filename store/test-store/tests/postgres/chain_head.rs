@@ -297,14 +297,14 @@ fn check_ancestor(
     offset: BlockNumber,
     exp: &FakeBlock,
 ) -> Result<(), Error> {
-    let act = executor::block_on(
-        store
-            .cheap_clone()
-            .ancestor_block(child.block_ptr(), offset, None),
-    )?
-        .map(json::from_value::<EthereumBlock>)
-        .transpose()?
-        .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
+    let act = executor::block_on(store.cheap_clone().ancestor_block(
+        child.block_ptr(),
+        offset,
+        None,
+    ))?
+    .map(json::from_value::<EthereumBlock>)
+    .transpose()?
+    .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
     let act_hash = format!("{:x}", act.block.hash.unwrap());
     let exp_hash = &exp.hash;
 
@@ -340,15 +340,16 @@ fn ancestor_block_simple() {
 
         for offset in [6, 7, 8, 50].iter() {
             let offset = *offset;
-            let res = executor::block_on(
-                store
-                    .cheap_clone()
-                    .ancestor_block(BLOCK_FIVE.block_ptr(), offset, None),
-            );
+            let res = executor::block_on(store.cheap_clone().ancestor_block(
+                BLOCK_FIVE.block_ptr(),
+                offset,
+                None,
+            ));
             assert!(res.is_err());
         }
 
-        let block = executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1, None))?;
+        let block =
+            executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1, None))?;
         assert!(block.is_none());
         Ok(())
     });
