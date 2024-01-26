@@ -920,7 +920,8 @@ mod data {
 
             let data_and_ptr = match self {
                 Storage::Shared => {
-                    let query = format!("
+                    let query = format!(
+                        "
         with recursive ancestors(block_hash, block_offset) as (
             values ($1, 0)
             union all
@@ -934,7 +935,8 @@ mod data {
           from ancestors a
                inner join ethereum_blocks b on a.block_hash = b.hash
          order by a.block_offset desc limit 1",
-                    short_circuit_predicate);
+                        short_circuit_predicate
+                    );
 
                     // type Result = (Text, i32);
                     #[derive(QueryableByName)]
@@ -946,20 +948,17 @@ mod data {
                     }
 
                     let block = match root {
-                        Some(root) => {
-                            sql_query(query)
-                                .bind::<Text, _>(block_ptr.hash_hex())
-                                .bind::<BigInt, _>(offset as i64)
-                                .bind::<Text, _>(root.hash_hex())
-                                .get_result::<BlockHashAndNumber>(conn)
-                        }
-                        None => {
-                            sql_query(query)
-                                .bind::<Text, _>(block_ptr.hash_hex())
-                                .bind::<BigInt, _>(offset as i64)
-                                .get_result::<BlockHashAndNumber>(conn)
-                        }
-                    }.optional()?;
+                        Some(root) => sql_query(query)
+                            .bind::<Text, _>(block_ptr.hash_hex())
+                            .bind::<BigInt, _>(offset as i64)
+                            .bind::<Text, _>(root.hash_hex())
+                            .get_result::<BlockHashAndNumber>(conn),
+                        None => sql_query(query)
+                            .bind::<Text, _>(block_ptr.hash_hex())
+                            .bind::<BigInt, _>(offset as i64)
+                            .get_result::<BlockHashAndNumber>(conn),
+                    }
+                    .optional()?;
 
                     use public::ethereum_blocks as b;
 
@@ -991,8 +990,7 @@ mod data {
           from ancestors a
                inner join ethereum_blocks b on a.block_hash = b.hash
          order by a.block_offset desc limit 1",
-                        blocks.qname,
-                        short_circuit_predicate
+                        blocks.qname, short_circuit_predicate
                     );
 
                     #[derive(QueryableByName)]
@@ -1004,20 +1002,17 @@ mod data {
                     }
 
                     let block = match root {
-                        Some(root) => {
-                            sql_query(query)
-                                .bind::<Bytea, _>(block_ptr.hash_slice())
-                                .bind::<BigInt, _>(offset as i64)
-                                .bind::<Bytea, _>(root.as_slice())
-                                .get_result::<BlockHashAndNumber>(conn)
-                        }
-                        None => {
-                            sql_query(query)
-                                .bind::<Bytea, _>(block_ptr.hash_slice())
-                                .bind::<BigInt, _>(offset as i64)
-                                .get_result::<BlockHashAndNumber>(conn)
-                        }
-                    }.optional()?;
+                        Some(root) => sql_query(query)
+                            .bind::<Bytea, _>(block_ptr.hash_slice())
+                            .bind::<BigInt, _>(offset as i64)
+                            .bind::<Bytea, _>(root.as_slice())
+                            .get_result::<BlockHashAndNumber>(conn),
+                        None => sql_query(query)
+                            .bind::<Bytea, _>(block_ptr.hash_slice())
+                            .bind::<BigInt, _>(offset as i64)
+                            .get_result::<BlockHashAndNumber>(conn),
+                    }
+                    .optional()?;
 
                     match block {
                         None => None,
