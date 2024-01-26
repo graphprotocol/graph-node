@@ -1092,7 +1092,7 @@ pub fn create_deployment(
     let entities_with_causality_region = Vec::from_iter(
         entities_with_causality_region
             .into_iter()
-            .map(|et| et.as_str().to_owned()),
+            .map(|et| et.typename().to_owned()),
     );
 
     let deployment_values = (

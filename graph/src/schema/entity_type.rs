@@ -1,7 +1,6 @@
 use std::{borrow::Borrow, fmt, sync::Arc};
 
 use anyhow::{Context, Error};
-use serde::Serialize;
 
 use crate::{
     cheap_clone::CheapClone,
@@ -17,8 +16,12 @@ use super::{
     EntityKey, InputSchema, InterfaceType,
 };
 
-/// The type name of an entity. This is the string that is used in the
-/// subgraph's GraphQL schema as `type NAME @entity { .. }`
+/// A reference to a type in the input schema. It should mostly be the
+/// reference to a concrete entity type, either one declared with `@entity`
+/// in the input schema, or the object type that stores aggregations for a
+/// certain interval, in other words a type that is actually backed by a
+/// database table. However, it can also be a reference to an interface type
+/// for historical reasons.
 ///
 /// Even though it is not implemented as a string type, it behaves as if it
 /// were the string name of the type for all external purposes like
@@ -34,9 +37,20 @@ impl EntityType {
         EntityType { schema, atom }
     }
 
+    /// Return the name of this type as a string.
     pub fn as_str(&self) -> &str {
         // unwrap: we constructed the entity type from the schema's pool
         self.schema.pool().get(self.atom).unwrap()
+    }
+
+    /// Return the name of the declared type from the input schema that this
+    /// type belongs to. For object and interface types, that's the same as
+    /// `as_str()`, but for aggregations it's the name of the aggregation
+    /// rather than the name of the specific aggregation for an interval. In
+    /// that case, `as_str()` might return `Stats_hour` whereas `typename()`
+    /// returns `Stats`
+    pub fn typename(&self) -> &str {
+        self.schema.typename(self.atom)
     }
 
     pub fn is_poi(&self) -> bool {
@@ -151,12 +165,6 @@ impl CheapClone for EntityType {}
 impl std::fmt::Debug for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "EntityType({})", self.as_str())
-    }
-}
-
-impl Serialize for EntityType {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.as_str().serialize(serializer)
     }
 }
 

@@ -218,7 +218,7 @@ where
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::SetEntity {
-                            entity_type: key.entity_type.as_str(),
+                            entity_type: key.entity_type.typename(),
                             id: &key.entity_id.to_string(),
                             data: &entity,
                         },
@@ -236,7 +236,7 @@ where
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::RemoveEntity {
-                            entity_type: entity_type.as_str(),
+                            entity_type: entity_type.typename(),
                             id: &id.to_string(),
                         },
                         causality_region,

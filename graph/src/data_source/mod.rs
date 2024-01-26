@@ -68,7 +68,7 @@ impl fmt::Display for EntityTypeAccess {
         match self {
             Self::Any => write!(f, "Any"),
             Self::Restriced(entities) => {
-                let strings = entities.iter().map(|e| e.as_str()).collect::<Vec<_>>();
+                let strings = entities.iter().map(|e| e.typename()).collect::<Vec<_>>();
                 write!(f, "{}", strings.join(", "))
             }
         }

@@ -1330,7 +1330,9 @@ pub(crate) const VID_COLUMN: &str = "vid";
 
 #[derive(Debug, Clone)]
 pub struct Table {
-    /// The name of the GraphQL object type ('Thing')
+    /// The reference to the underlying type in the input schema. For
+    /// aggregations, this is the object type for a specific interval, like
+    /// `Stats_hour`, not the overall aggregation type `Stats`.
     pub object: EntityType,
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`

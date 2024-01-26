@@ -304,7 +304,7 @@ impl<C: Blockchain> HostExports<C> {
         write_poi_event(
             proof_of_indexing,
             &ProofOfIndexingEvent::SetEntity {
-                entity_type: &key.entity_type.as_str(),
+                entity_type: &key.entity_type.typename(),
                 id: &key.entity_id.to_string(),
                 data: &entity,
             },

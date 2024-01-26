@@ -482,6 +482,7 @@ impl EntityData {
         parent_type: Option<&ColumnType>,
     ) -> Result<T, StoreError> {
         let entity_type = layout.input_schema.entity_type(&self.entity)?;
+        let typename = entity_type.typename();
         let table = layout.table_for_entity(&entity_type)?;
 
         use serde_json::Value as j;
@@ -512,9 +513,12 @@ impl EntityData {
                     })
                     .transpose()?;
                 let map = map;
-                let typname = std::iter::once(self.entity).filter_map(move |e| {
+                let typname = std::iter::once(typename).filter_map(move |e| {
                     if T::WITH_INTERNAL_KEYS {
-                        Some(Ok((Word::from("__typename"), T::Value::from_string(e))))
+                        Some(Ok((
+                            Word::from("__typename"),
+                            T::Value::from_string(e.to_string()),
+                        )))
                     } else {
                         None
                     }

@@ -413,7 +413,7 @@ impl<'a> Join<'a> {
         for cond in &self.conds {
             let mut parents_by_id = parents
                 .iter()
-                .filter(|parent| parent.typename() == cond.parent_type.as_str())
+                .filter(|parent| parent.typename() == cond.parent_type.typename())
                 .filter_map(|parent| parent.id(schema).ok().map(|id| (id, &**parent)))
                 .collect::<Vec<_>>();
 

@@ -953,7 +953,7 @@ impl InputSchema {
             .inner
             .schema
             .document
-            .get_object_type_definition(key.entity_type.as_str())
+            .get_object_type_definition(key.entity_type.typename())
             .ok_or_else(|| field_err(key, "unknown entity type"))?
             .field(&key.entity_field)
             .ok_or_else(|| field_err(key, "unknown field"))?;
@@ -1333,6 +1333,11 @@ impl InputSchema {
             TypeInfo::Object(obj_type) => obj_type.name == atom,
             _ => false,
         })
+    }
+
+    pub(crate) fn typename(&self, atom: Atom) -> &str {
+        let name = self.type_info(atom).unwrap().name();
+        self.inner.pool.get(name).unwrap()
     }
 }
 
@@ -2852,10 +2857,10 @@ mod tests {
     fn entity_type() {
         let schema = make_schema();
 
-        assert_eq!("Thing", schema.entity_type("Thing").unwrap().as_str());
+        assert_eq!("Thing", schema.entity_type("Thing").unwrap().typename());
 
         let poi = schema.entity_type(POI_OBJECT).unwrap();
-        assert_eq!(POI_OBJECT, poi.as_str());
+        assert_eq!(POI_OBJECT, poi.typename());
         assert!(poi.has_field(schema.pool().lookup(&ID).unwrap()));
         assert!(poi.has_field(schema.pool().lookup(POI_DIGEST).unwrap()));
         assert!(poi.object_type().is_ok());
