@@ -1,3 +1,5 @@
+// Portions copyright (2023) Vulcanize, Inc.
+
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
@@ -298,11 +300,11 @@ fn check_ancestor(
     let act = executor::block_on(
         store
             .cheap_clone()
-            .ancestor_block(child.block_ptr(), offset),
+            .ancestor_block(child.block_ptr(), offset, None),
     )?
-    .map(json::from_value::<EthereumBlock>)
-    .transpose()?
-    .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
+        .map(json::from_value::<EthereumBlock>)
+        .transpose()?
+        .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
     let act_hash = format!("{:x}", act.block.hash.unwrap());
     let exp_hash = &exp.hash;
 
@@ -341,12 +343,12 @@ fn ancestor_block_simple() {
             let res = executor::block_on(
                 store
                     .cheap_clone()
-                    .ancestor_block(BLOCK_FIVE.block_ptr(), offset),
+                    .ancestor_block(BLOCK_FIVE.block_ptr(), offset, None),
             );
             assert!(res.is_err());
         }
 
-        let block = executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1))?;
+        let block = executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1, None))?;
         assert!(block.is_none());
         Ok(())
     });

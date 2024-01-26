@@ -1,5 +1,4 @@
-use std::sync::Arc;
-
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 use anyhow::Error;
 use graph::{
     blockchain::{
@@ -132,6 +131,7 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
+        _root: Option<BlockHash>,
     ) -> Result<Option<Block>, Error> {
         unimplemented!()
     }
@@ -141,7 +141,7 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         _from: BlockNumber,
         _to: BlockNumber,
         _filter: &TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
+    ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         unimplemented!()
     }
 
