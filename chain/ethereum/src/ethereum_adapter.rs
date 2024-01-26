@@ -644,9 +644,9 @@ impl EthereumAdapter {
                     }
                 })
         }))
-            .buffered(ENV_VARS.block_batch_size)
-            .filter_map(|b| b)
-            .map(|b| b.into())
+        .buffered(ENV_VARS.block_batch_size)
+        .filter_map(|b| b)
+        .map(|b| b.into())
     }
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
@@ -908,7 +908,7 @@ impl EthereumAdapter {
                 })
                 .await?,
         )
-            .map_err(Error::msg)
+        .map_err(Error::msg)
     }
 }
 
@@ -918,7 +918,7 @@ impl EthereumAdapter {
 fn detect_null_block<T>(res: &Result<T, Error>) -> bool {
     match res {
         Ok(_) => false,
-        Err(e) => e.to_string().contains("requested epoch was a null round")
+        Err(e) => e.to_string().contains("requested epoch was a null round"),
     }
 }
 
@@ -1251,7 +1251,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn nearest_block_hash_to_number(
         &self,
         logger: &Logger,
-        block_number: BlockNumber
+        block_number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
         let mut next_number = block_number;
         loop {
@@ -1292,7 +1292,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 Ok(Some(hash)) => Ok(BlockPtr::new(hash.into(), next_number)),
                 Ok(None) => Err(anyhow!("Block {} does not contain hash", next_number)),
                 Err(e) => Err(e),
-            }
+            };
         }
     }
 
@@ -1482,9 +1482,7 @@ pub(crate) async fn blocks_with_triggers(
     // Resolve the nearest non-null "to" block
     debug!(logger, "Finding nearest valid `to` block to {}", to);
 
-    let to_ptr = eth
-        .nearest_block_hash_to_number(&logger, to)
-        .await?;
+    let to_ptr = eth.nearest_block_hash_to_number(&logger, to).await?;
     let to_hash = to_ptr.hash_as_h256();
     let to = to_ptr.block_number();
     // This is for `start` triggers which can be initialization handlers which needs to be run
@@ -1556,7 +1554,8 @@ pub(crate) async fn blocks_with_triggers(
     }
 
     // Join on triggers, unpack and handle possible errors
-    let triggers = trigger_futs.try_concat()
+    let triggers = trigger_futs
+        .try_concat()
         .await
         .with_context(|| format!("Failed to obtain triggers for block {}", to))?;
 

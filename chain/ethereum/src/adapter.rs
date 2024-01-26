@@ -947,7 +947,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
-        block_number: BlockNumber
+        block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Finds the hash and number of the lowest non-null block with height greater than or equal to
@@ -958,7 +958,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn nearest_block_hash_to_number(
         &self,
         logger: &Logger,
-        block_number: BlockNumber
+        block_number: BlockNumber,
     ) -> Result<BlockPtr, Error>;
 
     /// Call the function of a smart contract.
