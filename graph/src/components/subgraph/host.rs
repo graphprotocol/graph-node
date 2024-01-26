@@ -172,9 +172,11 @@ impl HostMetrics {
         address: &str,
         method: &str,
     ) {
-        self.eth_call_execution_time
-            .with_label_values(&[contract_name, address, method][..])
-            .observe(duration);
+        if ENV_VARS.enable_eth_call_execution_time_metrics {
+            self.eth_call_execution_time
+                .with_label_values(&[contract_name, address, method][..])
+                .observe(duration);
+        }
     }
 
     pub fn time_host_fn_execution_region(

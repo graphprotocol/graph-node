@@ -201,6 +201,9 @@ pub struct EnvVars {
     /// The amount of history to keep when using 'min' historyBlocks
     /// in the manifest
     pub min_history_blocks: BlockNumber,
+    /// Set by the env var `GRAPH_ENABLE_ETH_CALL_EXECUTION_TIME_METRICS`
+    /// Whether to enable execution time metrics for eth_call. Off by default.
+    pub enable_eth_call_execution_time_metrics: bool,
 }
 
 impl EnvVars {
@@ -270,6 +273,7 @@ impl EnvVars {
             min_history_blocks: inner
                 .min_history_blocks
                 .unwrap_or(2 * inner.reorg_threshold),
+            enable_eth_call_execution_time_metrics: inner.enable_eth_call_execution_time_metrics.0,
         })
     }
 
@@ -407,6 +411,11 @@ struct Inner {
     history_blocks_override: Option<BlockNumber>,
     #[envconfig(from = "GRAPH_MIN_HISTORY_BLOCKS")]
     min_history_blocks: Option<BlockNumber>,
+    #[envconfig(
+        from = "GRAPH_ENABLE_ETH_CALL_EXECUTION_TIME_METRICS",
+        default = "false"
+    )]
+    enable_eth_call_execution_time_metrics: EnvVarBoolean,
 }
 
 #[derive(Clone, Debug)]
