@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Ok, Result};
-use sqlparser::ast::Statement;
+use sqlparser::ast::{Statement, Visit};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 
 use crate::formatter::SqlFormatter;
-use crate::validator::SqlValidator;
+use crate::validators::create_postgres_function_validator;
 
 pub struct SqlParser;
 
@@ -23,9 +23,11 @@ impl SqlParser {
             Statement::Query(query) => {
                 let prefix = format!("sgd{}", deployment_id);
                 let mut formatter = SqlFormatter::new(&prefix);
-                let validator = SqlValidator::new();
 
-                validator.validate_query(query)?;
+                let mut function_validator = create_postgres_function_validator(); 
+
+                function_validator.validate_query(query)?;
+
                 let result = formatter.format(&mut *query);
 
                 Ok(result)

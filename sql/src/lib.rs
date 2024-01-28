@@ -1,3 +1,3 @@
 mod formatter;
 pub mod parser;
-mod validator;
+mod validators;
