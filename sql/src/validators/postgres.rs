@@ -1,4 +1,4 @@
-use super::function::{FunctionValidationResult, FunctionValidator};
+use super::function::FunctionValidator;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
 
@@ -729,6 +729,7 @@ pub fn create_function_validator() -> FunctionValidator<'static> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::validators::FunctionValidationResult;
     use sqlparser::{ast::Visit, dialect::PostgreSqlDialect};
     use std::ops::ControlFlow;
 
@@ -740,7 +741,10 @@ mod test {
         let ast = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
         let mut postgres_validator = create_function_validator();
         let result = ast.visit(&mut postgres_validator);
-        assert_eq!(result, ControlFlow::Break(FunctionValidationResult::BlackListed));
+        assert_eq!(
+            result,
+            ControlFlow::Break(FunctionValidationResult::BlackListed)
+        );
     }
 
     #[test]
@@ -749,7 +753,10 @@ mod test {
         let ast = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
         let mut postgres_validator = create_function_validator();
         let result = ast.visit(&mut postgres_validator);
-        assert_eq!(result, ControlFlow::Break(FunctionValidationResult::BlackListed));
+        assert_eq!(
+            result,
+            ControlFlow::Break(FunctionValidationResult::BlackListed)
+        );
     }
 
     #[test]
@@ -767,8 +774,11 @@ mod test {
         let ast = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
         let mut postgres_validator = create_function_validator();
         let result = ast.visit(&mut postgres_validator);
-        assert_eq!(result, ControlFlow::Break(FunctionValidationResult::Unknown("do_strange_math".to_owned())));
+        assert_eq!(
+            result,
+            ControlFlow::Break(FunctionValidationResult::Unknown(
+                "do_strange_math".to_owned()
+            ))
+        );
     }
-
-
 }

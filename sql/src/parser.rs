@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Ok, Result};
-use sqlparser::ast::{Statement, Visit};
+use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 
@@ -24,7 +24,7 @@ impl SqlParser {
                 let prefix = format!("sgd{}", deployment_id);
                 let mut formatter = SqlFormatter::new(&prefix);
 
-                let mut function_validator = create_postgres_function_validator(); 
+                let mut function_validator = create_postgres_function_validator();
 
                 function_validator.validate_query(query)?;
 

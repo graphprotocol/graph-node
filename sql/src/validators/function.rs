@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Ok, Result};
 use core::ops::ControlFlow;
-use std::{collections::HashSet, default};
+use std::collections::HashSet;
 
-use sqlparser::ast::{Expr, Query, Statement, Visitor, Visit};
+use sqlparser::ast::{Expr, Query, Visit, Visitor};
 
 /// The type of a function in the SQL ast tree
 #[derive(PartialEq, Clone, Debug)]
@@ -16,15 +16,13 @@ pub enum FunctionValidationResult {
 
 /// A validator for SQL functions
 pub struct FunctionValidator<'a> {
-    // Hashset<&'a str> is used instead of HashSet<String> to avoid allocations 
+    // Hashset<&'a str> is used instead of HashSet<String> to avoid allocations
     // Hashset<&'a str> is used instead of HashMap<&'a str, FunctionType> to avoid allocations for the values  (see Enum: https://en.wikipedia.org/wiki/Tagged_union)
-
-    whitelisted: &'a HashSet<&'a str>, 
+    whitelisted: &'a HashSet<&'a str>,
     blacklisted: &'a HashSet<&'a str>,
 }
 
 impl<'a> FunctionValidator<'a> {
-
     /// Creates a new validator
     pub fn new(whitelisted: &'a HashSet<&'a str>, blacklisted: &'a HashSet<&'a str>) -> Self {
         Self {
@@ -44,7 +42,6 @@ impl<'a> FunctionValidator<'a> {
             _ => Ok(()),
         }
     }
-
 }
 
 impl<'a> Visitor for FunctionValidator<'a> {
