@@ -235,9 +235,7 @@ lazy_static! {
             "ts_rank", // Computes a score showing how well the vector matches the query. See Section 12.3.3 for details.
             "ts_rank_cd", // Computes a score showing how well the vector matches the query, using a cover density algorithm. See Section 12.3.3 for details.
             "ts_rewrite", // Replaces occurrences of target with substitute within the query. See Section
-            "ts_rewrite", // Replaces portions of the query according to target(s) and substitute(s) obtained by executing a SELECT command. See Section
             "tsquery_phrase", // Constructs a phrase query that searches for matches of query1 and query2 at successive lexemes (same as <-> operator).
-            "tsquery_phrase", // Constructs a phrase query that searches for matches of query1 and query2 that occur exactly distance lexemes apart.
             "tsvector_to_array", // Converts a tsvector to an array of lexemes.
 
             // Text search debugging functions see https://www.postgresql.org/docs/14/functions-textsearch.html#TEXTSEARCH-FUNCTIONS-DEBUG-TABLE
@@ -245,7 +243,6 @@ lazy_static! {
             "ts_lexize", // Returns an array of replacement lexemes if the input token is known to the dictionary, or an empty array if the token is known to the dictionary but it is a stop word, or NULL if it is not a known word. See Section 12.8.3 for details.
             "ts_parse", // Extracts tokens from the document using the named parser. See Section 12.8.2 for details.
             "ts_token_type", // Returns a table that describes each type of token the named parser can recognize. See Section 12.8.2 for details.
-            "ts_stat", // Executes the sqlquery, which must return a single tsvector column, and returns statistics about each distinct lexeme contained in the data. See Section 12.4.4 for details.
 
             // UUID Functions see https://www.postgresql.org/docs/14/functions-uuid.html
             "gen_random_uuid", // Generate a version 4 (random) UUID
@@ -265,7 +262,6 @@ lazy_static! {
             "xpath_exists", // Evaluates the XPath 1.0 expression xpath (given as text) against the XML value xml, and returns true if the expression selects at least one node, otherwise false.
             "xmltable", // Expands an XML value into a table whose columns match the rowtype defined by the function's parameter list.
             "table_to_xml", // Converts a table to XML.
-            "query_to_xml", // Converts a query result to XML.
             "cursor_to_xml", // Converts a cursor to XML.
 
                 // JSON and JSONB creation functions see https://www.postgresql.org/docs/14/functions-json.html#FUNCTIONS-JSON-CREATION-TABLE
@@ -439,6 +435,10 @@ lazy_static! {
 lazy_static! {
     static ref POSTGRES_BLACKLISTED_FUNCTIONS: HashSet<&'static str> = {
         vec![
+            "query_to_xml", // Converts a query result to XML.
+
+            "ts_stat", // Executes the sqlquery, which must return a single tsvector column, and returns statistics about each distinct lexeme contained in the data. See Section 12.4.4 for details.
+
             "pg_client_encoding", // Returns current client encoding name
 
             // Delay execution see https://www.postgresql.org/docs/14/functions-datetime.html
@@ -743,7 +743,7 @@ mod test {
         let result = ast.visit(&mut postgres_validator);
         assert_eq!(
             result,
-            ControlFlow::Break(FunctionValidationResult::BlackListed)
+            ControlFlow::Break(FunctionValidationResult::BlackListed("pg_sleep".to_owned()))
         );
     }
 
@@ -755,7 +755,7 @@ mod test {
         let result = ast.visit(&mut postgres_validator);
         assert_eq!(
             result,
-            ControlFlow::Break(FunctionValidationResult::BlackListed)
+            ControlFlow::Break(FunctionValidationResult::BlackListed("user".to_owned()))
         );
     }
 

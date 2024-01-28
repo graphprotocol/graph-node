@@ -10,7 +10,7 @@ pub enum FunctionValidationResult {
     /// Function is unknown
     Unknown(String),
     /// Function is known and not allowed
-    BlackListed,
+    BlackListed(String),
     // Type can be extended ie Performance, Security, etc for more granular control
 }
 
@@ -36,8 +36,8 @@ impl<'a> FunctionValidator<'a> {
             ControlFlow::Break(FunctionValidationResult::Unknown(name)) => {
                 Err(anyhow!("Function {} is unknown", name))
             }
-            ControlFlow::Break(FunctionValidationResult::BlackListed) => {
-                Err(anyhow!("Function is blacklisted"))
+            ControlFlow::Break(FunctionValidationResult::BlackListed(name)) => {
+                Err(anyhow!("Function {} is blacklisted", name))
             }
             _ => Ok(()),
         }
@@ -53,7 +53,7 @@ impl<'a> Visitor for FunctionValidator<'a> {
             if let Some(&ref ident) = function.name.0.last() {
                 let name = ident.value.to_lowercase();
                 if self.blacklisted.contains(name.as_str()) {
-                    return ControlFlow::Break(FunctionValidationResult::BlackListed);
+                    return ControlFlow::Break(FunctionValidationResult::BlackListed(name));
                 }
                 if !self.whitelisted.contains(name.as_str()) {
                     return ControlFlow::Break(FunctionValidationResult::Unknown(name));
