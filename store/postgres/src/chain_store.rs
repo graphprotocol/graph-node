@@ -578,8 +578,6 @@ mod data {
             chain: &str,
             hashes: &[BlockHash],
         ) -> Result<Vec<JsonBlock>, Error> {
-            use diesel::dsl::any;
-
             // We need to deal with chain stores where some entries have a
             // toplevel 'block' field and others directly contain what would
             // be in the 'block' field. Make sure we return the contents of
@@ -599,10 +597,11 @@ mod data {
                             sql::<Jsonb>("coalesce(data -> 'block', data)"),
                         ))
                         .filter(b::network_name.eq(chain))
-                        .filter(b::hash.eq(any(Vec::from_iter(
-                            hashes.iter().map(|h| format!("{:x}", h)),
-                        ))))
-                        .load::<json::Value>(conn)
+                        .filter(
+                            b::hash
+                                .eq_any(Vec::from_iter(hashes.iter().map(|h| format!("{:x}", h)))),
+                        )
+                        .load::<json::Value>(&mut conn)
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
@@ -617,7 +616,7 @@ mod data {
                             .hash()
                             .eq_any(Vec::from_iter(hashes.iter().map(|h| h.as_slice()))),
                     )
-                    .load::<(BlockHash, i64, BlockHash, json::Value)>(conn),
+                    .load::<(json::Value)>(conn),
             }?;
             Ok(x.into_iter()
                 .map(|(hash, nr, parent, data)| {
@@ -1639,7 +1638,7 @@ impl ChainStore {
                 n::head_block_hash.eq::<Option<&str>>(None),
                 n::head_block_number.eq::<Option<i64>>(None),
             ))
-            .execute(&conn)
+            .execute(&mut conn)
             .unwrap();
         self.recent_blocks_cache.blocks()
     }
