@@ -55,6 +55,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -860,6 +861,7 @@ fn ethereum_networks_as_chains(
             );
 
             let call_cache = chain_store.cheap_clone();
+            let eth_adapters = Arc::new(eth_adapters.clone());
 
             let chain_config = config.chains.chains.get(network_name).unwrap();
             let chain = ethereum::Chain::new(
@@ -868,23 +870,39 @@ fn ethereum_networks_as_chains(
                 node_id.clone(),
                 registry.clone(),
                 chain_store.cheap_clone(),
-                call_cache,
+                call_cache.cheap_clone(),
                 client,
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
                 Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
                 Arc::new(EthereumRuntimeAdapterBuilder {}),
-                Arc::new(eth_adapters.clone()),
+                eth_adapters.cheap_clone(),
                 ENV_VARS.reorg_threshold,
                 chain_config.polling_interval,
                 is_ingestible,
             );
-            (network_name.clone(), Arc::new(chain))
+            (
+                network_name.clone(),
+                Arc::new(chain),
+                eth_adapters,
+                call_cache,
+            )
         })
         .collect();
 
-    for (network_name, chain) in chains.iter().cloned() {
+    for (network_name, chain, eth_adapters, call_cache) in chains.iter().cloned() {
+        let dataset_chain = graph_chain_dataset::Chain::new(
+            Some(eth_adapters.clone()),
+            call_cache.cheap_clone(),
+            logger_factory.clone(),
+            metrics_registry.cheap_clone(),
+            store.subgraph_store(),
+            store.block_store().chain_store(&network_name).unwrap(),
+        );
+
+        blockchain_map
+            .insert::<graph_chain_dataset::Chain>(network_name.clone(), Arc::new(dataset_chain));
         blockchain_map.insert::<graph_chain_ethereum::Chain>(network_name, chain)
     }
 
@@ -908,5 +926,5 @@ fn ethereum_networks_as_chains(
         }
     }
 
-    HashMap::from_iter(chains)
+    HashMap::from_iter(chains.into_iter().map(|(a, b, _c, _d)| (a, b)))
 }

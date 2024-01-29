@@ -18,6 +18,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::{
+        metrics::stopwatch::StopwatchMetrics,
         metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
@@ -189,6 +190,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
     fn chain_store(&self) -> Arc<dyn ChainStore>;
@@ -456,6 +458,8 @@ pub enum BlockchainKind {
     Substreams,
 
     Starknet,
+
+    Dataset,
 }
 
 impl fmt::Display for BlockchainKind {
@@ -467,6 +471,7 @@ impl fmt::Display for BlockchainKind {
             BlockchainKind::Cosmos => "cosmos",
             BlockchainKind::Substreams => "substreams",
             BlockchainKind::Starknet => "starknet",
+            BlockchainKind::Dataset => "dataset",
         };
         write!(f, "{}", value)
     }
@@ -483,6 +488,7 @@ impl FromStr for BlockchainKind {
             "cosmos" => Ok(BlockchainKind::Cosmos),
             "substreams" => Ok(BlockchainKind::Substreams),
             "starknet" => Ok(BlockchainKind::Starknet),
+            "dataset" => Ok(BlockchainKind::Dataset),
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

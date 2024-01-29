@@ -205,6 +205,7 @@ pub struct EnvVars {
     /// which must be an absolute path. This only has an effect in debug
     /// builds. Set with `GRAPH_SECTION_MAP`. Defaults to `None`.
     pub section_map: Option<String>,
+    pub dataset_subgraphs_enabled: bool,
 }
 
 impl EnvVars {
@@ -284,6 +285,7 @@ impl EnvVars {
             min_history_blocks: inner.min_history_blocks.unwrap_or(2 * reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
+            dataset_subgraphs_enabled: inner.experimental_dataset_subgraphs_enabled.0,
         })
     }
 
@@ -368,6 +370,8 @@ struct Inner {
     log_levels: Option<String>,
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
+    #[envconfig(from = "EXPERIMENTAL_DATASET_SUBGRAPHS_ENABLED", default = "true")]
+    experimental_dataset_subgraphs_enabled: EnvVarBoolean,
     #[envconfig(
         from = "EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE",
         default = "instant"

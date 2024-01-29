@@ -9,6 +9,7 @@ use diesel::{
     pg::Pg,
     serialize::{Output, ToSql},
     sql_types::{Array, BigInt, Bool, Integer, Text},
+    Queryable,
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -23,18 +24,20 @@ use diesel::{
     Connection as _,
 };
 use graph::{
-    components::store::DeploymentLocator,
+    components::store::{
+        DeploymentId as GraphDeploymentId, DeploymentSchemaVersion, SubgraphSegmentId,
+    },
+    prelude::{chrono, CancelHandle, CancelToken},
+};
+use graph::{
+    components::store::{DeploymentLocator, SegmentDetails as GraphSegmentDetails},
     constraint_violation,
     data::store::scalar::ToPrimitive,
     data::subgraph::{status, DeploymentFeatures},
     prelude::{
-        anyhow, serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId,
-        StoreError, SubgraphName, SubgraphVersionSwitchingMode,
+        anyhow, serde_json, BlockNumber, DeploymentHash, EntityChange, EntityChangeOperation,
+        NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
     },
-};
-use graph::{
-    components::store::{DeploymentId as GraphDeploymentId, DeploymentSchemaVersion},
-    prelude::{chrono, CancelHandle, CancelToken},
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
@@ -87,6 +90,16 @@ table! {
         data_sources -> Array<Text>,
         handlers -> Array<Text>,
         network -> Text,
+    }
+}
+
+table! {
+    subgraphs.subgraph_segments (id) {
+        id -> Integer,
+        deployment -> Integer,
+        start_block -> Integer,
+        stop_block -> Integer,
+        current_block -> Nullable<Integer>,
     }
 }
 
@@ -287,6 +300,55 @@ impl Borrow<str> for Namespace {
     }
 }
 
+#[derive(Queryable)]
+pub struct SegmentDetails {
+    pub id: SegmentId,
+    pub deployment: DeploymentId,
+    pub start_block: BlockNumber,
+    pub end_block: BlockNumber,
+    pub current_block: Option<BlockNumber>,
+}
+
+impl From<SegmentDetails> for GraphSegmentDetails {
+    fn from(value: SegmentDetails) -> GraphSegmentDetails {
+        let SegmentDetails {
+            id,
+            deployment,
+            start_block,
+            end_block,
+            current_block,
+        } = value;
+
+        GraphSegmentDetails {
+            id: id.into(),
+            deployment: deployment.into(),
+            start_block,
+            stop_block: end_block,
+            current_block,
+        }
+    }
+}
+
+impl From<GraphSegmentDetails> for SegmentDetails {
+    fn from(value: GraphSegmentDetails) -> Self {
+        let GraphSegmentDetails {
+            id,
+            deployment,
+            start_block,
+            stop_block: end_block,
+            current_block,
+        } = value;
+
+        SegmentDetails {
+            id: id.into(),
+            deployment: deployment.into(),
+            start_block,
+            end_block,
+            current_block,
+        }
+    }
+}
+
 /// A marker that an `i32` references a deployment. Values of this type hold
 /// the primary key from the `deployment_schemas` table
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
@@ -327,6 +389,30 @@ impl FromSql<Integer, Pg> for DeploymentId {
 impl ToSql<Integer, Pg> for DeploymentId {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
+    }
+}
+
+/// A marker that an `i32` references a a segment. Values of this type hold
+/// the primary key from the `subgraphs.segments` table;
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+#[diesel(sql_type = diesel::sql_types::Integer)]
+pub struct SegmentId(i32);
+
+impl FromSql<Integer, Pg> for SegmentId {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
+        let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
+        Ok(SegmentId(id))
+    }
+}
+
+impl From<SegmentId> for SubgraphSegmentId {
+    fn from(value: SegmentId) -> Self {
+        Self(value.0)
+    }
+}
+impl From<SubgraphSegmentId> for SegmentId {
+    fn from(value: SubgraphSegmentId) -> Self {
+        Self(value.0)
     }
 }
 
@@ -1155,7 +1241,7 @@ impl<'a> Connection<'a> {
                     features,
                     data_source_kinds: data_sources,
                     handler_kinds: handlers,
-                    network: network,
+                    network,
                 }
             },
         );
