@@ -1570,6 +1570,17 @@ impl ChainStore {
         Ok(())
     }
 
+    pub fn update_name(&self, name: &str) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+        let conn = self.get_conn()?;
+        conn.transaction(|| {
+            update(n::table.filter(n::name.eq(&self.chain)))
+                .set(n::name.eq(name))
+                .execute(&conn)?;
+            Ok(())
+        })
+    }
+
     pub(crate) fn drop_chain(&self) -> Result<(), Error> {
         use diesel::dsl::delete;
         use public::ethereum_networks as n;

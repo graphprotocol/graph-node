@@ -543,6 +543,16 @@ pub enum ChainCommand {
         force: bool,
     },
 
+    /// Change the block cache shard for a chain
+    ChangeShard {
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(empty_values = false)]
+        chain_name: String,
+        /// Shard name
+        #[clap(empty_values = false)]
+        shard: String,
+    },
+
     /// Execute operations on call cache.
     CallCache {
         #[clap(subcommand)]
@@ -1288,6 +1298,15 @@ async fn main() -> anyhow::Result<()> {
                 Remove { name } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
                     commands::chain::remove(primary, block_store, name)
+                }
+                ChangeShard { chain_name, shard } => {
+                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    commands::chain::change_block_cache_shard(
+                        primary,
+                        block_store,
+                        chain_name,
+                        shard,
+                    )
                 }
                 CheckBlocks { method, chain_name } => {
                     use commands::check_blocks::{by_hash, by_number, by_range};
