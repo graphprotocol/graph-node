@@ -7,6 +7,7 @@ use graph::blockchain::{
     NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
+use graph::components::metrics::stopwatch::StopwatchMetrics;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
@@ -230,6 +231,7 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         if self.prefer_substreams {
             return self

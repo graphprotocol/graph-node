@@ -608,6 +608,23 @@ impl<S: Store> IndexNodeResolver<S> {
                 )
                 .await?
             }
+            BlockchainKind::Dataset => {
+                let unvalidated_subgraph_manifest =
+                    UnvalidatedSubgraphManifest::<graph_chain_substreams::Chain>::resolve(
+                        deployment_hash.clone(),
+                        raw_yaml,
+                        &self.link_resolver,
+                        &self.logger,
+                        max_spec_version,
+                    )
+                    .await?;
+
+                Self::validate_and_extract_features(
+                    &self.store.subgraph_store(),
+                    unvalidated_subgraph_manifest,
+                )
+                .await?
+            }
         };
 
         Ok(result)
@@ -713,7 +730,9 @@ impl<S: Store> IndexNodeResolver<S> {
             | BlockchainKind::Ethereum
             | BlockchainKind::Cosmos
             | BlockchainKind::Near
-            | BlockchainKind::Starknet => (),
+            | BlockchainKind::Starknet
+            // Dataset doesn't have blocks of its own so I don't think this will be needed.
+            | BlockchainKind::Dataset => (),
         }
 
         // The given network does not exist.

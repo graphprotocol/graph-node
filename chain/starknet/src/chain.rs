@@ -14,7 +14,10 @@ use graph::{
         RuntimeAdapter as RuntimeAdapterTrait,
     },
     cheap_clone::CheapClone,
-    components::store::{DeploymentCursorTracker, DeploymentLocator},
+    components::{
+        metrics::stopwatch::StopwatchMetrics,
+        store::{DeploymentCursorTracker, DeploymentLocator},
+    },
     data::subgraph::UnifiedMappingApiVersion,
     env::EnvVars,
     firehose::{self, FirehoseEndpoint, ForkStep},
@@ -113,6 +116,7 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
             .build_firehose(

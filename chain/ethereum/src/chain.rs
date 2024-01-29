@@ -5,6 +5,7 @@ use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transfor
 use graph::blockchain::{
     BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggersAdapterSelector,
 };
+use graph::components::metrics::stopwatch::StopwatchMetrics;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -94,7 +95,11 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            adapter,
+            filter,
+            raw_block_output: true,
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -412,6 +417,7 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let current_ptr = store.block_ptr();
         match self.chain_client().as_ref() {
@@ -796,6 +802,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 }
 
 pub struct FirehoseMapper {
+    raw_block_output: bool,
     adapter: Arc<dyn TriggersAdapterTrait<Chain>>,
     filter: Arc<TriggerFilter>,
 }
@@ -876,6 +883,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         use firehose::ForkStep::*;
         match step {
             StepNew => {
+                if self.raw_block_output {
+                    return Ok(BlockStreamEvent::ProcessWasmBlock(
+                        BlockPtr::new(block.hash(), block.number()),
+                        BlockTime::NONE,
+                        // TODO: can we consume this instead?
+                        any_block.value.clone().into_boxed_slice(),
+                        "".to_string(),
+                        response.cursor.clone().into(),
+                    ));
+                }
+
                 // unwrap: Input cannot be None so output will be error or block.
                 let block = self.decode_block(Some(any_block.value.as_ref()))?.unwrap();
                 let block_with_triggers = self.block_with_triggers(logger, block).await?;

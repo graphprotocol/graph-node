@@ -258,6 +258,12 @@ pub enum UnresolvedDataSource<C: Blockchain> {
 }
 
 impl<C: Blockchain> UnresolvedDataSource<C> {
+    pub fn as_onchain(&self) -> Option<&C::UnresolvedDataSource> {
+        match self {
+            UnresolvedDataSource::Onchain(ds) => Some(ds),
+            UnresolvedDataSource::Offchain(_) => None,
+        }
+    }
     pub async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,

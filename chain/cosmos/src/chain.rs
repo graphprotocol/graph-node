@@ -1,5 +1,6 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{BlockIngestor, NoopDecoderHook};
+use graph::components::metrics::stopwatch::StopwatchMetrics;
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
@@ -113,6 +114,7 @@ impl Blockchain for Chain {
         start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
             .triggers_adapter(

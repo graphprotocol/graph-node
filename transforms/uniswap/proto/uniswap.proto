@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package edgeandnode.uniswap.v1;
+
+import "google/protobuf/any.proto";
+
+enum EventType{
+  // Factory
+  POOL_CREATED = 0;
+
+  // Position Manager
+  INCREASE_LIQUIDITY = 1;
+  DECREASE_LIQUIDITY = 2;
+  COLLECT = 3;
+  TRANSFER = 4;
+
+  // Pool
+  INITIALIZE = 5;
+  SWAP = 6;
+  MINT = 7;
+  BURN = 8;
+  FLASH = 9;
+}
+
+message Events {
+  repeated Event events = 1;
+}
+
+// Every address is stored as hex string.
+message Event {
+  // Owner points to the address that originated this event
+  // The PoolCreated will set this to factory, which is what we can use
+  // to track different factories with compatible events. 
+  string owner = 1;
+  EventType type = 2;
+  google.protobuf.Any event = 3;
+  string address= 4;
+  string tx_hash = 5;
+  string tx_gas_used = 6; 
+  string tx_gas_price = 7;
+  // This duplicates data (as opposed to adding this data to the head) but AssemblyScript does
+  // not support closures and so using the data is not super easy if it's in the header so I'll 
+  // leave it here.
+  int32 block_number = 8;
+  string block_timestamp = 9;
+  oneof event2 {
+    PoolCreated poolcreated = 10;
+    IncreaseLiquidity increaseliquidity = 11;
+    DecreaseLiquidity decreaseliquidity = 12;
+    Collect collect = 13;
+    Transfer transfer = 14;
+    Initialize initialize = 15;
+    Swap swap = 16;
+    Mint mint = 17;
+    Burn burn = 18;
+    Flash flash = 19;
+  }
+}
+
+// Factory
+message PoolCreated {
+  string  token0 = 1;
+  string  token1 = 2;
+  string fee = 3;
+  string tick_spacing = 4;
+  string pool = 5;
+}
+
+// Position Manager
+message IncreaseLiquidity {
+  string token_id = 1;
+  string liquidity = 2;
+  string amount0 = 3;
+  string amount1 = 4;
+}
+
+message DecreaseLiquidity {
+  string token_id = 1;
+  string liquidity = 2;
+  string amount0 = 3;
+  string amount1 = 4;
+}
+
+message Collect {
+  string token_id = 1;
+  string recipient = 2;
+  string amount0 = 3;
+  string amount1 = 4;
+}
+message Transfer {
+  string from = 1;
+  string to = 2;
+  string token_id = 3;
+}
+
+// Pool 
+message Initialize {
+  string sqrt_price_x96 = 1;
+  string tick = 2;
+}
+message Swap {
+  string sender = 1;
+  string recipient = 2;
+  string amount0 = 3;
+  string amount1 = 4;
+  string sqrt_price_x96 = 5;
+  string liquidity = 6;
+  string tick = 7;
+  int32  log_index = 8;
+  string transaction_from = 9;
+}
+message Mint {
+  string sender = 1;
+  string owner = 2;
+  string tick_lower = 3;
+  string tick_upper = 4;
+  string amount = 5;
+  string amount0 = 6;
+  string amount1 = 7;
+  int32  log_index = 8;
+  string transaction_from = 9;
+}
+message Burn {
+  string owner = 1;
+  string tick_lower = 2;
+  string tick_upper = 3;
+  string amount = 4;
+  string amount0 = 5;
+  string amount1 = 6;
+  int32  log_index = 7;
+  string transaction_from = 8;
+}
+message Flash {
+  string sender = 1;
+  string recipient = 2;
+  string amount0 = 3;
+  string amount1 = 4;
+  string paid0 = 5;
+  string paid1 = 6;
+}

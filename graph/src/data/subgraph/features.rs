@@ -35,6 +35,7 @@ pub enum SubgraphFeature {
     FullTextSearch,
     #[serde(alias = "nonDeterministicIpfs")]
     IpfsOnEthereumContracts,
+    Parallel,
 }
 
 impl fmt::Display for SubgraphFeature {
