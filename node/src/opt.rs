@@ -20,8 +20,8 @@ pub struct Opt {
     #[clap(
         long,
         env = "GRAPH_NODE_CONFIG",
-        conflicts_with_all = &["postgres-url", "postgres-secondary-hosts", "postgres-host-weights"],
-        required_unless = "postgres-url",
+        conflicts_with_all = &["postgres_url", "postgres_secondary_hosts", "postgres_host_weights"],
+        required_unless_present = "postgres_url",
         help = "the name of the configuration file",
     )]
     pub config: Option<String>,
@@ -48,14 +48,14 @@ pub struct Opt {
         value_name = "URL",
         env = "POSTGRES_URL",
         conflicts_with = "config",
-        required_unless = "config",
+        required_unless_present = "config",
         help = "Location of the Postgres database used for storing entities"
     )]
     pub postgres_url: Option<String>,
     #[clap(
         long,
         value_name = "URL,",
-        use_delimiter = true,
+        use_value_delimiter = true,
         env = "GRAPH_POSTGRES_SECONDARY_HOSTS",
         conflicts_with = "config",
         help = "Comma-separated list of host names/IP's for read-only Postgres replicas, \
@@ -66,7 +66,7 @@ pub struct Opt {
     #[clap(
         long,
         value_name = "WEIGHT,",
-        use_delimiter = true,
+        use_value_delimiter = true,
         env = "GRAPH_POSTGRES_HOST_WEIGHTS",
         conflicts_with = "config",
         help = "Comma-separated list of relative weights for selecting the main database \
@@ -77,25 +77,26 @@ pub struct Opt {
     pub postgres_host_weights: Vec<usize>,
     #[clap(
         long,
-        min_values=0,
-        required_unless_one = &["ethereum-ws", "ethereum-ipc", "config"],
-        conflicts_with_all = &["ethereum-ws", "ethereum-ipc", "config"],
+        allow_negative_numbers = false,
+        required_unless_present_any = &["ethereum_ws", "ethereum_ipc", "config"],
+        conflicts_with_all = &["ethereum_ws", "ethereum_ipc", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
         env="ETHEREUM_RPC",
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'",
     )]
     pub ethereum_rpc: Vec<String>,
-    #[clap(long, min_values=0,
-        required_unless_one = &["ethereum-rpc", "ethereum-ipc", "config"],
-        conflicts_with_all = &["ethereum-rpc", "ethereum-ipc", "config"],
+    #[clap(long, allow_negative_numbers = false,
+        required_unless_present_any = &["ethereum_rpc", "ethereum_ipc", "config"],
+        conflicts_with_all = &["ethereum_rpc", "ethereum_ipc", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
         env="ETHEREUM_WS",
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive`, and an Ethereum WebSocket URL, separated by a ':'",
     )]
     pub ethereum_ws: Vec<String>,
-    #[clap(long, min_values=0,
-        required_unless_one = &["ethereum-rpc", "ethereum-ws", "config"],
-        conflicts_with_all = &["ethereum-rpc", "ethereum-ws", "config"],
+    #[clap(long,
+        allow_negative_numbers = false,
+        required_unless_present_any = &["ethereum_rpc", "ethereum_ws", "config"],
+        conflicts_with_all = &["ethereum_rpc", "ethereum_ws", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:FILE",
         env="ETHEREUM_IPC",
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum IPC pipe, separated by a ':'",

@@ -13,8 +13,8 @@ name = "graphman"
 path = "src/bin/manager.rs"
 
 [dependencies]
-clap = { version = "3.2.25", features = ["derive", "env"] }
 env_logger = "0.11.3"
+clap.workspace = true
 git-testament = "0.2"
 lazy_static = "1.2.0"
 url = "2.5.0"

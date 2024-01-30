@@ -41,6 +41,7 @@ tonic = { version = "0.8.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.8.4", features = ["prost"] }
 wasmtime = "15.0.1"
 wasmparser = "0.118.1"
+clap = { version = "4.5.4", features = ["derive", "env"] }
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]
