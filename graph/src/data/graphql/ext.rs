@@ -313,7 +313,16 @@ impl ValueExt for Value {
 
 pub trait DirectiveFinder {
     fn find_directive(&self, name: &str) -> Option<&Directive>;
-    fn is_derived(&self) -> bool;
+
+    fn is_derived(&self) -> bool {
+        self.find_directive("derivedFrom").is_some()
+    }
+
+    fn derived_from(&self) -> Option<&str> {
+        self.find_directive("derivedFrom")
+            .and_then(|directive| directive.argument("field"))
+            .and_then(|value| value.as_str())
+    }
 }
 
 impl DirectiveFinder for ObjectType {
@@ -322,12 +331,6 @@ impl DirectiveFinder for ObjectType {
             .iter()
             .find(|directive| directive.name.eq(&name))
     }
-
-    fn is_derived(&self) -> bool {
-        let is_derived = |directive: &Directive| directive.name.eq("derivedFrom");
-
-        self.directives.iter().any(is_derived)
-    }
 }
 
 impl DirectiveFinder for Field {
@@ -335,12 +338,6 @@ impl DirectiveFinder for Field {
         self.directives
             .iter()
             .find(|directive| directive.name.eq(name))
-    }
-
-    fn is_derived(&self) -> bool {
-        let is_derived = |directive: &Directive| directive.name.eq("derivedFrom");
-
-        self.directives.iter().any(is_derived)
     }
 }
 

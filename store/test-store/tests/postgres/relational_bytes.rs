@@ -290,7 +290,7 @@ fn find_many() {
 
         let mut id_map = BTreeMap::default();
         let ids = IdList::try_from_iter(
-            &*THING_TYPE,
+            THING_TYPE.id_type().unwrap(),
             vec![ID, ID2, "badd"]
                 .into_iter()
                 .map(|id| THING_TYPE.parse_id(id).unwrap()),

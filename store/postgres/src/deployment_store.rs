@@ -1903,7 +1903,7 @@ fn resolve_column<'a>(table: &'a Table, field: &str) -> Result<(&'a SqlName, Str
             let sql_name = SqlName::from(field);
             table
                 .column(&sql_name)
-                .ok_or_else(|| StoreError::UnknownField(field.to_string()))
+                .ok_or_else(|| StoreError::UnknownField(table.name.to_string(), field.to_string()))
         })
         .map(|column| {
             let index_expr =

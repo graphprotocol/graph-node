@@ -13,7 +13,7 @@ use crate::{
 
 use super::{
     input_schema::{ObjectType, POI_OBJECT},
-    EntityKey, InputSchema, InterfaceType,
+    EntityKey, Field, InputSchema, InterfaceType,
 };
 
 /// A reference to a type in the input schema. It should mostly be the
@@ -61,6 +61,10 @@ impl EntityType {
         self.schema.has_field(self.atom, field)
     }
 
+    pub fn field(&self, name: &str) -> Option<&Field> {
+        self.schema.field(self.atom, name)
+    }
+
     pub fn is_immutable(&self) -> bool {
         self.schema.is_immutable(self.atom)
     }
@@ -104,7 +108,8 @@ impl EntityType {
             .into_iter()
             .map(|id| self.parse_id(id))
             .collect::<Result<_, _>>()?;
-        IdList::try_from_iter(self, ids.into_iter()).map_err(|e| anyhow::anyhow!("error: {}", e))
+        IdList::try_from_iter(self.id_type()?, ids.into_iter())
+            .map_err(|e| anyhow::anyhow!("error: {}", e))
     }
 
     /// Parse the given `id` into an `Id` and construct a key for an onchain

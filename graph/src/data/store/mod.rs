@@ -931,7 +931,7 @@ impl Entity {
         })?;
 
         for field in object_type.fields.iter() {
-            match (self.get(&field.name), field.is_derived) {
+            match (self.get(&field.name), field.is_derived()) {
                 (Some(value), false) => {
                     let scalar_type = &field.value_type;
                     if field.field_type.is_list() {

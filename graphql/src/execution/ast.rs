@@ -3,13 +3,10 @@ use std::collections::{BTreeSet, HashSet};
 use graph::{
     components::store::{AttributeNames, ChildMultiplicity},
     constraint_violation,
-    data::graphql::{ext::DirectiveFinder as _, ObjectOrInterface},
+    data::graphql::ObjectOrInterface,
     env::ENV_VARS,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
-    schema::{
-        ast::{self as sast, ObjectType},
-        ApiSchema,
-    },
+    schema::{ast::ObjectType, kw, AggregationInterval, ApiSchema, EntityType},
 };
 use graphql_parser::Pos;
 
@@ -195,6 +192,30 @@ impl SelectionSet {
         }
         Ok(())
     }
+
+    /// Dump the selection set as a string for debugging
+    #[cfg(debug_assertions)]
+    pub fn dump(&self) -> String {
+        fn dump_selection_set(selection_set: &SelectionSet, indent: usize, out: &mut String) {
+            for (object_type, fields) in selection_set.interior_fields() {
+                for field in fields {
+                    for _ in 0..indent {
+                        out.push(' ');
+                    }
+                    let intv = field
+                        .aggregation_interval()
+                        .unwrap()
+                        .map(|intv| format!("[{intv}]"))
+                        .unwrap_or_default();
+                    out.push_str(&format!("{}: {}{intv}\n", object_type.name, field.name));
+                    dump_selection_set(&field.selection_set, indent + 2, out);
+                }
+            }
+        }
+        let mut out = String::new();
+        dump_selection_set(self, 0, &mut out);
+        out
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -279,13 +300,13 @@ impl Field {
     /// return `AttributeNames::All
     pub fn selected_attrs(
         &self,
-        object_type: &s::ObjectType,
+        entity_type: &EntityType,
     ) -> Result<AttributeNames, QueryExecutionError> {
         if !ENV_VARS.enable_select_by_specific_attributes {
             return Ok(AttributeNames::All);
         }
 
-        let fields = self.selection_set.fields_for_name(&object_type.name)?;
+        let fields = self.selection_set.fields_for_name(entity_type.typename())?;
 
         // Extract the attributes we should select from `selection_set`. In
         // particular, disregard derived fields since they are not stored
@@ -293,9 +314,9 @@ impl Field {
             .filter(|field| {
                 // Keep fields that are not derived and for which we
                 // can find the field type
-                sast::get_field(object_type, &field.name)
-                    .map(|field_type| !field_type.is_derived())
-                    .unwrap_or(false)
+                entity_type
+                    .field(&field.name)
+                    .map_or(false, |field| !field.is_derived())
             })
             .filter_map(|field| {
                 if field.name.starts_with("__") {
@@ -324,6 +345,28 @@ impl Field {
         }
 
         Ok(AttributeNames::Select(column_names))
+    }
+
+    /// Return the value of the `interval` argument if there is one. Return
+    /// `None` if the argument is not present, and an error if the argument
+    /// is present but can not be parsed as an `AggregationInterval`
+    pub fn aggregation_interval(&self) -> Result<Option<AggregationInterval>, QueryExecutionError> {
+        self.argument_value(kw::INTERVAL)
+            .map(|value| match value {
+                r::Value::Enum(interval) => interval.parse::<AggregationInterval>().map_err(|_| {
+                    QueryExecutionError::InvalidArgumentError(
+                        self.position.clone(),
+                        kw::INTERVAL.to_string(),
+                        q::Value::from(value.clone()),
+                    )
+                }),
+                _ => Err(QueryExecutionError::InvalidArgumentError(
+                    self.position.clone(),
+                    kw::INTERVAL.to_string(),
+                    q::Value::from(value.clone()),
+                )),
+            })
+            .transpose()
     }
 }
 

@@ -753,7 +753,7 @@ impl Layout {
             let entity_keys: Vec<_> = rows.iter().map(|row| row.id()).collect();
             // FIXME: we clone all the ids here
             let entity_keys = IdList::try_from_iter(
-                &group.entity_type,
+                group.entity_type.id_type()?,
                 entity_keys.into_iter().map(|id| id.to_owned()),
             )?;
             ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
@@ -799,7 +799,7 @@ impl Layout {
             for chunk in ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
                 // FIXME: we clone all the ids here
                 let chunk = IdList::try_from_iter(
-                    &group.entity_type,
+                    group.entity_type.id_type()?,
                     chunk.into_iter().map(|id| (*id).to_owned()),
                 )?;
                 count += ClampRangeQuery::new(table, &chunk, block)?.execute(conn)?
@@ -1382,7 +1382,7 @@ impl Table {
         let columns = object_type
             .fields
             .into_iter()
-            .filter(|field| !field.is_derived)
+            .filter(|field| !field.is_derived())
             .map(|field| Column::new(schema, &table_name, field, catalog))
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
@@ -1440,7 +1440,7 @@ impl Table {
         self.columns
             .iter()
             .find(|column| column.field == field)
-            .ok_or_else(|| StoreError::UnknownField(field.to_string()))
+            .ok_or_else(|| StoreError::UnknownField(self.name.to_string(), field.to_string()))
     }
 
     fn can_copy_from(&self, source: &Self) -> Vec<String> {

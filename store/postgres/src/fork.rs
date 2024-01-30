@@ -177,7 +177,7 @@ query Query ($id: String) {{
         let map: HashMap<Word, Value> = {
             let mut map = HashMap::new();
             for f in fields {
-                if f.is_derived {
+                if f.is_derived() {
                     // Derived fields are not resolved, so it's safe to ignore them.
                     continue;
                 }
@@ -263,10 +263,10 @@ mod tests {
 
         let schema = schema.schema();
         vec![
-            Field::new(schema, "id", &non_null_type("ID"), false),
-            Field::new(schema, "owner", &non_null_type("Bytes"), false),
-            Field::new(schema, "displayName", &non_null_type("String"), false),
-            Field::new(schema, "imageUrl", &non_null_type("String"), false),
+            Field::new(schema, "id", &non_null_type("ID"), None),
+            Field::new(schema, "owner", &non_null_type("Bytes"), None),
+            Field::new(schema, "displayName", &non_null_type("String"), None),
+            Field::new(schema, "imageUrl", &non_null_type("String"), None),
         ]
     }
 

@@ -786,7 +786,7 @@ fn field_filter_input_values(
         Ok(match named_type {
             s::TypeDefinition::Object(_) | s::TypeDefinition::Interface(_) => {
                 let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
-                let mut input_values = if field.is_derived {
+                let mut input_values = if field.is_derived() {
                     // Only add `where` filter fields for object and interface fields
                     // if they are not @derivedFrom
                     vec![]
@@ -975,7 +975,7 @@ fn field_list_filter_input_values(
     let (input_field_type, parent_type_name) = match typedef {
         s::TypeDefinition::Object(s::ObjectType { name, .. })
         | s::TypeDefinition::Interface(s::InterfaceType { name, .. }) => {
-            if field.is_derived {
+            if field.is_derived() {
                 (None, Some(name.clone()))
             } else {
                 let scalar_type = id_type_as_scalar(schema, typedef)?.unwrap();

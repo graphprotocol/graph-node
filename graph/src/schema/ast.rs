@@ -10,6 +10,8 @@ use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectOrInterface};
 use crate::prelude::anyhow::anyhow;
 use crate::prelude::{s, Error, ValueType};
 
+use super::AsEntityTypeName;
+
 pub enum FilterOp {
     Not,
     GreaterThan,
@@ -131,6 +133,12 @@ impl Deref for ObjectType {
 }
 
 impl CheapClone for ObjectType {}
+
+impl AsEntityTypeName for &ObjectType {
+    fn name(&self) -> &str {
+        &self.0.name
+    }
+}
 
 impl ObjectType {
     pub fn name(&self) -> &str {

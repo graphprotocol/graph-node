@@ -1,6 +1,7 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
+use graph::data::graphql::ObjectTypeExt;
 use graph::data::query::Trace;
 use graph::data::store::Id;
 use graph::data::store::IdList;
@@ -8,18 +9,21 @@ use graph::data::store::IdType;
 use graph::data::store::QueryObject;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
+use graph::schema::kw;
+use graph::schema::AggregationInterval;
+use graph::schema::Field;
 use graph::slog::warn;
 use graph::util::cache_weight;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::data::graphql::*;
+use graph::data::graphql::TypeExt;
 use graph::prelude::{
-    s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
+    AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
     EntityWindow, ParentLink, QueryExecutionError, Value as StoreValue, WindowAttribute, ENV_VARS,
 };
-use graph::schema::{ast as sast, EntityType, InputSchema};
+use graph::schema::{EntityType, InputSchema, ObjectOrInterface};
 
 use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
@@ -228,15 +232,15 @@ impl Node {
 /// list is important for generating the right filter, and handling results
 /// correctly
 #[derive(Debug)]
-enum JoinField<'a> {
-    List(&'a str),
-    Scalar(&'a str),
+enum JoinField {
+    List(Word),
+    Scalar(Word),
 }
 
-impl<'a> JoinField<'a> {
-    fn new(field: &'a s::Field) -> Self {
-        let name = field.name.as_str();
-        if sast::is_list_or_non_null_list_field(field) {
+impl JoinField {
+    fn new(field: &Field) -> Self {
+        let name = field.name.clone();
+        if field.is_list() {
             JoinField::List(name)
         } else {
             JoinField::Scalar(name)
@@ -252,43 +256,39 @@ impl<'a> JoinField<'a> {
 }
 
 #[derive(Debug)]
-enum JoinRelation<'a> {
+enum JoinRelation {
     // Name of field in which child stores parent ids
-    Direct(JoinField<'a>),
+    Direct(JoinField),
     // Name of the field in the parent type containing child ids
-    Derived(JoinField<'a>),
+    Derived(JoinField),
 }
 
 #[derive(Debug)]
-struct JoinCond<'a> {
+struct JoinCond {
     /// The (concrete) object type of the parent, interfaces will have
     /// one `JoinCond` for each implementing type
     parent_type: EntityType,
     /// The (concrete) object type of the child, interfaces will have
     /// one `JoinCond` for each implementing type
     child_type: EntityType,
-    relation: JoinRelation<'a>,
+    relation: JoinRelation,
 }
 
-impl<'a> JoinCond<'a> {
+impl JoinCond {
     fn new(
         schema: &InputSchema,
-        parent_type: &'a s::ObjectType,
-        child_type: &'a s::ObjectType,
-        field_name: &str,
+        parent_type: EntityType,
+        child_type: EntityType,
+        field: &Field,
     ) -> Self {
-        let field = parent_type
-            .field(field_name)
-            .expect("field_name is a valid field of parent_type");
-        let relation =
-            if let Some(derived_from_field) = sast::get_derived_from_field(child_type, field) {
-                JoinRelation::Direct(JoinField::new(derived_from_field))
-            } else {
-                JoinRelation::Derived(JoinField::new(field))
-            };
+        let relation = if let Some(derived_from_field) = field.derived_from(schema) {
+            JoinRelation::Direct(JoinField::new(derived_from_field))
+        } else {
+            JoinRelation::Derived(JoinField::new(field))
+        };
         JoinCond {
-            parent_type: schema.entity_type(parent_type).unwrap(),
-            child_type: schema.entity_type(child_type).unwrap(),
+            parent_type,
+            child_type,
             relation,
         }
     }
@@ -302,7 +302,7 @@ impl<'a> JoinCond<'a> {
             JoinRelation::Direct(field) => {
                 // we only need the parent ids
                 let ids = IdList::try_from_iter(
-                    &self.parent_type,
+                    self.parent_type.id_type()?,
                     parents_by_id.into_iter().map(|(id, _)| id),
                 )?;
                 Ok((
@@ -324,9 +324,12 @@ impl<'a> JoinCond<'a> {
                                     .map(|child_id| (id, child_id.to_owned()))
                             })
                             .unzip();
-                        let ids = IdList::try_from_iter(&self.parent_type, ids.into_iter())?;
-                        let child_ids =
-                            IdList::try_from_iter(&self.child_type, child_ids.into_iter())?;
+                        let ids =
+                            IdList::try_from_iter(self.parent_type.id_type()?, ids.into_iter())?;
+                        let child_ids = IdList::try_from_iter(
+                            self.child_type.id_type()?,
+                            child_ids.into_iter(),
+                        )?;
                         (ids, ParentLink::Scalar(child_ids))
                     }
                     JoinField::List(child_field) => {
@@ -355,10 +358,13 @@ impl<'a> JoinCond<'a> {
                                     .map(|child_ids| (id, child_ids))
                             })
                             .unzip();
-                        let ids = IdList::try_from_iter(&self.parent_type, ids.into_iter())?;
+                        let ids =
+                            IdList::try_from_iter(self.parent_type.id_type()?, ids.into_iter())?;
                         let child_ids = child_ids
                             .into_iter()
-                            .map(|ids| IdList::try_from_iter(&self.child_type, ids.into_iter()))
+                            .map(|ids| {
+                                IdList::try_from_iter(self.child_type.id_type()?, ids.into_iter())
+                            })
                             .collect::<Result<Vec<_>, _>>()?;
                         (ids, ParentLink::List(child_ids))
                     }
@@ -378,24 +384,22 @@ impl<'a> JoinCond<'a> {
 struct Join<'a> {
     /// The object type of the child entities
     child_type: ObjectOrInterface<'a>,
-    conds: Vec<JoinCond<'a>>,
+    conds: Vec<JoinCond>,
 }
 
 impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
     fn new(
         schema: &'a InputSchema,
-        parent_type: &'a s::ObjectType,
+        parent_type: EntityType,
         child_type: ObjectOrInterface<'a>,
-        field_name: &str,
+        field: &Field,
     ) -> Self {
-        let child_types = child_type
-            .object_types(schema.schema())
-            .expect("the name of the child type is valid");
+        let child_types = child_type.object_types();
 
         let conds = child_types
-            .iter()
-            .map(|child_type| JoinCond::new(schema, parent_type, child_type, field_name))
+            .into_iter()
+            .map(|child_type| JoinCond::new(schema, parent_type.cheap_clone(), child_type, field))
             .collect();
 
         Join { child_type, conds }
@@ -451,13 +455,13 @@ enum MaybeJoin<'a> {
 }
 
 impl<'a> MaybeJoin<'a> {
-    fn child_type(&self) -> ObjectOrInterface<'_> {
+    fn child_type(&self) -> &ObjectOrInterface<'_> {
         match self {
-            MaybeJoin::Root { child_type } => child_type.clone(),
+            MaybeJoin::Root { child_type } => child_type,
             MaybeJoin::Nested(Join {
                 child_type,
                 conds: _,
-            }) => child_type.clone(),
+            }) => child_type,
         }
     }
 }
@@ -558,8 +562,9 @@ pub fn run(
         ctx.trace,
     );
 
-    // Execute the root selection set against the root query type
-    let (nodes, trace) = loader.execute_selection_set(make_root_node(), trace, selection_set)?;
+    // Execute the root selection set against the root query type.
+    let (nodes, trace) =
+        loader.execute_selection_set(make_root_node(), trace, selection_set, None)?;
 
     graphql_metrics.observe_query_result_size(nodes.weight());
     let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
@@ -589,8 +594,8 @@ impl<'a> Loader<'a> {
         mut parents: Vec<Node>,
         mut parent_trace: Trace,
         selection_set: &a::SelectionSet,
+        parent_interval: Option<AggregationInterval>,
     ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-        let schema = &self.ctx.query.schema;
         let input_schema = self.resolver.store.input_schema()?;
         let mut errors: Vec<QueryExecutionError> = Vec::new();
         let at_root = is_root_node(parents.iter());
@@ -619,27 +624,47 @@ impl<'a> Loader<'a> {
             }
 
             for field in fields {
+                let child_interval = field.aggregation_interval()?;
                 let field_type = object_type
                     .field(&field.name)
                     .expect("field names are valid");
-                let child_type = schema
-                    .object_or_interface(field_type.field_type.get_base_type())
+                let child_type = input_schema
+                    .object_or_interface(field_type.field_type.get_base_type(), child_interval)
                     .expect("we only collect fields that are objects or interfaces");
 
                 let join = if at_root {
                     MaybeJoin::Root { child_type }
                 } else {
+                    let object_type = input_schema
+                        .object_or_aggregation(&object_type.name, parent_interval)
+                        .ok_or_else(|| {
+                            vec![QueryExecutionError::ConstraintViolation(format!(
+                                "the type `{}`(interval {}) is not an object type",
+                                object_type.name,
+                                parent_interval
+                                    .map(|intv| intv.as_str())
+                                    .unwrap_or("<none>")
+                            ))]
+                        })?;
+                    let field_type = object_type
+                        .field(&field.name)
+                        .expect("field names are valid");
                     MaybeJoin::Nested(Join::new(
                         &input_schema,
-                        object_type,
+                        object_type.cheap_clone(),
                         child_type,
-                        &field.name,
+                        field_type,
                     ))
                 };
 
                 match self.fetch(&parents, &join, field) {
                     Ok((children, trace)) => {
-                        match self.execute_selection_set(children, trace, &field.selection_set) {
+                        match self.execute_selection_set(
+                            children,
+                            trace,
+                            &field.selection_set,
+                            child_interval,
+                        ) {
                             Ok((children, trace)) => {
                                 add_children(
                                     &input_schema,
@@ -677,16 +702,14 @@ impl<'a> Loader<'a> {
         field: &a::Field,
     ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
         let input_schema = self.resolver.store.input_schema()?;
+        let child_type = join.child_type();
         let mut query = build_query(
-            join.child_type(),
+            child_type,
             self.resolver.block_number(),
             field,
             self.ctx.max_first,
             self.ctx.max_skip,
-            &super::query::SchemaPair {
-                api: self.ctx.query.schema.clone(),
-                input: input_schema.cheap_clone(),
-            },
+            &input_schema,
         )?;
         query.trace = self.ctx.trace;
         query.query_id = Some(self.ctx.query.query_id.clone());
@@ -696,7 +719,11 @@ impl<'a> Loader<'a> {
             // that causes unnecessary work in the database
             query.order = EntityOrder::Unordered;
         }
-
+        // Aggregations are always ordered by (timestamp, id)
+        if child_type.is_aggregation() {
+            let ts = child_type.field(kw::TIMESTAMP).unwrap();
+            query.order = EntityOrder::Descending(ts.name.to_string(), ts.value_type);
+        }
         query.logger = Some(self.ctx.logger.cheap_clone());
         if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
             query.filter = Some(

@@ -1,5 +1,6 @@
 use graph::blockchain::{Block, BlockTime};
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::data::subgraph::LATEST_VERSION;
 use graph::entity;
 use graph::prelude::{SubscriptionResult, Value};
 use graph::schema::InputSchema;
@@ -31,7 +32,6 @@ use graph::{
         QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
     },
-    semver::Version,
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
@@ -207,7 +207,7 @@ async fn setup(
         let schema = test_schema(id.clone(), id_type);
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: id.clone(),
-            spec_version: Version::new(1, 0, 0),
+            spec_version: LATEST_VERSION.clone(),
             features,
             description: None,
             repository: None,
@@ -381,6 +381,27 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         bandReviews: [BandReview!]! @derivedFrom(field: \"author\")
         songReviews: [SongReview!]! @derivedFrom(field: \"author\")
     }
+
+    type Plays @entity(timeseries: true) {
+        id: Int8!
+        timestamp: Int8!
+        song: Song!
+        user: User!
+    }
+
+    type SongPlays @aggregation(intervals: [\"hour\"], source: \"Plays\") {
+        id: Int8!
+        timestamp: Int8!
+        song: Song!
+        played: Int! @aggregate(fn: \"count\")
+    }
+
+    type UserPlays @aggregation(intervals: [\"hour\"], source: \"Plays\") {
+        id: Int8!
+        timestamp: Int8!
+        user: User!
+        played: Int! @aggregate(fn: \"count\")
+    }
     ";
 
     InputSchema::parse_latest(&SCHEMA.replace("@ID@", id_type.as_str()), id)
@@ -437,6 +458,7 @@ async fn insert_test_entities(
     let md = id_type.medias();
     let is = &manifest.schema;
     let pub1 = &*PUB1;
+    let ts0 = BlockTime::for_test(&BLOCKS[0]);
     let entities0 = vec![
         (
             "Musician",
@@ -530,6 +552,16 @@ async fn insert_test_entities(
                 entity! { is => id: "rl2",  title: "Rock",           songs: vec![s[2]] },
                 entity! { is => id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
                 entity! { is => id: "rl4",  title: "Silence",        songs: Vec::<graph::prelude::Value>::new() },
+            ],
+        ),
+        (
+            "Plays",
+            vec![
+                entity! { is => id: 1i64, timestamp: ts0, song: s[1], user: "u1"},
+                entity! { is => id: 2i64, timestamp: ts0, song: s[1], user: "u2"},
+                entity! { is => id: 3i64, timestamp: ts0, song: s[2], user: "u1"},
+                entity! { is => id: 4i64, timestamp: ts0, song: s[1], user: "u1"},
+                entity! { is => id: 5i64, timestamp: ts0, song: s[1], user: "u1"},
             ],
         ),
     ];
@@ -2978,6 +3010,65 @@ fn empty_type_c() {
     run_query(QUERY, |result, _| {
         let exp = object! {
             single: object! { songs: Vec::<r::Value>::new() }
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn simple_aggregation() {
+    const SONG_QUERY: &str = "
+    query {
+        songPlays_collection(interval: hour) {
+            id
+            timestamp
+            song { id }
+            played
+        }
+    }";
+
+    const USER_QUERY1: &str = "
+    query {
+        userPlays_collection(interval: hour) {
+            id
+            timestamp
+            user { id }
+            played
+        }
+    }";
+
+    const USER_QUERY2: &str = "
+    query {
+        userPlays_collection(interval: hour, where: { timestamp_gt: 1 }) {
+            id
+        }
+    }";
+
+    run_query(SONG_QUERY, |result, id_type| {
+        let s = id_type.songs();
+        let exp = object! {
+            songPlays_collection: vec![
+                object! { id: "5", timestamp: "0", song: object! { id: s[1] }, played: 4 },
+                object! { id: "3", timestamp: "0", song: object! { id: s[2] }, played: 1 },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+    run_query(USER_QUERY1, |result, _| {
+        let exp = object! {
+            userPlays_collection: vec![
+                object! { id: "5", timestamp: "0", user: object! { id: "u1" }, played: 4 },
+                object! { id: "2", timestamp: "0", user: object! { id: "u2" }, played: 1 },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+    run_query(USER_QUERY2, |result, _| {
+        let exp = object! {
+            userPlays_collection: Vec::<r::Value>::new()
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);

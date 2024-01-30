@@ -18,7 +18,6 @@ use crate::{
     data::value::Word,
     prelude::{CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
-    schema::EntityType,
 };
 
 use super::{scalar, Value, ValueType, ID};
@@ -343,10 +342,9 @@ impl IdList {
     /// Turn a list of ids into an `IdList` and check that they are all the
     /// same type
     pub fn try_from_iter<I: Iterator<Item = Id>>(
-        entity_type: &EntityType,
+        id_type: IdType,
         mut iter: I,
     ) -> Result<Self, QueryExecutionError> {
-        let id_type = entity_type.id_type()?;
         match id_type {
             IdType::String => {
                 let ids: Vec<Word> = iter.try_fold(vec![], |mut ids, id| match id {

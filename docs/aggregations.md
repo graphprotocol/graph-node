@@ -160,11 +160,13 @@ accepts the following arguments:
 - A mandatory `interval`
 - An optional `current` to indicate whether to include the current,
   partially filled bucket in the response. Can be either `ignore` (the
-  default) or `include`
-- Optional `timestamp_{gte|gt|lt|lte|eq}` filters to restrict the range of
-  timestamps to return
-- Timeseries are always sorted by the dimensions in the order in which they
-  are declared in the schema and the `timestamp` in descending order
+  default) or `include` (still **TODO** and not implemented)
+- Optional `timestamp_{gte|gt|lt|lte|eq|in}` filters to restrict the range
+  of timestamps to return
+- Timeseries are always sorted by `timestamp` and `id` in descending order
+
+**TODO** It would be nicer to sort by the dimensions and `timestamp`, but we
+don't have the internal plumbing for multi-column sort in place.
 
 ```graphql
 token_stats(interval: "hour",

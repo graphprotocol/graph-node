@@ -1642,10 +1642,16 @@ async fn test_store_ts() {
     let err = host
         .store_setv(STATS, SID, vec![("amount", b20)])
         .expect_err("store_set must fail for aggregations");
-    err_says(err, "entity type `Stats` does not exist in hostStoreTs");
+    err_says(
+        err,
+        "Cannot set entity of type `Stats`. The type must be an @entity type",
+    );
 
     let err = host
         .store_get(STATS, SID)
         .expect_err("store_get must fail for timeseries");
-    err_says(err, "entity type `Stats` does not exist in hostStoreTs");
+    err_says(
+        err,
+        "Cannot get entity of type `Stats`. The type must be an @entity type",
+    );
 }

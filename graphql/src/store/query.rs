@@ -1,23 +1,19 @@
 use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
-use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{
     BlockNumber, Child, EntityCollection, EntityFilter, EntityOrder, EntityOrderByChild,
     EntityOrderByChildInfo, EntityQuery, EntityRange,
 };
-use graph::data::graphql::ext::DirectiveFinder;
-use graph::data::graphql::ObjectOrInterface;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::QueryExecutionError;
 use graph::data::store::{Attribute, SubscriptionFilter, Value, ValueType};
-use graph::data::subgraph::DeploymentHash;
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::{r, s, TryFromValue, ENV_VARS};
 use graph::schema::ast::{self as sast, FilterOp};
-use graph::schema::{ApiSchema, EntityType, InputSchema};
+use graph::schema::{ApiSchema, EntityType, InputSchema, ObjectOrInterface};
 
 use crate::execution::ast as a;
 
@@ -27,44 +23,27 @@ enum OrderDirection {
     Descending,
 }
 
-pub(crate) struct SchemaPair {
-    pub api: Arc<ApiSchema>,
-    pub input: InputSchema,
-}
-
 /// Builds a EntityQuery from GraphQL arguments.
 ///
 /// Panics if `entity` is not present in `schema`.
 pub(crate) fn build_query<'a>(
-    entity: impl Into<ObjectOrInterface<'a>>,
+    entity: &ObjectOrInterface<'a>,
     block: BlockNumber,
     field: &a::Field,
     max_first: u32,
     max_skip: u32,
-    schema: &SchemaPair,
+    schema: &InputSchema,
 ) -> Result<EntityQuery, QueryExecutionError> {
-    let entity = entity.into();
-    let object_types = match &entity {
-        ObjectOrInterface::Object(object) => {
-            vec![*object]
-        }
-        ObjectOrInterface::Interface(interface) => schema.api.types_for_interface()
-            [&interface.name]
-            .iter()
-            .map(|o| o)
-            .collect(),
-    };
-    let entity_types = EntityCollection::All(
-        object_types
-            .iter()
-            .map(|object_type| {
-                let selected_columns = field.selected_attrs(object_type);
-                let entity_type = schema.input.entity_type(*object_type).unwrap();
-                selected_columns.map(|selected_columns| (entity_type, selected_columns))
-            })
-            .collect::<Result<_, _>>()?,
-    );
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
+    let object_types = entity
+        .object_types()
+        .into_iter()
+        .map(|entity_type| {
+            let selected_columns = field.selected_attrs(&entity_type);
+            selected_columns.map(|selected_columns| (entity_type, selected_columns))
+        })
+        .collect::<Result<_, _>>()?;
+    let entity_types = EntityCollection::All(object_types);
+    let mut query = EntityQuery::new(schema.id().cheap_clone(), block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
     if let Some(filter) = build_filter(entity, field, schema)? {
         query = query.filter(filter);
@@ -187,9 +166,9 @@ fn build_range(
 
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
-    entity: ObjectOrInterface,
+    entity: &ObjectOrInterface,
     field: &a::Field,
-    schema: &SchemaPair,
+    schema: &InputSchema,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     let where_filter = match field.argument_value("where") {
         Some(r::Value::Object(object)) => match build_filter_from_object(entity, object, schema) {
@@ -284,8 +263,8 @@ fn build_entity_filter(
 
 /// Iterate over the list and generate an EntityFilter from it
 fn build_list_filter_from_value(
-    entity: ObjectOrInterface,
-    schema: &SchemaPair,
+    entity: &ObjectOrInterface,
+    schema: &InputSchema,
     value: &r::Value,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     // We have object like this
@@ -311,9 +290,9 @@ fn build_list_filter_from_value(
 
 /// build a filter which has list of nested filters
 fn build_list_filter_from_object<'a>(
-    entity: ObjectOrInterface,
+    entity: &ObjectOrInterface,
     object: &Object,
-    schema: &SchemaPair,
+    schema: &InputSchema,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     Ok(object
         .iter()
@@ -327,9 +306,9 @@ fn build_list_filter_from_object<'a>(
 
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object<'a>(
-    entity: ObjectOrInterface,
+    entity: &ObjectOrInterface,
     object: &Object,
-    schema: &SchemaPair,
+    schema: &InputSchema,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     object
         .iter()
@@ -373,9 +352,9 @@ fn build_filter_from_object<'a>(
                         build_child_filter_from_object(entity, field_name, obj, schema)?
                     }
                     _ => {
-                        let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                        let field = entity.field(&field_name).ok_or_else(|| {
                             QueryExecutionError::EntityFieldError(
-                                entity.name().to_owned(),
+                                entity.typename().to_owned(),
                                 field_name.clone(),
                             )
                         })?;
@@ -387,9 +366,9 @@ fn build_filter_from_object<'a>(
                     }
                 },
                 _ => {
-                    let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                    let field = entity.field(&field_name).ok_or_else(|| {
                         QueryExecutionError::EntityFieldError(
-                            entity.name().to_owned(),
+                            entity.typename().to_owned(),
                             field_name.clone(),
                         )
                     })?;
@@ -403,81 +382,63 @@ fn build_filter_from_object<'a>(
 }
 
 fn build_child_filter_from_object(
-    entity: ObjectOrInterface,
+    entity: &ObjectOrInterface,
     field_name: String,
     object: &Object,
-    schema: &SchemaPair,
+    schema: &InputSchema,
 ) -> Result<EntityFilter, QueryExecutionError> {
     let field = entity
         .field(&field_name)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
     let type_name = &field.field_type.get_base_type();
     let child_entity = schema
-        .api
-        .object_or_interface(type_name)
+        .object_or_interface(type_name, None)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
-    let child_entity_type = schema.input.entity_type(child_entity)?;
     let filter = Box::new(EntityFilter::And(build_filter_from_object(
-        child_entity,
+        &child_entity,
         object,
         schema,
     )?));
     let derived = field.is_derived();
-    let attr = match derived {
-        true => sast::get_derived_from_field(child_entity, field)
-            .ok_or(QueryExecutionError::InvalidFilterError)?
-            .name
-            .to_string(),
-        false => field_name.clone(),
+    let attr = match field.derived_from(schema) {
+        Some(field) => field.name.to_string(),
+        None => field_name.clone(),
     };
 
     if child_entity.is_interface() {
         Ok(EntityFilter::Or(
             child_entity
-                .object_types(schema.api.schema())
-                .ok_or(QueryExecutionError::AbstractTypeError(
-                    "Interface is not implemented by any types".to_string(),
-                ))?
-                .iter()
-                .map(|object_type| {
-                    schema.input.entity_type(*object_type).map(|entity_type| {
-                        EntityFilter::Child(Child {
-                            attr: attr.clone(),
-                            entity_type,
-                            filter: filter.clone(),
-                            derived,
-                        })
+                .object_types()
+                .into_iter()
+                .map(|entity_type| {
+                    EntityFilter::Child(Child {
+                        attr: attr.clone(),
+                        entity_type,
+                        filter: filter.clone(),
+                        derived,
                     })
                 })
-                .collect::<Result<_, _>>()?,
+                .collect(),
         ))
     } else if entity.is_interface() {
         Ok(EntityFilter::Or(
             entity
-                .object_types(schema.api.schema())
-                .ok_or(QueryExecutionError::AbstractTypeError(
-                    "Interface is not implemented by any types".to_string(),
-                ))?
-                .iter()
-                .map(|object_type| {
-                    let field = object_type
-                        .fields
-                        .iter()
-                        .find(|f| f.name == field_name.clone())
+                .object_types()
+                .into_iter()
+                .map(|entity_type| {
+                    let field = entity_type
+                        .field(&field_name)
                         .ok_or(QueryExecutionError::InvalidFilterError)?;
                     let derived = field.is_derived();
 
-                    let attr = match derived {
-                        true => sast::get_derived_from_field(child_entity, field)
-                            .ok_or(QueryExecutionError::InvalidFilterError)?
-                            .name
-                            .to_string(),
-                        false => field_name.clone(),
+                    let attr = match field.derived_from(schema) {
+                        Some(derived_from) => derived_from.name.to_string(),
+                        None => field_name.clone(),
                     };
 
                     Ok(EntityFilter::Child(Child {
                         attr,
-                        entity_type: child_entity_type.clone(),
+                        entity_type: child_entity.entity_type(),
                         filter: filter.clone(),
                         derived,
                     }))
@@ -487,7 +448,7 @@ fn build_child_filter_from_object(
     } else {
         Ok(EntityFilter::Child(Child {
             attr,
-            entity_type: schema.input.entity_type(*type_name)?,
+            entity_type: schema.entity_type(*type_name)?,
             filter,
             derived,
         }))
@@ -543,18 +504,21 @@ fn parse_order_by(enum_value: &String) -> Result<OrderByValue, QueryExecutionErr
     })
 }
 
+#[derive(Debug)]
 struct ObjectOrderDetails {
     entity_type: EntityType,
     join_attribute: Attribute,
     derived: bool,
 }
 
+#[derive(Debug)]
 struct InterfaceOrderDetails {
     entity_types: Vec<EntityType>,
     join_attribute: Attribute,
     derived: bool,
 }
 
+#[derive(Debug)]
 enum OrderByChild {
     Object(ObjectOrderDetails),
     Interface(InterfaceOrderDetails),
@@ -562,112 +526,69 @@ enum OrderByChild {
 
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
-    entity: ObjectOrInterface,
+    entity: &ObjectOrInterface,
     field: &a::Field,
-    schema: &SchemaPair,
+    schema: &InputSchema,
 ) -> Result<Option<(String, ValueType, Option<OrderByChild>)>, QueryExecutionError> {
     match field.argument_value("orderBy") {
         Some(r::Value::Enum(name)) => match parse_order_by(name)? {
             OrderByValue::Direct(name) => {
-                let field = sast::get_field(entity, name.as_str()).ok_or_else(|| {
-                    QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
+                let field = entity.field(&name).ok_or_else(|| {
+                    QueryExecutionError::EntityFieldError(
+                        entity.typename().to_owned(),
+                        name.clone(),
+                    )
                 })?;
                 sast::get_field_value_type(&field.field_type)
                     .map(|value_type| Some((name.clone(), value_type, None)))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
-                            entity.name().to_owned(),
+                            entity.typename().to_owned(),
                             name.clone(),
                         )
                     })
             }
             OrderByValue::Child(parent_field_name, child_field_name) => {
-                // Finds the field that connects the parent entity with the child entity.
-                // In the case of an interface, we need to find the field on one of the types that implement the interface,
-                // as the `@derivedFrom` directive is only allowed on object types.
-                let field = match entity {
-                    ObjectOrInterface::Object(_) => {
-                        sast::get_field(entity, parent_field_name.as_str()).ok_or_else(|| {
-                            QueryExecutionError::EntityFieldError(
-                                entity.name().to_owned(),
-                                parent_field_name.clone(),
-                            )
-                        })?
-                    }
-                    ObjectOrInterface::Interface(_) => {
-                        let object_types =
-                            schema.api.types_for_interface().get(entity.name()).ok_or(
-                                QueryExecutionError::EntityFieldError(
-                                    entity.name().to_owned(),
-                                    parent_field_name.clone(),
-                                ),
-                            )?;
-
-                        if let Some(first_entity) = object_types.first() {
-                            sast::get_field(first_entity, parent_field_name.as_str()).ok_or_else(
-                                || {
-                                    QueryExecutionError::EntityFieldError(
-                                        entity.name().to_owned(),
-                                        parent_field_name.clone(),
-                                    )
-                                },
-                            )?
-                        } else {
-                            Err(QueryExecutionError::EntityFieldError(
-                                entity.name().to_owned(),
-                                parent_field_name.clone(),
-                            ))?
-                        }
-                    }
-                };
-                let derived = field.is_derived();
+                // Finds the field that connects the parent entity with the
+                // child entity. Note that `@derivedFrom` is only allowed on
+                // object types.
+                let field = entity
+                    .implemented_field(&parent_field_name)
+                    .ok_or_else(|| {
+                        QueryExecutionError::EntityFieldError(
+                            entity.typename().to_owned(),
+                            parent_field_name.clone(),
+                        )
+                    })?;
+                let derived_from = field.derived_from(schema);
                 let base_type = field.field_type.get_base_type();
 
                 let child_entity = schema
-                    .api
-                    .object_or_interface(base_type)
+                    .object_or_interface(base_type, None)
                     .ok_or_else(|| QueryExecutionError::NamedTypeError(base_type.into()))?;
-                let child_field = sast::get_field(child_entity, child_field_name.as_str())
-                    .ok_or_else(|| {
-                        QueryExecutionError::EntityFieldError(
-                            child_entity.name().to_owned(),
-                            child_field_name.clone(),
-                        )
-                    })?;
-
-                let join_attribute = match derived {
-                    true => sast::get_derived_from_field(child_entity, field)
+                let child_field =
+                    child_entity
+                        .field(child_field_name.as_str())
                         .ok_or_else(|| {
                             QueryExecutionError::EntityFieldError(
-                                entity.name().to_string(),
-                                field.name.to_string(),
+                                child_entity.typename().to_owned(),
+                                child_field_name.clone(),
                             )
-                        })?
-                        .name
-                        .to_string(),
-                    false => parent_field_name,
+                        })?;
+
+                let (join_attribute, derived) = match derived_from {
+                    Some(child_field) => (child_field.name.to_string(), true),
+                    None => (parent_field_name, false),
                 };
 
                 let child = match child_entity {
-                    ObjectOrInterface::Object(_) => OrderByChild::Object(ObjectOrderDetails {
-                        entity_type: schema.input.entity_type(base_type)?,
+                    ObjectOrInterface::Object(_, _) => OrderByChild::Object(ObjectOrderDetails {
+                        entity_type: schema.entity_type(base_type)?,
                         join_attribute,
                         derived,
                     }),
-                    ObjectOrInterface::Interface(interface) => {
-                        let entity_types = schema
-                            .api
-                            .types_for_interface()
-                            .get(&interface.name)
-                            .map(|object_types| {
-                                object_types
-                                    .iter()
-                                    .map(|object_type| schema.input.entity_type(object_type))
-                                    .collect::<Result<Vec<EntityType>, _>>()
-                            })
-                            .ok_or(QueryExecutionError::AbstractTypeError(
-                                "Interface not implemented by any object type".to_string(),
-                            ))??;
+                    ObjectOrInterface::Interface(_, _) => {
+                        let entity_types = child_entity.object_types();
                         OrderByChild::Interface(InterfaceOrderDetails {
                             entity_types,
                             join_attribute,
@@ -680,7 +601,7 @@ fn build_order_by(
                     .map(|value_type| Some((child_field_name.clone(), value_type, Some(child))))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
-                            child_entity.name().to_owned(),
+                            child_entity.typename().to_owned(),
                             child_field_name.clone(),
                         )
                     })
@@ -722,26 +643,6 @@ fn build_order_direction(field: &a::Field) -> Result<OrderDirection, QueryExecut
         .unwrap_or(OrderDirection::Ascending))
 }
 
-/// Parses the subgraph ID from the ObjectType directives.
-pub fn parse_subgraph_id<'a>(
-    entity: impl Into<ObjectOrInterface<'a>>,
-) -> Result<DeploymentHash, QueryExecutionError> {
-    let entity = entity.into();
-    let entity_name = entity.name();
-    entity
-        .directives()
-        .iter()
-        .find(|directive| directive.name == "subgraphId")
-        .and_then(|directive| directive.arguments.iter().find(|(name, _)| name == "id"))
-        .and_then(|(_, value)| match value {
-            s::Value::String(id) => Some(id),
-            _ => None,
-        })
-        .ok_or(())
-        .and_then(|id| DeploymentHash::new(id).map_err(|_| ()))
-        .map_err(|_| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
-}
-
 /// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
 pub(crate) fn collect_entities_from_query_field(
     input_schema: &InputSchema,
@@ -768,11 +669,8 @@ pub(crate) fn collect_entities_from_query_field(
                     if sast::get_object_type_directive(object_type, String::from("entity"))
                         .is_some()
                     {
-                        // Obtain the subgraph ID from the object type
-                        if let Ok(subgraph_id) = parse_subgraph_id(object_type) {
-                            // Add the (subgraph_id, entity_name) tuple to the result set
-                            entities.insert((subgraph_id, object_type.name.clone()));
-                        }
+                        entities
+                            .insert((input_schema.id().cheap_clone(), object_type.name.clone()));
                     }
 
                     // If the query field has a non-empty selection set, this means we
@@ -815,7 +713,7 @@ mod tests {
     use graphql_parser::Pos;
     use std::{iter::FromIterator, sync::Arc};
 
-    use super::{a, build_query, SchemaPair};
+    use super::{a, build_query};
 
     fn default_object() -> ObjectType {
         let subgraph_id_argument = (
@@ -869,17 +767,6 @@ mod tests {
         }
     }
 
-    fn field(name: &str, field_type: Type) -> Field {
-        Field {
-            position: Default::default(),
-            description: None,
-            name: name.to_owned(),
-            arguments: vec![],
-            field_type,
-            directives: vec![],
-        }
-    }
-
     fn default_field() -> a::Field {
         let arguments = vec![
             ("first".to_string(), r::Value::Int(100.into())),
@@ -911,7 +798,7 @@ mod tests {
         field
     }
 
-    fn build_default_schema() -> SchemaPair {
+    fn build_default_schema() -> InputSchema {
         const INPUT_SCHEMA: &str = r#"
         type Entity1 @entity { id: ID! }
         type Entity2 @entity { id: ID! }
@@ -923,21 +810,17 @@ mod tests {
     "#;
 
         let id = DeploymentHash::new("id").unwrap();
-        let input_schema = InputSchema::parse_latest(INPUT_SCHEMA, id.clone()).unwrap();
-        let api_schema = input_schema.api_schema().unwrap();
-
-        SchemaPair {
-            input: input_schema,
-            api: Arc::new(api_schema),
-        }
+        InputSchema::parse_latest(INPUT_SCHEMA, id.clone()).unwrap()
     }
 
     #[test]
     fn build_query_uses_the_entity_name() {
         let schema = build_default_schema();
+        let entity1 = &schema.object_or_interface("Entity1", None).unwrap();
+        let entity2 = &schema.object_or_interface("Entity2", None).unwrap();
         assert_eq!(
             build_query(
-                &object("Entity1"),
+                entity1,
                 BLOCK_NUMBER_MAX,
                 &default_field(),
                 std::u32::MAX,
@@ -947,13 +830,13 @@ mod tests {
             .unwrap()
             .collection,
             EntityCollection::All(vec![(
-                schema.input.entity_type("Entity1").unwrap(),
+                schema.entity_type("Entity1").unwrap(),
                 AttributeNames::All
             )])
         );
         assert_eq!(
             build_query(
-                &object("Entity2"),
+                entity2,
                 BLOCK_NUMBER_MAX,
                 &default_field(),
                 std::u32::MAX,
@@ -963,7 +846,7 @@ mod tests {
             .unwrap()
             .collection,
             EntityCollection::All(vec![(
-                schema.input.entity_type("Entity2").unwrap(),
+                schema.entity_type("Entity2").unwrap(),
                 AttributeNames::All
             )])
         );
@@ -972,9 +855,10 @@ mod tests {
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
         let schema = build_default_schema();
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &default_field(),
                 std::u32::MAX,
@@ -991,9 +875,10 @@ mod tests {
     fn build_query_parses_order_by_from_enum_values_correctly() {
         let schema = build_default_schema();
         let field = default_field_with("orderBy", r::Value::Enum("name".to_string()));
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1008,7 +893,7 @@ mod tests {
         let field = default_field_with("orderBy", r::Value::Enum("email".to_string()));
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1025,9 +910,10 @@ mod tests {
     fn build_query_ignores_order_by_from_non_enum_values() {
         let schema = build_default_schema();
         let field = default_field_with("orderBy", r::Value::String("name".to_string()));
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1042,7 +928,7 @@ mod tests {
         let field = default_field_with("orderBy", r::Value::String("email".to_string()));
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1062,9 +948,10 @@ mod tests {
             ("orderBy", r::Value::Enum("name".to_string())),
             ("orderDirection", r::Value::Enum("asc".to_string())),
         ]);
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1082,7 +969,7 @@ mod tests {
         ]);
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1103,7 +990,7 @@ mod tests {
         ]);
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1122,7 +1009,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1138,9 +1025,11 @@ mod tests {
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
         let schema = build_default_schema();
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
+
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &default_field(),
                 std::u32::MAX,
@@ -1158,10 +1047,11 @@ mod tests {
         let schema = build_default_schema();
         let mut field = default_field();
         field.arguments = vec![("skip".to_string(), r::Value::Int(50))];
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
 
         assert_eq!(
             build_query(
-                &default_object(),
+                default,
                 BLOCK_NUMBER_MAX,
                 &field,
                 std::u32::MAX,
@@ -1187,12 +1077,10 @@ mod tests {
                 r::Value::String("ello".to_string()),
             )])),
         );
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
             build_query(
-                &ObjectType {
-                    fields: vec![field("name", Type::NamedType("string".to_owned()))],
-                    ..default_object()
-                },
+                default,
                 BLOCK_NUMBER_MAX,
                 &query_field,
                 std::u32::MAX,
@@ -1211,6 +1099,7 @@ mod tests {
     #[test]
     fn build_query_yields_block_change_gte_filter() {
         let schema = build_default_schema();
+        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
@@ -1223,10 +1112,7 @@ mod tests {
         );
         assert_eq!(
             build_query(
-                &ObjectType {
-                    fields: vec![field("name", Type::NamedType("string".to_owned()))],
-                    ..default_object()
-                },
+                default,
                 BLOCK_NUMBER_MAX,
                 &query_field,
                 std::u32::MAX,

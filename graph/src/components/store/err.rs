@@ -1,6 +1,5 @@
 use super::{BlockNumber, DeploymentSchemaVersion};
 use crate::prelude::QueryExecutionError;
-use crate::util::intern::Error as InternError;
 use crate::{data::store::EntityValidationError, prelude::DeploymentHash};
 
 use anyhow::{anyhow, Error};
@@ -19,8 +18,8 @@ pub enum StoreError {
          which has an interface in common with `{0}`, exists with the same ID"
     )]
     ConflictingId(String, String, String), // (entity, id, conflicting_entity)
-    #[error("unknown field '{0}'")]
-    UnknownField(String),
+    #[error("table '{0}' does not have a field '{1}'")]
+    UnknownField(String, String),
     #[error("unknown table '{0}'")]
     UnknownTable(String),
     #[error("entity type '{0}' does not have an attribute '{0}'")]
@@ -93,7 +92,7 @@ impl Clone for StoreError {
             Self::ConflictingId(arg0, arg1, arg2) => {
                 Self::ConflictingId(arg0.clone(), arg1.clone(), arg2.clone())
             }
-            Self::UnknownField(arg0) => Self::UnknownField(arg0.clone()),
+            Self::UnknownField(arg0, arg1) => Self::UnknownField(arg0.clone(), arg1.clone()),
             Self::UnknownTable(arg0) => Self::UnknownTable(arg0.clone()),
             Self::UnknownAttribute(arg0, arg1) => {
                 Self::UnknownAttribute(arg0.clone(), arg1.clone())
@@ -170,13 +169,5 @@ impl From<QueryExecutionError> for StoreError {
 impl From<std::fmt::Error> for StoreError {
     fn from(e: std::fmt::Error) -> Self {
         StoreError::Unknown(anyhow!("{}", e.to_string()))
-    }
-}
-
-impl From<InternError> for StoreError {
-    fn from(e: InternError) -> Self {
-        match e {
-            InternError::NotInterned(key) => StoreError::UnknownField(key),
-        }
     }
 }
