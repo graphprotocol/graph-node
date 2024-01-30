@@ -1938,6 +1938,7 @@ name = "graph-sql"
 version = "0.33.0"
 dependencies = [
  "anyhow",
+ "lazy_static",
  "sqlparser",
 ]
 
