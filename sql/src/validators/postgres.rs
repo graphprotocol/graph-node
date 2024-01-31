@@ -748,6 +748,20 @@ mod test {
     }
 
     #[test]
+    fn test_table_function_blacklisted() {
+        let sql = "select vid,k.sname from sgd1.swap,LATERAL(SELECT current_schemas as sname FROM current_schemas(true)) as k";
+        let ast = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
+        let mut postgres_validator = create_function_validator();
+        let result = ast.visit(&mut postgres_validator);
+        assert_eq!(
+            result,
+            ControlFlow::Break(FunctionValidationResult::BlackListed(
+                "current_schemas".to_owned()
+            ))
+        );
+    }
+
+    #[test]
     fn test_blacklisted_without_paranthesis() {
         let sql = "SELECT input_token from swap where '' = (select user)";
         let ast = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
@@ -769,7 +783,7 @@ mod test {
     }
 
     #[test]
-    fn test_unknwon() {
+    fn test_unknown() {
         let sql = "SELECT input_token, do_strange_math(amount_in) FROM swap";
         let ast = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
         let mut postgres_validator = create_function_validator();

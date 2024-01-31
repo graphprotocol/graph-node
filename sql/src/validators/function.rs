@@ -2,7 +2,7 @@ use anyhow::{anyhow, Ok, Result};
 use core::ops::ControlFlow;
 use std::collections::HashSet;
 
-use sqlparser::ast::{Expr, Query, Visit, Visitor};
+use sqlparser::ast::{Expr, ObjectName, Query, TableFactor, Visit, Visitor};
 
 /// The type of a function in the SQL ast tree
 #[derive(PartialEq, Clone, Debug)]
@@ -31,6 +31,20 @@ impl<'a> FunctionValidator<'a> {
         }
     }
 
+    /// Validates a function name returns None if the function is valid
+    fn validate_name(&self, name: &ObjectName) -> ControlFlow<FunctionValidationResult> {
+        if let Some(&ref ident) = name.0.last() {
+            let name = ident.value.to_lowercase();
+            if self.blacklisted.contains(name.as_str()) {
+                return ControlFlow::Break(FunctionValidationResult::BlackListed(name));
+            }
+            if !self.whitelisted.contains(name.as_str()) {
+                return ControlFlow::Break(FunctionValidationResult::Unknown(name));
+            }
+        }
+        return ControlFlow::Continue(());
+    }
+
     pub fn validate_query(&mut self, query: &Query) -> Result<()> {
         match query.visit(self) {
             ControlFlow::Break(FunctionValidationResult::Unknown(name)) => {
@@ -47,20 +61,23 @@ impl<'a> FunctionValidator<'a> {
 impl<'a> Visitor for FunctionValidator<'a> {
     type Break = FunctionValidationResult;
 
-    /// Invoked for any expressions that appear in the AST
-    fn post_visit_expr(&mut self, _expr: &Expr) -> ControlFlow<Self::Break> {
-        if let Expr::Function(function) = _expr {
-            if let Some(&ref ident) = function.name.0.last() {
-                let name = ident.value.to_lowercase();
-                if self.blacklisted.contains(name.as_str()) {
-                    return ControlFlow::Break(FunctionValidationResult::BlackListed(name));
-                }
-                if !self.whitelisted.contains(name.as_str()) {
-                    return ControlFlow::Break(FunctionValidationResult::Unknown(name));
-                }
+    /// Invoked for any table function in the AST.
+    /// See [TableFactor::Table.args](sqlparser::ast::TableFactor::Table::args) for more details identifying a table function
+    fn post_visit_table_factor(&mut self, _table_factor: &TableFactor) -> ControlFlow<Self::Break> {
+        if let TableFactor::Table { name, args, .. } = _table_factor {
+            if args.is_some() {
+                return self.validate_name(name);
             }
         }
-
         ControlFlow::Continue(())
+    }
+
+    /// Invoked for any function expressions that appear in the AST
+    fn post_visit_expr(&mut self, _expr: &Expr) -> ControlFlow<Self::Break> {
+        if let Expr::Function(function) = _expr {
+            self.validate_name(&function.name)
+        } else {
+            ControlFlow::Continue(())
+        }
     }
 }
