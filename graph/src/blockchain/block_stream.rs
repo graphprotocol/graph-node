@@ -23,7 +23,7 @@ use crate::{prelude::*, prometheus::labels};
 
 pub const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 pub const FIREHOSE_BUFFER_STREAM_SIZE: usize = 1;
-pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 1;
+pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 100;
 
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
