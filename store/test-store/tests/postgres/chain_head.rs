@@ -42,8 +42,12 @@ where
             let chain_store = store.block_store().chain_store(name).expect("chain store");
 
             // Run test
-            test(chain_store.cheap_clone(), store.cheap_clone())
-                .unwrap_or_else(|_| panic!("test finishes successfully on network {}", name));
+            test(chain_store.cheap_clone(), store.cheap_clone()).unwrap_or_else(|err| {
+                panic!(
+                    "test finishes successfully on network {} with error {}",
+                    name, err
+                )
+            });
         }
     });
 }
