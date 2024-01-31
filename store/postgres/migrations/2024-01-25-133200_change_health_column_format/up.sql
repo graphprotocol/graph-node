@@ -24,4 +24,20 @@ alter table
 rename column
     health_new to health;
 
+-- Drop imported subgraph_deployment tables from other shards so that we
+-- can drop our local 'health' type
+-- graph-node startup will recreate the foreign table import
+do $$
+  declare r record;
+  begin
+    for r in select foreign_table_schema as nsp
+               from information_schema.foreign_tables
+              where foreign_table_schema like 'shard_%'
+                and foreign_table_name = 'subgraph_deployment'
+    loop
+      execute 'drop foreign table ' || r.nsp || '.subgraph_deployment';
+    end loop;
+  end
+$$;
+
 drop type subgraphs."health";
