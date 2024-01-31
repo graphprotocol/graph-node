@@ -915,14 +915,13 @@ mod data {
          order by a.block_offset desc limit 1",
                         short_circuit_predicate
                     );
-
-                    // type Result = (Text, i32);
+                    // type Result = (Text, i64);
                     #[derive(QueryableByName)]
                     struct BlockHashAndNumber {
                         #[sql_type = "Text"]
                         hash: String,
-                        #[sql_type = "Integer"]
-                        number: i32,
+                        #[sql_type = "BigInt"]
+                        number: i64,
                     }
 
                     let block = match root {
@@ -947,7 +946,7 @@ mod data {
                                 .filter(b::hash.eq(&block.hash))
                                 .select(b::data)
                                 .first::<json::Value>(conn)?,
-                            BlockPtr::new(BlockHash::from_str(&block.hash)?, block.number),
+                            BlockPtr::new(BlockHash::from_str(&block.hash)?, i32::try_from(block.number).unwrap()),
                         )),
                     }
                 }
@@ -966,7 +965,7 @@ mod data {
         )
         select a.block_hash as hash, b.number as number
           from ancestors a
-               inner join ethereum_blocks b on a.block_hash = b.hash
+               inner join ethereum_blocks b on encode(a.block_hash, 'hex') = b.hash
          order by a.block_offset desc limit 1",
                         blocks.qname, short_circuit_predicate
                     );
@@ -975,8 +974,8 @@ mod data {
                     struct BlockHashAndNumber {
                         #[sql_type = "Bytea"]
                         hash: Vec<u8>,
-                        #[sql_type = "Integer"]
-                        number: i32,
+                        #[sql_type = "BigInt"]
+                        number: i64,
                     }
 
                     let block = match root {
