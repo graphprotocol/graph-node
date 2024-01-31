@@ -968,7 +968,10 @@ mod data {
                                 .filter(b::hash.eq(&block.hash))
                                 .select(b::data)
                                 .first::<json::Value>(conn)?,
-                            BlockPtr::new(BlockHash::from_str(&block.hash)?, i32::try_from(block.number).unwrap()),
+                            BlockPtr::new(
+                                BlockHash::from_str(&block.hash)?,
+                                i32::try_from(block.number).unwrap(),
+                            ),
                         )),
                     }
                 }
