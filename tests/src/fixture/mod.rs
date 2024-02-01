@@ -10,8 +10,8 @@ use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
-    BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
-    FirehoseCursor,
+    BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
+    BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
@@ -784,7 +784,7 @@ where
 }
 
 struct StaticStream<C: Blockchain> {
-    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
+    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>> + Send>>,
 }
 
 impl<C: Blockchain> BlockStream<C> for StaticStream<C> {
@@ -794,7 +794,7 @@ impl<C: Blockchain> BlockStream<C> for StaticStream<C> {
 }
 
 impl<C: Blockchain> Stream for StaticStream<C> {
-    type Item = Result<BlockStreamEvent<C>, Error>;
+    type Item = Result<BlockStreamEvent<C>, BlockStreamError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.poll_next_unpin(cx)
@@ -804,7 +804,7 @@ impl<C: Blockchain> Stream for StaticStream<C> {
 fn stream_events<C: Blockchain>(
     blocks: Vec<BlockWithTriggers<C>>,
     current_idx: Option<usize>,
-) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>>
+) -> impl Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>>
 where
     C::TriggerData: Clone,
 {

@@ -95,7 +95,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
             deployment.hash,
             chain.chain_client(),
             subgraph_current_block,
-            block_cursor.as_ref().clone(),
+            block_cursor.clone(),
             mapper,
             package.modules.clone(),
             NEAR_FILTER_MODULE_NAME.to_string(),

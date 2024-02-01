@@ -4,7 +4,9 @@ use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
-use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
+use graph::blockchain::block_stream::{
+    BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
+};
 use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::{
@@ -206,7 +208,7 @@ where
                 &self.metrics.subgraph,
             )
             .await?
-            .map_err(CancelableError::Error)
+            .map_err(CancelableError::from)
             .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
@@ -910,7 +912,7 @@ where
 {
     async fn handle_stream_event(
         &mut self,
-        event: Option<Result<BlockStreamEvent<C>, CancelableError<Error>>>,
+        event: Option<Result<BlockStreamEvent<C>, CancelableError<BlockStreamError>>>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let action = match event {
@@ -1087,7 +1089,7 @@ trait StreamEventHandler<C: Blockchain> {
     ) -> Result<Action, Error>;
     async fn handle_err(
         &mut self,
-        err: CancelableError<Error>,
+        err: CancelableError<BlockStreamError>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
     fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
@@ -1399,13 +1401,40 @@ where
 
     async fn handle_err(
         &mut self,
-        err: CancelableError<Error>,
+        err: CancelableError<BlockStreamError>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         if cancel_handle.is_canceled() {
             debug!(&self.logger, "Subgraph block stream shut down cleanly");
             return Ok(Action::Stop);
         }
+
+        let err = match err {
+            CancelableError::Error(BlockStreamError::Fatal(msg)) => {
+                error!(
+                    &self.logger,
+                    "The block stream encountered a substreams fatal error and will not retry: {}",
+                    msg
+                );
+
+                // If substreams returns a deterministic error we may not necessarily have a specific block
+                // but we should not retry since it will keep failing.
+                self.inputs
+                    .store
+                    .fail_subgraph(SubgraphError {
+                        subgraph_id: self.inputs.deployment.hash.clone(),
+                        message: msg,
+                        block_ptr: None,
+                        handler: None,
+                        deterministic: true,
+                    })
+                    .await
+                    .context("Failed to set subgraph status to `failed`")?;
+
+                return Ok(Action::Stop);
+            }
+            e => e,
+        };
 
         debug!(
             &self.logger,
