@@ -190,9 +190,12 @@ impl Rollup {
 
         write!(
             s,
-            " from {src_table} where timestamp >= $1 and timestamp < $2",
+            " from {src_table} where {src_table}.timestamp >= $1 and {src_table}.timestamp < $2",
         )?;
-        write!(s, " order by timestamp) data group by timestamp")?;
+        write!(
+            s,
+            " order by {src_table}.timestamp) data group by timestamp"
+        )?;
         if !dimensions.is_empty() {
             write!(s, ", ")?;
             write_dims(dimensions, &mut s)?;
@@ -275,7 +278,8 @@ mod tests {
         select max(id) as id, timestamp, $3, "token", sum("price") as "sum", max("amount") as "max" from (\
             select id, timestamp/3600*3600 as timestamp, "token", "amount", "price" \
               from "sgd007"."data" \
-             where timestamp >= $1 and timestamp < $2 order by timestamp) data \
+             where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
+             order by "sgd007"."data".timestamp) data \
         group by timestamp, "token""#;
 
         const STATS_DAY_SQL: &str = r#"\
@@ -283,14 +287,16 @@ mod tests {
         select max(id) as id, timestamp, $3, "token", sum("price") as "sum", max("amount") as "max" from (\
             select id, timestamp/86400*86400 as timestamp, "token", "amount", "price" \
               from "sgd007"."data" \
-             where timestamp >= $1 and timestamp < $2 order by timestamp) data \
+             where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
+             order by "sgd007"."data".timestamp) data \
         group by timestamp, "token""#;
 
         const TOTAL_SQL: &str = r#"\
         insert into "sgd007"."total_stats_day"(id, timestamp, block$, "max") \
         select max(id) as id, timestamp, $3, max("price") as "max" from (\
             select id, timestamp/86400*86400 as timestamp, "price" from "sgd007"."data" \
-             where timestamp >= $1 and timestamp < $2 order by timestamp) data \
+             where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
+             order by "sgd007"."data".timestamp) data \
         group by timestamp"#;
 
         #[track_caller]
