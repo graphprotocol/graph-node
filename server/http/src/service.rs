@@ -327,9 +327,10 @@ where
         false
     }
 
-    fn handle_call(self, req: Request<impl hyper::body::Body>) -> GraphQLServiceResponse {
+    async fn handle_call(self, req: Request<impl hyper::body::Body>) -> GraphQLServiceResponse {
         let (parts, body) = req.into_parts();
-        let body = graph::block_on(async move { body.collect().await.map(|bs| bs.to_bytes()) });
+
+        let body = body.collect().await.map(|bs| bs.to_bytes());
         let body = match body {
             Ok(body) => body,
             Err(_) => return self.internal_error(),
@@ -436,7 +437,7 @@ where
         Box::pin(async move {
             let result = service.handle_call(req).await;
 
-            match result {
+            match result.await {
                 Ok(response) => Ok(response),
                 Err(err @ GraphQLServerError::ClientError(_)) => {
                     let response_obj = json!({
