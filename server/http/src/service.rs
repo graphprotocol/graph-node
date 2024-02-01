@@ -567,6 +567,7 @@ mod tests {
         let response = service
             .handle_call(request)
             .await
+            .await
             .expect("Should return a response");
 
         let content_type_header = response.status();
@@ -605,6 +606,7 @@ mod tests {
 
         let (parts, body) = service
             .handle_call(request)
+            .await
             .await
             .expect("Should return a response")
             .into_parts();
@@ -647,6 +649,7 @@ mod tests {
         // The response must be a 200
         let response = service
             .handle_call(request)
+            .await
             .await
             .expect("Should return a response");
         let (parts, body) = response.into_parts();
