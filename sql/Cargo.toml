@@ -9,3 +9,4 @@ edition.workspace = true
 anyhow = "1.0.75"
 sqlparser = { version = "0.40.0", features = ["visitor"] }
 lazy_static = "1.2.0"
+thiserror = "1.0.25"

@@ -1940,6 +1940,7 @@ dependencies = [
  "anyhow",
  "lazy_static",
  "sqlparser",
+ "thiserror",
 ]
 
 [[package]]

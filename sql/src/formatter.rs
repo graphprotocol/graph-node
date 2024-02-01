@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use sqlparser::ast::{Ident, ObjectName, Query, TableFactor, VisitMut, VisitorMut};
+use sqlparser::ast::{Ident, ObjectName, Statement, TableFactor, VisitMut, VisitorMut};
 
 pub struct SqlFormatter<'a> {
     prefix: &'a str,
@@ -25,9 +25,12 @@ impl<'a> SqlFormatter<'a> {
         Self { prefix }
     }
 
-    pub fn format(&mut self, query: &mut Query) -> String {
-        query.visit(self);
-        format!("SELECT to_jsonb(sub.*) AS data FROM ( {} ) AS sub;", query)
+    pub fn format(&mut self, statement: &mut Statement) -> String {
+        statement.visit(self);
+        format!(
+            "SELECT to_jsonb(sub.*) AS data FROM ( {} ) AS sub;",
+            statement
+        )
     }
 
     fn prepend_prefix_to_object_name_mut(&self, name: &mut ObjectName) {

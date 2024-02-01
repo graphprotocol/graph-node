@@ -1,10 +1,9 @@
 use anyhow::{anyhow, Ok, Result};
-use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 
 use crate::formatter::SqlFormatter;
-use crate::validators::create_postgres_function_validator;
+use crate::postgres;
 
 pub struct SqlParser;
 
@@ -15,25 +14,22 @@ impl SqlParser {
 
     pub fn parse_and_validate(&self, sql: &str, deployment_id: i32) -> Result<String> {
         let mut result = Parser::parse_sql(&PostgreSqlDialect {}, sql)?;
+
+        let mut postgres_validator = postgres::Validator::new();
+
+        postgres_validator.validate_statements(&result)?;
+
         let statement = result
             .get_mut(0)
             .ok_or_else(|| anyhow!("No SQL statements found"))?;
 
-        match statement {
-            Statement::Query(query) => {
-                let prefix = format!("sgd{}", deployment_id);
-                let mut formatter = SqlFormatter::new(&prefix);
+        let prefix = format!("sgd{}", deployment_id);
 
-                let mut function_validator = create_postgres_function_validator();
+        let mut formatter = SqlFormatter::new(&prefix);
 
-                function_validator.validate_query(query)?;
+        let result = formatter.format(statement);
 
-                let result = formatter.format(&mut *query);
-
-                Ok(result)
-            }
-            _ => Err(anyhow!("Only SELECT queries are supported")),
-        }
+        Ok(result)
     }
 }
 
