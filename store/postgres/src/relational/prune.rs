@@ -449,6 +449,10 @@ impl Layout {
                         Ok(())
                     })?;
                     reporter.finish_switch();
+
+                    // Analyze the new tables
+                    let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
+                    self.analyze_tables(conn, reporter, tables, cancel)?;
                 }
                 PruningStrategy::Delete => {
                     // Delete all entity versions whose range was closed
@@ -494,10 +498,6 @@ impl Layout {
         for (table, _) in &prunable_tables {
             catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)?;
         }
-
-        // Analyze the new tables
-        let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
-        self.analyze_tables(conn, reporter, tables, cancel)?;
 
         reporter.finish();
 
