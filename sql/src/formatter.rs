@@ -34,7 +34,9 @@ impl<'a> SqlFormatter<'a> {
     }
 
     fn prepend_prefix_to_object_name_mut(&self, name: &mut ObjectName) {
-        name.0.insert(0, Ident::new(self.prefix));
+        let table_identifier: &mut Vec<_> = &mut name.0;
+        // remove all but the last identifier
+        table_identifier.drain(0..table_identifier.len() - 1);
     }
 }
 
