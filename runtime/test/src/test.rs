@@ -17,7 +17,6 @@ use graph_runtime_wasm::{
 };
 
 use semver::Version;
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use test_store::{LOGGER, STORE};
@@ -1368,7 +1367,7 @@ impl Host {
         &mut self,
         entity_type: &str,
         id: &str,
-    ) -> Result<Option<Cow<Entity>>, anyhow::Error> {
+    ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
         let user_id = String::from(id);
         self.host_exports.store_get(
             &mut self.ctx.state,

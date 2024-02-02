@@ -3,7 +3,7 @@ mod err;
 mod traits;
 pub mod write;
 
-pub use entity_cache::{EntityCache, GetScope, ModificationsAndCache};
+pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
 use futures03::future::{FutureExt, TryFutureExt};
 use slog::{trace, Logger};
 

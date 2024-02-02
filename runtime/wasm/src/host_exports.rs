@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -377,7 +376,7 @@ impl HostExports {
         entity_id: String,
         gas: &GasCounter,
         scope: GetScope,
-    ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
+    ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         Self::expect_object_type(&entity_type, "get")?;
 
@@ -1116,7 +1115,7 @@ fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
 /// Expose some host functions for testing only
 #[cfg(debug_assertions)]
 pub mod test_support {
-    use std::{borrow::Cow, collections::HashMap, sync::Arc};
+    use std::{collections::HashMap, sync::Arc};
 
     use graph::{
         blockchain::{BlockTime, Blockchain},
@@ -1171,13 +1170,13 @@ pub mod test_support {
             )
         }
 
-        pub fn store_get<'a>(
+        pub fn store_get(
             &self,
-            state: &'a mut BlockState,
+            state: &mut BlockState,
             entity_type: String,
             entity_id: String,
             gas: &GasCounter,
-        ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
+        ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
             self.host_exports
                 .store_get(state, entity_type, entity_id, gas, GetScope::Store)
         }

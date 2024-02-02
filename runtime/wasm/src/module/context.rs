@@ -154,17 +154,13 @@ impl WasmInstanceContext<'_> {
 
         let entity_type: String = asc_get(self, entity_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
-        let entity_option = host_exports
-            .store_get(
-                &mut self.as_mut().ctx.state,
-                entity_type.clone(),
-                id.clone(),
-                gas,
-                scope,
-            )?
-            // This is not great in a hot path but otherwise the self ref would not
-            // be released for the next block. Would be good to find a better pattern here.
-            .map(|e| e.into_owned());
+        let entity_option = host_exports.store_get(
+            &mut self.as_mut().ctx.state,
+            entity_type.clone(),
+            id.clone(),
+            gas,
+            scope,
+        )?;
 
         if self.as_ref().ctx.instrument {
             debug!(self.as_ref().ctx.logger, "store_get";

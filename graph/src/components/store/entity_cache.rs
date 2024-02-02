@@ -1,9 +1,10 @@
 use anyhow::anyhow;
-use std::borrow::Cow;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
+use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
 use crate::data::store::{EntityValidationError, Id, IdType, IntoEntityIterator};
@@ -13,6 +14,8 @@ use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
 
 use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
+
+pub type EntityLfuCache = LfuCache<EntityKey, Option<Arc<Entity>>>;
 
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
@@ -31,14 +34,20 @@ enum EntityOp {
 }
 
 impl EntityOp {
-    fn apply_to(self, entity: &mut Option<Cow<Entity>>) -> Result<(), InternError> {
+    fn apply_to<E: Borrow<Entity>>(
+        self,
+        entity: &Option<E>,
+    ) -> Result<Option<Entity>, InternError> {
         use EntityOp::*;
         match (self, entity) {
-            (Remove, e @ _) => *e = None,
-            (Overwrite(new), e @ _) | (Update(new), e @ None) => *e = Some(Cow::Owned(new)),
-            (Update(updates), Some(entity)) => entity.to_mut().merge_remove_null_fields(updates)?,
+            (Remove, _) => Ok(None),
+            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new)),
+            (Update(updates), Some(entity)) => {
+                let mut e = entity.borrow().clone();
+                e.merge_remove_null_fields(updates)?;
+                Ok(Some(e))
+            }
         }
-        Ok(())
     }
 
     fn accumulate(&mut self, next: EntityOp) {
@@ -74,7 +83,7 @@ impl EntityOp {
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
-    current: LfuCache<EntityKey, Option<Entity>>,
+    current: LfuCache<EntityKey, Option<Arc<Entity>>>,
 
     /// The accumulated changes to an entity.
     updates: HashMap<EntityKey, EntityOp>,
@@ -109,7 +118,7 @@ impl Debug for EntityCache {
 
 pub struct ModificationsAndCache {
     pub modifications: Vec<s::EntityModification>,
-    pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    pub entity_lfu_cache: EntityLfuCache,
     pub evict_stats: EvictStats,
 }
 
@@ -134,10 +143,7 @@ impl EntityCache {
         self.schema.make_entity(iter)
     }
 
-    pub fn with_current(
-        store: Arc<dyn s::ReadStore>,
-        current: LfuCache<EntityKey, Option<Entity>>,
-    ) -> EntityCache {
+    pub fn with_current(store: Arc<dyn s::ReadStore>, current: EntityLfuCache) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -175,17 +181,17 @@ impl EntityCache {
         &mut self,
         key: &EntityKey,
         scope: GetScope,
-    ) -> Result<Option<Cow<Entity>>, StoreError> {
+    ) -> Result<Option<Arc<Entity>>, StoreError> {
         // Get the current entity, apply any updates from `updates`, then
         // from `handler_updates`.
-        let mut entity: Option<Cow<Entity>> = match scope {
+        let mut entity: Option<Arc<Entity>> = match scope {
             GetScope::Store => {
                 if !self.current.contains_key(key) {
                     let entity = self.store.get(key)?;
-                    self.current.insert(key.clone(), entity);
+                    self.current.insert(key.clone(), entity.map(Arc::new));
                 }
                 // Unwrap: we just inserted the entity
-                self.current.get(key).unwrap().as_ref().map(Cow::Borrowed)
+                self.current.get(key).unwrap().cheap_clone()
             }
             GetScope::InBlock => None,
         };
@@ -193,17 +199,21 @@ impl EntityCache {
         // Always test the cache consistency in debug mode. The test only
         // makes sense when we were actually asked to read from the store
         debug_assert!(match scope {
-            GetScope::Store => entity == self.store.get(key).unwrap().map(Cow::Owned),
+            GetScope::Store => entity == self.store.get(key).unwrap().map(Arc::new),
             GetScope::InBlock => true,
         });
 
         if let Some(op) = self.updates.get(key).cloned() {
-            op.apply_to(&mut entity)
-                .map_err(|e| key.unknown_attribute(e))?;
+            entity = op
+                .apply_to(&mut entity)
+                .map_err(|e| key.unknown_attribute(e))?
+                .map(Arc::new);
         }
         if let Some(op) = self.handler_updates.get(key).cloned() {
-            op.apply_to(&mut entity)
-                .map_err(|e| key.unknown_attribute(e))?;
+            entity = op
+                .apply_to(&mut entity)
+                .map_err(|e| key.unknown_attribute(e))?
+                .map(Arc::new);
         }
         Ok(entity)
     }
@@ -226,7 +236,8 @@ impl EntityCache {
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
             if !self.current.contains_key(&key) {
-                self.current.insert(key.clone(), Some(entity.clone()));
+                self.current
+                    .insert(key.clone(), Some(Arc::new(entity.clone())));
             }
         }
 
@@ -234,22 +245,26 @@ impl EntityCache {
 
         // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
         for (key, entity) in entity_map.iter_mut() {
-            let mut entity_cow = Some(Cow::Borrowed(entity));
+            let op = match (
+                self.updates.get(key).cloned(),
+                self.handler_updates.get(key).cloned(),
+            ) {
+                (Some(op), None) | (None, Some(op)) => op,
+                (Some(mut op), Some(op2)) => {
+                    op.accumulate(op2);
+                    op
+                }
+                (None, None) => continue,
+            };
 
-            if let Some(op) = self.updates.get(key).cloned() {
-                op.apply_to(&mut entity_cow)
-                    .map_err(|e| key.unknown_attribute(e))?;
-            }
+            let updated_entity = op
+                .apply_to(&Some(&*entity))
+                .map_err(|e| key.unknown_attribute(e))?;
 
-            if let Some(op) = self.handler_updates.get(key).cloned() {
-                op.apply_to(&mut entity_cow)
-                    .map_err(|e| key.unknown_attribute(e))?;
-            }
-
-            if let Some(updated_entity) = entity_cow {
-                *entity = updated_entity.into_owned();
+            if let Some(updated_entity) = updated_entity {
+                *entity = updated_entity;
             } else {
-                // if entity_cow is None, it means that the entity was removed by an update
+                // if entity_arc is None, it means that the entity was removed by an update
                 // mark the key for removal from the map
                 keys_to_remove.push(key.clone());
             }
@@ -284,13 +299,13 @@ impl EntityCache {
                     if let Some(handler_op) = self.handler_updates.get(key).cloned() {
                         // If there's a corresponding update in handler_updates, apply it to the entity
                         // and insert the updated entity into entity_map
-                        let mut entity_cow = Some(Cow::Borrowed(&entity));
-                        handler_op
-                            .apply_to(&mut entity_cow)
+                        let mut entity = Some(entity);
+                        entity = handler_op
+                            .apply_to(&entity)
                             .map_err(|e| key.unknown_attribute(e))?;
 
-                        if let Some(updated_entity) = entity_cow {
-                            entity_map.insert(key.clone(), updated_entity.into_owned());
+                        if let Some(updated_entity) = entity {
+                            entity_map.insert(key.clone(), updated_entity);
                         }
                     } else {
                         // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
@@ -431,7 +446,7 @@ impl EntityCache {
         let missing = missing.filter(|key| !key.entity_type.is_immutable());
 
         for (entity_key, entity) in self.store.get_many(missing.cloned().collect())? {
-            self.current.insert(entity_key, Some(entity));
+            self.current.insert(entity_key, Some(Arc::new(entity)));
         }
 
         let mut mods = Vec::new();
@@ -444,20 +459,22 @@ impl EntityCache {
                 (None, EntityOp::Update(mut updates))
                 | (None, EntityOp::Overwrite(mut updates)) => {
                     updates.remove_null_fields();
-                    self.current.insert(key.clone(), Some(updates.clone()));
+                    let data = Arc::new(updates);
+                    self.current.insert(key.clone(), Some(data.cheap_clone()));
                     Some(Insert {
                         key,
-                        data: updates,
+                        data,
                         block,
                         end: None,
                     })
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
-                    let mut data = current.clone();
+                    let mut data = current.as_ref().clone();
                     data.merge_remove_null_fields(updates)
                         .map_err(|e| key.unknown_attribute(e))?;
-                    self.current.insert(key.clone(), Some(data.clone()));
+                    let data = Arc::new(data);
+                    self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {
                         Some(Overwrite {
                             key,
@@ -471,6 +488,7 @@ impl EntityCache {
                 }
                 // Entity was removed and then updated, so it will be overwritten
                 (Some(current), EntityOp::Overwrite(data)) => {
+                    let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
                         Some(Overwrite {
