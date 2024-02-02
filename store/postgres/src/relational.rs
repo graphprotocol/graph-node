@@ -362,9 +362,9 @@ impl Layout {
             qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
             columns,
-            /// The position of this table in all the tables for this layout; this
-            /// is really only needed for the tests to make the names of indexes
-            /// predictable
+            // The position of this table in all the tables for this layout; this
+            // is really only needed for the tests to make the names of indexes
+            // predictable
             position: position as u32,
             is_account_like: false,
             immutable: false,

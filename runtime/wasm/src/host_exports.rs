@@ -11,6 +11,7 @@ use never::Never;
 use semver::Version;
 use web3::types::H160;
 
+use graph::blockchain::BlockTime;
 use graph::blockchain::Blockchain;
 use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::subgraph::{
@@ -1118,7 +1119,7 @@ pub mod test_support {
     use std::{collections::HashMap, sync::Arc};
 
     use graph::{
-        blockchain::{BlockTime, Blockchain},
+        blockchain::BlockTime,
         components::{
             store::{BlockNumber, GetScope},
             subgraph::SharedProofOfIndexing,

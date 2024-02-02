@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
+use graph::blockchain::{BlockTime, Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{

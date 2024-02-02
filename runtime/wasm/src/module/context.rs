@@ -269,6 +269,7 @@ impl WasmInstanceContext<'_> {
             block_number,
             &mut ctx.state,
             &ctx.proof_of_indexing,
+            ctx.timestamp,
             entity,
             id,
             data,

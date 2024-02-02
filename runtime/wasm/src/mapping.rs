@@ -2,7 +2,7 @@ use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::blockchain::{Blockchain, HostFn};
+use graph::blockchain::{BlockTime, Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};

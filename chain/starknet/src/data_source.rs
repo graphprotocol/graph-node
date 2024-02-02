@@ -5,7 +5,7 @@ use graph::{
         link_resolver::LinkResolver, store::StoredDynamicDataSource,
         subgraph::InstanceDSTemplateInfo,
     },
-    data::subgraph::DataSourceContext,
+    data::subgraph::{DataSourceContext, SubgraphManifestValidationError},
     prelude::{async_trait, BlockNumber, Deserialize, Link, Logger},
     semver,
 };
