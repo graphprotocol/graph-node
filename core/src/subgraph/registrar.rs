@@ -461,6 +461,26 @@ where
 
         Ok(())
     }
+
+    async fn pause_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
+        let locator = self.store.active_locator(hash)?;
+        let deployment =
+            locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
+
+        self.store.pause_subgraph(&deployment)?;
+
+        Ok(())
+    }
+
+    async fn resume_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
+        let locator = self.store.active_locator(hash)?;
+        let deployment =
+            locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
+
+        self.store.resume_subgraph(&deployment)?;
+
+        Ok(())
+    }
 }
 
 async fn handle_assignment_event(
