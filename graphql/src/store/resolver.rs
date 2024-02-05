@@ -14,7 +14,6 @@ use graph::schema::{
     META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_TYPE,
 };
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
-use graph_sql::parser::SqlParser;
 
 use crate::execution::{ast as a, Query};
 use crate::metrics::GraphQLMetrics;
@@ -35,7 +34,6 @@ pub struct StoreResolver {
     error_policy: ErrorPolicy,
     graphql_metrics: Arc<GraphQLMetrics>,
     load_manager: Arc<LoadManager>,
-    pub sql_parser: Arc<SqlParser>,
 }
 
 #[derive(Clone, Debug)]
@@ -86,7 +84,6 @@ impl StoreResolver {
             error_policy: ErrorPolicy::Deny,
             graphql_metrics,
             load_manager,
-            sql_parser: Arc::new(SqlParser::new()),
         }
     }
 
@@ -126,7 +123,6 @@ impl StoreResolver {
             error_policy,
             graphql_metrics,
             load_manager,
-            sql_parser: Arc::new(SqlParser::new()),
         };
         Ok(resolver)
     }
@@ -318,10 +314,6 @@ impl StoreResolver {
                 ))
             }
         };
-
-        let query = self
-            .sql_parser
-            .parse_and_validate(query, self.store.deployment_id().0)?;
 
         let result = self.store.execute_sql(&query)?;
         let result = result.into_iter().map(|q| q.0).collect::<Vec<_>>();

@@ -1,10 +1,10 @@
+use std::collections::HashSet;
+
 use lazy_static::lazy_static;
-use sqlparser::ast::{Expr, ObjectName, Query, SetExpr, Statement, TableFactor, Visit, Visitor};
-use std::result::Result;
-use std::{collections::HashSet, ops::ControlFlow};
+use sqlparser::dialect::PostgreSqlDialect;
 
 lazy_static! {
-    static ref POSTGRES_WHITELISTED_FUNCTIONS: HashSet<&'static str> = {
+    pub(super) static ref POSTGRES_WHITELISTED_FUNCTIONS: HashSet<&'static str> = {
        vec![
             // Comparison Functions see https://www.postgresql.org/docs/14/functions-comparison.html#FUNCTIONS-COMPARISON-FUNC-TABLE
             "num_nonnulls", // Number of non-null arguments
@@ -429,12 +429,17 @@ lazy_static! {
             // Set returning functions https://www.postgresql.org/docs/14/functions-srf.html
             "generate_series", // Expands range arguments into a set of rows.
             "generate_subscripts", // Expands array arguments into a set of rows.
+
+            // Abbreivated syntax for common functions
+            "pow", // see power function
+            "date", // see to_date
+
        ].into_iter().collect()
     };
 }
 
 lazy_static! {
-    static ref POSTGRES_BLACKLISTED_FUNCTIONS: HashSet<&'static str> = {
+    pub(super) static ref POSTGRES_BLACKLISTED_FUNCTIONS: HashSet<&'static str> = {
         vec![
             "query_to_xml", // Converts a query result to XML.
 
@@ -719,224 +724,4 @@ lazy_static! {
     };
 }
 
-#[derive(thiserror::Error, Debug, PartialEq)]
-pub enum Error {
-    #[error("Unknown function {0}")]
-    UnknownFunction(String),
-    #[error("Blacklisted function {0}")]
-    BlackListedFunction(String),
-    #[error("Multi statement is not supported.")]
-    MultiStatementUnSupported,
-    #[error("Only SELECT query is supported.")]
-    NotSelectQuery,
-}
-
-pub struct Validator;
-
-impl Validator {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    fn validate_function_name(&self, name: &ObjectName) -> ControlFlow<Error> {
-        let name = name.to_string().to_lowercase();
-        if POSTGRES_WHITELISTED_FUNCTIONS.contains(name.as_str()) {
-            ControlFlow::Continue(())
-        } else if POSTGRES_BLACKLISTED_FUNCTIONS.contains(name.as_str()) {
-            ControlFlow::Break(Error::BlackListedFunction(name))
-        } else {
-            ControlFlow::Break(Error::UnknownFunction(name))
-        }
-    }
-
-    pub fn validate_statements(&mut self, statements: &Vec<Statement>) -> Result<(), Error> {
-        if statements.len() > 1 {
-            return Err(Error::MultiStatementUnSupported);
-        }
-
-        if let ControlFlow::Break(error) = statements.visit(self) {
-            return Err(error);
-        }
-
-        Ok(())
-    }
-}
-
-impl Visitor for Validator {
-    type Break = Error;
-
-    fn pre_visit_statement(&mut self, _statement: &Statement) -> ControlFlow<Self::Break> {
-        match _statement {
-            Statement::Query(_) => ControlFlow::Continue(()),
-            _ => ControlFlow::Break(Error::NotSelectQuery),
-        }
-    }
-
-    fn pre_visit_query(&mut self, _query: &Query) -> ControlFlow<Self::Break> {
-        match *_query.body {
-            SetExpr::Select(_) => ControlFlow::Continue(()),
-            _ => ControlFlow::Break(Error::NotSelectQuery),
-        }
-    }
-
-    /// Invoked for any table function in the AST.
-    /// See [TableFactor::Table.args](sqlparser::ast::TableFactor::Table::args) for more details identifying a table function
-    fn post_visit_table_factor(&mut self, _table_factor: &TableFactor) -> ControlFlow<Self::Break> {
-        if let TableFactor::Table { name, args, .. } = _table_factor {
-            if args.is_some() {
-                return self.validate_function_name(name);
-            }
-        }
-        ControlFlow::Continue(())
-    }
-
-    /// Invoked for any function expressions that appear in the AST
-    fn post_visit_expr(&mut self, _expr: &Expr) -> ControlFlow<Self::Break> {
-        if let Expr::Function(function) = _expr {
-            self.validate_function_name(&function.name)
-        } else {
-            ControlFlow::Continue(())
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use sqlparser::dialect::PostgreSqlDialect;
-
-    const DIALECT: PostgreSqlDialect = PostgreSqlDialect {};
-
-    fn validate(sql: &str) -> Result<(), Error> {
-        let statements = sqlparser::parser::Parser::parse_sql(&DIALECT, sql).unwrap();
-        let mut validator = Validator::new();
-        validator.validate_statements(&statements)
-    }
-
-    #[test]
-    fn test_blacklisted() {
-        let result = validate(
-            "
-            SELECT 
-                input_token 
-            FROM swap 
-            WHERE '' = (
-                SELECT 
-                    CAST(pg_sleep(5) AS text
-                )
-            )",
-        );
-        assert_eq!(
-            result,
-            Err(Error::BlackListedFunction("pg_sleep".to_owned()))
-        );
-    }
-
-    #[test]
-    fn test_table_function_blacklisted() {
-        let result = validate(
-            "
-        SELECT 
-            vid,
-            k.sname 
-        FROM swap,
-        LATERAL(
-            SELECT 
-                current_schemas as sname 
-            FROM current_schemas(true)
-        ) as k",
-        );
-        assert_eq!(
-            result,
-            Err(Error::BlackListedFunction("current_schemas".to_owned()))
-        );
-    }
-
-    #[test]
-    fn test_blacklisted_without_paranthesis() {
-        let result = validate(
-            "
-            SELECT 
-                input_token 
-            FROM swap 
-            WHERE '' = (
-                SELECT user
-            )",
-        );
-        assert_eq!(result, Err(Error::BlackListedFunction("user".to_owned())));
-    }
-
-    #[test]
-    fn test_whitelisted() {
-        let result = validate(
-            "
-            SELECT 
-                input_token,
-                SUM(input_amount) AS total_amount
-            FROM swap 
-            GROUP BY input_token
-            HAVING SUM(input_amount) > 1000
-            ",
-        );
-        assert_eq!(result, Ok(()));
-    }
-
-    #[test]
-    fn test_unknown() {
-        let result = validate(
-            "
-            SELECT 
-                input_token 
-            FROM swap 
-            WHERE '' = (
-                SELECT 
-                    CAST(do_strange_math(amount_in) AS text
-                )
-            )",
-        );
-        assert_eq!(
-            result,
-            Err(Error::UnknownFunction("do_strange_math".to_owned()))
-        );
-    }
-
-    #[test]
-    fn test_ddl() {
-        let result = validate(
-            "
-            CREATE TABLE foo (id INT PRIMARY KEY);
-            ",
-        );
-        assert_eq!(result, Err(Error::NotSelectQuery));
-    }
-
-    #[test]
-    fn test_non_dql() {
-        let result = validate(
-            "
-            INSERT INTO foo VALUES (1);
-            ",
-        );
-        assert_eq!(result, Err(Error::NotSelectQuery));
-    }
-
-    #[test]
-    fn test_common_table_expression() {
-        let result = validate(
-            "
-            WITH foo AS (SELECT 1) SELECT * FROM foo;
-            ",
-        );
-        assert_eq!(result, Ok(()));
-    }
-
-    #[test]
-    fn test_multi_statement() {
-        let result = validate(
-            "
-            SELECT 1; SELECT 2;
-            ",
-        );
-        assert_eq!(result, Err(Error::MultiStatementUnSupported));
-    }
-}
+pub(super) static SQL_DIALECT: PostgreSqlDialect = PostgreSqlDialect {};

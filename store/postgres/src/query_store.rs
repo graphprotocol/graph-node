@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
+use crate::sql::Parser;
 use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::store::{QueryObject, SqlQueryObject};
@@ -15,6 +16,7 @@ pub(crate) struct QueryStore {
     store: Arc<DeploymentStore>,
     chain_store: Arc<crate::ChainStore>,
     api_version: Arc<ApiVersion>,
+    sql_parser: Result<Parser, StoreError>,
 }
 
 impl QueryStore {
@@ -25,12 +27,16 @@ impl QueryStore {
         replica_id: ReplicaId,
         api_version: Arc<ApiVersion>,
     ) -> Self {
+        let sql_parser = store
+            .find_layout(site.clone())
+            .map(|layout| Parser::new(layout));
         QueryStore {
             site,
             replica_id,
             store,
             chain_store,
             api_version,
+            sql_parser,
         }
     }
 }
@@ -64,7 +70,15 @@ impl QueryStoreTrait for QueryStore {
             .store
             .get_replica_conn(self.replica_id)
             .map_err(|e| QueryExecutionError::SqlError(format!("SQL error: {}", e)))?;
-        self.store.execute_sql(&conn, sql)
+
+        let parser = self
+            .sql_parser
+            .as_ref()
+            .map_err(|e| QueryExecutionError::SqlError(format!("SQL error: {}", e)))?;
+
+        let sql = parser.parse_and_validate(sql)?;
+
+        self.store.execute_sql(&conn, &sql)
     }
 
     /// Return true if the deployment with the given id is fully synced,
