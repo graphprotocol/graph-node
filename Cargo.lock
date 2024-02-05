@@ -1766,7 +1766,6 @@ dependencies = [
  "async-recursion",
  "crossbeam",
  "graph",
- "graph-sql",
  "graphql-parser",
  "graphql-tools",
  "indexmap 2.1.0",
@@ -1934,16 +1933,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-sql"
-version = "0.33.0"
-dependencies = [
- "anyhow",
- "lazy_static",
- "sqlparser",
- "thiserror",
-]
-
-[[package]]
 name = "graph-store-postgres"
 version = "0.33.0"
 dependencies = [
@@ -1974,7 +1963,9 @@ dependencies = [
  "pretty_assertions",
  "rand",
  "serde",
+ "sqlparser",
  "stable-hash 0.3.4",
+ "thiserror",
  "uuid",
 ]
 

@@ -33,7 +33,7 @@ pub mod query_store;
 mod relational;
 mod relational_queries;
 mod retry;
-pub mod sql;
+mod sql;
 mod store;
 mod store_events;
 mod subgraph_store;

@@ -54,7 +54,6 @@ use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::{FromEntityData, JSONData};
-use crate::sql::generate_table_prelude_from_layout;
 use crate::{advisory_lock, catalog, retry};
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
@@ -276,12 +275,8 @@ impl DeploymentStore {
     pub(crate) fn execute_sql(
         &self,
         conn: &PgConnection,
-        site: Arc<Site>,
         query: &str,
     ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
-        let layout = self.layout(&conn, site.clone())?;
-        let prelude = generate_table_prelude_from_layout(&layout);
-        let query = format!("{prelude} {query}");
         let query = diesel::sql_query(query);
 
         // Execute the provided SQL query

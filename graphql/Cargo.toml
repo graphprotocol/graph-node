@@ -6,7 +6,6 @@ edition.workspace = true
 [dependencies]
 crossbeam = "0.8"
 graph = { path = "../graph" }
-graph-sql= {path = "../sql"}
 graphql-parser = "0.4.0"
 graphql-tools = "0.2.1"
 indexmap = "2.1"
