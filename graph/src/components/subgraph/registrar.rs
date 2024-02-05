@@ -54,4 +54,8 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         hash: &DeploymentHash,
         node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError>;
+
+    async fn pause_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError>;
+
+    async fn resume_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError>;
 }

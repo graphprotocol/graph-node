@@ -1314,6 +1314,24 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
+    fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.pause_subgraph(site.as_ref())?;
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+        })
+    }
+
+    fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| -> Result<_, StoreError> {
+            let changes = pconn.resume_subgraph(site.as_ref())?;
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+        })
+    }
+
     fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
         let site = self.find_site(deployment.id.into())?;
         self.mirror.assigned_node(site.as_ref())
