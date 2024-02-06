@@ -326,7 +326,7 @@ impl fmt::Display for ChainIdentifier {
 
 /// The timestamp associated with a block. This is used whenever a time
 /// needs to be connected to data within the block
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockTime(DateTime<Utc>);
 
 impl BlockTime {
