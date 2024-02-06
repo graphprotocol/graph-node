@@ -295,6 +295,11 @@ impl StoreResolver {
         field: &a::Field,
         object_type: &ObjectOrInterface<'_>,
     ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
+        if !ENV_VARS.graphql.enable_sql_service {
+            return Err(QueryExecutionError::NotSupported(
+                "SQL service is not enabled".into(),
+            ));
+        }
         if !object_type.is_sql() {
             return Ok((prefetched_object, None));
         }

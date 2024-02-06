@@ -349,7 +349,10 @@ pub(in crate::schema) fn api_schema(input_schema: &Schema) -> Result<Document, A
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
     add_meta_field_type(&mut schema.document);
-    add_sql_field_type(&mut schema.document);
+
+    if ENV_VARS.graphql.enable_sql_service {
+        add_sql_field_type(&mut schema.document);
+    }
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema.document, &input_schema.document)?;
@@ -869,7 +872,9 @@ fn add_query_type(
         .collect();
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
-    fields.push(sql_field());
+    if ENV_VARS.graphql.enable_sql_service {
+        fields.push(sql_field());
+    }
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
@@ -964,7 +969,10 @@ fn add_subscription_type(
         .flat_map(|name| query_fields_for_type(name))
         .collect();
     fields.push(meta_field());
-    fields.push(sql_field());
+
+    if ENV_VARS.graphql.enable_sql_service {
+        fields.push(sql_field());
+    }
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
