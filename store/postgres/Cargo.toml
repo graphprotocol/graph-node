@@ -38,6 +38,8 @@ itertools = "0.12.0"
 pin-utils = "0.1"
 hex = "0.4.3"
 pretty_assertions = "1.4.0"
+sqlparser = { version = "0.40.0", features = ["visitor"] }
+thiserror = "1.0.25"
 
 [dev-dependencies]
 clap = "3.2.25"

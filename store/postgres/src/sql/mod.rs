@@ -1,3 +1,10 @@
-mod table_prelude;
+mod constants;
+mod formatter;
+mod parser;
+mod validation;
 
-pub use table_prelude::generate_table_prelude_from_layout;
+use std::collections::{HashMap, HashSet};
+
+pub(self) type Schema = HashMap<String, HashSet<String>>; // HashMap<Table, HashSet<Column>>
+
+pub use parser::Parser;
