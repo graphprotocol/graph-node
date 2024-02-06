@@ -33,9 +33,11 @@ populate the `Stats` aggregations whenever a given hour or day ends.
 
 The type for the raw data points is defined with an `@entity(timeseries:
 true)` annotation. Timeseries types are immutable, and must have an `id`
-field and a `timestamp` field. The `timestamp` is set automatically by
-`graph-node` to the timestamp of the current block; if mappings set this
-field, it is silently overridden when the entity is saved.
+field and a `timestamp` field. The `id` must be of type `Int8` and is set
+automatically so that ids are increasing in insertion order. The `timestamp`
+is set automatically by `graph-node` to the timestamp of the current block;
+if mappings set this field, it is silently overridden when the entity is
+saved.
 
 Aggregations are declared with an `@aggregation` annotation instead of an
 `@entity` annotation. They must have an `id` field and a `timestamp` field.
@@ -141,6 +143,10 @@ The following aggregation functions are currently supported:
 | `max`   | Maximum value     |
 | `first` | First value       |
 | `last`  | Last value        |
+
+The `first` and `last` aggregation function calculate the first and last
+value in an interval by sorting the data by `id`; `graph-node` enforces
+correctness here by automatically setting the `id` for timeseries entities.
 
 ## Querying
 

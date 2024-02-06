@@ -1951,13 +1951,30 @@ mod validations {
                 })
         }
 
-        /// The `@entity` direactive accepts two flags `immutable` and
+        /// The `@entity` directive accepts two flags `immutable` and
         /// `timeseries`, and when `timeseries` is `true`, `immutable` can
         /// not be `false`.
         ///
         /// For timeseries, also check that there is a `timestamp` field of
-        /// type `Int8`
+        /// type `Int8` and that the `id` field has type `Int8`
         fn validate_entity_directives(&self) -> Vec<SchemaValidationError> {
+            fn id_type_is_int8(object_type: &s::ObjectType) -> Option<SchemaValidationError> {
+                let field = match object_type.field(&*ID) {
+                    Some(field) => field,
+                    None => {
+                        return Some(Err::IdFieldMissing(object_type.name.to_owned()));
+                    }
+                };
+
+                match field.field_type.value_type() {
+                    Ok(ValueType::Int8) => None,
+                    Ok(_) | Err(_) => Some(Err::IllegalIdType(format!(
+                        "Timeseries `{}` must have an `id` field of type `Int8`",
+                        object_type.name
+                    ))),
+                }
+            }
+
             fn bool_arg(
                 dir: &s::Directive,
                 name: &str,
@@ -1990,7 +2007,8 @@ mod validations {
                                 object_type.name.clone(),
                             ))
                         } else {
-                            Self::valid_timestamp_field(object_type)
+                            id_type_is_int8(object_type)
+                                .or_else(|| Self::valid_timestamp_field(object_type))
                         }
                     } else {
                         None

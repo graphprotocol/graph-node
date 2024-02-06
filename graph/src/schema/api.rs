@@ -2213,13 +2213,13 @@ type Gravatar @entity {
     fn aggregation() {
         const SCHEMA: &str = r#"
         type Data @entity(timeseries: true) {
-            id: Bytes!
+            id: Int8!
             timestamp: Int8!
             value: BigDecimal!
         }
 
         type Stats @aggregation(source: "Data", intervals: ["hour", "day"]) {
-            id: Bytes!
+            id: Int8!
             timestamp: Int8!
             sum: BigDecimal! @aggregate(fn: "sum", arg: "value")
         }
@@ -2254,6 +2254,11 @@ type Gravatar @entity {
                     "_change_block",
                     "and",
                     "id",
+                    "id_gt",
+                    "id_gte",
+                    "id_in",
+                    "id_lt",
+                    "id_lte",
                     "or",
                     "timestamp",
                     "timestamp_gt",

@@ -1605,13 +1605,13 @@ async fn test_store_ts() {
 
     let schema = r#"
     type Data @entity(timeseries: true) {
-        id: Bytes!
+        id: Int8!
         timestamp: Int8!
         amount: BigDecimal!
     }
 
     type Stats @aggregation(intervals: ["hour"], source: "Data") {
-        id: Bytes!
+        id: Int8!
         timestamp: Int8!
         max: BigDecimal! @aggregate(fn: "max", arg:"amount")
     }"#;
@@ -1635,8 +1635,12 @@ async fn test_store_ts() {
     )
     .expect("Setting 'Data' is allowed");
 
+    // This is very backhanded: we generate an id the same way that
+    // `store_setv` should have.
+    let did = IdType::Int8.generate_id(12, 0).unwrap();
+
     // Set overrides the user-supplied timestamp for timeseries
-    let data = host.store_get(DATA, DID).unwrap().unwrap();
+    let data = host.store_get(DATA, &did.to_string()).unwrap().unwrap();
     assert_eq!(Some(&Value::from(block_time)), data.get("timestamp"));
 
     let err = host
