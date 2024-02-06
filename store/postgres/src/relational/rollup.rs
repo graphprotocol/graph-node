@@ -49,8 +49,16 @@ impl<'a> Agg<'a> {
             Sum => write!(w, "sum(\"{}\")", self.src_column.unwrap().name)?,
             Max => write!(w, "max(\"{}\")", self.src_column.unwrap().name)?,
             Min => write!(w, "min(\"{}\")", self.src_column.unwrap().name)?,
-            First => write!(w, "first(\"{}\")", self.src_column.unwrap().name)?,
-            Last => write!(w, "last(\"{}\")", self.src_column.unwrap().name)?,
+            First => {
+                let src = self.src_column.unwrap();
+                let sql_type = src.column_type.sql_type();
+                write!(w, "arg_min_{}((\"{}\", id))", sql_type, src.name)?
+            }
+            Last => {
+                let src = self.src_column.unwrap();
+                let sql_type = src.column_type.sql_type();
+                write!(w, "arg_max_{}((\"{}\", id))", sql_type, src.name)?
+            }
             Count => write!(w, "count(*)")?,
         }
         write!(w, " as \"{}\"", self.agg_column.name)
@@ -255,7 +263,7 @@ mod tests {
         timestamp: Int8!
         token: Bytes!
         price: BigDecimal!
-        amount: BigDecimal!
+        amount: Int!
       }
 
       type Stats @aggregation(intervals: ["day", "hour"], source: "Data") {
@@ -270,6 +278,14 @@ mod tests {
         id: Int8!
         timestamp: Int8!
         max: BigDecimal! @aggregate(fn: "max", arg: "price")
+      }
+
+      type OpenClose @aggregation(intervals: ["day"], source: "Data") {
+        id: Int8!
+        timestamp: Int8!
+        open: BigDecimal! @aggregate(fn: "first", arg: "price")
+        close: BigDecimal! @aggregate(fn: "last", arg: "price")
+        first_amt: Int! @aggregate(fn: "first", arg: "amount")
       }
       "#;
 
@@ -299,6 +315,19 @@ mod tests {
              order by "sgd007"."data".timestamp) data \
         group by timestamp"#;
 
+        const OPEN_CLOSE_SQL: &str = r#"\
+        insert into "sgd007"."open_close_day"(id, timestamp, block$, "open", "close", "first_amt")
+        select max(id) as id, timestamp, $3, \
+               arg_min_numeric(("price", id)) as "open", \
+               arg_max_numeric(("price", id)) as "close", \
+               arg_min_int4(("amount", id)) as "first_amt" \
+          from (select id, timestamp/86400*86400 as timestamp, "amount", "price" \
+                  from "sgd007"."data"
+                 where "sgd007"."data".timestamp >= $1
+                   and "sgd007"."data".timestamp < $2
+                 order by "sgd007"."data".timestamp) data \
+         group by timestamp"#;
+
         #[track_caller]
         fn rollup_for<'a>(layout: &'a Layout, table_name: &str) -> &'a Rollup {
             layout
@@ -314,7 +343,7 @@ mod tests {
         let site = Arc::new(make_dummy_site(hash, nsp, "rollup".to_string()));
         let catalog = Catalog::for_tests(site.clone(), BTreeSet::new()).unwrap();
         let layout = Layout::new(site, &schema, catalog).unwrap();
-        assert_eq!(3, layout.rollups.len());
+        assert_eq!(4, layout.rollups.len());
 
         // Intervals are non-decreasing
         assert!(layout.rollups[0].interval <= layout.rollups[1].interval);
@@ -327,5 +356,8 @@ mod tests {
         check_eqv(STATS_HOUR_SQL, &stats_hour.insert_sql);
         check_eqv(STATS_DAY_SQL, &stats_day.insert_sql);
         check_eqv(TOTAL_SQL, &stats_total.insert_sql);
+
+        let open_close = rollup_for(&layout, "open_close_day");
+        check_eqv(OPEN_CLOSE_SQL, &open_close.insert_sql);
     }
 }
