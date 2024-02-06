@@ -812,6 +812,7 @@ where
             // Handle unexpected stream errors by marking the subgraph as failed.
             Err(e) => {
                 self.metrics.stream.deployment_failed.set(1.0);
+                self.revert_state_to(block_ptr.block_number())?;
 
                 let message = format!("{:#}", e).replace('\n', "\t");
                 let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
