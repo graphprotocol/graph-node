@@ -1182,7 +1182,7 @@ impl ColumnType {
             ColumnType::BigDecimal => "numeric",
             ColumnType::BigInt => "numeric",
             ColumnType::Bytes => "bytea",
-            ColumnType::Int => "integer",
+            ColumnType::Int => "int4",
             ColumnType::Int8 => "int8",
             ColumnType::String => "text",
             ColumnType::TSVector(_) => "tsvector",

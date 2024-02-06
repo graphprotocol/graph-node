@@ -248,7 +248,7 @@ create index attr_0_1_thing_big_thing
         block_range          int4range not null,
         "id"                 text not null,
         "bool"               boolean,
-        "int"                integer,
+        "int"                int4,
         "big_decimal"        numeric,
         "string"             text,
         "bytes"              bytea,
@@ -393,7 +393,7 @@ create table "sgd0815"."song_stat" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
-        "played"             integer not null
+        "played"             int4 not null
 );
 alter table "sgd0815"."song_stat"
   add constraint song_stat_id_block_range_excl exclude using gist (id with =, block_range with &&);
