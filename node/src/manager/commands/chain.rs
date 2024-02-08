@@ -21,9 +21,16 @@ use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStatus;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::Shard;
+use graph_store_postgres::Storage;
 use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
+
+#[derive(QueryableByName, Debug)]
+struct ChainIdSeq {
+    #[sql_type = "diesel::sql_types::BigInt"]
+    last_value: i64,
+}
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
@@ -162,20 +169,36 @@ pub fn change_block_cache_shard(
     println!("Changing block cache shard for {} to {}", chain_name, shard);
 
     let conn = primary_store.get()?;
-    let chain = find_chain(&conn, &chain_name)?.expect("no such chain");
+
+    let chain =
+        find_chain(&conn, &chain_name)?.ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
     let old_shard = chain.shard;
 
     println!("Current shard: {}", old_shard);
 
     let chain_store = store
         .chain_store(&chain_name)
-        .ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
+        .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
     let new_name = format!("{}-old", &chain_name);
 
     conn.transaction(|| -> Result<(), StoreError> {
         let ident = chain_store.chain_identifier.clone();
         let shard = Shard::new(shard.to_string())?;
-        // Drop the foriegn key constraint on deployment_schemas
+
+        // Fetch the current last_value from the sequence
+        let result = sql_query("SELECT last_value FROM chains_id_seq").get_result::<ChainIdSeq>(&conn)?;
+
+        let last_val = result.last_value;
+
+        let next_val = last_val + 1;
+        let namespace = format!("chain{}", next_val);
+        let storage= Storage::new(namespace.to_string()).map_err(|e| {
+            anyhow!("Failed to create storage: {}", e)
+        })?;
+
+        store.add_chain_store_inner(&chain_name, &shard, &ident, storage,ChainStatus::Ingestible, true)?;
+
+        // Drop the foreign key constraint on deployment_schemas
         sql_query(
             "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
         )
@@ -186,8 +209,7 @@ pub fn change_block_cache_shard(
         chain_store.update_name(&new_name)?;
 
         // Create a new chain with the name in the destination shard
-        let chain=  add_chain(&conn, &chain_name, &ident, &shard)?;
-        store.add_chain_store(&chain, ChainStatus::Ingestible, true)?;
+        let _=  add_chain(&conn, &chain_name, &ident, &shard)?;
 
         // Re-add the foreign key constraint
         sql_query(
