@@ -485,7 +485,6 @@ where
 #[cfg(test)]
 mod tests {
     use graph::data::value::{Object, Word};
-    use graph::prelude::serde_json::json;
     use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
     use http::status::StatusCode;
     use http_body_util::BodyExt;
@@ -604,24 +603,15 @@ mod tests {
             .body("{}".to_string())
             .unwrap();
 
-        let (parts, body) = service
+        let message = service
             .handle_call(request)
             .await
             .await
-            .expect("Should return a response")
-            .into_parts();
-
-        let body = body.collect().await.unwrap().to_bytes();
-        let body = String::from_utf8(body.to_vec()).unwrap();
-
-        let errors =
-            test_utils::assert_error_response(parts, body, StatusCode::BAD_REQUEST, false).await;
-
-        let message = errors[0].as_str().expect("Error message is not a string");
-
-        let response = json!({
-            "error": "GraphQL server error (client error): The \"query\" field is missing in request data".to_string()
-        });
+            .expect_err("expected err")
+            .to_string();
+        let response =
+            "GraphQL server error (client error): The \"query\" field is missing in request data"
+                .to_string();
 
         assert_eq!(message, response.to_string());
     }
@@ -631,7 +621,6 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
-
         let node_id = NodeId::new("test").unwrap();
         let service = GraphQLService::new(logger, graphql_runner, 8001, node_id);
 
