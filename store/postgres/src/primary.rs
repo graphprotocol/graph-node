@@ -864,36 +864,40 @@ impl<'a> Connection<'a> {
     }
 
     /// Remove IPFS hash from current/pending deployment
-    pub fn unlink_deployments(&self, deployments: Vec<(&DeploymentHash, String)>) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn unlink_deployment(
+        &self,
+        deployment: &DeploymentHash,
+    ) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph as s;
 
         let conn = self.conn.as_ref();
 
-        // Switch the pending version to the current version
-        for (deployment, status) in deployments {
-            match status.as_str() {
-                "pending" => {
-                    update(s::table.filter(s::id.eq(deployment)))
+        // Subgraphs and it's deployemnt version we need to unlink
+        let subgraph_for_unlinking = queries::subgraphs_by_deployment_hash(conn, deployment)?;
+
+        // Set to null if pending and promote pending if current
+        for (subgraph, version) in &subgraph_for_unlinking {
+            match version.as_str() {
+                "current" => {
+                    update(s::table.filter(s::id.eq(subgraph)))
                         .set((
+                            s::current_version.eq(s::pending_version),
                             s::pending_version.eq::<Option<&str>>(None),
                         ))
                         .execute(conn)?;
-                },
-                "current" => {
-                    update(s::table.filter(s::id.eq(deployment)))
-                        .set((
-                            s::current_version.eq::<Option<&str>>(None),
-                        ))
+                    println!("Removing current");
+                }
+                "pending" => {
+                    update(s::table.filter(s::id.eq(subgraph)))
+                        .set((s::pending_version.eq::<Option<&str>>(None),))
                         .execute(conn)?;
-                    self.promote_deployment(deployment)?;
-                },
+                    println!("Removing pending");
+                }
                 _ => (),
             }
         }
 
-        // Clean up assignments if we could possibly have changed any
-        // subgraph versions
-        let changes = if deployments.is_empty() {
+        let changes = if subgraph_for_unlinking.is_empty() {
             vec![]
         } else {
             self.remove_unused_assignments()?

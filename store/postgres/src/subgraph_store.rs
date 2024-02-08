@@ -1316,12 +1316,11 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn unlink_deployment(&self, deployments: Vec<(&DeploymentHash, String)>) -> Result<(), StoreError> {
-
+    fn unlink_deployment(&self, deployment: &DeploymentHash) -> Result<(), StoreError> {
         let pconn = self.primary_conn()?;
 
         pconn.transaction(|| -> Result<_, StoreError> {
-            let changes = pconn.unlink_deployments(deployments)?;
+            let changes = pconn.unlink_deployment(deployment)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
     }
