@@ -1470,7 +1470,7 @@ impl Table {
 
     pub(crate) fn analyze(&self, conn: &PgConnection) -> Result<(), StoreError> {
         let table_name = &self.qualified_name;
-        let sql = format!("analyze {table_name}");
+        let sql = format!("analyze (skip_locked) {table_name}");
         conn.execute(&sql)?;
         Ok(())
     }
