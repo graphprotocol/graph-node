@@ -14,9 +14,11 @@ use graph::{constraint_violation, prelude::CheapClone};
 use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 
 use crate::{
-    chain_head_listener::ChainHeadUpdateSender, chain_store::ChainStoreMetrics,
-    connection_pool::ConnectionPool, primary::Mirror as PrimaryMirror, ChainStore,
-    NotificationSender, Shard, PRIMARY_SHARD,
+    chain_head_listener::ChainHeadUpdateSender,
+    chain_store::{ChainStoreMetrics, Storage},
+    connection_pool::ConnectionPool,
+    primary::Mirror as PrimaryMirror,
+    ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
 
 #[cfg(debug_assertions)]
@@ -326,28 +328,30 @@ impl BlockStore {
             .expect("the primary is never disabled")
     }
 
-    pub fn add_chain_store(
+    pub fn add_chain_store_inner(
         &self,
-        chain: &primary::Chain,
+        name: &String,
+        shard: &Shard,
+        ident: &ChainIdentifier,
+        storage: Storage,
         status: ChainStatus,
         create: bool,
     ) -> Result<Arc<ChainStore>, StoreError> {
         let pool = self
             .pools
-            .get(&chain.shard)
-            .ok_or_else(|| constraint_violation!("there is no pool for shard {}", chain.shard))?
+            .get(shard)
+            .ok_or_else(|| constraint_violation!("there is no pool for shard {}", shard))?
             .clone();
         let sender = ChainHeadUpdateSender::new(
             self.mirror.primary().clone(),
-            chain.name.clone(),
+            name.clone(),
             self.sender.clone(),
         );
-        let ident = chain.network_identifier()?;
-        let logger = self.logger.new(o!("network" => chain.name.clone()));
+        let logger = self.logger.new(o!("network" => name.clone()));
         let store = ChainStore::new(
             logger,
-            chain.name.clone(),
-            chain.storage.clone(),
+            name.clone(),
+            storage.clone(),
             &ident,
             status,
             sender,
@@ -362,8 +366,24 @@ impl BlockStore {
         self.stores
             .write()
             .unwrap()
-            .insert(chain.name.clone(), store.clone());
+            .insert(name.clone(), store.clone());
         Ok(store)
+    }
+
+    pub fn add_chain_store(
+        &self,
+        chain: &primary::Chain,
+        status: ChainStatus,
+        create: bool,
+    ) -> Result<Arc<ChainStore>, StoreError> {
+        self.add_chain_store_inner(
+            &chain.name,
+            &chain.shard,
+            &chain.network_identifier()?,
+            chain.storage.clone(),
+            status,
+            create,
+        )
     }
 
     /// Return a map from network name to the network's chain head pointer.

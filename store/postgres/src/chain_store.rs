@@ -341,7 +341,7 @@ mod data {
         const PREFIX: &'static str = "chain";
         const PUBLIC: &'static str = "public";
 
-        fn new(s: String) -> Result<Self, String> {
+        pub fn new(s: String) -> Result<Self, String> {
             if s.as_str() == Self::PUBLIC {
                 return Ok(Self::Shared);
             }
