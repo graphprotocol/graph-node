@@ -1537,7 +1537,7 @@ impl InputSchema {
     }
 
     /// Return an `EntityType` that either references the object type `name`
-    /// or, if `name` refernces an aggregation, return the object type of
+    /// or, if `name` references an aggregation, return the object type of
     /// that aggregation for the given `interval`
     pub fn object_or_aggregation(
         &self,
