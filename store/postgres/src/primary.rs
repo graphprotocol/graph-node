@@ -885,13 +885,11 @@ impl<'a> Connection<'a> {
                             s::pending_version.eq::<Option<&str>>(None),
                         ))
                         .execute(conn)?;
-                    println!("Removing current");
                 }
                 "pending" => {
                     update(s::table.filter(s::id.eq(subgraph)))
                         .set((s::pending_version.eq::<Option<&str>>(None),))
                         .execute(conn)?;
-                    println!("Removing pending");
                 }
                 _ => (),
             }
