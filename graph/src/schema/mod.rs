@@ -173,6 +173,8 @@ pub enum SchemaValidationError {
     AggregationNonMatchingArg(String, String, String, String, String),
     #[error("Field {1} in aggregation {0} has arg `{3}` but that is not a numeric field in {2}")]
     AggregationNonNumericArg(String, String, String, String),
+    #[error("Field {1} in aggregation {0} has an invalid value for `cumulative`. It needs to be a boolean")]
+    AggregationInvalidCumulative(String, String),
     #[error("Aggregations are not supported with spec version {0}; please migrate the subgraph to the latest version")]
     AggregationsNotSupported(Version),
     #[error("Using Int8 as the type for the `id` field is not supported with spec version {0}; please migrate the subgraph to the latest version")]

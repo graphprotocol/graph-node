@@ -78,7 +78,7 @@ type TokenStats @aggregation(intervals: ["hour", "day"], source: "TokenData") {
   token: Token!
   totalVolume: BigDecimal! @aggregate(fn: "sum", arg: "amount")
   priceUSD: BigDecimal! @aggregate(fn: "last", arg: "priceUSD")
-  count: Int8! @aggregate(fn: "count")
+  count: Int8! @aggregate(fn: "count", cumulative: true)
 }
 ```
 
@@ -87,10 +87,11 @@ _dimensions_, and fields with the `@aggregate` directive are called
 _aggregates_. A timeseries type really represents many timeseries, one for
 each combination of values for the dimensions.
 
-**TODO** As written, this supports buckets that start at zero with every new
-hour/day. We also want to support cumulative statistics, i.e., snapshotting
-of time series where a new bucket starts with the values of the previous
-bucket.
+Each `@aggregate` by default starts at 0 for each new bucket and therefore
+just aggregates over the time interval for the bucket. The `@aggregate`
+directive also accepts a boolean flag `cumulative` that indicates whether
+the aggregation should be cumulative. Cumulative aggregations aggregate over
+the entire timeseries up to the end of the time interval for the bucket.
 
 **TODO** Since average is a little more complicated to handle for cumulative
 aggregations, and it doesn't seem like it used in practice, we won't

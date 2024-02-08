@@ -45,6 +45,7 @@ pub mod kw {
     pub const ARG: &str = "arg";
     pub const INTERVALS: &str = "intervals";
     pub const INTERVAL: &str = "interval";
+    pub const CUMULATIVE: &str = "cumulative";
 }
 
 /// The internal representation of a subgraph schema, i.e., the
@@ -769,6 +770,7 @@ impl Arg {
         Self { name, value_type }
     }
 }
+
 #[derive(PartialEq, Debug)]
 pub struct Aggregate {
     pub name: Word,
@@ -776,6 +778,7 @@ pub struct Aggregate {
     pub arg: Option<Arg>,
     pub field_type: s::Type,
     pub value_type: ValueType,
+    pub cumulative: bool,
 }
 
 impl Aggregate {
@@ -797,10 +800,19 @@ impl Aggregate {
             .argument("arg")
             .map(|arg| Word::from(arg.as_str().unwrap()))
             .map(|arg| Arg::new(arg, src_type));
+        let cumulative = dir
+            .argument(kw::CUMULATIVE)
+            .map(|arg| match arg {
+                Value::Boolean(b) => *b,
+                _ => unreachable!("validation ensures this is a boolean"),
+            })
+            .unwrap_or(false);
+
         Aggregate {
             name: Word::from(name),
             func,
             arg,
+            cumulative,
             field_type: field_type.clone(),
             value_type: field_type.get_base_type().parse().unwrap(),
         }
@@ -2464,6 +2476,16 @@ mod validations {
                                         // that does not take an arg
                                         continue;
                                     }
+                                }
+                            };
+                            match agg.argument(kw::CUMULATIVE) {
+                                Some(s::Value::Boolean(_)) | None => { /* ok */ }
+                                Some(_) => {
+                                    errors.push(Err::AggregationInvalidCumulative(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                    ));
+                                    continue;
                                 }
                             };
                             let arg_type = match source.field(arg) {
