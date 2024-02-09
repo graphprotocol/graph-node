@@ -378,7 +378,7 @@ impl<'a> JoinCond<'a> {
 #[derive(Debug)]
 struct Join<'a> {
     /// The object type of the child entities
-    child_type: ObjectOrInterface<'a>,
+    child_type: QueryableType<'a>,
     conds: Vec<JoinCond<'a>>,
 }
 
@@ -387,7 +387,7 @@ impl<'a> Join<'a> {
     fn new(
         schema: &'a InputSchema,
         parent_type: &'a s::ObjectType,
-        child_type: ObjectOrInterface<'a>,
+        child_type: QueryableType<'a>,
         field_name: &str,
     ) -> Self {
         let child_types = child_type
@@ -447,12 +447,12 @@ impl<'a> Join<'a> {
 /// an entity type, and we would create a `Join` with a fake entity type for
 /// the parent type
 enum MaybeJoin<'a> {
-    Root { child_type: ObjectOrInterface<'a> },
+    Root { child_type: QueryableType<'a> },
     Nested(Join<'a>),
 }
 
 impl<'a> MaybeJoin<'a> {
-    fn child_type(&self) -> ObjectOrInterface<'_> {
+    fn child_type(&self) -> QueryableType<'_> {
         match self {
             MaybeJoin::Root { child_type } => child_type.clone(),
             MaybeJoin::Nested(Join {
@@ -751,7 +751,7 @@ fn fetch(
         join.child_type(),
         resolver.block_number(),
         field,
-        ctx.query.schema.types_for_interface(),
+        ctx.query.schema.types_for_interface_or_union(),
         ctx.max_first,
         ctx.max_skip,
         selected_attrs,
