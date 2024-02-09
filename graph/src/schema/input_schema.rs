@@ -775,7 +775,7 @@ impl Arg {
 pub struct Aggregate {
     pub name: Word,
     pub func: AggregateFn,
-    pub arg: Option<Arg>,
+    pub arg: Arg,
     pub field_type: s::Type,
     pub value_type: ValueType,
     pub cumulative: bool,
@@ -796,10 +796,15 @@ impl Aggregate {
             .unwrap()
             .parse()
             .unwrap();
+        // The only aggregation function we have that doesn't take an
+        // argument is `count`; we just pretend that the user wanted to
+        // `count(id)`. When we form a query, we ignore the argument for
+        // `count`
         let arg = dir
             .argument("arg")
             .map(|arg| Word::from(arg.as_str().unwrap()))
-            .map(|arg| Arg::new(arg, src_type));
+            .map(|arg| Arg::new(arg, src_type))
+            .unwrap_or_else(|| Arg::new(ID.clone(), src_type));
         let cumulative = dir
             .argument(kw::CUMULATIVE)
             .map(|arg| match arg {

@@ -72,7 +72,7 @@ use super::{Column, SqlName};
 #[derive(Debug, Clone)]
 pub(crate) struct Agg<'a> {
     aggregate: &'a Aggregate,
-    src_column: Option<&'a Column>,
+    src_column: &'a Column,
     agg_column: &'a Column,
 }
 
@@ -82,11 +82,7 @@ impl<'a> Agg<'a> {
         src_table: &'a Table,
         agg_table: &'a Table,
     ) -> Result<Self, StoreError> {
-        let src_column = aggregate
-            .arg
-            .as_ref()
-            .map(|arg| src_table.column_for_field(&arg.name))
-            .transpose()?;
+        let src_column = src_table.column_for_field(&aggregate.arg.name)?;
         let agg_column = agg_table.column_for_field(&aggregate.name)?;
         Ok(Self {
             aggregate,
@@ -95,25 +91,20 @@ impl<'a> Agg<'a> {
         })
     }
 
-    fn aggregate_over(
-        &self,
-        src: Option<&SqlName>,
-        time: &str,
-        w: &mut dyn fmt::Write,
-    ) -> fmt::Result {
+    fn aggregate_over(&self, src: &SqlName, time: &str, w: &mut dyn fmt::Write) -> fmt::Result {
         use AggregateFn::*;
 
         match self.aggregate.func {
-            Sum => write!(w, "sum(\"{}\")", src.unwrap())?,
-            Max => write!(w, "max(\"{}\")", src.unwrap())?,
-            Min => write!(w, "min(\"{}\")", src.unwrap())?,
+            Sum => write!(w, "sum(\"{}\")", src)?,
+            Max => write!(w, "max(\"{}\")", src)?,
+            Min => write!(w, "min(\"{}\")", src)?,
             First => {
                 let sql_type = self.agg_column.column_type.sql_type();
-                write!(w, "arg_min_{}((\"{}\", {time}))", sql_type, src.unwrap())?
+                write!(w, "arg_min_{}((\"{}\", {time}))", sql_type, src)?
             }
             Last => {
                 let sql_type = self.agg_column.column_type.sql_type();
-                write!(w, "arg_max_{}((\"{}\", {time}))", sql_type, src.unwrap())?
+                write!(w, "arg_max_{}((\"{}\", {time}))", sql_type, src)?
             }
             Count => write!(w, "count(*)")?,
         }
@@ -125,7 +116,7 @@ impl<'a> Agg<'a> {
     /// of the column with respect to which `first` and `last` should decide
     /// which values are earlier or later
     fn aggregate(&self, time: &str, w: &mut dyn fmt::Write) -> fmt::Result {
-        self.aggregate_over(self.src_column.map(|col| &col.name), time, w)
+        self.aggregate_over(&self.src_column.name, time, w)
     }
 
     /// Generate a SQL fragment `func(src_column) as agg_column` where
@@ -139,7 +130,7 @@ impl<'a> Agg<'a> {
             Sum | Max | Min | First | Last => {
                 // For these, combining and aggregating is done by the same
                 // function
-                return self.aggregate_over(Some(&self.agg_column.name), time, w);
+                return self.aggregate_over(&self.agg_column.name, time, w);
             }
             Count => write!(w, "sum(\"{}\")", self.agg_column.name)?,
         }
@@ -286,7 +277,8 @@ impl<'a> RollupSql<'a> {
             let mut agg_srcs: Vec<_> = self
                 .aggregates
                 .iter()
-                .filter_map(|agg| agg.src_column.map(|col| col.name.as_str()))
+                .map(|agg| agg.src_column.name.as_str())
+                .filter(|&col| col != "id" && col != "timestamp")
                 .collect();
             agg_srcs.sort();
             agg_srcs.dedup();
