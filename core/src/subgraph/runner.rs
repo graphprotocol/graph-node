@@ -60,7 +60,7 @@ where
         logger: Logger,
         metrics: RunnerMetrics,
         env_vars: Arc<EnvVars>,
-        synced: bool
+        synced: bool,
     ) -> Self {
         Self {
             inputs: Arc::new(inputs),
