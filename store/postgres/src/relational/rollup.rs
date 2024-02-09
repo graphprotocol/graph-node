@@ -1,6 +1,6 @@
 //! Queries and helpers to do rollups for aggregations, i.e., the queries
 //! that aggregate source data into aggregations
-use std::fmt::{self, Write as _};
+use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -89,126 +89,20 @@ impl Rollup {
             .iter()
             .map(|aggregate| Agg::new(aggregate, src_table, &agg_table))
             .collect::<Result<_, _>>()?;
-        let insert_sql = Self::insert_sql(
+        let sql = RollupSql::new(
             interval,
             &src_table.qualified_name,
             &agg_table,
             &dimensions,
             &aggregates,
-        )?;
+        );
+        let mut insert_sql = String::new();
+        sql.insert(&mut insert_sql)?;
         Ok(Self {
             interval,
             agg_table,
             insert_sql,
         })
-    }
-
-    /// Generate a query
-    ///
-    /// insert into <aggregation>(id, timestamp, block$, <dimensions>,
-    /// <aggregates>) select id, $ts, $block, <dimensions>, <aggregates> from
-    /// (select max(id) as id, <dimensions>, <agggregates> from (select id, <dimensions>,
-    ///         <source cols> from <source> where timestamp >= $ts and
-    ///                 timestamp < $ts + $interval order by timestamp) data
-    ///                group by <dimensions>) agg;
-    ///
-    /// The 'order by' is only necessary once we support first/last as
-    /// aggregates following this:
-    /// https://wiki.postgresql.org/wiki/First/last_(aggregate)
-    ///
-    /// Bind variables:
-    ///   $1: beginning timestamp (inclusive)
-    ///   $2: end timestamp (exclusive)
-    ///   $3: block number
-    fn insert_sql(
-        interval: AggregationInterval,
-        src_table: &SqlName,
-        agg_table: &Table,
-        dimensions: &[&Column],
-        aggregates: &[Agg],
-    ) -> Result<String, fmt::Error> {
-        fn comma_sep<T, F>(
-            list: impl IntoIterator<Item = T>,
-            mut first: bool,
-            w: &mut dyn fmt::Write,
-            out: F,
-        ) -> fmt::Result
-        where
-            F: Fn(&mut dyn fmt::Write, T) -> fmt::Result,
-        {
-            for elem in list {
-                if !first {
-                    write!(w, ", ")?;
-                }
-                first = false;
-                out(w, elem)?;
-            }
-            Ok(())
-        }
-
-        fn write_dims(dimensions: &[&Column], w: &mut dyn fmt::Write) -> fmt::Result {
-            comma_sep(dimensions, true, w, |w, col| write!(w, "\"{}\"", col.name))
-        }
-
-        let mut s = String::new();
-        write!(
-            s,
-            "insert into {agg}(id, timestamp, block$, ",
-            agg = agg_table.qualified_name
-        )?;
-        write_dims(dimensions, &mut s)?;
-        comma_sep(aggregates, dimensions.is_empty(), &mut s, |w, agg| {
-            write!(w, "\"{}\"", agg.agg_column.name)
-        })?;
-        write!(s, ") ")?;
-        // We need the id of the aggregation to be something unique, and use
-        // the `max(id)` from the rows that we are aggregating over.
-        // Surprisingly, Postgres doesn't have a `max(bytea)`, so we do a
-        // funky roundtrip between bytea and string
-        let max_id = match agg_table.primary_key().column_type.id_type() {
-            Ok(IdType::Bytes) => "max(id::text)::bytea",
-            Ok(IdType::String) | Ok(IdType::Int8) => "max(id)",
-            Err(_) => unreachable!("we make sure that the primary key has an id_type"),
-        };
-        write!(s, "select {max_id} as id, timestamp, $3, ")?;
-        write_dims(dimensions, &mut s)?;
-        comma_sep(aggregates, dimensions.is_empty(), &mut s, |w, agg| {
-            agg.aggregate(w)
-        })?;
-        let secs = interval.as_duration().as_secs();
-        write!(
-            s,
-            " from (select id, timestamp/{secs}*{secs} as timestamp, "
-        )?;
-        write_dims(dimensions, &mut s)?;
-
-        // List of unique source column names
-        let agg_srcs = {
-            let mut agg_srcs: Vec<_> = aggregates
-                .iter()
-                .filter_map(|agg| agg.src_column.map(|col| col.name.as_str()))
-                .collect();
-            agg_srcs.sort();
-            agg_srcs.dedup();
-            agg_srcs
-        };
-        comma_sep(agg_srcs, dimensions.is_empty(), &mut s, |w, col: &str| {
-            write!(w, "\"{}\"", col)
-        })?;
-
-        write!(
-            s,
-            " from {src_table} where {src_table}.timestamp >= $1 and {src_table}.timestamp < $2",
-        )?;
-        write!(
-            s,
-            " order by {src_table}.timestamp) data group by timestamp"
-        )?;
-        if !dimensions.is_empty() {
-            write!(s, ", ")?;
-            write_dims(dimensions, &mut s)?;
-        }
-        Ok(s)
     }
 
     pub(crate) fn insert(
@@ -223,6 +117,153 @@ impl Rollup {
             .bind::<Integer, _>(block);
         query.execute(conn)
     }
+}
+
+struct RollupSql<'a> {
+    interval: AggregationInterval,
+    src_table: &'a SqlName,
+    agg_table: &'a Table,
+    dimensions: &'a [&'a Column],
+    aggregates: &'a [Agg<'a>],
+}
+
+impl<'a> RollupSql<'a> {
+    fn new(
+        interval: AggregationInterval,
+        src_table: &'a SqlName,
+        agg_table: &'a Table,
+        dimensions: &'a [&Column],
+        aggregates: &'a [Agg],
+    ) -> Self {
+        Self {
+            interval,
+            src_table,
+            agg_table,
+            dimensions,
+            aggregates,
+        }
+    }
+
+    /// Generate a query to roll up the source timeseries into an
+    /// aggregation over one time window
+    ///
+    /// select id, $ts, $block, <dimensions>, <aggregates>
+    ///   from (select
+    ///           max(id) as id,
+    ///           <dimensions>,
+    ///           <agggregates> from (
+    ///           select id, <dimensions>, <source cols>
+    ///             from <source>
+    ///            where timestamp >= $start
+    ///              and timestamp < $end
+    ///             order by timestamp) data
+    ///  group by <dimensions>) agg;
+    ///
+    ///
+    /// Bind variables:
+    ///   $1: beginning timestamp (inclusive)
+    ///   $2: end timestamp (exclusive)
+    ///   $3: block number
+    fn select_bucket(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        let max_id = match self.agg_table.primary_key().column_type.id_type() {
+            Ok(IdType::Bytes) => "max(id::text)::bytea",
+            Ok(IdType::String) | Ok(IdType::Int8) => "max(id)",
+            Err(_) => unreachable!("we make sure that the primary key has an id_type"),
+        };
+        write!(w, "select {max_id} as id, timestamp, $3, ")?;
+        write_dims(self.dimensions, w)?;
+        comma_sep(self.aggregates, self.dimensions.is_empty(), w, |w, agg| {
+            agg.aggregate(w)
+        })?;
+        let secs = self.interval.as_duration().as_secs();
+        write!(
+            w,
+            " from (select id, timestamp/{secs}*{secs} as timestamp, "
+        )?;
+        write_dims(self.dimensions, w)?;
+        let agg_srcs = {
+            let mut agg_srcs: Vec<_> = self
+                .aggregates
+                .iter()
+                .filter_map(|agg| agg.src_column.map(|col| col.name.as_str()))
+                .collect();
+            agg_srcs.sort();
+            agg_srcs.dedup();
+            agg_srcs
+        };
+        comma_sep(agg_srcs, self.dimensions.is_empty(), w, |w, col: &str| {
+            write!(w, "\"{}\"", col)
+        })?;
+        write!(
+            w,
+            " from {src_table} where {src_table}.timestamp >= $1 and {src_table}.timestamp < $2",
+            src_table = self.src_table
+        )?;
+        write!(
+            w,
+            " order by {src_table}.timestamp) data group by timestamp",
+            src_table = self.src_table
+        )?;
+        Ok(if !self.dimensions.is_empty() {
+            write!(w, ", ")?;
+            write_dims(self.dimensions, w)?;
+        })
+    }
+
+    fn select(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        self.select_bucket(w)
+    }
+
+    /// Generate a query
+    ///
+    /// insert into <aggregation>(id, timestamp, block$, <dimensions>,
+    /// <aggregates>) <select>;
+    ///
+    /// where `select` is the result of `Self::select`
+    fn insert_bucket(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        write!(
+            w,
+            "insert into {}(id, timestamp, block$, ",
+            self.agg_table.qualified_name
+        )?;
+        write_dims(self.dimensions, w)?;
+        comma_sep(self.aggregates, self.dimensions.is_empty(), w, |w, agg| {
+            write!(w, "\"{}\"", agg.agg_column.name)
+        })?;
+        write!(w, ") ")?;
+        self.select(w)
+    }
+
+    fn insert(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        self.insert_bucket(w)
+    }
+}
+
+/// Write the elements in `list` separated by commas into `w`. The list
+/// elements are written by calling `out` with each of them.
+fn comma_sep<T, F>(
+    list: impl IntoIterator<Item = T>,
+    mut first: bool,
+    w: &mut dyn fmt::Write,
+    out: F,
+) -> fmt::Result
+where
+    F: Fn(&mut dyn fmt::Write, T) -> fmt::Result,
+{
+    for elem in list {
+        if !first {
+            write!(w, ", ")?;
+        }
+        first = false;
+        out(w, elem)?;
+    }
+    Ok(())
+}
+
+/// Write the names of the columns in `dimensions` into `w` as a
+/// comma-separated list of quoted column names.
+fn write_dims(dimensions: &[&Column], w: &mut dyn fmt::Write) -> fmt::Result {
+    comma_sep(dimensions, true, w, |w, col| write!(w, "\"{}\"", col.name))
 }
 
 #[cfg(test)]
