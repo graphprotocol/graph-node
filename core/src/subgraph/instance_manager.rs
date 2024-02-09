@@ -451,12 +451,15 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stream: block_stream_metrics,
         };
 
+        let is_deployment_synced = inputs.store.is_deployment_synced().await?;
+
         Ok(SubgraphRunner::new(
             inputs,
             ctx,
             logger.cheap_clone(),
             metrics,
             env_vars,
+            is_deployment_synced,
         ))
     }
 
