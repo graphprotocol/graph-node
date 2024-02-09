@@ -27,16 +27,6 @@ use graph_runtime_wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 
-/// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
-/// should be changed only for debugging purposes and never on an indexer in the network. This
-/// value was chosen because it is the Geth default
-/// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
-/// It is not safe to set something higher because Geth will silently override the gas limit
-/// with the default. This means that we do not support indexing against a Geth node with
-/// `RPCGasCap` set below 50 million.
-// See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
-const ETH_CALL_GAS: u32 = 50_000_000;
-
 // When making an ethereum call, the maximum ethereum gas is ETH_CALL_GAS which is 50 million. One
 // unit of Ethereum gas is at least 100ns according to these benchmarks [1], so 1000 of our gas. In
 // the worst case an Ethereum call could therefore consume 50 billion of our gas. However the
@@ -68,7 +58,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         let eth_call_gas = if should_skip_gas {
             None
         } else {
-            Some(ETH_CALL_GAS)
+            Some(ENV_VARS.eth_call_gas)
         };
 
         let ethereum_call = HostFn {
