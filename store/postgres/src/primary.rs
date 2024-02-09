@@ -743,7 +743,9 @@ mod queries {
     ) -> Result<Vec<(String, String)>, StoreError> {
         subgraphs_info_by_deployment_hash(conn, deployment_hash).and_then(
             |x: Vec<(String, String, String)>| {
-                Ok(x.into_iter().map(|(_, name, version)| (name, version)).collect::<Vec<(String, String)>>())
+                Ok(x.into_iter()
+                    .map(|(_, name, version)| (name, version))
+                    .collect::<Vec<(String, String)>>())
             },
         )
     }
@@ -756,7 +758,9 @@ mod queries {
     ) -> Result<Vec<(String, String)>, StoreError> {
         subgraphs_info_by_deployment_hash(conn, deployment_hash).and_then(
             |x: Vec<(String, String, String)>| {
-                Ok(x.into_iter().map(|(id, _, version)| (id, version)).collect::<Vec<(String, String)>>())
+                Ok(x.into_iter()
+                    .map(|(id, _, version)| (id, version))
+                    .collect::<Vec<(String, String)>>())
             },
         )
     }
