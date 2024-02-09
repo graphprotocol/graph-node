@@ -755,11 +755,22 @@ where
 
         match action {
             Ok(action) => {
+                // Ensure that `state.cached_head_ptr` has a value since it could be `None` on the
+                // first iteration of loop.
+                // If the deployment head has caught up to the `cached_head_ptr`, update it so that
+                // we are up to date when checking if synced.
+                let cached_head_ptr = self.state.cached_head_ptr.cheap_clone();
+                if cached_head_ptr.is_none() || close_to_chain_head(&block_ptr, cached_head_ptr, 1)
+                {
+                    self.state.cached_head_ptr =
+                        self.inputs.chain.chain_store().chain_head_ptr().await?;
+                }
+
                 // Once synced, no need to try to update the status again.
                 if !self.state.synced
                     && close_to_chain_head(
                         &block_ptr,
-                        self.inputs.chain.chain_store().chain_head_ptr().await?,
+                        self.state.cached_head_ptr.cheap_clone(),
                         // We consider a subgraph synced when it's at most 1 block behind the
                         // chain head.
                         1,
