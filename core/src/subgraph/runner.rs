@@ -60,13 +60,14 @@ where
         logger: Logger,
         metrics: RunnerMetrics,
         env_vars: Arc<EnvVars>,
+        synced: bool
     ) -> Self {
         Self {
             inputs: Arc::new(inputs),
             ctx,
             state: IndexingState {
                 should_try_unfail_non_deterministic: true,
-                synced: false,
+                synced,
                 skip_ptr_updates_timer: Instant::now(),
                 backoff: ExponentialBackoff::with_jitter(
                     (MINUTE * 2).min(env_vars.subgraph_error_retry_ceil),
@@ -597,7 +598,7 @@ where
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
-        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced().await? {
+        if has_errors && !ENV_VARS.disable_fail_fast && !self.state.synced {
             store
                 .unassign_subgraph()
                 .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
@@ -1311,7 +1312,7 @@ where
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
-        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced().await? {
+        if has_errors && !ENV_VARS.disable_fail_fast && !self.state.synced {
             store
                 .unassign_subgraph()
                 .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
