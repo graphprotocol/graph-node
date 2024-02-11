@@ -1,8 +1,9 @@
-use diesel::deserialize::FromSql;
+use diesel::deserialize::{FromSql, FromSqlRow};
+use diesel::expression::AsExpression;
 use diesel::serialize::ToSql;
-use diesel_derives::{AsExpression, FromSqlRow};
 use hex;
 use num_bigint;
+use num_traits::FromPrimitive;
 use serde::{self, Deserialize, Serialize};
 use stable_hash::utils::AsInt;
 use stable_hash::{FieldAddress, StableHash};
@@ -12,7 +13,6 @@ use web3::types::*;
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
-use std::io::Write;
 use std::ops::{Add, BitAnd, BitOr, Deref, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str::FromStr;
 
@@ -30,7 +30,7 @@ use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
     Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
 )]
 #[serde(from = "bigdecimal::BigDecimal")]
-#[sql_type = "diesel::sql_types::Numeric"]
+#[diesel(sql_type = diesel::sql_types::Numeric)]
 pub struct BigDecimal(bigdecimal::BigDecimal);
 
 impl From<bigdecimal::BigDecimal> for BigDecimal {
@@ -131,7 +131,7 @@ impl From<u64> for BigDecimal {
 
 impl From<f64> for BigDecimal {
     fn from(n: f64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from(n))
+        Self::from(bigdecimal::BigDecimal::from_f64(n).unwrap_or_default())
     }
 }
 
@@ -173,18 +173,16 @@ impl Div for BigDecimal {
 
 // Used only for JSONB support
 impl ToSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
-    fn to_sql<W: Write>(
-        &self,
-        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
     ) -> diesel::serialize::Result {
         <_ as ToSql<diesel::sql_types::Numeric, _>>::to_sql(&self.0, out)
     }
 }
 
 impl FromSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
-    fn from_sql(
-        bytes: Option<&<diesel::pg::Pg as diesel::backend::Backend>::RawValue>,
-    ) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         Ok(Self::from(bigdecimal::BigDecimal::from_sql(bytes)?))
     }
 }
@@ -265,7 +263,7 @@ mod big_int {
         pub fn new(inner: num_bigint::BigInt) -> Result<Self, anyhow::Error> {
             // `inner.bits()` won't include the sign bit, so we add 1 to account for it.
             let bits = inner.bits() + 1;
-            if bits > Self::MAX_BITS as usize {
+            if bits > Self::MAX_BITS as u64 {
                 anyhow::bail!(
                     "BigInt is too big, total bits {} (max {})",
                     bits,
@@ -297,7 +295,7 @@ mod big_int {
         }
 
         pub fn bits(&self) -> usize {
-            self.0.bits()
+            self.0.bits() as usize
         }
 
         pub(super) fn inner(self) -> num_bigint::BigInt {
@@ -567,7 +565,7 @@ impl Shl<u8> for BigInt {
     type Output = Self;
 
     fn shl(self, bits: u8) -> Self {
-        BigInt::unchecked_new(self.inner().shl(bits.into()))
+        BigInt::unchecked_new(self.inner().shl(<u8 as Into<u8>>::into(bits)))
     }
 }
 
@@ -575,7 +573,7 @@ impl Shr<u8> for BigInt {
     type Output = Self;
 
     fn shr(self, bits: u8) -> Self {
-        BigInt::unchecked_new(self.inner().shr(bits.into()))
+        BigInt::unchecked_new(self.inner().shr(<u8 as Into<u8>>::into(bits)))
     }
 }
 
@@ -679,11 +677,11 @@ impl From<Vec<u8>> for Bytes {
 }
 
 impl ToSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
-    fn to_sql<W: Write>(
+    fn to_sql(
         &self,
-        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+        out: &mut diesel::serialize::Output<diesel::pg::Pg>,
     ) -> diesel::serialize::Result {
-        <_ as ToSql<diesel::sql_types::Binary, _>>::to_sql(self.as_slice(), out)
+        <_ as ToSql<diesel::sql_types::Binary, _>>::to_sql(self.as_slice(), &mut out.reborrow())
     }
 }
 

@@ -127,7 +127,7 @@ where
 /// Run a test with a connection into the primary database, not a full store
 pub fn run_test_with_conn<F>(test: F)
 where
-    F: FnOnce(&PgConnection),
+    F: FnOnce(&mut PgConnection),
 {
     // Lock regardless of poisoning. This also forces sequential test execution.
     let _lock = match SEQ_LOCK.lock() {
@@ -135,11 +135,11 @@ where
         Err(err) => err.into_inner(),
     };
 
-    let conn = PRIMARY_POOL
+    let mut conn = PRIMARY_POOL
         .get()
         .expect("failed to get connection for primary database");
 
-    test(&conn);
+    test(&mut conn);
 }
 
 pub fn remove_subgraphs() {
@@ -258,7 +258,7 @@ pub fn remove_subgraph(id: &DeploymentHash) {
     let name = SubgraphName::new_unchecked(id.to_string());
     SUBGRAPH_STORE.remove_subgraph(name).unwrap();
     let locs = SUBGRAPH_STORE.locators(id.as_str()).unwrap();
-    let conn = primary_connection();
+    let mut conn = primary_connection();
     for loc in locs {
         let site = conn.locate_site(loc.clone()).unwrap().unwrap();
         conn.unassign_subgraph(&site).unwrap();
@@ -403,12 +403,12 @@ pub fn insert_ens_name(hash: &str, name: &str) {
     use diesel::prelude::*;
     use graph_store_postgres::command_support::catalog::ens_names;
 
-    let conn = PRIMARY_POOL.get().unwrap();
+    let mut conn = PRIMARY_POOL.get().unwrap();
 
     insert_into(ens_names::table)
         .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))
         .on_conflict_do_nothing()
-        .execute(&conn)
+        .execute(&mut conn)
         .unwrap();
 }
 

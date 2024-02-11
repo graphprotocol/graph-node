@@ -49,6 +49,8 @@ pub enum StoreError {
     UnknownShard(String),
     #[error("Fulltext search not yet deterministic")]
     FulltextSearchNonDeterministic,
+    #[error("Fulltext search column missing configuration")]
+    FulltextColumnMissingConfig,
     #[error("operation was canceled")]
     Canceled,
     #[error("database unavailable")]
@@ -69,6 +71,8 @@ pub enum StoreError {
     UnsupportedDeploymentSchemaVersion(i32),
     #[error("pruning failed: {0}")]
     PruneFailure(String),
+    #[error("unsupported filter `{0}` for value `{1}`")]
+    UnsupportedFilter(String, String),
 }
 
 // Convenience to report a constraint violation
@@ -111,6 +115,7 @@ impl Clone for StoreError {
             Self::DeploymentNotFound(arg0) => Self::DeploymentNotFound(arg0.clone()),
             Self::UnknownShard(arg0) => Self::UnknownShard(arg0.clone()),
             Self::FulltextSearchNonDeterministic => Self::FulltextSearchNonDeterministic,
+            Self::FulltextColumnMissingConfig => Self::FulltextColumnMissingConfig,
             Self::Canceled => Self::Canceled,
             Self::DatabaseUnavailable => Self::DatabaseUnavailable,
             Self::DatabaseDisabled => Self::DatabaseDisabled,
@@ -121,6 +126,9 @@ impl Clone for StoreError {
                 Self::UnsupportedDeploymentSchemaVersion(arg0.clone())
             }
             Self::PruneFailure(arg0) => Self::PruneFailure(arg0.clone()),
+            Self::UnsupportedFilter(arg0, arg1) => {
+                Self::UnsupportedFilter(arg0.clone(), arg1.clone())
+            }
         }
     }
 }

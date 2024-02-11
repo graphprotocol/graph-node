@@ -49,14 +49,14 @@ fn unassigned(deployment: &DeploymentLocator) -> EntityChange {
 }
 
 fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
-    let primary = primary_connection();
+    let mut primary = primary_connection();
     let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
     let current = current.unwrap();
     store.version_info(&current).unwrap()
 }
 
 fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
-    let primary = primary_connection();
+    let mut primary = primary_connection();
     primary.get_subgraph_features(id).unwrap()
 }
 
@@ -120,13 +120,13 @@ fn create_subgraph() {
     const SUBGRAPH_NAME: &str = "create/subgraph";
 
     // Return the versions (not deployments) for a subgraph
-    fn subgraph_versions(primary: &Primary) -> (Option<String>, Option<String>) {
+    fn subgraph_versions(primary: &mut Primary) -> (Option<String>, Option<String>) {
         primary.versions_for_subgraph(SUBGRAPH_NAME).unwrap()
     }
 
     /// Return the deployment for the current and the pending version of the
     /// subgraph with the given `entity_id`
-    fn subgraph_deployments(primary: &Primary) -> (Option<String>, Option<String>) {
+    fn subgraph_deployments(primary: &mut Primary) -> (Option<String>, Option<String>) {
         let (current, pending) = subgraph_versions(primary);
         (
             current.and_then(|v| primary.deployment_for_version(&v).unwrap()),
@@ -205,11 +205,11 @@ fn create_subgraph() {
         const ID2: &str = "instant2";
         const ID3: &str = "instant3";
 
-        let primary = primary_connection();
+        let mut primary = primary_connection();
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let (_, events) = tap_store_events(|| store.create_subgraph(name.clone()).unwrap());
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
@@ -219,7 +219,7 @@ fn create_subgraph() {
         let expected = deploy_event(&deployment1);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID1), current.as_deref());
         assert!(pending.is_none());
 
@@ -229,7 +229,7 @@ fn create_subgraph() {
         expected.insert(unassigned(&deployment1));
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert!(pending.is_none());
 
@@ -242,7 +242,7 @@ fn create_subgraph() {
         expected.insert(unassigned(&deployment2));
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID3), current.as_deref());
         assert!(pending.is_none());
     });
@@ -257,11 +257,11 @@ fn create_subgraph() {
         const ID2: &str = "synced2";
         const ID3: &str = "synced3";
 
-        let primary = primary_connection();
+        let mut primary = primary_connection();
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let (_, events) = tap_store_events(|| store.create_subgraph(name.clone()).unwrap());
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
@@ -271,8 +271,8 @@ fn create_subgraph() {
         let expected = deploy_event(&deployment1);
         assert_eq!(expected, events);
 
-        let versions = subgraph_versions(&primary);
-        let (current, pending) = subgraph_deployments(&primary);
+        let versions = subgraph_versions(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID1), current.as_deref());
         assert!(pending.is_none());
 
@@ -280,7 +280,7 @@ fn create_subgraph() {
         let (deployment1_again, events) = deploy(store.as_ref(), ID1, MODE);
         assert!(events.is_empty());
         assert_eq!(&deployment1, &deployment1_again);
-        let versions2 = subgraph_versions(&primary);
+        let versions2 = subgraph_versions(&mut primary);
         assert_eq!(versions, versions2);
 
         // Deploy again, current is not synced, so it gets replaced
@@ -289,7 +289,7 @@ fn create_subgraph() {
         expected.insert(unassigned(&deployment1));
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert!(pending.is_none());
 
@@ -299,8 +299,8 @@ fn create_subgraph() {
         let expected = deploy_event(&deployment3);
         assert_eq!(expected, events);
 
-        let versions = subgraph_versions(&primary);
-        let (current, pending) = subgraph_deployments(&primary);
+        let versions = subgraph_versions(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(Some(ID3), pending.as_deref());
 
@@ -308,9 +308,9 @@ fn create_subgraph() {
         let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
         assert!(events.is_empty());
         assert_eq!(&deployment3, &deployment3_again);
-        let versions2 = subgraph_versions(&primary);
+        let versions2 = subgraph_versions(&mut primary);
         assert_eq!(versions, versions2);
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(Some(ID3), pending.as_deref());
 
@@ -324,7 +324,7 @@ fn create_subgraph() {
         assert_eq!(&deployment2, &deployment2_again);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(None, pending.as_deref());
 
@@ -335,7 +335,7 @@ fn create_subgraph() {
         assert_eq!(&deployment3, &deployment3_again);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&primary);
+        let (current, pending) = subgraph_deployments(&mut primary);
         assert_eq!(Some(ID3), current.as_deref());
         assert_eq!(None, pending.as_deref());
     })

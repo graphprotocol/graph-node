@@ -5,45 +5,44 @@
 ///!
 ///! Code in this module works very hard to minimize the number of allocations
 ///! that it performs
-use diesel::pg::{Pg, PgConnection};
-use diesel::query_builder::{AstPass, QueryFragment, QueryId};
-use diesel::query_dsl::{LoadQuery, RunQueryDsl};
+use diesel::pg::Pg;
+use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
+use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Range, Text};
-use diesel::Connection;
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Untyped};
 
-use graph::components::store::write::WriteChunk;
-use graph::components::store::DerivedEntityQuery;
+use graph::components::store::write::{EntityWrite, WriteChunk};
+use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
-    anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
-    EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
-    EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
+    anyhow, r, serde_json, BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter,
+    EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
+    ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, InputSchema};
+use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
+use std::string::ToString;
 
-use crate::block_range::BlockRange;
 use crate::relational::{
     Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
 use crate::{
     block_range::{
-        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
-        BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, CAUSALITY_REGION_COLUMN,
+        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BlockRangeValue,
+        BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, CAUSALITY_REGION_COLUMN,
     },
-    primary::{Namespace, Site},
+    primary::Site,
 };
 
 /// Those are columns that we always want to fetch from the database.
@@ -70,7 +69,7 @@ enum SelectStatementLevel {
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
-    pub value: Value,
+    pub value: String,
 }
 
 impl Display for UnsupportedFilter {
@@ -118,7 +117,7 @@ trait ForeignKeyClauses {
 
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
     /// into `out`
-    fn eq(&self, id: &Id, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn eq<'b>(&self, id: &'b Id, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.push_sql(self.name());
         out.push_sql(" = ");
         id.push_bind_param(out)
@@ -127,7 +126,7 @@ trait ForeignKeyClauses {
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
     /// using the right types to bind `$ids` into `out`
-    fn is_in(&self, ids: &IdList, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn is_in<'b>(&self, ids: &'b IdList, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.push_sql("exists (select 1 from unnest(");
         ids.push_bind_param(out)?;
         out.push_sql(") as p(g$id) where id = p.g$id)");
@@ -141,35 +140,28 @@ trait ForeignKeyClauses {
 /// we have to switch between `Text` and `Binary` and therefore use this
 /// trait to make passing `Id` values to the database convenient
 trait PushBindParam {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()>;
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>;
 }
 
 impl PushBindParam for Id {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             Id::String(s) => out.push_bind_param::<Text, _>(s),
-            Id::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Id::Bytes(b) => {
+                let slice = b.as_slice();
+                out.push_bind_param::<Binary, _>(slice)
+            }
             Id::Int8(i) => out.push_bind_param::<Int8, _>(i),
         }
     }
 }
 
 impl PushBindParam for IdList {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             IdList::String(ids) => out.push_bind_param::<Array<Text>, _>(ids),
             IdList::Bytes(ids) => out.push_bind_param::<Array<Binary>, _>(ids),
             IdList::Int8(ids) => out.push_bind_param::<Array<Int8>, _>(ids),
-        }
-    }
-}
-
-impl<'a> PushBindParam for IdRef<'a> {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        match self {
-            IdRef::String(s) => out.push_bind_param::<Text, _>(s),
-            IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(b),
-            IdRef::Int8(i) => out.push_bind_param::<Int8, _>(i),
         }
     }
 }
@@ -417,11 +409,11 @@ impl FromColumnValue for graph::prelude::Value {
 /// ID. Unlike [`EntityData`], we don't really care about attributes here.
 #[derive(QueryableByName)]
 pub struct EntityDeletion {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     entity: String,
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     id: String,
-    #[sql_type = "Integer"]
+    #[diesel(sql_type = Integer)]
     causality_region: CausalityRegion,
 }
 
@@ -464,9 +456,9 @@ pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreErr
 /// `to_jsonb` function.
 #[derive(QueryableByName, Debug)]
 pub struct EntityData {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     entity: String,
-    #[sql_type = "Jsonb"]
+    #[diesel(sql_type = Jsonb)]
     data: serde_json::Value,
 }
 
@@ -543,27 +535,142 @@ impl EntityData {
     }
 }
 
+/// The equivalent of `graph::data::store::Value` but in a form that does
+/// not require further transformation during `walk_ast`. This form takes
+/// the idiosyncrasies of how we serialize values into account (e.g., that
+/// `BigDecimal` gets serialized as a string)
+#[derive(Debug, Clone)]
+enum SqlValue<'a> {
+    String(String),
+    Text(&'a String),
+    Int(i32),
+    Int8(i64),
+    Numeric(String),
+    Numerics(Vec<String>),
+    Bool(bool),
+    List(&'a Vec<Value>),
+    Null,
+    Bytes(&'a scalar::Bytes),
+    Binary(scalar::Bytes),
+}
+
+impl<'a> SqlValue<'a> {
+    fn new(value: &'a Value, column_type: &'a ColumnType) -> QueryResult<Self> {
+        use SqlValue as S;
+        use Value::*;
+
+        let value = match value {
+            String(s) => match column_type {
+                ColumnType::String|ColumnType::Enum(_)|ColumnType::TSVector(_) => S::Text(s),
+                ColumnType::Int8 => S::Int8(s.parse::<i64>().map_err(|e| {
+                    constraint_violation!("failed to convert `{}` to an Int8: {}", s, e.to_string())
+                })?),
+                ColumnType::Bytes => {
+                    let bytes = scalar::Bytes::from_str(s)
+                        .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
+                    S::Binary(bytes)
+                }
+                _ => unreachable!(
+                    "only string, enum and tsvector columns have values of type string but not {column_type}"
+                ),
+            },
+            Int(i) => S::Int(*i),
+                       Value::Int8(i) => S::Int8(*i),
+            BigDecimal(d) => {
+                S::Numeric(d.to_string())
+            }
+            Bool(b) => S::Bool(*b),
+            List(values) => {
+                match column_type {
+                    ColumnType::BigDecimal | ColumnType::BigInt => {
+                        let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
+                        S::Numerics(text_values)
+                    },
+                    ColumnType::Boolean|ColumnType::Bytes|
+                    ColumnType::Int|
+                    ColumnType::Int8|
+                    ColumnType::String|
+                    ColumnType::Enum(_)|
+                    ColumnType::TSVector(_) => {
+                        S::List(values)
+                    }
+                }
+            }
+            Null => {
+                S::Null
+            }
+            Bytes(b) => S::Bytes(b),
+            BigInt(i) => {
+                S::Numeric(i.to_string())
+            }
+        };
+        Ok(value)
+    }
+}
+
+impl std::fmt::Display for SqlValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use SqlValue as S;
+        match self {
+            S::String(s) => write!(f, "{}", s),
+            S::Text(s) => write!(f, "{}", s),
+            S::Int(i) => write!(f, "{}", i),
+            S::Int8(i) => write!(f, "{}", i),
+            S::Numeric(s) => write!(f, "{}", s),
+            S::Numerics(values) => write!(f, "{:?}", values),
+            S::Bool(b) => write!(f, "{}", b),
+            S::List(values) => write!(f, "{:?}", values),
+            S::Null => write!(f, "null"),
+            S::Bytes(b) => write!(f, "{}", b),
+            S::Binary(b) => write!(f, "{}", b),
+        }
+    }
+}
+
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
 /// using the metadata from Column
-struct QueryValue<'a>(&'a Value, &'a ColumnType);
+#[derive(Debug)]
+pub struct QueryValue<'a> {
+    value: SqlValue<'a>,
+    column_type: &'a ColumnType,
+}
+
+impl<'a> QueryValue<'a> {
+    fn new(value: &'a Value, column_type: &'a ColumnType) -> QueryResult<Self> {
+        let value = SqlValue::new(value, column_type)?;
+        Ok(Self { value, column_type })
+    }
+
+    fn many(values: &'a Vec<Value>, column_type: &'a ColumnType) -> QueryResult<Vec<Self>> {
+        values
+            .iter()
+            .map(|value| Self::new(value, column_type))
+            .collect()
+    }
+
+    fn is_null(&self) -> bool {
+        match &self.value {
+            SqlValue::Null => true,
+            _ => false,
+        }
+    }
+}
+
+impl<'a> std::fmt::Display for QueryValue<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
+    }
+}
 
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-        let column_type = self.1;
-
-        match self.0 {
-            Value::String(s) => match &column_type {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        fn push_string<'c>(
+            s: &'c String,
+            column_type: &ColumnType,
+            out: &mut AstPass<'_, 'c, Pg>,
+        ) -> QueryResult<()> {
+            match column_type {
                 ColumnType::String => out.push_bind_param::<Text, _>(s),
-                ColumnType::Int8 => {
-                    out.push_bind_param::<BigInt, _>(&s.parse::<i64>().map_err(|e| {
-                        constraint_violation!(
-                            "failed to convert `{}` to an Int8: {}",
-                            s,
-                            e.to_string()
-                        )
-                    })?)
-                }
                 ColumnType::Enum(enum_type) => {
                     out.push_bind_param::<Text, _>(s)?;
                     out.push_sql("::");
@@ -576,35 +683,33 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     out.push_sql(")");
                     Ok(())
                 }
-                ColumnType::Bytes => {
-                    let bytes = scalar::Bytes::from_str(s)
-                        .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
-                    out.push_bind_param::<Binary, _>(&bytes.as_slice())
-                }
                 _ => unreachable!(
-                    "only string, enum and tsvector columns have values of type string"
+                    "only string, enum and tsvector columns have values of type string but not {column_type}"
                 ),
-            },
-            Value::Int(i) => out.push_bind_param::<Integer, _>(i),
-            Value::Int8(i) => out.push_bind_param::<Int8, _>(i),
-            Value::BigDecimal(d) => {
-                out.push_bind_param::<Text, _>(&d.to_string())?;
+            }
+        }
+
+        out.unsafe_to_cache_prepared();
+        let column_type = self.column_type;
+
+        use SqlValue as S;
+        match &self.value {
+            S::Text(s) => push_string(s, column_type, &mut out),
+            S::String(ref s) => push_string(s, column_type, &mut out),
+            S::Int(i) => out.push_bind_param::<Integer, _>(i),
+            S::Int8(i) => out.push_bind_param::<Int8, _>(i),
+            S::Numeric(s) => {
+                out.push_bind_param::<Text, _>(s)?;
                 out.push_sql("::numeric");
                 Ok(())
             }
-            Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
-            Value::List(values) => {
+            S::Bool(b) => out.push_bind_param::<Bool, _>(b),
+            S::List(values) => {
                 match &column_type {
-                    ColumnType::BigDecimal | ColumnType::BigInt => {
-                        let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
-                        out.push_bind_param::<Array<Text>, _>(&text_values)?;
-                        out.push_sql("::numeric[]");
-                        Ok(())
-                    }
                     ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(values),
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(values),
-                    ColumnType::Int8 => out.push_bind_param::<Array<Int8>, _>(&values),
+                    ColumnType::Int8 => out.push_bind_param::<Array<Int8>, _>(values),
                     ColumnType::String => out.push_bind_param::<Array<Text>, _>(values),
                     ColumnType::Enum(enum_type) => {
                         out.push_bind_param::<Array<Text>, _>(values)?;
@@ -615,42 +720,56 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     }
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
                     ColumnType::TSVector(config) => {
-                        if values.is_empty() {
-                            out.push_sql("''::tsvector");
-                        } else {
-                            out.push_sql("(");
-                            for (i, value) in values.iter().enumerate() {
-                                if i > 0 {
-                                    out.push_sql(") || ");
-                                }
-                                out.push_sql("to_tsvector(");
-                                out.push_sql(config.language.as_sql());
-                                out.push_sql(", ");
-                                out.push_bind_param::<Text, _>(&value)?;
-                            }
-                            out.push_sql("))");
-                        }
-
+                        process_vec_ast(values, &mut out, config.language.as_sql())?;
                         Ok(())
+                    }
+                    ColumnType::BigDecimal | ColumnType::BigInt => {
+                        unreachable!(
+                            "BigDecimal and BigInt use SqlValue::Numerics instead of List"
+                        );
                     }
                 }
             }
-            Value::Null => {
+            S::Numerics(values) => {
+                out.push_bind_param::<Array<Text>, _>(values)?;
+                out.push_sql("::numeric[]");
+                Ok(())
+            }
+            S::Null => {
                 out.push_sql("null");
                 Ok(())
             }
-            Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
-            Value::BigInt(i) => {
-                out.push_bind_param::<Text, _>(&i.to_string())?;
-                out.push_sql("::numeric");
-                Ok(())
-            }
+            S::Bytes(b) => out.push_bind_param::<Binary, _>(b.as_slice()),
+            S::Binary(b) => out.push_bind_param::<Binary, _>(b.as_slice()),
         }
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
-enum Comparison {
+fn process_vec_ast<'a, T: diesel::serialize::ToSql<Text, Pg>>(
+    values: &'a Vec<T>,
+    out: &mut AstPass<'_, 'a, Pg>,
+    sql_language: &str,
+) -> Result<(), DieselError> {
+    if values.is_empty() {
+        out.push_sql("''::tsvector");
+    } else {
+        out.push_sql("(");
+        for (i, value) in values.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(") || ");
+            }
+            out.push_sql("to_tsvector(");
+            out.push_sql(sql_language);
+            out.push_sql(", ");
+            out.push_bind_param::<Text, _>(value)?;
+        }
+        out.push_sql("))");
+    }
+    Ok(())
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Comparison {
     Less,
     LessOrEqual,
     Equal,
@@ -673,21 +792,104 @@ impl Comparison {
             Match => " @@ ",
         }
     }
+
+    fn suitable(&self, value: &Value) -> Result<(), StoreError> {
+        // Anything can be compared for equality; for less than etc., the
+        // type needs to be ordered. For fulltext match, only strings can be
+        // used
+        match (self, value) {
+            (Comparison::Equal | Comparison::NotEqual, _) => Ok(()),
+            (
+                Comparison::Less
+                | Comparison::LessOrEqual
+                | Comparison::GreaterOrEqual
+                | Comparison::Greater,
+                Value::String(_)
+                | Value::Int(_)
+                | Value::Int8(_)
+                | Value::BigDecimal(_)
+                | Value::BigInt(_)
+                | Value::Bytes(_),
+            ) => Ok(()),
+            (Comparison::Match, Value::String(_)) => Ok(()),
+            (
+                Comparison::Less
+                | Comparison::LessOrEqual
+                | Comparison::GreaterOrEqual
+                | Comparison::Greater,
+                Value::Bool(_) | Value::List(_) | Value::Null,
+            )
+            | (Comparison::Match, _) => {
+                return Err(StoreError::UnsupportedFilter(
+                    self.to_string(),
+                    value.to_string(),
+                ));
+            }
+        }
+    }
 }
 
-enum PrefixType<'a> {
-    String(&'a Column),
-    Bytes(&'a Column),
+impl std::fmt::Display for Comparison {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Comparison::*;
+        let s = match self {
+            Less => "<",
+            LessOrEqual => "<=",
+            Equal => "=",
+            NotEqual => "!=",
+            GreaterOrEqual => ">=",
+            Greater => ">",
+            Match => "@@",
+        };
+        write!(f, "{s}")
+    }
 }
 
-impl<'a> PrefixType<'a> {
-    fn new(column: &'a Column) -> QueryResult<Self> {
-        match column.column_type {
-            ColumnType::String => Ok(PrefixType::String(column)),
-            ColumnType::Bytes => Ok(PrefixType::Bytes(column)),
+/// The operators for 'contains' comparisons for strings and byte arrays
+#[derive(Clone, Copy, Debug)]
+pub enum ContainsOp {
+    Like,
+    NotLike,
+    ILike,
+    NotILike,
+}
+impl ContainsOp {
+    fn negated(&self) -> bool {
+        use ContainsOp::*;
+        match self {
+            Like | ILike => false,
+            NotLike | NotILike => true,
+        }
+    }
+}
+
+impl QueryFragment<Pg> for ContainsOp {
+    fn walk_ast<'a>(&self, mut out: AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        use ContainsOp::*;
+        match self {
+            Like => out.push_sql(" like "),
+            NotLike => out.push_sql(" not like "),
+            ILike => out.push_sql(" ilike "),
+            NotILike => out.push_sql(" not ilike "),
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PrefixType {
+    String,
+    Bytes,
+}
+
+impl PrefixType {
+    fn new(column: &QualColumn<'_>) -> QueryResult<Self> {
+        match column.column_type() {
+            ColumnType::String => Ok(PrefixType::String),
+            ColumnType::Bytes => Ok(PrefixType::Bytes),
             _ => Err(constraint_violation!(
                 "cannot setup prefix comparison for column {} of type {}",
-                column.name(),
+                column,
                 column.column_type().sql_type()
             )),
         }
@@ -696,18 +898,22 @@ impl<'a> PrefixType<'a> {
     /// Push the SQL expression for a prefix of values in our column. That
     /// should be the same expression that we used when creating an index
     /// for the column
-    fn push_column_prefix(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_column_prefix<'b>(
+        self,
+        column: &'b QualColumn<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
         match self {
-            PrefixType::String(column) => {
+            PrefixType::String => {
                 out.push_sql("left(");
-                out.push_identifier(column.name.as_str())?;
+                column.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
                 out.push_sql(&STRING_PREFIX_SIZE.to_string());
                 out.push_sql(")");
             }
-            PrefixType::Bytes(column) => {
+            PrefixType::Bytes => {
                 out.push_sql("substring(");
-                out.push_identifier(column.name.as_str())?;
+                column.walk_ast(out.reborrow())?;
                 out.push_sql(", 1, ");
                 out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
                 out.push_sql(")");
@@ -716,21 +922,28 @@ impl<'a> PrefixType<'a> {
         Ok(())
     }
 
-    fn is_large(&self, value: &Value) -> Result<bool, ()> {
-        match (self, value) {
-            (PrefixType::String(_), Value::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
-            (PrefixType::Bytes(_), Value::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
-            (PrefixType::Bytes(_), Value::String(s)) => {
-                let len = if s.starts_with("0x") {
-                    (s.len() - 2) / 2
-                } else {
-                    s.len() / 2
-                };
-                Ok(len > BYTE_ARRAY_PREFIX_SIZE - 1)
-            }
+    fn is_large(&self, qv: &QueryValue<'_>) -> Result<bool, ()> {
+        use SqlValue as S;
+
+        match (self, &qv.value) {
+            (PrefixType::String, S::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
+            (PrefixType::String, S::Text(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
+            (PrefixType::Bytes, S::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
+            (PrefixType::Bytes, S::Binary(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
+            (PrefixType::Bytes, S::Text(s)) => is_large_string(s),
+            (PrefixType::Bytes, S::String(s)) => is_large_string(s),
             _ => Err(()),
         }
     }
+}
+
+fn is_large_string(s: &String) -> Result<bool, ()> {
+    let len = if s.starts_with("0x") {
+        (s.len() - 2) / 2
+    } else {
+        s.len() / 2
+    };
+    Ok(len > BYTE_ARRAY_PREFIX_SIZE - 1)
 }
 
 /// Produce a comparison between the string column `column` and the string
@@ -739,36 +952,43 @@ impl<'a> PrefixType<'a> {
 /// instead of going straight to a sequential scan of the underlying table.
 /// We do this by writing the comparison `column op text` in a way that
 /// involves `left(column, STRING_PREFIX_SIZE)`
-struct PrefixComparison<'a> {
+#[derive(Debug)]
+pub struct PrefixComparison<'a> {
     op: Comparison,
-    kind: PrefixType<'a>,
-    column: &'a Column,
-    text: &'a Value,
+    kind: PrefixType,
+    column: QualColumn<'a>,
+    value: QueryValue<'a>,
 }
 
 impl<'a> PrefixComparison<'a> {
-    fn new(op: Comparison, column: &'a Column, text: &'a Value) -> QueryResult<Self> {
-        let kind = PrefixType::new(column)?;
+    fn new(
+        op: Comparison,
+        column: QualColumn<'a>,
+        column_type: &'a ColumnType,
+        text: &'a Value,
+    ) -> Result<Self, StoreError> {
+        let kind = PrefixType::new(&column)?;
+        let value = QueryValue::new(text, column_type)?;
         Ok(Self {
             op,
             kind,
             column,
-            text,
+            value,
         })
     }
 
-    fn push_value_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_value_prefix<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self.kind {
-            PrefixType::String(column) => {
+            PrefixType::String => {
                 out.push_sql("left(");
-                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                self.value.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
                 out.push_sql(&STRING_PREFIX_SIZE.to_string());
                 out.push_sql(")");
             }
-            PrefixType::Bytes(column) => {
+            PrefixType::Bytes => {
                 out.push_sql("substring(");
-                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                self.value.walk_ast(out.reborrow())?;
                 out.push_sql(", 1, ");
                 out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
                 out.push_sql(")");
@@ -777,21 +997,31 @@ impl<'a> PrefixComparison<'a> {
         Ok(())
     }
 
-    fn push_prefix_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
-        self.kind.push_column_prefix(&mut out)?;
+    fn push_prefix_cmp<'b>(
+        &'b self,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        self.kind
+            .clone()
+            .push_column_prefix(&self.column, &mut out)?;
         out.push_sql(op.as_str());
-        self.push_value_prefix(out.reborrow())
+        self.push_value_prefix(&mut out)
     }
 
-    fn push_full_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
-        out.push_identifier(self.column.name.as_str())?;
+    fn push_full_cmp<'b>(
+        &'b self,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        self.column.walk_ast(out.reborrow())?;
         out.push_sql(op.as_str());
-        QueryValue(self.text, &self.column.column_type).walk_ast(out)
+        self.value.walk_ast(out)
     }
 }
 
 impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         use Comparison::*;
 
         // For the various comparison operators, we want to write the condition
@@ -829,12 +1059,12 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
         //
         // For `op` either `<=` or `>=`, we can write (using '<=' as an example)
         //   uv <= st <=> u < s || u = s && uv <= st
-        let large = self.kind.is_large(self.text).map_err(|()| {
+        let large = self.kind.is_large(&self.value).map_err(|()| {
             constraint_violation!(
                 "column {} has type {} and can't be compared with the value `{}` using {}",
-                self.column.name(),
+                self.column,
                 self.column.column_type().sql_type(),
-                self.text,
+                self.value.value,
                 self.op.as_str()
             )
         })?;
@@ -884,136 +1114,80 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
     }
 }
 
-/// A `QueryFilter` adds the conditions represented by the `filter` to
-/// the `where` clause of a SQL query. The attributes mentioned in
-/// the `filter` must all come from the given `table`, which is used to
-/// map GraphQL names to column names, and to determine the type of the
-/// column an attribute refers to
-#[derive(Debug, Clone)]
-pub struct QueryFilter<'a> {
-    filter: &'a EntityFilter,
-    layout: &'a Layout,
-    table: &'a Table,
-    table_prefix: &'a str,
-    block: BlockNumber,
+/// A child filter on `parent_table`. The join between the tables happens
+/// along `parent_column = child_column` and the `child_table` must be
+/// filtered with `child_filter``
+#[derive(Debug)]
+pub struct QueryChild<'a> {
+    parent_column: &'a Column,
+    child_table: &'a Table,
+    child_column: &'a Column,
+    child_filter: Filter<'a>,
+    derived: bool,
+    br_column: BlockRangeColumn<'a>,
 }
 
-/// String representation that is useful for debugging when `walk_ast` fails
-impl<'a> fmt::Display for QueryFilter<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.filter)
-    }
-}
-
-impl<'a> QueryFilter<'a> {
-    pub fn new(
-        filter: &'a EntityFilter,
-        table: &'a Table,
+impl<'a> QueryChild<'a> {
+    fn new(
         layout: &'a Layout,
+        parent_table: &'a Table,
+        child: &'a StoreChild,
         block: BlockNumber,
     ) -> Result<Self, StoreError> {
-        Self::valid_attributes(filter, table, layout, false)?;
+        const CHILD_PREFIX: &str = "i.";
 
-        Ok(QueryFilter {
+        let StoreChild {
+            attr,
+            entity_type,
             filter,
-            table,
-            layout,
-            block,
-            table_prefix: "c.",
+            derived,
+        } = child;
+        let derived = *derived;
+        let child_table = layout.table_for_entity(entity_type)?;
+        let (parent_column, child_column) = if derived {
+            // If the parent is derived, the child column is picked based on
+            // the provided attribute and the parent column is the primary
+            // key of the parent table
+            (
+                parent_table.primary_key(),
+                child_table.column_for_field(attr)?,
+            )
+        } else {
+            // If the parent is not derived, we do the opposite. The parent
+            // column is picked based on the provided attribute and the
+            // child column is the primary key of the child table
+            (
+                parent_table.column_for_field(attr)?,
+                child_table.primary_key(),
+            )
+        };
+        let br_column = BlockRangeColumn::new(child_table, CHILD_PREFIX, block);
+        let child_filter = Filter::new(layout, child_table, filter, block, ColumnQual::Child)?;
+
+        Ok(Self {
+            parent_column,
+            child_table,
+            child_column,
+            child_filter,
+            derived,
+            br_column,
         })
     }
+}
 
-    fn valid_attributes(
-        filter: &'a EntityFilter,
-        table: &'a Table,
-        layout: &'a Layout,
-        child_filter_ancestor: bool,
-    ) -> Result<(), StoreError> {
-        use EntityFilter::*;
-        match filter {
-            And(filters) | Or(filters) => {
-                for filter in filters {
-                    Self::valid_attributes(filter, table, layout, child_filter_ancestor)?;
-                }
-            }
-            Child(child) => {
-                if child_filter_ancestor {
-                    return Err(StoreError::ChildFilterNestingNotSupportedError(
-                        child.attr.to_string(),
-                        filter.to_string(),
-                    ));
-                }
+impl<'a> QueryFragment<Pg> for QueryChild<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
 
-                if child.derived {
-                    let derived_table = layout.table_for_entity(&child.entity_type)?;
-                    // Make sure that the attribute name is valid for the given table
-                    derived_table.column_for_field(child.attr.as_str())?;
-
-                    Self::valid_attributes(&child.filter, derived_table, layout, true)?;
-                } else {
-                    // Make sure that the attribute name is valid for the given table
-                    table.column_for_field(child.attr.as_str())?;
-
-                    Self::valid_attributes(
-                        &child.filter,
-                        layout.table_for_entity(&child.entity_type)?,
-                        layout,
-                        true,
-                    )?;
-                }
-            }
-            // This is a special case since we want to allow passing "block" column filter, but we dont
-            // want to fail/error when this is passed here, since this column is not really an entity column.
-            ChangeBlockGte(..) => {}
-            Contains(attr, _)
-            | ContainsNoCase(attr, _)
-            | NotContains(attr, _)
-            | NotContainsNoCase(attr, _)
-            | Equal(attr, _)
-            | Fulltext(attr, _)
-            | Not(attr, _)
-            | GreaterThan(attr, _)
-            | LessThan(attr, _)
-            | GreaterOrEqual(attr, _)
-            | LessOrEqual(attr, _)
-            | In(attr, _)
-            | NotIn(attr, _)
-            | StartsWith(attr, _)
-            | StartsWithNoCase(attr, _)
-            | NotStartsWith(attr, _)
-            | NotStartsWithNoCase(attr, _)
-            | EndsWith(attr, _)
-            | EndsWithNoCase(attr, _)
-            | NotEndsWith(attr, _)
-            | NotEndsWithNoCase(attr, _) => {
-                table.column_for_field(attr)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn with(&self, filter: &'a EntityFilter) -> Self {
-        QueryFilter {
-            filter,
-            table: self.table,
-            layout: self.layout,
-            block: self.block,
-            table_prefix: self.table_prefix,
-        }
-    }
-
-    fn child(
-        &self,
-        attribute: &Attribute,
-        entity_type: &'a EntityType,
-        filter: &'a EntityFilter,
-        derived: bool,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let child_table = self
-            .layout
-            .table_for_entity(entity_type)
-            .expect("Table for child entity not found");
+        let QueryChild {
+            parent_column,
+            child_table,
+            child_column,
+            child_filter,
+            derived,
+            br_column,
+        } = self;
+        let derived = *derived;
 
         let child_prefix = "i.";
         let parent_prefix = "c.";
@@ -1028,14 +1202,6 @@ impl<'a> QueryFilter<'a> {
 
         // Join tables
         if derived {
-            // If the parent is derived,
-            // the child column is picked based on the provided attribute
-            // and the parent column is the primary key of the parent table
-            let child_column = child_table
-                .column_for_field(attribute)
-                .expect("Column for an attribute not found");
-            let parent_column = self.table.primary_key();
-
             if child_column.is_list() {
                 // Type A: c.id = any(i.{parent_field})
                 out.push_sql(parent_prefix);
@@ -1053,14 +1219,6 @@ impl<'a> QueryFilter<'a> {
                 out.push_identifier(child_column.name.as_str())?;
             }
         } else {
-            // If the parent is not derived, we do the opposite.
-            // The parent column is picked based on the provided attribute
-            // and the child column is the primary key of the child table
-            let parent_column = self
-                .table
-                .column_for_field(attribute)
-                .expect("Column for an attribute not found");
-            let child_column = child_table.primary_key();
             is_type_c_or_d = true;
 
             if parent_column.is_list() {
@@ -1084,39 +1242,359 @@ impl<'a> QueryFilter<'a> {
         out.push_sql(" and ");
 
         // Match by block
-        BlockRangeColumn::new(child_table, child_prefix, self.block)
-            .contains(&mut out, is_type_c_or_d)?;
+        br_column.contains(&mut out, is_type_c_or_d)?;
 
         out.push_sql(" and ");
 
-        // Child filters
-        let query_filter = QueryFilter {
-            filter,
-            table: child_table,
-            layout: self.layout,
-            block: self.block,
-            table_prefix: child_prefix,
-        };
-
-        query_filter.walk_ast(out.reborrow())?;
+        child_filter.walk_ast(out.reborrow())?;
 
         out.push_sql(")");
 
         Ok(())
     }
+}
 
-    fn column(&self, attribute: &Attribute) -> &'a Column {
-        self.table
-            .column_for_field(attribute)
-            .expect("the constructor already checked that all attribute names are valid")
+/// The qualifier for a column to indicate whether we use the main table or
+/// a child table
+#[derive(Copy, Clone, Debug)]
+enum ColumnQual {
+    Main,
+    Child,
+}
+
+impl ColumnQual {
+    fn with<'a>(&self, column: &'a Column) -> QualColumn<'a> {
+        match self {
+            ColumnQual::Main => QualColumn::Main(column),
+            ColumnQual::Child => QualColumn::Child(column),
+        }
     }
 
-    fn binary_op(
-        &self,
-        filters: &[EntityFilter],
-        op: &str,
-        on_empty: &str,
-        mut out: AstPass<Pg>,
+    /// Return `true` if we allow a nested child filter. That's allowed as
+    /// long as we are filtering the main table
+    fn allow_child(&self) -> bool {
+        match self {
+            ColumnQual::Main => true,
+            ColumnQual::Child => false,
+        }
+    }
+
+    fn prefix(&self) -> &'static str {
+        match self {
+            ColumnQual::Main => "c.",
+            ColumnQual::Child => "i.",
+        }
+    }
+}
+
+/// A qualified column name. This is either `c.{column}` or `i.{column}`
+#[derive(Debug)]
+pub enum QualColumn<'a> {
+    Main(&'a Column),
+    Child(&'a Column),
+}
+impl QualColumn<'_> {
+    fn column_type(&self) -> &ColumnType {
+        &self.column().column_type
+    }
+
+    fn prefix(&self) -> &str {
+        match self {
+            QualColumn::Main(_) => "c.",
+            QualColumn::Child(_) => "i.",
+        }
+    }
+
+    fn column(&self) -> &Column {
+        match self {
+            QualColumn::Main(column) => column,
+            QualColumn::Child(column) => column,
+        }
+    }
+}
+
+impl std::fmt::Display for QualColumn<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QualColumn::Main(column) => write!(f, "{}", column.name),
+            QualColumn::Child(column) => write!(f, "{}", column.name),
+        }
+    }
+}
+
+impl QueryFragment<Pg> for QualColumn<'_> {
+    fn walk_ast<'a>(&self, mut out: AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        out.push_sql(self.prefix());
+        out.push_identifier(self.column().name.as_str())
+    }
+}
+
+/// The equivalent of `EntityFilter` with columns resolved and various
+/// properties checked so that we can generate SQL and be reasonably sure
+/// the SQL does not have a syntax error.
+///
+/// A `Filter` will usually be used in the `where` clause of a SQL query.
+#[derive(Debug)]
+pub enum Filter<'a> {
+    And(Vec<Filter<'a>>),
+    Or(Vec<Filter<'a>>),
+    PrefixCmp(PrefixComparison<'a>),
+    Cmp(QualColumn<'a>, Comparison, QueryValue<'a>),
+    In(QualColumn<'a>, Vec<QueryValue<'a>>),
+    NotIn(QualColumn<'a>, Vec<QueryValue<'a>>),
+    Contains {
+        column: QualColumn<'a>,
+        op: ContainsOp,
+        pattern: QueryValue<'a>,
+    },
+    StartsOrEndsWith {
+        column: QualColumn<'a>,
+        op: &'static str,
+        pattern: String,
+    },
+    ChangeBlockGte(BlockRangeColumn<'a>),
+    Child(Box<QueryChild<'a>>),
+    /// The value is never null for fulltext queries
+    Fulltext(QualColumn<'a>, QueryValue<'a>),
+}
+
+impl<'a> Filter<'a> {
+    pub fn main(
+        layout: &'a Layout,
+        table: &'a Table,
+        filter: &'a EntityFilter,
+        block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        Self::new(layout, table, filter, block, ColumnQual::Main)
+    }
+
+    fn new(
+        layout: &'a Layout,
+        table: &'a Table,
+        filter: &'a EntityFilter,
+        block: BlockNumber,
+        qual: ColumnQual,
+    ) -> Result<Self, StoreError> {
+        fn column_and_value<'v>(
+            prefix: ColumnQual,
+            table: &'v Table,
+            attr: &String,
+            value: &'v Value,
+        ) -> Result<(QualColumn<'v>, QueryValue<'v>), StoreError> {
+            let column = table.column_for_field(attr)?;
+            let value = QueryValue::new(value, &column.column_type)?;
+            let column = prefix.with(table.column_for_field(attr)?);
+            Ok((column, value))
+        }
+
+        fn starts_or_ends_with<'s>(
+            qual: ColumnQual,
+            table: &'s Table,
+            attr: &String,
+            value: &Value,
+            op: &'static str,
+            starts_with: bool,
+        ) -> Result<Filter<'s>, StoreError> {
+            let column = qual.with(table.column_for_field(attr)?);
+
+            match value {
+                Value::String(s) => {
+                    let pattern = if starts_with {
+                        format!("{}%", s)
+                    } else {
+                        format!("%{}", s)
+                    };
+                    Ok(Filter::StartsOrEndsWith {
+                        column,
+                        op,
+                        pattern,
+                    })
+                }
+                Value::Bool(_)
+                | Value::BigInt(_)
+                | Value::Bytes(_)
+                | Value::BigDecimal(_)
+                | Value::Int(_)
+                | Value::Int8(_)
+                | Value::List(_)
+                | Value::Null => {
+                    return Err(StoreError::UnsupportedFilter(
+                        op.to_owned(),
+                        value.to_string(),
+                    ));
+                }
+            }
+        }
+
+        fn cmp<'s>(
+            qual: ColumnQual,
+            table: &'s Table,
+            attr: &String,
+            op: Comparison,
+            value: &'s Value,
+        ) -> Result<Filter<'s>, StoreError> {
+            let column = table.column_for_field(attr)?;
+
+            op.suitable(value)?;
+
+            if column.use_prefix_comparison && !value.is_null() {
+                let column_type = &column.column_type;
+                let column = qual.with(column);
+                PrefixComparison::new(op, column, column_type, value)
+                    .map(|pc| Filter::PrefixCmp(pc))
+            } else {
+                let value = QueryValue::new(value, &column.column_type)?;
+                let column = qual.with(column);
+                Ok(Filter::Cmp(column, op, value))
+            }
+        }
+
+        fn contains<'s>(
+            qual: ColumnQual,
+            table: &'s Table,
+            attr: &String,
+            op: ContainsOp,
+            value: &'s Value,
+        ) -> Result<Filter<'s>, StoreError> {
+            let column = table.column_for_field(attr)?;
+            let pattern = QueryValue::new(value, &column.column_type)?;
+            let pattern = match &pattern.value {
+                SqlValue::String(s) => {
+                    if s.starts_with('%') || s.ends_with('%') {
+                        pattern
+                    } else {
+                        let s = format!("%{}%", s);
+                        QueryValue {
+                            value: SqlValue::String(s),
+                            column_type: pattern.column_type,
+                        }
+                    }
+                }
+                SqlValue::Text(s) => {
+                    if s.starts_with('%') || s.ends_with('%') {
+                        pattern
+                    } else {
+                        let s = format!("%{}%", s);
+                        QueryValue {
+                            value: SqlValue::String(s),
+                            column_type: pattern.column_type,
+                        }
+                    }
+                }
+                SqlValue::Int(_)
+                | SqlValue::Int8(_)
+                | SqlValue::Numeric(_)
+                | SqlValue::Numerics(_)
+                | SqlValue::Bool(_)
+                | SqlValue::List(_)
+                | SqlValue::Null
+                | SqlValue::Bytes(_)
+                | SqlValue::Binary(_) => pattern,
+            };
+            let column = qual.with(column);
+            Ok(Filter::Contains {
+                column,
+                op,
+                pattern,
+            })
+        }
+
+        use Comparison as C;
+        use ContainsOp as K;
+        use EntityFilter::*;
+        use Filter as F;
+        match filter {
+            And(filters) => Ok(F::And(
+                filters
+                    .iter()
+                    .map(|f| F::new(layout, table, f, block, qual))
+                    .collect::<Result<_, _>>()?,
+            )),
+            Or(filters) => Ok(F::Or(
+                filters
+                    .iter()
+                    .map(|f| F::new(layout, table, f, block, qual))
+                    .collect::<Result<_, _>>()?,
+            )),
+            Equal(attr, value) => cmp(qual, table, attr, C::Equal, value),
+            Not(attr, value) => cmp(qual, table, attr, C::NotEqual, value),
+            GreaterThan(attr, value) => cmp(qual, table, attr, C::Greater, value),
+            LessThan(attr, value) => cmp(qual, table, attr, C::Less, value),
+            GreaterOrEqual(attr, value) => cmp(qual, table, attr, C::GreaterOrEqual, value),
+            LessOrEqual(attr, value) => cmp(qual, table, attr, C::LessOrEqual, value),
+            In(attr, values) => {
+                let column = table.column_for_field(attr.as_str())?;
+                let values = QueryValue::many(values, &column.column_type)?;
+                let column = qual.with(column);
+                Ok(F::In(column, values))
+            }
+            NotIn(attr, values) => {
+                let column = table.column_for_field(attr.as_str())?;
+                let values = QueryValue::many(values, &column.column_type)?;
+                let column = qual.with(column);
+                Ok(F::NotIn(column, values))
+            }
+            Contains(attr, value) => contains(qual, table, attr, K::Like, value),
+            ContainsNoCase(attr, value) => contains(qual, table, attr, K::ILike, value),
+            NotContains(attr, value) => contains(qual, table, attr, K::NotLike, value),
+            NotContainsNoCase(attr, value) => contains(qual, table, attr, K::NotILike, value),
+
+            StartsWith(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " like ", true)
+            }
+            StartsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " ilike ", true)
+            }
+            NotStartsWith(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not like ", true)
+            }
+            NotStartsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not ilike ", true)
+            }
+            EndsWith(attr, value) => starts_or_ends_with(qual, table, attr, value, " like ", false),
+            EndsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " ilike ", false)
+            }
+            NotEndsWith(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not like ", false)
+            }
+            NotEndsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not ilike ", false)
+            }
+
+            ChangeBlockGte(num) => Ok(F::ChangeBlockGte(BlockRangeColumn::new(
+                table,
+                qual.prefix(),
+                *num,
+            ))),
+            Child(child) => {
+                if !qual.allow_child() {
+                    return Err(StoreError::ChildFilterNestingNotSupportedError(
+                        child.attr.to_string(),
+                        filter.to_string(),
+                    ));
+                }
+                let child = QueryChild::new(layout, table, child, block)?;
+                Ok(F::Child(Box::new(child)))
+            }
+            Fulltext(attr, value) => {
+                let (column, value) = column_and_value(qual, table, attr, value)?;
+                if value.is_null() {
+                    return Err(StoreError::UnsupportedFilter(
+                        "fulltext".to_owned(),
+                        value.to_string(),
+                    ));
+                }
+                Ok(F::Fulltext(column, value))
+            }
+        }
+    }
+
+    fn binary_op<'b>(
+        filters: &'b [Filter],
+        op: &'static str,
+        on_empty: &'static str,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         if !filters.is_empty() {
             out.push_sql("(");
@@ -1124,7 +1602,7 @@ impl<'a> QueryFilter<'a> {
                 if i > 0 {
                     out.push_sql(op);
                 }
-                self.with(filter).walk_ast(out.reborrow())?;
+                filter.walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         } else {
@@ -1133,71 +1611,98 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn contains(
-        &self,
-        attribute: &Attribute,
-        value: &Value,
-        negated: bool,
-        strict: bool,
-        mut out: AstPass<Pg>,
+    fn cmp<'b>(
+        column: &'b QualColumn<'b>,
+        qv: &'b QueryValue<'b>,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute);
-        let operation = match (strict, negated) {
-            (true, true) => " not like ",
-            (true, false) => " like ",
-            (false, true) => " not ilike ",
-            (false, false) => " ilike ",
-        };
-        match value {
-            Value::String(s) => {
-                out.push_sql(self.table_prefix);
-                out.push_identifier(column.name.as_str())?;
-                out.push_sql(operation);
-                if s.starts_with('%') || s.ends_with('%') {
-                    out.push_bind_param::<Text, _>(s)?;
-                } else {
-                    let s = format!("%{}%", s);
-                    out.push_bind_param::<Text, _>(&s)?;
-                }
+        if qv.is_null() {
+            // Deal with nulls first since they always need special
+            // treatment
+            column.walk_ast(out.reborrow())?;
+            match op {
+                Comparison::Equal => out.push_sql(" is null"),
+                Comparison::NotEqual => out.push_sql(" is not null"),
+                _ => unreachable!("we check that nulls are only compard with '=' or '!='"),
             }
-            Value::Bytes(b) => {
+        } else {
+            column.walk_ast(out.reborrow())?;
+            out.push_sql(op.as_str());
+            qv.walk_ast(out)?;
+        }
+        Ok(())
+    }
+
+    fn fulltext<'b>(
+        column: &'b QualColumn,
+        qv: &'b QueryValue,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        assert!(!qv.is_null());
+        column.walk_ast(out.reborrow())?;
+        out.push_sql(Comparison::Match.as_str());
+        qv.walk_ast(out)
+    }
+
+    fn contains<'b>(
+        column: &'b QualColumn,
+        op: &'b ContainsOp,
+        qv: &'b QueryValue,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        match &qv.value {
+            SqlValue::String(_) | SqlValue::Text(_) => {
+                column.walk_ast(out.reborrow())?;
+                op.walk_ast(out.reborrow())?;
+                qv.walk_ast(out.reborrow())?;
+            }
+            SqlValue::Bytes(b) => {
                 out.push_sql("position(");
-                out.push_bind_param::<Binary, _>(&b.as_slice())?;
+                out.push_bind_param::<Binary, _>(b)?;
                 out.push_sql(" in ");
-                out.push_sql(self.table_prefix);
-                out.push_identifier(column.name.as_str())?;
-                if negated {
+                column.walk_ast(out.reborrow())?;
+                if op.negated() {
                     out.push_sql(") = 0")
                 } else {
                     out.push_sql(") > 0");
                 }
             }
-            Value::List(_) => {
-                if negated {
+            SqlValue::Binary(b) => {
+                out.push_sql("position(");
+                out.push_bind_param::<Binary, _>(b)?;
+                out.push_sql(" in ");
+                column.walk_ast(out.reborrow())?;
+                if op.negated() {
+                    out.push_sql(") = 0")
+                } else {
+                    out.push_sql(") > 0");
+                }
+            }
+            SqlValue::List(_) => {
+                if op.negated() {
                     out.push_sql(" not ");
-                    out.push_sql(self.table_prefix);
-                    out.push_identifier(column.name.as_str())?;
+                    column.walk_ast(out.reborrow())?;
                     out.push_sql(" && ");
                 } else {
-                    out.push_sql(self.table_prefix);
-                    out.push_identifier(column.name.as_str())?;
+                    column.walk_ast(out.reborrow())?;
                     out.push_sql(" @> ");
                 }
-                QueryValue(value, &column.column_type).walk_ast(out)?;
+                qv.walk_ast(out)?;
             }
-            Value::Null
-            | Value::BigDecimal(_)
-            | Value::Int(_)
-            | Value::Int8(_)
-            | Value::Bool(_)
-            | Value::BigInt(_) => {
-                let filter = match negated {
+            SqlValue::Null
+            | SqlValue::Bool(_)
+            | SqlValue::Numeric(_)
+            | SqlValue::Numerics(_)
+            | SqlValue::Int(_)
+            | SqlValue::Int8(_) => {
+                let filter = match op.negated() {
                     false => "contains",
                     true => "not_contains",
                 };
                 return Err(UnsupportedFilter {
                     filter: filter.to_owned(),
-                    value: value.clone(),
+                    value: qv.value.to_string(),
                 }
                 .into());
             }
@@ -1205,83 +1710,12 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn equals(
-        &self,
-        attribute: &Attribute,
-        value: &Value,
-        op: Comparison,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
-        if matches!(value, Value::Null) {
-            // Deal with nulls first since they always need special
-            // treatment
-            out.push_identifier(column.name.as_str())?;
-            match op {
-                Comparison::Equal => out.push_sql(" is null"),
-                Comparison::NotEqual => out.push_sql(" is not null"),
-                _ => unreachable!("we only call equals with '=' or '!='"),
-            }
-        } else if column.use_prefix_comparison {
-            PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
-        } else if column.is_fulltext() {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(Comparison::Match.as_str());
-            QueryValue(value, &column.column_type).walk_ast(out)?;
-        } else {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(op.as_str());
-            QueryValue(value, &column.column_type).walk_ast(out)?;
-        }
-        Ok(())
-    }
-
-    fn compare(
-        &self,
-        attribute: &Attribute,
-        value: &Value,
-        op: Comparison,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
-        if column.use_prefix_comparison {
-            PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
-        } else {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(op.as_str());
-            match value {
-                Value::BigInt(_)
-                | Value::Bytes(_)
-                | Value::BigDecimal(_)
-                | Value::Int(_)
-                | Value::Int8(_)
-                | Value::String(_) => QueryValue(value, &column.column_type).walk_ast(out)?,
-                Value::Bool(_) | Value::List(_) | Value::Null => {
-                    return Err(UnsupportedFilter {
-                        filter: op.as_str().to_owned(),
-                        value: value.clone(),
-                    }
-                    .into());
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn in_array(
-        &self,
-        attribute: &Attribute,
-        values: &[Value],
+    fn in_array<'b>(
+        column: &'b QualColumn,
+        values: &'b [QueryValue],
         negated: bool,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
         if values.is_empty() {
             out.push_sql("false");
             return Ok(());
@@ -1300,16 +1734,15 @@ impl<'a> QueryFilter<'a> {
         // is a syntax error
         //
         // Because we checked above, one of these two will be true
-        let have_nulls = values.iter().any(|value| value == &Value::Null);
-        let have_non_nulls = values.iter().any(|value| value != &Value::Null);
+        let have_nulls = values.iter().any(|qv| qv.is_null());
+        let have_non_nulls = values.iter().any(|qv| !qv.is_null());
 
         if have_nulls && have_non_nulls {
             out.push_sql("(");
         }
 
         if have_nulls {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
+            column.walk_ast(out.reborrow())?;
             if negated {
                 out.push_sql(" is not null");
             } else {
@@ -1322,10 +1755,15 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_non_nulls {
-            if column.use_prefix_comparison
-                && values.iter().all(|v| match v {
-                    Value::String(s) => s.len() < STRING_PREFIX_SIZE,
-                    Value::Bytes(b) => b.len() < BYTE_ARRAY_PREFIX_SIZE,
+            if
+            /* column.use_prefix_comparison
+            && */
+            PrefixType::new(column).is_ok()
+                && values.iter().all(|v| match &v.value {
+                    SqlValue::Text(s) => s.len() < STRING_PREFIX_SIZE,
+                    SqlValue::String(s) => s.len() < STRING_PREFIX_SIZE,
+                    SqlValue::Binary(b) => b.len() < BYTE_ARRAY_PREFIX_SIZE,
+                    SqlValue::Bytes(b) => b.len() < BYTE_ARRAY_PREFIX_SIZE,
                     _ => false,
                 })
             {
@@ -1335,25 +1773,20 @@ impl<'a> QueryFilter<'a> {
                 // query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
-                PrefixType::new(column)?.push_column_prefix(&mut out)?;
+                PrefixType::new(column)?.push_column_prefix(column, &mut out.reborrow())?;
             } else {
-                out.push_sql(self.table_prefix);
-                out.push_identifier(column.name.as_str())?;
+                column.walk_ast(out.reborrow())?;
             }
             if negated {
                 out.push_sql(" not in (");
             } else {
                 out.push_sql(" in (");
             }
-            for (i, value) in values
-                .iter()
-                .filter(|value| value != &&Value::Null)
-                .enumerate()
-            {
+            for (i, qv) in values.iter().filter(|qv| !qv.is_null()).enumerate() {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+                qv.walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         }
@@ -1363,114 +1796,97 @@ impl<'a> QueryFilter<'a> {
         }
         Ok(())
     }
+}
 
-    fn filter_block_gte(
-        &self,
-        block_number_gte: &BlockNumber,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        BlockRangeColumn::new(self.table, "c.", *block_number_gte).changed_since(&mut out)
-    }
+// A somewhat concise string representation of a filter that is useful for
+// debugging when `walk_ast` fails
+impl<'a> fmt::Display for Filter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Filter::*;
 
-    fn starts_or_ends_with(
-        &self,
-        attribute: &Attribute,
-        value: &Value,
-        op: &str,
-        starts_with: bool,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
-        out.push_sql(self.table_prefix);
-        out.push_identifier(column.name.as_str())?;
-        out.push_sql(op);
-        match value {
-            Value::String(s) => {
-                let s = if starts_with {
-                    format!("{}%", s)
-                } else {
-                    format!("%{}", s)
+        match self {
+            And(fs) => {
+                write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" and "))
+            }
+            Or(fs) => {
+                write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" or "))
+            }
+            Fulltext(a, v) => write!(f, "{a} = {v}"),
+            PrefixCmp(PrefixComparison {
+                op,
+                kind: _,
+                column,
+                value,
+            }) => write!(f, "{column} {op} {value}"),
+            Cmp(a, op, v) => write!(f, "{a} {op} {v}"),
+            In(a, vs) => write!(f, "{a} in ({})", vs.iter().map(|v| v.to_string()).join(",")),
+            NotIn(a, vs) => write!(
+                f,
+                "{a} not in ({})",
+                vs.iter().map(|v| v.to_string()).join(",")
+            ),
+            Contains {
+                column,
+                op,
+                pattern,
+            } => {
+                let (neg, case) = match op {
+                    ContainsOp::Like => ("", ""),
+                    ContainsOp::ILike => ("", "i"),
+                    ContainsOp::NotLike => ("!", ""),
+                    ContainsOp::NotILike => ("!", "i"),
                 };
-                out.push_bind_param::<Text, _>(&s)?
+                write!(f, "{column} {neg}~ *{pattern}*{case}")
             }
-            Value::Bool(_)
-            | Value::BigInt(_)
-            | Value::Bytes(_)
-            | Value::BigDecimal(_)
-            | Value::Int(_)
-            | Value::Int8(_)
-            | Value::List(_)
-            | Value::Null => {
-                return Err(UnsupportedFilter {
-                    filter: op.to_owned(),
-                    value: value.clone(),
-                }
-                .into());
+            StartsOrEndsWith {
+                column,
+                op,
+                pattern,
+            } => {
+                write!(f, "{column} {op} '{pattern}'")
             }
+            ChangeBlockGte(b) => write!(f, "block >= {}", b.block()),
+            Child(child /* a, et, cf, _ */) => write!(
+                f,
+                "join on {} with {}({})",
+                child.child_column.name(),
+                child.child_table.name,
+                child.child_filter
+            ),
         }
-        Ok(())
     }
 }
 
-impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+impl<'a> QueryFragment<Pg> for Filter<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        use Comparison as c;
-        use EntityFilter::*;
-        match &self.filter {
-            And(filters) => self.binary_op(filters, " and ", " true ", out)?,
-            Or(filters) => self.binary_op(filters, " or ", " false ", out)?,
+        use Filter::*;
+        match self {
+            And(filters) => Self::binary_op(filters, " and ", " true ", out)?,
+            Or(filters) => Self::binary_op(filters, " or ", " false ", out)?,
 
-            Contains(attr, value) => self.contains(attr, value, false, true, out)?,
-            ContainsNoCase(attr, value) => self.contains(attr, value, false, false, out)?,
-            NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
-            NotContainsNoCase(attr, value) => self.contains(attr, value, true, false, out)?,
-
-            Equal(attr, value) | Fulltext(attr, value) => {
-                self.equals(attr, value, c::Equal, out)?
+            Contains {
+                column,
+                op,
+                pattern,
+            } => Self::contains(column, op, pattern, out)?,
+            PrefixCmp(pc) => pc.walk_ast(out)?,
+            Cmp(column, op, value) => Self::cmp(column, value, *op, out)?,
+            Fulltext(column, value) => Self::fulltext(column, value, out)?,
+            In(attr, values) => Self::in_array(attr, values, false, out)?,
+            NotIn(attr, values) => Self::in_array(attr, values, true, out)?,
+            StartsOrEndsWith {
+                column,
+                op,
+                pattern,
+            } => {
+                column.walk_ast(out.reborrow())?;
+                out.push_sql(op);
+                out.push_bind_param::<Text, _>(pattern)?;
             }
-            Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
-
-            GreaterThan(attr, value) => self.compare(attr, value, c::Greater, out)?,
-            LessThan(attr, value) => self.compare(attr, value, c::Less, out)?,
-            GreaterOrEqual(attr, value) => self.compare(attr, value, c::GreaterOrEqual, out)?,
-            LessOrEqual(attr, value) => self.compare(attr, value, c::LessOrEqual, out)?,
-
-            In(attr, values) => self.in_array(attr, values, false, out)?,
-            NotIn(attr, values) => self.in_array(attr, values, true, out)?,
-
-            StartsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " like ", true, out)?
-            }
-            StartsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " ilike ", true, out)?
-            }
-            NotStartsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not like ", true, out)?
-            }
-            NotStartsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not ilike ", true, out)?
-            }
-            EndsWith(attr, value) => self.starts_or_ends_with(attr, value, " like ", false, out)?,
-            EndsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " ilike ", false, out)?
-            }
-            NotEndsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not like ", false, out)?
-            }
-            NotEndsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
-            }
-            ChangeBlockGte(block_number) => self.filter_block_gte(block_number, out)?,
-            Child(child) => self.child(
-                &child.attr,
-                &child.entity_type,
-                &child.filter,
-                child.derived,
-                out,
-            )?,
+            ChangeBlockGte(br_column) => br_column.changed_since(&mut out)?,
+            Child(child) => child.walk_ast(out)?,
         }
         Ok(())
     }
@@ -1478,22 +1894,33 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
 
 /// A query that finds an entity by key. Used during indexing.
 /// See also `FindManyQuery`.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct FindQuery<'a> {
     table: &'a Table,
     key: &'a EntityKey,
-    block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> FindQuery<'a> {
+    pub fn new(table: &'a Table, key: &'a EntityKey, block: BlockNumber) -> Self {
+        let br_column = BlockRangeColumn::new(table, "e.", block);
+        Self {
+            table,
+            key,
+            br_column,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
         out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1505,7 +1932,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
             out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, true)
+        self.br_column.contains(&mut out, true)
     }
 }
 
@@ -1515,10 +1942,8 @@ impl<'a> QueryId for FindQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
@@ -1526,15 +1951,21 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 /// Builds a query over a given set of [`Table`]s in an attempt to find updated
 /// and/or newly inserted entities at a given block number; i.e. such that the
 /// block range's lower bound is equal to said block number.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindChangesQuery<'a> {
-    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: &'a [&'a Table],
-    pub(crate) block: BlockNumber,
+    br_clause: BlockRangeLowerBoundClause<'a>,
+}
+
+impl<'a> FindChangesQuery<'a> {
+    pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
+        let br_clause = BlockRangeLowerBoundClause::new("e.", block);
+        Self { tables, br_clause }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         for (i, table) in self.tables.iter().enumerate() {
@@ -1542,12 +1973,12 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            BlockRangeLowerBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+            self.br_clause.walk_ast(out.reborrow())?;
         }
 
         Ok(())
@@ -1560,10 +1991,8 @@ impl<'a> QueryId for FindChangesQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindChangesQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindChangesQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
@@ -1576,15 +2005,22 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 /// query is intented to be used together with [`FindChangesQuery`]; by
 /// combining the results it's possible to see which entities were *actually*
 /// deleted and which ones were just updated.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindPossibleDeletionsQuery<'a> {
-    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: &'a [&'a Table],
-    pub(crate) block: BlockNumber,
+    br_clause: BlockRangeUpperBoundClause<'a>,
+}
+
+impl<'a> FindPossibleDeletionsQuery<'a> {
+    pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
+        let br_clause = BlockRangeUpperBoundClause::new("e.", block);
+        Self { tables, br_clause }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        let out = &mut out;
         out.unsafe_to_cache_prepared();
 
         for (i, table) in self.tables.iter().enumerate() {
@@ -1592,7 +2028,7 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, ");
             if table.has_causality_region {
                 out.push_sql("causality_region, ");
@@ -1603,7 +2039,7 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            BlockRangeUpperBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+            self.br_clause.walk_ast(out.reborrow())?;
         }
 
         Ok(())
@@ -1616,25 +2052,42 @@ impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindPossibleDeletionsQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindManyQuery<'a> {
-    pub(crate) tables: Vec<(&'a Table, CausalityRegion)>,
+    pub(crate) tables: Vec<(&'a Table, CausalityRegion, BlockRangeColumn<'a>)>,
 
     // Maps object name to ids.
     pub(crate) ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), IdList>,
-    pub(crate) block: BlockNumber,
+}
+
+impl<'a> FindManyQuery<'a> {
+    pub fn new(
+        tables: Vec<(&'a Table, CausalityRegion)>,
+        ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), IdList>,
+        block: BlockNumber,
+    ) -> Self {
+        let tables = tables
+            .into_iter()
+            .map(|(table, cr)| {
+                let br_column = BlockRangeColumn::new(table, "e.", block);
+                (table, cr, br_column)
+            })
+            .collect();
+        Self {
+            tables,
+            ids_for_type,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Generate
@@ -1645,12 +2098,12 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
         //      from schema.<table1> e where {id.is_in($ids1))
         //    union all
         //    ...
-        for (i, (table, cr)) in self.tables.iter().enumerate() {
+        for (i, (table, cr, br_column)) in self.tables.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
@@ -1664,7 +2117,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_bind_param::<Integer, _>(cr)?;
                 out.push_sql(" and ");
             }
-            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out, true)?;
+            br_column.contains(&mut out, true)?;
         }
         Ok(())
     }
@@ -1676,26 +2129,41 @@ impl<'a> QueryId for FindManyQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindManyQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindManyQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
 /// A query that finds an entity by key. Used during indexing.
 /// See also `FindManyQuery`.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
     derived_query: &'a DerivedEntityQuery,
-    block: BlockNumber,
     excluded_keys: &'a Vec<EntityKey>,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> FindDerivedQuery<'a> {
+    pub fn new(
+        table: &'a Table,
+        derived_query: &'a DerivedEntityQuery,
+        block: BlockNumber,
+        excluded_keys: &'a Vec<EntityKey>,
+    ) -> Self {
+        let br_column = BlockRangeColumn::new(table, "e.", block);
+        Self {
+            table,
+            derived_query,
+            excluded_keys,
+            br_column,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         let DerivedEntityQuery {
@@ -1709,7 +2177,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where field = $1
         out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1737,7 +2205,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             out.push_bind_param::<Integer, _>(causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, false)
+        self.br_column.contains(&mut out, false)
     }
 }
 
@@ -1747,57 +2215,86 @@ impl<'a> QueryId for FindDerivedQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindDerivedQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindDerivedQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 
+/// One value for inserting into a column of a table
 #[derive(Debug)]
-struct FulltextValues<'a>(HashMap<&'a Id, Vec<(&'a str, Value)>>);
+enum InsertValue<'a> {
+    Value(QueryValue<'a>),
+    Fulltext(Vec<&'a String>, &'a FulltextConfig),
+}
 
-impl<'a> FulltextValues<'a> {
-    fn new(table: &'a Table, rows: &'a WriteChunk<'a>) -> Self {
-        let mut map: HashMap<&Id, Vec<(&str, Value)>> = HashMap::new();
-        for column in table.columns.iter().filter(|column| column.is_fulltext()) {
-            for row in rows {
-                if let Some(fields) = column.fulltext_fields.as_ref() {
-                    let fulltext_field_values = fields
-                        .iter()
-                        .filter_map(|field| row.entity.get(field))
-                        .cloned()
-                        .collect::<Vec<Value>>();
-                    if !fulltext_field_values.is_empty() {
-                        map.entry(row.id)
-                            .or_default()
-                            .push((column.field.as_str(), Value::List(fulltext_field_values)));
-                    }
-                }
+impl<'a> QueryFragment<Pg> for InsertValue<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        match self {
+            InsertValue::Value(qv) => qv.walk_ast(out),
+            InsertValue::Fulltext(qvs, config) => {
+                process_vec_ast(qvs, &mut out, config.language.as_sql())?;
+                Ok(())
             }
         }
-        Self(map)
     }
+}
 
-    fn get(&self, entity_id: &Id, field: &str) -> &Value {
-        self.0
-            .get(entity_id)
-            .and_then(|values| {
-                values
+/// One row for inserting into a table; values are in the same order as in
+/// `InsertQuery.unique_columns``
+#[derive(Debug)]
+struct InsertRow<'a> {
+    values: Vec<InsertValue<'a>>,
+    br_value: BlockRangeValue,
+    causality_region: CausalityRegion,
+}
+
+impl<'a> InsertRow<'a> {
+    fn new(
+        columns: &[&'a Column],
+        row: EntityWrite<'a>,
+        table: &'a Table,
+    ) -> Result<Self, StoreError> {
+        let mut values = Vec::with_capacity(columns.len());
+        for column in columns {
+            let iv = if let Some(fields) = column.fulltext_fields.as_ref() {
+                let fulltext_field_values: Vec<_> = fields
                     .iter()
-                    .find(|(key, _)| field == *key)
-                    .map(|(_, value)| value)
-            })
-            .unwrap_or(&NULL)
+                    .filter_map(|field| row.entity.get(field))
+                    .map(|value| match value {
+                        Value::String(s) => Ok(s),
+                        _ => Err(constraint_violation!(
+                            "fulltext fields must be strings but got {:?}",
+                            value
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                if let ColumnType::TSVector(config) = &column.column_type {
+                    InsertValue::Fulltext(fulltext_field_values, &config)
+                } else {
+                    return Err(StoreError::FulltextColumnMissingConfig);
+                }
+            } else {
+                let value = row.entity.get(&column.field).unwrap_or(&NULL);
+                let qv = QueryValue::new(value, &column.column_type)?;
+                InsertValue::Value(qv)
+            };
+            values.push(iv);
+        }
+        let br_value = BlockRangeValue::new(table, row.block, row.end);
+        let causality_region = row.causality_region;
+        Ok(Self {
+            values,
+            br_value,
+            causality_region,
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    rows: &'a WriteChunk<'a>,
-    fulltext_values: FulltextValues<'a>,
+    rows: Vec<InsertRow<'a>>,
     unique_columns: Vec<&'a Column>,
 }
 
@@ -1816,30 +2313,29 @@ impl<'a> InsertQuery<'a> {
             }
         }
 
-        let fulltext_values = FulltextValues::new(table, rows);
-        let unique_columns = InsertQuery::unique_columns(table, rows, &fulltext_values);
+        let unique_columns = InsertQuery::unique_columns(table, rows);
+
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|row| InsertRow::new(&unique_columns, row, table))
+            .collect::<Result<_, _>>()?;
 
         Ok(InsertQuery {
             table,
             rows,
-            fulltext_values,
             unique_columns,
         })
     }
 
     /// Build the column name list using the subset of all keys among present entities.
-    fn unique_columns(
-        table: &'a Table,
-        rows: &'a WriteChunk<'a>,
-        fulltext_values: &FulltextValues<'a>,
-    ) -> Vec<&'a Column> {
+    fn unique_columns(table: &'a Table, rows: &'a WriteChunk<'a>) -> Vec<&'a Column> {
         table
             .columns
             .iter()
             .filter(|column| {
                 rows.iter().any(|row| {
-                    if column.is_fulltext() {
-                        !fulltext_values.get(row.id, &column.field).is_null()
+                    if let Some(fields) = column.fulltext_fields.as_ref() {
+                        fields.iter().any(|field| row.entity.contains_key(field))
                     } else {
                         row.entity.get(&column.field).is_some()
                     }
@@ -1869,29 +2365,11 @@ impl<'a> InsertQuery<'a> {
         }
         POSTGRES_MAX_PARAMETERS / count
     }
-
-    /// Output the literal value of the block range `[block,..)`, mostly for
-    /// generating an insert statement containing the block range column
-    pub fn literal_range_current(
-        table: &Table,
-        block: BlockNumber,
-        end: Option<BlockNumber>,
-        out: &mut AstPass<Pg>,
-    ) -> QueryResult<()> {
-        if table.immutable {
-            out.push_bind_param::<Integer, _>(&block)
-        } else {
-            let block_range: BlockRange = match end {
-                Some(end) => (block..end).into(),
-                None => (block..).into(),
-            };
-            out.push_bind_param::<Range<Integer>, _>(&block_range)
-        }
-    }
 }
 
 impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        let out = &mut out;
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -1921,30 +2399,22 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
 
         out.push_sql(") values\n");
 
-        // Use a `Peekable` iterator to help us decide how to finalize each line.
-        let mut iter = self.rows.iter().peekable();
-        while let Some(row) = iter.next() {
+        for (i, row) in self.rows.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(",\n");
+            }
+
             out.push_sql("(");
-            for column in &self.unique_columns {
-                let value = if column.is_fulltext() {
-                    self.fulltext_values.get(row.id, &column.field)
-                } else {
-                    row.entity.get(&column.field).unwrap_or(&NULL)
-                };
-                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+            for iv in &row.values {
+                iv.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
-            Self::literal_range_current(&self.table, row.block, row.end, &mut out)?;
+            row.br_value.walk_ast(out.reborrow())?;
             if self.table.has_causality_region {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.causality_region)?;
             };
             out.push_sql(")");
-
-            // finalize line according to remaining entities to insert
-            if iter.peek().is_some() {
-                out.push_sql(",\n");
-            }
         }
 
         Ok(())
@@ -1984,7 +2454,7 @@ impl<'a> ConflictingEntityQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -1998,7 +2468,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
@@ -2016,14 +2486,12 @@ impl<'a> QueryId for ConflictingEntityQuery<'a> {
 
 #[derive(QueryableByName)]
 pub struct ConflictingEntityData {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     pub entity: String,
 }
 
-impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ConflictingEntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for ConflictingEntityQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
@@ -2080,55 +2548,49 @@ impl<'a> TableLink<'a> {
 /// parent `q.id` that an outer query has already set up. In all other
 /// cases, we restrict the children to the top n by ordering by a specific
 /// sort key and limiting
-#[derive(Copy, Clone)]
-enum ParentLimit<'a> {
-    /// Limit children to a specific parent
-    Outer,
+#[derive(Debug, Clone)]
+struct ParentLimit<'a> {
     /// Limit children by sorting and picking top n
-    Ranked(&'a SortKey<'a>, &'a FilterRange),
+    sort_key: SortKey<'a>,
+    range: FilterRange,
 }
 
 impl<'a> ParentLimit<'a> {
-    fn filter(&self, out: &mut AstPass<Pg>) {
-        match self {
-            ParentLimit::Outer => out.push_sql(" and q.id = p.id"),
-            ParentLimit::Ranked(_, _) => (),
+    fn filter(&self, is_outer: bool, out: &mut AstPass<'_, 'a, Pg>) {
+        if is_outer {
+            out.push_sql(" and q.id = p.id")
         }
     }
 
-    fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        if let ParentLimit::Ranked(sort_key, range) = self {
+    fn restrict(&'a self, is_outer: bool, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        if !is_outer {
             out.push_sql(" ");
-            sort_key.order_by(out, false)?;
-            range.walk_ast(out.reborrow())?;
+            self.sort_key.order_by(out, false)?;
+            self.range.walk_ast(out.reborrow())?;
         }
         Ok(())
     }
 
     /// Include a 'limit {num_parents}+1' clause for single-object queries
     /// if that is needed
-    fn single_limit(&self, num_parents: usize, out: &mut AstPass<Pg>) {
-        match self {
-            ParentLimit::Ranked(_, _) => {
-                out.push_sql(" limit ");
-                out.push_sql(&(num_parents + 1).to_string());
-            }
-            ParentLimit::Outer => {
-                // limiting is taken care of in a wrapper around
-                // the query we are currently building
-            }
+    fn single_limit(&self, is_outer: bool, num_parents: usize, out: &mut AstPass<Pg>) {
+        if !is_outer {
+            out.push_sql(" limit ");
+            out.push_sql(&(num_parents + 1).to_string());
         }
+        // limiting is taken care of in a wrapper around
+        // the query we are currently building
     }
 }
 
 /// This is the parallel to `EntityWindow`, with names translated to
 /// the relational layout, and checked against it
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FilterWindow<'a> {
     /// The table from which we take entities
     table: &'a Table,
     /// The overall filter for the entire query
-    query_filter: Option<QueryFilter<'a>>,
+    query_filter: Option<Filter<'a>>,
     /// The parent ids we are interested in. The type in the database
     /// for these is determined by the `IdType` of the parent table. Since
     /// we always compare these ids with a column in `table`, and that
@@ -2138,6 +2600,7 @@ pub struct FilterWindow<'a> {
     /// How to filter by a set of parents
     link: TableLink<'a>,
     column_names: AttributeNames,
+    br_column: BlockRangeColumn<'a>,
 }
 
 impl<'a> FilterWindow<'a> {
@@ -2153,7 +2616,7 @@ impl<'a> FilterWindow<'a> {
             link,
             column_names,
         } = window;
-        let table = layout.table_for_entity(&child_type).map(|rc| rc.as_ref())?;
+        let table = layout.table_for_entity(&child_type)?.as_ref();
 
         // Confidence check: ensure that all selected column names exist in the table
         if let AttributeNames::Select(ref selected_field_names) = column_names {
@@ -2163,15 +2626,17 @@ impl<'a> FilterWindow<'a> {
         }
 
         let query_filter = entity_filter
-            .map(|filter| QueryFilter::new(filter, table, layout, block))
+            .map(|filter| Filter::main(layout, table, filter, block))
             .transpose()?;
         let link = TableLink::new(layout, table, link)?;
+        let br_column = BlockRangeColumn::new(table, "c.", block);
         Ok(FilterWindow {
             table,
             query_filter,
             ids,
             link,
             column_names,
+            br_column,
         })
     }
 
@@ -2182,20 +2647,20 @@ impl<'a> FilterWindow<'a> {
         }
     }
 
-    fn and_filter(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn and_filter(&'a self, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
         if let Some(filter) = &self.query_filter {
             out.push_sql("\n   and ");
-            filter.walk_ast(out)?
+            filter.walk_ast(out.reborrow())?
         }
         Ok(())
     }
 
-    fn children_type_a(
-        &self,
+    fn children_type_a<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(column.is_list());
 
@@ -2217,23 +2682,23 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        self.br_column.contains(out, false)?;
+        limit.filter(is_outer, out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(")");
-        self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
+        self.and_filter(out)?;
+        limit.restrict(is_outer, out)?;
         out.push_sql(") c");
         Ok(())
     }
 
-    fn child_type_a(
-        &self,
+    fn child_type_a<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(column.is_list());
 
@@ -2253,8 +2718,8 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        self.br_column.contains(out, false)?;
+        limit.filter(is_outer, out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
@@ -2264,17 +2729,17 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" && ");
             self.ids.push_bind_param(out)?;
         }
-        self.and_filter(out.reborrow())?;
-        limit.single_limit(self.ids.len(), out);
+        self.and_filter(out)?;
+        limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
     }
 
-    fn children_type_b(
-        &self,
+    fn children_type_b<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(!column.is_list());
 
@@ -2296,22 +2761,22 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        self.br_column.contains(out, false)?;
+        limit.filter(is_outer, out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
-        self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
+        self.and_filter(out)?;
+        limit.restrict(is_outer, out)?;
         out.push_sql(") c");
         Ok(())
     }
 
-    fn child_type_b(
-        &self,
+    fn child_type_b<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(!column.is_list());
 
@@ -2326,21 +2791,21 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        self.br_column.contains(out, false)?;
+        limit.filter(is_outer, out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
-        self.and_filter(out.reborrow())?;
-        limit.single_limit(self.ids.len(), out);
+        self.and_filter(out)?;
+        limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
     }
 
-    fn children_type_c(
-        &self,
-        child_ids: &[IdList],
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        out: &mut AstPass<Pg>,
+    fn children_type_c<'b>(
+        &'b self,
+        child_ids: &'b [IdList],
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n/* children_type_c */ ");
 
@@ -2363,14 +2828,13 @@ impl<'a> FilterWindow<'a> {
 
             out.push_sql("from (values ");
             for i in 0..self.ids.len() {
-                let parent_id = self.ids.index(i);
                 let child_ids = &child_ids[i];
                 if i > 0 {
                     out.push_sql(", (");
                 } else {
                     out.push_sql("(");
                 }
-                parent_id.push_bind_param(out)?;
+                self.ids.bind_entry(i, out)?;
                 out.push_sql(",");
                 child_ids.push_bind_param(out)?;
                 out.push_sql(")");
@@ -2381,11 +2845,11 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" from ");
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
-            BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
-            limit.filter(out);
+            self.br_column.contains(out, true)?;
+            limit.filter(is_outer, out);
             out.push_sql(" and c.id = any(p.child_ids)");
-            self.and_filter(out.reborrow())?;
-            limit.restrict(out)?;
+            self.and_filter(out)?;
+            limit.restrict(is_outer, out)?;
             out.push_sql(") c");
         } else {
             // Generate
@@ -2403,12 +2867,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn child_type_d(
-        &self,
-        child_ids: &IdList,
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        out: &mut AstPass<Pg>,
+    fn child_type_d<'b>(
+        &'b self,
+        child_ids: &'b IdList,
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // Generate
         //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id),
@@ -2423,54 +2887,54 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
-        limit.filter(out);
+        self.br_column.contains(out, true)?;
+        limit.filter(is_outer, out);
 
         // Include a constraint on the child IDs as a set if the size of the set
         // is below the threshold set by environment variable. Set it to
         // 0 to turn off this optimization.
         if ENV_VARS.store.typed_children_set_size > 0 {
-            let child_set = child_ids.clone().as_unique();
-
-            if child_set.len() <= ENV_VARS.store.typed_children_set_size {
+            // This check can be misleading because child_ids can contain
+            // duplicates if many parents point to the same child
+            if child_ids.len() <= ENV_VARS.store.typed_children_set_size {
                 out.push_sql(" and c.id = any(");
-                child_set.push_bind_param(out)?;
+                child_ids.push_bind_param(out)?;
                 out.push_sql(")");
             }
         }
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
-        self.and_filter(out.reborrow())?;
-        limit.single_limit(self.ids.len(), out);
+        self.and_filter(out)?;
+        limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
     }
 
-    fn children(
-        &self,
-        limit: ParentLimit<'_>,
-        block: BlockNumber,
-        mut out: AstPass<Pg>,
+    fn children<'b>(
+        &'b self,
+        is_outer: bool,
+        limit: &'b ParentLimit<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         match &self.link {
             TableLink::Direct(column, multiplicity) => {
                 use ChildMultiplicity::*;
                 if column.is_list() {
                     match multiplicity {
-                        Many => self.children_type_a(column, limit, block, &mut out),
-                        Single => self.child_type_a(column, limit, block, &mut out),
+                        Many => self.children_type_a(column, is_outer, limit, out),
+                        Single => self.child_type_a(column, is_outer, limit, out),
                     }
                 } else {
                     match multiplicity {
-                        Many => self.children_type_b(column, limit, block, &mut out),
-                        Single => self.child_type_b(column, limit, block, &mut out),
+                        Many => self.children_type_b(column, is_outer, limit, out),
+                        Single => self.child_type_b(column, is_outer, limit, out),
                     }
                 }
             }
             TableLink::Parent(_, ParentIds::List(child_ids)) => {
-                self.children_type_c(child_ids, limit, block, &mut out)
+                self.children_type_c(child_ids, is_outer, limit, out)
             }
             TableLink::Parent(_, ParentIds::Scalar(child_ids)) => {
-                self.child_type_d(child_ids, limit, block, &mut out)
+                self.child_type_d(child_ids, is_outer, limit, out)
             }
         }
     }
@@ -2478,18 +2942,19 @@ impl<'a> FilterWindow<'a> {
     /// Select a basic subset of columns from the child table for use in
     /// the `matches` CTE of queries that need to retrieve entities of
     /// different types or entities that link differently to their parents
-    fn children_uniform(
-        &self,
-        sort_key: &SortKey,
-        block: BlockNumber,
-        mut out: AstPass<Pg>,
+    fn children_uniform<'b>(
+        &'b self,
+        limit: &'b ParentLimit<'_>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("select '");
         out.push_sql(self.table.object.as_str());
         out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        sort_key.select(&mut out, SelectStatementLevel::InnerStatement)?;
-        self.children(ParentLimit::Outer, block, out)
+        limit
+            .sort_key
+            .select(&mut out, SelectStatementLevel::InnerStatement)?;
+        self.children(true, &limit, &mut out)
     }
 
     /// Collect all the parent id's from all windows
@@ -2500,13 +2965,43 @@ impl<'a> FilterWindow<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct WholeTable<'a> {
+    table: &'a Table,
+    filter: Option<Filter<'a>>,
+    column_names: AttributeNames,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> WholeTable<'a> {
+    fn new(
+        layout: &'a Layout,
+        entity_type: &EntityType,
+        entity_filter: Option<&'a EntityFilter>,
+        column_names: AttributeNames,
+        block: BlockNumber,
+    ) -> Result<Self, QueryExecutionError> {
+        let table = layout.table_for_entity(entity_type).map(|rc| rc.as_ref())?;
+        let filter = entity_filter
+            .map(|filter| Filter::main(layout, table, filter, block))
+            .transpose()?;
+        let br_column = BlockRangeColumn::new(table, "c.", block);
+        Ok(WholeTable {
+            table,
+            filter,
+            column_names,
+            br_column,
+        })
+    }
+}
+
 /// This is a parallel to `EntityCollection`, but with entity type names
 /// and filters translated in a form ready for SQL generation
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum FilterCollection<'a> {
     /// Collection made from all entities in a table; each entry is the table
     /// and the filter to apply to it, checked and bound to that table
-    All(Vec<(&'a Table, Option<QueryFilter<'a>>, AttributeNames)>),
+    All(Vec<WholeTable<'a>>),
     /// Collection made from windows of the same or different entity types
     SingleWindow(FilterWindow<'a>),
     MultiWindow(Vec<FilterWindow<'a>>, IdList),
@@ -2519,7 +3014,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
             f: &mut fmt::Formatter,
             table: &Table,
             attrs: &AttributeNames,
-            filter: &Option<QueryFilter>,
+            filter: &Option<Filter>,
         ) -> Result<(), std::fmt::Error> {
             write!(f, "{}[", table.qualified_name.as_str().replace("\\\"", ""))?;
             match attrs {
@@ -2540,6 +3035,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                 ids,
                 link,
                 column_names,
+                br_column: _,
             } = w;
             fmt_table(f, table, column_names, query_filter)?;
             if !ids.is_empty() {
@@ -2573,8 +3069,8 @@ impl<'a> fmt::Display for FilterCollection<'a> {
 
         match self {
             FilterCollection::All(tables) => {
-                for (table, filter, attrs) in tables {
-                    fmt_table(f, table, attrs, filter)?;
+                for wh in tables {
+                    fmt_table(f, wh.table, &wh.column_names, &wh.filter)?;
                 }
             }
             FilterCollection::SingleWindow(w) => {
@@ -2611,15 +3107,7 @@ impl<'a> FilterCollection<'a> {
                 let entities = entities
                     .iter()
                     .map(|(entity, column_names)| {
-                        layout
-                            .table_for_entity(entity)
-                            .map(|rc| rc.as_ref())
-                            .and_then(|table| {
-                                filter
-                                    .map(|filter| QueryFilter::new(filter, table, layout, block))
-                                    .transpose()
-                                    .map(|filter| (table, filter, column_names.clone()))
-                            })
+                        WholeTable::new(layout, entity, filter, column_names.clone(), block)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(FilterCollection::All(entities))
@@ -2645,7 +3133,7 @@ impl<'a> FilterCollection<'a> {
 
     fn first_table(&self) -> Option<&Table> {
         match self {
-            FilterCollection::All(entities) => entities.first().map(|pair| pair.0),
+            FilterCollection::All(entities) => entities.first().map(|wh| wh.table),
             FilterCollection::SingleWindow(window) => Some(window.table),
             FilterCollection::MultiWindow(windows, _) => windows.first().map(|window| window.table),
         }
@@ -2661,7 +3149,7 @@ impl<'a> FilterCollection<'a> {
 
     fn all_mutable(&self) -> bool {
         match self {
-            FilterCollection::All(entities) => entities.iter().all(|(table, ..)| !table.immutable),
+            FilterCollection::All(entities) => entities.iter().all(|wh| !wh.table.immutable),
             FilterCollection::SingleWindow(window) => !window.table.immutable,
             FilterCollection::MultiWindow(windows, _) => {
                 windows.iter().all(|window| !window.table.immutable)
@@ -3326,7 +3814,11 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   order by [name direction], id
-    fn order_by(&self, out: &mut AstPass<Pg>, use_sort_key_alias: bool) -> QueryResult<()> {
+    fn order_by<'b>(
+        &'b self,
+        out: &mut AstPass<'_, 'b, Pg>,
+        use_sort_key_alias: bool,
+    ) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc(br_column) => {
@@ -3447,7 +3939,11 @@ impl<'a> SortKey<'a> {
     /// TODO: Let's think how to detect if we need to use sort_key$ alias or not
     /// A boolean (use_sort_key_alias) is not a good idea and prone to errors.
     /// We could make it the standard and always use sort_key$ alias.
-    fn order_by_parent(&self, out: &mut AstPass<Pg>, use_sort_key_alias: bool) -> QueryResult<()> {
+    fn order_by_parent<'b>(
+        &'b self,
+        out: &mut AstPass<'_, 'b, Pg>,
+        use_sort_key_alias: bool,
+    ) -> QueryResult<()> {
         fn order_by_parent_id(out: &mut AstPass<Pg>) {
             out.push_sql("order by ");
             out.push_sql(&*PARENT_ID);
@@ -3490,14 +3986,14 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   [name direction,] id
-    fn sort_expr(
+    fn sort_expr<'b>(
         column: &Column,
-        value: &Option<&str>,
+        value: &'b Option<&str>,
         direction: &str,
         column_prefix: Option<&str>,
         rest_prefix: Option<&str>,
         use_sort_key_alias: bool,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         if column.is_primary_key() {
             // This shouldn't happen since we'd use SortKey::IdAsc/Desc
@@ -3530,7 +4026,7 @@ impl<'a> SortKey<'a> {
 
                 out.push_sql(", to_tsquery(");
 
-                out.push_bind_param::<Text, _>(&value.unwrap())?;
+                out.push_bind_param::<Text, _>(value.unwrap())?;
                 out.push_sql("))");
             }
             _ => {
@@ -3654,14 +4150,18 @@ impl<'a> SortKey<'a> {
         Ok(())
     }
 
-    fn add_child(&self, block: BlockNumber, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        fn add(
-            block: BlockNumber,
+    fn add_child<'b>(
+        &self,
+        block: &'b BlockNumber,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        fn add<'b>(
+            block: &'b BlockNumber,
             child_table: &Table,
             child_column: &Column,
             parent_column: &Column,
             prefix: &str,
-            out: &mut AstPass<Pg>,
+            out: &mut AstPass<'_, 'b, Pg>,
         ) -> QueryResult<()> {
             out.push_sql(" left join ");
             out.push_sql(child_table.qualified_name.as_str());
@@ -3701,7 +4201,7 @@ impl<'a> SortKey<'a> {
             out.push_sql(".");
             out.push_identifier(BLOCK_RANGE_COLUMN)?;
             out.push_sql(" @> ");
-            out.push_bind_param::<Integer, _>(&block)?;
+            out.push_bind_param::<Integer, _>(block)?;
             out.push_sql(") ");
 
             Ok(())
@@ -3802,8 +4302,7 @@ impl QueryFragment<Pg> for FilterRange {
 #[derive(Debug, Clone)]
 pub struct FilterQuery<'a> {
     collection: &'a FilterCollection<'a>,
-    sort_key: SortKey<'a>,
-    range: FilterRange,
+    limit: ParentLimit<'a>,
     block: BlockNumber,
     query_id: Option<String>,
     site: &'a Site,
@@ -3815,7 +4314,7 @@ impl<'a> fmt::Display for FilterQuery<'a> {
         write!(
             f,
             "from {} order {} {} at {}",
-            &self.collection, &self.sort_key, &self.range, self.block
+            &self.collection, &self.limit.sort_key, &self.limit.range, self.block
         )?;
         if let Some(query_id) = &self.query_id {
             write!(f, " query_id {}", query_id)?;
@@ -3836,11 +4335,12 @@ impl<'a> FilterQuery<'a> {
         site: &'a Site,
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, block, layout)?;
+        let range = FilterRange(range);
+        let limit = ParentLimit { sort_key, range };
 
         Ok(FilterQuery {
             collection,
-            sort_key,
-            range: FilterRange(range),
+            limit,
             block,
             query_id,
             site,
@@ -3853,27 +4353,25 @@ impl<'a> FilterQuery<'a> {
     ///      and query_filter
     /// Only used when the query is against a `FilterCollection::All`, i.e.
     /// when we do not need to window
-    fn filtered_rows(
-        &self,
-        table: &Table,
-        table_filter: &Option<QueryFilter<'a>>,
-        mut out: AstPass<Pg>,
+    fn filtered_rows<'b>(
+        &'b self,
+        wh: &'b WholeTable<'a>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n  from ");
-        out.push_sql(table.qualified_name.as_str());
+        out.push_sql(wh.table.qualified_name.as_str());
         out.push_sql(" c");
 
-        self.sort_key.add_child(self.block, &mut out)?;
+        self.limit.sort_key.add_child(&self.block, out)?;
 
         out.push_sql("\n where ");
 
         let filters_by_id = {
-            let entity_filter = table_filter.as_ref().map(|f| f.filter);
-            matches!(entity_filter, Some(EntityFilter::Equal(attr, _)) if attr == "id")
+            matches!(wh.filter.as_ref(), Some(Filter::Cmp(column, Comparison::Equal, _)) if column.column().is_primary_key())
         };
 
-        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out, filters_by_id)?;
-        if let Some(filter) = table_filter {
+        wh.br_column.contains(out, filters_by_id)?;
+        if let Some(filter) = &wh.filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
         }
@@ -3899,20 +4397,18 @@ impl<'a> FilterQuery<'a> {
     ///         where block_range @> $block
     ///           and filter
     ///         order by .. limit .. skip ..) c
-    fn query_no_window_one_entity(
-        &self,
-        table: &Table,
-        filter: &Option<QueryFilter>,
-        mut out: AstPass<Pg>,
-        column_names: &AttributeNames,
+    fn query_no_window_one_entity<'b>(
+        &'b self,
+        wh: &'b WholeTable<'a>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        Self::select_entity_and_data(table, &mut out);
+        Self::select_entity_and_data(wh.table, out);
         out.push_sql(" from (select ");
-        write_column_names(column_names, table, Some("c."), &mut out)?;
-        self.filtered_rows(table, filter, out.reborrow())?;
+        write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+        self.filtered_rows(wh, out)?;
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out, false)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.limit.sort_key.order_by(out, false)?;
+        self.limit.range.walk_ast(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
     }
@@ -3924,30 +4420,26 @@ impl<'a> FilterQuery<'a> {
     ///     from (select c.*, p.id as g$parent_id from {window.children(...)}) c
     ///     order by c.g$parent_id, {sort_key}
     ///     limit {first} offset {skip}
-    fn query_window_one_entity(
-        &self,
-        window: &FilterWindow,
-        mut out: AstPass<Pg>,
+    fn query_window_one_entity<'b>(
+        &'b self,
+        window: &'b FilterWindow,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        window.children(
-            ParentLimit::Ranked(&self.sort_key, &self.range),
-            self.block,
-            out.reborrow(),
-        )?;
+        window.children(false, &self.limit, &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
-        self.sort_key.order_by_parent(&mut out, false)
+        self.limit.sort_key.order_by_parent(&mut out, false)
     }
 
     /// No windowing, but multiple entity types
-    fn query_no_window(
-        &self,
-        entities: &[(&Table, Option<QueryFilter>, AttributeNames)],
-        mut out: AstPass<Pg>,
+    fn query_no_window<'b>(
+        &'b self,
+        entities: &'b [WholeTable<'a>],
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // We have multiple tables which might have different schemas since
         // the entity_types come from implementing the same interface. We
@@ -3976,7 +4468,7 @@ impl<'a> FilterQuery<'a> {
 
         // Step 1: build matches CTE
         out.push_sql("with matches as (");
-        for (i, (table, filter, _column_names)) in entities.iter().enumerate() {
+        for (i, wh) in entities.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
@@ -3985,46 +4477,48 @@ impl<'a> FilterQuery<'a> {
             //        c.vid,
             //        c.${sort_key}
             out.push_sql("select '");
-            out.push_sql(table.object.as_str());
+            out.push_sql(wh.table.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
-            self.sort_key
-                .select(&mut out, SelectStatementLevel::InnerStatement)?; // here
-            self.filtered_rows(table, filter, out.reborrow())?;
+            self.limit
+                .sort_key
+                .select(out, SelectStatementLevel::InnerStatement)?; // here
+            self.filtered_rows(wh, out)?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out, true)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.limit.sort_key.order_by(out, true)?;
+        self.limit.range.walk_ast(out.reborrow())?;
 
         out.push_sql(")\n");
 
         // Step 2: convert to JSONB
-        for (i, (table, _, column_names)) in entities.iter().enumerate() {
+        for (i, wh) in entities.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.entity, ");
-            jsonb_build_object(column_names, "c", table, &mut out)?;
+            jsonb_build_object(&wh.column_names, "c", wh.table, out)?;
             out.push_sql(" as data, c.id");
-            self.sort_key
-                .select(&mut out, SelectStatementLevel::OuterStatement)?;
+            self.limit
+                .sort_key
+                .select(out, SelectStatementLevel::OuterStatement)?;
             out.push_sql("\n  from ");
-            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(wh.table.qualified_name.as_str());
             out.push_sql(" c,");
             out.push_sql(" matches m");
             out.push_sql("\n where c.vid = m.vid and m.entity = ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(wh.table.object.as_str())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out, true)?;
+        self.limit.sort_key.order_by(out, true)?;
         Ok(())
     }
 
     /// Multiple windows
-    fn query_window(
-        &self,
-        windows: &[FilterWindow],
-        parent_ids: &IdList,
-        mut out: AstPass<Pg>,
+    fn query_window<'b>(
+        &'b self,
+        windows: &'b [FilterWindow],
+        parent_ids: &'b IdList,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // Note that a CTE is an optimization fence, and since we use
         // `matches` multiple times, we actually want to materialize it first
@@ -4055,18 +4549,18 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("with matches as (");
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
-        parent_ids.push_bind_param(&mut out)?;
+        parent_ids.push_bind_param(out)?;
         out.push_sql(") as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
-            window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
+            window.children_uniform(&self.limit, out.reborrow())?;
         }
         out.push_sql("\n");
-        self.sort_key.order_by(&mut out, true)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.limit.sort_key.order_by(out, true)?;
+        self.limit.range.walk_ast(out.reborrow())?;
         out.push_sql(") c)\n");
 
         // Step 2: convert to JSONB
@@ -4093,7 +4587,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.*, ");
-            jsonb_build_object(&window.column_names, "c", window.table, &mut out)?;
+            jsonb_build_object(&window.column_names, "c", window.table, out)?;
             out.push_sql("|| jsonb_build_object('g$parent_id', m.g$parent_id) as data");
             out.push_sql("\n  from ");
             out.push_sql(window.table.qualified_name.as_str());
@@ -4102,12 +4596,12 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("'");
         }
         out.push_sql("\n ");
-        self.sort_key.order_by_parent(&mut out, true)
+        self.limit.sort_key.order_by_parent(out, true)
     }
 }
 
 impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         if self.collection.is_empty() {
             return Ok(());
@@ -4136,17 +4630,17 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
         match &self.collection {
             FilterCollection::All(entities) => {
                 if entities.len() == 1 {
-                    let (table, filter, column_names) = entities
+                    let wh = entities
                         .first()
                         .expect("a query always uses at least one table");
-                    self.query_no_window_one_entity(table, filter, out, column_names)
+                    self.query_no_window_one_entity(wh, &mut out)
                 } else {
-                    self.query_no_window(entities, out)
+                    self.query_no_window(entities, &mut out)
                 }
             }
             FilterCollection::SingleWindow(window) => self.query_window_one_entity(window, out),
             FilterCollection::MultiWindow(windows, parent_ids) => {
-                self.query_window(windows, parent_ids, out)
+                self.query_window(windows, parent_ids, &mut out)
             }
         }
     }
@@ -4158,10 +4652,8 @@ impl<'a> QueryId for FilterQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FilterQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FilterQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
@@ -4198,7 +4690,7 @@ impl<'a> ClampRangeQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
         //  where id in (id1, id2, ..., idN)
@@ -4230,25 +4722,9 @@ impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
-struct ReturnedEntityData {
-    #[sql_type = "Text"]
+pub struct ReturnedEntityData {
+    #[diesel(sql_type = Text)]
     pub id: String,
-}
-
-impl ReturnedEntityData {
-    /// Convert primary key ids from Postgres' internal form to the format we
-    /// use by stripping `\\x` off the front of bytes strings
-    fn as_ids(table: &Table, data: Vec<ReturnedEntityData>) -> QueryResult<Vec<Id>> {
-        let id_type = table.primary_key().column_type.id_type()?;
-
-        data.into_iter()
-            .map(|s| match id_type {
-                IdType::String | IdType::Int8 => id_type.parse(Word::from(s.id)),
-                IdType::Bytes => id_type.parse(Word::from(s.id.trim_start_matches("\\x"))),
-            })
-            .collect::<Result<_, _>>()
-            .map_err(|e| diesel::result::Error::DeserializationError(e.into()))
-    }
 }
 
 /// A query that removes all versions whose block range lies entirely
@@ -4267,7 +4743,7 @@ impl<'a> RevertRemoveQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -4291,11 +4767,8 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, Id> for RevertRemoveQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<Id>> {
-        conn.query_by_name(&self)
-            .and_then(|data| ReturnedEntityData::as_ids(self.table, data))
-    }
+impl<'a> Query for RevertRemoveQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
@@ -4321,7 +4794,7 @@ impl<'a> RevertClampQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -4374,11 +4847,8 @@ impl<'a> QueryId for RevertClampQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, Id> for RevertClampQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<Id>> {
-        conn.query_by_name(&self)
-            .and_then(|data| ReturnedEntityData::as_ids(self.table, data))
-    }
+impl<'a> Query for RevertClampQuery<'a> {
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertClampQuery<'a> {}
@@ -4441,7 +4911,7 @@ impl<'a> CopyEntityBatchQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -4551,7 +5021,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityBatchQuery<'a> {}
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
 pub struct CopyVid {
-    #[sql_type = "BigInt"]
+    #[diesel(sql_type = BigInt)]
     pub vid: i64,
 }
 

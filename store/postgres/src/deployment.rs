@@ -5,7 +5,7 @@ use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
-    sql_types::Integer,
+    sql_types::{Bool, Integer},
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
@@ -208,7 +208,7 @@ allow_tables_to_appear_in_same_query!(subgraph_deployment, subgraph_error, subgr
 /// deployment has not progressed past the graft point, i.e., data has not
 /// been copied for the graft
 fn graft(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     pending_only: bool,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
@@ -257,7 +257,7 @@ fn graft(
 /// a graft or if the subgraph has already progress past the graft point,
 /// indicating that the data copying for grafting has been performed
 pub fn graft_pending(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, true)
@@ -267,7 +267,7 @@ pub fn graft_pending(
 /// return it. Returns `None` if the deployment does not have
 /// a graft.
 pub fn graft_point(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, false)
@@ -277,7 +277,7 @@ pub fn graft_point(
 /// return it. Returns `None` if the deployment does not have
 /// a debug fork.
 pub fn debug_fork(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<DeploymentHash>, StoreError> {
     use subgraph_deployment as sd;
@@ -298,7 +298,7 @@ pub fn debug_fork(
     }
 }
 
-pub fn schema(conn: &PgConnection, site: &Site) -> Result<(InputSchema, bool), StoreError> {
+pub fn schema(conn: &mut PgConnection, site: &Site) -> Result<(InputSchema, bool), StoreError> {
     use subgraph_manifest as sm;
     let (s, use_bytea_prefix) = sm::table
         .select((sm::schema, sm::use_bytea_prefix))
@@ -318,7 +318,7 @@ pub struct ManifestInfo {
 }
 
 impl ManifestInfo {
-    pub fn load(conn: &PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
+    pub fn load(conn: &mut PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
         use subgraph_manifest as sm;
         let (s, description, repository, spec_version, features): (
             String,
@@ -354,7 +354,7 @@ impl ManifestInfo {
 }
 
 // Return how many blocks of history this subgraph should keep
-pub fn history_blocks(conn: &PgConnection, site: &Site) -> Result<BlockNumber, StoreError> {
+pub fn history_blocks(conn: &mut PgConnection, site: &Site) -> Result<BlockNumber, StoreError> {
     use subgraph_manifest as sm;
     sm::table
         .select(sm::history_blocks)
@@ -364,7 +364,7 @@ pub fn history_blocks(conn: &PgConnection, site: &Site) -> Result<BlockNumber, S
 }
 
 pub fn set_history_blocks(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     history_blocks: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -378,7 +378,10 @@ pub fn set_history_blocks(
 }
 
 #[allow(dead_code)]
-pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
+pub fn features(
+    conn: &mut PgConnection,
+    site: &Site,
+) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
 
     let features: Vec<String> = sm::table
@@ -394,7 +397,7 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
 
 /// This migrates subgraphs that existed before the raw_yaml column was added.
 pub fn set_manifest_raw_yaml(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     raw_yaml: &str,
 ) -> Result<(), StoreError> {
@@ -409,7 +412,7 @@ pub fn set_manifest_raw_yaml(
 }
 
 pub fn transact_block(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     ptr: &BlockPtr,
     firehose_cursor: &FirehoseCursor,
@@ -465,7 +468,7 @@ pub fn transact_block(
 }
 
 pub fn forward_block_ptr(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     ptr: &BlockPtr,
 ) -> Result<(), StoreError> {
@@ -514,7 +517,7 @@ pub fn forward_block_ptr(
 }
 
 pub fn get_subgraph_firehose_cursor(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: Arc<Site>,
 ) -> Result<Option<String>, StoreError> {
     use subgraph_deployment as d;
@@ -528,7 +531,7 @@ pub fn get_subgraph_firehose_cursor(
 }
 
 pub fn revert_block_ptr(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     ptr: BlockPtr,
     firehose_cursor: &FirehoseCursor,
@@ -552,7 +555,10 @@ pub fn revert_block_ptr(
         .map_err(|e| e.into())
 }
 
-pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
+pub fn block_ptr(
+    conn: &mut PgConnection,
+    id: &DeploymentHash,
+) -> Result<Option<BlockPtr>, StoreError> {
     use subgraph_deployment as d;
 
     let (number, hash) = d::table
@@ -575,7 +581,7 @@ pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<Bloc
 /// Initialize the subgraph's block pointer. If the block pointer in
 /// `latest_ethereum_block` is set already, do nothing. If it is still
 /// `null`, set it to `start_ethereum_block` from `subgraph_manifest`
-pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+pub fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
     use subgraph_manifest as m;
 
@@ -630,7 +636,7 @@ fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u3
         })
 }
 
-pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState, StoreError> {
+pub fn state(conn: &mut PgConnection, id: DeploymentHash) -> Result<DeploymentState, StoreError> {
     use subgraph_deployment as d;
 
     match d::table
@@ -694,7 +700,7 @@ pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState,
 }
 
 /// Mark the deployment `id` as synced
-pub fn set_synced(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
+pub fn set_synced(conn: &mut PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     update(
@@ -708,7 +714,7 @@ pub fn set_synced(conn: &PgConnection, id: &DeploymentHash) -> Result<(), StoreE
 }
 
 /// Returns `true` if the deployment (as identified by `site.id`)
-pub fn exists(conn: &PgConnection, site: &Site) -> Result<bool, StoreError> {
+pub fn exists(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
     use subgraph_deployment as d;
 
     let exists = d::table
@@ -720,7 +726,7 @@ pub fn exists(conn: &PgConnection, site: &Site) -> Result<bool, StoreError> {
 }
 
 /// Returns `true` if the deployment `id` exists and is synced
-pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreError> {
+pub fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool, StoreError> {
     use subgraph_deployment as d;
 
     let synced = d::table
@@ -733,7 +739,7 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
 }
 
 // Does nothing if the error already exists. Returns the error id.
-fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
+fn insert_subgraph_error(conn: &mut PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
     use subgraph_error as e;
 
     let error_id = hex::encode(stable_hash_legacy::utils::stable_hash::<SetHasher, _>(
@@ -769,7 +775,7 @@ fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::
 }
 
 pub fn fail(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     error: &SubgraphError,
 ) -> Result<(), StoreError> {
@@ -781,7 +787,7 @@ pub fn fail(
 }
 
 pub fn update_non_fatal_errors(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
     non_fatal_errors: Option<&[SubgraphError]>,
@@ -804,7 +810,7 @@ pub fn update_non_fatal_errors(
 
 /// If `block` is `None`, assumes the latest block.
 pub(crate) fn has_deterministic_errors(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<bool, StoreError> {
@@ -813,14 +819,14 @@ pub(crate) fn has_deterministic_errors(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
             .filter(e::deterministic)
-            .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+            .filter(sql::<Bool>("block_range @> ").bind::<Integer, _>(block)),
     ))
     .get_result(conn)
     .map_err(|e| e.into())
 }
 
 pub fn update_deployment_status(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
     fatal_error: Option<String>,
@@ -845,7 +851,7 @@ pub fn update_deployment_status(
 /// is healthy as of that block; errors are inserted according to the
 /// `block_ptr` they contain
 pub(crate) fn insert_subgraph_errors(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     deterministic_errors: &[SubgraphError],
     latest_block: BlockNumber,
@@ -858,7 +864,10 @@ pub(crate) fn insert_subgraph_errors(
 }
 
 #[cfg(debug_assertions)]
-pub(crate) fn error_count(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
+pub(crate) fn error_count(
+    conn: &mut PgConnection,
+    id: &DeploymentHash,
+) -> Result<usize, StoreError> {
     use subgraph_error as e;
 
     Ok(e::table
@@ -870,7 +879,7 @@ pub(crate) fn error_count(conn: &PgConnection, id: &DeploymentHash) -> Result<us
 /// Checks if the subgraph is healthy or unhealthy as of the given block, or the subgraph latest
 /// block if `None`, based on the presence of deterministic errors. Has no effect on failed subgraphs.
 fn check_health(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -894,7 +903,10 @@ fn check_health(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHealth, StoreError> {
+pub(crate) fn health(
+    conn: &mut PgConnection,
+    id: DeploymentId,
+) -> Result<SubgraphHealth, StoreError> {
     use subgraph_deployment as d;
 
     d::table
@@ -905,7 +917,7 @@ pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHe
 }
 
 pub(crate) fn entities_with_causality_region(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: DeploymentId,
     schema: &InputSchema,
 ) -> Result<Vec<EntityType>, StoreError> {
@@ -928,7 +940,7 @@ pub(crate) fn entities_with_causality_region(
 
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) fn revert_subgraph_errors(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     reverted_block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -939,7 +951,7 @@ pub(crate) fn revert_subgraph_errors(
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(sql(&lower_geq).bind::<Integer, _>(reverted_block)),
+            .filter(sql::<Bool>(&lower_geq).bind::<Integer, _>(reverted_block)),
     )
     .execute(conn)?;
 
@@ -963,7 +975,7 @@ pub(crate) fn revert_subgraph_errors(
     .map_err(StoreError::from)
 }
 
-pub(crate) fn delete_error(conn: &PgConnection, error_id: &str) -> Result<(), StoreError> {
+pub(crate) fn delete_error(conn: &mut PgConnection, error_id: &str) -> Result<(), StoreError> {
     use subgraph_error as e;
     delete(e::table.filter(e::id.eq(error_id)))
         .execute(conn)
@@ -974,7 +986,7 @@ pub(crate) fn delete_error(conn: &PgConnection, error_id: &str) -> Result<(), St
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
 pub(crate) fn copy_errors(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     src: &Site,
     dst: &Site,
     target_block: &BlockPtr,
@@ -1030,7 +1042,7 @@ pub(crate) fn copy_errors(
 /// will wait at most 2s to aquire all necessary locks, and fail if that is
 /// not possible.
 pub fn drop_schema(
-    conn: &diesel::pg::PgConnection,
+    conn: &mut PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
     let query = format!(
@@ -1040,7 +1052,7 @@ pub fn drop_schema(
     Ok(conn.batch_execute(&query)?)
 }
 
-pub fn drop_metadata(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+pub fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     // We don't need to delete from subgraph_manifest or subgraph_error
@@ -1050,7 +1062,7 @@ pub fn drop_metadata(conn: &PgConnection, site: &Site) -> Result<(), StoreError>
 }
 
 pub fn create_deployment(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     deployment: DeploymentCreate,
     exists: bool,
@@ -1157,7 +1169,11 @@ fn entity_count_sql(count: i32) -> String {
     format!("entity_count + ({count})")
 }
 
-pub fn update_entity_count(conn: &PgConnection, site: &Site, count: i32) -> Result<(), StoreError> {
+pub fn update_entity_count(
+    conn: &mut PgConnection,
+    site: &Site,
+    count: i32,
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     if count == 0 {
@@ -1173,7 +1189,7 @@ pub fn update_entity_count(conn: &PgConnection, site: &Site, count: i32) -> Resu
 
 /// Set the deployment's entity count to whatever `full_count_query` produces
 pub fn set_entity_count(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     full_count_query: &str,
 ) -> Result<(), StoreError> {
@@ -1192,7 +1208,7 @@ pub fn set_entity_count(
 /// `site` can not move the earliest block backwards if `site` was also
 /// pruned while the copy was running.
 pub fn set_earliest_block(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     earliest_block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -1208,7 +1224,11 @@ pub fn set_earliest_block(
 /// Copy the `earliest_block` attribute from `src` to `dst`. The copy might
 /// go across shards and use the metadata tables mapped into the shard for
 /// `conn` which must be the shard for `dst`
-pub fn copy_earliest_block(conn: &PgConnection, src: &Site, dst: &Site) -> Result<(), StoreError> {
+pub fn copy_earliest_block(
+    conn: &mut PgConnection,
+    src: &Site,
+    dst: &Site,
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     let src_nsp = ForeignServer::metadata_schema_in(&src.shard, &dst.shard);
@@ -1225,7 +1245,7 @@ pub fn copy_earliest_block(conn: &PgConnection, src: &Site, dst: &Site) -> Resul
     Ok(())
 }
 
-pub fn on_sync(conn: &PgConnection, id: impl Into<DeploymentId>) -> Result<OnSync, StoreError> {
+pub fn on_sync(conn: &mut PgConnection, id: impl Into<DeploymentId>) -> Result<OnSync, StoreError> {
     use subgraph_manifest as m;
 
     let s = m::table
@@ -1235,7 +1255,11 @@ pub fn on_sync(conn: &PgConnection, id: impl Into<DeploymentId>) -> Result<OnSyn
     OnSync::try_from(s.as_deref())
 }
 
-pub fn set_on_sync(conn: &PgConnection, site: &Site, on_sync: OnSync) -> Result<(), StoreError> {
+pub fn set_on_sync(
+    conn: &mut PgConnection,
+    site: &Site,
+    on_sync: OnSync,
+) -> Result<(), StoreError> {
     use subgraph_manifest as m;
 
     let n = update(m::table.filter(m::id.eq(site.id)))
@@ -1257,15 +1281,15 @@ pub fn set_on_sync(conn: &PgConnection, site: &Site, on_sync: OnSync) -> Result<
 /// while other write activity for that deployment is locked out. Block the
 /// current thread until we can acquire the lock.
 //  see also: deployment-lock-for-update
-pub fn with_lock<F, R>(conn: &PgConnection, site: &Site, f: F) -> Result<R, StoreError>
+pub fn with_lock<F, R>(conn: &mut PgConnection, site: &Site, f: F) -> Result<R, StoreError>
 where
-    F: FnOnce() -> Result<R, StoreError>,
+    F: FnOnce(&mut PgConnection) -> Result<R, StoreError>,
 {
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
     while !advisory_lock::lock_deployment_session(conn, site)? {
         backoff.sleep();
     }
-    let res = f();
+    let res = f(conn);
     advisory_lock::unlock_deployment_session(conn, site)?;
     res
 }

@@ -1,10 +1,10 @@
 use std::ops::Bound;
 
 use diesel::{
-    pg::types::sql_types,
+    pg::sql_types,
     prelude::*,
     sql_query,
-    sql_types::{Binary, Integer, Jsonb, Nullable},
+    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
     PgConnection, QueryDsl, RunQueryDsl,
 };
 
@@ -84,7 +84,7 @@ impl DataSourcesTable {
     // reverts and the execution order of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     pub(super) fn load(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         type Tuple = (
@@ -98,7 +98,7 @@ impl DataSourcesTable {
         let tuples = self
             .table
             .clone()
-            .filter(diesel::dsl::sql("block_range @> ").bind::<Integer, _>(block))
+            .filter(diesel::dsl::sql::<Bool>("block_range @> ").bind::<Integer, _>(block))
             .select((
                 &self.block_range,
                 &self.manifest_idx,
@@ -143,7 +143,7 @@ impl DataSourcesTable {
 
     pub(crate) fn insert(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         data_sources: &write::DataSources,
     ) -> Result<usize, StoreError> {
         let mut inserted_total = 0;
@@ -192,7 +192,11 @@ impl DataSourcesTable {
         Ok(inserted_total)
     }
 
-    pub(crate) fn revert(&self, conn: &PgConnection, block: BlockNumber) -> Result<(), StoreError> {
+    pub(crate) fn revert(
+        &self,
+        conn: &mut PgConnection,
+        block: BlockNumber,
+    ) -> Result<(), StoreError> {
         // Use the 'does not extend to the left of' operator `&>` to leverage the gist index, this
         // is equivalent to lower(block_range) >= $1.
         //
@@ -210,7 +214,7 @@ impl DataSourcesTable {
     /// were created up to and including `target_block` will be copied.
     pub(crate) fn copy_to(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         dst: &DataSourcesTable,
         target_block: BlockNumber,
         src_manifest_idx_and_name: &[(i32, String)],
@@ -234,7 +238,9 @@ impl DataSourcesTable {
         let src_tuples = self
             .table
             .clone()
-            .filter(diesel::dsl::sql("lower(block_range) <= ").bind::<Integer, _>(target_block))
+            .filter(
+                diesel::dsl::sql::<Bool>("lower(block_range) <= ").bind::<Integer, _>(target_block),
+            )
             .select((
                 &self.block_range,
                 &self.manifest_idx,
@@ -299,7 +305,7 @@ impl DataSourcesTable {
     // identifies an offchain data source.
     pub(super) fn update_offchain_status(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         data_sources: &write::DataSources,
     ) -> Result<(), StoreError> {
         for (_, dss) in &data_sources.entries {
@@ -331,7 +337,7 @@ impl DataSourcesTable {
     /// value existing in the table.
     pub(super) fn causality_region_curr_val(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
     ) -> Result<Option<CausalityRegion>, StoreError> {
         // Get the maximum `causality_region` leveraging the btree index.
         Ok(self

@@ -25,7 +25,7 @@ use crate::manager::display::List;
 type UtcDateTime = DateTime<Utc>;
 
 #[derive(Queryable, QueryableByName, Debug)]
-#[table_name = "copy_state"]
+#[diesel(table_name = copy_state)]
 struct CopyState {
     src: i32,
     dst: i32,
@@ -38,7 +38,7 @@ struct CopyState {
 }
 
 #[derive(Queryable, QueryableByName, Debug)]
-#[table_name = "copy_table_state"]
+#[diesel(table_name = copy_table_state)]
 struct CopyTableState {
     #[allow(dead_code)]
     id: i32,
@@ -67,18 +67,18 @@ impl CopyState {
             .get(shard)
             .ok_or_else(|| anyhow!("can not find pool for shard {}", shard))?;
 
-        let dconn = dpool.get()?;
+        let mut dconn = dpool.get()?;
 
         let tables = cts::table
             .filter(cts::dst.eq(dst))
             .order_by(cts::entity_type)
-            .load::<CopyTableState>(&dconn)?;
+            .load::<CopyTableState>(&mut dconn)?;
 
-        let on_sync = on_sync(&dconn, DeploymentId(dst))?;
+        let on_sync = on_sync(&mut dconn, DeploymentId(dst))?;
 
         Ok(cs::table
             .filter(cs::dst.eq(dst))
-            .get_result::<CopyState>(&dconn)
+            .get_result::<CopyState>(&mut dconn)
             .optional()?
             .map(|state| (state, tables, on_sync)))
     }
@@ -177,7 +177,7 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     use catalog::deployment_schemas as ds;
 
     let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
-    let conn = primary.get()?;
+    let mut conn = primary.get()?;
 
     let copies = ac::table
         .inner_join(ds::table.on(ds::id.eq(ac::dst)))
@@ -189,7 +189,7 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
             ds::subgraph,
             ds::shard,
         ))
-        .load::<(i32, i32, Option<UtcDateTime>, UtcDateTime, String, Shard)>(&conn)?;
+        .load::<(i32, i32, Option<UtcDateTime>, UtcDateTime, String, Shard)>(&mut conn)?;
     if copies.is_empty() {
         println!("no active copies");
     } else {
@@ -261,18 +261,18 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     let primary = pools
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
-    let pconn = primary.get()?;
+    let mut pconn = primary.get()?;
     let dst = dst.locate_unique(primary)?.id.0;
 
     let (shard, deployment) = ds::table
         .filter(ds::id.eq(dst))
         .select((ds::shard, ds::subgraph))
-        .get_result::<(Shard, String)>(&pconn)?;
+        .get_result::<(Shard, String)>(&mut pconn)?;
 
     let (active, cancelled_at) = ac::table
         .filter(ac::dst.eq(dst))
         .select((ac::src, ac::cancelled_at))
-        .get_result::<(i32, Option<UtcDateTime>)>(&pconn)
+        .get_result::<(i32, Option<UtcDateTime>)>(&mut pconn)
         .optional()?
         .map(|(_, cancelled_at)| (true, cancelled_at))
         .unwrap_or((false, None));
