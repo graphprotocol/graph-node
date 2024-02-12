@@ -1,4 +1,4 @@
-use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
+use graph::prelude::{anyhow, Error, NodeId, StoreEvent};
 use graph_store_postgres::{
     command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
 };
