@@ -42,8 +42,8 @@ jobs:
         run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2
-
+      # Don't use the rust-cache as it leads to 'no space left on device' errors
+      # - uses: Swatinem/rust-cache@v2
       - name: Install lld
         run: sudo apt-get install -y lld protobuf-compiler
 
