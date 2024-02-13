@@ -10,6 +10,7 @@ use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
+use graph::prelude::web3::types::U256;
 use graph::slog::o;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
@@ -43,6 +44,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::adapter::EthereumGetBalanceError;
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
 use crate::trigger::LogRef;
@@ -408,6 +410,47 @@ impl EthereumAdapter {
         })
         .try_concat()
         .boxed()
+    }
+
+    fn balance(
+        &self,
+        logger: &Logger,
+        address: Address,
+        block_ptr: BlockPtr,
+    ) -> impl Future<Item = U256, Error = EthereumGetBalanceError> + Send {
+        let web3 = self.web3.clone();
+        let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
+
+        // Ganache does not support calls by block hash.
+        // See https://github.com/trufflesuite/ganache-cli/issues/973
+        let block_id = if !self.supports_eip_1898 {
+            BlockId::Number(block_ptr.number.into())
+        } else {
+            BlockId::Hash(block_ptr.hash_as_h256())
+        };
+        let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
+
+        retry(retry_log_message, &logger)
+            .when(|result| match result {
+                Ok(_) => false,
+                Err(_) => true,
+            })
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    let result: Result<U256, web3::Error> =
+                        web3.eth().balance(address, Some(block_id)).boxed().await;
+                    match result {
+                        Ok(balance) => Ok(balance),
+                        Err(err) => Err(EthereumGetBalanceError::Web3Error(err)),
+                    }
+                }
+            })
+            .map_err(|e| e.into_inner().unwrap_or(EthereumGetBalanceError::Timeout))
+            .boxed()
+            .compat()
     }
 
     fn call(
@@ -1245,6 +1288,20 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     })
                 }),
         )
+    }
+
+    fn get_balance(
+        &self,
+        logger: &Logger,
+        address: H160,
+        block_ptr: BlockPtr,
+    ) -> Box<dyn Future<Item = U256, Error = EthereumGetBalanceError> + Send> {
+        debug!(
+            logger, "eth_getBalance";
+            "address" => format!("{}", address),
+            "block" => format!("{}", block_ptr)
+        );
+        Box::new(self.balance(logger, address, block_ptr))
     }
 
     fn contract_call(

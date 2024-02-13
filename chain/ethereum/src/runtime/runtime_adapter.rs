@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
+use crate::adapter::EthereumGetBalanceError;
 use crate::data_source::MappingABI;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
@@ -10,6 +11,8 @@ use anyhow::{Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::HostMetrics;
+use graph::data::store::scalar::BigInt;
+use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
@@ -23,7 +26,7 @@ use graph::{
     semver::Version,
     slog::{info, trace, Logger},
 };
-use graph_runtime_wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
+use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, EthereumValueKind};
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 
@@ -91,7 +94,19 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
             }),
         };
 
-        Ok(vec![ethereum_call])
+        let eth_adapters = self.eth_adapters.cheap_clone();
+        let ethereum_get_balance = HostFn {
+            name: "ethereum.getBalance",
+            func: Arc::new(move |ctx, wasm_ptr| {
+                let eth_adapter = eth_adapters.cheapest_with(&NodeCapabilities {
+                    archive,
+                    traces: false,
+                })?;
+                eth_get_balance(&eth_adapter, ctx, wasm_ptr).map(|ptr| ptr.wasm_ptr())
+            }),
+        };
+
+        Ok(vec![ethereum_call, ethereum_get_balance])
     }
 }
 
@@ -129,6 +144,35 @@ fn ethereum_call(
     match result {
         Some(tokens) => Ok(asc_new(ctx.heap, tokens.as_slice(), &ctx.gas)?),
         None => Ok(AscPtr::null()),
+    }
+}
+
+fn eth_get_balance(
+    eth_adapter: &EthereumAdapter,
+    ctx: HostFnCtx<'_>,
+    wasm_ptr: u32,
+) -> Result<AscPtr<AscBigInt>, HostExportError> {
+    let logger = &ctx.logger;
+    let block_ptr = &ctx.block_ptr;
+
+    let address: H160 = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
+
+    let result = graph::block_on(
+        eth_adapter
+            .get_balance(logger, address, block_ptr.clone())
+            .compat(),
+    );
+
+    match result {
+        Ok(v) => {
+            let bigint = BigInt::from_unsigned_u256(&v);
+            Ok(asc_new(ctx.heap, &bigint, &ctx.gas)?)
+        }
+        // Retry on any kind of error
+        Err(EthereumGetBalanceError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(EthereumGetBalanceError::Timeout) => Err(HostExportError::PossibleReorg(
+            EthereumGetBalanceError::Timeout.into(),
+        )),
     }
 }
 
