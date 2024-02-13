@@ -341,7 +341,11 @@ impl BlockTime {
     /// Construct a block time that is the given number of seconds and
     /// nanoseconds after the Unix epoch
     pub fn since_epoch(secs: i64, nanos: u32) -> Self {
-        Self(DateTime::from_timestamp(secs, nanos).unwrap())
+        Self(
+            DateTime::from_timestamp(secs, nanos)
+                .ok_or_else(|| anyhow!("invalid block time: {}s {}ns", secs, nanos))
+                .unwrap(),
+        )
     }
 
     /// Construct a block time for tests where blocks are exactly 10s apart
