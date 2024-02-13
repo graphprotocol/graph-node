@@ -367,10 +367,6 @@ pub(in crate::schema) fn api_schema(
 /// schema. The copies of the type definitions are modified to allow
 /// filtering and ordering of collections of entities.
 fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError> {
-    fn fail(msg: &str) -> APISchemaError {
-        APISchemaError::SchemaCreationFailed(msg.to_string())
-    }
-
     /// Add arguments to fields that reference collections of other entities to
     /// allow e.g. filtering and ordering the collections. The `fields` should
     /// be the fields of an object or interface type
@@ -413,16 +409,17 @@ fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError>
                 let def = s::Definition::TypeDefinition(typedef);
                 api.definitions.push(def);
             }
-            s::TypeDefinition::Scalar(_) => {
-                return Err(fail("Subgraph schemas can not contain scalar definitions"));
-            }
-            s::TypeDefinition::Union(_) => {
-                return Err(fail("Subgraph schemas can not contain union definitions"));
-            }
             s::TypeDefinition::InputObject(_) => {
-                return Err(fail(
-                    "Subgraph schemas can not contain input object definitions",
-                ));
+                // We don't support input object types in subgraph schemas
+                // but some subgraphs use that to then pass parameters of
+                // that type to queries
+                api.definitions
+                    .push(s::Definition::TypeDefinition(type_def.clone()));
+            }
+            s::TypeDefinition::Scalar(_) | s::TypeDefinition::Union(_) => {
+                // We don't support these type definitions in subgraph schemas
+                // but there are subgraphs out in the wild that contain them. We
+                // simply ignore them even though we should produce an error
             }
         }
         Ok(())
@@ -431,16 +428,13 @@ fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError>
     let mut api = s::Document::default();
     for defn in input_schema.schema().document.definitions.iter() {
         match defn {
-            s::Definition::SchemaDefinition(_) => {
-                return Err(fail(
-                    "Subgraph schemas can not contain a `schema` statement",
-                ));
-            }
-            s::Definition::TypeExtension(_) => {
-                return Err(fail("Subgraph schemas can not contain type extensions"));
+            s::Definition::SchemaDefinition(_) | s::Definition::TypeExtension(_) => {
+                // We don't support these in subgraph schemas but there are
+                // subgraphs out in the wild that contain them. We simply
+                // ignore them even though we should produce an error
             }
             s::Definition::DirectiveDefinition(_) => {
-                // We don't really allow directove definitions in subgraph
+                // We don't really allow directive definitions in subgraph
                 // schemas, but the tests for introspection schemas create
                 // an input schema with a directive definition, and it's
                 // safer to allow it here rather than fail
