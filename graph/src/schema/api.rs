@@ -2285,4 +2285,86 @@ type Gravatar @entity {
         let stats = stuff.field("stats").unwrap();
         assert_aggregation_field(&schema, stats, "Stats");
     }
+
+    #[test]
+    fn no_extra_filters_for_interface_children() {
+        #[track_caller]
+        fn query_field<'a>(schema: &'a ApiSchema, name: &str) -> &'a crate::schema::api::s::Field {
+            let query_type = schema
+                .get_named_type("Query")
+                .expect("Query type is missing in derived API schema");
+
+            match query_type {
+                TypeDefinition::Object(t) => ast::get_field(t, name),
+                _ => None,
+            }
+            .expect(&format!("Schema should contain a field named `{}`", name))
+        }
+
+        const SCHEMA: &str = r#"
+        type DexProtocol implements Protocol @entity {
+            id: Bytes!
+            metrics: [Metric!]! @derivedFrom(field: "protocol")
+            pools: [Pool!]!
+        }
+
+        type Metric @entity {
+            id: Bytes!
+            protocol: DexProtocol!
+        }
+
+        type Pool @entity {
+            id: Bytes!
+        }
+
+        interface Protocol {
+            id: Bytes!
+            metrics: [Metric!]!  @derivedFrom(field: "protocol")
+            pools: [Pool!]!
+        }
+        "#;
+        let schema = parse(SCHEMA);
+
+        // Even for interfaces, we pay attention to whether a field is
+        // derived or not and change the filters in the API schema
+        // accordingly. It doesn't really make sense but has been like this
+        // for a long time and we'll have to support it.
+        for protos in ["dexProtocols", "protocols"] {
+            let groups = query_field(&schema, protos);
+            let filter = groups.argument("where").unwrap();
+            let s::TypeDefinition::InputObject(filter) =
+                schema.get_type_definition_from_type(&filter.value_type).unwrap() else { panic!("Can not find type for 'groups' filter") };
+            let metrics_fields: Vec<_> = filter
+                .fields
+                .iter()
+                .filter(|field| field.name.starts_with("metrics"))
+                .map(|field| &field.name)
+                .collect();
+            assert_eq!(
+                ["metrics_"],
+                metrics_fields.as_slice(),
+                "Field {protos} has additional metrics filters"
+            );
+            let mut pools_fields: Vec<_> = filter
+                .fields
+                .iter()
+                .filter(|field| field.name.starts_with("pools"))
+                .map(|field| &field.name)
+                .collect();
+            pools_fields.sort();
+            assert_eq!(
+                [
+                    "pools",
+                    "pools_",
+                    "pools_contains",
+                    "pools_contains_nocase",
+                    "pools_not",
+                    "pools_not_contains",
+                    "pools_not_contains_nocase",
+                ],
+                pools_fields.as_slice(),
+                "Field {protos} has the wrong pools filters"
+            );
+        }
+    }
 }

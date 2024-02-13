@@ -512,7 +512,15 @@ impl InterfaceType {
         let fields = interface_type
             .fields
             .iter()
-            .map(|field| Field::new(schema, &field.name, &field.field_type, None))
+            .map(|field| {
+                // It's very unclear what it means for an interface field to
+                // be derived; but for legacy reasons, we need to allow it
+                // since the API schema does not contain certain filters for
+                // derived fields on interfaces that it would for
+                // non-derived fields
+                let derived_from = field.derived_from().map(|name| Word::from(name));
+                Field::new(schema, &field.name, &field.field_type, derived_from)
+            })
             .collect();
         let name = pool
             .lookup(&interface_type.name)
