@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The ElasticSearch index to which `graph-node` logs can now be configured
+  with the `GRAPH_ELASTIC_SEARCH_INDEX` environment variable which defaults
+  to `subgraph`
+
 ## v0.34.0
 ### What's New
 
@@ -23,7 +27,7 @@
 
 - Addressed a bug in the deduplication logic for Cosmos events, ensuring all distinct events are properly indexed and handled, especially when similar but not identical events occur within the same block. [(#5112)](https://github.com/graphprotocol/graph-node/pull/5112)
 - Fixed compatibility issues with ElasticSearch 8.X, ensuring proper log functionality. [(#5013)](https://github.com/graphprotocol/graph-node/pull/5013)
-- Resolved an issue when rewinding data sources across multiple blocks. In rare cases, when a subgraph had been rewound by multiple blocks, data sources 'from the future' could have been left behind. This release adds a database migration that fixes that. With very unlucky timing this migration might miss some subgraphs, which will later lead to an error `assertion failed: self.hosts.last().and_then(|h| h.creation_block_number()) <= data_source.creation_block()`. Should that happen, the [migration script](https://github.com/graphprotocol/graph-node/blob/master/store/postgres/migrations/2024-01-05-170000_ds_corruption_fix_up/up.sql) should be rerun against the affected shard. [(#5083)](https://github.com/graphprotocol/graph-node/pull/5083)
+  - Resolved an issue when rewinding data sources across multiple blocks. In rare cases, when a subgraph had been rewound by multiple blocks, data sources 'from the future' could have been left behind. This release adds a database migration that fixes that. With very unlucky timing this migration might miss some subgraphs, which will later lead to an error `assertion failed: self.hosts.last().and_then(|h| h.creation_block_number()) <= data_source.creation_block()`. Should that happen, the [migration script](https://github.com/graphprotocol/graph-node/blob/master/store/postgres/migrations/2024-01-05-170000_ds_corruption_fix_up/up.sql) should be rerun against the affected shard. [(#5083)](https://github.com/graphprotocol/graph-node/pull/5083)
 - Increased the base backoff time for RPC, enhancing stability and reliability under load. [(#4984)](https://github.com/graphprotocol/graph-node/pull/4984)
 - Resolved an issue related to spawning offchain data sources from existing offchain data source mappings. [(#5051)](https://github.com/graphprotocol/graph-node/pull/5051)[(#5092)](https://github.com/graphprotocol/graph-node/pull/5092)
 - Resolved an issue where eth-call results for reverted calls were being cached in call cache. [(#4879)](https://github.com/graphprotocol/graph-node/pull/4879)

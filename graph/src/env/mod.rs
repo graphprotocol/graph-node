@@ -86,6 +86,9 @@ pub struct EnvVars {
     /// Set by the environment variable
     /// `GRAPH_ELASTIC_SEARCH_MAX_RETRIES`. The default value is 5.
     pub elastic_search_max_retries: usize,
+    /// The name of the index in ElasticSearch to which we should log. Set
+    /// by `GRAPH_ELASTIC_SEARCH_INDEX`. The default is `subgraph`.
+    pub elastic_search_index: String,
     /// If an instrumented lock is contended for longer than the specified
     /// duration, a warning will be logged.
     ///
@@ -224,6 +227,7 @@ impl EnvVars {
                 inner.elastic_search_flush_interval_in_secs,
             ),
             elastic_search_max_retries: inner.elastic_search_max_retries,
+            elastic_search_index: inner.elastic_search_index,
             lock_contention_log_threshold: Duration::from_millis(
                 inner.lock_contention_log_threshold_in_ms,
             ),
@@ -326,6 +330,8 @@ struct Inner {
     elastic_search_flush_interval_in_secs: u64,
     #[envconfig(from = "GRAPH_ELASTIC_SEARCH_MAX_RETRIES", default = "5")]
     elastic_search_max_retries: usize,
+    #[envconfig(from = "GRAPH_ELASTIC_SEARCH_INDEX", default = "subgraph")]
+    elastic_search_index: String,
     #[envconfig(from = "GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS", default = "100")]
     lock_contention_log_threshold_in_ms: u64,
 
