@@ -385,6 +385,27 @@ async fn test_block_handlers(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn test_eth_get_balance(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let expected_response = json!({
+        "foo": {
+            "id": "1",
+            "value": "10000000000000000000000",
+        }
+    });
+
+    query_succeeds(
+        "Balance should be right",
+        &subgraph,
+        "{ foo(id: \"1\") { id value } }",
+        expected_response,
+    )
+    .await?;
+
+    Ok(())
+}
+
 async fn test_ganache_reverts(subgraph: Subgraph) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
@@ -634,6 +655,7 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("value-roundtrip", test_value_roundtrip),
         TestCase::new("int8", test_int8),
         TestCase::new("block-handlers", test_block_handlers),
+        TestCase::new("eth-get-balance", test_eth_get_balance),
     ];
 
     let contracts = Contract::deploy_all().await?;

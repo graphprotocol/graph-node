@@ -912,6 +912,13 @@
   dependencies:
     assemblyscript "0.19.10"
 
+"@graphprotocol/graph-ts@0.33.0-alpha-20240214061300-75be02a":
+  version "0.33.0-alpha-20240214061300-75be02a"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.33.0-alpha-20240214061300-75be02a.tgz#a8b930e4eb1cbbee5a49a830fec45ea8938d9745"
+  integrity sha512-2km7xnM6Mm361Acp1o8dj1AZSqJRZnI3byvkBFpHkQhiU553is4fp5L+80LfxZGyVY0J45rcaRYxH8bLmJ726Q==
+  dependencies:
+    assemblyscript "0.19.10"
+
 "@graphql-tools/batch-delegate@^6.2.4", "@graphql-tools/batch-delegate@^6.2.6":
   version "6.2.6"
   resolved "https://registry.yarnpkg.com/@graphql-tools/batch-delegate/-/batch-delegate-6.2.6.tgz#fbea98dc825f87ef29ea5f3f371912c2a2aa2f2c"
