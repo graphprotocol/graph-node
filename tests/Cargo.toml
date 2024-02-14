@@ -27,7 +27,6 @@ tokio = { version = "1.35.1", features = ["rt", "macros", "process"] }
 # here needs to be kept in sync with the web3 version that the graph crate
 # uses until then
 secp256k1 = { version = "0.21", features = ["recovery"] }
-termcolor = "1.4.1"
 
 [dev-dependencies]
 anyhow = "1.0.75"

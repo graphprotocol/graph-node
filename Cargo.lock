@@ -1475,8 +1475,6 @@ dependencies = [
  "maplit",
  "num-bigint 0.2.6",
  "num-traits",
- "num_cpus",
- "parity-wasm",
  "parking_lot 0.12.1",
  "petgraph",
  "priority-queue",
@@ -1499,7 +1497,6 @@ dependencies = [
  "slog-term",
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
- "strum",
  "strum_macros",
  "thiserror",
  "tiny-keccak 1.5.0",
@@ -1619,23 +1616,15 @@ name = "graph-chain-substreams"
 version = "0.34.0"
 dependencies = [
  "anyhow",
- "async-stream",
  "base64 0.20.0",
- "dirs-next",
- "envconfig",
- "futures 0.1.31",
  "graph",
  "graph-runtime-wasm",
  "hex",
- "http",
- "itertools 0.12.0",
- "jsonrpc-core",
  "lazy_static",
  "prost",
  "prost-types",
  "semver",
  "serde",
- "tiny-keccak 1.5.0",
  "tokio",
  "tonic-build",
 ]
@@ -1645,7 +1634,6 @@ name = "graph-core"
 version = "0.34.0"
 dependencies = [
  "anyhow",
- "async-stream",
  "async-trait",
  "atomic_refcell",
  "bytes",
@@ -1662,11 +1650,6 @@ dependencies = [
  "graph-runtime-wasm",
  "ipfs-api",
  "ipfs-api-backend-hyper",
- "lazy_static",
- "lru_time_cache",
- "semver",
- "serde",
- "serde_json",
  "serde_yaml",
  "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
@@ -1677,14 +1660,12 @@ dependencies = [
 name = "graph-graphql"
 version = "0.34.0"
 dependencies = [
- "Inflector",
  "anyhow",
  "async-recursion",
  "crossbeam",
  "graph",
  "graphql-parser",
  "graphql-tools",
- "indexmap 2.1.0",
  "lazy_static",
  "parking_lot 0.12.1",
  "stable-hash 0.3.4",
@@ -1742,7 +1723,6 @@ version = "0.34.0"
 dependencies = [
  "graph",
  "graph-chain-ethereum",
- "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",
  "rand",
@@ -1757,21 +1737,16 @@ version = "0.34.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "atomic_refcell",
  "bs58",
- "bytes",
  "defer",
  "ethabi",
  "futures 0.1.31",
  "graph",
  "graph-runtime-derive",
  "hex",
- "lazy_static",
  "never",
  "parity-wasm",
  "semver",
- "strum",
- "strum_macros",
  "uuid",
  "wasm-instrument",
  "wasmtime",
@@ -1796,7 +1771,6 @@ name = "graph-server-index-node"
 version = "0.34.0"
 dependencies = [
  "blake3 1.5.0",
- "either",
  "futures 0.3.16",
  "git-testament",
  "graph",
@@ -1810,8 +1784,6 @@ dependencies = [
  "graphql-parser",
  "http",
  "hyper",
- "lazy_static",
- "serde",
 ]
 
 [[package]]
@@ -1872,7 +1844,6 @@ dependencies = [
  "lru_time_cache",
  "maybe-owned",
  "openssl",
- "pin-utils",
  "postgres",
  "postgres-openssl",
  "pretty_assertions",
@@ -1905,7 +1876,6 @@ dependencies = [
  "serde",
  "serde_yaml",
  "slog",
- "termcolor",
  "tokio",
  "tokio-stream",
 ]
@@ -4193,12 +4163,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
-name = "strum"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaf86bbcfd1fa9670b7a129f64fc0c9fcbbfe4f1bc4210e9e98fe71ffc12cde2"
-
-[[package]]
 name = "strum_macros"
 version = "0.25.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4276,7 +4240,6 @@ dependencies = [
 name = "substreams-trigger-filter"
 version = "0.34.0"
 dependencies = [
- "anyhow",
  "hex",
  "prost",
  "substreams",
@@ -4401,7 +4364,6 @@ dependencies = [
  "diesel",
  "graph",
  "graph-chain-ethereum",
- "graph-core",
  "graph-graphql",
  "graph-node",
  "graph-store-postgres",
@@ -4411,7 +4373,6 @@ dependencies = [
  "lazy_static",
  "pretty_assertions",
  "prost-types",
- "serde",
 ]
 
 [[package]]

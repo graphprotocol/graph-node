@@ -35,7 +35,6 @@ diesel_derives = "1.4.1"
 anyhow = "1.0.75"
 git-testament = "0.2.5"
 itertools = "0.12.0"
-pin-utils = "0.1"
 hex = "0.4.3"
 pretty_assertions = "1.4.0"
 

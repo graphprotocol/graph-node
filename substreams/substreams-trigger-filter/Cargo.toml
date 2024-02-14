@@ -14,7 +14,6 @@ prost.workspace = true
 substreams = "0.5"
 substreams-entity-change = "1.3"
 substreams-near-core = "0.10.1"
-anyhow = "1"
 
 trigger-filters.path = "../trigger-filters"
 

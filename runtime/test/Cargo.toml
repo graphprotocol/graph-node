@@ -8,7 +8,6 @@ semver = "1.0"
 wasmtime.workspace = true
 graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
-graph-core = { path = "../../core" }
 graph-runtime-derive = { path = "../derive" }
 graph-runtime-wasm = { path = "../wasm" }
 rand = "0.8.5"
