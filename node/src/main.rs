@@ -672,23 +672,23 @@ async fn main() {
         }
 
         // Serve GraphQL queries over HTTP
-        graph::spawn(
+        graph::spawn(async move {
             graphql_server
                 .serve(http_port, ws_port)
+                .await
                 .expect("Failed to start GraphQL query server")
-                .compat(),
-        );
+        });
 
         // Serve GraphQL subscriptions over WebSockets
-        graph::spawn(subscription_server.serve(ws_port));
+        graph::spawn(async move { subscription_server.serve(ws_port).await });
 
         // Run the index node server
-        graph::spawn(
+        graph::spawn(async move {
             index_node_server
                 .serve(index_node_port)
+                .await
                 .expect("Failed to start index node server")
-                .compat(),
-        );
+        });
 
         graph::spawn(async move {
             metrics_server

@@ -14,7 +14,7 @@ use crate::{
 use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
 use futures03::StreamExt;
-use http::uri::{Scheme, Uri};
+use http02::uri::{Scheme, Uri};
 use itertools::Itertools;
 use slog::Logger;
 use std::{

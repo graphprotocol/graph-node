@@ -18,10 +18,11 @@ chrono = "0.4.31"
 envconfig = "0.10.0"
 Inflector = "0.11.3"
 isatty = "0.1.9"
-reqwest = { version = "0.11.18", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.11.23", features = ["json", "stream", "multipart"] }
 ethabi = "17.2"
 hex = "0.4.3"
-http = "0.2.3"
+http.workspace = true 
+http02.workspace = true 
 futures = "0.1.21"
 graphql-parser = "0.4.0"
 humantime = "2.1.0"
@@ -60,6 +61,8 @@ priority-queue = "0.7.0"
 tonic = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
+hyper.workspace = true
+http-body-util = "0.1.0"
 
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"

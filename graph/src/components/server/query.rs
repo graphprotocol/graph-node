@@ -1,5 +1,5 @@
 use crate::data::query::QueryError;
-use futures::prelude::*;
+use async_trait::async_trait;
 use std::error::Error;
 use std::fmt;
 
@@ -59,13 +59,10 @@ impl Error for GraphQLServerError {
 }
 
 /// Common trait for GraphQL server implementations.
+#[async_trait]
 pub trait GraphQLServer {
     type ServeError;
 
     /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
-    fn serve(
-        &mut self,
-        port: u16,
-        ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+    async fn serve(&mut self, port: u16, ws_port: u16) -> Result<Result<(), ()>, Self::ServeError>;
 }

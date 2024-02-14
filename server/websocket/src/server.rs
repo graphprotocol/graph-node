@@ -2,8 +2,8 @@ use graph::{
     data::query::QueryTarget,
     prelude::{SubscriptionServer as SubscriptionServerTrait, *},
 };
-use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
-use http::{HeaderValue, Response, StatusCode};
+use http02::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use http02::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use tokio::net::TcpListener;

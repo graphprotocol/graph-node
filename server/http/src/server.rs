@@ -1,18 +1,20 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use futures::future::Future;
-use hyper::service::make_service_fn;
-use hyper::Server;
+use hyper::service::{service_fn, Service};
+use hyper_util::rt::TokioIo;
 use thiserror::Error;
 
 use crate::service::GraphQLService;
-use graph::prelude::{GraphQLServer as GraphQLServerTrait, GraphQlRunner, *};
+use graph::{
+    prelude::{GraphQLServer as GraphQLServerTrait, GraphQlRunner, *},
+    tokio::net::TcpListener,
+};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]
 pub enum GraphQLServeError {
     #[error("Bind error: {0}")]
-    BindError(#[from] hyper::Error),
+    BindError(String),
 }
 
 /// A GraphQL server based on Hyper.
@@ -41,17 +43,14 @@ impl<Q> GraphQLServer<Q> {
     }
 }
 
+#[async_trait]
 impl<Q> GraphQLServerTrait for GraphQLServer<Q>
 where
     Q: GraphQlRunner,
 {
     type ServeError = GraphQLServeError;
 
-    fn serve(
-        &mut self,
-        port: u16,
-        ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    async fn serve(&mut self, port: u16, ws_port: u16) -> Result<Result<(), ()>, Self::ServeError> {
         let logger = self.logger.clone();
 
         info!(
@@ -59,14 +58,21 @@ where
             "Starting GraphQL HTTP server at: http://localhost:{}", port
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port))
+            .await
+            .map_err(|e| GraphQLServeError::BindError(format!("unable to bind: {}", e)))?;
+
+        let (stream, _) = listener.accept().await.map_err(|e| {
+            GraphQLServeError::BindError(format!("unable to accept connections: {}", e))
+        })?;
+        let stream = TokioIo::new(stream);
 
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
         let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
         let node_id = self.node_id.clone();
-        let new_service = make_service_fn(move |_| {
+        let new_service = service_fn(move |req| {
             let graphql_service = GraphQLService::new(
                 logger_for_service.clone(),
                 graphql_runner.clone(),
@@ -74,14 +80,17 @@ where
                 node_id.clone(),
             );
 
-            futures03::future::ok::<_, Error>(graphql_service)
+            graphql_service.call(req)
         });
 
-        // Create a task to run the server and handle HTTP requests
-        let task = Server::try_bind(&addr.into())?
-            .serve(new_service)
-            .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
+        let mut builder =
+            hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
 
-        Ok(Box::new(task.compat()))
+        // Create a task to run the server and handle HTTP requests
+        Ok(builder
+            .http1()
+            .serve_connection(stream, new_service)
+            .await
+            .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e))))
     }
 }
