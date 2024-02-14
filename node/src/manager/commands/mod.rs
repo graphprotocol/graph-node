@@ -17,4 +17,5 @@ pub mod rewind;
 pub mod run;
 pub mod stats;
 pub mod txn_speed;
+pub mod unlink;
 pub mod unused_deployments;

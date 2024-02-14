@@ -710,30 +710,59 @@ mod queries {
             .unwrap_or((None, None)))
     }
 
+    /// Returns all (subgraph_id, subgraph_name, version) pairs for a given deployment hash.
+    fn subgraphs_info_by_deployment_hash(
+        conn: &PgConnection,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String, String)>, StoreError> {
+        v::table
+            .inner_join(
+                s::table.on(v::id
+                    .nullable()
+                    .eq(s::current_version)
+                    .or(v::id.nullable().eq(s::pending_version))),
+            )
+            .filter(v::deployment.eq(&deployment_hash))
+            .select((
+                s::id,
+                s::name,
+                sql::<Text>(
+                    "(case when subgraphs.subgraph.pending_version = subgraphs.subgraph_version.id then 'pending'
+                               when subgraphs.subgraph.current_version = subgraphs.subgraph_version.id then 'current'
+                               else 'unused'
+                         end) as version",
+                ),
+            ))
+            .get_results(conn)
+            .map_err(Into::into)
+    }
     /// Returns all (subgraph_name, version) pairs for a given deployment hash.
     pub fn subgraphs_by_deployment_hash(
         conn: &PgConnection,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
-        v::table
-                .inner_join(
-                    s::table.on(v::id
-                        .nullable()
-                        .eq(s::current_version)
-                        .or(v::id.nullable().eq(s::pending_version))),
-                )
-                .filter(v::deployment.eq(&deployment_hash))
-                .select((
-                    s::name,
-                    sql::<Text>(
-                        "(case when subgraphs.subgraph.pending_version = subgraphs.subgraph_version.id then 'pending'
-                               when subgraphs.subgraph.current_version = subgraphs.subgraph_version.id then 'current'
-                               else 'unused'
-                         end) as version",
-                    ),
-                ))
-                .get_results(conn)
-                .map_err(Into::into)
+        subgraphs_info_by_deployment_hash(conn, deployment_hash).and_then(
+            |x: Vec<(String, String, String)>| {
+                Ok(x.into_iter()
+                    .map(|(_, name, version)| (name, version))
+                    .collect::<Vec<(String, String)>>())
+            },
+        )
+    }
+
+    /// Returns all (subgraph_id, version) pairs for a given deployment hash.
+
+    pub fn subgraph_ids_by_deployment_hash(
+        conn: &PgConnection,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        subgraphs_info_by_deployment_hash(conn, deployment_hash).and_then(
+            |x: Vec<(String, String, String)>| {
+                Ok(x.into_iter()
+                    .map(|(id, _, version)| (id, version))
+                    .collect::<Vec<(String, String)>>())
+            },
+        )
     }
 }
 
@@ -856,6 +885,46 @@ impl<'a> Connection<'a> {
         // Clean up assignments if we could possibly have changed any
         // subgraph versions
         let changes = if pending_subgraph_versions.is_empty() {
+            vec![]
+        } else {
+            self.remove_unused_assignments()?
+        };
+        Ok(changes)
+    }
+
+    /// Remove IPFS hash from current/pending deployment
+    pub fn unlink_deployment(
+        &self,
+        deployment: &DeploymentHash,
+    ) -> Result<Vec<EntityChange>, StoreError> {
+        use subgraph as s;
+
+        let conn = self.conn.as_ref();
+
+        // Subgraphs and it's deployemnt version we need to unlink
+        let subgraph_for_unlinking = queries::subgraph_ids_by_deployment_hash(conn, deployment)?;
+
+        // Set to null if pending and promote pending if current
+        for (id, version) in &subgraph_for_unlinking {
+            match version.as_str() {
+                "current" => {
+                    update(s::table.filter(s::id.eq(id)))
+                        .set((
+                            s::current_version.eq(s::pending_version),
+                            s::pending_version.eq::<Option<&str>>(None),
+                        ))
+                        .execute(conn)?;
+                }
+                "pending" => {
+                    update(s::table.filter(s::id.eq(id)))
+                        .set((s::pending_version.eq::<Option<&str>>(None),))
+                        .execute(conn)?;
+                }
+                _ => (),
+            }
+        }
+
+        let changes = if subgraph_for_unlinking.is_empty() {
             vec![]
         } else {
             self.remove_unused_assignments()?

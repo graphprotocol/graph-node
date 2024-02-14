@@ -168,6 +168,11 @@ pub enum Command {
         /// The deployment (see `help info`)
         deployment: DeploymentSearch,
     },
+    /// Unlink a deployment
+    Unlink {
+        /// `<IPFS Hash>` for unlinking
+        subgraph: DeploymentSearch,
+    },
     /// Pause a deployment
     Pause {
         /// The deployment (see `help info`)
@@ -1160,6 +1165,7 @@ async fn main() -> anyhow::Result<()> {
             let sender = ctx.notification_sender();
             commands::assign::unassign(ctx.primary_pool(), &sender, &deployment).await
         }
+        Unlink { subgraph } => commands::unlink::run(ctx.subgraph_store(), &subgraph).await,
         Reassign { deployment, node } => {
             let sender = ctx.notification_sender();
             commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
