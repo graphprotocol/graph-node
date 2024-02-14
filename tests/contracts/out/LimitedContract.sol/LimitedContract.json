@@ -1,54 +1,31 @@
 {
   "abi": [
+    { "type": "constructor", "inputs": [], "stateMutability": "nonpayable" },
     {
-      "inputs": [],
-      "stateMutability": "nonpayable",
-      "type": "constructor"
-    },
-    {
-      "anonymous": false,
-      "inputs": [],
-      "name": "Trigger",
-      "type": "event"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "value",
-          "type": "uint256"
-        }
-      ],
+      "type": "function",
       "name": "inc",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
+      "inputs": [
+        { "name": "value", "type": "uint256", "internalType": "uint256" }
       ],
-      "stateMutability": "pure",
-      "type": "function"
-    }
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "pure"
+    },
+    { "type": "event", "name": "Trigger", "inputs": [], "anonymous": false }
   ],
   "bytecode": {
-    "object": "0x608060405234801561001057600080fd5b506040517f3d53a39550e04688065827f3bb86584cb007ab9ebca7ebd528e7301c9c31eb5d90600090a1610120806100496000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063812600df14602d575b600080fd5b603c603836600460b2565b604e565b60405190815260200160405180910390f35b6000600a821060a35760405162461bcd60e51b815260206004820152601b60248201527f63616e206f6e6c792068616e646c652076616c756573203c2031300000000000604482015260640160405180910390fd5b60ac82600160ca565b92915050565b60006020828403121560c357600080fd5b5035919050565b8082018082111560ac57634e487b7160e01b600052601160045260246000fdfea26469706673582212203b86696b857477da4e8dce08502a769c3dae858879eb33d2f187a9793d836ffe64736f6c63430008160033",
+    "object": "0x608060405234801561001057600080fd5b506040517f3d53a39550e04688065827f3bb86584cb007ab9ebca7ebd528e7301c9c31eb5d90600090a1610120806100496000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063812600df14602d575b600080fd5b603c603836600460b2565b604e565b60405190815260200160405180910390f35b6000600a821060a35760405162461bcd60e51b815260206004820152601b60248201527f63616e206f6e6c792068616e646c652076616c756573203c2031300000000000604482015260640160405180910390fd5b60ac82600160ca565b92915050565b60006020828403121560c357600080fd5b5035919050565b8082018082111560ac57634e487b7160e01b600052601160045260246000fdfea264697066735822122045679e894d199dcf13e7f3e6d9816bf08cd9cceab355500d502bbfada548205f64736f6c63430008130033",
     "sourceMap": "57:257:0:-:0;;;110:45;;;;;;;;;-1:-1:-1;139:9:0;;;;;;;57:257;;;;;;",
     "linkReferences": {}
   },
   "deployedBytecode": {
-    "object": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c8063812600df14602d575b600080fd5b603c603836600460b2565b604e565b60405190815260200160405180910390f35b6000600a821060a35760405162461bcd60e51b815260206004820152601b60248201527f63616e206f6e6c792068616e646c652076616c756573203c2031300000000000604482015260640160405180910390fd5b60ac82600160ca565b92915050565b60006020828403121560c357600080fd5b5035919050565b8082018082111560ac57634e487b7160e01b600052601160045260246000fdfea26469706673582212203b86696b857477da4e8dce08502a769c3dae858879eb33d2f187a9793d836ffe64736f6c63430008160033",
-    "sourceMap": "57:257:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;161:151;;;;;;:::i;:::-;;:::i;:::-;;;345:25:3;;;333:2;318:18;161:151:0;;;;;;;;210:7;245:2;237:5;:10;229:50;;;;-1:-1:-1;;;229:50:0;;583:2:3;229:50:0;;;565:21:3;622:2;602:18;;;595:30;661:29;641:18;;;634:57;708:18;;229:50:0;;;;;;;;296:9;:5;304:1;296:9;:::i;:::-;289:16;161:151;-1:-1:-1;;161:151:0:o;14:180:3:-;73:6;126:2;114:9;105:7;101:23;97:32;94:52;;;142:1;139;132:12;94:52;-1:-1:-1;165:23:3;;14:180;-1:-1:-1;14:180:3:o;737:222::-;802:9;;;823:10;;;820:133;;;875:10;870:3;866:20;863:1;856:31;910:4;907:1;900:15;938:4;935:1;928:15",
+    "object": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c8063812600df14602d575b600080fd5b603c603836600460b2565b604e565b60405190815260200160405180910390f35b6000600a821060a35760405162461bcd60e51b815260206004820152601b60248201527f63616e206f6e6c792068616e646c652076616c756573203c2031300000000000604482015260640160405180910390fd5b60ac82600160ca565b92915050565b60006020828403121560c357600080fd5b5035919050565b8082018082111560ac57634e487b7160e01b600052601160045260246000fdfea264697066735822122045679e894d199dcf13e7f3e6d9816bf08cd9cceab355500d502bbfada548205f64736f6c63430008130033",
+    "sourceMap": "57:257:0:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;161:151;;;;;;:::i;:::-;;:::i;:::-;;;345:25:4;;;333:2;318:18;161:151:0;;;;;;;;210:7;245:2;237:5;:10;229:50;;;;-1:-1:-1;;;229:50:0;;583:2:4;229:50:0;;;565:21:4;622:2;602:18;;;595:30;661:29;641:18;;;634:57;708:18;;229:50:0;;;;;;;;296:9;:5;304:1;296:9;:::i;:::-;289:16;161:151;-1:-1:-1;;161:151:0:o;14:180:4:-;73:6;126:2;114:9;105:7;101:23;97:32;94:52;;;142:1;139;132:12;94:52;-1:-1:-1;165:23:4;;14:180;-1:-1:-1;14:180:4:o;737:222::-;802:9;;;823:10;;;820:133;;;875:10;870:3;866:20;863:1;856:31;910:4;907:1;900:15;938:4;935:1;928:15",
     "linkReferences": {}
   },
-  "methodIdentifiers": {
-    "inc(uint256)": "812600df"
-  },
-  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.22+commit.4fc1097e\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"Trigger\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"inc\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"src/LimitedContract.sol\":\"LimitedContract\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"src/LimitedContract.sol\":{\"keccak256\":\"0x7b291e6c8d7562ba65f036bd8b25c87587c57f5c35d5a6ea587a4eb6c7de4b02\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b7b7d9ad73d3f266dff610553eac7a1454f71e616036b0b50cee8610b999c2eb\",\"dweb:/ipfs/QmcdMqSxkNDwHJ8pMyh2jK2sA6Xrk4VSdm4nqZ86EK2Vut\"]}},\"version\":1}",
+  "methodIdentifiers": { "inc(uint256)": "812600df" },
+  "rawMetadata": "{\"compiler\":{\"version\":\"0.8.19+commit.7dd6d404\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[],\"name\":\"Trigger\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"inc\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"src/LimitedContract.sol\":\"LimitedContract\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"src/LimitedContract.sol\":{\"keccak256\":\"0x7b291e6c8d7562ba65f036bd8b25c87587c57f5c35d5a6ea587a4eb6c7de4b02\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://b7b7d9ad73d3f266dff610553eac7a1454f71e616036b0b50cee8610b999c2eb\",\"dweb:/ipfs/QmcdMqSxkNDwHJ8pMyh2jK2sA6Xrk4VSdm4nqZ86EK2Vut\"]}},\"version\":1}",
   "metadata": {
-    "compiler": {
-      "version": "0.8.22+commit.4fc1097e"
-    },
+    "compiler": { "version": "0.8.19+commit.7dd6d404" },
     "language": "Solidity",
     "output": {
       "abi": [
@@ -65,47 +42,25 @@
         },
         {
           "inputs": [
-            {
-              "internalType": "uint256",
-              "name": "value",
-              "type": "uint256"
-            }
+            { "internalType": "uint256", "name": "value", "type": "uint256" }
           ],
           "stateMutability": "pure",
           "type": "function",
           "name": "inc",
           "outputs": [
-            {
-              "internalType": "uint256",
-              "name": "",
-              "type": "uint256"
-            }
+            { "internalType": "uint256", "name": "", "type": "uint256" }
           ]
         }
       ],
-      "devdoc": {
-        "kind": "dev",
-        "methods": {},
-        "version": 1
-      },
-      "userdoc": {
-        "kind": "user",
-        "methods": {},
-        "version": 1
-      }
+      "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+      "userdoc": { "kind": "user", "methods": {}, "version": 1 }
     },
     "settings": {
       "remappings": [],
-      "optimizer": {
-        "enabled": true,
-        "runs": 200
-      },
-      "metadata": {
-        "bytecodeHash": "ipfs"
-      },
-      "compilationTarget": {
-        "src/LimitedContract.sol": "LimitedContract"
-      },
+      "optimizer": { "enabled": true, "runs": 200 },
+      "metadata": { "bytecodeHash": "ipfs" },
+      "compilationTarget": { "src/LimitedContract.sol": "LimitedContract" },
+      "evmVersion": "paris",
       "libraries": {}
     },
     "sources": {
@@ -123,11 +78,7 @@
   "ast": {
     "absolutePath": "src/LimitedContract.sol",
     "id": 31,
-    "exportedSymbols": {
-      "LimitedContract": [
-        30
-      ]
-    },
+    "exportedSymbols": { "LimitedContract": [30] },
     "nodeType": "SourceUnit",
     "src": "32:283:0",
     "nodes": [
@@ -136,12 +87,7 @@
         "nodeType": "PragmaDirective",
         "src": "32:23:0",
         "nodes": [],
-        "literals": [
-          "solidity",
-          "^",
-          "0.8",
-          ".0"
-        ]
+        "literals": ["solidity", "^", "0.8", ".0"]
       },
       {
         "id": 30,
@@ -314,10 +260,7 @@
                     ],
                     "expression": {
                       "argumentTypes": [
-                        {
-                          "typeIdentifier": "t_bool",
-                          "typeString": "bool"
-                        },
+                        { "typeIdentifier": "t_bool", "typeString": "bool" },
                         {
                           "typeIdentifier": "t_stringliteral_578cd1fc098748633f5d7d46bba428bb3129c1e63324f2b7151699cae5146449",
                           "typeString": "literal_string \"can only handle values < 10\""
@@ -326,10 +269,7 @@
                       "id": 17,
                       "name": "require",
                       "nodeType": "Identifier",
-                      "overloadedDeclarations": [
-                        -18,
-                        -18
-                      ],
+                      "overloadedDeclarations": [-18, -18],
                       "referencedDeclaration": -18,
                       "src": "229:7:0",
                       "typeDescriptions": {
@@ -497,16 +437,11 @@
         "contractDependencies": [],
         "contractKind": "contract",
         "fullyImplemented": true,
-        "linearizedBaseContracts": [
-          30
-        ],
+        "linearizedBaseContracts": [30],
         "name": "LimitedContract",
         "nameLocation": "66:15:0",
         "scope": 31,
-        "usedErrors": [],
-        "usedEvents": [
-          3
-        ]
+        "usedErrors": []
       }
     ],
     "license": "MIT"
