@@ -11,7 +11,7 @@ use crate::cheap_clone::CheapClone;
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt, TypeExt};
 use crate::data::store::IdType;
 use crate::env::ENV_VARS;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
+use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 
 use crate::data::graphql::ext::{
     camel_cased_names, DefinitionExt, DirectiveExt, DocumentExt, ValueExt,
@@ -391,11 +391,13 @@ fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError>
     ) -> Result<(), APISchemaError> {
         match type_def {
             s::TypeDefinition::Object(ot) => {
-                let mut ot = ot.clone();
-                add_collection_arguments(&mut ot.fields, input_schema);
-                let typedef = s::TypeDefinition::Object(ot);
-                let def = s::Definition::TypeDefinition(typedef);
-                api.definitions.push(def);
+                if ot.name != SCHEMA_TYPE_NAME {
+                    let mut ot = ot.clone();
+                    add_collection_arguments(&mut ot.fields, input_schema);
+                    let typedef = s::TypeDefinition::Object(ot);
+                    let def = s::Definition::TypeDefinition(typedef);
+                    api.definitions.push(def);
+                }
             }
             s::TypeDefinition::Interface(it) => {
                 let mut it = it.clone();
