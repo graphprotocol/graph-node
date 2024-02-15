@@ -381,9 +381,8 @@ create table "sgd0815"."song" (
 
         unique(id)
 );
-create index brin_song
-    on "sgd0815"."song"
- using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index song_block
+    on "sgd0815"."song"(block$);
 create index attr_2_0_song_title
     on "sgd0815"."song" using btree(left("title", 256));
 create index attr_2_1_song_written_by
@@ -643,9 +642,8 @@ create table "sgd0815"."data" (
     "amount"             numeric not null,
     unique(id)
 );
-create index brin_data
-    on "sgd0815"."data"
- using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index data_block
+    on "sgd0815"."data"(block$);
 create index attr_0_0_data_timestamp
     on "sgd0815"."data" using btree("timestamp");
 create index attr_0_1_data_amount
@@ -660,9 +658,8 @@ create table "sgd0815"."stats_hour" (
     "max_price"          numeric not null,
     unique(id)
 );
-create index brin_stats_hour
-    on "sgd0815"."stats_hour"
- using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index stats_hour_block
+    on "sgd0815"."stats_hour"(block$);
 create index attr_1_0_stats_hour_timestamp
     on "sgd0815"."stats_hour" using btree("timestamp");
 create index attr_1_1_stats_hour_volume
@@ -679,9 +676,8 @@ create table "sgd0815"."stats_day" (
     "max_price"          numeric not null,
     unique(id)
 );
-create index brin_stats_day
-    on "sgd0815"."stats_day"
- using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index stats_day_block
+    on "sgd0815"."stats_day"(block$);
 create index attr_2_0_stats_day_timestamp
     on "sgd0815"."stats_day" using btree("timestamp");
 create index attr_2_1_stats_day_volume

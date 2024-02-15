@@ -147,11 +147,11 @@ impl Table {
         let (int4, int8) = catalog.minmax_ops();
 
         if self.immutable {
+            // For immutable entities, a simple BTree on block$ is sufficient
             write!(
                 out,
-                "create index brin_{table_name}\n    \
-                on {qname}\n \
-                   using brin({block} {int4}, vid {int8});\n",
+                "create index {table_name}_block\n    \
+                on {qname}({block});\n",
                 table_name = self.name,
                 qname = self.qualified_name,
                 block = BLOCK_COLUMN
