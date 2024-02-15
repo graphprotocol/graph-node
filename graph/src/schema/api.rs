@@ -1051,7 +1051,7 @@ fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(
         .map(|(name, _)| name)
         .flat_map(query_fields_for_agg_type)
         .collect::<Vec<s::Field>>();
-    let mut fulltext_fields = api
+    let mut fulltext_fields = input_schema
         .get_fulltext_directives()
         .map_err(|_| APISchemaError::FulltextSearchNonDeterministic)?
         .iter()
@@ -1311,7 +1311,7 @@ mod tests {
             subgraph::LATEST_VERSION,
         },
         prelude::{s, DeploymentHash},
-        schema::InputSchema,
+        schema::{InputSchema, SCHEMA_TYPE_NAME},
     };
     use graphql_parser::schema::*;
     use lazy_static::lazy_static;
@@ -2131,6 +2131,9 @@ type Gravatar @entity {
 "#;
         let schema = parse(SCHEMA);
 
+        // The _Schema_ type must not be copied to the API schema as it will
+        // cause GraphQL validation failures on clients
+        assert_eq!(None, schema.get_named_type(SCHEMA_TYPE_NAME));
         let query_type = schema
             .get_named_type("Query")
             .expect("Query type is missing in derived API schema");
