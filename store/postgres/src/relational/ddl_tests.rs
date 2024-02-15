@@ -85,6 +85,10 @@ fn generate_ddl() {
     let layout = test_layout(TS_GQL);
     let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(TS_SQL, &sql);
+
+    let layout = test_layout(LIFETIME_GQL);
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    check_eqv(LIFETIME_SQL, &sql);
 }
 
 #[test]
@@ -684,3 +688,183 @@ create index attr_2_1_stats_day_volume
     on "sgd0815"."stats_day" using btree("volume");
 create index attr_2_2_stats_day_max_price
     on "sgd0815"."stats_day" using btree("max_price");"#;
+
+const LIFETIME_GQL: &str = r#"
+    type Data @entity(timeseries: true) {
+        id: Int8!
+        timestamp: Int8!
+        group1: Int!
+        group2: Int!
+        amount: BigDecimal!
+    }
+
+    type Stats1 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Int8!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+
+    type Stats2 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Int8!
+        group1: Int!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+
+    type Stats3 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Int8!
+        group2: Int!
+        group1: Int!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+
+    type Stats2 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Int8!
+        group1: Int!
+        group2: Int!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+    "#;
+
+const LIFETIME_SQL: &str = r#"
+create table "sgd0815"."data" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "group_1"            int4 not null,
+    "group_2"            int4 not null,
+    "amount"             numeric not null,
+    unique(id)
+);
+create index data_block
+on "sgd0815"."data"(block$);
+create index attr_0_0_data_timestamp
+on "sgd0815"."data" using btree("timestamp");
+create index attr_0_1_data_group_1
+on "sgd0815"."data" using btree("group_1");
+create index attr_0_2_data_group_2
+on "sgd0815"."data" using btree("group_2");
+create index attr_0_3_data_amount
+on "sgd0815"."data" using btree("amount");
+
+create index data_groups0
+on "sgd0815"."data"("group_1", timestamp);
+create index data_groups1
+on "sgd0815"."data"("group_1", "group_2", timestamp);
+
+create table "sgd0815"."stats_1_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_1_hour_block
+on "sgd0815"."stats_1_hour"(block$);
+create index attr_1_0_stats_1_hour_timestamp
+on "sgd0815"."stats_1_hour" using btree("timestamp");
+create index attr_1_1_stats_1_hour_volume
+on "sgd0815"."stats_1_hour" using btree("volume");
+
+
+create table "sgd0815"."stats_1_day" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_1_day_block
+on "sgd0815"."stats_1_day"(block$);
+create index attr_2_0_stats_1_day_timestamp
+on "sgd0815"."stats_1_day" using btree("timestamp");
+create index attr_2_1_stats_1_day_volume
+on "sgd0815"."stats_1_day" using btree("volume");
+
+
+create table "sgd0815"."stats_2_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_2_hour_block
+on "sgd0815"."stats_2_hour"(block$);
+create index attr_5_0_stats_2_hour_timestamp
+on "sgd0815"."stats_2_hour" using btree("timestamp");
+create index attr_5_1_stats_2_hour_group_1
+on "sgd0815"."stats_2_hour" using btree("group_1");
+create index attr_5_2_stats_2_hour_volume
+on "sgd0815"."stats_2_hour" using btree("volume");
+
+
+create table "sgd0815"."stats_2_day" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_2_day_block
+on "sgd0815"."stats_2_day"(block$);
+create index attr_6_0_stats_2_day_timestamp
+on "sgd0815"."stats_2_day" using btree("timestamp");
+create index attr_6_1_stats_2_day_group_1
+on "sgd0815"."stats_2_day" using btree("group_1");
+create index attr_6_2_stats_2_day_volume
+on "sgd0815"."stats_2_day" using btree("volume");
+
+
+create table "sgd0815"."stats_3_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "group_2"            int4 not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_3_hour_block
+on "sgd0815"."stats_3_hour"(block$);
+create index attr_7_0_stats_3_hour_timestamp
+on "sgd0815"."stats_3_hour" using btree("timestamp");
+create index attr_7_1_stats_3_hour_group_2
+on "sgd0815"."stats_3_hour" using btree("group_2");
+create index attr_7_2_stats_3_hour_group_1
+on "sgd0815"."stats_3_hour" using btree("group_1");
+create index attr_7_3_stats_3_hour_volume
+on "sgd0815"."stats_3_hour" using btree("volume");
+
+
+create table "sgd0815"."stats_3_day" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "group_2"            int4 not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_3_day_block
+on "sgd0815"."stats_3_day"(block$);
+create index attr_8_0_stats_3_day_timestamp
+on "sgd0815"."stats_3_day" using btree("timestamp");
+create index attr_8_1_stats_3_day_group_2
+on "sgd0815"."stats_3_day" using btree("group_2");
+create index attr_8_2_stats_3_day_group_1
+on "sgd0815"."stats_3_day" using btree("group_1");
+create index attr_8_3_stats_3_day_volume
+on "sgd0815"."stats_3_day" using btree("volume");
+"#;

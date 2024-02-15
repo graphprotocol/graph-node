@@ -3,7 +3,10 @@ use std::{
     iter,
 };
 
-use graph::prelude::{BLOCK_NUMBER_MAX, ENV_VARS};
+use graph::{
+    prelude::{BLOCK_NUMBER_MAX, ENV_VARS},
+    schema::InputSchema,
+};
 
 use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
@@ -38,7 +41,7 @@ impl Layout {
         tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
         for table in tables {
-            table.as_ddl(&self.catalog, &mut out)?;
+            table.as_ddl(&self.input_schema, &self.catalog, &mut out)?;
         }
 
         Ok(out)
@@ -298,15 +301,74 @@ impl Table {
         writeln!(out)
     }
 
+    /// If `self` is the source of aggregations, create indexes on the
+    /// dimensions of each aggregation that has a cumulative aggregate. That
+    /// supports the lookup of previous aggregation values we do in the
+    /// rollup query since that filters by all dimensions with an `=` and by
+    /// timestamp with a `<`
+    fn create_aggregate_indexes(&self, schema: &InputSchema, out: &mut String) -> fmt::Result {
+        // Only consider aggregations that use `self` as the source, that
+        // contain a cumulative aggregate, and that have at least one
+        // dimension
+        let aggs: Vec<_> = schema
+            .agg_mappings()
+            .filter(|mapping| mapping.source_type(schema) == self.object)
+            .map(|mapping| mapping.aggregation(schema))
+            .filter(|agg| agg.aggregates.iter().any(|a| a.cumulative))
+            .filter(|agg| agg.dimensions().count() > 0)
+            .collect();
+
+        if aggs.is_empty() {
+            return Ok(());
+        }
+
+        // Find all unique combination of dimensions that aggregations over
+        // this table use
+        let mut groups: Vec<_> = aggs
+            .iter()
+            .map(|agg| {
+                let mut group = agg
+                    .dimensions()
+                    .map(|dim| {
+                        self.column_for_field(&dim.name)
+                            .expect("columns for dimensions exist")
+                    })
+                    .map(|col| col.name.quoted())
+                    .collect::<Vec<_>>();
+                group.sort();
+                group
+            })
+            .collect();
+        groups.sort();
+        groups.dedup();
+
+        for (idx, group) in groups.iter().enumerate() {
+            write!(
+                out,
+                "create index {table_name}_groups{idx}\n    on {qname}({dims}, timestamp);\n",
+                table_name = self.name,
+                qname = self.qualified_name,
+                dims = group.join(", ")
+            )?;
+        }
+        Ok(())
+    }
+
     /// Generate the DDL for one table, i.e. one `create table` statement
     /// and all `create index` statements for the table's columns
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    pub(crate) fn as_ddl(&self, catalog: &Catalog, out: &mut String) -> fmt::Result {
+    pub(crate) fn as_ddl(
+        &self,
+        schema: &InputSchema,
+        catalog: &Catalog,
+        out: &mut String,
+    ) -> fmt::Result {
         self.create_table(out)?;
         self.create_time_travel_indexes(catalog, out)?;
-        self.create_attribute_indexes(out)
+        self.create_attribute_indexes(out)?;
+        self.create_aggregate_indexes(schema, out)
     }
 
     pub fn exclusion_ddl(&self, out: &mut String) -> fmt::Result {

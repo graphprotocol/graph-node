@@ -12,6 +12,7 @@ use graph::{
         BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError,
         BLOCK_NUMBER_MAX,
     },
+    schema::InputSchema,
     slog::{warn, Logger},
 };
 use itertools::Itertools;
@@ -84,6 +85,7 @@ impl TablePair {
         src: Arc<Table>,
         src_nsp: Namespace,
         dst_nsp: Namespace,
+        schema: &InputSchema,
         catalog: &Catalog,
     ) -> Result<Self, StoreError> {
         let dst = src.new_like(&dst_nsp, &src.name);
@@ -92,7 +94,7 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            dst.as_ddl(catalog, &mut query)?;
+            dst.as_ddl(schema, catalog, &mut query)?;
         }
         conn.batch_execute(&query)?;
 
@@ -424,6 +426,7 @@ impl Layout {
                         table.cheap_clone(),
                         self.site.namespace.clone(),
                         dst_nsp.clone(),
+                        &self.input_schema,
                         &self.catalog,
                     )?;
                     // Copy final entities. This can happen in parallel to indexing as
