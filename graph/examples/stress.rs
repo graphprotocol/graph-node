@@ -675,7 +675,7 @@ fn stress<T: Template>(opt: &Opt) {
 /// memory used on the heap since we started inserting into the cache to
 /// the target `cache_size`
 pub fn main() {
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
     unsafe { PRINT_SAMPLES = opt.samples }
 
     // Use different Cacheables to see how the cache manages memory with

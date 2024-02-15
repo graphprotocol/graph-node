@@ -1365,8 +1365,6 @@ impl Writer {
     }
 
     async fn write(&self, batch: Batch, stopwatch: &StopwatchMetrics) -> Result<(), StoreError> {
-        const MAX_BATCH_TIME: Duration = Duration::from_secs(30);
-
         match self {
             Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch),
             Writer::Async { queue, .. } => {

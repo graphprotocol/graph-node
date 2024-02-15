@@ -1424,8 +1424,6 @@ async fn test_store_set_id() {
 async fn test_store_set_invalid_fields() {
     const UID: &str = "u1";
     const USER: &str = "User";
-    const BID: &str = "0xdeadbeef";
-    const BINARY: &str = "Binary";
     let schema = "
     type User @entity {
         id: ID!,
