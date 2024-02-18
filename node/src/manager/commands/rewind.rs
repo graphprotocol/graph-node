@@ -5,10 +5,12 @@ use std::{collections::HashSet, convert::TryFrom};
 
 use graph::anyhow::bail;
 use graph::components::store::{BlockStore as _, ChainStore as _};
+use graph::prelude::serde_json::de;
 use graph::prelude::{anyhow, BlockNumber, BlockPtr, NodeId, SubgraphStore};
-use graph_store_postgres::BlockStore;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
+use graph_store_postgres::{BlockStore, NotificationSender};
 
+use crate::manager::commands::assign::pause_or_resume;
 use crate::manager::deployment::{Deployment, DeploymentSearch};
 
 async fn block_ptr(
@@ -61,6 +63,7 @@ pub async fn run(
     searches: Vec<DeploymentSearch>,
     block_hash: Option<String>,
     block_number: Option<BlockNumber>,
+    sender: &NotificationSender,
     force: bool,
     sleep: Duration,
     start_block: bool,
@@ -104,30 +107,24 @@ pub async fn run(
     };
 
     println!("Pausing deployments");
-    let mut paused = false;
     for deployment in &deployments {
-        if let Some(node) = &deployment.node_id {
-            if !node.starts_with(PAUSED) {
-                let loc = deployment.locator();
-                let node =
-                    NodeId::new(format!("{}{}", PAUSED, node)).expect("paused_ node id is valid");
-                subgraph_store.reassign_subgraph(&loc, &node)?;
-                println!("  ... paused {}", loc);
-                paused = true;
-            }
+        let search = match searches.iter().find(|s| s.locate_unique(&primary).is_ok()) {
+            Some(s) => s,
+            None => bail!("failed to find search for deployment {:?}", deployment),
+        };
+
+        let paused = pause_or_resume(primary.clone(), &sender, search, true);
+
+        if paused.is_ok() {
+            // There's no good way to tell that a subgraph has in fact stopped
+            // indexing. We sleep and hope for the best.
+            println!(
+                "\nWaiting {}s to make sure pausing was processed",
+                sleep.as_secs()
+            );
+            thread::sleep(sleep);
         }
     }
-
-    if paused {
-        // There's no good way to tell that a subgraph has in fact stopped
-        // indexing. We sleep and hope for the best.
-        println!(
-            "\nWaiting {}s to make sure pausing was processed",
-            sleep.as_secs()
-        );
-        thread::sleep(sleep);
-    }
-
     println!("\nRewinding deployments");
     for deployment in &deployments {
         let loc = deployment.locator();
@@ -158,11 +155,12 @@ pub async fn run(
 
     println!("Resuming deployments");
     for deployment in &deployments {
-        if let Some(node) = &deployment.node_id {
-            let loc = deployment.locator();
-            let node = NodeId::new(node.clone()).expect("node id is valid");
-            subgraph_store.reassign_subgraph(&loc, &node)?;
-        }
+        let search = match searches.iter().find(|s| s.locate_unique(&primary).is_ok()) {
+            Some(s) => s,
+            None => bail!("failed to find search for deployment {:?}", deployment),
+        };
+
+        pause_or_resume(primary.clone(), &sender, search, false)?;
     }
     Ok(())
 }
