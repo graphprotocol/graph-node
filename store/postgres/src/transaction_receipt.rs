@@ -52,7 +52,7 @@ impl TryFrom<RawTransactionReceipt> for LightTransactionReceipt {
     }
 }
 
-/// Converts Vec<u8> to [u8; N], where N is the vector's expected lenght.
+/// Converts Vec<u8> to [u8; N], where N is the vector's expected length.
 /// Fails if input size is larger than output size.
 pub(crate) fn drain_vector<const N: usize>(input: Vec<u8>) -> Result<[u8; N], anyhow::Error> {
     anyhow::ensure!(input.len() <= N, "source is larger than output");
