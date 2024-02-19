@@ -1027,7 +1027,7 @@ pub(crate) fn copy_errors(
 ///
 /// Since long-running operations, like a vacuum on one of the tables in the
 /// schema, could block dropping the schema indefinitely, this operation
-/// will wait at most 2s to aquire all necessary locks, and fail if that is
+/// will wait at most 2s to acquire all necessary locks, and fail if that is
 /// not possible.
 pub fn drop_schema(
     conn: &diesel::pg::PgConnection,

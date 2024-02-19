@@ -502,7 +502,7 @@ impl FirehoseNetworks {
     }
 
     /// Returns a `HashMap` where the key is the chain's id and the key is an endpoint for this chain.
-    /// There can be mulitple keys with the same chain id but with different
+    /// There can be multiple keys with the same chain id but with different
     /// endpoint where multiple providers exist for a single chain id. Providers with the same
     /// label do not need to be tested individually, if one is working, every other endpoint in the
     /// pool should also work.

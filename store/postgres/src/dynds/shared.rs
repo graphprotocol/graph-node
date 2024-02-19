@@ -136,7 +136,7 @@ pub(super) fn insert(
                     Some(param) => param,
                     None => {
                         return Err(constraint_violation!(
-                            "dynamic data sources must have an addres",
+                            "dynamic data sources must have an address",
                         ));
                     }
                 };
