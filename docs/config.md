@@ -127,7 +127,8 @@ A `provider` is an object with the following characteristics:
 - `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
 - `url`: the URL for the provider
 - `features`: an array of features that the provider supports, either empty
-  or any combination of `traces` and `archive`
+  or any combination of `traces` and `archive` for Web3 providers, or
+  `compression` and `filters` for Firehose providers
 - `headers`: HTTP headers to be added on every request. Defaults to none.
 - `limit`: the maximum number of subgraphs that can use this provider.
   Defaults to unlimited. At least one provider should be unlimited,
@@ -143,7 +144,8 @@ The following example configures three chains, `mainnet`, `sepolia` and `near-ma
 blocks for `mainnet` are stored in the `vip` shard and blocks for `sepolia`
 are stored in the primary shard. The `mainnet` chain can use two different
 providers, whereas `sepolia` only has one provider. The `near-mainnet` chain expects data from
-the `near` protocol
+the `near` protocol via a Firehose, where the Firehose offers the `compression` and `filters`
+optimisations.
 
 ```toml
 [chains]
@@ -161,7 +163,7 @@ provider = [ { label = "sepolia", url = "http://..", features = [] } ]
 [chains.near-mainnet]
 shard = "blocks_b"
 protocol = "near"
-provider = [ { label = "near", url = "http://..", features = [] } ]
+provider = [ { label = "near", details = { type = "firehose", url = "https://..", token = "", features = ["compression", "filters"] } } ]
 ```
 
 ### Controlling the number of subgraphs using a provider
