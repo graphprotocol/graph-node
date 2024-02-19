@@ -21,16 +21,9 @@ use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStatus;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::Shard;
-use graph_store_postgres::Storage;
 use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
-
-#[derive(QueryableByName, Debug)]
-struct ChainIdSeq {
-    #[sql_type = "diesel::sql_types::BigInt"]
-    last_value: i64,
-}
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
@@ -185,18 +178,9 @@ pub fn change_block_cache_shard(
         let ident = chain_store.chain_identifier.clone();
         let shard = Shard::new(shard.to_string())?;
 
-        // Fetch the current last_value from the sequence
-        let result = sql_query("SELECT last_value FROM chains_id_seq").get_result::<ChainIdSeq>(&conn)?;
+        let chain = BlockStore::allocate_chain(&conn, &chain_name, &shard, &ident)?;
 
-        let last_val = result.last_value;
-
-        let next_val = last_val + 1;
-        let namespace = format!("chain{}", next_val);
-        let storage= Storage::new(namespace.to_string()).map_err(|e| {
-            anyhow!("Failed to create storage: {}", e)
-        })?;
-
-        store.add_chain_store_inner(&chain_name, &shard, &ident, storage,ChainStatus::Ingestible, true)?;
+        store.add_chain_store(&chain,ChainStatus::Ingestible, true)?;
 
         // Drop the foreign key constraint on deployment_schemas
         sql_query(
@@ -206,7 +190,7 @@ pub fn change_block_cache_shard(
 
         // Update the current chain name to chain-old
         update_chain_name(&conn, &chain_name, &new_name)?;
-        chain_store.update_name(&new_name)?;
+
 
         // Create a new chain with the name in the destination shard
         let _=  add_chain(&conn, &chain_name, &ident, &shard)?;
@@ -218,6 +202,8 @@ pub fn change_block_cache_shard(
          .execute(&conn)?;
         Ok(())
     })?;
+
+    chain_store.update_name(&new_name)?;
 
     println!(
         "Changed block cache shard for {} from {} to {}",

@@ -4,6 +4,11 @@ use std::{
     time::Duration,
 };
 
+use anyhow::anyhow;
+use diesel::{
+    r2d2::{ConnectionManager, PooledConnection},
+    sql_query, PgConnection, RunQueryDsl,
+};
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
@@ -20,6 +25,8 @@ use crate::{
     primary::Mirror as PrimaryMirror,
     ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
+
+use self::primary::Chain;
 
 #[cfg(debug_assertions)]
 pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
@@ -328,30 +335,63 @@ impl BlockStore {
             .expect("the primary is never disabled")
     }
 
-    pub fn add_chain_store_inner(
-        &self,
+    pub fn allocate_chain(
+        conn: &PooledConnection<ConnectionManager<PgConnection>>,
         name: &String,
         shard: &Shard,
         ident: &ChainIdentifier,
-        storage: Storage,
+    ) -> Result<Chain, StoreError> {
+        #[derive(QueryableByName, Debug)]
+        struct ChainIdSeq {
+            #[sql_type = "diesel::sql_types::BigInt"]
+            last_value: i64,
+        }
+
+        // Fetch the current last_value from the sequence
+        let result =
+            sql_query("SELECT last_value FROM chains_id_seq").get_result::<ChainIdSeq>(conn)?;
+
+        let last_val = result.last_value;
+
+        let next_val = last_val + 1;
+        let namespace = format!("chain{}", next_val);
+        let storage =
+            Storage::new(namespace.to_string()).map_err(|e| StoreError::Unknown(anyhow!(e)))?;
+
+        let chain = Chain {
+            id: next_val as i32,
+            name: name.clone(),
+            shard: shard.clone(),
+            net_version: ident.net_version.clone(),
+            genesis_block: ident.genesis_block_hash.hash_hex(),
+            storage: storage.clone(),
+        };
+
+        Ok(chain)
+    }
+
+    pub fn add_chain_store(
+        &self,
+        chain: &primary::Chain,
         status: ChainStatus,
         create: bool,
     ) -> Result<Arc<ChainStore>, StoreError> {
         let pool = self
             .pools
-            .get(shard)
-            .ok_or_else(|| constraint_violation!("there is no pool for shard {}", shard))?
+            .get(&chain.shard)
+            .ok_or_else(|| constraint_violation!("there is no pool for shard {}", chain.shard))?
             .clone();
         let sender = ChainHeadUpdateSender::new(
             self.mirror.primary().clone(),
-            name.clone(),
+            chain.name.clone(),
             self.sender.clone(),
         );
-        let logger = self.logger.new(o!("network" => name.clone()));
+        let ident = chain.network_identifier()?;
+        let logger = self.logger.new(o!("network" => chain.name.clone()));
         let store = ChainStore::new(
             logger,
-            name.clone(),
-            storage.clone(),
+            chain.name.clone(),
+            chain.storage.clone(),
             &ident,
             status,
             sender,
@@ -366,24 +406,8 @@ impl BlockStore {
         self.stores
             .write()
             .unwrap()
-            .insert(name.clone(), store.clone());
+            .insert(chain.name.clone(), store.clone());
         Ok(store)
-    }
-
-    pub fn add_chain_store(
-        &self,
-        chain: &primary::Chain,
-        status: ChainStatus,
-        create: bool,
-    ) -> Result<Arc<ChainStore>, StoreError> {
-        self.add_chain_store_inner(
-            &chain.name,
-            &chain.shard,
-            &chain.network_identifier()?,
-            chain.storage.clone(),
-            status,
-            create,
-        )
     }
 
     /// Return a map from network name to the network's chain head pointer.
