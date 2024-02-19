@@ -30,5 +30,5 @@ secp256k1 = { version = "0.21", features = ["recovery"] }
 termcolor = "1.4.1"
 
 [dev-dependencies]
-anyhow = "1.0.79"
+anyhow = "1.0.75"
 tokio-stream = "0.1"
