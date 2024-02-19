@@ -1093,8 +1093,8 @@ impl Action {
     /// Return `true` if the action indicates that we are done with a block
     fn block_finished(&self) -> bool {
         match self {
-            Action::Continue | Action::Restart => false,
-            Action::Stop => true,
+            Action::Restart => false,
+            Action::Continue | Action::Stop => true,
         }
     }
 }
