@@ -168,7 +168,7 @@ impl BlockStreamMapper<Chain> for Mapper {
 fn parse_changes(
     changes: &EntityChanges,
     schema: &InputSchema,
-) -> anyhow::Result<Vec<ParsedChanges>> {
+) -> Result<Vec<ParsedChanges>, SubstreamsError> {
     let mut parsed_changes = vec![];
     for entity_change in changes.entity_changes.iter() {
         let mut parsed_data: HashMap<Word, Value> = HashMap::default();

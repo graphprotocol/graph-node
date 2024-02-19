@@ -465,12 +465,15 @@ pub enum SubstreamsError {
     #[error("invalid undo message")]
     InvalidUndoError,
 
+    #[error("entity validation failed {0}")]
+    EntityValidationError(#[from] crate::data::store::EntityValidationError),
+
     /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
     /// Some unknown error occurred
-    #[error("unknown error")]
+    #[error("unknown error {0}")]
     UnknownError(#[from] anyhow::Error),
 
     #[error("multiple module output error")]
@@ -483,9 +486,28 @@ pub enum SubstreamsError {
     UnexpectedStoreDeltaOutput,
 }
 
+impl SubstreamsError {
+    pub fn is_deterministic(&self) -> bool {
+        use SubstreamsError::*;
+
+        match self {
+            EntityValidationError(_) => true,
+            MissingClockError
+            | InvalidUndoError
+            | DecodingError(_)
+            | UnknownError(_)
+            | MultipleModuleOutputError
+            | ModuleOutputNotPresentOrUnexpected
+            | UnexpectedStoreDeltaOutput => false,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum BlockStreamError {
-    #[error("block stream error")]
+    #[error("substreams error: {0}")]
+    SubstreamsError(#[from] SubstreamsError),
+    #[error("block stream error {0}")]
     Unknown(#[from] anyhow::Error),
     #[error("block stream fatal error")]
     Fatal(String),
