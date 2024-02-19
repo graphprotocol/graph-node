@@ -18,6 +18,9 @@ pub const API_VERSION_0_0_7: Version = Version::new(0, 0, 7);
 /// Enables validation for fields that doesnt exist in the schema for an entity.
 pub const API_VERSION_0_0_8: Version = Version::new(0, 0, 8);
 
+/// Enables new host function `eth_get_balance`
+pub const API_VERSION_0_0_9: Version = Version::new(0, 0, 9);
+
 /// Before this check was introduced, there were already subgraphs in the wild with spec version
 /// 0.0.3, due to confusion with the api version. To avoid breaking those, we accept 0.0.3 though it
 /// doesn't exist.

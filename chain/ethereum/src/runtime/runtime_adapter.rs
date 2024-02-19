@@ -7,11 +7,12 @@ use crate::{
     EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
     ENV_VARS,
 };
-use anyhow::{Context, Error};
+use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::HostMetrics;
 use graph::data::store::scalar::BigInt;
+use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
@@ -152,6 +153,12 @@ fn eth_get_balance(
     ctx: HostFnCtx<'_>,
     wasm_ptr: u32,
 ) -> Result<AscPtr<AscBigInt>, HostExportError> {
+    if ctx.heap.api_version() < API_VERSION_0_0_9 {
+        return Err(HostExportError::Deterministic(anyhow!(
+            "ethereum.getBalance call is not supported before API version 0.0.9"
+        )));
+    }
+
     let logger = &ctx.logger;
     let block_ptr = &ctx.block_ptr;
 
