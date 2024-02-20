@@ -100,33 +100,52 @@ time the configuration is changed to make sure that the connection pools
 are what is expected. Here, `$all_nodes` should be a list of all the node
 names that will use this configuration file.
 
-## Configuring Ethereum Providers
+## Configuring Chains
 
-The `[chains]` section controls the ethereum providers that `graph-node`
+The `[chains]` section controls the providers that `graph-node`
 connects to, and where blocks and other metadata for each chain are
 stored. The section consists of the name of the node doing block ingestion
-(currently not used), and a list of chains. The configuration for a chain
-`name` is specified in the section `[chains.<name>]`, and consists of the
-`shard` where chain data is stored and a list of providers for that
-chain. For each provider, the following information must be given:
+(currently not used), and a list of chains.
 
-- `label`: a label that is used when logging information about that
-  provider (not implemented yet)
+The configuration for a chain `name` is specified in the section
+`[chains.<name>]`, with the following:
+
+- `shard`: where chain data is stored
+- `protocol`: the protocol type being indexed, default `ethereum`
+(alternatively `near`, `cosmos`,`arweave`,`starknet`)
+- `polling_interval`: the polling interval for the block ingestor (default 500ms)
+- `provider`: a list of providers for that chain
+
+A `provider` is an object with the following characteristics:
+
+- `label`: the name of the provider, which will appear in logs
+- `details`: provider details
+
+`details` includes the following:
+
+- `type`: one of `web3` (default), `firehose`, `substreams` or `web3call`
 - `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
 - `url`: the URL for the provider
 - `features`: an array of features that the provider supports, either empty
-  or any combination of `traces` and `archive`
+  or any combination of `traces` and `archive` for Web3 providers, or
+  `compression` and `filters` for Firehose providers
 - `headers`: HTTP headers to be added on every request. Defaults to none.
 - `limit`: the maximum number of subgraphs that can use this provider.
   Defaults to unlimited. At least one provider should be unlimited,
   otherwise `graph-node` might not be able to handle all subgraphs. The
   tracking for this is approximate, and a small amount of deviation from
   this value should be expected. The deviation will be less than 10.
+- `token`: bearer token, for Firehose and Substreams providers
 
-The following example configures two chains, `mainnet` and `kovan`, where
-blocks for `mainnet` are stored in the `vip` shard and blocks for `kovan`
+Note that for backwards compatibility, Web3 provider `details` can be specified at the "top level" of
+the `provider`.
+
+The following example configures three chains, `mainnet`, `sepolia` and `near-mainnet`, where
+blocks for `mainnet` are stored in the `vip` shard and blocks for `sepolia`
 are stored in the primary shard. The `mainnet` chain can use two different
-providers, whereas `kovan` only has one provider.
+providers, whereas `sepolia` only has one provider. The `near-mainnet` chain expects data from
+the `near` protocol via a Firehose, where the Firehose offers the `compression` and `filters`
+optimisations.
 
 ```toml
 [chains]
@@ -137,9 +156,14 @@ provider = [
   { label = "mainnet1", url = "http://..", features = [], headers = { Authorization = "Bearer foo" } },
   { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }
 ]
-[chains.kovan]
+[chains.sepolia]
 shard = "primary"
-provider = [ { label = "kovan", url = "http://..", features = [] } ]
+provider = [ { label = "sepolia", url = "http://..", features = [] } ]
+
+[chains.near-mainnet]
+shard = "blocks_b"
+protocol = "near"
+provider = [ { label = "near", details = { type = "firehose", url = "https://..", token = "", features = ["compression", "filters"] } } ]
 ```
 
 ### Controlling the number of subgraphs using a provider
