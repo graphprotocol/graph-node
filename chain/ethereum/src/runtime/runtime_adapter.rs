@@ -51,6 +51,9 @@ const ETH_CALL_GAS: u32 = 50_000_000;
 // [1] - https://www.sciencedirect.com/science/article/abs/pii/S0166531620300900
 pub const ETHEREUM_CALL: Gas = Gas::new(5_000_000_000);
 
+// TODO: Determine the appropriate gas cost for `ETH_GET_BALANCE`, initially aligned with `ETHEREUM_CALL`.
+pub const ETH_GET_BALANCE: Gas = Gas::new(5_000_000_000);
+
 pub struct RuntimeAdapter {
     pub eth_adapters: Arc<EthereumNetworkAdapters>,
     pub call_cache: Arc<dyn EthereumCallCache>,
@@ -153,6 +156,9 @@ fn eth_get_balance(
     ctx: HostFnCtx<'_>,
     wasm_ptr: u32,
 ) -> Result<AscPtr<AscBigInt>, HostExportError> {
+    ctx.gas
+        .consume_host_fn_with_metrics(ETH_GET_BALANCE, "eth_get_balance")?;
+
     if ctx.heap.api_version() < API_VERSION_0_0_9 {
         return Err(HostExportError::Deterministic(anyhow!(
             "ethereum.getBalance call is not supported before API version 0.0.9"
