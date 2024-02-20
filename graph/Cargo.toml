@@ -12,7 +12,13 @@ bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "1.0.1"
 cid = "0.11.0"
 defer = "0.1"
-diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
+diesel = { version = "1.4.8", features = [
+    "postgres",
+    "serde_json",
+    "numeric",
+    "r2d2",
+    "chrono",
+] }
 diesel_derives = "1.4"
 chrono = "0.4.31"
 envconfig = "0.10.0"
@@ -37,11 +43,14 @@ serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_regex = "1.1.0"
 serde_yaml = "0.9.21"
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+slog = { version = "2.7.0", features = [
+    "release_max_level_trace",
+    "max_level_trace",
+] }
 # TODO: This should be reverted to the latest version once it's published
 # stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 # stable-hash = { version = "0.4.2" }
-stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main"}
+stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main" }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash", doc = false }
 strum = "0.21.0"
 strum_macros = "0.25.3"
@@ -50,7 +59,14 @@ slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
 petgraph = "0.6.4"
 tiny-keccak = "1.5.0"
-tokio = { version = "1.35.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
+tokio = { version = "1.35.1", features = [
+    "time",
+    "sync",
+    "macros",
+    "test-util",
+    "rt-multi-thread",
+    "parking_lot",
+] }
 tokio-stream = { version = "0.1.14", features = ["sync"] }
 tokio-retry = "0.3.0"
 toml = "0.8.8"
@@ -69,7 +85,9 @@ itertools = "0.12.0"
 
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "krishna/block-hash-for-balance", features = ["arbitrary_precision"] }
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = [
+    "arbitrary_precision",
+] }
 serde_plain = "1.0.2"
 
 [dev-dependencies]
