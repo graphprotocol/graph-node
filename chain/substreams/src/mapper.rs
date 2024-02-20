@@ -4,7 +4,8 @@ use std::str::FromStr;
 use crate::codec::{entity_change, EntityChanges};
 use anyhow::{anyhow, Error};
 use graph::blockchain::block_stream::{
-    BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor, SubstreamsError,
+    BlockStreamError, BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor,
+    SubstreamsError,
 };
 use graph::blockchain::BlockTime;
 use graph::data::store::scalar::Bytes;
@@ -29,7 +30,10 @@ pub struct WasmBlockMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for WasmBlockMapper {
-    fn decode_block(&self, _output: Option<&[u8]>) -> Result<Option<crate::Block>, Error> {
+    fn decode_block(
+        &self,
+        _output: Option<&[u8]>,
+    ) -> Result<Option<crate::Block>, BlockStreamError> {
         unreachable!("WasmBlockMapper does not do block decoding")
     }
 
@@ -37,7 +41,7 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
         &self,
         _logger: &Logger,
         _block: crate::Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         unreachable!("WasmBlockMapper does not do trigger decoding")
     }
 
@@ -47,7 +51,7 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
         clock: Clock,
         cursor: FirehoseCursor,
         block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         let Clock {
             id,
             number,
@@ -56,7 +60,7 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
 
         let block_ptr = BlockPtr {
             hash: BlockHash::from(id.into_bytes()),
-            number: BlockNumber::from(TryInto::<i32>::try_into(number)?),
+            number: BlockNumber::from(TryInto::<i32>::try_into(number).map_err(Error::from)?),
         };
 
         let block_data = block.into_boxed_slice();
@@ -71,7 +75,7 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
                 );
                 return Err(anyhow!(
                     "Substream block is missing a timestamp at cursor {cursor}, block number {number}"
-                ));
+                )).map_err(BlockStreamError::from);
             }
             Some(ts) => BlockTime::since_epoch(ts.seconds, ts.nanos as u32),
         };
@@ -100,7 +104,7 @@ pub struct Mapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for Mapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<Block>, Error> {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<Block>, BlockStreamError> {
         let changes: EntityChanges = match output {
             Some(msg) => Message::decode(msg).map_err(SubstreamsError::DecodingError)?,
             None => EntityChanges {
@@ -130,7 +134,7 @@ impl BlockStreamMapper<Chain> for Mapper {
         &self,
         logger: &Logger,
         block: Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         let mut triggers = vec![];
         if block.changes.entity_changes.len() >= 1 {
             triggers.push(TriggerData {});
@@ -145,9 +149,9 @@ impl BlockStreamMapper<Chain> for Mapper {
         clock: Clock,
         cursor: FirehoseCursor,
         block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
-        let block_number: BlockNumber = clock.number.try_into()?;
-        let block_hash = clock.id.as_bytes().to_vec().try_into()?;
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
+        let block_number: BlockNumber = clock.number.try_into().map_err(Error::from)?;
+        let block_hash = clock.id.as_bytes().to_vec().into();
 
         let block = self
             .decode_block(Some(&block))?
@@ -215,9 +219,7 @@ fn parse_changes(
                         .entry(Word::from(field.name.as_str()))
                         .or_insert(Value::Null) = value;
                 }
-                let entity = schema
-                    .make_entity(parsed_data)
-                    .map_err(anyhow::Error::from)?;
+                let entity = schema.make_entity(parsed_data)?;
 
                 ParsedChanges::Upsert { key, entity }
             }

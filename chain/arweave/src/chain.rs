@@ -35,7 +35,9 @@ use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
 };
-use graph::blockchain::block_stream::{BlockStream, BlockStreamMapper, FirehoseCursor};
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamError, BlockStreamMapper, FirehoseCursor,
+};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -259,10 +261,17 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for FirehoseMapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<codec::Block>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&[u8]>,
+    ) -> Result<Option<codec::Block>, BlockStreamError> {
         let block = match output {
             Some(block) => codec::Block::decode(block)?,
-            None => anyhow::bail!("Arweave mapper is expected to always have a block"),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Arweave mapper is expected to always have a block"
+                ))?
+            }
         };
 
         Ok(Some(block))
@@ -272,10 +281,11 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         block: codec::Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         self.adapter
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
+            .map_err(BlockStreamError::from)
     }
     async fn handle_substreams_block(
         &self,
@@ -283,7 +293,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         _clock: Clock,
         _cursor: FirehoseCursor,
         _block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         unimplemented!()
     }
 }
@@ -319,12 +329,17 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode_block(Some(&any_block.value.as_ref()))?.unwrap();
+        let block = self
+            .decode_block(Some(&any_block.value.as_ref()))
+            .map_err(Error::from)?
+            .unwrap();
 
         use ForkStep::*;
         match step {
             StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                self.block_with_triggers(&logger, block).await?,
+                self.block_with_triggers(&logger, block)
+                    .await
+                    .map_err(Error::from)?,
                 FirehoseCursor::from(response.cursor.clone()),
             )),
 

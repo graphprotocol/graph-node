@@ -55,7 +55,7 @@ use crate::{
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamMapper, FirehoseCursor,
+    BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
 };
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -745,10 +745,15 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for FirehoseMapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<BlockFinality>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&[u8]>,
+    ) -> Result<Option<BlockFinality>, BlockStreamError> {
         let block = match output {
             Some(block) => codec::Block::decode(block)?,
-            None => anyhow::bail!("ethereum mapper is expected to always have a block"),
+            None => Err(anyhow::anyhow!(
+                "ethereum mapper is expected to always have a block"
+            ))?,
         };
 
         // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
@@ -762,10 +767,11 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         block: BlockFinality,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         self.adapter
             .triggers_in_block(logger, block, &self.filter)
             .await
+            .map_err(BlockStreamError::from)
     }
 
     async fn handle_substreams_block(
@@ -774,7 +780,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         _clock: Clock,
         _cursor: FirehoseCursor,
         _block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         unimplemented!()
     }
 }
