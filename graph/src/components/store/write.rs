@@ -1,5 +1,5 @@
 //! Data structures and helpers for writing subgraph changes to the store
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
@@ -41,14 +41,14 @@ pub enum EntityModification {
     /// Insert the entity
     Insert {
         key: EntityKey,
-        data: Entity,
+        data: Arc<Entity>,
         block: BlockNumber,
         end: Option<BlockNumber>,
     },
     /// Update the entity by overwriting it
     Overwrite {
         key: EntityKey,
-        data: Entity,
+        data: Arc<Entity>,
         block: BlockNumber,
         end: Option<BlockNumber>,
     },
@@ -78,15 +78,21 @@ impl<'a> TryFrom<&'a EntityModification> for EntityWrite<'a> {
                 data,
                 block,
                 end,
-            }
-            | EntityModification::Overwrite {
+            } => Ok(EntityWrite {
+                id: &key.entity_id,
+                entity: data,
+                causality_region: key.causality_region,
+                block: *block,
+                end: *end,
+            }),
+            EntityModification::Overwrite {
                 key,
                 data,
                 block,
                 end,
             } => Ok(EntityWrite {
                 id: &key.entity_id,
-                entity: data,
+                entity: &data,
                 causality_region: key.causality_region,
                 block: *block,
                 end: *end,
@@ -257,7 +263,7 @@ impl EntityModification {
     pub fn insert(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
         EntityModification::Insert {
             key,
-            data,
+            data: Arc::new(data),
             block,
             end: None,
         }
@@ -266,7 +272,7 @@ impl EntityModification {
     pub fn overwrite(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
         EntityModification::Overwrite {
             key,
-            data,
+            data: Arc::new(data),
             block,
             end: None,
         }
@@ -904,6 +910,8 @@ impl<'a> Iterator for WriteChunkIter<'a> {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use crate::{
         components::store::{
             write::EntityModification, write::EntityOp, BlockNumber, EntityType, StoreError,
@@ -1007,26 +1015,26 @@ mod test {
             match value {
                 Ins(block) => EntityModification::Insert {
                     key,
-                    data: entity! { SCHEMA => id: "one", count: block },
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: None,
                 },
                 Ovw(block) => EntityModification::Overwrite {
                     key,
-                    data: entity! { SCHEMA => id: "one", count: block },
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: None,
                 },
                 Rem(block) => EntityModification::Remove { key, block },
                 InsC(block, end) => EntityModification::Insert {
                     key,
-                    data: entity! { SCHEMA => id: "one", count: block },
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: Some(end),
                 },
                 OvwC(block, end) => EntityModification::Overwrite {
                     key,
-                    data: entity! { SCHEMA => id: "one", count: block },
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: Some(end),
                 },

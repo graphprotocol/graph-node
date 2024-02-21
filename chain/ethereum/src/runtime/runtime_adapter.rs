@@ -118,7 +118,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
 fn ethereum_call(
     eth_adapter: &EthereumAdapter,
     call_cache: Arc<dyn EthereumCallCache>,
-    ctx: HostFnCtx<'_>,
+    ctx: HostFnCtx,
     wasm_ptr: u32,
     abis: &[Arc<MappingABI>],
     eth_call_gas: Option<u32>,

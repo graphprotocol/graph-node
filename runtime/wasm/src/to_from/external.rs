@@ -407,6 +407,7 @@ impl From<u32> for LogLevel {
 impl<T: AscValue> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscWrapped<T>, HostExportError> {

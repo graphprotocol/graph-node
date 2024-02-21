@@ -1,5 +1,4 @@
 use ethabi;
-use semver::Version;
 
 use graph::{
     data::store,
@@ -13,6 +12,7 @@ use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
 
 use crate::asc_abi::{v0_0_4, v0_0_5};
+use semver::Version;
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.

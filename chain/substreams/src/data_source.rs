@@ -4,8 +4,8 @@ use anyhow::{anyhow, Context, Error};
 use graph::{
     blockchain,
     cheap_clone::CheapClone,
-    components::link_resolver::LinkResolver,
-    prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link},
+    components::{link_resolver::LinkResolver, subgraph::InstanceDSTemplateInfo},
+    prelude::{async_trait, BlockNumber, Link},
     slog::Logger,
 };
 
@@ -35,7 +35,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!("Substreams does not support templates"))
     }
 

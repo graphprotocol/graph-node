@@ -3027,7 +3027,7 @@ impl<'a> SortKey<'a> {
                     child_table,
                     parent_join_column: parent_column,
                     child_join_column: child_column,
-                    /// Sort by this column
+                    // Sort by this column
                     sort_by_column,
                     prefix: "cc".to_string(),
                     direction,

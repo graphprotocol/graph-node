@@ -30,6 +30,7 @@ impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
 impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: TypedArray<T>,
+
         heap: &H,
         gas: &GasCounter,
         _depth: usize,
@@ -41,6 +42,7 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
 impl<T: AscValue + Send + Sync, const LEN: usize> FromAscObj<TypedArray<T>> for [T; LEN] {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: TypedArray<T>,
+
         heap: &H,
         gas: &GasCounter,
         _depth: usize,
@@ -119,6 +121,7 @@ impl FromAscObj<AscString> for String {
 impl FromAscObj<AscString> for Word {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_string: AscString,
+
         heap: &H,
         gas: &GasCounter,
         depth: usize,

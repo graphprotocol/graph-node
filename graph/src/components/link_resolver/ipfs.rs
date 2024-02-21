@@ -1,17 +1,18 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::env::EnvVars;
+use crate::util::futures::RetryConfigNoTimeout;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use futures01::{stream::poll_fn, try_ready};
+use futures::{stream::poll_fn, try_ready};
+use futures::{Async, Poll};
 use futures03::stream::FuturesUnordered;
-use graph::env::EnvVars;
-use graph::util::futures::RetryConfigNoTimeout;
 use lru_time_cache::LruCache;
 use serde_json::Value;
 
-use graph::{
+use crate::{
     ipfs_client::{IpfsClient, StatApi},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
@@ -20,7 +21,7 @@ fn retry_policy<I: Send + Sync>(
     always_retry: bool,
     op: &'static str,
     logger: &Logger,
-) -> RetryConfigNoTimeout<I, graph::prelude::reqwest::Error> {
+) -> RetryConfigNoTimeout<I, crate::prelude::reqwest::Error> {
     // Even if retries were not requested, networking errors are still retried until we either get
     // a valid HTTP response or a timeout.
     if always_retry {
@@ -107,7 +108,7 @@ fn restrict_file_size(path: &str, size: u64, max_file_bytes: usize) -> Result<()
 }
 
 #[derive(Clone)]
-pub struct LinkResolver {
+pub struct IpfsResolver {
     clients: Arc<Vec<IpfsClient>>,
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
     timeout: Duration,
@@ -115,7 +116,7 @@ pub struct LinkResolver {
     env_vars: Arc<EnvVars>,
 }
 
-impl LinkResolver {
+impl IpfsResolver {
     pub fn new(clients: Vec<IpfsClient>, env_vars: Arc<EnvVars>) -> Self {
         Self {
             clients: Arc::new(clients.into_iter().collect()),
@@ -129,7 +130,7 @@ impl LinkResolver {
     }
 }
 
-impl Debug for LinkResolver {
+impl Debug for IpfsResolver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LinkResolver")
             .field("timeout", &self.timeout)
@@ -139,14 +140,14 @@ impl Debug for LinkResolver {
     }
 }
 
-impl CheapClone for LinkResolver {
+impl CheapClone for IpfsResolver {
     fn cheap_clone(&self) -> Self {
         self.clone()
     }
 }
 
 #[async_trait]
-impl LinkResolverTrait for LinkResolver {
+impl LinkResolverTrait for IpfsResolver {
     fn with_timeout(&self, timeout: Duration) -> Box<dyn LinkResolverTrait> {
         let mut s = self.cheap_clone();
         s.timeout = timeout;
@@ -326,7 +327,7 @@ impl LinkResolverTrait for LinkResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graph::env::EnvVars;
+    use crate::env::EnvVars;
     use serde_json::json;
 
     #[tokio::test]
@@ -336,12 +337,12 @@ mod tests {
 
         let file: &[u8] = &[0u8; 201];
         let client = IpfsClient::localhost();
-        let resolver = super::LinkResolver::new(vec![client.clone()], Arc::new(env_vars));
+        let resolver = super::IpfsResolver::new(vec![client.clone()], Arc::new(env_vars));
 
         let logger = Logger::root(slog::Discard, o!());
 
         let link = client.add(file.into()).await.unwrap().hash;
-        let err = LinkResolver::cat(&resolver, &logger, &Link { link: link.clone() })
+        let err = IpfsResolver::cat(&resolver, &logger, &Link { link: link.clone() })
             .await
             .unwrap_err();
         assert_eq!(
@@ -355,12 +356,12 @@ mod tests {
 
     async fn json_round_trip(text: &'static str, env_vars: EnvVars) -> Result<Vec<Value>, Error> {
         let client = IpfsClient::localhost();
-        let resolver = super::LinkResolver::new(vec![client.clone()], Arc::new(env_vars));
+        let resolver = super::IpfsResolver::new(vec![client.clone()], Arc::new(env_vars));
 
         let logger = Logger::root(slog::Discard, o!());
         let link = client.add(text.as_bytes().into()).await.unwrap().hash;
 
-        let stream = LinkResolver::json_stream(&resolver, &logger, &Link { link }).await?;
+        let stream = IpfsResolver::json_stream(&resolver, &logger, &Link { link }).await?;
         stream.map_ok(|sv| sv.value).try_collect().await
     }
 

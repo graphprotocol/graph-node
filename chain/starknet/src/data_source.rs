@@ -1,9 +1,12 @@
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Block as BlockchainBlock, TriggerWithHandler},
-    components::{link_resolver::LinkResolver, store::StoredDynamicDataSource},
+    components::{
+        link_resolver::LinkResolver, store::StoredDynamicDataSource,
+        subgraph::InstanceDSTemplateInfo,
+    },
     data::subgraph::{DataSourceContext, SubgraphManifestValidationError},
-    prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Deserialize, Link, Logger},
+    prelude::{async_trait, BlockNumber, Deserialize, Link, Logger},
     semver,
 };
 use sha3::{Digest, Keccak256};
@@ -88,7 +91,10 @@ pub struct DataSourceTemplate;
 pub struct UnresolvedDataSourceTemplate;
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!("StarkNet subgraphs do not support templates"))
     }
 

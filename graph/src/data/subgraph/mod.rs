@@ -443,7 +443,7 @@ pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {
         if let Payload::ImportSection(s) = payload? {
             for import in s {
                 let import = import?;
-                if import.field == Some(host_fn) {
+                if import.name == host_fn {
                     return Ok(true);
                 }
             }

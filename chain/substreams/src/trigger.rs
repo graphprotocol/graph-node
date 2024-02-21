@@ -194,19 +194,19 @@ impl<T> graph::prelude::TriggerProcessor<Chain, T> for TriggerProcessor
 where
     T: RuntimeHostBuilder<Chain>,
 {
-    async fn process_trigger(
-        &self,
+    async fn process_trigger<'a>(
+        &'a self,
         logger: &Logger,
-        _: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
+        _: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
         block: &Arc<Block>,
         _trigger: &data_source::TriggerData<Chain>,
-        mut state: BlockState<Chain>,
+        mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         _debug_fork: &Option<Arc<dyn SubgraphFork>>,
         _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
         _instrument: bool,
-    ) -> Result<BlockState<Chain>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         for parsed_change in block.parsed_changes.clone().into_iter() {
             match parsed_change {
                 ParsedChanges::Unset => {

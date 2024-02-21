@@ -1,5 +1,3 @@
-use wasmtime::Trap;
-
 use graph::runtime::DeterministicHostError;
 
 use crate::module::IntoTrap;
@@ -26,8 +24,5 @@ pub enum DeterminismLevel {
 impl IntoTrap for DeterministicHostError {
     fn determinism_level(&self) -> DeterminismLevel {
         DeterminismLevel::Deterministic
-    }
-    fn into_trap(self) -> Trap {
-        Trap::from(self.inner())
     }
 }

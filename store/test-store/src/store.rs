@@ -226,7 +226,7 @@ pub async fn create_test_subgraph_with_features(
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
         spec_version: Version::new(1, 0, 0),
-        features: features,
+        features,
         description: Some(format!("manifest for {}", subgraph_id)),
         repository: Some(format!("repo for {}", subgraph_id)),
         schema: schema.clone(),

@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
+use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::data_source::CausalityRegion;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
@@ -22,8 +23,8 @@ use graph::{
         ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
         serde_json, warn,
         web3::types::{Log, Transaction, H256},
-        BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, EthereumCall,
-        LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
+        BlockNumber, CheapClone, Deserialize, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
     },
 };
 
@@ -59,14 +60,20 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        let DataSourceTemplateInfo {
-            template,
+    fn from_template_info(
+        info: InstanceDSTemplateInfo,
+        ds_template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
+        // Note: There clearly is duplication between the data in `ds_template and the `template`
+        // field here. Both represent a template definition, would be good to unify them.
+        let InstanceDSTemplateInfo {
+            template: _,
             params,
             context,
             creation_block,
         } = info;
-        let template = template.into_onchain().ok_or(anyhow!(
+
+        let template = ds_template.as_onchain().ok_or(anyhow!(
             "Cannot create onchain data source from offchain template"
         ))?;
 
@@ -94,14 +101,14 @@ impl blockchain::DataSource<Chain> for DataSource {
             .with_context(|| format!("template `{}`", template.name))?;
 
         Ok(DataSource {
-            kind: template.kind,
-            network: template.network,
-            name: template.name,
+            kind: template.kind.clone(),
+            network: template.network.clone(),
+            name: template.name.clone(),
             manifest_idx: template.manifest_idx,
             address: Some(address),
             start_block: creation_block,
             end_block: None,
-            mapping: template.mapping,
+            mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block: Some(creation_block),
             contract_abi,

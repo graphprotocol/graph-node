@@ -15,8 +15,8 @@ graph-node = { path = "../node" }
 graph-core = { path = "../core" }
 graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
-graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-index-node = { path = "../server/index-node" }
+graph-runtime-wasm = { path = "../runtime/wasm" }
 graphql-parser = "0.4.0"
 hyper = "0.14"
 serde = "1.0"
@@ -27,7 +27,6 @@ tokio = { version = "1.35.1", features = ["rt", "macros", "process"] }
 # here needs to be kept in sync with the web3 version that the graph crate
 # uses until then
 secp256k1 = { version = "0.21", features = ["recovery"] }
-termcolor = "1.4.1"
 
 [dev-dependencies]
 anyhow = "1.0.75"

@@ -69,21 +69,21 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError>;
+    ) -> Result<BlockState, MappingError>;
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Block number in which this host was created.
     /// Returns `None` for static data sources.
