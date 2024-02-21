@@ -68,10 +68,10 @@ impl QueryStoreTrait for QueryStore {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.store.block_ptr(self.site.cheap_clone()).await
     }
-    async fn block_number_with_timestamp(
+    async fn block_number_with_timestamp_and_parent_hash(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
+    ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
         // very expensive though with the data structures we have currently
@@ -82,9 +82,9 @@ impl QueryStoreTrait for QueryStore {
         self.chain_store
             .block_number(block_hash)
             .await?
-            .map(|(network_name, number, timestamp)| {
+            .map(|(network_name, number, timestamp, parent_hash)| {
                 if network_name == subgraph_network {
-                    Ok((number, timestamp))
+                    Ok((number, timestamp, parent_hash))
                 } else {
                     Err(StoreError::QueryExecutionError(format!(
                         "subgraph {} belongs to network {} but block {:x} belongs to network {}",
@@ -99,9 +99,9 @@ impl QueryStoreTrait for QueryStore {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockNumber>, StoreError> {
-        self.block_number_with_timestamp(block_hash)
+        self.block_number_with_timestamp_and_parent_hash(block_hash)
             .await
-            .map(|opt| opt.map(|(number, _)| number))
+            .map(|opt| opt.map(|(number, _, _)| number))
     }
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {

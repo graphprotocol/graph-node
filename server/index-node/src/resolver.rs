@@ -282,7 +282,7 @@ impl<S: Store> IndexNodeResolver<S> {
         let call_cache = chain.call_cache();
 
         let (block_number, timestamp) = match chain_store.block_number(&block_hash).await {
-            Ok(Some((_, n, timestamp))) => (n, timestamp),
+            Ok(Some((_, n, timestamp, _))) => (n, timestamp),
             Ok(None) => {
                 error!(
                     self.logger,

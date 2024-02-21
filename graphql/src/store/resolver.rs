@@ -28,7 +28,7 @@ pub struct StoreResolver {
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
-    pub(crate) block_ptr: Option<BlockPtrTs>,
+    pub(crate) block_ptr: Option<BlockPtrExt>,
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
@@ -37,22 +37,24 @@ pub struct StoreResolver {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct BlockPtrTs {
+pub(crate) struct BlockPtrExt {
     pub ptr: BlockPtr,
     pub timestamp: Option<u64>,
+    pub parent_hash: Option<BlockHash>,
 }
 
-impl From<BlockPtr> for BlockPtrTs {
+impl From<BlockPtr> for BlockPtrExt {
     fn from(ptr: BlockPtr) -> Self {
         Self {
             ptr,
             timestamp: None,
+            parent_hash: None,
         }
     }
 }
 
-impl From<&BlockPtrTs> for BlockPtr {
-    fn from(ptr: &BlockPtrTs) -> Self {
+impl From<&BlockPtrExt> for BlockPtr {
+    fn from(ptr: &BlockPtrExt) -> Self {
         ptr.ptr.cheap_clone()
     }
 }
@@ -139,7 +141,7 @@ impl StoreResolver {
         store: &dyn QueryStore,
         bc: BlockConstraint,
         state: &DeploymentState,
-    ) -> Result<BlockPtrTs, QueryExecutionError> {
+    ) -> Result<BlockPtrExt, QueryExecutionError> {
         fn block_queryable(
             state: &DeploymentState,
             block: BlockNumber,
@@ -152,21 +154,21 @@ impl StoreResolver {
         async fn get_block_ts(
             store: &dyn QueryStore,
             ptr: &BlockPtr,
-        ) -> Result<Option<u64>, QueryExecutionError> {
+        ) -> Result<(Option<u64>, Option<BlockHash>), QueryExecutionError> {
             match store
-                .block_number_with_timestamp(&ptr.hash)
+                .block_number_with_timestamp_and_parent_hash(&ptr.hash)
                 .await
                 .map_err(Into::<QueryExecutionError>::into)?
             {
-                Some((_, Some(ts))) => Ok(Some(ts)),
-                _ => Ok(None),
+                Some((_, ts, parent_hash)) => Ok((ts, parent_hash)),
+                _ => Ok((None, None)),
             }
         }
 
         match bc {
             BlockConstraint::Hash(hash) => {
                 let ptr = store
-                    .block_number_with_timestamp(&hash)
+                    .block_number_with_timestamp_and_parent_hash(&hash)
                     .await
                     .map_err(Into::into)
                     .and_then(|result| {
@@ -177,9 +179,10 @@ impl StoreResolver {
                                     "no block with that hash found".to_owned(),
                                 )
                             })
-                            .map(|(number, ts)| BlockPtrTs {
+                            .map(|(number, ts, parent_hash)| BlockPtrExt {
                                 ptr: BlockPtr::new(hash, number),
                                 timestamp: ts,
+                                parent_hash,
                             })
                     })?;
 
@@ -208,16 +211,21 @@ impl StoreResolver {
                         ),
                     ));
                 }
-                let timestamp = get_block_ts(store, &state.latest_block).await?;
+                let (timestamp, parent_hash) = get_block_ts(store, &state.latest_block).await?;
 
-                Ok(BlockPtrTs { ptr, timestamp })
+                Ok(BlockPtrExt {
+                    ptr,
+                    timestamp,
+                    parent_hash,
+                })
             }
             BlockConstraint::Latest => {
-                let timestamp = get_block_ts(store, &state.latest_block).await?;
+                let (timestamp, parent_hash) = get_block_ts(store, &state.latest_block).await?;
 
-                Ok(BlockPtrTs {
+                Ok(BlockPtrExt {
                     ptr: state.latest_block.cheap_clone(),
                     timestamp,
+                    parent_hash,
                 })
             }
         }
@@ -260,11 +268,19 @@ impl StoreResolver {
                     .unwrap_or(r::Value::Null)
             });
 
+            let parent_hash = self.block_ptr.as_ref().map(|ptr| {
+                ptr.parent_hash
+                    .as_ref()
+                    .map(|hash| r::Value::String(format!("{}", hash)))
+                    .unwrap_or(r::Value::Null)
+            });
+
             let mut map = BTreeMap::new();
             let block = object! {
                 hash: hash,
                 number: number,
                 timestamp: timestamp,
+                parentHash: parent_hash,
                 __typename: BLOCK_FIELD_TYPE
             };
             map.insert("prefetch:block".into(), r::Value::List(vec![block]));

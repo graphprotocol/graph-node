@@ -2540,7 +2540,7 @@ fn query_detects_reorg() {
 fn can_query_meta() {
     // metadata for the latest block (block 2)
     const QUERY1: &str =
-        "query { _meta { deployment block { hash number __typename } __typename } }";
+        "query { _meta { deployment block { hash number parentHash __typename } __typename } }";
     run_query(QUERY1, |result, id_type| {
         let exp = object! {
             _meta: object! {
@@ -2548,6 +2548,7 @@ fn can_query_meta() {
                 block: object! {
                     hash: "0xf8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6",
                     number: 2,
+                    parentHash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
                     __typename: "_Block_"
                 },
                 __typename: "_Meta_"

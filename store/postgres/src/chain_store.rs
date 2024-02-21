@@ -697,7 +697,7 @@ mod data {
             &self,
             conn: &PgConnection,
             hash: &BlockHash,
-        ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
+        ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
             const TIMESTAMP_QUERY: &str =
                 "coalesce(data->'block'->>'timestamp', data->>'timestamp')";
 
@@ -706,25 +706,36 @@ mod data {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select((b::number, sql(TIMESTAMP_QUERY)))
+                        .select((b::number, sql(TIMESTAMP_QUERY), b::parent_hash))
                         .filter(b::hash.eq(format!("{:x}", hash)))
-                        .first::<(i64, Option<String>)>(conn)
+                        .first::<(i64, Option<String>, Option<String>)>(conn)
                         .optional()?
+                        .map(|(number, ts, parent_hash)| {
+                            // Convert parent_hash from Hex String to Vec<u8>
+                            let parent_hash_bytes = parent_hash
+                                .map(|h| hex::decode(&h).expect("Invalid hex in parent_hash"));
+                            (number, ts, parent_hash_bytes)
+                        })
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select((blocks.number(), sql(TIMESTAMP_QUERY)))
+                    .select((blocks.number(), sql(TIMESTAMP_QUERY), blocks.parent_hash()))
                     .filter(blocks.hash().eq(hash.as_slice()))
-                    .first::<(i64, Option<String>)>(conn)
-                    .optional()?,
+                    .first::<(i64, Option<String>, Vec<u8>)>(conn)
+                    .optional()?
+                    .map(|(number, ts, parent_hash)| (number, ts, Some(parent_hash))),
             };
 
             match number {
                 None => Ok(None),
-                Some((number, ts)) => {
+                Some((number, ts, parent_hash)) => {
                     let number = BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
-                    Ok(Some((number, crate::chain_store::try_parse_timestamp(ts)?)))
+                    Ok(Some((
+                        number,
+                        crate::chain_store::try_parse_timestamp(ts)?,
+                        parent_hash.map(|h| BlockHash::from(h)),
+                    )))
                 }
             }
         }
@@ -2062,7 +2073,7 @@ impl ChainStoreTrait for ChainStore {
     async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>)>, StoreError> {
+    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
         let hash = hash.clone();
         let storage = self.storage.clone();
         let chain = self.chain.clone();
@@ -2070,7 +2081,11 @@ impl ChainStoreTrait for ChainStore {
             .with_conn(move |conn, _| {
                 storage
                     .block_number(conn, &hash)
-                    .map(|opt| opt.map(|(number, timestamp)| (chain.clone(), number, timestamp)))
+                    .map(|opt| {
+                        opt.map(|(number, timestamp, parent_hash)| {
+                            (chain.clone(), number, timestamp, parent_hash)
+                        })
+                    })
                     .map_err(|e| e.into())
             })
             .await

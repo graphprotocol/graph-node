@@ -1990,7 +1990,7 @@ fn parse_timestamp() {
             .chain_store(NETWORK_NAME)
             .expect("fake chain store");
 
-        let (_network, number, timestamp) = chain_store
+        let (_network, number, timestamp, _) = chain_store
             .block_number(&BLOCK_THREE_TIMESTAMP.block_hash())
             .await
             .expect("block_number to return correct number and timestamp")
@@ -2024,7 +2024,7 @@ fn parse_timestamp_firehose() {
             .chain_store(NETWORK_NAME)
             .expect("fake chain store");
 
-        let (_network, number, timestamp) = chain_store
+        let (_network, number, timestamp, _) = chain_store
             .block_number(&BLOCK_THREE_TIMESTAMP_FIREHOSE.block_hash())
             .await
             .expect("block_number to return correct number and timestamp")
@@ -2058,7 +2058,7 @@ fn parse_null_timestamp() {
             .chain_store(NETWORK_NAME)
             .expect("fake chain store");
 
-        let (_network, number, timestamp) = chain_store
+        let (_network, number, timestamp, _) = chain_store
             .block_number(&BLOCK_THREE_NO_TIMESTAMP.block_hash())
             .await
             .expect("block_number to return correct number and timestamp")
