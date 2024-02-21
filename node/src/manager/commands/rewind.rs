@@ -36,7 +36,7 @@ async fn block_ptr(
         None => bail!("can not find chain store for {}", chain),
         Some(store) => store,
     };
-    if let Some((_, number, _)) = chain_store.block_number(&block_ptr_to.hash).await? {
+    if let Some((_, number, _, _)) = chain_store.block_number(&block_ptr_to.hash).await? {
         if number != block_ptr_to.number {
             bail!(
                 "the given hash is for block number {} but the command specified block number {}",
