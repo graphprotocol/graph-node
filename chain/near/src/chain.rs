@@ -40,7 +40,7 @@ use crate::{
     data_source::{DataSource, UnresolvedDataSource},
 };
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamMapper, FirehoseCursor,
+    BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
 };
 
 const NEAR_FILTER_MODULE_NAME: &str = "near_filter";
@@ -408,10 +408,18 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for FirehoseMapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<codec::Block>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&[u8]>,
+    ) -> Result<Option<codec::Block>, BlockStreamError> {
         let block = match output {
             Some(block) => codec::Block::decode(block)?,
-            None => anyhow::bail!("near mapper is expected to always have a block"),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "near mapper is expected to always have a block"
+                ))
+                .map_err(BlockStreamError::from)
+            }
         };
 
         Ok(Some(block))
@@ -421,10 +429,11 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         block: codec::Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         self.adapter
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
+            .map_err(BlockStreamError::from)
     }
 
     async fn handle_substreams_block(
@@ -433,7 +442,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         _clock: Clock,
         cursor: FirehoseCursor,
         message: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         let BlockAndReceipts {
             block,
             outcome,

@@ -237,9 +237,12 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
                                     }
                                 }
                             },
-                            Err(BlockStreamError::Fatal(msg)) => {
-                                Err(BlockStreamError::Fatal(msg))?
-                            }
+                            Err(BlockStreamError::SubstreamsError(e)) if e.is_deterministic()  =>
+                                Err(BlockStreamError::Fatal(e.to_string()))?,
+
+                            Err(BlockStreamError::Fatal(msg)) =>
+                                Err(BlockStreamError::Fatal(msg))?,
+
                             Err(err) => {
 
                                 info!(&logger, "received err");
@@ -308,7 +311,7 @@ async fn process_substreams_response<C: Blockchain, F: BlockStreamMapper<C>>(
     match mapper
         .to_block_stream_event(logger, response.message, log_data)
         .await
-        .context("Mapping message to BlockStreamEvent failed")?
+        .map_err(BlockStreamError::from)?
     {
         Some(event) => {
             let cursor = match &event {

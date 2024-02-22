@@ -341,13 +341,13 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 
 #[async_trait]
 pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<C::Block>, Error>;
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<C::Block>, BlockStreamError>;
 
     async fn block_with_triggers(
         &self,
         logger: &Logger,
         block: C::Block,
-    ) -> Result<BlockWithTriggers<C>, Error>;
+    ) -> Result<BlockWithTriggers<C>, BlockStreamError>;
 
     async fn handle_substreams_block(
         &self,
@@ -355,14 +355,14 @@ pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
         clock: Clock,
         cursor: FirehoseCursor,
         block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<C>, Error>;
+    ) -> Result<BlockStreamEvent<C>, BlockStreamError>;
 
     async fn to_block_stream_event(
         &self,
         logger: &mut Logger,
         message: Option<Message>,
         log_data: &mut SubstreamsLogData,
-    ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError> {
+    ) -> Result<Option<BlockStreamEvent<C>>, BlockStreamError> {
         match message {
             Some(SubstreamsMessage::Session(session_init)) => {
                 info!(
@@ -376,7 +376,7 @@ pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
             Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
                 let valid_block = match undo.last_valid_block {
                     Some(clock) => clock,
-                    None => return Err(SubstreamsError::InvalidUndoError),
+                    None => return Err(BlockStreamError::from(SubstreamsError::InvalidUndoError)),
                 };
                 let valid_ptr = BlockPtr {
                     hash: valid_block.id.trim_start_matches("0x").try_into()?,
@@ -406,7 +406,7 @@ pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
 
                 let clock = match clock {
                     Some(clock) => clock,
-                    None => return Err(SubstreamsError::MissingClockError),
+                    None => return Err(BlockStreamError::from(SubstreamsError::MissingClockError)),
                 };
 
                 let value = match module_output.map_output {
@@ -457,6 +457,15 @@ pub enum FirehoseError {
     UnknownError(#[from] anyhow::Error),
 }
 
+impl From<BlockStreamError> for FirehoseError {
+    fn from(value: BlockStreamError) -> Self {
+        match value {
+            BlockStreamError::ProtobufDecodingError(e) => FirehoseError::DecodingError(e),
+            e => FirehoseError::UnknownError(anyhow!(e.to_string())),
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum SubstreamsError {
     #[error("response is missing the clock information")]
@@ -465,12 +474,15 @@ pub enum SubstreamsError {
     #[error("invalid undo message")]
     InvalidUndoError,
 
+    #[error("entity validation failed {0}")]
+    EntityValidationError(#[from] crate::data::store::EntityValidationError),
+
     /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
     /// Some unknown error occurred
-    #[error("unknown error")]
+    #[error("unknown error {0}")]
     UnknownError(#[from] anyhow::Error),
 
     #[error("multiple module output error")]
@@ -483,11 +495,32 @@ pub enum SubstreamsError {
     UnexpectedStoreDeltaOutput,
 }
 
+impl SubstreamsError {
+    pub fn is_deterministic(&self) -> bool {
+        use SubstreamsError::*;
+
+        match self {
+            EntityValidationError(_) => true,
+            MissingClockError
+            | InvalidUndoError
+            | DecodingError(_)
+            | UnknownError(_)
+            | MultipleModuleOutputError
+            | ModuleOutputNotPresentOrUnexpected
+            | UnexpectedStoreDeltaOutput => false,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum BlockStreamError {
-    #[error("block stream error")]
+    #[error("Failed to decode protobuf {0}")]
+    ProtobufDecodingError(#[from] prost::DecodeError),
+    #[error("substreams error: {0}")]
+    SubstreamsError(#[from] SubstreamsError),
+    #[error("block stream error {0}")]
     Unknown(#[from] anyhow::Error),
-    #[error("block stream fatal error")]
+    #[error("block stream fatal error {0}")]
     Fatal(String),
 }
 
