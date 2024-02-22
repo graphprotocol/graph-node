@@ -5,8 +5,7 @@ use std::{collections::HashSet, convert::TryFrom};
 
 use graph::anyhow::bail;
 use graph::components::store::{BlockStore as _, ChainStore as _};
-use graph::prelude::serde_json::de;
-use graph::prelude::{anyhow, BlockNumber, BlockPtr, NodeId, SubgraphStore};
+use graph::prelude::{anyhow, BlockNumber, BlockPtr};
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 use graph_store_postgres::{BlockStore, NotificationSender};
 
@@ -108,12 +107,7 @@ pub async fn run(
 
     println!("Pausing deployments");
     for deployment in &deployments {
-        let search = match searches.iter().find(|s| s.locate_unique(&primary).is_ok()) {
-            Some(s) => s,
-            None => bail!("failed to find search for deployment {:?}", deployment),
-        };
-
-        let paused = pause_or_resume(primary.clone(), &sender, search, true);
+        let paused = pause_or_resume(primary.clone(), &sender, &deployment.locator(), true);
 
         if paused.is_ok() {
             // There's no good way to tell that a subgraph has in fact stopped
@@ -155,12 +149,7 @@ pub async fn run(
 
     println!("Resuming deployments");
     for deployment in &deployments {
-        let search = match searches.iter().find(|s| s.locate_unique(&primary).is_ok()) {
-            Some(s) => s,
-            None => bail!("failed to find search for deployment {:?}", deployment),
-        };
-
-        pause_or_resume(primary.clone(), &sender, search, false)?;
+        pause_or_resume(primary.clone(), &sender, &deployment.locator(), false)?;
     }
     Ok(())
 }

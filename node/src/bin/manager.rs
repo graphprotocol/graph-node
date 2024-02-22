@@ -811,6 +811,7 @@ impl From<Opt> for config::Opt {
 
 /// Utilities to interact mostly with the store and build the parts of the
 /// store we need for specific commands
+#[derive(Clone)]
 struct Context {
     logger: Logger,
     node_id: NodeId,
@@ -920,6 +921,19 @@ impl Context {
     fn pools(self) -> HashMap<Shard, ConnectionPool> {
         let (_, pools) = self.store_and_pools();
         pools
+    }
+
+    fn clone(&self) -> Self {
+        Self {
+            logger: self.logger.clone(),
+            node_id: self.node_id.clone(),
+            config: self.config.clone(),
+            ipfs_url: self.ipfs_url.clone(),
+            arweave_url: self.arweave_url.clone(),
+            fork_base: self.fork_base.clone(),
+            registry: self.registry.clone(),
+            prometheus_registry: self.prometheus_registry.clone(),
+        }
     }
 
     async fn store_builder(&self) -> StoreBuilder {
@@ -1175,16 +1189,37 @@ async fn main() -> anyhow::Result<()> {
             commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
         }
         Pause { deployment } => {
+            let ctx_clone = ctx.clone();
+
             let sender = ctx.notification_sender();
-            commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, true)
+            let pool = ctx.primary_pool();
+            commands::assign::pause_or_resume(
+                ctx_clone.primary_pool(),
+                &sender,
+                &deployment.locate_unique(&pool).unwrap(),
+                true,
+            )
         }
         Resume { deployment } => {
             let sender = ctx.notification_sender();
-            commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, false)
+            let pool = ctx.primary_pool();
+            commands::assign::pause_or_resume(
+                pool.clone(),
+                &sender,
+                &deployment.locate_unique(&pool).unwrap(),
+                false,
+            )
         }
         Restart { deployment, sleep } => {
+            let ctx_clone = ctx.clone();
             let sender = ctx.notification_sender();
-            commands::assign::restart(ctx.primary_pool(), &sender, &deployment, sleep)
+            let pool = ctx.primary_pool();
+            commands::assign::restart(
+                ctx_clone.primary_pool(),
+                &sender,
+                &deployment.locate_unique(&pool).unwrap(),
+                sleep,
+            )
         }
         Rewind {
             force,
@@ -1194,13 +1229,16 @@ async fn main() -> anyhow::Result<()> {
             deployments,
             start_block,
         } => {
+            let ctx_clone = ctx.clone();
             let (store, primary) = ctx.store_and_primary();
+
             commands::rewind::run(
                 primary,
                 store,
                 deployments,
                 block_hash,
                 block_number,
+                &ctx_clone.notification_sender(),
                 force,
                 sleep,
                 start_block,
