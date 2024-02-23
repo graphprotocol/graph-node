@@ -102,7 +102,7 @@ async fn test_valid_module_and_store_with_timeout(
     };
 
     let module = WasmInstance::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref()).unwrap()),
+        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref(), timeout).unwrap()),
         mock_context(
             deployment.clone(),
             data_source,
@@ -110,7 +110,6 @@ async fn test_valid_module_and_store_with_timeout(
             api_version,
         ),
         host_metrics,
-        timeout,
         experimental_features,
     )
     .unwrap();

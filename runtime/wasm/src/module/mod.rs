@@ -20,7 +20,6 @@ use graph::runtime::{
     IndexForAscTypeId,
 };
 pub use into_wasm_ret::IntoWasmRet;
-pub use stopwatch::TimeoutStopwatch;
 
 use crate::error::DeterminismLevel;
 use crate::gas_rules::{GAS_COST_LOAD, GAS_COST_STORE};
@@ -31,7 +30,6 @@ pub use instance::*;
 mod context;
 mod instance;
 mod into_wasm_ret;
-pub mod stopwatch;
 
 // Convenience for a 'top-level' asc_get, with depth 0.
 fn asc_get<T, C: AscType, H: AscHeap + ?Sized>(

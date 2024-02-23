@@ -28,7 +28,6 @@ use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExpor
 
 use super::asc_get;
 use super::AscHeapCtx;
-use super::TimeoutStopwatch;
 
 pub(crate) struct WasmInstanceContext<'a> {
     inner: StoreContextMut<'a, WasmInstanceData>,
@@ -56,6 +55,16 @@ impl WasmInstanceContext<'_> {
     pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
         self.as_mut().asc_heap_mut()
     }
+
+    pub fn suspend_timeout(&mut self) {
+        // See also: runtime-timeouts
+        self.inner.set_epoch_deadline(u64::MAX);
+    }
+
+    pub fn start_timeout(&mut self) {
+        // See also: runtime-timeouts
+        self.inner.set_epoch_deadline(2);
+    }
 }
 
 impl AsContext for WasmInstanceContext<'_> {
@@ -76,10 +85,6 @@ pub struct WasmInstanceData {
     pub ctx: MappingContext,
     pub valid_module: Arc<ValidModule>,
     pub host_metrics: Arc<HostMetrics>,
-    pub(crate) timeout: Option<Duration>,
-
-    // Used by ipfs.map.
-    pub(crate) timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
 
     // A trap ocurred due to a possible reorg detection.
     pub possible_reorg: bool,
@@ -99,8 +104,6 @@ impl WasmInstanceData {
         ctx: MappingContext,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
-        timeout: Option<Duration>,
-        timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
         experimental_features: ExperimentalFeatures,
     ) -> Self {
         WasmInstanceData {
@@ -108,8 +111,6 @@ impl WasmInstanceData {
             ctx,
             valid_module,
             host_metrics,
-            timeout,
-            timeout_stopwatch,
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
@@ -583,11 +584,8 @@ impl WasmInstanceContext<'_> {
 
         let flags = asc_get(self, flags, gas)?;
 
-        // Pause the timeout while running ipfs_map, ensure it will be restarted by using a guard.
-        self.as_ref().timeout_stopwatch.lock().unwrap().stop();
-        let defer_stopwatch = self.as_ref().timeout_stopwatch.clone();
-        let _stopwatch_guard = defer::defer(|| defer_stopwatch.lock().unwrap().start());
-
+        // Pause the timeout while running ipfs_map, and resume it when done.
+        self.suspend_timeout();
         let start_time = Instant::now();
         let output_states = HostExports::ipfs_map(
             &self.as_ref().ctx.host_exports.link_resolver.cheap_clone(),
@@ -597,6 +595,7 @@ impl WasmInstanceContext<'_> {
             user_data,
             flags,
         )?;
+        self.start_timeout();
 
         debug!(
             &self.as_ref().ctx.logger,

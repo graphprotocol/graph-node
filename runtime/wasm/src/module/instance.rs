@@ -24,7 +24,7 @@ use super::{IntoTrap, WasmInstanceContext};
 use crate::error::DeterminismLevel;
 use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
-use crate::module::{TimeoutStopwatch, WasmInstanceData};
+use crate::module::WasmInstanceData;
 use crate::ExperimentalFeatures;
 
 use super::{is_trap_deterministic, AscHeapCtx, ToAscPtr};
@@ -191,6 +191,7 @@ impl WasmInstance {
 
                 // Treat timeouts anywhere in the error chain as a special case to have a better error
                 // message. Any `TrapCode::Interrupt` is assumed to be a timeout.
+                // See also: runtime-timeouts
                 Err(trap)
                     if trap
                         .chain()
@@ -200,7 +201,7 @@ impl WasmInstance {
                     return Err(MappingError::Unknown(Error::from(trap).context(format!(
                         "Handler '{}' hit the timeout of '{}' seconds",
                         handler,
-                        self.instance_ctx().as_ref().timeout.unwrap().as_secs()
+                        self.instance_ctx().as_ref().valid_module.timeout.unwrap().as_secs()
                     ))));
                 }
                 Err(trap) => {
@@ -263,7 +264,6 @@ impl WasmInstance {
         valid_module: Arc<ValidModule>,
         ctx: MappingContext,
         host_metrics: Arc<HostMetrics>,
-        timeout: Option<Duration>,
         experimental_features: ExperimentalFeatures,
     ) -> Result<WasmInstance, anyhow::Error> {
         let engine = valid_module.module.engine();
@@ -271,31 +271,23 @@ impl WasmInstance {
         let host_fns = ctx.host_fns.cheap_clone();
         let api_version = ctx.host_exports.data_source.api_version.clone();
 
-        // // Start the timeout watchdog task.
-        let timeout_stopwatch = Arc::new(std::sync::Mutex::new(TimeoutStopwatch::start_new()));
-
         let wasm_ctx = WasmInstanceData::from_instance(
             ctx,
             valid_module.cheap_clone(),
             host_metrics.cheap_clone(),
-            timeout,
-            timeout_stopwatch.clone(),
             experimental_features,
         );
         let mut store = Store::new(engine, wasm_ctx);
+
         // The epoch on the engine will only ever be incremeted if increment_epoch() is explicitly
-        // called, we only do so if a timeout has been set, otherwise 1 means it will run forever.
-        // If a timeout is provided then epoch 1 should happen roughly once the timeout duration
-        // has elapsed.
-        store.set_epoch_deadline(1);
-        if let Some(timeout) = timeout {
-            let timeout = timeout.clone();
-            let engine = engine.clone();
-            graph::spawn(async move {
-                tokio::time::sleep(timeout).await;
-                engine.increment_epoch();
-            });
-        }
+        // called, we only do so if a timeout has been set, it will run forever. When a timeout is
+        // set, the timeout duration is used as the duration of one epoch.
+        //
+        // Therefore, the setting of 2 here means that if a `timeout` is provided, then this
+        // interrupt will be triggered between a duration of `timeout` and `timeout * 2`.
+        //
+        // See also: runtime-timeouts
+        store.set_epoch_deadline(2);
 
         // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
         // host fn, they need to be separate from the rest of the context.
