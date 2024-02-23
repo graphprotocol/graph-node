@@ -27,7 +27,7 @@ pub fn spawn_module<C: Blockchain>(
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
-    let valid_module = Arc::new(ValidModule::new(&logger, raw_module)?);
+    let valid_module = Arc::new(ValidModule::new(&logger, raw_module, timeout)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
@@ -60,7 +60,6 @@ where
                         valid_module.cheap_clone(),
                         ctx,
                         host_metrics.cheap_clone(),
-                        timeout,
                         experimental_features,
                     )
                     .map_err(Into::into)
@@ -112,7 +111,6 @@ fn instantiate_module<C: Blockchain>(
     valid_module: Arc<ValidModule>,
     ctx: MappingContext,
     host_metrics: Arc<HostMetrics>,
-    timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
 ) -> Result<WasmInstance, anyhow::Error>
 where
@@ -124,7 +122,6 @@ where
         valid_module,
         ctx,
         host_metrics.cheap_clone(),
-        timeout,
         experimental_features,
     )
     .context("module instantiation failed")
@@ -248,11 +245,21 @@ pub struct ValidModule {
     // AS now has an `@external("module", "name")` decorator which would make things cleaner, but
     // the ship has sailed.
     pub import_name_to_modules: BTreeMap<String, Vec<String>>,
+
+    // The timeout for the module.
+    pub timeout: Option<Duration>,
+
+    // Used as a guard to terminate this task dependency.
+    epoch_counter_abort_handle: Option<tokio::task::AbortHandle>,
 }
 
 impl ValidModule {
     /// Pre-process and validate the module.
-    pub fn new(logger: &Logger, raw_module: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(
+        logger: &Logger,
+        raw_module: &[u8],
+        timeout: Option<Duration>,
+    ) -> Result<Self, anyhow::Error> {
         // Add the gas calls here. Module name "gas" must match. See also
         // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
         // parity - injecting gas then serializing again.
@@ -318,10 +325,38 @@ impl ValidModule {
                 .push(module.to_string());
         }
 
+        let mut epoch_counter_abort_handle = None;
+        if let Some(timeout) = timeout {
+            let timeout = timeout.clone();
+            let engine = engine.clone();
+
+            // The epoch counter task will perpetually increment the epoch every `timeout` seconds.
+            // Timeouts on instantiated modules will trigger on epoch deltas.
+            // Note: The epoch is an u64 so it will never overflow.
+            // See also: runtime-timeouts
+            let epoch_counter = async move {
+                loop {
+                    tokio::time::sleep(timeout).await;
+                    engine.increment_epoch();
+                }
+            };
+            epoch_counter_abort_handle = Some(graph::spawn(epoch_counter).abort_handle());
+        }
+
         Ok(ValidModule {
             module,
             import_name_to_modules,
             start_function,
+            timeout,
+            epoch_counter_abort_handle,
         })
+    }
+}
+
+impl Drop for ValidModule {
+    fn drop(&mut self) {
+        if let Some(handle) = self.epoch_counter_abort_handle.take() {
+            handle.abort();
+        }
     }
 }
