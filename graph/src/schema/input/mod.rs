@@ -23,8 +23,8 @@ use crate::prelude::{s, DeploymentHash};
 use crate::schema::api::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
-use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, AsEntityTypeName, EntityType, Schema};
+use crate::schema::fulltext::FulltextDefinition;
+use crate::schema::{ApiSchema, AsEntityTypeName, EntityType, Schema};
 
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
@@ -1675,7 +1675,7 @@ mod validations {
         },
         prelude::s,
         schema::{
-            input_schema::{kw, AggregateFn, AggregationInterval},
+            input::{kw, AggregateFn, AggregationInterval},
             FulltextAlgorithm, FulltextLanguage, Schema as BaseSchema, SchemaValidationError,
             SchemaValidationError as Err, Strings, SCHEMA_TYPE_NAME,
         },
@@ -3074,7 +3074,7 @@ mod tests {
         data::store::ID,
         prelude::DeploymentHash,
         schema::{
-            input_schema::{POI_DIGEST, POI_OBJECT},
+            input::{POI_DIGEST, POI_OBJECT},
             EntityType,
         },
     };

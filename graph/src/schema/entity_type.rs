@@ -11,10 +11,7 @@ use crate::{
     util::intern::Atom,
 };
 
-use super::{
-    input_schema::{ObjectType, POI_OBJECT},
-    EntityKey, Field, InputSchema, InterfaceType,
-};
+use super::{EntityKey, Field, InputSchema, InterfaceType, ObjectType, POI_OBJECT};
 
 /// A reference to a type in the input schema. It should mostly be the
 /// reference to a concrete entity type, either one declared with `@entity`

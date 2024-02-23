@@ -21,7 +21,7 @@ pub mod ast;
 mod entity_key;
 mod entity_type;
 mod fulltext;
-mod input_schema;
+mod input;
 
 pub use api::{is_introspection_field, APISchemaError, INTROSPECTION_QUERY_TYPE};
 
@@ -29,7 +29,8 @@ pub use api::{ApiSchema, ErrorPolicy};
 pub use entity_key::EntityKey;
 pub use entity_type::{AsEntityTypeName, EntityType};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
-pub use input_schema::{
+pub(crate) use input::POI_OBJECT;
+pub use input::{
     kw, Aggregate, AggregateFn, Aggregation, AggregationInterval, AggregationMapping, Field,
     InputSchema, InterfaceType, ObjectOrInterface, ObjectType, TypeKind,
 };
