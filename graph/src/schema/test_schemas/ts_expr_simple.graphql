@@ -1,0 +1,17 @@
+# valid: Minimal example
+type Data @entity(timeseries: true) {
+  id: Int8!
+  timestamp: Int8!
+  price0: BigDecimal!
+  price1: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+  id: Int8!
+  timestamp: Int8!
+  max_price: BigDecimal! @aggregate(fn: "max", arg: "greatest(price0, price1)")
+  abs_price: BigDecimal! @aggregate(fn: "sum", arg: "abs(price0) + abs(price1)")
+  price0_sq: BigDecimal! @aggregate(fn: "sum", arg: "power(price0, 2)")
+  sum_sq: BigDecimal! @aggregate(fn: "sum", arg: "price0 * price0")
+  sum_sq_cross: BigDecimal! @aggregate(fn: "sum", arg: "price0 * price1")
+}

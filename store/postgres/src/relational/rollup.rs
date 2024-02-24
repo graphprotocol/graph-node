@@ -53,6 +53,7 @@
 //!                    group by id, timestamp, <dimensions>)
 //!   select id, timestamp, <dimensions>, <aggregates> from combined
 //! ```
+use std::collections::HashSet;
 use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
@@ -62,17 +63,87 @@ use diesel::{sql_query, PgConnection, RunQueryDsl as _};
 use diesel::sql_types::{BigInt, Integer};
 use graph::blockchain::BlockTime;
 use graph::components::store::{BlockNumber, StoreError};
+use graph::constraint_violation;
 use graph::data::store::IdType;
-use graph::schema::{Aggregate, AggregateFn, Aggregation, AggregationInterval};
+use graph::schema::{
+    Aggregate, AggregateFn, Aggregation, AggregationInterval, ExprVisitor, VisitExpr,
+};
+use graph::sqlparser::ast as p;
+use graph::sqlparser::parser::ParserError;
 
 use crate::relational::Table;
 
 use super::{Column, SqlName};
 
+/// Rewrite `expr` by replacing field names with column names and return the
+/// rewritten SQL expression and the columns used in the expression
+fn rewrite<'a>(table: &'a Table, expr: &str) -> Result<(String, Vec<&'a str>), StoreError> {
+    struct Rewriter<'a> {
+        table: &'a Table,
+        // All columns used in the expression
+        columns: HashSet<&'a str>,
+        // The first error we encounter. Any error here is really an
+        // oversight in the schema validation; that should have caught all
+        // possible problems
+        error: Option<StoreError>,
+    }
+
+    impl<'a> ExprVisitor for Rewriter<'a> {
+        fn visit_ident(&mut self, ident: &mut p::Ident) -> Result<(), ()> {
+            match self.table.column_for_field(&ident.value) {
+                Ok(column) => {
+                    self.columns.insert(&column.name);
+                    ident.value = column.name.to_string();
+                    ident.quote_style = Some('"');
+                    Ok(())
+                }
+                Err(e) => {
+                    self.not_supported(e.to_string());
+                    Err(())
+                }
+            }
+        }
+
+        fn visit_func_name(&mut self, _func: &mut p::Ident) -> Result<(), ()> {
+            Ok(())
+        }
+
+        fn not_supported(&mut self, msg: String) {
+            if self.error.is_none() {
+                self.error = Some(constraint_violation!(
+                    "Schema validation should have found expression errors: {}",
+                    msg
+                ));
+            }
+        }
+
+        fn parse_error(&mut self, e: ParserError) {
+            self.not_supported(e.to_string())
+        }
+    }
+
+    let mut visitor = Rewriter {
+        table,
+        columns: HashSet::new(),
+        error: None,
+    };
+    let expr = match VisitExpr::visit(expr, &mut visitor) {
+        Ok(expr) => expr,
+        Err(()) => return Err(visitor.error.unwrap()),
+    };
+    if let Some(e) = visitor.error {
+        return Err(e);
+    }
+    let mut columns = visitor.columns.into_iter().collect::<Vec<_>>();
+    columns.sort();
+    Ok((expr.to_string(), columns))
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Agg<'a> {
     aggregate: &'a Aggregate,
-    src_column: &'a Column,
+    src_columns: Vec<&'a str>,
+    expr: String,
     agg_column: &'a Column,
 }
 
@@ -82,41 +153,42 @@ impl<'a> Agg<'a> {
         src_table: &'a Table,
         agg_table: &'a Table,
     ) -> Result<Self, StoreError> {
-        let src_column = src_table.column_for_field(&aggregate.arg)?;
+        let (expr, src_columns) = rewrite(src_table, &aggregate.arg)?;
         let agg_column = agg_table.column_for_field(&aggregate.name)?;
         Ok(Self {
             aggregate,
-            src_column,
+            src_columns,
+            expr,
             agg_column,
         })
     }
 
-    fn aggregate_over(&self, src: &SqlName, time: &str, w: &mut dyn fmt::Write) -> fmt::Result {
+    fn aggregate_over(&self, src: &str, time: &str, w: &mut dyn fmt::Write) -> fmt::Result {
         use AggregateFn::*;
 
         match self.aggregate.func {
-            Sum => write!(w, "sum(\"{}\")", src)?,
-            Max => write!(w, "max(\"{}\")", src)?,
-            Min => write!(w, "min(\"{}\")", src)?,
+            Sum => write!(w, "sum({})", src)?,
+            Max => write!(w, "max({})", src)?,
+            Min => write!(w, "min({})", src)?,
             First => {
                 let sql_type = self.agg_column.column_type.sql_type();
-                write!(w, "arg_min_{}((\"{}\", {time}))", sql_type, src)?
+                write!(w, "arg_min_{}(({}, {time}))", sql_type, src)?
             }
             Last => {
                 let sql_type = self.agg_column.column_type.sql_type();
-                write!(w, "arg_max_{}((\"{}\", {time}))", sql_type, src)?
+                write!(w, "arg_max_{}(({}, {time}))", sql_type, src)?
             }
             Count => write!(w, "count(*)")?,
         }
         write!(w, " as \"{}\"", self.agg_column.name)
     }
 
-    /// Generate a SQL fragment `func(src_column) as agg_column` where
+    /// Generate a SQL fragment `func(expr) as agg_column` where
     /// `func` is the aggregation function. The `time` parameter is the name
     /// of the column with respect to which `first` and `last` should decide
     /// which values are earlier or later
     fn aggregate(&self, time: &str, w: &mut dyn fmt::Write) -> fmt::Result {
-        self.aggregate_over(&self.src_column.name, time, w)
+        self.aggregate_over(&self.expr, time, w)
     }
 
     /// Generate a SQL fragment `func(src_column) as agg_column` where
@@ -130,7 +202,8 @@ impl<'a> Agg<'a> {
             Sum | Max | Min | First | Last => {
                 // For these, combining and aggregating is done by the same
                 // function
-                return self.aggregate_over(&self.agg_column.name, time, w);
+                let name = format!("\"{}\"", self.agg_column.name);
+                return self.aggregate_over(&name, time, w);
             }
             Count => write!(w, "sum(\"{}\")", self.agg_column.name)?,
         }
@@ -273,11 +346,12 @@ impl<'a> RollupSql<'a> {
             " from (select id, timestamp/{secs}*{secs} as timestamp, "
         )?;
         write_dims(self.dimensions, w)?;
-        let agg_srcs = {
+        let agg_srcs: Vec<&str> = {
             let mut agg_srcs: Vec<_> = self
                 .aggregates
                 .iter()
-                .map(|agg| agg.src_column.name.as_str())
+                .flat_map(|agg| &agg.src_columns)
+                .map(|col| *col)
                 .filter(|&col| col != "id" && col != "timestamp")
                 .collect();
             agg_srcs.sort();
@@ -499,6 +573,7 @@ mod tests {
         id: Int8!
         timestamp: Int8!
         max: BigDecimal! @aggregate(fn: "max", arg: "price")
+        max_value: BigDecimal! @aggregate(fn: "max", arg: "price * amount")
       }
 
       type OpenClose @aggregation(intervals: ["day"], source: "Data") {
@@ -538,9 +613,10 @@ mod tests {
         group by timestamp, "token""#;
 
         const TOTAL_SQL: &str = r#"\
-        insert into "sgd007"."total_stats_day"(id, timestamp, block$, "max") \
-        select max(id) as id, timestamp, $3, max("price") as "max" from (\
-            select id, timestamp/86400*86400 as timestamp, "price" from "sgd007"."data" \
+        insert into "sgd007"."total_stats_day"(id, timestamp, block$, "max", "max_value") \
+        select max(id) as id, timestamp, $3, max("price") as "max", \
+               max("price" * "amount") as "max_value" from (\
+            select id, timestamp/86400*86400 as timestamp, "amount", "price" from "sgd007"."data" \
              where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
              order by "sgd007"."data".timestamp) data \
         group by timestamp"#;

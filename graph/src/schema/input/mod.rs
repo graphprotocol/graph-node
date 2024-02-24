@@ -26,6 +26,8 @@ use crate::util::intern::{Atom, AtomPool};
 use crate::schema::fulltext::FulltextDefinition;
 use crate::schema::{ApiSchema, AsEntityTypeName, EntityType, Schema};
 
+pub mod sqlexpr;
+
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
 /// The name of the digest attribute of POI entities
@@ -1655,7 +1657,7 @@ mod validations {
         },
         prelude::s,
         schema::{
-            input::{kw, AggregateFn, AggregationInterval},
+            input::{kw, sqlexpr, AggregateFn, AggregationInterval},
             FulltextAlgorithm, FulltextLanguage, Schema as BaseSchema, SchemaValidationError,
             SchemaValidationError as Err, Strings, SCHEMA_TYPE_NAME,
         },
@@ -2473,28 +2475,6 @@ mod validations {
                                     continue;
                                 }
                             };
-                            let arg_type = match source.field(arg) {
-                                Some(arg_field) => match arg_field.field_type.value_type() {
-                                    Ok(arg_type) if arg_type.is_numeric() => arg_type,
-                                    Ok(_) | Err(_) => {
-                                        errors.push(Err::AggregationNonNumericArg(
-                                            agg_type.name.to_owned(),
-                                            field.name.to_owned(),
-                                            source.name.to_owned(),
-                                            arg.to_owned(),
-                                        ));
-                                        continue;
-                                    }
-                                },
-                                None => {
-                                    errors.push(Err::AggregationUnknownArg(
-                                        agg_type.name.to_owned(),
-                                        field.name.to_owned(),
-                                        arg.to_owned(),
-                                    ));
-                                    continue;
-                                }
-                            };
                             let field_type = match field.field_type.value_type() {
                                 Ok(field_type) => field_type,
                                 Err(_) => {
@@ -2505,14 +2485,46 @@ mod validations {
                                     continue;
                                 }
                             };
-                            if arg_type > field_type {
-                                errors.push(Err::AggregationNonMatchingArg(
-                                    agg_type.name.to_owned(),
-                                    field.name.to_owned(),
-                                    arg.to_owned(),
-                                    arg_type.to_str().to_owned(),
-                                    field_type.to_str().to_owned(),
-                                ));
+                            // It would be nicer to use a proper struct here
+                            // and have that implement
+                            // `sqlexpr::ExprVisitor` but we need access to
+                            // a bunch of local variables that would make
+                            // setting up that struct a bit awkward, so we
+                            // use a closure instead
+                            let check_ident = |ident: &str| -> Result<(), SchemaValidationError> {
+                                let arg_type = match source.field(ident) {
+                                    Some(arg_field) => match arg_field.field_type.value_type() {
+                                        Ok(arg_type) if arg_type.is_numeric() => arg_type,
+                                        Ok(_) | Err(_) => {
+                                            return Err(Err::AggregationNonNumericArg(
+                                                agg_type.name.to_owned(),
+                                                field.name.to_owned(),
+                                                source.name.to_owned(),
+                                                arg.to_owned(),
+                                            ));
+                                        }
+                                    },
+                                    None => {
+                                        return Err(Err::AggregationUnknownArg(
+                                            agg_type.name.to_owned(),
+                                            field.name.to_owned(),
+                                            arg.to_owned(),
+                                        ));
+                                    }
+                                };
+                                if arg_type > field_type {
+                                    return Err(Err::AggregationNonMatchingArg(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                        arg.to_owned(),
+                                        arg_type.to_str().to_owned(),
+                                        field_type.to_str().to_owned(),
+                                    ));
+                                }
+                                Ok(())
+                            };
+                            if let Err(mut errs) = sqlexpr::parse(arg, check_ident) {
+                                errors.append(&mut errs);
                             }
                         }
                         None => {

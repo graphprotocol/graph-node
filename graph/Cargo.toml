@@ -88,6 +88,7 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-pat
     "arbitrary_precision",
 ] }
 serde_plain = "1.0.2"
+sqlparser = "0.43.1"
 
 [dev-dependencies]
 clap = { version = "3.2.25", features = ["derive", "env"] }

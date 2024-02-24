@@ -29,6 +29,7 @@ pub use api::{ApiSchema, ErrorPolicy};
 pub use entity_key::EntityKey;
 pub use entity_type::{AsEntityTypeName, EntityType};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
+pub use input::sqlexpr::{ExprVisitor, VisitExpr};
 pub(crate) use input::POI_OBJECT;
 pub use input::{
     kw, Aggregate, AggregateFn, Aggregation, AggregationInterval, AggregationMapping, Field,
@@ -180,6 +181,12 @@ pub enum SchemaValidationError {
     AggregationsNotSupported(Version),
     #[error("Using Int8 as the type for the `id` field is not supported with spec version {0}; please migrate the subgraph to the latest version")]
     IdTypeInt8NotSupported(Version),
+    #[error("{0}")]
+    ExprNotSupported(String),
+    #[error("Expressions can't us the function {0}")]
+    ExprIllegalFunction(String),
+    #[error("Failed to parse expression: {0}")]
+    ExprParseError(String),
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.

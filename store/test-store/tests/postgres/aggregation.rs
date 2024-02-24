@@ -38,9 +38,12 @@ type Data @entity(timeseries: true) {
     timestamp: Int8!
     token: Bytes!
     sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
+    sum_sq: BigDecimal! @aggregate(fn: "sum", arg: "price * price")
     max: BigDecimal! @aggregate(fn: "max", arg: "amount")
-    first: BigDecimal! @aggregate(fn: "first", arg: "amount")
+    first: BigDecimal @aggregate(fn: "first", arg: "amount")
     last: BigDecimal! @aggregate(fn: "last", arg: "amount")
+    value: BigDecimal! @aggregate(fn: "sum", arg: "price * amount")
+    totalValue: BigDecimal! @aggregate(fn: "sum", arg: "price * amount", cumulative: true)
   }
 
   type TotalStats @aggregation(intervals: ["hour"], source: "Data") {
@@ -167,16 +170,24 @@ fn stats_hour(schema: &InputSchema) -> Vec<Vec<Entity>> {
 
     // Stats_hour aggregations over BLOCKS[0..=1], i.e., at BLOCKS[2]
     let block2 = vec![
-        entity! { schema => id: 11i64, timestamp: 0i64, token: TOKEN1.clone(), sum: bd(3), max: bd(10), first: bd(10), last: bd(2) },
-        entity! { schema => id: 12i64, timestamp: 0i64, token: TOKEN2.clone(), sum: bd(3), max: bd(20), first: bd(1),  last: bd(20) },
+        entity! { schema => id: 11i64, timestamp: 0i64, token: TOKEN1.clone(),
+        sum: bd(3), sum_sq: bd(5), max: bd(10), first: bd(10), last: bd(2),
+        value: bd(14), totalValue: bd(14) },
+        entity! { schema => id: 12i64, timestamp: 0i64, token: TOKEN2.clone(),
+        sum: bd(3), sum_sq: bd(5), max: bd(20), first: bd(1),  last: bd(20),
+        value: bd(41), totalValue: bd(41) },
     ];
 
     let block3 = {
         let mut v1 = block2.clone();
         // Stats_hour aggregations over BLOCKS[2], i.e., at BLOCKS[3]
         let mut v2 = vec![
-            entity! { schema => id: 21i64, timestamp: 3600i64, token: TOKEN1.clone(), sum: bd(3), max: bd(30), first: bd(30), last: bd(30) },
-            entity! { schema => id: 22i64, timestamp: 3600i64, token: TOKEN2.clone(), sum: bd(3), max: bd(3),  first: bd(3), last: bd(3) },
+            entity! { schema => id: 21i64, timestamp: 3600i64, token: TOKEN1.clone(),
+            sum: bd(3), sum_sq: bd(9), max: bd(30), first: bd(30), last: bd(30),
+            value: bd(90), totalValue: bd(104) },
+            entity! { schema => id: 22i64, timestamp: 3600i64, token: TOKEN2.clone(),
+            sum: bd(3), sum_sq: bd(9), max: bd(3),  first: bd(3), last: bd(3),
+            value: bd(9), totalValue: bd(50)},
         ];
         v1.append(&mut v2);
         v1
