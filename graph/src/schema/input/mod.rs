@@ -753,22 +753,11 @@ impl AggregationMapping {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct Arg {
-    pub name: Word,
-}
-
-impl Arg {
-    fn new(name: Word) -> Self {
-        Self { name }
-    }
-}
-
 #[derive(PartialEq, Debug)]
 pub struct Aggregate {
     pub name: Word,
     pub func: AggregateFn,
-    pub arg: Arg,
+    pub arg: Word,
     pub field_type: s::Type,
     pub value_type: ValueType,
     pub cumulative: bool,
@@ -790,8 +779,7 @@ impl Aggregate {
         let arg = dir
             .argument("arg")
             .map(|arg| Word::from(arg.as_str().unwrap()))
-            .map(|arg| Arg::new(arg))
-            .unwrap_or_else(|| Arg::new(ID.clone()));
+            .unwrap_or_else(|| ID.clone());
         let cumulative = dir
             .argument(kw::CUMULATIVE)
             .map(|arg| match arg {

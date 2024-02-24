@@ -82,7 +82,7 @@ impl<'a> Agg<'a> {
         src_table: &'a Table,
         agg_table: &'a Table,
     ) -> Result<Self, StoreError> {
-        let src_column = src_table.column_for_field(&aggregate.arg.name)?;
+        let src_column = src_table.column_for_field(&aggregate.arg)?;
         let agg_column = agg_table.column_for_field(&aggregate.name)?;
         Ok(Self {
             aggregate,
