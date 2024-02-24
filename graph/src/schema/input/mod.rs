@@ -756,18 +756,11 @@ impl AggregationMapping {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Arg {
     pub name: Word,
-    pub value_type: ValueType,
 }
 
 impl Arg {
-    fn new(name: Word, src_type: &s::ObjectType) -> Self {
-        let value_type = src_type
-            .field(&name)
-            .unwrap()
-            .field_type
-            .value_type()
-            .unwrap();
-        Self { name, value_type }
+    fn new(name: Word) -> Self {
+        Self { name }
     }
 }
 
@@ -782,13 +775,7 @@ pub struct Aggregate {
 }
 
 impl Aggregate {
-    fn new(
-        _schema: &Schema,
-        src_type: &s::ObjectType,
-        name: &str,
-        field_type: &s::Type,
-        dir: &s::Directive,
-    ) -> Self {
+    fn new(_schema: &Schema, name: &str, field_type: &s::Type, dir: &s::Directive) -> Self {
         let func = dir
             .argument("fn")
             .unwrap()
@@ -803,8 +790,8 @@ impl Aggregate {
         let arg = dir
             .argument("arg")
             .map(|arg| Word::from(arg.as_str().unwrap()))
-            .map(|arg| Arg::new(arg, src_type))
-            .unwrap_or_else(|| Arg::new(ID.clone(), src_type));
+            .map(|arg| Arg::new(arg))
+            .unwrap_or_else(|| Arg::new(ID.clone()));
         let cumulative = dir
             .argument(kw::CUMULATIVE)
             .map(|arg| match arg {
@@ -861,7 +848,6 @@ impl Aggregation {
             .unwrap()
             .as_str()
             .unwrap();
-        let src_type = schema.document.get_object_type_definition(source).unwrap();
         let source = pool.lookup(source).unwrap();
         let fields: Box<[_]> = agg_type
             .fields
@@ -873,9 +859,7 @@ impl Aggregation {
             .fields
             .iter()
             .filter_map(|field| field.find_directive(kw::AGGREGATE).map(|dir| (field, dir)))
-            .map(|(field, dir)| {
-                Aggregate::new(schema, src_type, &field.name, &field.field_type, dir)
-            })
+            .map(|(field, dir)| Aggregate::new(schema, &field.name, &field.field_type, dir))
             .collect();
 
         let obj_types = intervals
