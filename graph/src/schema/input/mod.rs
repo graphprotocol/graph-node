@@ -753,13 +753,21 @@ impl AggregationMapping {
     }
 }
 
+/// The `@aggregate` annotation in an aggregation. The annotation controls
+/// how values from the source table are aggregated
 #[derive(PartialEq, Debug)]
 pub struct Aggregate {
+    /// The name of the aggregate field in the aggregation
     pub name: Word,
+    /// The function used to aggregate the values
     pub func: AggregateFn,
+    /// The field to aggregate in the source table
     pub arg: Word,
+    /// The type of the field `name` in the aggregation
     pub field_type: s::Type,
+    /// The `ValueType` corresponding to `field_type`
     pub value_type: ValueType,
+    /// Whether the aggregation is cumulative
     pub cumulative: bool,
 }
 
