@@ -8,8 +8,7 @@ use graph::{
     util::timed_rw_lock::TimedRwLock,
 };
 use std::collections::BTreeMap;
-use std::sync::atomic;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::Arc;
 
 use lazy_static::lazy_static;
 
@@ -143,7 +142,6 @@ impl ChainHeadUpdateListener {
     ) {
         // Process chain head updates in a dedicated task
         graph::spawn(async move {
-            let sending_to_watcher = Arc::new(AtomicBool::new(false));
             while let Some(notification) = receiver.recv().await {
                 // Create ChainHeadUpdate from JSON
                 let update: ChainHeadUpdate =
@@ -169,20 +167,14 @@ impl ChainHeadUpdateListener {
                     .set_chain_head_number(&update.network_name, update.head_block_number as i64);
 
                 // If there are subscriptions for this network, notify them.
-                if let Some(watcher) = watchers.read(&logger).get(&update.network_name) {
-                    // Due to a tokio bug, we must assume that the watcher can deadlock, see
-                    // https://github.com/tokio-rs/tokio/issues/4246.
-                    if !sending_to_watcher.load(atomic::Ordering::SeqCst) {
-                        let sending_to_watcher = sending_to_watcher.cheap_clone();
-                        let sender = watcher.sender.cheap_clone();
-                        tokio::task::spawn_blocking(move || {
-                            sending_to_watcher.store(true, atomic::Ordering::SeqCst);
-                            sender.send(()).unwrap();
-                            sending_to_watcher.store(false, atomic::Ordering::SeqCst);
-                        });
-                    } else {
-                        debug!(logger, "skipping chain head update, watcher is deadlocked"; "network" => &update.network_name);
-                    }
+                // To be extra paranoid to not block this task, use `try_read`.
+                if let Some(watcher) = watchers
+                    .try_read()
+                    .as_ref()
+                    .map(|w| w.get(&update.network_name))
+                    .flatten()
+                {
+                    watcher.send();
                 }
             }
         });
