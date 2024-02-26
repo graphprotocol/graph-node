@@ -14,4 +14,12 @@ type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
   price0_sq: BigDecimal! @aggregate(fn: "sum", arg: "power(price0, 2)")
   sum_sq: BigDecimal! @aggregate(fn: "sum", arg: "price0 * price0")
   sum_sq_cross: BigDecimal! @aggregate(fn: "sum", arg: "price0 * price1")
+
+  max_some: BigDecimal!
+    @aggregate(
+      fn: "max"
+      arg: "case when price0 > price1 then price0 else 0 end"
+    )
+
+  max_cast: BigDecimal! @aggregate(fn: "sum", arg: "(price0/7)::int4")
 }

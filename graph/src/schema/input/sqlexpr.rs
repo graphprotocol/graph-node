@@ -109,19 +109,43 @@ impl<'a> VisitExpr<'a> {
             }
             Function(func) => self.visit_func(func),
             Value(_) => Ok(()),
+            Case {
+                operand,
+                conditions,
+                results,
+                else_result,
+            } => {
+                if let Some(operand) = operand {
+                    self.visit_expr(operand)?;
+                }
+                for condition in conditions {
+                    self.visit_expr(condition)?;
+                }
+                for result in results {
+                    self.visit_expr(result)?;
+                }
+                if let Some(else_result) = else_result {
+                    self.visit_expr(else_result)?;
+                }
+                Ok(())
+            }
+            Cast {
+                expr,
+                data_type: _,
+                format: _,
+            } => self.visit_expr(expr),
+            Nested(expr) | IsFalse(expr) | IsNotFalse(expr) | IsTrue(expr) | IsNotTrue(expr)
+            | IsNull(expr) | IsNotNull(expr) => self.visit_expr(expr),
+            IsDistinctFrom(expr1, expr2) | IsNotDistinctFrom(expr1, expr2) => {
+                self.visit_expr(expr1)?;
+                self.visit_expr(expr2)?;
+                Ok(())
+            }
             CompoundIdentifier(_) => self.nope("CompoundIdentifier"),
             JsonAccess { .. } => self.nope("JsonAccess"),
             CompositeAccess { .. } => self.nope("CompositeAccess"),
-            IsFalse(_) => self.nope("IsFalse"),
-            IsNotFalse(_) => self.nope("IsNotFalse"),
-            IsTrue(_) => self.nope("IsTrue"),
-            IsNotTrue(_) => self.nope("IsNotTrue"),
-            IsNull(_) => self.nope("IsNull"),
-            IsNotNull(_) => self.nope("IsNotNull"),
             IsUnknown(_) => self.nope("IsUnknown"),
             IsNotUnknown(_) => self.nope("IsNotUnknown"),
-            IsDistinctFrom(_, _) => self.nope("IsDistinctFrom"),
-            IsNotDistinctFrom(_, _) => self.nope("IsNotDistinctFrom"),
             InList { .. } => self.nope("InList"),
             InSubquery { .. } => self.nope("InSubquery"),
             InUnnest { .. } => self.nope("InUnnest"),
@@ -133,7 +157,6 @@ impl<'a> VisitExpr<'a> {
             AnyOp { .. } => self.nope("AnyOp"),
             AllOp { .. } => self.nope("AllOp"),
             Convert { .. } => self.nope("Convert"),
-            Cast { .. } => self.nope("Cast"),
             TryCast { .. } => self.nope("TryCast"),
             SafeCast { .. } => self.nope("SafeCast"),
             AtTimeZone { .. } => self.nope("AtTimeZone"),
@@ -145,12 +168,10 @@ impl<'a> VisitExpr<'a> {
             Trim { .. } => self.nope("Trim"),
             Overlay { .. } => self.nope("Overlay"),
             Collate { .. } => self.nope("Collate"),
-            Nested(_) => self.nope("Nested"),
             IntroducedString { .. } => self.nope("IntroducedString"),
             TypedString { .. } => self.nope("TypedString"),
             MapAccess { .. } => self.nope("MapAccess"),
             AggregateExpressionWithFilter { .. } => self.nope("AggregateExpressionWithFilter"),
-            Case { .. } => self.nope("Case"),
             Exists { .. } => self.nope("Exists"),
             Subquery(_) => self.nope("Subquery"),
             ArraySubquery(_) => self.nope("ArraySubquery"),
@@ -217,17 +238,9 @@ impl<'a> VisitExpr<'a> {
     fn check_binary_op(&mut self, op: &p::BinaryOperator) -> Result<(), ()> {
         use p::BinaryOperator::*;
         match op {
-            Plus | Minus | Multiply | Divide | Modulo => Ok(()),
+            Plus | Minus | Multiply | Divide | Modulo | PGExp | Gt | Lt | GtEq | LtEq
+            | Spaceship | Eq | NotEq | And | Or => Ok(()),
             StringConcat
-            | Gt
-            | Lt
-            | GtEq
-            | LtEq
-            | Spaceship
-            | Eq
-            | NotEq
-            | And
-            | Or
             | Xor
             | BitwiseOr
             | BitwiseAnd
@@ -238,7 +251,6 @@ impl<'a> VisitExpr<'a> {
             | PGBitwiseXor
             | PGBitwiseShiftLeft
             | PGBitwiseShiftRight
-            | PGExp
             | PGOverlap
             | PGRegexMatch
             | PGRegexIMatch
@@ -258,11 +270,9 @@ impl<'a> VisitExpr<'a> {
     fn check_unary_op(&mut self, op: &p::UnaryOperator) -> Result<(), ()> {
         use p::UnaryOperator::*;
         match op {
-            Plus | Minus => Ok(()),
-            Not | PGBitwiseNot | PGSquareRoot | PGCubeRoot | PGPostfixFactorial
-            | PGPrefixFactorial | PGAbs => {
-                self.not_supported(format!("unary operator {op} is not supported"))
-            }
+            Plus | Minus | Not => Ok(()),
+            PGBitwiseNot | PGSquareRoot | PGCubeRoot | PGPostfixFactorial | PGPrefixFactorial
+            | PGAbs => self.not_supported(format!("unary operator {op} is not supported")),
         }
     }
 }
