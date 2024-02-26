@@ -3043,7 +3043,7 @@ type Gravatar @entity {
                         if errs.iter().any(|err| {
                             err.to_string().contains(&msg) || format!("{err:?}").contains(&msg)
                         }) {
-                            println!("{file_name} failed as expected: {errs:?}",)
+                            // println!("{file_name} failed as expected: {errs:?}",)
                         } else {
                             let msgs: Vec<_> = errs.iter().map(|err| err.to_string()).collect();
                             panic!(
@@ -3052,7 +3052,7 @@ type Gravatar @entity {
                         }
                     }
                     (true, Ok(_)) => {
-                        println!("{file_name} validated as expected")
+                        // println!("{file_name} validated as expected")
                     }
                 }
             }
