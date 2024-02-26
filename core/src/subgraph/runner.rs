@@ -501,7 +501,7 @@ where
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
 
-        debug!(self.logger, "Entity cache statistics";
+        trace!(self.logger, "Entity cache statistics";
             "weight" => evict_stats.new_weight,
             "evicted_weight" => evict_stats.evicted_weight,
             "count" => evict_stats.new_count,
@@ -1239,7 +1239,7 @@ where
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
 
-        debug!(self.logger, "Entity cache statistics";
+        trace!(self.logger, "Entity cache statistics";
             "weight" => evict_stats.new_weight,
             "evicted_weight" => evict_stats.evicted_weight,
             "count" => evict_stats.new_count,
