@@ -87,6 +87,11 @@ _dimensions_, and fields with the `@aggregate` directive are called
 _aggregates_. A timeseries type really represents many timeseries, one for
 each combination of values for the dimensions.
 
+The same timeseries can be used for multiple aggregations. For example, the
+`Stats` aggregation could also be formed by aggregating over the `TokenData`
+timeseries. Since `Stats` doesn't have a `token` dimension, all aggregates
+will be formed across all tokens.
+
 Each `@aggregate` by default starts at 0 for each new bucket and therefore
 just aggregates over the time interval for the bucket. The `@aggregate`
 directive also accepts a boolean flag `cumulative` that indicates whether
@@ -96,10 +101,6 @@ the entire timeseries up to the end of the time interval for the bucket.
 **TODO** Since average is a little more complicated to handle for cumulative
 aggregations, and it doesn't seem like it used in practice, we won't
 initially support it. (same for variance, stddev etc.)
-
-**TODO** The timeseries type can be simplified for some situations if
-aggregations can be done over expressions, for example over `priceUSD *
-amount` to track `totalVolumeUSD`
 
 **TODO** It might be necessary to allow `@aggregate` fields that are only
 used for some intervals. We could allow that with syntax like
@@ -132,7 +133,10 @@ annotation. These attributes must be of a numeric type (`Int`, `Int8`,
 `BigInt`, or `BigDecimal`) The annotation must have two arguments:
 
 - `fn`: the name of an aggregation function
-- `arg`: the name of an attribute in the timeseries type
+- `arg`: the name of an attribute in the timeseries type, or an expression
+  using only constants and attributes of the timeseries type
+
+#### Aggregation functions
 
 The following aggregation functions are currently supported:
 
@@ -149,15 +153,41 @@ The `first` and `last` aggregation function calculate the first and last
 value in an interval by sorting the data by `id`; `graph-node` enforces
 correctness here by automatically setting the `id` for timeseries entities.
 
+#### Aggregation expressions
+
+The `arg` can be the name of any attribute in the timeseries type, or an
+expression using only constants and attributes of the timeseries type such
+as `price * amount` or `greatest(amount0, amount1)`. Expressions use SQL
+syntax and support a subset of builtin SQL functions, operators, and other
+constructs.
+
+Supported operators are `+`, `-`, `*`, `/`, `%`, `^`, `=`, `!=`, `<`, `<=`,
+`>`, `>=`, `<->`, `and`, `or`, and `not`. In addition the operators `is
+[not] {null|true|false}`, and `is [not] distinct from` are supported.
+
+The supported SQL functions are the [math
+functions](https://www.postgresql.org/docs/current/functions-math.html)
+`abs`, `ceil`, `ceiling`, `div`, `floor`, `gcd`, `lcm`, `mod`, `power`,
+`sign`, and the [conditional
+functions](https://www.postgresql.org/docs/current/functions-conditional.html)
+`coalesce`, `nullif`, `greatest`, and `least`.
+
+The
+[statement](https://www.postgresql.org/docs/current/functions-conditional.html#FUNCTIONS-CASE)
+`case when .. else .. end` is also supported.
+
+Some examples of valid expressions, assuming the underlying timeseries
+contains the mentioned fields:
+
+- Aggregate the value of a token: `@aggregate(fn: "sum", arg: "priceUSD * amount")`
+- Aggregate the maximum positive amount of two different amounts:
+  `@aggregate(fn: "max", arg: "greatest(amount0, amount1, 0)")`
+- Conditionally sum an amount: `@aggregate(fn: "sum", arg: "case when amount0 > amount1 then amount0 else 0 end")`
+
 ## Querying
 
 _This section is not implemented yet, and will require a bit more thought
 about details_
-
-**TODO** As written, timeseries points like `TokenData` can be queried like
-any other entity. It would be nice to restrict how these data points can be
-queried, maybe even forbid it, as that would give us more latitude in how we
-store that data.
 
 We create a toplevel query field for each aggregation. That query field
 accepts the following arguments:
