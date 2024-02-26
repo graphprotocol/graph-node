@@ -12,7 +12,7 @@ graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
 semver = "1.0.20"
-uuid = { version = "1.6.1", features = ["v4"] }
+uuid = { version = "1.7.0", features = ["v4"] }
 anyhow = "1.0"
 defer = "0.1"
 never = "0.1"
