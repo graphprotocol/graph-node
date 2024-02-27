@@ -306,7 +306,7 @@ impl ValidModule {
         config.strategy(wasmtime::Strategy::Cranelift);
         config.epoch_interruption(true);
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
-        config.cranelift_opt_level(wasmtime::OptLevel::None);
+        config.cranelift_opt_level(wasmtime::OptLevel::Speed);
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
 
         let engine = &wasmtime::Engine::new(&config)?;
