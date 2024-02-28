@@ -1319,6 +1319,11 @@ impl Queue {
         self.batch_writes.store(false, Ordering::SeqCst);
         self.batch_ready_notify.notify_one();
     }
+
+    fn start_batching(&self) {
+        self.batch_writes.store(true, Ordering::SeqCst);
+        self.batch_ready_notify.notify_one();
+    }
 }
 
 /// A shim to allow bypassing any pipelined store handling if need be
@@ -1460,6 +1465,13 @@ impl Writer {
         match self {
             Writer::Sync(_) => {}
             Writer::Async { queue, .. } => queue.deployment_synced(),
+        }
+    }
+
+    fn start_batching(&self) {
+        match self {
+            Writer::Sync(_) => {}
+            Writer::Async { queue, .. } => queue.start_batching(),
         }
     }
 }
@@ -1640,6 +1652,8 @@ impl WritableStoreTrait for WritableStore {
     ) -> Result<(), StoreError> {
         if is_caught_up_with_chain_head {
             self.deployment_synced()?;
+        } else {
+            self.writer.start_batching();
         }
 
         let batch = Batch::new(
