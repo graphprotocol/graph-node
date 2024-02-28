@@ -338,16 +338,15 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
         deterministic_errors: Vec<SubgraphError>,
         offchain_to_remove: Vec<StoredDynamicDataSource>,
         is_non_fatal_errors_active: bool,
+        is_caught_up_with_chain_head: bool,
     ) -> Result<(), StoreError>;
 
-    /// The deployment `id` finished syncing, mark it as synced in the database
-    /// and promote it to the current version in the subgraphs where it was the
-    /// pending version so far
+    /// Force synced status, used for testing.
     fn deployment_synced(&self) -> Result<(), StoreError>;
 
-    /// Return true if the deployment with the given id is fully synced,
-    /// and return false otherwise. Errors from the store are passed back up
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError>;
+    /// Return true if the deployment with the given id is fully synced, and return false otherwise.
+    /// Cheap, cached operation.
+    fn is_deployment_synced(&self) -> bool;
 
     fn unassign_subgraph(&self) -> Result<(), StoreError>;
 

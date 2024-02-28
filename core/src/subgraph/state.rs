@@ -6,8 +6,6 @@ use std::time::Instant;
 pub struct IndexingState {
     /// `true` -> `false` on the first run
     pub should_try_unfail_non_deterministic: bool,
-    /// `false` -> `true` once it reaches chain head
-    pub synced: bool,
     /// Backoff used for the retry mechanism on non-deterministic errors
     pub backoff: ExponentialBackoff,
     /// Related to field above `backoff`
