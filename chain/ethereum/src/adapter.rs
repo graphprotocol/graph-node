@@ -39,6 +39,39 @@ use crate::{Chain, Mapping, ENV_VARS};
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EventSignatureWithTopics {
+    pub signature: H256,
+    pub topic1: Option<H256>,
+    pub topic2: Option<H256>,
+    pub topic3: Option<H256>,
+}
+
+impl EventSignatureWithTopics {
+    pub fn new(
+        signature: H256,
+        topic1: Option<H256>,
+        topic2: Option<H256>,
+        topic3: Option<H256>,
+    ) -> Self {
+        EventSignatureWithTopics {
+            signature,
+            topic1,
+            topic2,
+            topic3,
+        }
+    }
+
+    pub fn from_event_signature(signature: H256) -> Self {
+        EventSignatureWithTopics {
+            signature,
+            topic1: None,
+            topic2: None,
+            topic3: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ContractCall {
     pub contract_name: String,
