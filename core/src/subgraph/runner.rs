@@ -61,14 +61,12 @@ where
         logger: Logger,
         metrics: RunnerMetrics,
         env_vars: Arc<EnvVars>,
-        synced: bool,
     ) -> Self {
         Self {
             inputs: Arc::new(inputs),
             ctx,
             state: IndexingState {
                 should_try_unfail_non_deterministic: true,
-                synced,
                 skip_ptr_updates_timer: Instant::now(),
                 backoff: ExponentialBackoff::with_jitter(
                     (MINUTE * 2).min(env_vars.subgraph_error_retry_ceil),
@@ -261,7 +259,6 @@ where
                                 store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
                             self.revert_state_to(last_good_block)?;
                             self.inputs = Arc::new(self.inputs.with_store(store));
-                            self.state.synced = self.inputs.store.is_deployment_synced().await?;
                         }
                         break;
                     }
@@ -541,8 +538,6 @@ where
         let _section = self.metrics.host.stopwatch.start_section("transact_block");
         let start = Instant::now();
 
-        let store = &self.inputs.store;
-
         // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
         if has_errors && !is_non_fatal_errors_active {
             let is_poi_entity =
@@ -563,8 +558,11 @@ where
 
         let first_error = deterministic_errors.first().cloned();
 
+        let is_caught_up = self.is_caught_up(&block_ptr).await?;
+
         persisted_data_sources.extend(persisted_off_chain_data_sources);
-        store
+        self.inputs
+            .store
             .transact_block_operations(
                 block_ptr,
                 block.timestamp(),
@@ -575,6 +573,7 @@ where
                 deterministic_errors,
                 processed_offchain_data_sources,
                 is_non_fatal_errors_active,
+                is_caught_up,
             )
             .await
             .context("Failed to transact block operations")?;
@@ -599,7 +598,8 @@ where
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
-        if has_errors && !ENV_VARS.disable_fail_fast && !self.state.synced {
+        let store = &self.inputs.store;
+        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
                 .unassign_subgraph()
                 .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
@@ -771,39 +771,6 @@ where
 
         match action {
             Ok(action) => {
-                // Ensure that `state.cached_head_ptr` has a value since it could be `None` on the
-                // first iteration of loop.
-                // If the deployment head has caught up to the `cached_head_ptr`, update it so that
-                // we are up to date when checking if synced.
-                let cached_head_ptr = self.state.cached_head_ptr.cheap_clone();
-                if cached_head_ptr.is_none() || close_to_chain_head(&block_ptr, cached_head_ptr, 1)
-                {
-                    self.state.cached_head_ptr =
-                        self.inputs.chain.chain_store().chain_head_ptr().await?;
-                }
-
-                // Once synced, no need to try to update the status again.
-                if !self.state.synced
-                    && close_to_chain_head(
-                        &block_ptr,
-                        self.state.cached_head_ptr.cheap_clone(),
-                        // We consider a subgraph synced when it's at most 1 block behind the
-                        // chain head.
-                        1,
-                    )
-                {
-                    // Updating the sync status is an one way operation.
-                    // This state change exists: not synced -> synced
-                    // This state change does NOT: synced -> not synced
-                    self.inputs.store.deployment_synced()?;
-
-                    // Stop trying to update the sync status.
-                    self.state.synced = true;
-
-                    // Stop recording time-to-sync metrics.
-                    self.metrics.stream.stopwatch.disable();
-                }
-
                 // Keep trying to unfail subgraph for everytime it advances block(s) until it's
                 // health is not Failed anymore.
                 if self.state.should_try_unfail_non_deterministic {
@@ -936,6 +903,23 @@ where
             );
             block_state.persist_data_source(data_source.as_stored_dynamic_data_source());
         }
+    }
+
+    /// We consider a subgraph caught up when it's at most 1 blocks behind the chain head.
+    async fn is_caught_up(&mut self, block_ptr: &BlockPtr) -> Result<bool, Error> {
+        // Ensure that `state.cached_head_ptr` has a value since it could be `None` on the first
+        // iteration of loop. If the deployment head has caught up to the `cached_head_ptr`, update
+        // it so that we are up to date when checking if synced.
+        let cached_head_ptr = self.state.cached_head_ptr.cheap_clone();
+        if cached_head_ptr.is_none() || close_to_chain_head(&block_ptr, &cached_head_ptr, 1) {
+            self.state.cached_head_ptr = self.inputs.chain.chain_store().chain_head_ptr().await?;
+        }
+        let is_caught_up = close_to_chain_head(&block_ptr, &self.state.cached_head_ptr, 1);
+        if is_caught_up {
+            // Stop recording time-to-sync metrics.
+            self.metrics.stream.stopwatch.disable();
+        }
+        Ok(is_caught_up)
     }
 }
 
@@ -1271,8 +1255,6 @@ where
         let _section = self.metrics.host.stopwatch.start_section("transact_block");
         let start = Instant::now();
 
-        let store = &self.inputs.store;
-
         // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
         if has_errors && !is_non_fatal_errors_active {
             let is_poi_entity =
@@ -1292,7 +1274,11 @@ where
 
         let first_error = deterministic_errors.first().cloned();
 
-        store
+        // We consider a subgraph caught up when it's at most 1 blocks behind the chain head.
+        let is_caught_up = self.is_caught_up(&block_ptr).await?;
+
+        self.inputs
+            .store
             .transact_block_operations(
                 block_ptr,
                 block_time,
@@ -1303,6 +1289,7 @@ where
                 deterministic_errors,
                 vec![],
                 is_non_fatal_errors_active,
+                is_caught_up,
             )
             .await
             .context("Failed to transact block operations")?;
@@ -1327,7 +1314,8 @@ where
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
-        if has_errors && !ENV_VARS.disable_fail_fast && !self.state.synced {
+        let store = &self.inputs.store;
+        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
                 .unassign_subgraph()
                 .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
@@ -1361,10 +1349,10 @@ where
 
         if block.trigger_count() == 0
             && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
-            && !self.state.synced
+            && !self.inputs.store.is_deployment_synced()
             && !close_to_chain_head(
                 &block_ptr,
-                self.inputs.chain.chain_store().chain_head_ptr().await?,
+                &self.inputs.chain.chain_store().chain_head_ptr().await?,
                 // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
                 // behind the chain head.
                 1000,
@@ -1565,10 +1553,10 @@ async fn update_proof_of_indexing(
     Ok(())
 }
 
-/// Checks if the Deployment BlockPtr is at least X blocks behind to the chain head.
+/// Checks if the Deployment BlockPtr is within N blocks of the chain head or ahead.
 fn close_to_chain_head(
     deployment_head_ptr: &BlockPtr,
-    chain_head_ptr: Option<BlockPtr>,
+    chain_head_ptr: &Option<BlockPtr>,
     n: BlockNumber,
 ) -> bool {
     matches!((deployment_head_ptr, &chain_head_ptr), (b1, Some(b2)) if b1.number >= (b2.number - n))
@@ -1594,15 +1582,23 @@ fn test_close_to_chain_head() {
     ))
     .unwrap();
 
-    assert!(!close_to_chain_head(&block_0, None, offset));
-    assert!(!close_to_chain_head(&block_2, None, offset));
+    assert!(!close_to_chain_head(&block_0, &None, offset));
+    assert!(!close_to_chain_head(&block_2, &None, offset));
 
     assert!(!close_to_chain_head(
         &block_0,
-        Some(block_2.clone()),
+        &Some(block_2.clone()),
         offset
     ));
 
-    assert!(close_to_chain_head(&block_1, Some(block_2.clone()), offset));
-    assert!(close_to_chain_head(&block_2, Some(block_2.clone()), offset));
+    assert!(close_to_chain_head(
+        &block_1,
+        &Some(block_2.clone()),
+        offset
+    ));
+    assert!(close_to_chain_head(
+        &block_2,
+        &Some(block_2.clone()),
+        offset
+    ));
 }

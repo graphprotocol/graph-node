@@ -1469,6 +1469,9 @@ pub struct WritableStore {
     block_ptr: Mutex<Option<BlockPtr>>,
     block_cursor: Mutex<FirehoseCursor>,
     writer: Writer,
+
+    // Cached to avoid querying the database.
+    is_deployment_synced: AtomicBool,
 }
 
 impl WritableStore {
@@ -1502,11 +1505,14 @@ impl WritableStore {
             registry,
         );
 
+        let is_deployment_synced = store.is_deployment_synced().await?;
+
         Ok(Self {
             store,
             block_ptr,
             block_cursor,
             writer,
+            is_deployment_synced: AtomicBool::new(is_deployment_synced),
         })
     }
 
@@ -1630,7 +1636,12 @@ impl WritableStoreTrait for WritableStore {
         deterministic_errors: Vec<SubgraphError>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
         is_non_fatal_errors_active: bool,
+        is_caught_up_with_chain_head: bool,
     ) -> Result<(), StoreError> {
+        if is_caught_up_with_chain_head {
+            self.deployment_synced()?;
+        }
+
         let batch = Batch::new(
             block_ptr_to.clone(),
             block_time,
@@ -1649,13 +1660,21 @@ impl WritableStoreTrait for WritableStore {
         Ok(())
     }
 
+    /// If the subgraph is caught up with the chain head, we need to:
+    /// - Disable the time-to-sync metrics gathering.
+    /// - Stop batching writes.
+    /// - Promote it to 'synced' status in the DB, if that hasn't been done already.
     fn deployment_synced(&self) -> Result<(), StoreError> {
         self.writer.deployment_synced();
-        self.store.deployment_synced()
+        if !self.is_deployment_synced.load(Ordering::SeqCst) {
+            self.store.deployment_synced()?;
+            self.is_deployment_synced.store(true, Ordering::SeqCst);
+        }
+        Ok(())
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
-        self.store.is_deployment_synced().await
+    fn is_deployment_synced(&self) -> bool {
+        self.is_deployment_synced.load(Ordering::SeqCst)
     }
 
     fn unassign_subgraph(&self) -> Result<(), StoreError> {

@@ -108,6 +108,7 @@ pub async fn insert(
             Vec::new(),
             Vec::new(),
             false,
+            false,
         )
         .await
 }

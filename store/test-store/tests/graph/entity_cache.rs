@@ -136,11 +136,12 @@ impl WritableStore for MockStore {
         _: Vec<SubgraphError>,
         _: Vec<StoredDynamicDataSource>,
         _: bool,
+        _: bool,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+    fn is_deployment_synced(&self) -> bool {
         unimplemented!()
     }
 
