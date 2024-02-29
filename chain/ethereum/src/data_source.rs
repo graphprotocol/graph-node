@@ -3,13 +3,17 @@ use anyhow::{ensure, Context};
 use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
 use graph::components::subgraph::InstanceDSTemplateInfo;
+use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
+use graph::prelude::regex::Regex;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
+use lazy_static::lazy_static;
+use serde::de;
 use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::str::FromStr;
@@ -30,6 +34,7 @@ use graph::{
 
 use graph::data::subgraph::{
     calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
+    SPEC_VERSION_1_2_0,
 };
 
 use crate::chain::Chain;
@@ -268,7 +273,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         })
     }
 
-    fn validate(&self, _: &semver::Version) -> Vec<Error> {
+    fn validate(&self, spec_version: &semver::Version) -> Vec<Error> {
         let mut errors = vec![];
 
         if !ETHEREUM_KINDS.contains(&self.kind.as_str()) {
@@ -347,6 +352,33 @@ impl blockchain::DataSource<Chain> for DataSource {
             }
         }
 
+        if spec_version < &SPEC_VERSION_1_2_0 {
+            for handler in &self.mapping.event_handlers {
+                if !handler.calls.decls.is_empty() {
+                    errors.push(anyhow!(
+                        "handler {}: declaring eth calls on handlers is only supported for specVersion >= 1.2.0", handler.event
+                    ));
+                    break;
+                }
+            }
+        }
+
+        for handler in &self.mapping.event_handlers {
+            for call in handler.calls.decls.as_ref() {
+                match self.mapping.find_abi(&call.expr.abi) {
+                    // TODO: Handle overloaded functions by passing a signature
+                    Ok(abi) => match abi.function(&call.expr.abi, &call.expr.func, None) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            errors.push(e);
+                        }
+                    },
+                    Err(e) => {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
         errors
     }
 
@@ -1210,6 +1242,8 @@ pub struct MappingEventHandler {
     pub handler: String,
     #[serde(default)]
     pub receipt: bool,
+    #[serde(default)]
+    pub calls: CallDecls,
 }
 
 impl MappingEventHandler {
@@ -1236,4 +1270,179 @@ fn string_to_h256(s: &str) -> H256 {
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct TemplateSource {
     pub abi: String,
+}
+
+/// Internal representation of declared calls. In the manifest that's
+/// written as part of an event handler as
+/// ```yaml
+/// calls:
+///   - myCall1: Contract[address].function(arg1, arg2, ...)
+///   - ..
+/// ```
+///
+/// The `address` and `arg` fields can be either `event.address` or
+/// `event.params.<name>`. Each entry under `calls` gets turned into a
+/// `CallDcl`
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
+pub struct CallDecls {
+    pub decls: Arc<Vec<CallDecl>>,
+    readonly: (),
+}
+
+impl CheapClone for CallDecls {}
+
+/// A single call declaration, like `myCall1:
+/// Contract[address].function(arg1, arg2, ...)`
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct CallDecl {
+    /// A user-defined label
+    pub label: String,
+    /// The call expression
+    pub expr: CallExpr,
+    readonly: (),
+}
+
+impl<'de> de::Deserialize<'de> for CallDecls {
+    fn deserialize<D>(deserializer: D) -> Result<CallDecls, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let decls: std::collections::HashMap<String, String> =
+            de::Deserialize::deserialize(deserializer)?;
+        let decls = decls
+            .into_iter()
+            .map(|(name, expr)| {
+                expr.parse::<CallExpr>().map(|expr| CallDecl {
+                    label: name,
+                    expr,
+                    readonly: (),
+                })
+            })
+            .collect::<Result<_, _>>()
+            .map(|decls| Arc::new(decls))
+            .map_err(de::Error::custom)?;
+        Ok(CallDecls {
+            decls,
+            readonly: (),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct CallExpr {
+    pub abi: Word,
+    pub address: CallArg,
+    pub func: Word,
+    pub args: Vec<CallArg>,
+    readonly: (),
+}
+
+/// Parse expressions of the form `Contract[address].function(arg1, arg2,
+/// ...)` where the `address` and the args are either `event.address` or
+/// `event.params.<name>`.
+///
+/// The parser is pretty awful as it generates error messages that aren't
+/// very helpful. We should replace all this with a real parser, most likely
+/// `combine` which is what `graphql_parser` uses
+impl FromStr for CallExpr {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(
+                r"(?x)
+                (?P<abi>[a-zA-Z0-9_]+)\[
+                    (?P<address>[^]]+)\]
+                \.
+                (?P<func>[a-zA-Z0-9_]+)\(
+                    (?P<args>[^)]*)
+                \)"
+            )
+            .unwrap();
+        }
+        let x = RE
+            .captures(s)
+            .ok_or_else(|| anyhow!("invalid call expression `{s}`"))?;
+        let abi = Word::from(x.name("abi").unwrap().as_str());
+        let address = x.name("address").unwrap().as_str().parse()?;
+        let func = Word::from(x.name("func").unwrap().as_str());
+        let args: Vec<CallArg> = x
+            .name("args")
+            .unwrap()
+            .as_str()
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().parse::<CallArg>())
+            .collect::<Result<_, _>>()?;
+        Ok(CallExpr {
+            abi,
+            address,
+            func,
+            args,
+            readonly: (),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum CallArg {
+    Address,
+    Param(Word),
+}
+
+impl FromStr for CallArg {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn invalid(s: &str) -> Result<CallArg, anyhow::Error> {
+            Err(anyhow!("invalid call argument `{}`", s))
+        }
+
+        let mut parts = s.split(".");
+        match parts.next() {
+            Some("event") => { /* ok */ }
+            Some(_) => return Err(anyhow!("call arguments must start with `event`")),
+            None => return Err(anyhow!("empty call argument")),
+        }
+        match parts.next() {
+            Some("address") => Ok(CallArg::Address),
+            Some("params") => match parts.next() {
+                Some(s) => Ok(CallArg::Param(Word::from(s))),
+                None => invalid(s),
+            },
+            Some(s) => invalid(s),
+            None => invalid(s),
+        }
+    }
+}
+
+#[test]
+fn test_call_expr() {
+    let expr: CallExpr = "ERC20[event.address].balanceOf(event.params.token)"
+        .parse()
+        .unwrap();
+    assert_eq!(expr.abi, "ERC20");
+    assert_eq!(expr.address, CallArg::Address);
+    assert_eq!(expr.func, "balanceOf");
+    assert_eq!(expr.args, vec![CallArg::Param("token".into())]);
+
+    let expr: CallExpr = "Pool[event.params.pool].fees(event.params.token0, event.params.token1)"
+        .parse()
+        .unwrap();
+    assert_eq!(expr.abi, "Pool");
+    assert_eq!(expr.address, CallArg::Param("pool".into()));
+    assert_eq!(expr.func, "fees");
+    assert_eq!(
+        expr.args,
+        vec![
+            CallArg::Param("token0".into()),
+            CallArg::Param("token1".into())
+        ]
+    );
+
+    let expr: CallExpr = "Pool[event.address].growth()".parse().unwrap();
+    assert_eq!(expr.abi, "Pool");
+    assert_eq!(expr.address, CallArg::Address);
+    assert_eq!(expr.func, "growth");
+    assert_eq!(expr.args, vec![]);
 }

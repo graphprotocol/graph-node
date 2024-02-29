@@ -11,7 +11,7 @@ use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
     Prune, LATEST_VERSION, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8,
-    SPEC_VERSION_0_0_9, SPEC_VERSION_1_0_0,
+    SPEC_VERSION_0_0_9, SPEC_VERSION_1_0_0, SPEC_VERSION_1_2_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
@@ -1300,5 +1300,74 @@ schema:
 
         let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
         assert!(manifest.features.contains(&SubgraphFeature::NonFatalErrors))
+    });
+}
+
+#[test]
+fn parses_eth_call_decls() {
+    const YAML: &str = "
+specVersion: 1.2.0
+schema:
+  file:
+    /: /ipfs/Qmschema
+features:
+  - ipfsOnEthereumContracts
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      eventHandlers:
+        - event: Created(address)
+          handler: handleGet
+          calls:
+            fake1: Factory[event.address].get(event.params.address)
+            fake2: Factory[event.params.address].get(event.params.address)
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
+            let mut resolver = TextResolver::default();
+            let id = DeploymentHash::new("Qmmanifest").unwrap();
+            resolver.add(id.as_str(), &YAML);
+            resolver.add("/ipfs/Qmabi", &ABI);
+            resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
+            resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
+
+            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
+            let raw = serde_yaml::from_str(YAML).unwrap();
+            UnvalidatedSubgraphManifest::resolve(
+                id,
+                raw,
+                &resolver,
+                &LOGGER,
+                SPEC_VERSION_1_2_0.clone(),
+            )
+            .await
+            .expect("Parsing simple manifest works")
+        };
+
+        let manifest = unvalidated.validate(store.clone(), true).await.unwrap();
+        let ds = &manifest.data_sources[0].as_onchain().unwrap();
+        // For more detailed tests of parsing CallDecls see the data_soure
+        // module in chain/ethereum
+        let decls = &ds.mapping.event_handlers[0].calls.decls;
+        assert_eq!(2, decls.len());
     });
 }
