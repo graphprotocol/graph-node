@@ -446,15 +446,13 @@ impl DataSource {
         })
     }
 
-    fn handlers_for_log<'a>(
-        &'a self,
-        log: &'a Log,
-    ) -> impl Iterator<Item = &'a MappingEventHandler> {
-        self.mapping.event_handlers.iter().filter(|handler| {
-            // Events without a topic should just be ignored. Making the RHS
-            // always `Some` ensures that
-            log.topics.first() == Some(&handler.topic0())
-        })
+    fn handlers_for_log(&self, log: &Log) -> Vec<MappingEventHandler> {
+        self.mapping
+            .event_handlers
+            .iter()
+            .filter(|handler| handler.matches(&log))
+            .cloned()
+            .collect::<Vec<_>>()
     }
 
     fn handler_for_call(&self, call: &EthereumCall) -> Result<Option<&MappingCallHandler>, Error> {
@@ -1552,6 +1550,24 @@ impl MappingEventHandler {
     pub fn topic0(&self) -> H256 {
         self.topic0
             .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
+    }
+
+    pub fn matches(&self, log: &Log) -> bool {
+        if let Some(topic0) = log.topics.get(0) {
+            return self.topic0() == *topic0
+                && self.topic1.as_ref().map_or(true, |t1| {
+                    log.topics.get(1).map_or(false, |topic| t1.contains(topic))
+                })
+                && self.topic2.as_ref().map_or(true, |t2| {
+                    log.topics.get(2).map_or(false, |topic| t2.contains(topic))
+                })
+                && self.topic3.as_ref().map_or(true, |t3| {
+                    log.topics.get(3).map_or(false, |topic| t3.contains(topic))
+                });
+        }
+
+        // Logs without topic0 should simply be skipped
+        false
     }
 
     pub fn has_no_additional_topics(&self) -> bool {
