@@ -430,7 +430,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 mod tests {
     use std::sync::Arc;
 
-    use graph::blockchain::DataSource as _;
+    use graph::{blockchain::DataSource as _, data::subgraph::LATEST_VERSION};
 
     use crate::{
         data_source::{
@@ -443,7 +443,7 @@ mod tests {
     fn validate_no_handler() {
         let ds = new_data_source(None);
 
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(
             errs[0].to_string(),
@@ -458,7 +458,7 @@ mod tests {
             handler: "asdf".into(),
         });
 
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(
             errs[0].to_string(),
@@ -474,7 +474,7 @@ mod tests {
             event_selector: [2u8; 32].into(),
         });
 
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(errs[0].to_string(), "subgraph source address is required");
     }

@@ -208,7 +208,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         todo!()
     }
 
-    fn validate(&self) -> Vec<Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<Error> {
         let mut errors = Vec::new();
 
         if self.kind != STARKNET_KIND {

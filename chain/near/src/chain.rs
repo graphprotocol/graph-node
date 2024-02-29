@@ -565,6 +565,7 @@ mod test {
 
     use graph::{
         blockchain::{block_stream::BlockWithTriggers, DataSource as _, TriggersAdapter as _},
+        data::subgraph::LATEST_VERSION,
         prelude::{tokio, Link},
         semver::Version,
         slog::{self, o, Logger},
@@ -587,7 +588,7 @@ mod test {
     #[test]
     fn validate_empty() {
         let ds = new_data_source(None, None);
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(errs[0].to_string(), "subgraph source address is required");
     }
@@ -595,7 +596,7 @@ mod test {
     #[test]
     fn validate_empty_account_none_partial() {
         let ds = new_data_source(None, Some(PartialAccounts::default()));
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(errs[0].to_string(), "subgraph source address is required");
     }
@@ -609,7 +610,7 @@ mod test {
                 suffixes: vec!["x.near".to_string()],
             }),
         );
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 0, "{:?}", ds);
     }
 
@@ -623,7 +624,7 @@ mod test {
             }),
         );
         let errs: Vec<String> = ds
-            .validate()
+            .validate(LATEST_VERSION)
             .into_iter()
             .map(|err| err.to_string())
             .collect();
@@ -644,7 +645,7 @@ mod test {
     #[test]
     fn validate_empty_partials() {
         let ds = new_data_source(Some("x.near".to_string()), None);
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 0, "{:?}", ds);
     }
 
