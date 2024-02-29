@@ -487,12 +487,23 @@ impl EthereumLogFilter {
     /// to balance between having granular filters but too many calls and having few calls but too
     /// broad filters causing the Ethereum endpoint to timeout.
     pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
+        let mut filters = Vec::new();
+
         // Start with the wildcard event filters.
-        let mut filters = self
-            .wildcard_events
-            .into_keys()
-            .map(EthGetLogsFilter::from_event)
-            .collect_vec();
+        filters.extend(
+            self.wildcard_events
+                .into_keys()
+                .map(EthGetLogsFilter::from_event),
+        );
+
+        // Handle events with topic filters.
+        filters.extend(
+            self.events_with_topic_filters
+                .into_iter()
+                .map(|(event_with_topics, _)| {
+                    EthGetLogsFilter::from_event_with_topics(event_with_topics)
+                }),
+        );
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
         // of its edges into a filter. This is nice because it is neutral between filtering by
