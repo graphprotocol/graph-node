@@ -577,9 +577,9 @@ dataSources:
       eventHandlers:
         - event: Test(address,string)
           handler: handleTest
-          topic1: \"0x0000000000000000000000000000000000000000000000000000000000000000\"
-          topic2: \"0x0000000000000000000000000000000000000000000000000000000000000001\"
-          topic3: \"0x0000000000000000000000000000000000000000000000000000000000000002\"
+          topic1: [\"0x0000000000000000000000000000000000000000000000000000000000000000\", \"0x0000000000000000000000000000000000000000000000000000000000000001\", \"0x0000000000000000000000000000000000000000000000000000000000000002\" ]
+          topic2: [\"0x0000000000000000000000000000000000000000000000000000000000000001\"]
+          topic3: [\"0x0000000000000000000000000000000000000000000000000000000000000002\"]
 schema:
   file:
     /: /ipfs/Qmschema
@@ -589,32 +589,36 @@ specVersion: 0.0.9
     let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_9).await;
     // Check if end block is parsed correctly
     let data_source = manifest.data_sources.first().unwrap();
-    let topic1 = data_source.as_onchain().unwrap().mapping.event_handlers[0].topic1;
-    let topic2 = data_source.as_onchain().unwrap().mapping.event_handlers[0].topic2;
-    let topic3 = data_source.as_onchain().unwrap().mapping.event_handlers[0].topic3;
+    let topic1 = &data_source.as_onchain().unwrap().mapping.event_handlers[0].topic1;
+    let topic2 = &data_source.as_onchain().unwrap().mapping.event_handlers[0].topic2;
+    let topic3 = &data_source.as_onchain().unwrap().mapping.event_handlers[0].topic3;
 
     assert_eq!(
-        Some(
+        Some(vec![
             H256::from_str("0000000000000000000000000000000000000000000000000000000000000000")
-                .unwrap()
-        ),
-        topic1
-    );
-
-    assert_eq!(
-        Some(
+                .unwrap(),
             H256::from_str("0000000000000000000000000000000000000000000000000000000000000001")
-                .unwrap()
-        ),
-        topic2
-    );
-
-    assert_eq!(
-        Some(
+                .unwrap(),
             H256::from_str("0000000000000000000000000000000000000000000000000000000000000002")
                 .unwrap()
-        ),
-        topic3
+        ]),
+        topic1.clone()
+    );
+
+    assert_eq!(
+        Some(vec![H256::from_str(
+            "0000000000000000000000000000000000000000000000000000000000000001"
+        )
+        .unwrap()]),
+        topic2.clone()
+    );
+
+    assert_eq!(
+        Some(vec![H256::from_str(
+            "0000000000000000000000000000000000000000000000000000000000000002"
+        )
+        .unwrap()]),
+        topic3.clone()
     );
 }
 
