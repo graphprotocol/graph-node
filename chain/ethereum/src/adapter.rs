@@ -41,33 +41,27 @@ pub type FunctionSelector = [u8; 4];
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventSignatureWithTopics {
+    pub address: Option<Address>,
     pub signature: H256,
-    pub topic1: Option<H256>,
-    pub topic2: Option<H256>,
-    pub topic3: Option<H256>,
+    pub topic1: Option<Vec<H256>>,
+    pub topic2: Option<Vec<H256>>,
+    pub topic3: Option<Vec<H256>>,
 }
 
 impl EventSignatureWithTopics {
     pub fn new(
+        address: Option<Address>,
         signature: H256,
-        topic1: Option<H256>,
-        topic2: Option<H256>,
-        topic3: Option<H256>,
+        topic1: Option<Vec<H256>>,
+        topic2: Option<Vec<H256>>,
+        topic3: Option<Vec<H256>>,
     ) -> Self {
         EventSignatureWithTopics {
+            address,
             signature,
             topic1,
             topic2,
             topic3,
-        }
-    }
-
-    pub fn from_event_signature(signature: H256) -> Self {
-        EventSignatureWithTopics {
-            signature,
-            topic1: None,
-            topic2: None,
-            topic3: None,
         }
     }
 }
@@ -136,6 +130,9 @@ enum LogFilterNode {
 pub struct EthGetLogsFilter {
     pub contracts: Vec<Address>,
     pub event_signatures: Vec<EventSignature>,
+    pub topic1: Option<Vec<EventSignature>>,
+    pub topic2: Option<Vec<EventSignature>>,
+    pub topic3: Option<Vec<EventSignature>>,
 }
 
 impl EthGetLogsFilter {
@@ -143,6 +140,9 @@ impl EthGetLogsFilter {
         EthGetLogsFilter {
             contracts: vec![address],
             event_signatures: vec![],
+            topic1: None,
+            topic2: None,
+            topic3: None,
         }
     }
 
@@ -150,29 +150,62 @@ impl EthGetLogsFilter {
         EthGetLogsFilter {
             contracts: vec![],
             event_signatures: vec![event],
+            topic1: None,
+            topic2: None,
+            topic3: None,
+        }
+    }
+
+    fn from_event_with_topics(event: EventSignatureWithTopics) -> Self {
+        EthGetLogsFilter {
+            contracts: event.address.map_or(vec![], |a| vec![a]),
+            event_signatures: vec![event.signature],
+            topic1: event.topic1,
+            topic2: event.topic2,
+            topic3: event.topic3,
         }
     }
 }
 
 impl fmt::Display for EthGetLogsFilter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.contracts.len() == 1 {
-            write!(
-                f,
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let base_msg = if self.contracts.len() == 1 {
+            format!(
                 "contract {:?}, {} events",
                 self.contracts[0],
                 self.event_signatures.len()
             )
         } else if self.event_signatures.len() == 1 {
-            write!(
-                f,
+            format!(
                 "event {:?}, {} contracts",
                 self.event_signatures[0],
                 self.contracts.len()
             )
         } else {
-            write!(f, "unreachable")
-        }
+            "unspecified filter".to_string()
+        };
+
+        // Helper to format topics as strings
+        let format_topics = |topics: &Option<Vec<EventSignature>>| -> String {
+            topics.as_ref().map_or_else(
+                || "None".to_string(),
+                |ts| {
+                    let signatures: Vec<String> = ts.iter().map(|t| format!("{:?}", t)).collect();
+                    signatures.join(", ")
+                },
+            )
+        };
+
+        // Constructing topic strings
+        let topics_msg = format!(
+            ", topic1: [{}], topic2: [{}], topic3: [{}]",
+            format_topics(&self.topic1),
+            format_topics(&self.topic2),
+            format_topics(&self.topic3),
+        );
+
+        // Combine the base message with topic information
+        write!(f, "{}{}", base_msg, topics_msg)
     }
 }
 
@@ -285,6 +318,7 @@ impl From<EthereumLogFilter> for Vec<LogFilter> {
                 |EthGetLogsFilter {
                      contracts,
                      event_signatures,
+                     .. // TODO: Handle events with topic filters for firehose
                  }| LogFilter {
                     addresses: contracts
                         .iter()
