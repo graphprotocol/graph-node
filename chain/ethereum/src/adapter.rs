@@ -309,6 +309,8 @@ pub struct EthereumLogFilter {
     /// Event sigs with no associated address, matching on all addresses.
     /// Maps to a boolean representing if a trigger requires a transaction receipt.
     wildcard_events: HashMap<EventSignature, bool>,
+    /// Events with any of the topic filters set
+    events_with_topic_filters: HashMap<EventSignatureWithTopics, bool>,
 }
 
 impl From<EthereumLogFilter> for Vec<LogFilter> {
@@ -351,6 +353,19 @@ impl EthereumLogFilter {
                     .all_edges()
                     .any(|(s, t, _)| (s == contract && t == event) || (t == contract && s == event))
                     || self.wildcard_events.contains_key(sig)
+                    || self.events_with_topic_filters.iter().any(|(k, _)| {
+                        k.address == Some(log.address)
+                            && k.signature == *sig
+                            && k.topic1.as_ref().map_or(true, |t1| {
+                                log.topics.get(1).map_or(false, |topic| t1.contains(topic))
+                            })
+                            && k.topic2.as_ref().map_or(true, |t2| {
+                                log.topics.get(2).map_or(false, |topic| t2.contains(topic))
+                            })
+                            && k.topic3.as_ref().map_or(true, |t3| {
+                                log.topics.get(3).map_or(false, |topic| t3.contains(topic))
+                            })
+                    })
             }
         }
     }
@@ -382,16 +397,42 @@ impl EthereumLogFilter {
             for event_handler in ds.mapping.event_handlers.iter() {
                 let event_sig = event_handler.topic0();
                 match ds.address {
-                    Some(contract) => {
+                    Some(contract) if event_handler.has_no_additional_topics() => {
                         this.contracts_and_events_graph.add_edge(
                             LogFilterNode::Contract(contract),
                             LogFilterNode::Event(event_sig),
                             event_handler.receipt,
                         );
                     }
-                    None => {
+                    Some(contract) => {
+                        this.events_with_topic_filters.insert(
+                            EventSignatureWithTopics {
+                                address: Some(contract),
+                                signature: event_sig,
+                                topic1: None,
+                                topic2: None,
+                                topic3: None,
+                            },
+                            event_handler.receipt,
+                        );
+                    }
+
+                    None if (event_handler.has_no_additional_topics()) => {
                         this.wildcard_events
                             .insert(event_sig, event_handler.receipt);
+                    }
+
+                    None => {
+                        this.events_with_topic_filters.insert(
+                            EventSignatureWithTopics::new(
+                                ds.address,
+                                event_sig,
+                                event_handler.topic1.clone(),
+                                event_handler.topic2.clone(),
+                                event_handler.topic3.clone(),
+                            ),
+                            event_handler.receipt,
+                        );
                     }
                 }
             }
@@ -419,11 +460,14 @@ impl EthereumLogFilter {
         let EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
+            events_with_topic_filters,
         } = other;
         for (s, t, e) in contracts_and_events_graph.all_edges() {
             self.contracts_and_events_graph.add_edge(s, t, *e);
         }
         self.wildcard_events.extend(wildcard_events);
+        self.events_with_topic_filters
+            .extend(events_with_topic_filters);
     }
 
     /// An empty filter is one that never matches.
@@ -432,8 +476,11 @@ impl EthereumLogFilter {
         let EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
+            events_with_topic_filters,
         } = self;
-        contracts_and_events_graph.edge_count() == 0 && wildcard_events.is_empty()
+        contracts_and_events_graph.edge_count() == 0
+            && wildcard_events.is_empty()
+            && events_with_topic_filters.is_empty()
     }
 
     /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
@@ -1199,6 +1246,7 @@ mod tests {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
                 wildcard_events: HashMap::new(),
+                events_with_topic_filters: HashMap::new(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::from_iter(vec![
@@ -1324,6 +1372,7 @@ mod tests {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
                 wildcard_events: HashMap::new(),
+                events_with_topic_filters: HashMap::new(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::new(),
@@ -1715,6 +1764,7 @@ fn complete_log_filter() {
             let logs_filters: Vec<_> = EthereumLogFilter {
                 contracts_and_events_graph,
                 wildcard_events: HashMap::new(),
+                events_with_topic_filters: HashMap::new(),
             }
             .eth_get_logs_filters()
             .collect();
@@ -1764,6 +1814,8 @@ fn log_filter_require_transacion_receipt_method() {
     .into_iter()
     .collect();
 
+    let events_with_topic_filters = HashMap::new(); // TODO(krishna): Test events with topic filters
+
     let alien_event_signature = H256::from_low_u64_be(8); // those will not be inserted in the graph
     let alien_contract_address = Address::from_low_u64_be(9);
 
@@ -1807,6 +1859,7 @@ fn log_filter_require_transacion_receipt_method() {
     let filter = EthereumLogFilter {
         contracts_and_events_graph,
         wildcard_events,
+        events_with_topic_filters,
     };
 
     // connected contracts and events graph
