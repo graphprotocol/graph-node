@@ -2263,7 +2263,7 @@ async fn get_logs_and_transactions(
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
         .filter(|log| {
             if let Some(signature) = log.topics.first() {
-                log_filter.requires_transaction_receipt(signature, Some(&log.address))
+                log_filter.requires_transaction_receipt(signature, Some(&log.address), &log.topics)
             } else {
                 false
             }

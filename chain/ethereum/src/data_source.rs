@@ -1555,11 +1555,9 @@ impl MappingEventHandler {
     }
 
     pub fn has_no_additional_topics(&self) -> bool {
-        !self.has_additional_topics()
-    }
-
-    pub fn has_additional_topics(&self) -> bool {
-        self.topic1.is_some() || self.topic2.is_some() || self.topic3.is_some()
+        self.topic1.as_ref().map_or(true, Vec::is_empty)
+            && self.topic2.as_ref().map_or(true, Vec::is_empty)
+            && self.topic3.as_ref().map_or(true, Vec::is_empty)
     }
 }
 
