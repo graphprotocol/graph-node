@@ -905,16 +905,21 @@ where
         }
     }
 
-    /// We consider a subgraph caught up when it's at most 1 blocks behind the chain head.
+    /// We consider a subgraph caught up when it's at most 10 blocks behind the chain head.
     async fn is_caught_up(&mut self, block_ptr: &BlockPtr) -> Result<bool, Error> {
+        const CAUGHT_UP_DISTANCE: BlockNumber = 10;
+
         // Ensure that `state.cached_head_ptr` has a value since it could be `None` on the first
         // iteration of loop. If the deployment head has caught up to the `cached_head_ptr`, update
         // it so that we are up to date when checking if synced.
         let cached_head_ptr = self.state.cached_head_ptr.cheap_clone();
-        if cached_head_ptr.is_none() || close_to_chain_head(&block_ptr, &cached_head_ptr, 1) {
+        if cached_head_ptr.is_none()
+            || close_to_chain_head(&block_ptr, &cached_head_ptr, CAUGHT_UP_DISTANCE)
+        {
             self.state.cached_head_ptr = self.inputs.chain.chain_store().chain_head_ptr().await?;
         }
-        let is_caught_up = close_to_chain_head(&block_ptr, &self.state.cached_head_ptr, 1);
+        let is_caught_up =
+            close_to_chain_head(&block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
         if is_caught_up {
             // Stop recording time-to-sync metrics.
             self.metrics.stream.stopwatch.disable();
