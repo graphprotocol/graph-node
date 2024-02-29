@@ -101,7 +101,11 @@ impl Contract {
         })
     }
 
-    async fn call(&self, func: &str, params: impl Tokenize) -> anyhow::Result<TransactionReceipt> {
+    pub async fn call(
+        &self,
+        func: &str,
+        params: impl Tokenize,
+    ) -> anyhow::Result<TransactionReceipt> {
         let eth = Self::eth();
         let (_, abi) = Self::code_and_abi(&self.name)?;
         let contract = Web3Contract::from_json(eth, self.address, &abi)?;
