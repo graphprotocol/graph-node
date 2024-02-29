@@ -64,6 +64,26 @@ impl EventSignatureWithTopics {
             topic3,
         }
     }
+
+    pub fn matches(&self, address: Option<&H160>, sig: H256, topics: &Vec<H256>) -> bool {
+        // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
+        let address_matches = match self.address {
+            Some(ref self_addr) => address == Some(self_addr),
+            None => true, // self.address is None, so it matches any address.
+        };
+
+        address_matches
+            && self.signature == sig
+            && self.topic1.as_ref().map_or(true, |t1| {
+                topics.get(1).map_or(false, |topic| t1.contains(topic))
+            })
+            && self.topic2.as_ref().map_or(true, |t2| {
+                topics.get(2).map_or(false, |topic| t2.contains(topic))
+            })
+            && self.topic3.as_ref().map_or(true, |t3| {
+                topics.get(3).map_or(false, |topic| t3.contains(topic))
+            })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -353,19 +373,10 @@ impl EthereumLogFilter {
                     .all_edges()
                     .any(|(s, t, _)| (s == contract && t == event) || (t == contract && s == event))
                     || self.wildcard_events.contains_key(sig)
-                    || self.events_with_topic_filters.iter().any(|(k, _)| {
-                        k.address == Some(log.address)
-                            && k.signature == *sig
-                            && k.topic1.as_ref().map_or(true, |t1| {
-                                log.topics.get(1).map_or(false, |topic| t1.contains(topic))
-                            })
-                            && k.topic2.as_ref().map_or(true, |t2| {
-                                log.topics.get(2).map_or(false, |topic| t2.contains(topic))
-                            })
-                            && k.topic3.as_ref().map_or(true, |t3| {
-                                log.topics.get(3).map_or(false, |topic| t3.contains(topic))
-                            })
-                    })
+                    || self
+                        .events_with_topic_filters
+                        .iter()
+                        .any(|(e, _)| e.matches(Some(&log.address), *sig, &log.topics))
             }
         }
     }
@@ -375,20 +386,42 @@ impl EthereumLogFilter {
         &self,
         event_signature: &H256,
         contract_address: Option<&Address>,
+        topics: &Vec<H256>,
     ) -> bool {
-        if let Some(true) = self.wildcard_events.get(event_signature) {
-            true
-        } else if let Some(address) = contract_address {
-            let contract = LogFilterNode::Contract(*address);
-            let event = LogFilterNode::Event(*event_signature);
-            self.contracts_and_events_graph
-                .all_edges()
-                .any(|(s, t, r)| {
-                    *r && (s == contract && t == event) || (t == contract && s == event)
-                })
-        } else {
-            false
+        // Check for wildcard events first.
+        if self.wildcard_events.get(event_signature) == Some(&true) {
+            return true;
         }
+
+        // Next, check events with topic filters.
+        if self
+            .events_with_topic_filters
+            .iter()
+            .any(|(event_with_topics, &requires_receipt)| {
+                requires_receipt
+                    && event_with_topics.matches(contract_address, *event_signature, topics)
+            })
+        {
+            return true;
+        }
+
+        // Finally, check the contracts_and_events_graph if a contract address is specified.
+        if let Some(address) = contract_address {
+            let contract_node = LogFilterNode::Contract(*address);
+            let event_node = LogFilterNode::Event(*event_signature);
+
+            // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
+            for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
+                if r && ((s == contract_node && t == event_node)
+                    || (t == contract_node && s == event_node))
+                {
+                    return true;
+                }
+            }
+        }
+
+        // If none of the conditions above match, return false.
+        false
     }
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
@@ -1873,32 +1906,88 @@ fn log_filter_require_transacion_receipt_method() {
         events_with_topic_filters,
     };
 
+    let empty_vec: Vec<H256> = vec![];
+
     // connected contracts and events graph
-    assert!(filter.requires_transaction_receipt(&event_signature_a, Some(&contract_a)));
-    assert!(filter.requires_transaction_receipt(&event_signature_b, Some(&contract_b)));
-    assert!(filter.requires_transaction_receipt(&event_signature_c, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&contract_b)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&contract_a)));
+    assert!(filter.requires_transaction_receipt(&event_signature_a, Some(&contract_a), &empty_vec));
+    assert!(filter.requires_transaction_receipt(&event_signature_b, Some(&contract_b), &empty_vec));
+    assert!(filter.requires_transaction_receipt(&event_signature_c, Some(&contract_c), &empty_vec));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_a,
+        Some(&contract_b),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_b,
+        Some(&contract_a),
+        &empty_vec
+    ));
 
     // Event C and Contract C are not connected to the other events and contracts
-    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_a)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_b)));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_a,
+        Some(&contract_c),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_b,
+        Some(&contract_c),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_c,
+        Some(&contract_a),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_c,
+        Some(&contract_b),
+        &empty_vec
+    ));
 
     // Wildcard events
-    assert!(filter.requires_transaction_receipt(&wildcard_event_with_receipt, None));
-    assert!(!filter.requires_transaction_receipt(&wildcard_event_without_receipt, None));
+    assert!(filter.requires_transaction_receipt(&wildcard_event_with_receipt, None, &empty_vec));
+    assert!(!filter.requires_transaction_receipt(
+        &wildcard_event_without_receipt,
+        None,
+        &empty_vec
+    ));
 
     // Alien events and contracts always return false
-    assert!(
-        !filter.requires_transaction_receipt(&alien_event_signature, Some(&alien_contract_address))
-    );
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, None));
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_a)));
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_b)));
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&alien_contract_address)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&alien_contract_address)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&alien_contract_address)));
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(&alien_event_signature, None, &empty_vec),);
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&contract_a),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&contract_b),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&contract_c),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_a,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_b,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_c,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
 }
