@@ -248,13 +248,17 @@ impl EthereumAdapter {
 
                 async move {
                     let start = Instant::now();
-
                     // Create a log filter
                     let log_filter: Filter = FilterBuilder::default()
                         .from_block(from.into())
                         .to_block(to.into())
                         .address(filter.contracts.clone())
-                        .topics(Some(filter.event_signatures.clone()), None, None, None)
+                        .topics(
+                            Some(filter.event_signatures.clone()),
+                            filter.topic1.clone(),
+                            filter.topic2.clone(),
+                            filter.topic3.clone(),
+                        )
                         .build();
 
                     // Request logs from client
