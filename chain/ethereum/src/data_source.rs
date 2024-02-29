@@ -1553,6 +1553,14 @@ impl MappingEventHandler {
         self.topic0
             .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
     }
+
+    pub fn has_no_additional_topics(&self) -> bool {
+        !self.has_additional_topics()
+    }
+
+    pub fn has_additional_topics(&self) -> bool {
+        self.topic1.is_some() || self.topic2.is_some() || self.topic3.is_some()
+    }
 }
 
 /// Hashes a string to a H256 hash.
