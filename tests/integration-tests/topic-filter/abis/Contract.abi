@@ -1,0 +1,66 @@
+[
+    { "type": "constructor", "inputs": [], "stateMutability": "nonpayable" },
+    {
+      "type": "function",
+      "name": "emitAnotherTrigger",
+      "inputs": [
+        { "name": "a", "type": "uint256", "internalType": "uint256" },
+        { "name": "b", "type": "uint256", "internalType": "uint256" },
+        { "name": "c", "type": "uint256", "internalType": "uint256" },
+        { "name": "data", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "emitTrigger",
+      "inputs": [{ "name": "x", "type": "uint16", "internalType": "uint16" }],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "AnotherTrigger",
+      "inputs": [
+        {
+          "name": "a",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "b",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "c",
+          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256"
+        },
+        {
+          "name": "data",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Trigger",
+      "inputs": [
+        {
+          "name": "x",
+          "type": "uint16",
+          "indexed": false,
+          "internalType": "uint16"
+        }
+      ],
+      "anonymous": false
+    }
+  ]

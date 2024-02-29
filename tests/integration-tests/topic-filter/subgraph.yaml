@@ -1,0 +1,27 @@
+specVersion: 0.0.8
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "@SimpleContract@"
+      abi: Contract
+      startBlock: 1
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      entities:
+        - Call
+      eventHandlers:
+        - event: AnotherTrigger(indexed uint256,indexed uint256,indexed uint256,string)
+          handler: handleAnotherTrigger
+          topic1: ["0x0000000000000000000000000000000000000000000000000000000000000001"]
+          topic2: ["0x0000000000000000000000000000000000000000000000000000000000000002"]
+          topic3: ["0x0000000000000000000000000000000000000000000000000000000000000003"]
+      file: ./src/mapping.ts
