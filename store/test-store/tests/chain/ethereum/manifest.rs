@@ -10,8 +10,8 @@ use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
-    Prune, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
-    SPEC_VERSION_1_0_0,
+    Prune, LATEST_VERSION, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8,
+    SPEC_VERSION_0_0_9, SPEC_VERSION_1_0_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
@@ -592,7 +592,7 @@ specVersion: 0.0.8
         .collect::<Vec<_>>();
 
     let data_source = onchain_data_sources.get(0).unwrap();
-    let validation_errors = data_source.validate();
+    let validation_errors = data_source.validate(&LATEST_VERSION);
     let filter = data_source.mapping.block_handlers[0].filter.clone();
 
     assert_eq!(0, validation_errors.len());
@@ -688,7 +688,7 @@ specVersion: 0.0.8
         .collect::<Vec<_>>();
 
     let data_source = onchain_data_sources.get(0).unwrap();
-    let validation_errors = data_source.validate();
+    let validation_errors = data_source.validate(LATEST_VERSION);
     let filters = data_source
         .mapping
         .block_handlers
@@ -753,7 +753,7 @@ specVersion: 0.0.8
         .collect::<Vec<_>>();
 
     let data_source = onchain_data_sources.get(0).unwrap();
-    let validation_errors = data_source.validate();
+    let validation_errors = data_source.validate(LATEST_VERSION);
     let filters = data_source
         .mapping
         .block_handlers

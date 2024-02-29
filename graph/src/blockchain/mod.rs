@@ -300,7 +300,7 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource;
 
     /// Used as part of manifest validation. If there are no errors, return an empty vector.
-    fn validate(&self) -> Vec<Error>;
+    fn validate(&self, spec_version: &semver::Version) -> Vec<Error>;
 
     fn has_expired(&self, block: BlockNumber) -> bool {
         self.end_block()

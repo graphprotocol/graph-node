@@ -140,7 +140,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
         todo!()
     }
 
-    fn validate(&self) -> Vec<anyhow::Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<anyhow::Error> {
         todo!()
     }
 }

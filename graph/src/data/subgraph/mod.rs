@@ -691,7 +691,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         }
 
         for ds in &self.0.data_sources {
-            errors.extend(ds.validate().into_iter().map(|e| {
+            errors.extend(ds.validate(&self.0.spec_version).into_iter().map(|e| {
                 SubgraphManifestValidationError::DataSourceValidation(ds.name().to_owned(), e)
             }));
         }

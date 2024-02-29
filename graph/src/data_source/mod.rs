@@ -236,9 +236,9 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
-    pub fn validate(&self) -> Vec<Error> {
+    pub fn validate(&self, spec_version: &semver::Version) -> Vec<Error> {
         match self {
-            Self::Onchain(ds) => ds.validate(),
+            Self::Onchain(ds) => ds.validate(spec_version),
             Self::Offchain(_) => vec![],
         }
     }
