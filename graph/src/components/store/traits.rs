@@ -327,6 +327,11 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///
     /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
+    ///
+    /// `is_caught_up_with_chain_head` indicates if `block_ptr_to` is close enough to the chain head
+    /// to be considered 'caught up', for purposes such as setting the synced flag or turning off
+    /// write batching. This is as vague as it sounds, it is not deterministic and should be treated
+    /// as a hint only.
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
