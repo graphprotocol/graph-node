@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 
 use graph::data::graphql::ext::DirectiveFinder;
-use graph::data::graphql::ObjectOrInterface;
+use graph::data::graphql::QueryableType;
 use graph::data::graphql::TypeExt as _;
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
@@ -29,10 +29,10 @@ pub(crate) struct SchemaPair {
 ///
 /// Panics if `entity` is not present in `schema`.
 pub(crate) fn build_query<'a>(
-    entity: impl Into<ObjectOrInterface<'a>>,
+    entity: impl Into<QueryableType<'a>>,
     block: BlockNumber,
     field: &a::Field,
-    types_for_interface: &'a BTreeMap<String, Vec<s::ObjectType>>,
+    types_for_interface_or_union: &'a BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
     mut column_names: SelectedAttributes,
@@ -40,19 +40,22 @@ pub(crate) fn build_query<'a>(
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
-        ObjectOrInterface::Object(object) => {
+        QueryableType::Object(object) => {
             let selected_columns = column_names.get(object);
             let entity_type = schema.input.entity_type(*object).unwrap();
             vec![(entity_type, selected_columns)]
         }
-        ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
-            .iter()
-            .map(|o| {
-                let selected_columns = column_names.get(o);
-                let entity_type = schema.input.entity_type(o).unwrap();
-                (entity_type, selected_columns)
-            })
-            .collect(),
+        QueryableType::Interface(s::InterfaceType { name, .. })
+        | QueryableType::Union(s::UnionType { name, .. }) => {
+            types_for_interface_or_union[name]
+                .iter()
+                .map(|o| {
+                    let selected_columns = column_names.get(o);
+                    let entity_type = schema.input.entity_type(o).unwrap();
+                    (entity_type, selected_columns)
+                })
+                .collect()
+        }
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
@@ -177,7 +180,7 @@ fn build_range(
 
 /// Parses GraphQL arguments into an EntityFilter, if present.
 fn build_filter(
-    entity: ObjectOrInterface,
+    entity: QueryableType,
     field: &a::Field,
     schema: &SchemaPair,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
@@ -274,7 +277,7 @@ fn build_entity_filter(
 
 /// Iterate over the list and generate an EntityFilter from it
 fn build_list_filter_from_value(
-    entity: ObjectOrInterface,
+    entity: QueryableType,
     schema: &SchemaPair,
     value: &r::Value,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
@@ -301,7 +304,7 @@ fn build_list_filter_from_value(
 
 /// build a filter which has list of nested filters
 fn build_list_filter_from_object<'a>(
-    entity: ObjectOrInterface,
+    entity: QueryableType,
     object: &Object,
     schema: &SchemaPair,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
@@ -317,7 +320,7 @@ fn build_list_filter_from_object<'a>(
 
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object<'a>(
-    entity: ObjectOrInterface,
+    entity: QueryableType,
     object: &Object,
     schema: &SchemaPair,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
@@ -393,7 +396,7 @@ fn build_filter_from_object<'a>(
 }
 
 fn build_child_filter_from_object(
-    entity: ObjectOrInterface,
+    entity: QueryableType,
     field_name: String,
     object: &Object,
     schema: &SchemaPair,
@@ -552,7 +555,7 @@ enum OrderByChild {
 
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
-    entity: ObjectOrInterface,
+    entity: QueryableType,
     field: &a::Field,
     schema: &SchemaPair,
 ) -> Result<Option<(String, ValueType, Option<OrderByChild>)>, QueryExecutionError> {
@@ -576,7 +579,7 @@ fn build_order_by(
                 // In the case of an interface, we need to find the field on one of the types that implement the interface,
                 // as the `@derivedFrom` directive is only allowed on object types.
                 let field = match entity {
-                    ObjectOrInterface::Object(_) => {
+                    QueryableType::Object(_) => {
                         sast::get_field(entity, parent_field_name.as_str()).ok_or_else(|| {
                             QueryExecutionError::EntityFieldError(
                                 entity.name().to_owned(),
@@ -584,14 +587,15 @@ fn build_order_by(
                             )
                         })?
                     }
-                    ObjectOrInterface::Interface(_) => {
-                        let object_types =
-                            schema.api.types_for_interface().get(entity.name()).ok_or(
-                                QueryExecutionError::EntityFieldError(
-                                    entity.name().to_owned(),
-                                    parent_field_name.clone(),
-                                ),
-                            )?;
+                    QueryableType::Interface(_) | QueryableType::Union(_) => {
+                        let object_types = schema
+                            .api
+                            .types_for_interface_or_union()
+                            .get(entity.name())
+                            .ok_or(QueryExecutionError::EntityFieldError(
+                                entity.name().to_owned(),
+                                parent_field_name.clone(),
+                            ))?;
 
                         if let Some(first_entity) = object_types.first() {
                             sast::get_field(first_entity, parent_field_name.as_str()).ok_or_else(
@@ -639,16 +643,19 @@ fn build_order_by(
                 };
 
                 let child = match child_entity {
-                    ObjectOrInterface::Object(_) => OrderByChild::Object(ObjectOrderDetails {
-                        entity_type: schema.input.entity_type(base_type)?,
-                        join_attribute,
-                        derived,
-                    }),
-                    ObjectOrInterface::Interface(interface) => {
+                    QueryableType::Object(_) => {
+                        OrderByChild::Object(ObjectOrderDetails {
+                            entity_type: schema.input.entity_type(base_type)?,
+                            join_attribute,
+                            derived,
+                        })
+                    }
+                    QueryableType::Interface(s::InterfaceType { name, .. })
+                    | QueryableType::Union(s::UnionType { name, .. }) => {
                         let entity_types = schema
                             .api
-                            .types_for_interface()
-                            .get(&interface.name)
+                            .types_for_interface_or_union()
+                            .get(name)
                             .map(|object_types| {
                                 object_types
                                     .iter()
@@ -714,7 +721,7 @@ fn build_order_direction(field: &a::Field) -> Result<OrderDirection, QueryExecut
 
 /// Parses the subgraph ID from the ObjectType directives.
 pub fn parse_subgraph_id<'a>(
-    entity: impl Into<ObjectOrInterface<'a>>,
+    entity: impl Into<QueryableType<'a>>,
 ) -> Result<DeploymentHash, QueryExecutionError> {
     let entity = entity.into();
     let entity_name = entity.name();

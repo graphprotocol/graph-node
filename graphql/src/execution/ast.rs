@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use graph::{
-    data::graphql::ObjectOrInterface,
+    data::graphql::QueryableType,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
     schema::{ast::ObjectType, ApiSchema},
 };
@@ -326,7 +326,7 @@ impl ObjectTypeSet {
     pub fn type_names(
         &self,
         schema: &ApiSchema,
-        current_type: ObjectOrInterface<'_>,
+        current_type: QueryableType<'_>,
     ) -> Result<Vec<ObjectType>, QueryExecutionError> {
         Ok(resolve_object_types(schema, current_type.name())?
             .into_iter()
@@ -350,7 +350,7 @@ pub(crate) fn resolve_object_types(
         .ok_or_else(|| QueryExecutionError::AbstractTypeError(name.to_string()))?
     {
         s::TypeDefinition::Interface(intf) => {
-            for obj_ty in &schema.types_for_interface()[&intf.name] {
+            for obj_ty in &schema.types_for_interface_or_union()[&intf.name] {
                 let obj_ty = schema.object_type(obj_ty);
                 set.insert(obj_ty.into());
             }

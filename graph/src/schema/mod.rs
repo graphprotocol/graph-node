@@ -37,6 +37,8 @@ pub const META_FIELD_TYPE: &str = "_Meta_";
 pub const META_FIELD_NAME: &str = "_meta";
 
 pub const SQL_FIELD_TYPE: &str = "SqlOutput";
+pub const SQL_JSON_FIELD_TYPE: &str = "SqlJSONOutput";
+pub const SQL_CSV_FIELD_TYPE: &str = "SqlCSVOutput";
 pub const SQL_INPUT_TYPE: &str = "SqlInput";
 pub const SQL_FIELD_NAME: &str = "sql";
 
@@ -127,7 +129,7 @@ pub struct Schema {
     pub interfaces_for_type: BTreeMap<String, Vec<s::InterfaceType>>,
 
     // Maps an interface name to the list of entities that implement it.
-    pub types_for_interface: BTreeMap<String, Vec<s::ObjectType>>,
+    pub types_for_interface_or_union: BTreeMap<String, Vec<s::ObjectType>>,
 }
 
 impl Schema {
@@ -138,13 +140,13 @@ impl Schema {
     // fully validated. The code should be changed to make sure that a
     // `Schema` is always fully valid
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
-        let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
+        let (interfaces_for_type, types_for_interface_or_union) = Self::collect_interfaces(&document)?;
 
         let mut schema = Schema {
             id: id.clone(),
             document,
             interfaces_for_type,
-            types_for_interface,
+            types_for_interface_or_union,
         };
 
         schema.add_subgraph_id_directives(id);
@@ -163,7 +165,7 @@ impl Schema {
     > {
         // Initialize with an empty vec for each interface, so we don't
         // miss interfaces that have no implementors.
-        let mut types_for_interface =
+        let mut types_for_interface_or_union =
             BTreeMap::from_iter(document.definitions.iter().filter_map(|d| match d {
                 s::Definition::TypeDefinition(s::TypeDefinition::Interface(t)) => {
                     Some((t.name.to_string(), vec![]))
@@ -195,14 +197,33 @@ impl Schema {
                     .entry(object_type.name.to_owned())
                     .or_default()
                     .push(interface_type);
-                types_for_interface
+                types_for_interface_or_union
                     .get_mut(implemented_interface)
                     .unwrap()
                     .push(object_type.clone());
             }
         }
 
-        Ok((interfaces_for_type, types_for_interface))
+        // we also load the union types
+        // unions cannot be interfaces, so we don't need to worry about rewriting the above code
+        for union in document.get_union_definitions() {
+            let object_types: Vec<_> = document
+                .definitions
+                .iter()
+                .filter_map(|def| match def {
+                    s::Definition::TypeDefinition(s::TypeDefinition::Object(o))
+                        if union.types.contains(&o.name) =>
+                    {
+                        Some(o.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            types_for_interface_or_union.insert(union.name.to_string(), object_types);
+        }
+
+        Ok((interfaces_for_type, types_for_interface_or_union))
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
@@ -212,8 +233,8 @@ impl Schema {
     }
 
     /// Returned map has one an entry for each interface in the schema.
-    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
-        &self.types_for_interface
+    pub fn types_for_interface_or_union(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
+        &self.types_for_interface_or_union
     }
 
     /// Returns `None` if the type implements no interfaces.

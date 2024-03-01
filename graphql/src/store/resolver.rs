@@ -5,13 +5,13 @@ use std::sync::Arc;
 use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
-use graph::data::graphql::{object, ObjectOrInterface};
+use graph::data::graphql::{object, QueryableType};
 use graph::data::query::{CacheStatus, Trace};
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph::schema::{
     ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
-    META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_TYPE,
+    META_FIELD_NAME, META_FIELD_TYPE, SQL_CSV_FIELD_TYPE, SQL_JSON_FIELD_TYPE,
 };
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
@@ -226,7 +226,7 @@ impl StoreResolver {
     fn handle_meta(
         &self,
         prefetched_object: Option<r::Value>,
-        object_type: &ObjectOrInterface<'_>,
+        object_type: &QueryableType<'_>,
     ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
         // Pretend that the whole `_meta` field was loaded by prefetch. Eager
         // loading this is ok until we add more information to this field
@@ -289,7 +289,7 @@ impl StoreResolver {
         &self,
         prefetched_object: Option<r::Value>,
         field: &a::Field,
-        object_type: &ObjectOrInterface<'_>,
+        object_type: &QueryableType<'_>,
     ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
         if !ENV_VARS.graphql.enable_sql_service {
             return Err(QueryExecutionError::NotSupported(
@@ -300,19 +300,39 @@ impl StoreResolver {
             return Ok((prefetched_object, None));
         }
 
-        let query = field
+        let input = field
             .argument_value("input")
             .ok_or_else(|| QueryExecutionError::EmptyQuery)?;
 
-        let query = match query {
-            graph::data::value::Value::Object(s) => match s.get("query") {
-                Some(graph::data::value::Value::String(s)) => s,
+        let input = match input {
+            graph::data::value::Value::Object(s) => s,
+            _ => {
+                return Err(QueryExecutionError::SqlError(
+                    "Input is not an object".into(),
+                ))
+            }
+        };
+
+        enum Format {
+            Json,
+            Csv,
+        }
+
+        let format = match input.get("format") {
+            Some(graph::data::value::Value::Enum(s)) => match s.as_str() {
+                "JSON" => Format::Json,
+                "CSV" => Format::Csv,
                 _ => {
                     return Err(QueryExecutionError::SqlError(
-                        "Query must be a string".into(),
+                        "Format must be json or csv".into(),
                     ))
                 }
             },
+            _ => Format::Json,
+        };
+
+        let query = match input.get("query") {
+            Some(graph::data::value::Value::String(s)) => s,
             _ => {
                 return Err(QueryExecutionError::SqlError(
                     "Query must be a string".into(),
@@ -334,11 +354,29 @@ impl StoreResolver {
                 .collect::<Vec<_>>(),
             _ => vec![],
         };
-        let sql_result = object! {
-            __typename: SQL_FIELD_TYPE,
-            columns: r::Value::List(columns),
-            rows: result,
-            rowCount: r::Value::Int(row_count as i64),
+        let sql_result = match format {
+            Format::Json => object! {
+                __typename: SQL_JSON_FIELD_TYPE,
+                columns: r::Value::List(columns),
+                rows: result,
+                rowCount: r::Value::Int(row_count as i64),
+            },
+            Format::Csv => object! {
+                __typename: SQL_CSV_FIELD_TYPE,
+                columns: r::Value::List(columns),
+                result: r::Value::String(result.into_iter().filter_map(|v| {
+                    match v {
+                        r::Value::Object(obj) => Some(
+                            obj
+                                .iter()
+                                .map(|(_, v)| v.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",")),
+                        _ => None,
+                    }
+                }).collect::<Vec<_>>().join("\n")),
+                rowCount: r::Value::Int(row_count as i64),
+            },
         };
 
         Ok((prefetched_object, Some(sql_result)))
@@ -367,7 +405,7 @@ impl Resolver for StoreResolver {
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
         _field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         if let Some(child) = prefetched_objects {
             Ok(child)
@@ -386,7 +424,7 @@ impl Resolver for StoreResolver {
         prefetched_object: Option<r::Value>,
         field: &a::Field,
         field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
         if let Some(meta) = meta {

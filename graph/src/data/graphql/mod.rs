@@ -25,8 +25,8 @@ pub mod shape_hash;
 
 pub mod load_manager;
 
-pub mod object_or_interface;
-pub use object_or_interface::ObjectOrInterface;
+pub mod queryable_type;
+pub use queryable_type::QueryableType;
 
 pub mod object_macro;
 pub use crate::object;
