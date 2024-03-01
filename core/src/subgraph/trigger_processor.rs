@@ -22,7 +22,7 @@ where
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
         mut state: BlockState,
@@ -34,23 +34,15 @@ where
     ) -> Result<BlockState, MappingError> {
         let error_count = state.deterministic_errors.len();
 
-        let mut host_mapping: Vec<(&T::Host, TriggerWithHandler<MappingTrigger<C>>)> = vec![];
-
-        {
-            let _section = subgraph_metrics.stopwatch.start_section("match_and_decode");
-
-            for host in hosts {
-                let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
-                    // Trigger matches and was decoded as a mapping trigger.
-                    Some(mapping_trigger) => mapping_trigger,
-
-                    // Trigger does not match, do not process it.
-                    None => continue,
-                };
-
-                host_mapping.push((host, mapping_trigger));
-            }
-        }
+        let host_mapping: Vec<(&'a T::Host, TriggerWithHandler<_>)> =
+            <Self as graph::prelude::TriggerProcessor<C, T>>::match_and_decode(
+                self,
+                logger,
+                block,
+                trigger,
+                hosts,
+                subgraph_metrics,
+            )?;
 
         if host_mapping.is_empty() {
             return Ok(state);
@@ -99,5 +91,33 @@ where
         }
 
         Ok(state)
+    }
+
+    fn match_and_decode<'a>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        trigger: &TriggerData<C>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<Vec<(&'a T::Host, TriggerWithHandler<MappingTrigger<C>>)>, MappingError> {
+        let mut host_mapping: Vec<(&'a T::Host, TriggerWithHandler<MappingTrigger<C>>)> = vec![];
+
+        {
+            let _section = subgraph_metrics.stopwatch.start_section("match_and_decode");
+
+            for host in hosts {
+                let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
+                    // Trigger matches and was decoded as a mapping trigger.
+                    Some(mapping_trigger) => mapping_trigger,
+
+                    // Trigger does not match, do not process it.
+                    None => continue,
+                };
+
+                host_mapping.push((host, mapping_trigger));
+            }
+        }
+        Ok(host_mapping)
     }
 }

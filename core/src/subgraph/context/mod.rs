@@ -189,10 +189,10 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 
         Ok(state)
     }
-    pub async fn process_trigger_in_hosts(
-        &self,
+    pub async fn process_trigger_in_hosts<'a>(
+        &'a self,
         logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
         state: BlockState,

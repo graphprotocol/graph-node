@@ -3,7 +3,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use slog::Logger;
 
-use crate::{blockchain::Blockchain, data_source::TriggerData, prelude::SubgraphInstanceMetrics};
+use crate::{
+    blockchain::Blockchain,
+    data_source::{MappingTrigger, TriggerData},
+    prelude::SubgraphInstanceMetrics,
+};
 
 use super::{
     store::SubgraphFork,
@@ -16,10 +20,25 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
+    fn match_and_decode<'a>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        trigger: &TriggerData<C>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<
+        Vec<(
+            &'a T::Host,
+            crate::data_source::TriggerWithHandler<MappingTrigger<C>>,
+        )>,
+        MappingError,
+    >;
+
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
         mut state: BlockState,
