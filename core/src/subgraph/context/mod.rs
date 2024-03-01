@@ -202,12 +202,19 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
+        let triggers: Vec<_> = self.trigger_processor.match_and_decode(
+            logger,
+            block,
+            trigger,
+            hosts,
+            subgraph_metrics,
+        )?;
+
         self.trigger_processor
             .process_trigger(
                 logger,
-                hosts,
+                triggers,
                 block,
-                trigger,
                 state,
                 proof_of_indexing,
                 causality_region,

@@ -23,9 +23,8 @@ where
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        triggers: Vec<HostedTrigger<'a, C>>,
         block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
         mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
@@ -35,17 +34,7 @@ where
     ) -> Result<BlockState, MappingError> {
         let error_count = state.deterministic_errors.len();
 
-        let host_mapping: Vec<HostedTrigger<'a, C>> =
-            <Self as graph::prelude::TriggerProcessor<C, T>>::match_and_decode(
-                self,
-                logger,
-                block,
-                trigger,
-                hosts,
-                subgraph_metrics,
-            )?;
-
-        if host_mapping.is_empty() {
+        if triggers.is_empty() {
             return Ok(state);
         }
 
@@ -58,7 +47,7 @@ where
         for HostedTrigger {
             host,
             mapping_trigger,
-        } in host_mapping
+        } in triggers
         {
             let start = Instant::now();
             state = host

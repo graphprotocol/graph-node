@@ -42,9 +42,8 @@ where
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        triggers: Vec<HostedTrigger<'a, C>>,
         block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
         mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,

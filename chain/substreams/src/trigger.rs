@@ -12,7 +12,6 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
         trigger_processor::HostedTrigger,
     },
-    data_source,
     prelude::{
         anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
@@ -200,9 +199,8 @@ where
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        _: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        _: Vec<HostedTrigger<'a, Chain>>,
         block: &Arc<Block>,
-        _trigger: &data_source::TriggerData<Chain>,
         mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
