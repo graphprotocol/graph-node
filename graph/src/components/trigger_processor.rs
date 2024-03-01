@@ -5,14 +5,24 @@ use slog::Logger;
 
 use crate::{
     blockchain::Blockchain,
-    data_source::{MappingTrigger, TriggerData},
+    data_source::{MappingTrigger, TriggerData, TriggerWithHandler},
     prelude::SubgraphInstanceMetrics,
 };
 
 use super::{
     store::SubgraphFork,
-    subgraph::{BlockState, MappingError, RuntimeHostBuilder, SharedProofOfIndexing},
+    subgraph::{BlockState, MappingError, RuntimeHost, RuntimeHostBuilder, SharedProofOfIndexing},
 };
+
+/// A trigger that is almost ready to run: we have a host to run it on, and
+/// transformed the `TriggerData` into a `MappingTrigger`.
+pub struct HostedTrigger<'a, C>
+where
+    C: Blockchain,
+{
+    pub host: &'a dyn RuntimeHost<C>,
+    pub mapping_trigger: TriggerWithHandler<MappingTrigger<C>>,
+}
 
 #[async_trait]
 pub trait TriggerProcessor<C, T>: Sync + Send
@@ -27,13 +37,7 @@ where
         trigger: &TriggerData<C>,
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<
-        Vec<(
-            &'a T::Host,
-            crate::data_source::TriggerWithHandler<MappingTrigger<C>>,
-        )>,
-        MappingError,
-    >;
+    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError>;
 
     async fn process_trigger<'a>(
         &'a self,

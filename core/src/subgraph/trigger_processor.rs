@@ -3,7 +3,8 @@ use graph::blockchain::{Block, Blockchain};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::data_source::{MappingTrigger, TriggerData, TriggerWithHandler};
+use graph::components::trigger_processor::HostedTrigger;
+use graph::data_source::TriggerData;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
     BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
@@ -34,7 +35,7 @@ where
     ) -> Result<BlockState, MappingError> {
         let error_count = state.deterministic_errors.len();
 
-        let host_mapping: Vec<(&'a T::Host, TriggerWithHandler<_>)> =
+        let host_mapping: Vec<HostedTrigger<'a, C>> =
             <Self as graph::prelude::TriggerProcessor<C, T>>::match_and_decode(
                 self,
                 logger,
@@ -54,7 +55,11 @@ where
                 .start_handler(causality_region);
         }
 
-        for (host, mapping_trigger) in host_mapping {
+        for HostedTrigger {
+            host,
+            mapping_trigger,
+        } in host_mapping
+        {
             let start = Instant::now();
             state = host
                 .process_mapping_trigger(
@@ -100,8 +105,8 @@ where
         trigger: &TriggerData<C>,
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<(&'a T::Host, TriggerWithHandler<MappingTrigger<C>>)>, MappingError> {
-        let mut host_mapping: Vec<(&'a T::Host, TriggerWithHandler<MappingTrigger<C>>)> = vec![];
+    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError> {
+        let mut host_mapping = vec![];
 
         {
             let _section = subgraph_metrics.stopwatch.start_section("match_and_decode");
@@ -115,7 +120,10 @@ where
                     None => continue,
                 };
 
-                host_mapping.push((host, mapping_trigger));
+                host_mapping.push(HostedTrigger {
+                    host,
+                    mapping_trigger,
+                });
             }
         }
         Ok(host_mapping)
