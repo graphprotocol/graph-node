@@ -314,22 +314,34 @@ where
         // collected previously to every new event being processed
         let mut res = Ok(block_state);
         for trigger in triggers.into_iter().map(TriggerData::Onchain) {
-            let process_res = self
-                .ctx
-                .process_trigger_in_hosts(
+            let process_res = {
+                let triggers_res = self.ctx.trigger_processor.match_and_decode(
                     &self.logger,
-                    self.ctx.instance.hosts_for_trigger(&trigger),
                     &block,
                     &trigger,
-                    // We break out of the loop as soon as res becomes an Err
-                    res.unwrap(),
-                    &proof_of_indexing,
-                    &causality_region,
-                    &self.inputs.debug_fork,
+                    self.ctx.instance.hosts_for_trigger(&trigger),
                     &self.metrics.subgraph,
-                    self.inputs.instrument,
-                )
-                .await;
+                );
+                match triggers_res {
+                    Ok(triggers) => {
+                        self.ctx
+                            .trigger_processor
+                            .process_trigger(
+                                &self.logger,
+                                triggers,
+                                &block,
+                                res.unwrap(),
+                                &proof_of_indexing,
+                                &causality_region,
+                                &self.inputs.debug_fork,
+                                &self.metrics.subgraph,
+                                self.inputs.instrument,
+                            )
+                            .await
+                    }
+                    Err(e) => Err(e),
+                }
+            };
             match process_res {
                 Ok(state) => res = Ok(state),
                 Err(mut e) => {
@@ -455,21 +467,35 @@ where
                 // Process the triggers in each host in the same order the
                 // corresponding data sources have been created.
                 for trigger in triggers {
-                    let process_res = self
-                        .ctx
-                        .process_trigger_in_hosts(
+                    let trigger = TriggerData::Onchain(trigger);
+                    let process_res = {
+                        let triggers_res = self.ctx.trigger_processor.match_and_decode(
                             &logger,
-                            Box::new(runtime_hosts.iter().map(|host| host.as_ref())),
                             &block,
-                            &TriggerData::Onchain(trigger),
-                            block_state,
-                            &proof_of_indexing,
-                            &causality_region,
-                            &self.inputs.debug_fork,
+                            &trigger,
+                            Box::new(runtime_hosts.iter().map(Arc::as_ref)),
                             &self.metrics.subgraph,
-                            self.inputs.instrument,
-                        )
-                        .await;
+                        );
+                        match triggers_res {
+                            Ok(triggers) => {
+                                self.ctx
+                                    .trigger_processor
+                                    .process_trigger(
+                                        &logger,
+                                        triggers,
+                                        &block,
+                                        block_state,
+                                        &proof_of_indexing,
+                                        &causality_region,
+                                        &self.inputs.debug_fork,
+                                        &self.metrics.subgraph,
+                                        self.inputs.instrument,
+                                    )
+                                    .await
+                            }
+                            Err(e) => Err(e),
+                        }
+                    };
                     block_state = process_res.map_err(|e| {
                         // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
                         // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
@@ -1014,21 +1040,34 @@ where
             let causality_region = "";
 
             let trigger = TriggerData::Offchain(trigger);
-            let process_res = self
-                .ctx
-                .process_trigger_in_hosts(
+            let process_res = {
+                let triggers_res = self.ctx.trigger_processor.match_and_decode(
                     &self.logger,
-                    self.ctx.instance.hosts_for_trigger(&trigger),
                     block,
                     &trigger,
-                    block_state,
-                    &proof_of_indexing,
-                    causality_region,
-                    &self.inputs.debug_fork,
+                    self.ctx.instance.hosts_for_trigger(&trigger),
                     &self.metrics.subgraph,
-                    self.inputs.instrument,
-                )
-                .await;
+                );
+                match triggers_res {
+                    Ok(triggers) => {
+                        self.ctx
+                            .trigger_processor
+                            .process_trigger(
+                                &self.logger,
+                                triggers,
+                                block,
+                                block_state,
+                                &proof_of_indexing,
+                                causality_region,
+                                &self.inputs.debug_fork,
+                                &self.metrics.subgraph,
+                                self.inputs.instrument,
+                            )
+                            .await
+                    }
+                    Err(e) => Err(e),
+                }
+            };
             match process_res {
                 Ok(state) => block_state = state,
                 Err(err) => {

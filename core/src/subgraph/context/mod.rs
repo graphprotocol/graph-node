@@ -15,7 +15,7 @@ use graph::{
     data_source::{
         causality_region::CausalityRegionSeq,
         offchain::{self, Base64},
-        CausalityRegion, DataSource, DataSourceTemplate, TriggerData,
+        CausalityRegion, DataSource, DataSourceTemplate,
     },
     ipfs_client::CidFile,
     prelude::{
@@ -73,7 +73,7 @@ where
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
     pub filter: Option<C::TriggerFilter>,
-    trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
 }
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
@@ -161,41 +161,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         }
 
         Ok(state)
-    }
-    pub async fn process_trigger_in_hosts<'a>(
-        &'a self,
-        logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        let triggers: Vec<_> = self.trigger_processor.match_and_decode(
-            logger,
-            block,
-            trigger,
-            hosts,
-            subgraph_metrics,
-        )?;
-
-        self.trigger_processor
-            .process_trigger(
-                logger,
-                triggers,
-                block,
-                state,
-                proof_of_indexing,
-                causality_region,
-                debug_fork,
-                subgraph_metrics,
-                instrument,
-            )
-            .await
     }
 
     /// Removes data sources hosts with a creation block greater or equal to `reverted_block`, so
