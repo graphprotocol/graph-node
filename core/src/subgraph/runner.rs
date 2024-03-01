@@ -314,7 +314,7 @@ where
         // collected previously to every new event being processed
         let mut res = Ok(block_state);
         for trigger in triggers.into_iter().map(TriggerData::Onchain) {
-            match self
+            let process_res = self
                 .ctx
                 .process_trigger_in_hosts(
                     &self.logger,
@@ -329,8 +329,8 @@ where
                     &self.metrics.subgraph,
                     self.inputs.instrument,
                 )
-                .await
-            {
+                .await;
+            match process_res {
                 Ok(state) => res = Ok(state),
                 Err(mut e) => {
                     let error_context = trigger.error_context();
@@ -455,7 +455,7 @@ where
                 // Process the triggers in each host in the same order the
                 // corresponding data sources have been created.
                 for trigger in triggers {
-                    block_state = self
+                    let process_res = self
                         .ctx
                         .process_trigger_in_hosts(
                             &logger,
@@ -469,18 +469,18 @@ where
                             &self.metrics.subgraph,
                             self.inputs.instrument,
                         )
-                        .await
-                        .map_err(|e| {
-                            // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                            // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                            // way to revert the effect of `create_dynamic_data_sources` so we may return a
-                            // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                            match e {
-                                MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                                    BlockProcessingError::Unknown(e)
-                                }
+                        .await;
+                    block_state = process_res.map_err(|e| {
+                        // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
+                        // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
+                        // way to revert the effect of `create_dynamic_data_sources` so we may return a
+                        // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                        match e {
+                            MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                                BlockProcessingError::Unknown(e)
                             }
-                        })?;
+                        }
+                    })?;
                 }
             }
         }
@@ -1013,31 +1013,33 @@ where
             let proof_of_indexing = None;
             let causality_region = "";
 
-            block_state = {
-                let trigger = TriggerData::Offchain(trigger);
-                self.ctx
-                    .process_trigger_in_hosts(
-                        &self.logger,
-                        self.ctx.instance.hosts_for_trigger(&trigger),
-                        block,
-                        &trigger,
-                        block_state,
-                        &proof_of_indexing,
-                        causality_region,
-                        &self.inputs.debug_fork,
-                        &self.metrics.subgraph,
-                        self.inputs.instrument,
-                    )
-                    .await
+            let trigger = TriggerData::Offchain(trigger);
+            let process_res = self
+                .ctx
+                .process_trigger_in_hosts(
+                    &self.logger,
+                    self.ctx.instance.hosts_for_trigger(&trigger),
+                    block,
+                    &trigger,
+                    block_state,
+                    &proof_of_indexing,
+                    causality_region,
+                    &self.inputs.debug_fork,
+                    &self.metrics.subgraph,
+                    self.inputs.instrument,
+                )
+                .await;
+            match process_res {
+                Ok(state) => block_state = state,
+                Err(err) => {
+                    let err = match err {
+                        // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
+                        // non-deterministic errors.
+                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
+                    };
+                    return Err(err.context("failed to process trigger".to_string()));
+                }
             }
-            .map_err(move |err| {
-                let err = match err {
-                    // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
-                    // non-deterministic errors.
-                    MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
-                };
-                err.context("failed to process trigger".to_string())
-            })?;
 
             anyhow::ensure!(
                 !block_state.has_created_on_chain_data_sources(),
