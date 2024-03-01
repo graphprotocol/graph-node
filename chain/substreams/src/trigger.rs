@@ -10,8 +10,9 @@ use graph::{
         metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentLocator, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
+        trigger_processor::HostedTrigger,
     },
-    data_source::{self, MappingTrigger},
+    data_source,
     prelude::{
         anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
@@ -258,13 +259,7 @@ where
         _: &graph::data_source::TriggerData<Chain>,
         _: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         _: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<
-        Vec<(
-            &'a T::Host,
-            graph::data_source::TriggerWithHandler<MappingTrigger<Chain>>,
-        )>,
-        MappingError,
-    > {
+    ) -> Result<Vec<HostedTrigger<'a, Chain>>, MappingError> {
         Ok(vec![])
     }
 }
