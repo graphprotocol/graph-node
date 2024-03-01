@@ -24,6 +24,25 @@ where
     pub mapping_trigger: TriggerWithHandler<MappingTrigger<C>>,
 }
 
+pub trait ErrorContext {
+    fn error_context(&self) -> Option<String>;
+}
+
+impl<C: Blockchain> ErrorContext for TriggerData<C> {
+    fn error_context(&self) -> Option<String> {
+        Some(self.error_context())
+    }
+}
+
+impl<'a, C> ErrorContext for HostedTrigger<'a, C>
+where
+    C: Blockchain,
+{
+    fn error_context(&self) -> Option<String> {
+        self.mapping_trigger.trigger.error_context()
+    }
+}
+
 #[async_trait]
 pub trait TriggerProcessor<C, T>: Sync + Send
 where

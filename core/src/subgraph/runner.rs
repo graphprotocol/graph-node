@@ -10,6 +10,7 @@ use graph::blockchain::block_stream::{
 use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::subgraph::InstanceDSTemplate;
+use graph::components::trigger_processor::ErrorContext;
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
@@ -310,49 +311,55 @@ where
             .stopwatch
             .start_section(PROCESS_TRIGGERS_SECTION_NAME);
 
+        fn add_context(mut e: MappingError, trigger: &dyn ErrorContext) -> MappingError {
+            if let Some(error_context) = trigger.error_context() {
+                if !error_context.is_empty() {
+                    e = e.context(error_context)
+                }
+            }
+            e = e.context("failed to process trigger".to_string());
+            e
+        }
+
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed
         let mut res = Ok(block_state);
         for trigger in triggers.into_iter().map(TriggerData::Onchain) {
-            let process_res = {
-                let triggers_res = self.ctx.trigger_processor.match_and_decode(
+            let triggers_res = self
+                .ctx
+                .trigger_processor
+                .match_and_decode(
                     &self.logger,
                     &block,
                     &trigger,
                     self.ctx.instance.hosts_for_trigger(&trigger),
                     &self.metrics.subgraph,
-                );
-                match triggers_res {
-                    Ok(triggers) => {
-                        self.ctx
-                            .trigger_processor
-                            .process_trigger(
-                                &self.logger,
-                                triggers,
-                                &block,
-                                res.unwrap(),
-                                &proof_of_indexing,
-                                &causality_region,
-                                &self.inputs.debug_fork,
-                                &self.metrics.subgraph,
-                                self.inputs.instrument,
-                            )
-                            .await
-                    }
-                    Err(e) => Err(e),
-                }
-            };
-            match process_res {
-                Ok(state) => res = Ok(state),
-                Err(mut e) => {
-                    let error_context = trigger.error_context();
-                    if !error_context.is_empty() {
-                        e = e.context(error_context);
-                    }
-                    e = e.context("failed to process trigger".to_string());
-                    res = Err(e);
-                    break;
-                }
+                )
+                .map_err(|e| add_context(e, &trigger));
+            if let Err(e) = triggers_res {
+                res = Err(e);
+                break;
+            }
+
+            let hosted_triggers = triggers_res.unwrap();
+            res = self
+                .ctx
+                .trigger_processor
+                .process_trigger(
+                    &self.logger,
+                    hosted_triggers,
+                    &block,
+                    res.unwrap(),
+                    &proof_of_indexing,
+                    &causality_region,
+                    &self.inputs.debug_fork,
+                    &self.metrics.subgraph,
+                    self.inputs.instrument,
+                )
+                .await
+                .map_err(|e| add_context(e, &trigger));
+            if res.is_err() {
+                break;
             }
         }
         match res {
