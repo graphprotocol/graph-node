@@ -3,13 +3,15 @@ use std::sync::Arc;
 use anyhow::Error;
 use graph::{
     blockchain::{
-        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
+        self, block_stream::BlockWithTriggers, BlockPtr, Blockchain, EmptyNodeCapabilities,
+        MappingTriggerTrait,
     },
     components::{
+        metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentLocator, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
-    data_source,
+    data_source::{self, MappingTrigger},
     prelude::{
         anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
@@ -197,7 +199,7 @@ where
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
-        _: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
+        _: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         block: &Arc<Block>,
         _trigger: &data_source::TriggerData<Chain>,
         mut state: BlockState,
@@ -247,5 +249,22 @@ where
         }
 
         Ok(state)
+    }
+
+    fn match_and_decode<'a>(
+        &'a self,
+        _: &Logger,
+        _: &Arc<<Chain as Blockchain>::Block>,
+        _: &graph::data_source::TriggerData<Chain>,
+        _: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        _: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<
+        Vec<(
+            &'a T::Host,
+            graph::data_source::TriggerWithHandler<MappingTrigger<Chain>>,
+        )>,
+        MappingError,
+    > {
+        Ok(vec![])
     }
 }
