@@ -48,6 +48,15 @@ impl MappingError {
             Unknown(e) => Unknown(e.context(s)),
         }
     }
+
+    pub fn add_trigger_context<C: Blockchain>(mut self, trigger: &TriggerData<C>) -> MappingError {
+        let error_context = trigger.error_context();
+        if !error_context.is_empty() {
+            self = self.context(error_context)
+        }
+        self = self.context("failed to process trigger".to_string());
+        self
+    }
 }
 
 /// Common trait for runtime host implementations.
