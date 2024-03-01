@@ -69,7 +69,7 @@ where
     T: RuntimeHostBuilder<C>,
     C: Blockchain,
 {
-    instance: SubgraphInstance<C, T>,
+    pub(crate) instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
     pub filter: Option<C::TriggerFilter>,
@@ -100,33 +100,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             filter: None,
             trigger_processor,
         }
-    }
-
-    pub async fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        self.process_trigger_in_hosts(
-            logger,
-            self.instance.hosts_for_trigger(trigger),
-            block,
-            trigger,
-            state,
-            proof_of_indexing,
-            causality_region,
-            debug_fork,
-            subgraph_metrics,
-            instrument,
-        )
-        .await
     }
 
     pub async fn process_block(

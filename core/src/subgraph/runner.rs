@@ -299,46 +299,72 @@ where
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
 
-        let mut block_state = {
-            let _section = self
-                .metrics
-                .stream
-                .stopwatch
-                .start_section(PROCESS_TRIGGERS_SECTION_NAME);
+        let mut block_state = BlockState::new(
+            self.inputs.store.clone(),
+            std::mem::take(&mut self.state.entity_lfu_cache),
+        );
 
-            // Process events one after the other, passing in entity operations
-            // collected previously to every new event being processed
+        let _section = self
+            .metrics
+            .stream
+            .stopwatch
+            .start_section(PROCESS_TRIGGERS_SECTION_NAME);
+
+        // Process events one after the other, passing in entity operations
+        // collected previously to every new event being processed
+        let mut res = Ok(block_state);
+        for trigger in triggers.into_iter().map(TriggerData::Onchain) {
             match self
-                .process_triggers(
-                    &proof_of_indexing,
+                .ctx
+                .process_trigger_in_hosts(
+                    &self.logger,
+                    self.ctx.instance.hosts_for_trigger(&trigger),
                     &block,
-                    triggers.into_iter().map(TriggerData::Onchain),
+                    &trigger,
+                    // We break out of the loop as soon as res becomes an Err
+                    res.unwrap(),
+                    &proof_of_indexing,
                     &causality_region,
+                    &self.inputs.debug_fork,
+                    &self.metrics.subgraph,
+                    self.inputs.instrument,
                 )
                 .await
             {
-                // Triggers processed with no errors or with only deterministic errors.
-                Ok(block_state) => block_state,
-
-                // Some form of unknown or non-deterministic error ocurred.
-                Err(MappingError::Unknown(e)) => return Err(BlockProcessingError::Unknown(e)),
-                Err(MappingError::PossibleReorg(e)) => {
-                    info!(logger,
-                        "Possible reorg detected, retrying";
-                        "error" => format!("{:#}", e),
-                    );
-
-                    // In case of a possible reorg, we want this function to do nothing and restart the
-                    // block stream so it has a chance to detect the reorg.
-                    //
-                    // The state is unchanged at this point, except for having cleared the entity cache.
-                    // Losing the cache is a bit annoying but not an issue for correctness.
-                    //
-                    // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                    return Ok(Action::Restart);
+                Ok(state) => res = Ok(state),
+                Err(mut e) => {
+                    let error_context = trigger.error_context();
+                    if !error_context.is_empty() {
+                        e = e.context(error_context);
+                    }
+                    e = e.context("failed to process trigger".to_string());
+                    res = Err(e);
+                    break;
                 }
             }
-        };
+        }
+        match res {
+            // Triggers processed with no errors or with only deterministic errors.
+            Ok(state) => block_state = state,
+
+            // Some form of unknown or non-deterministic error ocurred.
+            Err(MappingError::Unknown(e)) => return Err(BlockProcessingError::Unknown(e)),
+            Err(MappingError::PossibleReorg(e)) => {
+                info!(logger,
+                    "Possible reorg detected, retrying";
+                    "error" => format!("{:#}", e),
+                );
+
+                // In case of a possible reorg, we want this function to do nothing and restart the
+                // block stream so it has a chance to detect the reorg.
+                //
+                // The state is unchanged at this point, except for having cleared the entity cache.
+                // Losing the cache is a bit annoying but not an issue for correctness.
+                //
+                // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                return Ok(Action::Restart);
+            }
+        }
 
         // Check if there are any datasources that have expired in this block. ie: the end_block
         // of that data source is equal to the block number of the current block.
@@ -622,43 +648,6 @@ where
         }
     }
 
-    async fn process_triggers(
-        &mut self,
-        proof_of_indexing: &SharedProofOfIndexing,
-        block: &Arc<C::Block>,
-        triggers: impl Iterator<Item = TriggerData<C>>,
-        causality_region: &str,
-    ) -> Result<BlockState, MappingError> {
-        let mut block_state = BlockState::new(
-            self.inputs.store.clone(),
-            std::mem::take(&mut self.state.entity_lfu_cache),
-        );
-
-        for trigger in triggers {
-            block_state = self
-                .ctx
-                .process_trigger(
-                    &self.logger,
-                    block,
-                    &trigger,
-                    block_state,
-                    proof_of_indexing,
-                    causality_region,
-                    &self.inputs.debug_fork,
-                    &self.metrics.subgraph,
-                    self.inputs.instrument,
-                )
-                .await
-                .map_err(move |mut e| {
-                    let error_context = trigger.error_context();
-                    if !error_context.is_empty() {
-                        e = e.context(error_context);
-                    }
-                    e.context("failed to process trigger".to_string())
-                })?;
-        }
-        Ok(block_state)
-    }
     async fn process_wasm_block(
         &mut self,
         proof_of_indexing: &SharedProofOfIndexing,
@@ -1024,28 +1013,31 @@ where
             let proof_of_indexing = None;
             let causality_region = "";
 
-            block_state = self
-                .ctx
-                .process_trigger(
-                    &self.logger,
-                    block,
-                    &TriggerData::Offchain(trigger),
-                    block_state,
-                    &proof_of_indexing,
-                    causality_region,
-                    &self.inputs.debug_fork,
-                    &self.metrics.subgraph,
-                    self.inputs.instrument,
-                )
-                .await
-                .map_err(move |err| {
-                    let err = match err {
-                        // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
-                        // non-deterministic errors.
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
-                    };
-                    err.context("failed to process trigger".to_string())
-                })?;
+            block_state = {
+                let trigger = TriggerData::Offchain(trigger);
+                self.ctx
+                    .process_trigger_in_hosts(
+                        &self.logger,
+                        self.ctx.instance.hosts_for_trigger(&trigger),
+                        block,
+                        &trigger,
+                        block_state,
+                        &proof_of_indexing,
+                        causality_region,
+                        &self.inputs.debug_fork,
+                        &self.metrics.subgraph,
+                        self.inputs.instrument,
+                    )
+                    .await
+            }
+            .map_err(move |err| {
+                let err = match err {
+                    // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
+                    // non-deterministic errors.
+                    MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
+                };
+                err.context("failed to process trigger".to_string())
+            })?;
 
             anyhow::ensure!(
                 !block_state.has_created_on_chain_data_sources(),
