@@ -224,7 +224,9 @@ impl TestContext {
         RuntimeHostBuilder<graph_chain_substreams::Chain>,
     > {
         let (logger, deployment, raw) = self.get_runner_context().await;
-        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
+        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(
+            graph_chain_substreams::TriggerProcessor::new(deployment.clone()),
+        );
 
         self.instance_manager
             .build_subgraph_runner(
