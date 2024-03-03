@@ -3,11 +3,9 @@ use std::sync::Arc;
 use anyhow::Error;
 use graph::{
     blockchain::{
-        self, block_stream::BlockWithTriggers, BlockPtr, Blockchain, EmptyNodeCapabilities,
-        MappingTriggerTrait,
+        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
     },
     components::{
-        metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentLocator, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
         trigger_processor::HostedTrigger,
@@ -248,16 +246,5 @@ where
         }
 
         Ok(state)
-    }
-
-    fn match_and_decode<'a>(
-        &'a self,
-        _: &Logger,
-        _: &Arc<<Chain as Blockchain>::Block>,
-        _: &graph::data_source::TriggerData<Chain>,
-        _: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
-        _: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<HostedTrigger<'a, Chain>>, MappingError> {
-        Ok(vec![])
     }
 }
