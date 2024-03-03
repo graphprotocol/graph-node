@@ -52,6 +52,7 @@ async fn main() -> Result<(), Error> {
         "substreams",
         &endpoint,
         token,
+        None,
         false,
         false,
         SubgraphLimit::Unlimited,

@@ -119,6 +119,7 @@ impl FirehoseEndpoint {
         provider: S,
         url: S,
         token: Option<String>,
+        key: Option<String>,
         filters_enabled: bool,
         compression_enabled: bool,
         subgraph_limit: SubgraphLimit,
@@ -144,6 +145,10 @@ impl FirehoseEndpoint {
                 bearer_token.parse::<MetadataValue<Ascii>>().map(Some)
             })
             .expect("Firehose token is invalid");
+
+        let key: Option<MetadataValue<Ascii>> = key
+            .map_or(Ok(None), |key| key.parse::<MetadataValue<Ascii>>().map(Some))
+            .expect("Firehose key is invalid");
 
         // Note on the connection window size: We run multiple block streams on a same connection,
         // and a problematic subgraph with a stalled block stream might consume the entire window
@@ -174,7 +179,7 @@ impl FirehoseEndpoint {
         FirehoseEndpoint {
             provider: provider.as_ref().into(),
             channel: endpoint.connect_lazy(),
-            auth: AuthInterceptor { token },
+            auth: AuthInterceptor { token, key },
             filters_enabled,
             compression_enabled,
             subgraph_limit,
@@ -539,6 +544,7 @@ mod test {
             String::new(),
             "http://127.0.0.1".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Unlimited,
@@ -570,6 +576,7 @@ mod test {
         let endpoint = vec![Arc::new(FirehoseEndpoint::new(
             String::new(),
             "http://127.0.0.1".to_string(),
+            None,
             None,
             false,
             false,
@@ -603,6 +610,7 @@ mod test {
             String::new(),
             "http://127.0.0.1".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Disabled,
@@ -634,6 +642,7 @@ mod test {
             "high_error".to_string(),
             "http://127.0.0.1".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Unlimited,
@@ -642,6 +651,7 @@ mod test {
         let high_error_adapter2 = Arc::new(FirehoseEndpoint::new(
             "high_error".to_string(),
             "http://127.0.0.1".to_string(),
+            None,
             None,
             false,
             false,
@@ -652,6 +662,7 @@ mod test {
             "low availability".to_string(),
             "http://127.0.0.2".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Limit(2),
@@ -660,6 +671,7 @@ mod test {
         let high_availability = Arc::new(FirehoseEndpoint::new(
             "high availability".to_string(),
             "http://127.0.0.3".to_string(),
+            None,
             None,
             false,
             false,

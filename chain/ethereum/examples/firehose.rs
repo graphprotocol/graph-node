@@ -34,6 +34,7 @@ async fn main() -> Result<(), Error> {
         "firehose",
         &host,
         token,
+        None,
         false,
         false,
         SubgraphLimit::Unlimited,
