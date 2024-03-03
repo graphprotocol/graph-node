@@ -136,6 +136,7 @@ A `provider` is an object with the following characteristics:
   tracking for this is approximate, and a small amount of deviation from
   this value should be expected. The deviation will be less than 10.
 - `token`: bearer token, for Firehose and Substreams providers
+- `key`: API key for Firehose and Substreams providers when using key-based authentication
 
 Note that for backwards compatibility, Web3 provider `details` can be specified at the "top level" of
 the `provider`.
@@ -163,7 +164,7 @@ provider = [ { label = "sepolia", url = "http://..", features = [] } ]
 [chains.near-mainnet]
 shard = "blocks_b"
 protocol = "near"
-provider = [ { label = "near", details = { type = "firehose", url = "https://..", token = "", features = ["compression", "filters"] } } ]
+provider = [ { label = "near", details = { type = "firehose", url = "https://..", key = "", features = ["compression", "filters"] } } ]
 ```
 
 ### Controlling the number of subgraphs using a provider

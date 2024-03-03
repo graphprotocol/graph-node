@@ -95,6 +95,7 @@ impl CommonChainConfig {
             "",
             "https://example.com",
             None,
+            None,
             true,
             false,
             SubgraphLimit::Unlimited,

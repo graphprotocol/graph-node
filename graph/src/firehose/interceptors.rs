@@ -13,13 +13,16 @@ use crate::endpoint::{EndpointMetrics, RequestLabels};
 #[derive(Clone)]
 pub struct AuthInterceptor {
     pub token: Option<MetadataValue<Ascii>>,
+    pub key: Option<MetadataValue<Ascii>>,
 }
 
 impl std::fmt::Debug for AuthInterceptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.token {
-            Some(_) => f.write_str("token_redacted"),
-            None => f.write_str("no_token_configured"),
+        match (&self.token, &self.key) {
+            (Some(_), Some(_)) => f.write_str("token_redacted, key_redacted"),
+            (Some(_), None) => f.write_str("token_redacted, no_key_configured"),
+            (None, Some(_)) => f.write_str("no_token_configured, key_redacted"),
+            (None, None) => f.write_str("no_token_configured, no_key_configured"),
         }
     }
 }
@@ -28,6 +31,9 @@ impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut req: tonic::Request<()>) -> Result<tonic::Request<()>, tonic::Status> {
         if let Some(ref t) = self.token {
             req.metadata_mut().insert("authorization", t.clone());
+        }
+        if let Some(ref k) = self.key {
+            req.metadata_mut().insert("x-api-key", k.clone());
         }
 
         Ok(req)
