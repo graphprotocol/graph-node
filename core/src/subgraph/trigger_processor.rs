@@ -3,7 +3,7 @@ use graph::blockchain::{Block, Blockchain};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::components::trigger_processor::HostedTrigger;
+use graph::components::trigger_processor::{Decoder as DecoderTrait, HostedTrigger};
 use graph::data_source::TriggerData;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
@@ -86,7 +86,15 @@ where
 
         Ok(state)
     }
+}
 
+pub struct Decoder {}
+
+impl<C, T> DecoderTrait<C, T> for Decoder
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+{
     fn match_and_decode<'a>(
         &'a self,
         logger: &Logger,

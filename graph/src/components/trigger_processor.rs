@@ -30,15 +30,6 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    fn match_and_decode<'a>(
-        &'a self,
-        logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError>;
-
     async fn process_trigger<'a>(
         &'a self,
         logger: &Logger,
@@ -51,4 +42,23 @@ where
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
     ) -> Result<BlockState, MappingError>;
+}
+
+/// A trait for taking triggers as `TriggerData` (usually from the block
+/// stream) and turning them into `HostedTrigger`s that are ready to run.
+///
+/// The output triggers will be run in the order in which they are returned.
+pub trait Decoder<C, T>: Sync + Send
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+{
+    fn match_and_decode<'a>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        trigger: &TriggerData<C>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError>;
 }

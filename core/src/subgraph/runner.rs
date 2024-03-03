@@ -316,7 +316,7 @@ where
             .map(TriggerData::Onchain)
             .map(|trigger| {
                 self.ctx
-                    .trigger_processor
+                    .decoder
                     .match_and_decode(
                         &self.logger,
                         &block,
@@ -479,7 +479,7 @@ where
                 for trigger in triggers {
                     let trigger = TriggerData::Onchain(trigger);
                     let process_res = {
-                        let triggers_res = self.ctx.trigger_processor.match_and_decode(
+                        let triggers_res = self.ctx.decoder.match_and_decode(
                             &logger,
                             &block,
                             &trigger,
@@ -1051,7 +1051,7 @@ where
 
             let trigger = TriggerData::Offchain(trigger);
             let process_res = {
-                let triggers_res = self.ctx.trigger_processor.match_and_decode(
+                let triggers_res = self.ctx.decoder.match_and_decode(
                     &self.logger,
                     block,
                     &trigger,

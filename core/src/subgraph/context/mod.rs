@@ -10,6 +10,7 @@ use graph::{
     components::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
+        trigger_processor::Decoder,
     },
     data::subgraph::SubgraphManifest,
     data_source::{
@@ -74,6 +75,7 @@ where
     pub offchain_monitor: OffchainMonitor,
     pub filter: Option<C::TriggerFilter>,
     pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    pub(crate) decoder: Box<dyn Decoder<C, T>>,
 }
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
@@ -85,6 +87,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         instances: SubgraphKeepAlive,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+        decoder: Box<dyn Decoder<C, T>>,
     ) -> Self {
         let instance = SubgraphInstance::new(
             manifest,
@@ -99,6 +102,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             offchain_monitor,
             filter: None,
             trigger_processor,
+            decoder,
         }
     }
 

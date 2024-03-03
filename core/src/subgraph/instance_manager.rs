@@ -426,6 +426,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             instrument,
         };
 
+        let decoder = Box::new(crate::subgraph::Decoder {});
+
         // Initialize the indexing context, including both static and dynamic data sources.
         // The order of inclusion is the order of processing when a same trigger matches
         // multiple data sources.
@@ -438,6 +440,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 self.instances.cheap_clone(),
                 offchain_monitor,
                 tp,
+                decoder,
             );
             for data_source in data_sources {
                 ctx.add_dynamic_data_source(&logger, data_source)?;
