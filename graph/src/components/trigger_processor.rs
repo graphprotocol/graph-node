@@ -71,4 +71,26 @@ where
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<RunnableTriggers<'a, C>, MappingError>;
+
+    fn match_and_decode_many<'a, F>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        triggers: Box<dyn Iterator<Item = TriggerData<C>>>,
+        hosts_filter: F,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
+    where
+        F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+    {
+        let mut runnables = vec![];
+        for trigger in triggers {
+            let hosts = hosts_filter(&trigger);
+            match self.match_and_decode(logger, block, trigger, hosts, subgraph_metrics) {
+                Ok(runnable_triggers) => runnables.push(runnable_triggers),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(runnables)
+    }
 }

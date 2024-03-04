@@ -10,7 +10,6 @@ use graph::{
     components::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
-        trigger_processor::Decoder,
     },
     data::subgraph::SubgraphManifest,
     data_source::{
@@ -31,6 +30,8 @@ use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, time::Instant};
 
 use self::instance::SubgraphInstance;
+
+use super::Decoder;
 
 #[derive(Clone, Debug)]
 pub struct SubgraphKeepAlive {
@@ -75,7 +76,7 @@ where
     pub offchain_monitor: OffchainMonitor,
     pub filter: Option<C::TriggerFilter>,
     pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
-    pub(crate) decoder: Box<dyn Decoder<C, T>>,
+    pub(crate) decoder: Box<Decoder>,
 }
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
@@ -87,7 +88,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         instances: SubgraphKeepAlive,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
-        decoder: Box<dyn Decoder<C, T>>,
+        decoder: Box<Decoder>,
     ) -> Self {
         let instance = SubgraphInstance::new(
             manifest,
