@@ -311,20 +311,14 @@ where
             .start_section(PROCESS_TRIGGERS_SECTION_NAME);
 
         // Match and decode all triggers in the block
-        let match_res: Result<Vec<_>, _> = triggers
-            .into_iter()
-            .map(TriggerData::Onchain)
-            .map(|trigger| {
-                let hosts = self.ctx.instance.hosts_for_trigger(&trigger);
-                self.ctx.decoder.match_and_decode(
-                    &self.logger,
-                    &block,
-                    trigger,
-                    hosts,
-                    &self.metrics.subgraph,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>();
+        let hosts_filter = |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger);
+        let match_res = self.ctx.decoder.match_and_decode_many::<C, T, _>(
+            &logger,
+            &block,
+            triggers.into_iter().map(TriggerData::Onchain),
+            hosts_filter,
+            &self.metrics.subgraph,
+        );
 
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed
@@ -473,19 +467,14 @@ where
 
                 // Process the triggers in each host in the same order the
                 // corresponding data sources have been created.
-                let match_res: Result<Vec<_>, _> = triggers
-                    .into_iter()
-                    .map(TriggerData::Onchain)
-                    .map(|trigger| {
-                        self.ctx.decoder.match_and_decode(
-                            &self.logger,
-                            &block,
-                            trigger,
-                            Box::new(runtime_hosts.iter().map(Arc::as_ref)),
-                            &self.metrics.subgraph,
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>();
+                let match_res: Result<Vec<_>, _> =
+                    self.ctx.decoder.match_and_decode_many::<C, T, _>(
+                        &logger,
+                        &block,
+                        triggers.into_iter().map(TriggerData::Onchain),
+                        |_| Box::new(runtime_hosts.iter().map(Arc::as_ref)),
+                        &self.metrics.subgraph,
+                    );
 
                 let mut res = Ok(block_state);
                 match match_res {
@@ -1066,7 +1055,7 @@ where
             let trigger = TriggerData::Offchain(trigger);
             let process_res = {
                 let hosts = self.ctx.instance.hosts_for_trigger(&trigger);
-                let triggers_res = self.ctx.decoder.match_and_decode(
+                let triggers_res = self.ctx.decoder.match_and_decode::<C, T>(
                     &self.logger,
                     block,
                     trigger,
