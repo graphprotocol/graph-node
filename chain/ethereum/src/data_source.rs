@@ -399,17 +399,24 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn min_spec_version(&self) -> semver::Version {
-        self.mapping
-            .block_handlers
-            .iter()
-            .fold(MIN_SPEC_VERSION, |mut min, handler| {
-                min = match handler.filter {
-                    Some(BlockHandlerFilter::Polling { every: _ }) => SPEC_VERSION_0_0_8,
-                    Some(BlockHandlerFilter::Once) => SPEC_VERSION_0_0_8,
-                    _ => min,
-                };
-                min
-            })
+        let mut min_version = MIN_SPEC_VERSION;
+
+        for handler in &self.mapping.block_handlers {
+            match handler.filter {
+                Some(BlockHandlerFilter::Polling { every: _ }) | Some(BlockHandlerFilter::Once) => {
+                    min_version = std::cmp::max(min_version, SPEC_VERSION_0_0_8);
+                }
+                _ => {}
+            }
+        }
+
+        for handler in &self.mapping.event_handlers {
+            if handler.has_additional_topics() {
+                min_version = std::cmp::max(min_version, SPEC_VERSION_1_2_0);
+            }
+        }
+
+        min_version
     }
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
@@ -1602,10 +1609,10 @@ impl MappingEventHandler {
         false
     }
 
-    pub fn has_no_additional_topics(&self) -> bool {
-        self.topic1.as_ref().map_or(true, Vec::is_empty)
-            && self.topic2.as_ref().map_or(true, Vec::is_empty)
-            && self.topic3.as_ref().map_or(true, Vec::is_empty)
+    pub fn has_additional_topics(&self) -> bool {
+        self.topic1.as_ref().map_or(false, |v| !v.is_empty())
+            || self.topic2.as_ref().map_or(false, |v| !v.is_empty())
+            || self.topic3.as_ref().map_or(false, |v| !v.is_empty())
     }
 }
 
