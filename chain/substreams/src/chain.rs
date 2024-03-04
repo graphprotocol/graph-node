@@ -3,7 +3,8 @@ use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersA
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopRuntimeAdapter,
+    BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopDecoderHook,
+    NoopRuntimeAdapter,
 };
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
@@ -120,6 +121,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _log: &DeploymentLocator,
@@ -194,6 +197,10 @@ impl Blockchain for Chain {
             "substreams".to_string(),
             self.metrics_registry.cheap_clone(),
         )))
+    }
+
+    fn decoder_hook(&self) -> Self::DecoderHook {
+        NoopDecoderHook
     }
 }
 

@@ -2,6 +2,7 @@ use crate::polling_monitor::{ArweaveService, IpfsService};
 use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
+use crate::subgraph::Decoder;
 use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
@@ -408,6 +409,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let instrument = self.subgraph_store.instrument(&deployment)?;
 
+        let decoder = Box::new(Decoder::new(chain.as_ref()));
+
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
             features,
@@ -425,8 +428,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             network,
             instrument,
         };
-
-        let decoder = Box::new(crate::subgraph::Decoder {});
 
         // Initialize the indexing context, including both static and dynamic data sources.
         // The order of inclusion is the order of processing when a same trigger matches
