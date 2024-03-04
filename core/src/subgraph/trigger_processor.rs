@@ -3,7 +3,9 @@ use graph::blockchain::{Block, Blockchain};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::components::trigger_processor::{Decoder as DecoderTrait, HostedTrigger};
+use graph::components::trigger_processor::{
+    Decoder as DecoderTrait, HostedTrigger, RunnableTriggers,
+};
 use graph::data_source::TriggerData;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
@@ -90,19 +92,19 @@ where
 
 pub struct Decoder {}
 
-impl<C, T> DecoderTrait<C, T> for Decoder
-where
-    C: Blockchain,
-    T: RuntimeHostBuilder<C>,
-{
-    fn match_and_decode<'a>(
+impl Decoder {
+    fn match_and_decode_inner<'a, C, T>(
         &'a self,
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError> {
+    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError>
+    where
+        C: Blockchain,
+        T: RuntimeHostBuilder<C>,
+    {
         let mut host_mapping = vec![];
 
         {
@@ -124,5 +126,27 @@ where
             }
         }
         Ok(host_mapping)
+    }
+}
+
+impl<C, T> DecoderTrait<C, T> for Decoder
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+{
+    fn match_and_decode<'a>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        trigger: TriggerData<C>,
+        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<RunnableTriggers<'a, C>, MappingError> {
+        self.match_and_decode_inner::<C, T>(logger, block, &trigger, hosts, subgraph_metrics)
+            .map_err(|e| e.add_trigger_context(&trigger))
+            .map(|hosted_triggers| RunnableTriggers {
+                trigger,
+                hosted_triggers,
+            })
     }
 }
