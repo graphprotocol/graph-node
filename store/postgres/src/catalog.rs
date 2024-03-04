@@ -3,7 +3,7 @@ use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{
-    sql_types::{Array, Double, Nullable, Text},
+    sql_types::{Array, BigInt, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
 use graph::components::store::VersionStats;
@@ -700,10 +700,10 @@ pub(crate) fn drop_index(
 pub fn stats(conn: &PgConnection, site: &Site) -> Result<Vec<VersionStats>, StoreError> {
     #[derive(Queryable, QueryableByName)]
     pub struct DbStats {
-        #[sql_type = "Integer"]
-        pub entities: i32,
-        #[sql_type = "Integer"]
-        pub versions: i32,
+        #[sql_type = "BigInt"]
+        pub entities: i64,
+        #[sql_type = "BigInt"]
+        pub versions: i64,
         #[sql_type = "Text"]
         pub tablename: String,
         /// The ratio `entities / versions`
@@ -730,10 +730,10 @@ pub fn stats(conn: &PgConnection, site: &Site) -> Result<Vec<VersionStats>, Stor
     // values there are in the `id` column) See the [Postgres
     // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
     // the precise meaning of n_distinct
-    let query = "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
-                     else s.n_distinct::int4
+    let query = "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int8
+                     else s.n_distinct::int8
                  end as entities,
-                 c.reltuples::int4  as versions,
+                 c.reltuples::int8 as versions,
                  c.relname as tablename,
                 case when c.reltuples = 0 then 0::float8
                      when s.n_distinct < 0 then (-s.n_distinct)::float8
