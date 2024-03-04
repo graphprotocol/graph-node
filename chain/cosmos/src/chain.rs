@@ -1,5 +1,5 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::BlockIngestor;
+use graph::blockchain::{BlockIngestor, NoopDecoderHook};
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
@@ -81,6 +81,8 @@ impl Blockchain for Chain {
     type TriggerFilter = TriggerFilter;
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
+
+    type DecoderHook = NoopDecoderHook;
 
     fn is_refetch_block_required(&self) -> bool {
         false
@@ -172,6 +174,10 @@ impl Blockchain for Chain {
             self.name.clone(),
         );
         Ok(Box::new(ingestor))
+    }
+
+    fn decoder_hook(&self) -> Self::DecoderHook {
+        NoopDecoderHook
     }
 }
 

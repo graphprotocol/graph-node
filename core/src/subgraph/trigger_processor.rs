@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use graph::blockchain::{Block, Blockchain};
+use graph::blockchain::{Block, Blockchain, DecoderHook as _};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -10,6 +10,7 @@ use graph::prelude::{
     BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
 };
 use graph::slog::Logger;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub struct SubgraphTriggerProcessor {}
@@ -92,21 +93,37 @@ where
 /// stream) and turning them into `HostedTrigger`s that are ready to run.
 ///
 /// The output triggers will be run in the order in which they are returned.
-pub struct Decoder {}
+pub struct Decoder<C, T>
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+{
+    hook: C::DecoderHook,
+    _builder: PhantomData<T>,
+}
 
-impl Decoder {
-    fn match_and_decode_inner<'a, C, T>(
+impl<C, T> Decoder<C, T>
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+{
+    pub fn new(chain: &C) -> Self {
+        Decoder {
+            hook: chain.decoder_hook(),
+            _builder: PhantomData,
+        }
+    }
+}
+
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
+    fn match_and_decode_inner<'a>(
         &'a self,
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError>
-    where
-        C: Blockchain,
-        T: RuntimeHostBuilder<C>,
-    {
+    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError> {
         let mut host_mapping = vec![];
 
         {
@@ -130,19 +147,15 @@ impl Decoder {
         Ok(host_mapping)
     }
 
-    pub(crate) fn match_and_decode<'a, C, T>(
+    pub(crate) fn match_and_decode<'a>(
         &'a self,
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: TriggerData<C>,
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<RunnableTriggers<'a, C>, MappingError>
-    where
-        C: Blockchain,
-        T: RuntimeHostBuilder<C>,
-    {
-        self.match_and_decode_inner::<C, T>(logger, block, &trigger, hosts, subgraph_metrics)
+    ) -> Result<RunnableTriggers<'a, C>, MappingError> {
+        self.match_and_decode_inner(logger, block, &trigger, hosts, subgraph_metrics)
             .map_err(|e| e.add_trigger_context(&trigger))
             .map(|hosted_triggers| RunnableTriggers {
                 trigger,
@@ -150,7 +163,7 @@ impl Decoder {
             })
     }
 
-    pub(crate) fn match_and_decode_many<'a, C, T, F>(
+    pub(crate) async fn match_and_decode_many<'a, F>(
         &'a self,
         logger: &Logger,
         block: &Arc<C::Block>,
@@ -159,18 +172,16 @@ impl Decoder {
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
     where
-        C: Blockchain,
-        T: RuntimeHostBuilder<C>,
         F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
     {
         let mut runnables = vec![];
         for trigger in triggers {
             let hosts = hosts_filter(&trigger);
-            match self.match_and_decode::<C, T>(logger, block, trigger, hosts, subgraph_metrics) {
+            match self.match_and_decode(logger, block, trigger, hosts, subgraph_metrics) {
                 Ok(runnable_triggers) => runnables.push(runnable_triggers),
                 Err(e) => return Err(e),
             }
         }
-        Ok(runnables)
+        self.hook.after_decode(runnables).await
     }
 }

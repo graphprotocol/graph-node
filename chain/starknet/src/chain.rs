@@ -10,7 +10,7 @@ use graph::{
         firehose_block_ingestor::FirehoseBlockIngestor,
         firehose_block_stream::FirehoseBlockStream,
         BasicBlockchainBuilder, Block, BlockIngestor, BlockPtr, Blockchain, BlockchainBuilder,
-        BlockchainKind, EmptyNodeCapabilities, IngestorError, NoopRuntimeAdapter,
+        BlockchainKind, EmptyNodeCapabilities, IngestorError, NoopDecoderHook, NoopRuntimeAdapter,
         RuntimeAdapter as RuntimeAdapterTrait,
     },
     cheap_clone::CheapClone,
@@ -94,6 +94,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _log: &DeploymentLocator,
@@ -170,6 +172,10 @@ impl Blockchain for Chain {
             self.name.clone(),
         );
         Ok(Box::new(ingestor))
+    }
+
+    fn decoder_hook(&self) -> Self::DecoderHook {
+        NoopDecoderHook
     }
 }
 

@@ -3,7 +3,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{
     BasicBlockchainBuilder, Block, BlockIngestor, BlockchainBuilder, BlockchainKind,
-    EmptyNodeCapabilities, NoopRuntimeAdapter,
+    EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::store::DeploymentCursorTracker;
@@ -87,6 +87,8 @@ impl Blockchain for Chain {
     type TriggerFilter = crate::adapter::TriggerFilter;
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
+
+    type DecoderHook = NoopDecoderHook;
 
     fn triggers_adapter(
         &self,
@@ -178,6 +180,10 @@ impl Blockchain for Chain {
             self.name.clone(),
         );
         Ok(Box::new(ingestor))
+    }
+
+    fn decoder_hook(&self) -> Self::DecoderHook {
+        NoopDecoderHook
     }
 }
 

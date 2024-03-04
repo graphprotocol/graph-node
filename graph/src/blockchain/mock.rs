@@ -16,7 +16,7 @@ use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
     client::ChainClient,
     BlockIngestor, BlockTime, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
-    TriggerWithHandler,
+    NoopDecoderHook, TriggerWithHandler,
 };
 
 use super::{
@@ -325,6 +325,8 @@ impl Blockchain for MockBlockchain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _loc: &crate::components::store::DeploymentLocator,
@@ -378,6 +380,10 @@ impl Blockchain for MockBlockchain {
     }
 
     fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+        todo!()
+    }
+
+    fn decoder_hook(&self) -> Self::DecoderHook {
         todo!()
     }
 }

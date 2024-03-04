@@ -2,7 +2,9 @@ use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
-use graph::blockchain::{BlockIngestor, BlockTime, BlockchainKind, TriggersAdapterSelector};
+use graph::blockchain::{
+    BlockIngestor, BlockTime, BlockchainKind, NoopDecoderHook, TriggersAdapterSelector,
+};
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -354,6 +356,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         loc: &DeploymentLocator,
@@ -503,6 +507,10 @@ impl Blockchain for Chain {
         };
 
         Ok(ingestor)
+    }
+
+    fn decoder_hook(&self) -> Self::DecoderHook {
+        NoopDecoderHook
     }
 }
 

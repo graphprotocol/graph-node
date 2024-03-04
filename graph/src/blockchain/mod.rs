@@ -19,8 +19,8 @@ use crate::{
     cheap_clone::CheapClone,
     components::{
         store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
-        subgraph::HostMetrics,
-        subgraph::InstanceDSTemplateInfo,
+        subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
+        trigger_processor::RunnableTriggers,
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
     data_source::{self, DataSourceTemplateInfo},
@@ -168,6 +168,11 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     type NodeCapabilities: NodeCapabilities<Self> + std::fmt::Display;
 
+    /// A callback that is called after the triggers have been decoded and
+    /// gets an opportunity to post-process triggers before they are run on
+    /// hosts
+    type DecoderHook: DecoderHook<Self> + Sync + Send;
+
     fn triggers_adapter(
         &self,
         log: &DeploymentLocator,
@@ -205,6 +210,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     fn chain_client(&self) -> Arc<ChainClient<Self>>;
 
     fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>>;
+
+    fn decoder_hook(&self) -> Self::DecoderHook;
 }
 
 #[derive(Error, Debug)]
@@ -367,6 +374,29 @@ pub trait MappingTriggerTrait {
     /// If there is an error when processing this trigger, this will called to add relevant context.
     /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
     fn error_context(&self) -> String;
+}
+
+/// A callback that is called after the triggers have been decoded.
+#[async_trait]
+pub trait DecoderHook<C: Blockchain> {
+    async fn after_decode<'a>(
+        &self,
+        triggers: Vec<RunnableTriggers<'a, C>>,
+    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>;
+}
+
+/// A decoder hook that does nothing and just returns the triggers that were
+/// passed in
+pub struct NoopDecoderHook;
+
+#[async_trait]
+impl<C: Blockchain> DecoderHook<C> for NoopDecoderHook {
+    async fn after_decode<'a>(
+        &self,
+        triggers: Vec<RunnableTriggers<'a, C>>,
+    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError> {
+        Ok(triggers)
+    }
 }
 
 pub struct HostFnCtx<'a> {
