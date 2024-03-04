@@ -1054,8 +1054,8 @@ impl ReadStore for EmptyStore {
 /// in a database table
 #[derive(Clone, Debug)]
 pub struct VersionStats {
-    pub entities: i32,
-    pub versions: i32,
+    pub entities: i64,
+    pub versions: i64,
     pub tablename: String,
     /// The ratio `entities / versions`
     pub ratio: f64,
