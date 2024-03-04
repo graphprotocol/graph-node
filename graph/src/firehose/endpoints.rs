@@ -147,7 +147,9 @@ impl FirehoseEndpoint {
             .expect("Firehose token is invalid");
 
         let key: Option<MetadataValue<Ascii>> = key
-            .map_or(Ok(None), |key| key.parse::<MetadataValue<Ascii>>().map(Some))
+            .map_or(Ok(None), |key| {
+                key.parse::<MetadataValue<Ascii>>().map(Some)
+            })
             .expect("Firehose key is invalid");
 
         // Note on the connection window size: We run multiple block streams on a same connection,
