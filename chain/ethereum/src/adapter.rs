@@ -430,7 +430,7 @@ impl EthereumLogFilter {
             for event_handler in ds.mapping.event_handlers.iter() {
                 let event_sig = event_handler.topic0();
                 match ds.address {
-                    Some(contract) if event_handler.has_no_additional_topics() => {
+                    Some(contract) if !event_handler.has_additional_topics() => {
                         this.contracts_and_events_graph.add_edge(
                             LogFilterNode::Contract(contract),
                             LogFilterNode::Event(event_sig),
@@ -450,7 +450,7 @@ impl EthereumLogFilter {
                         );
                     }
 
-                    None if (event_handler.has_no_additional_topics()) => {
+                    None if (!event_handler.has_additional_topics()) => {
                         this.wildcard_events
                             .insert(event_sig, event_handler.receipt);
                     }

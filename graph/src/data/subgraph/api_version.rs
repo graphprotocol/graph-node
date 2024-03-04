@@ -51,7 +51,7 @@ pub const SPEC_VERSION_1_0_0: Version = Version::new(1, 0, 0);
 // Enables `id: Int8`
 pub const SPEC_VERSION_1_1_0: Version = Version::new(1, 1, 0);
 
-// Enables eth call declarations
+// Enables eth call declarations and indexed arguments(topics) filtering in manifest
 pub const SPEC_VERSION_1_2_0: Version = Version::new(1, 2, 0);
 
 // The latest spec version available
