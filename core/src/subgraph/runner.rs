@@ -476,48 +476,69 @@ where
 
                 // Process the triggers in each host in the same order the
                 // corresponding data sources have been created.
-                for trigger in triggers {
-                    let trigger = TriggerData::Onchain(trigger);
-                    let process_res = {
-                        let triggers_res = self.ctx.decoder.match_and_decode(
-                            &logger,
-                            &block,
-                            &trigger,
-                            Box::new(runtime_hosts.iter().map(Arc::as_ref)),
-                            &self.metrics.subgraph,
-                        );
-                        match triggers_res {
-                            Ok(triggers) => {
-                                self.ctx
-                                    .trigger_processor
-                                    .process_trigger(
-                                        &logger,
-                                        triggers,
-                                        &block,
-                                        block_state,
-                                        &proof_of_indexing,
-                                        &causality_region,
-                                        &self.inputs.debug_fork,
-                                        &self.metrics.subgraph,
-                                        self.inputs.instrument,
-                                    )
-                                    .await
+                let match_res: Result<Vec<_>, _> = triggers
+                    .into_iter()
+                    .map(TriggerData::Onchain)
+                    .map(|trigger| {
+                        self.ctx
+                            .decoder
+                            .match_and_decode(
+                                &self.logger,
+                                &block,
+                                &trigger,
+                                Box::new(runtime_hosts.iter().map(Arc::as_ref)),
+                                &self.metrics.subgraph,
+                            )
+                            .map_err(|e| e.add_trigger_context(&trigger))
+                            .map(|hosted_triggers| (trigger, hosted_triggers))
+                    })
+                    .collect::<Result<Vec<_>, _>>();
+
+                let mut res = Ok(block_state);
+                match match_res {
+                    Ok(ts) => {
+                        for (trigger, hosted_triggers) in ts {
+                            let process_res = self
+                                .ctx
+                                .trigger_processor
+                                .process_trigger(
+                                    &self.logger,
+                                    hosted_triggers,
+                                    &block,
+                                    res.unwrap(),
+                                    &proof_of_indexing,
+                                    &causality_region,
+                                    &self.inputs.debug_fork,
+                                    &self.metrics.subgraph,
+                                    self.inputs.instrument,
+                                )
+                                .await
+                                .map_err(|e| e.add_trigger_context(&trigger));
+                            match process_res {
+                                Ok(state) => res = Ok(state),
+                                Err(e) => {
+                                    res = Err(e);
+                                    break;
+                                }
                             }
-                            Err(e) => Err(e),
                         }
-                    };
-                    block_state = process_res.map_err(|e| {
-                        // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                        // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                        // way to revert the effect of `create_dynamic_data_sources` so we may return a
-                        // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                        match e {
-                            MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                                BlockProcessingError::Unknown(e)
-                            }
-                        }
-                    })?;
+                    }
+                    Err(e) => {
+                        res = Err(e);
+                    }
                 }
+
+                block_state = res.map_err(|e| {
+                    // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
+                    // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
+                    // way to revert the effect of `create_dynamic_data_sources` so we may return a
+                    // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                    match e {
+                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                            BlockProcessingError::Unknown(e)
+                        }
+                    }
+                })?;
             }
         }
 
