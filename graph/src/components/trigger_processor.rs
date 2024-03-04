@@ -24,6 +24,16 @@ where
     pub mapping_trigger: TriggerWithHandler<MappingTrigger<C>>,
 }
 
+/// The `TriggerData` and the `HostedTriggers` that were derived from it. We
+/// need to hang on to the `TriggerData` solely for error reporting.
+pub struct RunnableTriggers<'a, C>
+where
+    C: Blockchain,
+{
+    pub trigger: TriggerData<C>,
+    pub hosted_triggers: Vec<HostedTrigger<'a, C>>,
+}
+
 #[async_trait]
 pub trait TriggerProcessor<C, T>: Sync + Send
 where
@@ -57,8 +67,8 @@ where
         &'a self,
         logger: &Logger,
         block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
+        trigger: TriggerData<C>,
         hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError>;
+    ) -> Result<RunnableTriggers<'a, C>, MappingError>;
 }

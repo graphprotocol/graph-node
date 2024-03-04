@@ -315,17 +315,14 @@ where
             .into_iter()
             .map(TriggerData::Onchain)
             .map(|trigger| {
-                self.ctx
-                    .decoder
-                    .match_and_decode(
-                        &self.logger,
-                        &block,
-                        &trigger,
-                        self.ctx.instance.hosts_for_trigger(&trigger),
-                        &self.metrics.subgraph,
-                    )
-                    .map_err(|e| e.add_trigger_context(&trigger))
-                    .map(|hosted_triggers| (trigger, hosted_triggers))
+                let hosts = self.ctx.instance.hosts_for_trigger(&trigger);
+                self.ctx.decoder.match_and_decode(
+                    &self.logger,
+                    &block,
+                    trigger,
+                    hosts,
+                    &self.metrics.subgraph,
+                )
             })
             .collect::<Result<Vec<_>, _>>();
 
@@ -333,14 +330,14 @@ where
         // collected previously to every new event being processed
         let mut res = Ok(block_state);
         match match_res {
-            Ok(ts) => {
-                for (trigger, hosted_triggers) in ts {
+            Ok(runnables) => {
+                for runnable in runnables {
                     let process_res = self
                         .ctx
                         .trigger_processor
                         .process_trigger(
                             &self.logger,
-                            hosted_triggers,
+                            runnable.hosted_triggers,
                             &block,
                             res.unwrap(),
                             &proof_of_indexing,
@@ -350,7 +347,7 @@ where
                             self.inputs.instrument,
                         )
                         .await
-                        .map_err(|e| e.add_trigger_context(&trigger));
+                        .map_err(|e| e.add_trigger_context(&runnable.trigger));
                     match process_res {
                         Ok(state) => res = Ok(state),
                         Err(e) => {
@@ -480,30 +477,26 @@ where
                     .into_iter()
                     .map(TriggerData::Onchain)
                     .map(|trigger| {
-                        self.ctx
-                            .decoder
-                            .match_and_decode(
-                                &self.logger,
-                                &block,
-                                &trigger,
-                                Box::new(runtime_hosts.iter().map(Arc::as_ref)),
-                                &self.metrics.subgraph,
-                            )
-                            .map_err(|e| e.add_trigger_context(&trigger))
-                            .map(|hosted_triggers| (trigger, hosted_triggers))
+                        self.ctx.decoder.match_and_decode(
+                            &self.logger,
+                            &block,
+                            trigger,
+                            Box::new(runtime_hosts.iter().map(Arc::as_ref)),
+                            &self.metrics.subgraph,
+                        )
                     })
                     .collect::<Result<Vec<_>, _>>();
 
                 let mut res = Ok(block_state);
                 match match_res {
-                    Ok(ts) => {
-                        for (trigger, hosted_triggers) in ts {
+                    Ok(runnables) => {
+                        for runnable in runnables {
                             let process_res = self
                                 .ctx
                                 .trigger_processor
                                 .process_trigger(
                                     &self.logger,
-                                    hosted_triggers,
+                                    runnable.hosted_triggers,
                                     &block,
                                     res.unwrap(),
                                     &proof_of_indexing,
@@ -513,7 +506,7 @@ where
                                     self.inputs.instrument,
                                 )
                                 .await
-                                .map_err(|e| e.add_trigger_context(&trigger));
+                                .map_err(|e| e.add_trigger_context(&runnable.trigger));
                             match process_res {
                                 Ok(state) => res = Ok(state),
                                 Err(e) => {
@@ -1072,20 +1065,21 @@ where
 
             let trigger = TriggerData::Offchain(trigger);
             let process_res = {
+                let hosts = self.ctx.instance.hosts_for_trigger(&trigger);
                 let triggers_res = self.ctx.decoder.match_and_decode(
                     &self.logger,
                     block,
-                    &trigger,
-                    self.ctx.instance.hosts_for_trigger(&trigger),
+                    trigger,
+                    hosts,
                     &self.metrics.subgraph,
                 );
                 match triggers_res {
-                    Ok(triggers) => {
+                    Ok(runnable) => {
                         self.ctx
                             .trigger_processor
                             .process_trigger(
                                 &self.logger,
-                                triggers,
+                                runnable.hosted_triggers,
                                 block,
                                 block_state,
                                 &proof_of_indexing,
