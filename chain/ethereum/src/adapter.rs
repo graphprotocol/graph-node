@@ -439,13 +439,13 @@ impl EthereumLogFilter {
                     }
                     Some(contract) => {
                         this.events_with_topic_filters.insert(
-                            EventSignatureWithTopics {
-                                address: Some(contract),
-                                signature: event_sig,
-                                topic1: None,
-                                topic2: None,
-                                topic3: None,
-                            },
+                            EventSignatureWithTopics::new(
+                                Some(contract),
+                                event_sig,
+                                event_handler.topic1.clone(),
+                                event_handler.topic2.clone(),
+                                event_handler.topic3.clone(),
+                            ),
                             event_handler.receipt,
                         );
                     }
