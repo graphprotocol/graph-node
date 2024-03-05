@@ -2,9 +2,7 @@ use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
-use graph::blockchain::{
-    BlockIngestor, BlockTime, BlockchainKind, NoopDecoderHook, TriggersAdapterSelector,
-};
+use graph::blockchain::{BlockIngestor, BlockTime, BlockchainKind, TriggersAdapterSelector};
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -269,6 +267,7 @@ pub struct Chain {
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
     adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
     runtime_adapter: Arc<dyn RuntimeAdapterTrait<Self>>,
+    eth_adapters: Arc<EthereumNetworkAdapters>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -292,6 +291,7 @@ impl Chain {
         block_refetcher: Arc<dyn BlockRefetcher<Self>>,
         adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
         runtime_adapter: Arc<dyn RuntimeAdapterTrait<Self>>,
+        eth_adapters: Arc<EthereumNetworkAdapters>,
         reorg_threshold: BlockNumber,
         polling_ingestor_interval: Duration,
         is_ingestible: bool,
@@ -309,6 +309,7 @@ impl Chain {
             block_refetcher,
             adapter_selector,
             runtime_adapter,
+            eth_adapters,
             reorg_threshold,
             is_ingestible,
             polling_ingestor_interval,
@@ -356,7 +357,7 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
 
-    type DecoderHook = NoopDecoderHook;
+    type DecoderHook = crate::data_source::DecoderHook;
 
     fn triggers_adapter(
         &self,
@@ -510,7 +511,10 @@ impl Blockchain for Chain {
     }
 
     fn decoder_hook(&self) -> Self::DecoderHook {
-        NoopDecoderHook
+        crate::data_source::DecoderHook::new(
+            self.eth_adapters.cheap_clone(),
+            self.call_cache.cheap_clone(),
+        )
     }
 }
 

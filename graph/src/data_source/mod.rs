@@ -492,6 +492,13 @@ impl<C: Blockchain> MappingTrigger<C> {
             Self::Offchain(_) => None, // TODO: Add error context for offchain triggers
         }
     }
+
+    pub fn as_onchain(&self) -> Option<&C::MappingTrigger> {
+        match self {
+            Self::Onchain(trigger) => Some(trigger),
+            Self::Offchain(_) => None,
+        }
+    }
 }
 
 macro_rules! clone_data_source {

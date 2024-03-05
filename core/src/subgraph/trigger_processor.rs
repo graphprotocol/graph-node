@@ -182,6 +182,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
                 Err(e) => return Err(e),
             }
         }
-        self.hook.after_decode(runnables).await
+        self.hook
+            .after_decode(logger, &block.ptr(), runnables)
+            .await
     }
 }

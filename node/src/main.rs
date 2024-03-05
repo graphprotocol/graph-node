@@ -893,6 +893,7 @@ fn ethereum_networks_as_chains(
                 Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
                 runtime_adapter,
+                Arc::new(eth_adapters.clone()),
                 ENV_VARS.reorg_threshold,
                 chain_config.polling_interval,
                 is_ingestible,
