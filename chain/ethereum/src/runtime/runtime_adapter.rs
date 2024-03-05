@@ -203,7 +203,7 @@ fn eth_call(
     let start_time = Instant::now();
 
     // Obtain the path to the contract ABI
-    let contract = abis
+    let abi = abis
         .iter()
         .find(|abi| abi.name == unresolved_call.contract_name)
         .with_context(|| {
@@ -213,49 +213,15 @@ fn eth_call(
                 unresolved_call.contract_name
             )
         })
-        .map_err(HostExportError::Deterministic)?
-        .contract
-        .clone();
+        .map_err(HostExportError::Deterministic)?;
 
-    let function = match unresolved_call.function_signature {
-        // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
-        // functions this always picks the same overloaded variant, which is incorrect
-        // and may lead to encoding/decoding errors
-        None => contract
-            .function(unresolved_call.function_name.as_str())
-            .with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime",
-                    unresolved_call.contract_name, unresolved_call.function_name
-                )
-            })
-            .map_err(HostExportError::Deterministic)?,
-
-        // Behavior for apiVersion >= 0.0.04: look up function by signature of
-        // the form `functionName(uint256,string) returns (bytes32,string)`; this
-        // correctly picks the correct variant of an overloaded function
-        Some(ref function_signature) => contract
-            .functions_by_name(unresolved_call.function_name.as_str())
-            .with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime",
-                    unresolved_call.contract_name, unresolved_call.function_name
-                )
-            })
-            .map_err(HostExportError::Deterministic)?
-            .iter()
-            .find(|f| function_signature == &f.signature())
-            .with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" with signature `{}` \
-                         called from WASM runtime",
-                    unresolved_call.contract_name,
-                    unresolved_call.function_name,
-                    function_signature,
-                )
-            })
-            .map_err(HostExportError::Deterministic)?,
-    };
+    let function = abi
+        .function(
+            &unresolved_call.contract_name,
+            &unresolved_call.function_name,
+            unresolved_call.function_signature.as_deref(),
+        )
+        .map_err(HostExportError::Deterministic)?;
 
     let call = EthereumContractCall {
         address: unresolved_call.contract_address,

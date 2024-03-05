@@ -1096,12 +1096,6 @@ pub struct UnresolvedMappingABI {
     pub file: Link,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct MappingABI {
-    pub name: String,
-    pub contract: Contract,
-}
-
 impl UnresolvedMappingABI {
     pub async fn resolve(
         self,
@@ -1119,6 +1113,56 @@ impl UnresolvedMappingABI {
             name: self.name,
             contract,
         })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MappingABI {
+    pub name: String,
+    pub contract: Contract,
+}
+
+impl MappingABI {
+    pub fn function(
+        &self,
+        contract_name: &str,
+        name: &str,
+        signature: Option<&str>,
+    ) -> Result<&Function, Error> {
+        let contract = &self.contract;
+        let function = match signature {
+            // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
+            // functions this always picks the same overloaded variant, which is incorrect
+            // and may lead to encoding/decoding errors
+            None => contract.function(name).with_context(|| {
+                format!(
+                    "Unknown function \"{}::{}\" called from WASM runtime",
+                    contract_name, name
+                )
+            })?,
+
+            // Behavior for apiVersion >= 0.0.04: look up function by signature of
+            // the form `functionName(uint256,string) returns (bytes32,string)`; this
+            // correctly picks the correct variant of an overloaded function
+            Some(ref signature) => contract
+                .functions_by_name(name)
+                .with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime",
+                        contract_name, name
+                    )
+                })?
+                .iter()
+                .find(|f| signature == &f.signature())
+                .with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" with signature `{}` \
+                             called from WASM runtime",
+                        contract_name, name, signature,
+                    )
+                })?,
+        };
+        Ok(function)
     }
 }
 
