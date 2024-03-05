@@ -105,6 +105,9 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     /// Convenience function to avoid leaking internal representation of
     /// mutable number. Calling this on OnChain Datasources is a noop.
     fn set_done_at(&self, block: Option<BlockNumber>);
+
+    /// Return a metrics object for this host.
+    fn host_metrics(&self) -> Arc<HostMetrics>;
 }
 
 pub struct HostMetrics {
