@@ -1099,10 +1099,15 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
             .collect();
 
         let calls_count = calls.len();
-        let mut fail_count: usize = 0;
-        for (metrics, call) in calls {
-            fail_count += self.eth_call(logger, block_ptr, metrics, call).await?;
-        }
+
+        let fail_count: usize = graph::prelude::futures03::future::try_join_all(
+            calls
+                .into_iter()
+                .map(|(metrics, call)| self.eth_call(logger, block_ptr, metrics, call)),
+        )
+        .await?
+        .into_iter()
+        .sum();
 
         // TODO: Remove this logging before merging
         if calls_count > 0 {
