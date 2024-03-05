@@ -292,13 +292,8 @@ pub(crate) async fn execute_root_selection_set_uncached(
         let ictx = ctx.as_introspection_context();
 
         values.append(
-            execute_selection_set_to_map(
-                &ictx,
-                ctx.query.selection_set.as_ref(),
-                &*INTROSPECTION_QUERY_TYPE,
-                None,
-            )
-            .await?,
+            execute_selection_set_to_map(&ictx, &intro_set, &*INTROSPECTION_QUERY_TYPE, None)
+                .await?,
         );
     }
 
