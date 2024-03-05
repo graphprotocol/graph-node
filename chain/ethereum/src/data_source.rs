@@ -6,6 +6,7 @@ use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingEr
 use graph::components::trigger_processor::RunnableTriggers;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
+use graph::env::ENV_VARS;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::{StateMutability, Token};
 use graph::prelude::futures03::future::try_join;
@@ -1070,6 +1071,9 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
         block_ptr: &BlockPtr,
         runnables: Vec<RunnableTriggers<'a, Chain>>,
     ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
+        if ENV_VARS.mappings.disable_declared_calls {
+            return Ok(runnables);
+        }
         let start = Instant::now();
         let calls: Vec<_> = runnables
             .iter()
