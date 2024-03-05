@@ -57,6 +57,11 @@ pub struct EnvVarsMapping {
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
     /// default.
     pub allow_non_deterministic_ipfs: bool,
+
+    /// Set by the flag `GRAPH_DISABLE_DECLARED_CALLS`. Disables performing
+    /// eth calls before running triggers; instead eth calls happen when
+    /// mappings call `ethereum.call`. Off by default.
+    pub disable_declared_calls: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -83,6 +88,7 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
             max_ipfs_file_bytes: x.max_ipfs_file_bytes.0,
             ipfs_request_limit: x.ipfs_request_limit,
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
+            disable_declared_calls: x.disable_declared_calls.0,
         }
     }
 }
@@ -115,4 +121,6 @@ pub struct InnerMappingHandlers {
     ipfs_request_limit: u16,
     #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
     allow_non_deterministic_ipfs: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_DISABLE_DECLARED_CALLS", default = "false")]
+    disable_declared_calls: EnvVarBoolean,
 }
