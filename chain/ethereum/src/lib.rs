@@ -1,4 +1,5 @@
 mod adapter;
+mod buffered_call_cache;
 mod capabilities;
 pub mod codec;
 mod data_source;
@@ -13,6 +14,8 @@ pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::runtime::RuntimeAdapter;
 pub use self::transport::Transport;
 pub use env::ENV_VARS;
+
+pub use buffered_call_cache::BufferedCallCache;
 
 // ETHDEP: These concrete types should probably not be exposed.
 pub use data_source::{
