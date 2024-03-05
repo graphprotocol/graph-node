@@ -1,23 +1,26 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
-use graph::blockchain::TriggerWithHandler;
-use graph::components::store::StoredDynamicDataSource;
-use graph::components::subgraph::InstanceDSTemplateInfo;
+use graph::blockchain::{BlockPtr, TriggerWithHandler};
+use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
+use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
+use graph::components::trigger_processor::RunnableTriggers;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::StateMutability;
+use graph::prelude::ethabi::{StateMutability, Token};
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::regex::Regex;
+use graph::prelude::Future01CompatExt;
 use graph::prelude::{Link, SubgraphManifestValidationError};
-use graph::slog::{o, trace};
+use graph::slog::{info, o, trace};
 use lazy_static::lazy_static;
 use serde::de;
 use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Instant;
 use tiny_keccak::{keccak256, Keccak};
 
 use graph::{
@@ -37,8 +40,11 @@ use graph::data::subgraph::{
     SPEC_VERSION_1_2_0,
 };
 
+use crate::adapter::EthereumAdapter as _;
 use crate::chain::Chain;
+use crate::network::EthereumNetworkAdapters;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
+use crate::{EthereumContractCall, EthereumContractCallError, NodeCapabilities};
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
@@ -773,6 +779,7 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
+                let calls = DeclaredCall::new(&self.mapping, &event_handler, &log, &params)?;
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
@@ -780,6 +787,7 @@ impl DataSource {
                         log,
                         params,
                         receipt: receipt.map(|r| r.cheap_clone()),
+                        calls,
                     },
                     handler,
                     block.block_ptr(),
@@ -899,6 +907,205 @@ impl DataSource {
                 )))
             }
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DeclaredCall {
+    contract_name: String,
+    address: Address,
+    function: Function,
+    args: Vec<Token>,
+}
+
+impl DeclaredCall {
+    fn new(
+        mapping: &Mapping,
+        handler: &MappingEventHandler,
+        log: &Log,
+        params: &[LogParam],
+    ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
+        let mut calls = Vec::new();
+        for decl in handler.calls.decls.iter() {
+            let contract_name = decl.expr.abi.to_string();
+            let function_name = decl.expr.func.as_str();
+            // Obtain the path to the contract ABI
+            let abi = mapping.find_abi(&contract_name)?;
+            // TODO: Handle overloaded functions
+            let function = {
+                // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
+                // functions this always picks the same overloaded variant, which is incorrect
+                // and may lead to encoding/decoding errors
+                abi.contract.function(function_name).with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime",
+                        contract_name, function_name
+                    )
+                })?
+            };
+
+            let address = decl.address(log, params)?;
+            let args = decl.args(log, params)?;
+
+            let call = DeclaredCall {
+                contract_name,
+                address,
+                function: function.clone(),
+                args,
+            };
+            calls.push(call);
+        }
+
+        Ok(calls)
+    }
+
+    fn as_eth_call(self, block_ptr: BlockPtr) -> (EthereumContractCall, String) {
+        (
+            EthereumContractCall {
+                address: self.address,
+                block_ptr,
+                function: self.function,
+                args: self.args,
+                gas: None,
+            },
+            self.contract_name,
+        )
+    }
+}
+
+pub struct DecoderHook {
+    eth_adapters: Arc<EthereumNetworkAdapters>,
+    call_cache: Arc<dyn EthereumCallCache>,
+}
+
+impl DecoderHook {
+    pub fn new(
+        eth_adapters: Arc<EthereumNetworkAdapters>,
+        call_cache: Arc<dyn EthereumCallCache>,
+    ) -> Self {
+        Self {
+            eth_adapters,
+            call_cache,
+        }
+    }
+}
+
+impl DecoderHook {
+    async fn eth_call(
+        &self,
+        logger: &Logger,
+        block_ptr: &BlockPtr,
+        metrics: Arc<HostMetrics>,
+        call: DeclaredCall,
+    ) -> Result<usize, MappingError> {
+        let start = Instant::now();
+        let function_name = call.function.name.clone();
+        let address = call.address;
+        let (eth_call, contract_name) = call.as_eth_call(block_ptr.clone());
+        let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
+            archive: true,
+            traces: false,
+        }))?;
+
+        let result = eth_adapter
+            .contract_call(logger, eth_call, self.call_cache.cheap_clone())
+            .compat()
+            .await;
+
+        let elapsed = start.elapsed();
+
+        metrics.observe_eth_call_execution_time(
+            elapsed.as_secs_f64(),
+            &contract_name,
+            &function_name,
+        );
+
+        // This error analysis is very much modeled on the one in
+        // `crate::runtime_adapter::eth_call`; it would be better to
+        // make them the same but there are subtle differences (return
+        // type, error type)
+        match result {
+                Ok(_) => Ok(0),
+                Err(EthereumContractCallError::Revert(reason)) => {
+                    info!(logger, "Declared contract call reverted";
+                          "reason" => reason,
+                          "contract" => format!("0x{:x}", address),
+                          "call" => format!("{}.{}", contract_name, function_name));
+                    Ok(1)
+                }
+
+                // Any error reported by the Ethereum node could be due to the block no longer being on
+                // the main chain. This is very unespecific but we don't want to risk failing a
+                // subgraph due to a transient error such as a reorg.
+                Err(EthereumContractCallError::Web3Error(e)) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
+                    "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
+                    function_name,
+                    contract_name,
+                    e
+                ))),
+
+                // Also retry on timeouts.
+                Err(EthereumContractCallError::Timeout) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
+                    "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
+                    function_name,
+                    contract_name,
+                ))),
+
+                Err(e) => Err(MappingError::Unknown(anyhow::anyhow!(
+                    "Failed to call function \"{}\" of contract \"{}\": {}",
+                    function_name,
+                    contract_name,
+                    e
+                ))),
+
+            }
+    }
+}
+
+#[async_trait]
+impl blockchain::DecoderHook<Chain> for DecoderHook {
+    async fn after_decode<'a>(
+        &self,
+        logger: &Logger,
+        block_ptr: &BlockPtr,
+        runnables: Vec<RunnableTriggers<'a, Chain>>,
+    ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
+        let start = Instant::now();
+        let calls: Vec<_> = runnables
+            .iter()
+            .map(|r| &r.hosted_triggers)
+            .flatten()
+            .filter_map(|trigger| {
+                trigger
+                    .mapping_trigger
+                    .trigger
+                    .as_onchain()
+                    .map(|t| (trigger.host.host_metrics(), t))
+            })
+            .filter_map(|(metrics, trigger)| match trigger {
+                MappingTrigger::Log { calls, .. } => Some(
+                    calls
+                        .clone()
+                        .into_iter()
+                        .map(move |call| (metrics.cheap_clone(), call)),
+                ),
+                MappingTrigger::Block { .. } | MappingTrigger::Call { .. } => None,
+            })
+            .flatten()
+            .collect();
+
+        let calls_count = calls.len();
+        let mut fail_count: usize = 0;
+        for (metrics, call) in calls {
+            fail_count += self.eth_call(logger, block_ptr, metrics, call).await?;
+        }
+
+        // TODO: Remove this logging before merging
+        if calls_count > 0 {
+            info!(logger, "After decode hook"; "runnables" => runnables.len(), "calls_count" => calls_count, "fail_count" => fail_count, "calls_ms" => start.elapsed().as_millis());
+        }
+
+        Ok(runnables)
     }
 }
 
@@ -1300,6 +1507,44 @@ pub struct CallDecl {
     /// The call expression
     pub expr: CallExpr,
     readonly: (),
+}
+impl CallDecl {
+    fn address(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
+        let address = match &self.expr.address {
+            CallArg::Address => log.address,
+            CallArg::Param(name) => {
+                let value = params
+                    .iter()
+                    .find(|param| &param.name == name.as_str())
+                    .ok_or_else(|| anyhow!("unknown param {name}"))?
+                    .value
+                    .clone();
+                value
+                    .into_address()
+                    .ok_or_else(|| anyhow!("param {name} is not an address"))?
+            }
+        };
+        Ok(address)
+    }
+
+    fn args(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
+        self.expr
+            .args
+            .iter()
+            .map(|arg| match arg {
+                CallArg::Address => Ok(Token::Address(log.address)),
+                CallArg::Param(name) => {
+                    let value = params
+                        .iter()
+                        .find(|param| &param.name == name.as_str())
+                        .ok_or_else(|| anyhow!("unknown param {name}"))?
+                        .value
+                        .clone();
+                    Ok(value)
+                }
+            })
+            .collect()
+    }
 }
 
 impl<'de> de::Deserialize<'de> for CallDecls {

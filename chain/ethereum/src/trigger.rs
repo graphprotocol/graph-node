@@ -28,6 +28,7 @@ use graph_runtime_wasm::module::ToAscPtr;
 use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
 
+use crate::data_source::DeclaredCall;
 use crate::runtime::abi::AscEthereumBlock;
 use crate::runtime::abi::AscEthereumBlock_0_0_6;
 use crate::runtime::abi::AscEthereumCall;
@@ -48,6 +49,7 @@ pub enum MappingTrigger {
         log: Arc<Log>,
         params: Vec<LogParam>,
         receipt: Option<Arc<TransactionReceipt>>,
+        calls: Vec<DeclaredCall>,
     },
     Call {
         block: Arc<LightEthereumBlock>,
@@ -102,6 +104,7 @@ impl std::fmt::Debug for MappingTrigger {
                 log,
                 params,
                 receipt: _,
+                calls: _,
             } => MappingTriggerWithoutBlock::Log {
                 _transaction: transaction.cheap_clone(),
                 _log: log.cheap_clone(),
@@ -139,6 +142,7 @@ impl ToAscPtr for MappingTrigger {
                 log,
                 params,
                 receipt,
+                calls: _,
             } => {
                 let api_version = heap.api_version();
                 let ethereum_event_data = EthereumEventData {

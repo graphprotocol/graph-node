@@ -381,6 +381,8 @@ pub trait MappingTriggerTrait {
 pub trait DecoderHook<C: Blockchain> {
     async fn after_decode<'a>(
         &self,
+        logger: &Logger,
+        block_ptr: &BlockPtr,
         triggers: Vec<RunnableTriggers<'a, C>>,
     ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>;
 }
@@ -393,6 +395,8 @@ pub struct NoopDecoderHook;
 impl<C: Blockchain> DecoderHook<C> for NoopDecoderHook {
     async fn after_decode<'a>(
         &self,
+        _: &Logger,
+        _: &BlockPtr,
         triggers: Vec<RunnableTriggers<'a, C>>,
     ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError> {
         Ok(triggers)

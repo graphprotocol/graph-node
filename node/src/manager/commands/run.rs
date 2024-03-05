@@ -125,7 +125,7 @@ pub async fn run(
     };
 
     let eth_adapters2 = eth_adapters.clone();
-
+    let eth_adapters3 = eth_adapters.clone();
     let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await?;
     // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
     //     &logger,
@@ -172,6 +172,7 @@ pub async fn run(
             eth_adapters: Arc::new(eth_adapters2),
             chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
         }),
+        Arc::new(eth_adapters3),
         graph::env::ENV_VARS.reorg_threshold,
         chain_config.polling_interval,
         // We assume the tested chain is always ingestible for now
