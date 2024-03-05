@@ -373,6 +373,10 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             DataSource::Offchain(ds) => ds.set_done_at(block),
         }
     }
+
+    fn host_metrics(&self) -> Arc<HostMetrics> {
+        self.metrics.cheap_clone()
+    }
 }
 
 impl<C: Blockchain> PartialEq for RuntimeHost<C> {
