@@ -147,6 +147,8 @@ pub async fn run(
 
     let client = Arc::new(ChainClient::new(firehose_endpoints, eth_adapters));
 
+    let call_cache = Arc::new(ethereum::BufferedCallCache::new(chain_store.cheap_clone()));
+
     let chain_config = config.chains.chains.get(&network_name).unwrap();
     let chain = ethereum::Chain::new(
         logger_factory.clone(),
@@ -154,7 +156,7 @@ pub async fn run(
         node_id.clone(),
         metrics_registry.clone(),
         chain_store.cheap_clone(),
-        chain_store.cheap_clone(),
+        call_cache.cheap_clone(),
         client.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
@@ -166,7 +168,7 @@ pub async fn run(
             chain_store.cheap_clone(),
         )),
         Arc::new(EthereumRuntimeAdapter {
-            call_cache: chain_store.cheap_clone(),
+            call_cache,
             eth_adapters: Arc::new(eth_adapters2),
             chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
         }),

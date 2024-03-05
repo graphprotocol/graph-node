@@ -867,9 +867,15 @@ fn ethereum_networks_as_chains(
                 chain_store.clone(),
             );
 
+            // Use a call cache that buffers in memory. It is important that
+            // the `RuntimeAdapter` and the `Chain` use the same call cache
+            // as that is used to pass the results of declared calls into
+            // mappings.
+            let call_cache = Arc::new(ethereum::BufferedCallCache::new(chain_store.cheap_clone()));
+
             let runtime_adapter = Arc::new(RuntimeAdapter {
                 eth_adapters: Arc::new(eth_adapters.clone()),
-                call_cache: chain_store.cheap_clone(),
+                call_cache: call_cache.cheap_clone(),
                 chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
             });
 
@@ -880,7 +886,7 @@ fn ethereum_networks_as_chains(
                 node_id.clone(),
                 registry.clone(),
                 chain_store.cheap_clone(),
-                chain_store,
+                call_cache,
                 client,
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
