@@ -10,6 +10,7 @@ use crate::{
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
+use graph::components::store::CallSource;
 use graph::components::subgraph::HostMetrics;
 use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
@@ -234,9 +235,12 @@ fn eth_call(
     // Run Ethereum call in tokio runtime
     let logger1 = logger.clone();
     let call_cache = call_cache.clone();
-    let result = match graph::block_on(
-            eth_adapter.contract_call(&logger1, &call, call_cache)
-        ) {
+    let (result, source) =
+        match graph::block_on(eth_adapter.contract_call(&logger1, &call, call_cache)) {
+            Ok((result, source)) => (Ok(result), source),
+            Err(e) => (Err(e), CallSource::Rpc),
+        };
+    let result = match result {
             Ok(res) => Ok(res),
 
             // Any error reported by the Ethereum node could be due to the block no longer being on
@@ -266,11 +270,13 @@ fn eth_call(
 
     let elapsed = start_time.elapsed();
 
-    metrics.observe_eth_call_execution_time(
-        elapsed.as_secs_f64(),
-        &unresolved_call.contract_name,
-        &unresolved_call.function_name,
-    );
+    if source.observe() {
+        metrics.observe_eth_call_execution_time(
+            elapsed.as_secs_f64(),
+            &unresolved_call.contract_name,
+            &unresolved_call.function_name,
+        );
+    }
 
     trace!(logger, "Contract call finished";
               "address" => &unresolved_call.contract_address.to_string(),

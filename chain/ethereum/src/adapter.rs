@@ -2,6 +2,7 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
+use graph::components::store::CallSource;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
@@ -963,13 +964,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Call the function of a smart contract. A return of `None` indicates
-    /// that the call reverted.
+    /// that the call reverted. The returned `CallSource` indicates where
+    /// the result came from for accounting purposes
     async fn contract_call(
         &self,
         logger: &Logger,
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Option<Vec<Token>>, EthereumContractCallError>;
+    ) -> Result<(Option<Vec<Token>>, CallSource), EthereumContractCallError>;
 
     fn get_balance(
         &self,

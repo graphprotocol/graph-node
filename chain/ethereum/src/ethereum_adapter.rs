@@ -4,6 +4,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::store::CallResult;
+use graph::components::store::CallSource;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -1315,7 +1316,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Option<Vec<Token>>, EthereumContractCallError> {
+    ) -> Result<(Option<Vec<Token>>, CallSource), EthereumContractCallError> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args
@@ -1345,13 +1346,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
         );
 
         // Check if we have it cached, if not do the call and cache.
-        match cache
+        let (output, source) = match cache
             .get_call(call.address, &call_data, call.block_ptr.clone())
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .ok()
             .flatten()
         {
-            Some(result) => Ok(result),
+            Some(result) => result,
             None => {
                 let cache = cache.clone();
                 let call = call.clone();
@@ -1375,32 +1376,31 @@ impl EthereumAdapterTrait for EthereumAdapter {
                                                        "error" => e.to_string())
                         })
                 });
-                Ok(result)
+                (result, CallSource::Rpc)
+            }
+        };
+
+        // Decode the return values according to the ABI
+        use CallResult::*;
+        match output {
+            Value(output) => match call.function.decode_output(&output) {
+                Ok(tokens) => Ok((Some(tokens), source)),
+                Err(e) => {
+                    // Decode failures are reverts. The reasoning is that if Solidity fails to
+                    // decode an argument, that's a revert, so the same goes for the output.
+                    let reason = format!("failed to decode output: {}", e);
+                    info!(logger, "Contract call reverted"; "reason" => reason);
+                    Ok((None, CallSource::Rpc))
+                }
+            },
+            Null => {
+                // We got a `0x` response. For old Geth, this can mean a revert. It can also be
+                // that the contract actually returned an empty response. A view call is meant
+                // to return something, so we treat empty responses the same as reverts.
+                info!(logger, "Contract call reverted"; "reason" => "empty response");
+                Ok((None, CallSource::Rpc))
             }
         }
-        // Decode the return values according to the ABI
-        .and_then(move |output| {
-            use CallResult::*;
-            match output {
-                Value(output) => match call.function.decode_output(&output) {
-                    Ok(tokens) => Ok(Some(tokens)),
-                    Err(e) => {
-                        // Decode failures are reverts. The reasoning is that if Solidity fails to
-                        // decode an argument, that's a revert, so the same goes for the output.
-                        let reason = format!("failed to decode output: {}", e);
-                        info!(logger, "Contract call reverted"; "reason" => reason);
-                        Ok(None)
-                    }
-                },
-                Null => {
-                    // We got a `0x` response. For old Geth, this can mean a revert. It can also be
-                    // that the contract actually returned an empty response. A view call is meant
-                    // to return something, so we treat empty responses the same as reverts.
-                    info!(logger, "Contract call reverted"; "reason" => "empty response");
-                    Ok(None)
-                }
-            }
-        })
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
-use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
+use graph::components::store::{CallSource, EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
 use graph::data::value::Word;
@@ -1007,23 +1007,21 @@ impl DecoderHook {
             traces: false,
         }))?;
 
-        let result = eth_adapter
+        let (result, source) = match eth_adapter
             .contract_call(logger, &eth_call, self.call_cache.cheap_clone())
-            .await;
-
-        let elapsed = start.elapsed();
-
-        metrics.observe_eth_call_execution_time(
-            elapsed.as_secs_f64(),
-            &contract_name,
-            &function_name,
-        );
+            .await
+        {
+            Ok((result, source)) => (Ok(result), source),
+            Err(e) => (Err(e), CallSource::Rpc),
+        };
 
         // This error analysis is very much modeled on the one in
         // `crate::runtime_adapter::eth_call`; it would be better to
         // make them the same but there are subtle differences (return
         // type, error type)
-        match result {
+        //
+        // For errors, we set the source to 'Rpc' as that's where errors happen
+        let result= match result {
                 Ok(r) => Ok(if r.is_some() { 0 } else { 1 }),
 
                 // Any error reported by the Ethereum node could be due to the block no longer being on
@@ -1049,8 +1047,19 @@ impl DecoderHook {
                     contract_name,
                     e
                 ))),
+            };
 
-            }
+        if source.observe() {
+            let elapsed = start.elapsed();
+
+            metrics.observe_eth_call_execution_time(
+                elapsed.as_secs_f64(),
+                &contract_name,
+                &function_name,
+            );
+        }
+
+        result
     }
 }
 

@@ -544,6 +544,23 @@ impl CallResult {
     }
 }
 
+/// Indication of where the result of an ethereum call comes from. We
+/// unfortunately need that so we can avoid double-counting declared calls
+/// as they are accessed as normal eth calls and we'd count them twice
+/// without this.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CallSource {
+    Memory,
+    Store,
+    Rpc,
+}
+
+impl CallSource {
+    pub fn observe(&self) -> bool {
+        matches!(self, CallSource::Rpc | CallSource::Store)
+    }
+}
+
 pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing
@@ -553,7 +570,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-    ) -> Result<Option<CallResult>, Error>;
+    ) -> Result<Option<(CallResult, CallSource)>, Error>;
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
