@@ -960,14 +960,14 @@ impl DeclaredCall {
         Ok(calls)
     }
 
-    fn as_eth_call(self, block_ptr: BlockPtr) -> (EthereumContractCall, String) {
+    fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (EthereumContractCall, String) {
         (
             EthereumContractCall {
                 address: self.address,
                 block_ptr,
                 function: self.function,
                 args: self.args,
-                gas: None,
+                gas,
             },
             self.contract_name,
         )
@@ -977,16 +977,19 @@ impl DeclaredCall {
 pub struct DecoderHook {
     eth_adapters: Arc<EthereumNetworkAdapters>,
     call_cache: Arc<dyn EthereumCallCache>,
+    eth_call_gas: Option<u32>,
 }
 
 impl DecoderHook {
     pub fn new(
         eth_adapters: Arc<EthereumNetworkAdapters>,
         call_cache: Arc<dyn EthereumCallCache>,
+        eth_call_gas: Option<u32>,
     ) -> Self {
         Self {
             eth_adapters,
             call_cache,
+            eth_call_gas,
         }
     }
 }
@@ -1001,7 +1004,7 @@ impl DecoderHook {
     ) -> Result<usize, MappingError> {
         let start = Instant::now();
         let function_name = call.function.name.clone();
-        let (eth_call, contract_name) = call.as_eth_call(block_ptr.clone());
+        let (eth_call, contract_name) = call.as_eth_call(block_ptr.clone(), self.eth_call_gas);
         let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
             archive: true,
             traces: false,

@@ -42,6 +42,7 @@ use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
 use crate::network::EthereumNetworkAdapters;
+use crate::runtime::runtime_adapter::eth_call_gas;
 use crate::EthereumAdapter;
 use crate::NodeCapabilities;
 use crate::{
@@ -511,9 +512,12 @@ impl Blockchain for Chain {
     }
 
     fn decoder_hook(&self) -> Self::DecoderHook {
+        let eth_call_gas = eth_call_gas(self.chain_store.chain_identifier());
+
         crate::data_source::DecoderHook::new(
             self.eth_adapters.cheap_clone(),
             self.call_cache.cheap_clone(),
+            eth_call_gas,
         )
     }
 }
