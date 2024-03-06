@@ -911,7 +911,7 @@ impl DataSource {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeclaredCall {
     contract_name: String,
     address: Address,
@@ -1101,6 +1101,25 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
             })
             .flatten()
             .collect();
+
+        // Deduplicate calls. Unfortunately, we can't get `DeclaredCall` to
+        // implement `Hash` or `Ord` easily, so we can only deduplicate by
+        // comparing the whole call not with a `HashSet` or `BTreeSet`.
+        // Since that can be inefficient, we don't deduplicate if we have an
+        // enormous amount of calls; in that case though, things will likely
+        // blow up because of the amount of I/O that many calls cause.
+        // Cutting off at 1000 is fairly arbitrary
+        let calls = if calls.len() < 1000 {
+            let mut uniq_calls = Vec::new();
+            for (metrics, call) in calls {
+                if !uniq_calls.iter().any(|(_, c)| c == &call) {
+                    uniq_calls.push((metrics, call));
+                }
+            }
+            uniq_calls
+        } else {
+            calls
+        };
 
         let calls_count = calls.len();
 
