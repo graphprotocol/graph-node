@@ -5,6 +5,7 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::store::CallResult;
 use graph::components::transaction_receipt::LightTransactionReceipt;
+use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
@@ -460,7 +461,7 @@ impl EthereumAdapter {
         call_data: Bytes,
         block_ptr: BlockPtr,
         gas: Option<u32>,
-    ) -> Result<Bytes, EthereumContractCallError> {
+    ) -> Result<scalar::Bytes, EthereumContractCallError> {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -557,7 +558,7 @@ impl EthereumAdapter {
 
                     match result {
                         // A successful response.
-                        Ok(bytes) => Ok(bytes),
+                        Ok(bytes) => Ok(scalar::Bytes::from(bytes)),
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
@@ -1360,8 +1361,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     )
                     .await?;
                 // Don't block handler execution on writing to the cache.
-                let for_cache = CallResult::Value(result.0.clone());
-                if !result.0.is_empty() {
+                let for_cache = CallResult::Value(result.clone());
+                if !result.is_empty() {
                     let _ = graph::spawn_blocking_allow_panic(move || {
                         cache
                             .set_call(call.address, &call_data, call.block_ptr, for_cache)
@@ -1371,7 +1372,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                             })
                     });
                 }
-                Ok(result.0)
+                Ok(result)
             }
         }
         // Decode the return values according to the ABI

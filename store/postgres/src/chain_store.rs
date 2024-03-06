@@ -88,6 +88,7 @@ mod data {
     };
     use graph::blockchain::{Block, BlockHash};
     use graph::constraint_violation;
+    use graph::data::store::scalar::Bytes;
     use graph::prelude::ethabi::ethereum_types::H160;
     use graph::prelude::transaction_receipt::LightTransactionReceipt;
     use graph::prelude::web3::types::H256;
@@ -1118,7 +1119,7 @@ mod data {
             &self,
             conn: &mut PgConnection,
             id: &[u8],
-        ) -> Result<Option<(Vec<u8>, bool)>, Error> {
+        ) -> Result<Option<(Bytes, bool)>, Error> {
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as cache;
@@ -1155,10 +1156,11 @@ mod data {
                             CallMetaTable::ACCESSED_AT
                         )),
                     ))
-                    .first(conn)
+                    .first::<(Vec<u8>, bool)>(conn)
                     .optional()
                     .map_err(Error::from),
             }
+            .map(|row| row.map(|(return_value, expired)| (Bytes::from(return_value), expired)))
         }
 
         pub(super) fn get_calls_in_block(
