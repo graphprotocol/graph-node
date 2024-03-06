@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-use graph::components::store::CallResult;
+use graph::components::store::{CallResult, CallSource};
 use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
@@ -2395,10 +2395,10 @@ impl EthereumCallCache for ChainStore {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-    ) -> Result<Option<CallResult>, Error> {
+    ) -> Result<Option<(CallResult, CallSource)>, Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &mut *self.get_conn()?;
-        if let Some(call_output) = conn.transaction::<_, Error, _>(|conn| {
+        let return_value = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
                 self.storage.get_call_and_access(conn, id.as_ref())?
             {
@@ -2410,11 +2410,8 @@ impl EthereumCallCache for ChainStore {
             } else {
                 Ok(None)
             }
-        })? {
-            Ok(Some(CallResult::Value(call_output)))
-        } else {
-            Ok(None)
-        }
+        })?;
+        Ok(return_value.map(|return_value| (CallResult::Value(return_value), CallSource::Store)))
     }
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {

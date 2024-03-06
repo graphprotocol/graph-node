@@ -4,7 +4,7 @@ use std::{
 };
 
 use graph::{
-    components::store::{CallResult, EthereumCallCache},
+    components::store::{CallResult, CallSource, EthereumCallCache},
     prelude::{ethabi, BlockPtr, CachedEthereumCall},
 };
 
@@ -42,13 +42,13 @@ impl EthereumCallCache for BufferedCallCache {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-    ) -> Result<Option<CallResult>, graph::prelude::Error> {
+    ) -> Result<Option<(CallResult, CallSource)>, graph::prelude::Error> {
         self.check_block(&block);
 
         {
             let buffer = self.buffer.lock().unwrap();
             if let Some(result) = buffer.get(&(contract_address, encoded_call.to_vec())) {
-                return Ok(Some(result.clone()));
+                return Ok(Some((result.clone(), CallSource::Memory)));
             }
         }
 
@@ -57,7 +57,7 @@ impl EthereumCallCache for BufferedCallCache {
             .get_call(contract_address, encoded_call, block)?;
 
         let mut buffer = self.buffer.lock().unwrap();
-        if let Some(value) = &result {
+        if let Some((value, _)) = &result {
             buffer.insert((contract_address, encoded_call.to_vec()), value.clone());
         }
         Ok(result)
