@@ -1306,7 +1306,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn contract_call(
         &self,
         logger: &Logger,
-        call: EthereumContractCall,
+        call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<Vec<Token>, EthereumContractCallError> {
         // Emit custom error for type mismatches.
