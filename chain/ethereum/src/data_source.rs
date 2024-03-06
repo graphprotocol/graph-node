@@ -1001,7 +1001,6 @@ impl DecoderHook {
     ) -> Result<usize, MappingError> {
         let start = Instant::now();
         let function_name = call.function.name.clone();
-        let address = call.address;
         let (eth_call, contract_name) = call.as_eth_call(block_ptr.clone());
         let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
             archive: true,
@@ -1025,14 +1024,7 @@ impl DecoderHook {
         // make them the same but there are subtle differences (return
         // type, error type)
         match result {
-                Ok(_) => Ok(0),
-                Err(EthereumContractCallError::Revert(reason)) => {
-                    info!(logger, "Declared contract call reverted";
-                          "reason" => reason,
-                          "contract" => format!("0x{:x}", address),
-                          "call" => format!("{}.{}", contract_name, function_name));
-                    Ok(1)
-                }
+                Ok(r) => Ok(if r.is_some() { 0 } else { 1 }),
 
                 // Any error reported by the Ethereum node could be due to the block no longer being on
                 // the main chain. This is very unespecific but we don't want to risk failing a
