@@ -525,15 +525,35 @@ pub trait ChainStore: Send + Sync + 'static {
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error>;
 }
 
+/// The result of an ethereum call. `Null` indicates that we made the call
+/// but didn't get a value back (including when we get the error 'call
+/// reverted')
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallResult {
+    Null,
+    Value(Vec<u8>),
+}
+
+impl CallResult {
+    pub fn unwrap(self) -> Vec<u8> {
+        use CallResult::*;
+        match self {
+            Value(val) => val,
+            Null => panic!("called `CachedCallResult::unwrap()` on a `Null` value"),
+        }
+    }
+}
+
 pub trait EthereumCallCache: Send + Sync + 'static {
-    /// Returns the return value of the provided Ethereum call, if present in
-    /// the cache.
+    /// Returns the return value of the provided Ethereum call, if present
+    /// in the cache. A return of `None` indicates that we know nothing
+    /// about the call.
     fn get_call(
         &self,
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-    ) -> Result<Option<Vec<u8>>, Error>;
+    ) -> Result<Option<CallResult>, Error>;
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
@@ -545,7 +565,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-        return_value: &[u8],
+        return_value: CallResult,
     ) -> Result<(), Error>;
 }
 
