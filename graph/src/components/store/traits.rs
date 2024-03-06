@@ -531,11 +531,11 @@ pub trait ChainStore: Send + Sync + 'static {
 #[derive(Debug, Clone, PartialEq)]
 pub enum CallResult {
     Null,
-    Value(Vec<u8>),
+    Value(Bytes),
 }
 
 impl CallResult {
-    pub fn unwrap(self) -> Vec<u8> {
+    pub fn unwrap(self) -> Bytes {
         use CallResult::*;
         match self {
             Value(val) => val,

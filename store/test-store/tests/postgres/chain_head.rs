@@ -3,6 +3,7 @@
 
 use graph::blockchain::{BlockHash, BlockPtr};
 use graph::components::store::CallResult;
+use graph::data::store::scalar::Bytes;
 use graph::env::ENV_VARS;
 use graph::prelude::futures03::executor;
 use std::future::Future;
@@ -375,7 +376,7 @@ fn eth_call_cache() {
 
     run_test(chain, |store, _| {
         fn ccr(value: &[u8]) -> CallResult {
-            CallResult::Value(value.to_vec())
+            CallResult::Value(Bytes::from(value))
         }
 
         let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
