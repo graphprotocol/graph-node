@@ -61,23 +61,26 @@ pub struct RuntimeAdapter {
     pub chain_identifier: Arc<ChainIdentifier>,
 }
 
+pub fn eth_call_gas(chain_identifier: &ChainIdentifier) -> Option<u32> {
+    // Check if the current network version is in the eth_call_no_gas list
+    let should_skip_gas = ENV_VARS
+        .eth_call_no_gas
+        .contains(&chain_identifier.net_version);
+
+    if should_skip_gas {
+        None
+    } else {
+        Some(ETH_CALL_GAS)
+    }
+}
+
 impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
     fn host_fns(&self, ds: &DataSource) -> Result<Vec<HostFn>, Error> {
         let abis = ds.mapping.abis.clone();
         let call_cache = self.call_cache.cheap_clone();
         let eth_adapters = self.eth_adapters.cheap_clone();
         let archive = ds.mapping.requires_archive()?;
-
-        // Check if the current network version is in the eth_call_no_gas list
-        let should_skip_gas = ENV_VARS
-            .eth_call_no_gas
-            .contains(&self.chain_identifier.net_version);
-
-        let eth_call_gas = if should_skip_gas {
-            None
-        } else {
-            Some(ETH_CALL_GAS)
-        };
+        let eth_call_gas = eth_call_gas(&self.chain_identifier);
 
         let ethereum_call = HostFn {
             name: "ethereum.call",

@@ -6,7 +6,7 @@ use web3::types::{Address, H256};
 
 use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
-use crate::blockchain::BlockTime;
+use crate::blockchain::{BlockTime, ChainIdentifier};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
@@ -523,6 +523,9 @@ pub trait ChainStore: Send + Sync + 'static {
 
     /// Clears call cache of the chain for the given `from` and `to` block number.
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error>;
+
+    /// Return the chain identifier for this store.
+    fn chain_identifier(&self) -> &ChainIdentifier;
 }
 
 /// The result of an ethereum call. `Null` indicates that we made the call
