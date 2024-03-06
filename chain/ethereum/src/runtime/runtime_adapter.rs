@@ -25,7 +25,7 @@ use graph::{
     },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
-    slog::{info, trace, Logger},
+    slog::{trace, Logger},
 };
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, EthereumValueKind};
 
@@ -237,11 +237,7 @@ fn eth_call(
     let result = match graph::block_on(
             eth_adapter.contract_call(&logger1, &call, call_cache)
         ) {
-            Ok(tokens) => Ok(Some(tokens)),
-            Err(EthereumContractCallError::Revert(reason)) => {
-                info!(logger, "Contract call reverted"; "reason" => reason);
-                Ok(None)
-            }
+            Ok(res) => Ok(res),
 
             // Any error reported by the Ethereum node could be due to the block no longer being on
             // the main chain. This is very unespecific but we don't want to risk failing a

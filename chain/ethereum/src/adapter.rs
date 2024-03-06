@@ -63,8 +63,6 @@ pub enum EthereumContractCallError {
     EncodingError(ethabi::Error),
     #[error("call error: {0}")]
     Web3Error(web3::Error),
-    #[error("call reverted: {0}")]
-    Revert(String),
     #[error("ethereum node took too long to perform call")]
     Timeout,
 }
@@ -964,13 +962,14 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
-    /// Call the function of a smart contract.
+    /// Call the function of a smart contract. A return of `None` indicates
+    /// that the call reverted.
     async fn contract_call(
         &self,
         logger: &Logger,
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<Token>, EthereumContractCallError>;
+    ) -> Result<Option<Vec<Token>>, EthereumContractCallError>;
 
     fn get_balance(
         &self,

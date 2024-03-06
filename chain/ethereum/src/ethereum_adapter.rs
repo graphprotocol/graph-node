@@ -461,7 +461,15 @@ impl EthereumAdapter {
         call_data: Bytes,
         block_ptr: BlockPtr,
         gas: Option<u32>,
-    ) -> Result<scalar::Bytes, EthereumContractCallError> {
+    ) -> Result<CallResult, EthereumContractCallError> {
+        fn reverted(
+            logger: &Logger,
+            reason: &str,
+        ) -> Result<CallResult, EthereumContractCallError> {
+            info!(logger, "Contract call reverted"; "reason" => reason);
+            Ok(CallResult::Null)
+        }
+
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -474,15 +482,12 @@ impl EthereumAdapter {
         };
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
-            .when(|result| match result {
-                Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
-                Err(_) => true,
-            })
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let call_data = call_data.clone();
                 let web3 = web3.cheap_clone();
+                let logger = logger.cheap_clone();
                 async move {
                     let req = CallRequest {
                         to: Some(contract_address),
@@ -558,14 +563,14 @@ impl EthereumAdapter {
 
                     match result {
                         // A successful response.
-                        Ok(bytes) => Ok(scalar::Bytes::from(bytes)),
+                        Ok(bytes) => Ok(CallResult::Value(scalar::Bytes::from(bytes))),
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
                             if geth_execution_errors
                                 .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
                         {
-                            Err(EthereumContractCallError::Revert(rpc_error.message))
+                            reverted(&logger, &rpc_error.message)
                         }
 
                         // Check for Parity revert.
@@ -593,7 +598,7 @@ impl EthereumAdapter {
                                             })
                                             .unwrap_or("no reason".to_owned())
                                     };
-                                    Err(EthereumContractCallError::Revert(reason))
+                                    reverted(&logger, &reason)
                                 }
 
                                 // The VM execution error was not identified as a revert.
@@ -1310,7 +1315,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<Token>, EthereumContractCallError> {
+    ) -> Result<Option<Vec<Token>>, EthereumContractCallError> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args
@@ -1346,8 +1351,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .ok()
             .flatten()
         {
-            Some(CallResult::Value(result)) => Ok(result),
-            Some(CallResult::Null) | None => {
+            Some(result) => Ok(result),
+            None => {
                 let cache = cache.clone();
                 let call = call.clone();
                 let logger = logger.clone();
@@ -1361,33 +1366,39 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     )
                     .await?;
                 // Don't block handler execution on writing to the cache.
-                let for_cache = CallResult::Value(result.clone());
-                if !result.is_empty() {
-                    let _ = graph::spawn_blocking_allow_panic(move || {
-                        cache
-                            .set_call(call.address, &call_data, call.block_ptr, for_cache)
-                            .map_err(|e| {
-                                error!(logger, "call cache set error";
+                let for_cache = result.clone();
+                let _ = graph::spawn_blocking_allow_panic(move || {
+                    cache
+                        .set_call(call.address, &call_data, call.block_ptr, for_cache)
+                        .map_err(|e| {
+                            error!(logger, "call cache set error";
                                                        "error" => e.to_string())
-                            })
-                    });
-                }
+                        })
+                });
                 Ok(result)
             }
         }
         // Decode the return values according to the ABI
         .and_then(move |output| {
-            if output.is_empty() {
-                // We got a `0x` response. For old Geth, this can mean a revert. It can also be
-                // that the contract actually returned an empty response. A view call is meant
-                // to return something, so we treat empty responses the same as reverts.
-                Err(EthereumContractCallError::Revert("empty response".into()))
-            } else {
-                // Decode failures are reverts. The reasoning is that if Solidity fails to
-                // decode an argument, that's a revert, so the same goes for the output.
-                call.function.decode_output(&output).map_err(|e| {
-                    EthereumContractCallError::Revert(format!("failed to decode output: {}", e))
-                })
+            use CallResult::*;
+            match output {
+                Value(output) => match call.function.decode_output(&output) {
+                    Ok(tokens) => Ok(Some(tokens)),
+                    Err(e) => {
+                        // Decode failures are reverts. The reasoning is that if Solidity fails to
+                        // decode an argument, that's a revert, so the same goes for the output.
+                        let reason = format!("failed to decode output: {}", e);
+                        info!(logger, "Contract call reverted"; "reason" => reason);
+                        Ok(None)
+                    }
+                },
+                Null => {
+                    // We got a `0x` response. For old Geth, this can mean a revert. It can also be
+                    // that the contract actually returned an empty response. A view call is meant
+                    // to return something, so we treat empty responses the same as reverts.
+                    info!(logger, "Contract call reverted"; "reason" => "empty response");
+                    Ok(None)
+                }
             }
         })
     }
