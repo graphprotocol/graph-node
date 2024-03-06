@@ -12,7 +12,6 @@ use graph::prelude::ethabi::{StateMutability, Token};
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::regex::Regex;
-use graph::prelude::Future01CompatExt;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{info, o, trace};
 use lazy_static::lazy_static;
@@ -1010,7 +1009,6 @@ impl DecoderHook {
 
         let result = eth_adapter
             .contract_call(logger, eth_call, self.call_cache.cheap_clone())
-            .compat()
             .await;
 
         let elapsed = start.elapsed();

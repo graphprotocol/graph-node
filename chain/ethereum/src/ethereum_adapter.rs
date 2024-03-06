@@ -1,4 +1,3 @@
-use futures::future;
 use futures::prelude::*;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
@@ -453,14 +452,14 @@ impl EthereumAdapter {
             .compat()
     }
 
-    fn call(
+    async fn call(
         &self,
         logger: Logger,
         contract_address: Address,
         call_data: Bytes,
         block_ptr: BlockPtr,
         gas: Option<u32>,
-    ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
+    ) -> Result<Bytes, EthereumContractCallError> {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -609,7 +608,7 @@ impl EthereumAdapter {
             })
             .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
             .boxed()
-            .compat()
+            .await
     }
 
     /// Request blocks by hash through JSON-RPC.
@@ -1304,12 +1303,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(self.balance(logger, address, block_ptr))
     }
 
-    fn contract_call(
+    async fn contract_call(
         &self,
         logger: &Logger,
         call: EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
+    ) -> Result<Vec<Token>, EthereumContractCallError> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args
@@ -1317,17 +1316,17 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .zip(call.function.inputs.iter().map(|p| &p.kind))
         {
             if !token.type_check(kind) {
-                return Box::new(future::err(EthereumContractCallError::TypeError(
+                return Err(EthereumContractCallError::TypeError(
                     token.clone(),
                     kind.clone(),
-                )));
+                ));
             }
         }
 
         // Encode the call parameters according to the ABI
         let call_data = match call.function.encode_input(&call.args) {
             Ok(data) => data,
-            Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
+            Err(e) => return Err(EthereumContractCallError::EncodingError(e)),
         };
 
         debug!(logger, "eth_call";
@@ -1339,67 +1338,56 @@ impl EthereumAdapterTrait for EthereumAdapter {
         );
 
         // Check if we have it cached, if not do the call and cache.
-        Box::new(
-            match cache
-                .get_call(call.address, &call_data, call.block_ptr.clone())
-                .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
-                .ok()
-                .flatten()
-            {
-                Some(result) => {
-                    Box::new(future::ok(result)) as Box<dyn Future<Item = _, Error = _> + Send>
-                }
-                None => {
-                    let cache = cache.clone();
-                    let call = call.clone();
-                    let logger = logger.clone();
-                    Box::new(
-                        self.call(
-                            logger.clone(),
-                            call.address,
-                            Bytes(call_data.clone()),
-                            call.block_ptr.clone(),
-                            call.gas,
-                        )
-                        .map(move |result| {
-                            // Don't block handler execution on writing to the cache.
-                            let for_cache = result.0.clone();
-                            if !result.0.is_empty() {
-                                let _ = graph::spawn_blocking_allow_panic(move || {
-                                    cache
-                                        .set_call(
-                                            call.address,
-                                            &call_data,
-                                            call.block_ptr,
-                                            &for_cache,
-                                        )
-                                        .map_err(|e| {
-                                            error!(logger, "call cache set error";
-                                                       "error" => e.to_string())
-                                        })
-                                });
-                            }
-                            result.0
-                        }),
+        match cache
+            .get_call(call.address, &call_data, call.block_ptr.clone())
+            .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
+            .ok()
+            .flatten()
+        {
+            Some(result) => Ok(result),
+            None => {
+                let cache = cache.clone();
+                let call = call.clone();
+                let logger = logger.clone();
+                let result = self
+                    .call(
+                        logger.clone(),
+                        call.address,
+                        Bytes(call_data.clone()),
+                        call.block_ptr.clone(),
+                        call.gas,
                     )
+                    .await?;
+                // Don't block handler execution on writing to the cache.
+                let for_cache = result.0.clone();
+                if !result.0.is_empty() {
+                    let _ = graph::spawn_blocking_allow_panic(move || {
+                        cache
+                            .set_call(call.address, &call_data, call.block_ptr, &for_cache)
+                            .map_err(|e| {
+                                error!(logger, "call cache set error";
+                                                       "error" => e.to_string())
+                            })
+                    });
                 }
+                Ok(result.0)
             }
-            // Decode the return values according to the ABI
-            .and_then(move |output| {
-                if output.is_empty() {
-                    // We got a `0x` response. For old Geth, this can mean a revert. It can also be
-                    // that the contract actually returned an empty response. A view call is meant
-                    // to return something, so we treat empty responses the same as reverts.
-                    Err(EthereumContractCallError::Revert("empty response".into()))
-                } else {
-                    // Decode failures are reverts. The reasoning is that if Solidity fails to
-                    // decode an argument, that's a revert, so the same goes for the output.
-                    call.function.decode_output(&output).map_err(|e| {
-                        EthereumContractCallError::Revert(format!("failed to decode output: {}", e))
-                    })
-                }
-            }),
-        )
+        }
+        // Decode the return values according to the ABI
+        .and_then(move |output| {
+            if output.is_empty() {
+                // We got a `0x` response. For old Geth, this can mean a revert. It can also be
+                // that the contract actually returned an empty response. A view call is meant
+                // to return something, so we treat empty responses the same as reverts.
+                Err(EthereumContractCallError::Revert("empty response".into()))
+            } else {
+                // Decode failures are reverts. The reasoning is that if Solidity fails to
+                // decode an argument, that's a revert, so the same goes for the output.
+                call.function.decode_output(&output).map_err(|e| {
+                    EthereumContractCallError::Revert(format!("failed to decode output: {}", e))
+                })
+            }
+        })
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
