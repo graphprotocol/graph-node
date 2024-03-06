@@ -965,12 +965,12 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
     /// Call the function of a smart contract.
-    fn contract_call(
+    async fn contract_call(
         &self,
         logger: &Logger,
         call: EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+    ) -> Result<Vec<Token>, EthereumContractCallError>;
 
     fn get_balance(
         &self,
