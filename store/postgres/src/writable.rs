@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
@@ -888,7 +888,7 @@ impl Queue {
                         // batch should be processed or after some time
                         // passed. The latter is just for safety in case
                         // there is a mistake with notifications.
-                        let sleep = graph::tokio::time::sleep(Duration::from_secs(2));
+                        let sleep = graph::tokio::time::sleep(ENV_VARS.store.write_batch_duration);
                         let notify = batch_stop_notify.notified();
                         select!(
                             () = sleep => (),
