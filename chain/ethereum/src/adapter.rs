@@ -968,7 +968,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn contract_call(
         &self,
         logger: &Logger,
-        call: EthereumContractCall,
+        call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<Vec<Token>, EthereumContractCallError>;
 

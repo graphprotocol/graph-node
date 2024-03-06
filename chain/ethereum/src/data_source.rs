@@ -1008,7 +1008,7 @@ impl DecoderHook {
         }))?;
 
         let result = eth_adapter
-            .contract_call(logger, eth_call, self.call_cache.cheap_clone())
+            .contract_call(logger, &eth_call, self.call_cache.cheap_clone())
             .await;
 
         let elapsed = start.elapsed();
