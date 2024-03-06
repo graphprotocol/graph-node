@@ -2,6 +2,7 @@
 //! the chain head pointer gets updated in various situations
 
 use graph::blockchain::{BlockHash, BlockPtr};
+use graph::components::store::CallResult;
 use graph::env::ENV_VARS;
 use graph::prelude::futures03::executor;
 use std::future::Future;
@@ -373,12 +374,16 @@ fn eth_call_cache() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
 
     run_test(chain, |store, _| {
+        fn ccr(value: &[u8]) -> CallResult {
+            CallResult::Value(value.to_vec())
+        }
+
         let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
         store
-            .set_call(address, &call, BLOCK_ONE.block_ptr(), &return_value)
+            .set_call(address, &call, BLOCK_ONE.block_ptr(), ccr(&return_value))
             .unwrap();
 
         let ret = store
@@ -388,6 +393,7 @@ fn eth_call_cache() {
 
         let ret = store
             .get_call(address, &call, BLOCK_ONE.block_ptr())
+            .unwrap()
             .unwrap()
             .unwrap();
         assert_eq!(&return_value, ret.as_slice());
@@ -399,13 +405,27 @@ fn eth_call_cache() {
 
         let new_return_value: [u8; 3] = [10, 11, 12];
         store
-            .set_call(address, &call, BLOCK_TWO.block_ptr(), &new_return_value)
+            .set_call(
+                address,
+                &call,
+                BLOCK_TWO.block_ptr(),
+                ccr(&new_return_value),
+            )
             .unwrap();
         let ret = store
             .get_call(address, &call, BLOCK_TWO.block_ptr())
             .unwrap()
+            .unwrap()
             .unwrap();
         assert_eq!(&new_return_value, ret.as_slice());
+
+        store
+            .set_call(address, &call, BLOCK_THREE.block_ptr(), CallResult::Null)
+            .unwrap();
+        let ret = store
+            .get_call(address, &call, BLOCK_THREE.block_ptr())
+            .unwrap();
+        assert_eq!(None, ret);
 
         Ok(())
     })

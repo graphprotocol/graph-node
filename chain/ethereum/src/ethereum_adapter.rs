@@ -3,6 +3,7 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
+use graph::components::store::CallResult;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
@@ -1344,8 +1345,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .ok()
             .flatten()
         {
-            Some(result) => Ok(result),
-            None => {
+            Some(CallResult::Value(result)) => Ok(result),
+            Some(CallResult::Null) | None => {
                 let cache = cache.clone();
                 let call = call.clone();
                 let logger = logger.clone();
@@ -1359,11 +1360,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     )
                     .await?;
                 // Don't block handler execution on writing to the cache.
-                let for_cache = result.0.clone();
+                let for_cache = CallResult::Value(result.0.clone());
                 if !result.0.is_empty() {
                     let _ = graph::spawn_blocking_allow_panic(move || {
                         cache
-                            .set_call(call.address, &call_data, call.block_ptr, &for_cache)
+                            .set_call(call.address, &call_data, call.block_ptr, for_cache)
                             .map_err(|e| {
                                 error!(logger, "call cache set error";
                                                        "error" => e.to_string())

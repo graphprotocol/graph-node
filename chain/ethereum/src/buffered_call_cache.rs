@@ -4,7 +4,7 @@ use std::{
 };
 
 use graph::{
-    components::store::EthereumCallCache,
+    components::store::{CallResult, EthereumCallCache},
     prelude::{ethabi, BlockPtr, CachedEthereumCall},
 };
 
@@ -14,7 +14,7 @@ use graph::{
 /// call, the buffer is cleared.
 pub struct BufferedCallCache {
     call_cache: Arc<dyn EthereumCallCache>,
-    buffer: Arc<Mutex<HashMap<(ethabi::Address, Vec<u8>), Vec<u8>>>>,
+    buffer: Arc<Mutex<HashMap<(ethabi::Address, Vec<u8>), CallResult>>>,
     block: Arc<Mutex<Option<BlockPtr>>>,
 }
 
@@ -42,7 +42,7 @@ impl EthereumCallCache for BufferedCallCache {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-    ) -> Result<Option<Vec<u8>>, graph::prelude::Error> {
+    ) -> Result<Option<CallResult>, graph::prelude::Error> {
         self.check_block(&block);
 
         {
@@ -56,9 +56,9 @@ impl EthereumCallCache for BufferedCallCache {
             .call_cache
             .get_call(contract_address, encoded_call, block)?;
 
-        if let Some(result) = &result {
-            let mut buffer = self.buffer.lock().unwrap();
-            buffer.insert((contract_address, encoded_call.to_vec()), result.clone());
+        let mut buffer = self.buffer.lock().unwrap();
+        if let Some(value) = &result {
+            buffer.insert((contract_address, encoded_call.to_vec()), value.clone());
         }
         Ok(result)
     }
@@ -75,18 +75,15 @@ impl EthereumCallCache for BufferedCallCache {
         contract_address: ethabi::Address,
         encoded_call: &[u8],
         block: BlockPtr,
-        return_value: &[u8],
+        return_value: CallResult,
     ) -> Result<(), graph::prelude::Error> {
         self.check_block(&block);
 
         self.call_cache
-            .set_call(contract_address, encoded_call, block, return_value)?;
+            .set_call(contract_address, encoded_call, block, return_value.clone())?;
 
         let mut buffer = self.buffer.lock().unwrap();
-        buffer.insert(
-            (contract_address, encoded_call.to_vec()),
-            return_value.to_vec(),
-        );
+        buffer.insert((contract_address, encoded_call.to_vec()), return_value);
         Ok(())
     }
 }
