@@ -18,6 +18,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::{
+        metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
         trigger_processor::RunnableTriggers,
@@ -384,6 +385,7 @@ pub trait DecoderHook<C: Blockchain> {
         logger: &Logger,
         block_ptr: &BlockPtr,
         triggers: Vec<RunnableTriggers<'a, C>>,
+        metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>;
 }
 
@@ -398,6 +400,7 @@ impl<C: Blockchain> DecoderHook<C> for NoopDecoderHook {
         _: &Logger,
         _: &BlockPtr,
         triggers: Vec<RunnableTriggers<'a, C>>,
+        _: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError> {
         Ok(triggers)
     }

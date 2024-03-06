@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
+use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
@@ -1068,10 +1069,14 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
         logger: &Logger,
         block_ptr: &BlockPtr,
         runnables: Vec<RunnableTriggers<'a, Chain>>,
+        metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
         if ENV_VARS.mappings.disable_declared_calls {
             return Ok(runnables);
         }
+
+        let _section = metrics.stopwatch.start_section("declared_ethereum_call");
+
         let start = Instant::now();
         let calls: Vec<_> = runnables
             .iter()
