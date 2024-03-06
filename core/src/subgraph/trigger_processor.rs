@@ -169,7 +169,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
         block: &Arc<C::Block>,
         triggers: impl Iterator<Item = TriggerData<C>>,
         hosts_filter: F,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+        metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
     where
         F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
@@ -177,13 +177,13 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
         let mut runnables = vec![];
         for trigger in triggers {
             let hosts = hosts_filter(&trigger);
-            match self.match_and_decode(logger, block, trigger, hosts, subgraph_metrics) {
+            match self.match_and_decode(logger, block, trigger, hosts, metrics) {
                 Ok(runnable_triggers) => runnables.push(runnable_triggers),
                 Err(e) => return Err(e),
             }
         }
         self.hook
-            .after_decode(logger, &block.ptr(), runnables)
+            .after_decode(logger, &block.ptr(), runnables, metrics)
             .await
     }
 }
