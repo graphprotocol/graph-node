@@ -17,6 +17,7 @@ use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
+use graph::slog::debug;
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
@@ -26,9 +27,10 @@ use graph::{
     },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
-    slog::{trace, Logger},
+    slog::Logger,
 };
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, EthereumValueKind};
+use itertools::Itertools;
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 
@@ -204,6 +206,19 @@ fn eth_call(
     eth_call_gas: Option<u32>,
     metrics: Arc<HostMetrics>,
 ) -> Result<Option<Vec<Token>>, HostExportError> {
+    // Helpers to log the result of the call at the end
+    fn tokens_as_string(tokens: &[Token]) -> String {
+        tokens.iter().map(|arg| arg.to_string()).join(", ")
+    }
+
+    fn result_as_string(result: &Result<Option<Vec<Token>>, HostExportError>) -> String {
+        match result {
+            Ok(Some(tokens)) => format!("({})", tokens_as_string(&tokens)),
+            Ok(None) => "none".to_string(),
+            Err(_) => "error".to_string(),
+        }
+    }
+
     let start_time = Instant::now();
 
     // Obtain the path to the contract ABI
@@ -281,12 +296,16 @@ fn eth_call(
         );
     }
 
-    trace!(logger, "Contract call finished";
-              "address" => &unresolved_call.contract_address.to_string(),
+    debug!(logger, "Contract call finished";
+              "address" => format!("0x{:x}", &unresolved_call.contract_address),
               "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name,
-              "function_signature" => &unresolved_call.function_signature,
-              "time" => format!("{}ms", elapsed.as_millis()));
+              "signature" => &unresolved_call.function_signature,
+              "args" => format!("[{}]", tokens_as_string(&unresolved_call.function_args)),
+              "time_ms" => format!("{}ms", elapsed.as_millis()),
+              "result" => result_as_string(&result),
+              "block_hash" => block_ptr.hash_hex(),
+              "block_number" => block_ptr.block_number(),
+              "source" => source.to_string());
 
     result
 }
