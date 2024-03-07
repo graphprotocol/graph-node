@@ -564,6 +564,16 @@ impl CallSource {
     }
 }
 
+impl std::fmt::Display for CallSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            CallSource::Memory => write!(f, "memory"),
+            CallSource::Store => write!(f, "store"),
+            CallSource::Rpc => write!(f, "rpc"),
+        }
+    }
+}
+
 pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing

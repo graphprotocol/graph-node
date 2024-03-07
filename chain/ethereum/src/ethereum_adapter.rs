@@ -1337,7 +1337,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             Err(e) => return Err(EthereumContractCallError::EncodingError(e)),
         };
 
-        debug!(logger, "eth_call";
+        trace!(logger, "eth_call";
             "fn" => &call.function.name,
             "address" => hex::encode(call.address),
             "data" => hex::encode(&call_data),
