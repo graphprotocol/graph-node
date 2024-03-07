@@ -4,8 +4,10 @@ use std::{
 };
 
 use graph::{
+    cheap_clone::CheapClone,
     components::store::{CallResult, CallSource, EthereumCallCache},
     prelude::{ethabi, BlockPtr, CachedEthereumCall},
+    slog::{error, Logger},
 };
 
 /// A wrapper around an Ethereum call cache that buffers call results in
@@ -72,18 +74,38 @@ impl EthereumCallCache for BufferedCallCache {
 
     fn set_call(
         &self,
+        logger: &Logger,
         contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        encoded_call: Arc<Vec<u8>>,
         block: BlockPtr,
         return_value: CallResult,
     ) -> Result<(), graph::prelude::Error> {
         self.check_block(&block);
 
-        self.call_cache
-            .set_call(contract_address, encoded_call, block, return_value.clone())?;
+        // Enter the call into the in-memory cache immediately so that
+        // handlers will find it, but add it to the underlying cache in the
+        // background so we do not have to wait for that as it will be a
+        // cache backed by the database
+        {
+            let mut buffer = self.buffer.lock().unwrap();
+            buffer.insert(
+                (contract_address, encoded_call.to_vec()),
+                return_value.clone(),
+            );
+        }
 
-        let mut buffer = self.buffer.lock().unwrap();
-        buffer.insert((contract_address, encoded_call.to_vec()), return_value);
+        let cache = self.call_cache.cheap_clone();
+        let logger = logger.cheap_clone();
+        let _ = graph::spawn_blocking_allow_panic(move || {
+            cache
+                .set_call(&logger, contract_address, encoded_call, block, return_value)
+                .map_err(|e| {
+                    error!(logger, "BufferedCallCache: call cache set error";
+                            "contract_address" => format!("{:?}", contract_address),
+                            "error" => e.to_string())
+                })
+        });
+
         Ok(())
     }
 }
