@@ -1354,9 +1354,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
         {
             Some(result) => result,
             None => {
-                let cache = cache.clone();
-                let call = call.clone();
-                let logger = logger.clone();
                 let result = self
                     .call(
                         logger.clone(),
@@ -1366,16 +1363,20 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         call.gas,
                     )
                     .await?;
-                // Don't block handler execution on writing to the cache.
-                let for_cache = result.clone();
-                let _ = graph::spawn_blocking_allow_panic(move || {
-                    cache
-                        .set_call(call.address, &call_data, call.block_ptr, for_cache)
-                        .map_err(|e| {
-                            error!(logger, "call cache set error";
-                                                       "error" => e.to_string())
-                        })
-                });
+                let _ = cache
+                    .set_call(
+                        &logger,
+                        call.address,
+                        Arc::new(call_data),
+                        call.block_ptr.cheap_clone(),
+                        result.clone(),
+                    )
+                    .map_err(|e| {
+                        error!(logger, "EthereumAdapter: call cache set error";
+                                    "contract_address" => format!("{:?}", call.address),
+                                    "error" => e.to_string())
+                    });
+
                 (result, CallSource::Rpc)
             }
         };

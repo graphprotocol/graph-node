@@ -582,8 +582,9 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     /// Stores the provided Ethereum call in the cache.
     fn set_call(
         &self,
+        logger: &Logger,
         contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        encoded_call: Arc<Vec<u8>>,
         block: BlockPtr,
         return_value: CallResult,
     ) -> Result<(), Error>;

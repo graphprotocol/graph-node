@@ -375,16 +375,24 @@ fn eth_call_cache() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
 
     run_test(chain, |store, _| {
+        let logger = LOGGER.cheap_clone();
         fn ccr(value: &[u8]) -> CallResult {
             CallResult::Value(Bytes::from(value))
         }
 
         let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
+        let call = Arc::new(call.to_vec());
         let return_value: [u8; 3] = [7, 8, 9];
 
         store
-            .set_call(address, &call, BLOCK_ONE.block_ptr(), ccr(&return_value))
+            .set_call(
+                &logger,
+                address,
+                call.cheap_clone(),
+                BLOCK_ONE.block_ptr(),
+                ccr(&return_value),
+            )
             .unwrap();
 
         let ret = store
@@ -408,8 +416,9 @@ fn eth_call_cache() {
         let new_return_value: [u8; 3] = [10, 11, 12];
         store
             .set_call(
+                &logger,
                 address,
-                &call,
+                call.cheap_clone(),
                 BLOCK_TWO.block_ptr(),
                 ccr(&new_return_value),
             )
@@ -423,7 +432,13 @@ fn eth_call_cache() {
         assert_eq!(&new_return_value, ret.as_slice());
 
         store
-            .set_call(address, &call, BLOCK_THREE.block_ptr(), CallResult::Null)
+            .set_call(
+                &logger,
+                address,
+                call.cheap_clone(),
+                BLOCK_THREE.block_ptr(),
+                CallResult::Null,
+            )
             .unwrap();
         let ret = store
             .get_call(address, &call, BLOCK_THREE.block_ptr())

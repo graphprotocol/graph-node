@@ -2425,8 +2425,9 @@ impl EthereumCallCache for ChainStore {
 
     fn set_call(
         &self,
+        _: &Logger,
         contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        encoded_call: Arc<Vec<u8>>,
         block: BlockPtr,
         return_value: CallResult,
     ) -> Result<(), Error> {
@@ -2437,7 +2438,7 @@ impl EthereumCallCache for ChainStore {
             // where calls first failed and later succeeded
             return Ok(());
         };
-        let id = contract_call_id(&contract_address, encoded_call, &block);
+        let id = contract_call_id(&contract_address, &encoded_call, &block);
         let conn = &mut *self.get_conn()?;
         conn.transaction(|conn| {
             self.storage.set_call(
