@@ -14,14 +14,15 @@ use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::regex::Regex;
 use graph::prelude::{Link, SubgraphManifestValidationError};
-use graph::slog::{info, o, trace};
+use graph::slog::{debug, error, o, trace};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use serde::de;
 use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tiny_keccak::{keccak256, Keccak};
 
 use graph::{
@@ -913,6 +914,8 @@ impl DataSource {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DeclaredCall {
+    /// The user-supplied label from the manifest
+    label: String,
     contract_name: String,
     address: Address,
     function: Function,
@@ -949,6 +952,7 @@ impl DeclaredCall {
             let args = decl.args(log, params)?;
 
             let call = DeclaredCall {
+                label: decl.label.clone(),
                 contract_name,
                 address,
                 function: function.clone(),
@@ -960,7 +964,11 @@ impl DeclaredCall {
         Ok(calls)
     }
 
-    fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (EthereumContractCall, String) {
+    fn as_eth_call(
+        self,
+        block_ptr: BlockPtr,
+        gas: Option<u32>,
+    ) -> (EthereumContractCall, String, String) {
         (
             EthereumContractCall {
                 address: self.address,
@@ -970,6 +978,7 @@ impl DeclaredCall {
                 gas,
             },
             self.contract_name,
+            self.label,
         )
     }
 }
@@ -1001,10 +1010,11 @@ impl DecoderHook {
         block_ptr: &BlockPtr,
         metrics: Arc<HostMetrics>,
         call: DeclaredCall,
-    ) -> Result<usize, MappingError> {
+    ) -> Result<Option<String>, MappingError> {
         let start = Instant::now();
         let function_name = call.function.name.clone();
-        let (eth_call, contract_name) = call.as_eth_call(block_ptr.clone(), self.eth_call_gas);
+        let (eth_call, contract_name, label) =
+            call.as_eth_call(block_ptr.clone(), self.eth_call_gas);
         let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
             archive: true,
             traces: false,
@@ -1025,7 +1035,7 @@ impl DecoderHook {
         //
         // For errors, we set the source to 'Rpc' as that's where errors happen
         let result= match result {
-                Ok(r) => Ok(if r.is_some() { 0 } else { 1 }),
+                Ok(r) => Ok(if r.is_some() { None } else { Some(label) }),
 
                 // Any error reported by the Ethereum node could be due to the block no longer being on
                 // the main chain. This is very unespecific but we don't want to risk failing a
@@ -1075,6 +1085,55 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
         runnables: Vec<RunnableTriggers<'a, Chain>>,
         metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
+        /// Log information about failed eth calls. 'Failure' here simply
+        /// means that the call was reverted; outright errors lead to a real
+        /// error. For reverted calls, `self.eth_call` returns the label
+        /// from the manifest for that call.
+        ///
+        /// One reason why declared calls can fail is if they are attached
+        /// to the wrong handler, or if arguments are specified incorrectly.
+        /// Calls that revert every once in a while might be ok and what the
+        /// user intended, but we want to clearly log so that users can spot
+        /// mistakes in their manifest, which will lead to unnecessary eth
+        /// calls
+        fn log_results(
+            logger: &Logger,
+            results: &[Option<String>],
+            trigger_count: usize,
+            elapsed: Duration,
+        ) {
+            let calls_count = results.len();
+            let fail_count = results.iter().filter(|r| r.is_some()).count();
+
+            if fail_count > 0 {
+                let mut counts: Vec<_> = results
+                    .iter()
+                    .filter_map(|r| r.as_ref())
+                    .counts()
+                    .into_iter()
+                    .collect();
+                counts.sort_by_key(|(label, _)| *label);
+                let counts = counts
+                    .into_iter()
+                    .map(|(label, count)| {
+                        let times = if count == 1 { "time" } else { "times" };
+                        format!("{label} ({count} {times})")
+                    })
+                    .join(", ");
+                error!(logger, "Declared calls failed";
+                  "triggers" => trigger_count,
+                  "calls_count" => calls_count,
+                  "fail_count" => fail_count,
+                  "calls_ms" => elapsed.as_millis(),
+                  "failures" => format!("[{}]", counts));
+            } else {
+                debug!(logger, "Declared calls";
+                  "triggers" => trigger_count,
+                  "calls_count" => calls_count,
+                  "calls_ms" => elapsed.as_millis());
+            }
+        }
+
         if ENV_VARS.mappings.disable_declared_calls {
             return Ok(runnables);
         }
@@ -1124,21 +1183,13 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
             calls
         };
 
-        let calls_count = calls.len();
-
-        let fail_count: usize = graph::prelude::futures03::future::try_join_all(
+        let results = graph::prelude::futures03::future::try_join_all(
             calls
                 .into_iter()
                 .map(|(metrics, call)| self.eth_call(logger, block_ptr, metrics, call)),
         )
-        .await?
-        .into_iter()
-        .sum();
-
-        // TODO: Remove this logging before merging
-        if calls_count > 0 {
-            info!(logger, "After decode hook"; "runnables" => runnables.len(), "calls_count" => calls_count, "fail_count" => fail_count, "calls_ms" => start.elapsed().as_millis());
-        }
+        .await?;
+        log_results(logger, &results, runnables.len(), start.elapsed());
 
         Ok(runnables)
     }
