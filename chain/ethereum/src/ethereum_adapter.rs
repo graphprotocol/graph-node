@@ -1426,30 +1426,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
             }
         }
 
+        if calls.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let block_ptr = calls.first().unwrap().block_ptr.clone();
+        if calls.iter().any(|call| call.block_ptr != block_ptr) {
+            return Err(EthereumContractCallError::Internal(
+                "all calls must have the same block pointer".to_string(),
+            ));
+        }
+
         let reqs: Vec<_> = calls
             .iter()
             .enumerate()
             .map(|(index, call)| as_req(logger, call, index as u32))
             .collect::<Result<_, _>>()?;
 
-        let mut resps = Vec::new();
-        let mut missing = Vec::new();
-        for req in reqs {
-            let call = &calls[req.index as usize];
-            match cache
-                .get_call(&req, call.block_ptr.clone())
-                .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
-                .ok()
-                .flatten()
-            {
-                Some(resp) => {
-                    resps.push(resp);
-                }
-                None => {
-                    missing.push(req);
-                }
-            }
-        }
+        let (mut resps, missing) = cache
+            .get_calls(&reqs, block_ptr)
+            .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
+            .unwrap_or_else(|_| (Vec::new(), reqs));
 
         for req in missing {
             let call = calls[req.index as usize];
