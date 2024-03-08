@@ -1315,36 +1315,44 @@ impl EthereumAdapterTrait for EthereumAdapter {
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
-        // Emit custom error for type mismatches.
-        for (token, kind) in call
-            .args
-            .iter()
-            .zip(call.function.inputs.iter().map(|p| &p.kind))
-        {
-            if !token.type_check(kind) {
-                return Err(EthereumContractCallError::TypeError(
-                    token.clone(),
-                    kind.clone(),
-                ));
+        fn as_req(
+            logger: &Logger,
+            call: &EthereumContractCall,
+        ) -> Result<call::Request, EthereumContractCallError> {
+            // Emit custom error for type mismatches.
+            for (token, kind) in call
+                .args
+                .iter()
+                .zip(call.function.inputs.iter().map(|p| &p.kind))
+            {
+                if !token.type_check(kind) {
+                    return Err(EthereumContractCallError::TypeError(
+                        token.clone(),
+                        kind.clone(),
+                    ));
+                }
             }
+
+            // Encode the call parameters according to the ABI
+            let req = {
+                let encoded_call = call
+                    .function
+                    .encode_input(&call.args)
+                    .map_err(EthereumContractCallError::EncodingError)?;
+                call::Request::new(call.address, encoded_call)
+            };
+
+            trace!(logger, "eth_call";
+                "fn" => &call.function.name,
+                "address" => hex::encode(call.address),
+                "data" => hex::encode(req.encoded_call.as_ref()),
+                "block_hash" => call.block_ptr.hash_hex(),
+                "block_number" => call.block_ptr.block_number()
+            );
+            Ok(req)
         }
 
-        // Encode the call parameters according to the ABI
-        let req = {
-            let encoded_call = call
-                .function
-                .encode_input(&call.args)
-                .map_err(EthereumContractCallError::EncodingError)?;
-            call::Request::new(call.address, encoded_call)
-        };
-
-        trace!(logger, "eth_call";
-            "fn" => &call.function.name,
-            "address" => hex::encode(call.address),
-            "data" => hex::encode(req.encoded_call.as_ref()),
-            "block_hash" => call.block_ptr.hash_hex(),
-            "block_number" => call.block_ptr.block_number()
-        );
+        let req = as_req(logger, call)?;
 
         // Check if we have it cached, if not do the call and cache.
         let call::Response {
