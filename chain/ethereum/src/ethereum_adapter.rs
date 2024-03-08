@@ -3,6 +3,7 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
+use graph::components::store::CallData;
 use graph::components::store::CallResult;
 use graph::components::store::CallSource;
 use graph::components::transaction_receipt::LightTransactionReceipt;
@@ -458,8 +459,7 @@ impl EthereumAdapter {
     async fn call(
         &self,
         logger: Logger,
-        contract_address: Address,
-        call_data: Bytes,
+        call_data: CallData,
         block_ptr: BlockPtr,
         gas: Option<u32>,
     ) -> Result<CallResult, EthereumContractCallError> {
@@ -491,9 +491,9 @@ impl EthereumAdapter {
                 let logger = logger.cheap_clone();
                 async move {
                     let req = CallRequest {
-                        to: Some(contract_address),
+                        to: Some(call_data.address),
                         gas: gas.map(|val| web3::types::U256::from(val)),
-                        data: Some(call_data.clone()),
+                        data: Some(Bytes::from(call_data.encoded_call.to_vec())),
                         from: None,
                         gas_price: None,
                         value: None,
@@ -1332,22 +1332,25 @@ impl EthereumAdapterTrait for EthereumAdapter {
         }
 
         // Encode the call parameters according to the ABI
-        let call_data = match call.function.encode_input(&call.args) {
-            Ok(data) => data,
-            Err(e) => return Err(EthereumContractCallError::EncodingError(e)),
+        let call_data = {
+            let encoded_call = call
+                .function
+                .encode_input(&call.args)
+                .map_err(EthereumContractCallError::EncodingError)?;
+            CallData::new(call.address, encoded_call)
         };
 
         trace!(logger, "eth_call";
             "fn" => &call.function.name,
             "address" => hex::encode(call.address),
-            "data" => hex::encode(&call_data),
+            "data" => hex::encode(call_data.encoded_call.as_ref()),
             "block_hash" => call.block_ptr.hash_hex(),
             "block_number" => call.block_ptr.block_number()
         );
 
         // Check if we have it cached, if not do the call and cache.
         let (output, source) = match cache
-            .get_call(call.address, &call_data, call.block_ptr.clone())
+            .get_call(&call_data, call.block_ptr.clone())
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .ok()
             .flatten()
@@ -1357,8 +1360,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let result = self
                     .call(
                         logger.clone(),
-                        call.address,
-                        Bytes(call_data.clone()),
+                        call_data.cheap_clone(),
                         call.block_ptr.clone(),
                         call.gas,
                     )
@@ -1366,8 +1368,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let _ = cache
                     .set_call(
                         &logger,
-                        call.address,
-                        Arc::new(call_data),
+                        call_data.cheap_clone(),
                         call.block_ptr.cheap_clone(),
                         result.clone(),
                     )

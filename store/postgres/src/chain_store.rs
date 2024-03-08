@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-use graph::components::store::{CallResult, CallSource};
+use graph::components::store::{CallData, CallResult, CallSource};
 use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
@@ -23,9 +23,9 @@ use graph::blockchain::{Block, BlockHash, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    async_trait, ethabi, serde_json as json, transaction_receipt::LightTransactionReceipt,
-    BlockNumber, BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait,
-    Error, EthereumCallCache, StoreError,
+    async_trait, serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber,
+    BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error,
+    EthereumCallCache, StoreError,
 };
 use graph::{constraint_violation, ensure};
 
@@ -2396,11 +2396,10 @@ fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
 impl EthereumCallCache for ChainStore {
     fn get_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        call: &CallData,
         block: BlockPtr,
     ) -> Result<Option<(CallResult, CallSource)>, Error> {
-        let id = contract_call_id(&contract_address, encoded_call, &block);
+        let id = contract_call_id(call, &block);
         let conn = &mut *self.get_conn()?;
         let return_value = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
@@ -2408,7 +2407,7 @@ impl EthereumCallCache for ChainStore {
             {
                 if update_accessed_at {
                     self.storage
-                        .update_accessed_at(conn, contract_address.as_ref())?;
+                        .update_accessed_at(conn, call.address.as_ref())?;
                 }
                 Ok(Some(return_value))
             } else {
@@ -2426,8 +2425,7 @@ impl EthereumCallCache for ChainStore {
     fn set_call(
         &self,
         _: &Logger,
-        contract_address: ethabi::Address,
-        encoded_call: Arc<Vec<u8>>,
+        call: CallData,
         block: BlockPtr,
         return_value: CallResult,
     ) -> Result<(), Error> {
@@ -2438,13 +2436,13 @@ impl EthereumCallCache for ChainStore {
             // where calls first failed and later succeeded
             return Ok(());
         };
-        let id = contract_call_id(&contract_address, &encoded_call, &block);
+        let id = contract_call_id(&call, &block);
         let conn = &mut *self.get_conn()?;
         conn.transaction(|conn| {
             self.storage.set_call(
                 conn,
                 id.as_ref(),
-                contract_address.as_ref(),
+                call.address.as_ref(),
                 block.number,
                 &return_value,
             )
@@ -2455,14 +2453,10 @@ impl EthereumCallCache for ChainStore {
 /// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
 /// 256 bits of output, and therefore 128 bits of security against collisions, are needed since this
 /// could be targeted by a birthday attack.
-fn contract_call_id(
-    contract_address: &ethabi::Address,
-    encoded_call: &[u8],
-    block: &BlockPtr,
-) -> [u8; 32] {
+fn contract_call_id(call: &CallData, block: &BlockPtr) -> [u8; 32] {
     let mut hash = blake3::Hasher::new();
-    hash.update(encoded_call);
-    hash.update(contract_address.as_ref());
+    hash.update(&call.encoded_call);
+    hash.update(call.address.as_ref());
     hash.update(block.hash_slice());
     *hash.finalize().as_bytes()
 }

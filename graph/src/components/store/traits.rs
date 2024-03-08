@@ -574,14 +574,32 @@ impl std::fmt::Display for CallSource {
     }
 }
 
+/// The address and encoded name and parms for an `eth_call`. Because we
+/// cache this, it gets cloned a lot and needs to remain cheap to clone.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CallData {
+    pub address: ethabi::Address,
+    pub encoded_call: Arc<Bytes>,
+}
+
+impl CheapClone for CallData {}
+
+impl CallData {
+    pub fn new(address: ethabi::Address, encoded_call: Vec<u8>) -> Self {
+        CallData {
+            address,
+            encoded_call: Arc::new(Bytes::from(encoded_call)),
+        }
+    }
+}
+
 pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing
     /// about the call.
     fn get_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        call: &CallData,
         block: BlockPtr,
     ) -> Result<Option<(CallResult, CallSource)>, Error>;
 
@@ -593,8 +611,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     fn set_call(
         &self,
         logger: &Logger,
-        contract_address: ethabi::Address,
-        encoded_call: Arc<Vec<u8>>,
+        call: CallData,
         block: BlockPtr,
         return_value: CallResult,
     ) -> Result<(), Error>;

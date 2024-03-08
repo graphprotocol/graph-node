@@ -5,8 +5,8 @@ use std::{
 
 use graph::{
     cheap_clone::CheapClone,
-    components::store::{CallResult, CallSource, EthereumCallCache},
-    prelude::{ethabi, BlockPtr, CachedEthereumCall},
+    components::store::{CallData, CallResult, CallSource, EthereumCallCache},
+    prelude::{BlockPtr, CachedEthereumCall},
     slog::{error, Logger},
 };
 
@@ -16,7 +16,7 @@ use graph::{
 /// call, the buffer is cleared.
 pub struct BufferedCallCache {
     call_cache: Arc<dyn EthereumCallCache>,
-    buffer: Arc<Mutex<HashMap<(ethabi::Address, Vec<u8>), CallResult>>>,
+    buffer: Arc<Mutex<HashMap<CallData, CallResult>>>,
     block: Arc<Mutex<Option<BlockPtr>>>,
 }
 
@@ -41,26 +41,23 @@ impl BufferedCallCache {
 impl EthereumCallCache for BufferedCallCache {
     fn get_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        call: &CallData,
         block: BlockPtr,
     ) -> Result<Option<(CallResult, CallSource)>, graph::prelude::Error> {
         self.check_block(&block);
 
         {
             let buffer = self.buffer.lock().unwrap();
-            if let Some(result) = buffer.get(&(contract_address, encoded_call.to_vec())) {
+            if let Some(result) = buffer.get(&call) {
                 return Ok(Some((result.clone(), CallSource::Memory)));
             }
         }
 
-        let result = self
-            .call_cache
-            .get_call(contract_address, encoded_call, block)?;
+        let result = self.call_cache.get_call(&call, block)?;
 
         let mut buffer = self.buffer.lock().unwrap();
         if let Some((value, _)) = &result {
-            buffer.insert((contract_address, encoded_call.to_vec()), value.clone());
+            buffer.insert(call.cheap_clone(), value.clone());
         }
         Ok(result)
     }
@@ -75,8 +72,7 @@ impl EthereumCallCache for BufferedCallCache {
     fn set_call(
         &self,
         logger: &Logger,
-        contract_address: ethabi::Address,
-        encoded_call: Arc<Vec<u8>>,
+        call: CallData,
         block: BlockPtr,
         return_value: CallResult,
     ) -> Result<(), graph::prelude::Error> {
@@ -88,20 +84,17 @@ impl EthereumCallCache for BufferedCallCache {
         // cache backed by the database
         {
             let mut buffer = self.buffer.lock().unwrap();
-            buffer.insert(
-                (contract_address, encoded_call.to_vec()),
-                return_value.clone(),
-            );
+            buffer.insert(call.cheap_clone(), return_value.clone());
         }
 
         let cache = self.call_cache.cheap_clone();
         let logger = logger.cheap_clone();
         let _ = graph::spawn_blocking_allow_panic(move || {
             cache
-                .set_call(&logger, contract_address, encoded_call, block, return_value)
+                .set_call(&logger, call.cheap_clone(), block, return_value)
                 .map_err(|e| {
                     error!(logger, "BufferedCallCache: call cache set error";
-                            "contract_address" => format!("{:?}", contract_address),
+                            "contract_address" => format!("{:?}", call.address),
                             "error" => e.to_string())
                 })
         });
