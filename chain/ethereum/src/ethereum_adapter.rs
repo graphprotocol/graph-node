@@ -10,6 +10,7 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
+use graph::prelude::futures03::future::try_join_all;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
@@ -1448,13 +1449,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .unwrap_or_else(|_| (Vec::new(), reqs));
 
-        for req in missing {
+        let futs = missing.into_iter().map(|req| {
             let call = calls[req.index as usize];
-            let resp = self
-                .call_and_cache(logger, call, req, cache.clone())
-                .await?;
-            resps.push(resp);
-        }
+            self.call_and_cache(logger, call, req, cache.clone())
+        });
+        resps.extend(try_join_all(futs).await?);
 
         // If we make it here, we have a response for every call.
         debug_assert_eq!(resps.len(), calls.len());
