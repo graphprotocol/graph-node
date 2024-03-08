@@ -112,5 +112,21 @@ pub mod call {
                 encoded_call: Arc::new(Bytes::from(encoded_call)),
             }
         }
+
+        /// Create a response struct for this request
+        pub fn response(self, retval: Retval, source: Source) -> Response {
+            Response {
+                req: self,
+                retval,
+                source,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct Response {
+        pub req: Request,
+        pub retval: Retval,
+        pub source: Source,
     }
 }

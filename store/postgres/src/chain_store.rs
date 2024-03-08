@@ -2396,10 +2396,10 @@ fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
 impl EthereumCallCache for ChainStore {
     fn get_call(
         &self,
-        call: &call::Request,
+        req: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<(call::Retval, call::Source)>, Error> {
-        let id = contract_call_id(call, &block);
+    ) -> Result<Option<call::Response>, Error> {
+        let id = contract_call_id(req, &block);
         let conn = &mut *self.get_conn()?;
         let return_value = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
@@ -2407,15 +2407,17 @@ impl EthereumCallCache for ChainStore {
             {
                 if update_accessed_at {
                     self.storage
-                        .update_accessed_at(conn, call.address.as_ref())?;
+                        .update_accessed_at(conn, req.address.as_ref())?;
                 }
                 Ok(Some(return_value))
             } else {
                 Ok(None)
             }
         })?;
-        Ok(return_value
-            .map(|return_value| (call::Retval::Value(return_value), call::Source::Store)))
+        Ok(return_value.map(|return_value| {
+            req.cheap_clone()
+                .response(call::Retval::Value(return_value), call::Source::Store)
+        }))
     }
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {

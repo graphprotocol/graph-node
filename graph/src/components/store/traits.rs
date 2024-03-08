@@ -537,7 +537,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         &self,
         call: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<(call::Retval, call::Source)>, Error>;
+    ) -> Result<Option<call::Response>, Error>;
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.

@@ -44,21 +44,29 @@ impl EthereumCallCache for BufferedCallCache {
         &self,
         call: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<(call::Retval, call::Source)>, graph::prelude::Error> {
+    ) -> Result<Option<call::Response>, graph::prelude::Error> {
         self.check_block(&block);
 
         {
             let buffer = self.buffer.lock().unwrap();
-            if let Some(result) = buffer.get(&call) {
-                return Ok(Some((result.clone(), call::Source::Memory)));
+            if let Some(result) = buffer.get(call) {
+                return Ok(Some(
+                    call.cheap_clone()
+                        .response(result.clone(), call::Source::Memory),
+                ));
             }
         }
 
         let result = self.call_cache.get_call(&call, block)?;
 
         let mut buffer = self.buffer.lock().unwrap();
-        if let Some((value, _)) = &result {
-            buffer.insert(call.cheap_clone(), value.clone());
+        if let Some(call::Response {
+            retval,
+            req: _,
+            source: _,
+        }) = &result
+        {
+            buffer.insert(call.cheap_clone(), retval.clone());
         }
         Ok(result)
     }

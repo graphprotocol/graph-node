@@ -401,7 +401,7 @@ fn eth_call_cache() {
             .get_call(&call, BLOCK_ONE.block_ptr())
             .unwrap()
             .unwrap()
-            .0
+            .retval
             .unwrap();
         assert_eq!(&return_value, ret.as_slice());
 
@@ -421,7 +421,7 @@ fn eth_call_cache() {
             .get_call(&call, BLOCK_TWO.block_ptr())
             .unwrap()
             .unwrap()
-            .0
+            .retval
             .unwrap();
         assert_eq!(&new_return_value, ret.as_slice());
 
