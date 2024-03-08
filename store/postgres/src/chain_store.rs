@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-use graph::components::store::{CallData, CallResult, CallSource};
+use graph::data::store::ethereum::call;
 use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
@@ -2396,9 +2396,9 @@ fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
 impl EthereumCallCache for ChainStore {
     fn get_call(
         &self,
-        call: &CallData,
+        call: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<(CallResult, CallSource)>, Error> {
+    ) -> Result<Option<(call::Retval, call::Source)>, Error> {
         let id = contract_call_id(call, &block);
         let conn = &mut *self.get_conn()?;
         let return_value = conn.transaction::<_, Error, _>(|conn| {
@@ -2414,7 +2414,8 @@ impl EthereumCallCache for ChainStore {
                 Ok(None)
             }
         })?;
-        Ok(return_value.map(|return_value| (CallResult::Value(return_value), CallSource::Store)))
+        Ok(return_value
+            .map(|return_value| (call::Retval::Value(return_value), call::Source::Store)))
     }
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
@@ -2425,11 +2426,11 @@ impl EthereumCallCache for ChainStore {
     fn set_call(
         &self,
         _: &Logger,
-        call: CallData,
+        call: call::Request,
         block: BlockPtr,
-        return_value: CallResult,
+        return_value: call::Retval,
     ) -> Result<(), Error> {
-        let CallResult::Value(return_value) = return_value else {
+        let call::Retval::Value(return_value) = return_value else {
             // We do not want to cache unsuccessful calls as some RPC nodes
             // have weird behavior near the chain head. The details are lost
             // to time, but we had issues with some RPC clients in the past
@@ -2453,7 +2454,7 @@ impl EthereumCallCache for ChainStore {
 /// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
 /// 256 bits of output, and therefore 128 bits of security against collisions, are needed since this
 /// could be targeted by a birthday attack.
-fn contract_call_id(call: &CallData, block: &BlockPtr) -> [u8; 32] {
+fn contract_call_id(call: &call::Request, block: &BlockPtr) -> [u8; 32] {
     let mut hash = blake3::Hasher::new();
     hash.update(&call.encoded_call);
     hash.update(call.address.as_ref());

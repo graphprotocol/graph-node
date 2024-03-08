@@ -2,7 +2,7 @@
 //! the chain head pointer gets updated in various situations
 
 use graph::blockchain::{BlockHash, BlockPtr};
-use graph::components::store::{CallData, CallResult};
+use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
 use graph::env::ENV_VARS;
 use graph::prelude::futures03::executor;
@@ -376,15 +376,15 @@ fn eth_call_cache() {
 
     run_test(chain, |store, _| {
         let logger = LOGGER.cheap_clone();
-        fn ccr(value: &[u8]) -> CallResult {
-            CallResult::Value(Bytes::from(value))
+        fn ccr(value: &[u8]) -> call::Retval {
+            call::Retval::Value(Bytes::from(value))
         }
 
         let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
-        let call = CallData::new(address, call.to_vec());
+        let call = call::Request::new(address, call.to_vec());
         store
             .set_call(
                 &logger,
@@ -430,7 +430,7 @@ fn eth_call_cache() {
                 &logger,
                 call.cheap_clone(),
                 BLOCK_THREE.block_ptr(),
-                CallResult::Null,
+                call::Retval::Null,
             )
             .unwrap();
         let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();

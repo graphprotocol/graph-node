@@ -10,8 +10,8 @@ use crate::{
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
-use graph::components::store::CallSource;
 use graph::components::subgraph::HostMetrics;
+use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::prelude::web3::types::H160;
@@ -256,7 +256,7 @@ fn eth_call(
     let (result, source) =
         match graph::block_on(eth_adapter.contract_call(&logger1, &call, call_cache)) {
             Ok((result, source)) => (Ok(result), source),
-            Err(e) => (Err(e), CallSource::Rpc),
+            Err(e) => (Err(e), call::Source::Rpc),
         };
     let result = match result {
             Ok(res) => Ok(res),
