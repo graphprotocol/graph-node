@@ -617,6 +617,36 @@ impl EthereumAdapter {
             .await
     }
 
+    async fn call_and_cache(
+        &self,
+        logger: &Logger,
+        call: &EthereumContractCall,
+        req: call::Request,
+        cache: Arc<dyn EthereumCallCache>,
+    ) -> Result<call::Response, EthereumContractCallError> {
+        let result = self
+            .call(
+                logger.clone(),
+                req.cheap_clone(),
+                call.block_ptr.clone(),
+                call.gas,
+            )
+            .await?;
+        let _ = cache
+            .set_call(
+                &logger,
+                req.cheap_clone(),
+                call.block_ptr.cheap_clone(),
+                result.clone(),
+            )
+            .map_err(|e| {
+                error!(logger, "EthereumAdapter: call cache set error";
+                        "contract_address" => format!("{:?}", req.address),
+                        "error" => e.to_string())
+            });
+
+        Ok(req.response(result, call::Source::Rpc))
+    }
     /// Request blocks by hash through JSON-RPC.
     fn load_blocks_rpc(
         &self,
@@ -1352,67 +1382,52 @@ impl EthereumAdapterTrait for EthereumAdapter {
             Ok(req)
         }
 
+        fn decode(
+            logger: &Logger,
+            resp: call::Response,
+            call: &EthereumContractCall,
+        ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
+            let call::Response {
+                retval,
+                source,
+                req: _,
+            } = resp;
+            use call::Retval::*;
+            match retval {
+                Value(output) => match call.function.decode_output(&output) {
+                    Ok(tokens) => Ok((Some(tokens), source)),
+                    Err(e) => {
+                        // Decode failures are reverts. The reasoning is that if Solidity fails to
+                        // decode an argument, that's a revert, so the same goes for the output.
+                        let reason = format!("failed to decode output: {}", e);
+                        info!(logger, "Contract call reverted"; "reason" => reason);
+                        Ok((None, call::Source::Rpc))
+                    }
+                },
+                Null => {
+                    // We got a `0x` response. For old Geth, this can mean a revert. It can also be
+                    // that the contract actually returned an empty response. A view call is meant
+                    // to return something, so we treat empty responses the same as reverts.
+                    info!(logger, "Contract call reverted"; "reason" => "empty response");
+                    Ok((None, call::Source::Rpc))
+                }
+            }
+        }
+
         let req = as_req(logger, call)?;
 
         // Check if we have it cached, if not do the call and cache.
-        let call::Response {
-            retval,
-            source,
-            req: _,
-        } = match cache
+        let resp = match cache
             .get_call(&req, call.block_ptr.clone())
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .ok()
             .flatten()
         {
             Some(result) => result,
-            None => {
-                let result = self
-                    .call(
-                        logger.clone(),
-                        req.cheap_clone(),
-                        call.block_ptr.clone(),
-                        call.gas,
-                    )
-                    .await?;
-                let _ = cache
-                    .set_call(
-                        &logger,
-                        req.cheap_clone(),
-                        call.block_ptr.cheap_clone(),
-                        result.clone(),
-                    )
-                    .map_err(|e| {
-                        error!(logger, "EthereumAdapter: call cache set error";
-                                    "contract_address" => format!("{:?}", call.address),
-                                    "error" => e.to_string())
-                    });
-
-                req.response(result, call::Source::Rpc)
-            }
+            None => self.call_and_cache(logger, call, req, cache).await?,
         };
 
-        // Decode the return values according to the ABI
-        use call::Retval::*;
-        match retval {
-            Value(output) => match call.function.decode_output(&output) {
-                Ok(tokens) => Ok((Some(tokens), source)),
-                Err(e) => {
-                    // Decode failures are reverts. The reasoning is that if Solidity fails to
-                    // decode an argument, that's a revert, so the same goes for the output.
-                    let reason = format!("failed to decode output: {}", e);
-                    info!(logger, "Contract call reverted"; "reason" => reason);
-                    Ok((None, call::Source::Rpc))
-                }
-            },
-            Null => {
-                // We got a `0x` response. For old Geth, this can mean a revert. It can also be
-                // that the contract actually returned an empty response. A view call is meant
-                // to return something, so we treat empty responses the same as reverts.
-                info!(logger, "Contract call reverted"; "reason" => "empty response");
-                Ok((None, call::Source::Rpc))
-            }
-        }
+        decode(logger, resp, call)
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
