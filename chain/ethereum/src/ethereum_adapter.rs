@@ -1449,18 +1449,23 @@ impl EthereumAdapterTrait for EthereumAdapter {
             resps.push(resp);
         }
 
-        // unwrap: we either looked up the response from the cache, or it
-        // went into `missing`, in which case the previous loop would have
-        // pushed it into `resps`. Remember that for now, we only ever have
-        // one call.
-        resps
+        // If we make it here, we have a response for every call.
+        debug_assert_eq!(resps.len(), calls.len());
+
+        // Bring the responses into the same order as the calls
+        resps.sort_by_key(|resp| resp.req.index);
+
+        let mut decoded: Vec<_> = resps
             .into_iter()
-            .map(|resp| {
-                let call = calls[resp.req.index as usize];
-                decode(logger, resp, call)
+            .map(|res| {
+                let call = &calls[res.req.index as usize];
+                decode(logger, res, call)
             })
-            .next()
-            .unwrap()
+            .collect::<Result<_, _>>()?;
+
+        // unwrap: we started with one call, so we also have one response
+        let res = decoded.pop().unwrap();
+        Ok(res)
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
