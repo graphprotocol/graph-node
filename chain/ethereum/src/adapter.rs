@@ -66,6 +66,8 @@ pub enum EthereumContractCallError {
     Web3Error(web3::Error),
     #[error("ethereum node took too long to perform call")]
     Timeout,
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
