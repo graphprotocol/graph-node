@@ -37,6 +37,14 @@ impl BufferedCallCache {
             self.buffer.lock().unwrap().clear();
         }
     }
+
+    fn get(&self, call: &call::Request) -> Option<call::Response> {
+        let buffer = self.buffer.lock().unwrap();
+        buffer.get(call).map(|retval| {
+            call.cheap_clone()
+                .response(retval.clone(), call::Source::Memory)
+        })
+    }
 }
 
 impl EthereumCallCache for BufferedCallCache {
@@ -47,14 +55,8 @@ impl EthereumCallCache for BufferedCallCache {
     ) -> Result<Option<call::Response>, graph::prelude::Error> {
         self.check_block(&block);
 
-        {
-            let buffer = self.buffer.lock().unwrap();
-            if let Some(result) = buffer.get(call) {
-                return Ok(Some(
-                    call.cheap_clone()
-                        .response(result.clone(), call::Source::Memory),
-                ));
-            }
+        if let Some(value) = self.get(call) {
+            return Ok(Some(value));
         }
 
         let result = self.call_cache.get_call(&call, block)?;
@@ -69,6 +71,36 @@ impl EthereumCallCache for BufferedCallCache {
             buffer.insert(call.cheap_clone(), retval.clone());
         }
         Ok(result)
+    }
+
+    fn get_calls(
+        &self,
+        reqs: &[call::Request],
+        block: BlockPtr,
+    ) -> Result<(Vec<call::Response>, Vec<call::Request>), graph::prelude::Error> {
+        self.check_block(&block);
+
+        let mut missing = Vec::new();
+        let mut resps = Vec::new();
+
+        for call in reqs {
+            match self.get(call) {
+                Some(resp) => resps.push(resp),
+                None => missing.push(call.cheap_clone()),
+            }
+        }
+
+        let (stored, calls) = self.call_cache.get_calls(&missing, block)?;
+
+        {
+            let mut buffer = self.buffer.lock().unwrap();
+            for resp in &stored {
+                buffer.insert(resp.req.cheap_clone(), resp.retval.clone());
+            }
+        }
+
+        resps.extend(stored);
+        Ok((resps, calls))
     }
 
     fn get_calls_in_block(
