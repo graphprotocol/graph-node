@@ -74,6 +74,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 | **event** | *String* | An identifier for an event that will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to distinguish from events that may share the same name. No alias types can be used. For example, uint will not work, uint256 must be used.|
 | **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
 | **topic0** | optional *String* | A `0x` prefixed hex string. If provided, events whose topic0 is equal to this value will be processed by the given handler. When topic0 is provided, _only_ the topic0 value will be matched, and not the hash of the event signature. This is useful for processing anonymous events in Solidity, which can have their topic0 set to anything.  By default, topic0 is equal to the hash of the event signature. |
+| **calls** | optional [*CallDecl*](#153-declaring-calls) | A list of predeclared `eth_calls` that will be made before running the handler |
 
 #### 1.5.2.3 CallHandler
 
@@ -94,6 +95,30 @@ The `mapping` field may be one of the following supported mapping manifests:
 | Field | Type | Description |
 | --- | --- | --- |
 | **kind** | *String* | The selected block handler filter. Only option for now: `call`: This will only run the handler if the block contains at least one call to the data source contract. |
+
+### 1.5.3 Declaring calls
+
+_Available from spec version 1.2.0_
+
+Declared calls are performed in parallel before the handler is run and can
+greatly speed up syncing. Mappings access the call results simply by using
+`ethereum.call` from the mappings. The **calls** are a map of key value pairs:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| **label** | *String* | A label for the call for error messages etc. |
+| **call** | *String* | See below |
+
+Each call is of the form `<ABI>[<address>].<function>(<args>)`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| **ABI** | *String* | The name of an ABI from the `abis` section |
+| **address** | *Expr* | The address of a contract that follows the `ABI` |
+| **function** | *String* | The name of a view function in the contract |
+| **args** | *[Expr]* | The arguments to pass to the function |
+
+The `Expr` can be either `event.address` or `event.params.<name>`.
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).
