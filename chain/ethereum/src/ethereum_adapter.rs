@@ -1342,12 +1342,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn contract_call(
         &self,
         logger: &Logger,
-        call: &EthereumContractCall,
+        inp_call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
         fn as_req(
             logger: &Logger,
             call: &EthereumContractCall,
+            index: u32,
         ) -> Result<call::Request, EthereumContractCallError> {
             // Emit custom error for type mismatches.
             for (token, kind) in call
@@ -1369,7 +1370,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .function
                     .encode_input(&call.args)
                     .map_err(EthereumContractCallError::EncodingError)?;
-                call::Request::new(call.address, encoded_call)
+                call::Request::new(call.address, encoded_call, index)
             };
 
             trace!(logger, "eth_call";
@@ -1414,20 +1415,52 @@ impl EthereumAdapterTrait for EthereumAdapter {
             }
         }
 
-        let req = as_req(logger, call)?;
+        let calls = vec![inp_call];
+        let reqs: Vec<_> = calls
+            .iter()
+            .enumerate()
+            .map(|(index, call)| as_req(logger, call, index as u32))
+            .collect::<Result<_, _>>()?;
 
-        // Check if we have it cached, if not do the call and cache.
-        let resp = match cache
-            .get_call(&req, call.block_ptr.clone())
-            .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
-            .ok()
-            .flatten()
-        {
-            Some(result) => result,
-            None => self.call_and_cache(logger, call, req, cache).await?,
-        };
+        let mut resps = Vec::new();
+        let mut missing = Vec::new();
+        for req in reqs {
+            let call = &calls[req.index as usize];
+            match cache
+                .get_call(&req, call.block_ptr.clone())
+                .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
+                .ok()
+                .flatten()
+            {
+                Some(resp) => {
+                    resps.push(resp);
+                }
+                None => {
+                    missing.push(req);
+                }
+            }
+        }
 
-        decode(logger, resp, call)
+        for req in missing {
+            let call = calls[req.index as usize];
+            let resp = self
+                .call_and_cache(logger, call, req, cache.clone())
+                .await?;
+            resps.push(resp);
+        }
+
+        // unwrap: we either looked up the response from the cache, or it
+        // went into `missing`, in which case the previous loop would have
+        // pushed it into `resps`. Remember that for now, we only ever have
+        // one call.
+        resps
+            .into_iter()
+            .map(|resp| {
+                let call = calls[resp.req.index as usize];
+                decode(logger, resp, call)
+            })
+            .next()
+            .unwrap()
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.

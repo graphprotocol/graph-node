@@ -97,19 +97,27 @@ pub mod call {
     /// The address and encoded name and parms for an `eth_call`, the raw
     /// ingredients to make an `eth_call` request. Because we cache this, it
     /// gets cloned a lot and needs to remain cheap to clone.
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    ///
+    /// For equality and hashing, we only consider the address and the
+    /// encoded call as the index is set by the caller and has no influence
+    /// on the call's return value
+    #[derive(Debug, Clone)]
     pub struct Request {
         pub address: ethabi::Address,
         pub encoded_call: Arc<Bytes>,
+        /// The index is set by the caller and is used to identify the
+        /// request in related data structures that the caller might have
+        pub index: u32,
     }
 
     impl CheapClone for Request {}
 
     impl Request {
-        pub fn new(address: ethabi::Address, encoded_call: Vec<u8>) -> Self {
+        pub fn new(address: ethabi::Address, encoded_call: Vec<u8>, index: u32) -> Self {
             Request {
                 address,
                 encoded_call: Arc::new(Bytes::from(encoded_call)),
+                index,
             }
         }
 
@@ -123,7 +131,23 @@ pub mod call {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq)]
+    impl PartialEq for Request {
+        fn eq(&self, other: &Self) -> bool {
+            self.address == other.address
+                && self.encoded_call.as_ref() == other.encoded_call.as_ref()
+        }
+    }
+
+    impl Eq for Request {}
+
+    impl std::hash::Hash for Request {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.address.hash(state);
+            self.encoded_call.as_ref().hash(state);
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
     pub struct Response {
         pub req: Request,
         pub retval: Retval,
