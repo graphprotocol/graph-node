@@ -1330,7 +1330,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         }
 
         // Encode the call parameters according to the ABI
-        let call_data = {
+        let req = {
             let encoded_call = call
                 .function
                 .encode_input(&call.args)
@@ -1341,14 +1341,18 @@ impl EthereumAdapterTrait for EthereumAdapter {
         trace!(logger, "eth_call";
             "fn" => &call.function.name,
             "address" => hex::encode(call.address),
-            "data" => hex::encode(call_data.encoded_call.as_ref()),
+            "data" => hex::encode(req.encoded_call.as_ref()),
             "block_hash" => call.block_ptr.hash_hex(),
             "block_number" => call.block_ptr.block_number()
         );
 
         // Check if we have it cached, if not do the call and cache.
-        let (output, source) = match cache
-            .get_call(&call_data, call.block_ptr.clone())
+        let call::Response {
+            retval,
+            source,
+            req: _,
+        } = match cache
+            .get_call(&req, call.block_ptr.clone())
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .ok()
             .flatten()
@@ -1358,7 +1362,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let result = self
                     .call(
                         logger.clone(),
-                        call_data.cheap_clone(),
+                        req.cheap_clone(),
                         call.block_ptr.clone(),
                         call.gas,
                     )
@@ -1366,7 +1370,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let _ = cache
                     .set_call(
                         &logger,
-                        call_data.cheap_clone(),
+                        req.cheap_clone(),
                         call.block_ptr.cheap_clone(),
                         result.clone(),
                     )
@@ -1376,13 +1380,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
                                     "error" => e.to_string())
                     });
 
-                (result, call::Source::Rpc)
+                req.response(result, call::Source::Rpc)
             }
         };
 
         // Decode the return values according to the ABI
         use call::Retval::*;
-        match output {
+        match retval {
             Value(output) => match call.function.decode_output(&output) {
                 Ok(tokens) => Ok((Some(tokens), source)),
                 Err(e) => {
