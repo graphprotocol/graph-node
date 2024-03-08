@@ -2,7 +2,7 @@
 //! the chain head pointer gets updated in various situations
 
 use graph::blockchain::{BlockHash, BlockPtr};
-use graph::components::store::CallResult;
+use graph::components::store::{CallData, CallResult};
 use graph::data::store::scalar::Bytes;
 use graph::env::ENV_VARS;
 use graph::prelude::futures03::executor;
@@ -382,49 +382,43 @@ fn eth_call_cache() {
 
         let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
-        let call = Arc::new(call.to_vec());
         let return_value: [u8; 3] = [7, 8, 9];
 
+        let call = CallData::new(address, call.to_vec());
         store
             .set_call(
                 &logger,
-                address,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 ccr(&return_value),
             )
             .unwrap();
 
-        let ret = store
-            .get_call(address, &call, GENESIS_BLOCK.block_ptr())
-            .unwrap();
+        let ret = store.get_call(&call, GENESIS_BLOCK.block_ptr()).unwrap();
         assert!(ret.is_none());
 
         let ret = store
-            .get_call(address, &call, BLOCK_ONE.block_ptr())
+            .get_call(&call, BLOCK_ONE.block_ptr())
             .unwrap()
             .unwrap()
             .0
             .unwrap();
         assert_eq!(&return_value, ret.as_slice());
 
-        let ret = store
-            .get_call(address, &call, BLOCK_TWO.block_ptr())
-            .unwrap();
+        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).unwrap();
         assert!(ret.is_none());
 
         let new_return_value: [u8; 3] = [10, 11, 12];
         store
             .set_call(
                 &logger,
-                address,
                 call.cheap_clone(),
                 BLOCK_TWO.block_ptr(),
                 ccr(&new_return_value),
             )
             .unwrap();
         let ret = store
-            .get_call(address, &call, BLOCK_TWO.block_ptr())
+            .get_call(&call, BLOCK_TWO.block_ptr())
             .unwrap()
             .unwrap()
             .0
@@ -434,15 +428,12 @@ fn eth_call_cache() {
         store
             .set_call(
                 &logger,
-                address,
                 call.cheap_clone(),
                 BLOCK_THREE.block_ptr(),
                 CallResult::Null,
             )
             .unwrap();
-        let ret = store
-            .get_call(address, &call, BLOCK_THREE.block_ptr())
-            .unwrap();
+        let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();
         assert_eq!(None, ret);
 
         Ok(())
