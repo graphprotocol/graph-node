@@ -976,7 +976,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError>;
 
     /// Make multiple contract calls in a single batch. The returned `Vec`
-    /// has results in the same order as the calls in `calls` on input
+    /// has results in the same order as the calls in `calls` on input. The
+    /// calls must all be for the same block
     async fn contract_calls(
         &self,
         logger: &Logger,

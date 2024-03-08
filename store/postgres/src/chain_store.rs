@@ -2476,6 +2476,10 @@ impl EthereumCallCache for ChainStore {
         reqs: &[call::Request],
         block: BlockPtr,
     ) -> Result<(Vec<call::Response>, Vec<call::Request>), Error> {
+        if reqs.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+
         let ids: Vec<_> = reqs
             .into_iter()
             .map(|req| contract_call_id(req, &block))
