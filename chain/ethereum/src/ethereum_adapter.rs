@@ -1345,6 +1345,17 @@ impl EthereumAdapterTrait for EthereumAdapter {
         inp_call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
+        let mut result = self.contract_calls(logger, &[inp_call], cache).await?;
+        // unwrap: self.contract_calls returns as many results as there were calls
+        Ok(result.pop().unwrap())
+    }
+
+    async fn contract_calls(
+        &self,
+        logger: &Logger,
+        calls: &[&EthereumContractCall],
+        cache: Arc<dyn EthereumCallCache>,
+    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, EthereumContractCallError> {
         fn as_req(
             logger: &Logger,
             call: &EthereumContractCall,
@@ -1415,7 +1426,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
             }
         }
 
-        let calls = vec![inp_call];
         let reqs: Vec<_> = calls
             .iter()
             .enumerate()
@@ -1455,7 +1465,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // Bring the responses into the same order as the calls
         resps.sort_by_key(|resp| resp.req.index);
 
-        let mut decoded: Vec<_> = resps
+        let decoded: Vec<_> = resps
             .into_iter()
             .map(|res| {
                 let call = &calls[res.req.index as usize];
@@ -1463,9 +1473,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
             .collect::<Result<_, _>>()?;
 
-        // unwrap: we started with one call, so we also have one response
-        let res = decoded.pop().unwrap();
-        Ok(res)
+        Ok(decoded)
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.

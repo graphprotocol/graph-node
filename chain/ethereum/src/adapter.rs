@@ -975,6 +975,15 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError>;
 
+    /// Make multiple contract calls in a single batch. The returned `Vec`
+    /// has results in the same order as the calls in `calls` on input
+    async fn contract_calls(
+        &self,
+        logger: &Logger,
+        calls: &[&EthereumContractCall],
+        cache: Arc<dyn EthereumCallCache>,
+    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, EthereumContractCallError>;
+
     fn get_balance(
         &self,
         logger: &Logger,
