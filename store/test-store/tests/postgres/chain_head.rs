@@ -384,7 +384,7 @@ fn eth_call_cache() {
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
-        let call = call::Request::new(address, call.to_vec());
+        let call = call::Request::new(address, call.to_vec(), 0);
         store
             .set_call(
                 &logger,
