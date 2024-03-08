@@ -539,6 +539,15 @@ pub trait EthereumCallCache: Send + Sync + 'static {
         block: BlockPtr,
     ) -> Result<Option<call::Response>, Error>;
 
+    /// Get the return values of many Ethereum calls. For the ones found in
+    /// the cache, return a `Response`; the ones that were not found are
+    /// returned as the original `Request`
+    fn get_calls(
+        &self,
+        reqs: &[call::Request],
+        block: BlockPtr,
+    ) -> Result<(Vec<call::Response>, Vec<call::Request>), Error>;
+
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
