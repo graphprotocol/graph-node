@@ -13,6 +13,7 @@ use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
+use crate::data::store::ethereum::call;
 use crate::data::store::QueryObject;
 use crate::data::subgraph::{status, DeploymentFeatures};
 use crate::data::{query::QueryTarget, subgraph::schema::*};
@@ -528,80 +529,15 @@ pub trait ChainStore: Send + Sync + 'static {
     fn chain_identifier(&self) -> &ChainIdentifier;
 }
 
-/// The result of an ethereum call. `Null` indicates that we made the call
-/// but didn't get a value back (including when we get the error 'call
-/// reverted')
-#[derive(Debug, Clone, PartialEq)]
-pub enum CallResult {
-    Null,
-    Value(Bytes),
-}
-
-impl CallResult {
-    pub fn unwrap(self) -> Bytes {
-        use CallResult::*;
-        match self {
-            Value(val) => val,
-            Null => panic!("called `CachedCallResult::unwrap()` on a `Null` value"),
-        }
-    }
-}
-
-/// Indication of where the result of an ethereum call comes from. We
-/// unfortunately need that so we can avoid double-counting declared calls
-/// as they are accessed as normal eth calls and we'd count them twice
-/// without this.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CallSource {
-    Memory,
-    Store,
-    Rpc,
-}
-
-impl CallSource {
-    pub fn observe(&self) -> bool {
-        matches!(self, CallSource::Rpc | CallSource::Store)
-    }
-}
-
-impl std::fmt::Display for CallSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            CallSource::Memory => write!(f, "memory"),
-            CallSource::Store => write!(f, "store"),
-            CallSource::Rpc => write!(f, "rpc"),
-        }
-    }
-}
-
-/// The address and encoded name and parms for an `eth_call`. Because we
-/// cache this, it gets cloned a lot and needs to remain cheap to clone.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CallData {
-    pub address: ethabi::Address,
-    pub encoded_call: Arc<Bytes>,
-}
-
-impl CheapClone for CallData {}
-
-impl CallData {
-    pub fn new(address: ethabi::Address, encoded_call: Vec<u8>) -> Self {
-        CallData {
-            address,
-            encoded_call: Arc::new(Bytes::from(encoded_call)),
-        }
-    }
-}
-
 pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing
     /// about the call.
     fn get_call(
         &self,
-        call: &CallData,
+        call: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<(CallResult, CallSource)>, Error>;
+    ) -> Result<Option<(call::Retval, call::Source)>, Error>;
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
@@ -611,9 +547,9 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     fn set_call(
         &self,
         logger: &Logger,
-        call: CallData,
+        call: call::Request,
         block: BlockPtr,
-        return_value: CallResult,
+        return_value: call::Retval,
     ) -> Result<(), Error>;
 }
 

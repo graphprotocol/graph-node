@@ -5,7 +5,8 @@ use std::{
 
 use graph::{
     cheap_clone::CheapClone,
-    components::store::{CallData, CallResult, CallSource, EthereumCallCache},
+    components::store::EthereumCallCache,
+    data::store::ethereum::call,
     prelude::{BlockPtr, CachedEthereumCall},
     slog::{error, Logger},
 };
@@ -16,7 +17,7 @@ use graph::{
 /// call, the buffer is cleared.
 pub struct BufferedCallCache {
     call_cache: Arc<dyn EthereumCallCache>,
-    buffer: Arc<Mutex<HashMap<CallData, CallResult>>>,
+    buffer: Arc<Mutex<HashMap<call::Request, call::Retval>>>,
     block: Arc<Mutex<Option<BlockPtr>>>,
 }
 
@@ -41,15 +42,15 @@ impl BufferedCallCache {
 impl EthereumCallCache for BufferedCallCache {
     fn get_call(
         &self,
-        call: &CallData,
+        call: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<(CallResult, CallSource)>, graph::prelude::Error> {
+    ) -> Result<Option<(call::Retval, call::Source)>, graph::prelude::Error> {
         self.check_block(&block);
 
         {
             let buffer = self.buffer.lock().unwrap();
             if let Some(result) = buffer.get(&call) {
-                return Ok(Some((result.clone(), CallSource::Memory)));
+                return Ok(Some((result.clone(), call::Source::Memory)));
             }
         }
 
@@ -72,9 +73,9 @@ impl EthereumCallCache for BufferedCallCache {
     fn set_call(
         &self,
         logger: &Logger,
-        call: CallData,
+        call: call::Request,
         block: BlockPtr,
-        return_value: CallResult,
+        return_value: call::Retval,
     ) -> Result<(), graph::prelude::Error> {
         self.check_block(&block);
 

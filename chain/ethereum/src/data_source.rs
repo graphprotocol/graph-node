@@ -2,9 +2,10 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
-use graph::components::store::{CallSource, EthereumCallCache, StoredDynamicDataSource};
+use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
+use graph::data::store::ethereum::call;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::env::ENV_VARS;
@@ -1025,7 +1026,7 @@ impl DecoderHook {
             .await
         {
             Ok((result, source)) => (Ok(result), source),
-            Err(e) => (Err(e), CallSource::Rpc),
+            Err(e) => (Err(e), call::Source::Rpc),
         };
 
         // This error analysis is very much modeled on the one in

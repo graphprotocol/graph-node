@@ -3,10 +3,8 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
-use graph::components::store::CallData;
-use graph::components::store::CallResult;
-use graph::components::store::CallSource;
 use graph::components::transaction_receipt::LightTransactionReceipt;
+use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
@@ -459,16 +457,16 @@ impl EthereumAdapter {
     async fn call(
         &self,
         logger: Logger,
-        call_data: CallData,
+        call_data: call::Request,
         block_ptr: BlockPtr,
         gas: Option<u32>,
-    ) -> Result<CallResult, EthereumContractCallError> {
+    ) -> Result<call::Retval, EthereumContractCallError> {
         fn reverted(
             logger: &Logger,
             reason: &str,
-        ) -> Result<CallResult, EthereumContractCallError> {
+        ) -> Result<call::Retval, EthereumContractCallError> {
             info!(logger, "Contract call reverted"; "reason" => reason);
-            Ok(CallResult::Null)
+            Ok(call::Retval::Null)
         }
 
         let web3 = self.web3.clone();
@@ -564,7 +562,7 @@ impl EthereumAdapter {
 
                     match result {
                         // A successful response.
-                        Ok(bytes) => Ok(CallResult::Value(scalar::Bytes::from(bytes))),
+                        Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
@@ -1316,7 +1314,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, CallSource), EthereumContractCallError> {
+    ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
         // Emit custom error for type mismatches.
         for (token, kind) in call
             .args
@@ -1337,7 +1335,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .function
                 .encode_input(&call.args)
                 .map_err(EthereumContractCallError::EncodingError)?;
-            CallData::new(call.address, encoded_call)
+            call::Request::new(call.address, encoded_call)
         };
 
         trace!(logger, "eth_call";
@@ -1378,12 +1376,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
                                     "error" => e.to_string())
                     });
 
-                (result, CallSource::Rpc)
+                (result, call::Source::Rpc)
             }
         };
 
         // Decode the return values according to the ABI
-        use CallResult::*;
+        use call::Retval::*;
         match output {
             Value(output) => match call.function.decode_output(&output) {
                 Ok(tokens) => Ok((Some(tokens), source)),
@@ -1392,7 +1390,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     // decode an argument, that's a revert, so the same goes for the output.
                     let reason = format!("failed to decode output: {}", e);
                     info!(logger, "Contract call reverted"; "reason" => reason);
-                    Ok((None, CallSource::Rpc))
+                    Ok((None, call::Source::Rpc))
                 }
             },
             Null => {
@@ -1400,7 +1398,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 // that the contract actually returned an empty response. A view call is meant
                 // to return something, so we treat empty responses the same as reverts.
                 info!(logger, "Contract call reverted"; "reason" => "empty response");
-                Ok((None, CallSource::Rpc))
+                Ok((None, call::Source::Rpc))
             }
         }
     }

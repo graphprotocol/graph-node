@@ -2,7 +2,7 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
-use graph::components::store::CallSource;
+use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
@@ -971,7 +971,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         call: &EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, CallSource), EthereumContractCallError>;
+    ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError>;
 
     fn get_balance(
         &self,
