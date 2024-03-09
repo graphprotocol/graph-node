@@ -242,6 +242,7 @@ fn eth_call(
         .map_err(HostExportError::Deterministic)?;
 
     let call = ContractCall {
+        contract_name: unresolved_call.contract_name.clone(),
         address: unresolved_call.contract_address,
         block_ptr: block_ptr.cheap_clone(),
         function: function.clone(),

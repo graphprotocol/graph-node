@@ -2,6 +2,7 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
+use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
@@ -38,6 +39,7 @@ pub type FunctionSelector = [u8; 4];
 
 #[derive(Clone, Debug)]
 pub struct ContractCall {
+    pub contract_name: String,
     pub address: Address,
     pub block_ptr: BlockPtr,
     pub function: Function,
@@ -68,6 +70,24 @@ pub enum ContractCallError {
     Timeout,
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+impl From<ContractCallError> for MappingError {
+    fn from(e: ContractCallError) -> Self {
+        match e {
+            // Any error reported by the Ethereum node could be due to the block no longer being on
+            // the main chain. This is very unespecific but we don't want to risk failing a
+            // subgraph due to a transient error such as a reorg.
+            ContractCallError::Web3Error(e) => MappingError::PossibleReorg(anyhow::anyhow!(
+                "Ethereum node returned an error for an eth_call: {e}"
+            )),
+            // Also retry on timeouts.
+            ContractCallError::Timeout => MappingError::PossibleReorg(anyhow::anyhow!(
+                "Ethereum node did not respond in time to eth_call"
+            )),
+            e => MappingError::Unknown(anyhow::anyhow!("Error when making an eth_call: {e}")),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
