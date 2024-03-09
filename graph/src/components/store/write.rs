@@ -635,6 +635,12 @@ pub struct Batch {
     pub offchain_to_remove: DataSources,
     pub error: Option<StoreError>,
     pub is_non_fatal_errors_active: bool,
+    /// Memoize the indirect weight of the batch. We need the `CacheWeight`
+    /// of the batch a lot in the write queue to determine if a batch should
+    /// be written. Recalculating it every time, which has to happen while
+    /// the writer holds a lock, conflicts with appending to the batch and
+    /// causes batches to be finished prematurely.
+    indirect_weight: usize,
 }
 
 impl Batch {
@@ -670,7 +676,7 @@ impl Batch {
         let offchain_to_remove = DataSources::new(block_ptr.cheap_clone(), offchain_to_remove);
         let first_block = block_ptr.number;
         let block_times = vec![(block, block_time)];
-        Ok(Self {
+        let mut batch = Self {
             block_ptr,
             first_block,
             block_times,
@@ -681,7 +687,10 @@ impl Batch {
             offchain_to_remove,
             error: None,
             is_non_fatal_errors_active,
-        })
+            indirect_weight: 0,
+        };
+        batch.weigh();
+        Ok(batch)
     }
 
     fn append_inner(&mut self, mut batch: Batch) -> Result<(), StoreError> {
@@ -712,6 +721,7 @@ impl Batch {
         if let Err(e) = &res {
             self.error = Some(e.clone());
         }
+        self.weigh();
         res
     }
 
@@ -772,11 +782,15 @@ impl Batch {
     pub fn groups<'a>(&'a self) -> impl Iterator<Item = &'a RowGroup> {
         self.mods.groups.iter()
     }
+
+    fn weigh(&mut self) {
+        self.indirect_weight = self.mods.indirect_weight();
+    }
 }
 
 impl CacheWeight for Batch {
     fn indirect_weight(&self) -> usize {
-        self.mods.indirect_weight()
+        self.indirect_weight
     }
 }
 
