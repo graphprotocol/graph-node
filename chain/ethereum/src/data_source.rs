@@ -5,7 +5,6 @@ use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
-use graph::data::store::ethereum::call;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::env::ENV_VARS;
@@ -1001,45 +1000,82 @@ impl DecoderHook {
 }
 
 impl DecoderHook {
-    async fn eth_call(
+    /// Perform a batch of eth_calls, observing the execution time of each
+    /// call. Returns a list of the call labels for which we received a
+    /// `None` response, indicating a revert
+    async fn eth_calls(
         &self,
         logger: &Logger,
         block_ptr: &BlockPtr,
-        metrics: Arc<HostMetrics>,
-        call: DeclaredCall,
-    ) -> Result<Option<String>, MappingError> {
+        calls_and_metrics: Vec<(Arc<HostMetrics>, DeclaredCall)>,
+    ) -> Result<Vec<String>, MappingError> {
+        // This check is not just to speed things up, but is also needed to
+        // make sure the runner tests don't fail; they don't have declared
+        // eth calls, but without this check we try to get an eth adapter
+        // even when there are no calls, which fails in the runner test
+        // setup
+        if calls_and_metrics.is_empty() {
+            return Ok(vec![]);
+        }
+
         let start = Instant::now();
-        let function_name = call.function.name.clone();
-        let (eth_call, label) = call.as_eth_call(block_ptr.clone(), self.eth_call_gas);
+
+        let (metrics, calls): (Vec<_>, Vec<_>) = calls_and_metrics.into_iter().unzip();
+
+        let (calls, labels): (Vec<_>, Vec<_>) = calls
+            .into_iter()
+            .map(|call| call.as_eth_call(block_ptr.clone(), self.eth_call_gas))
+            .unzip();
+
         let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
             archive: true,
             traces: false,
         }))?;
 
-        // For errors, we set the source to 'Rpc' as that's where errors happen
-        let (result, source) = match eth_adapter
-            .contract_call(logger, &eth_call, self.call_cache.cheap_clone())
+        let call_refs = calls.iter().collect::<Vec<_>>();
+        let results = eth_adapter
+            .contract_calls(logger, &call_refs, self.call_cache.cheap_clone())
             .await
-        {
-            Ok((result, source)) => (Ok(result), source),
-            Err(e) => (Err(e), call::Source::Rpc),
-        };
+            .map_err(|e| {
+                // An error happened, everybody gets charged
+                let elapsed = start.elapsed().as_secs_f64() / call_refs.len() as f64;
+                for (metrics, call) in metrics.iter().zip(call_refs) {
+                    metrics.observe_eth_call_execution_time(
+                        elapsed,
+                        &call.contract_name,
+                        &call.function.name,
+                    );
+                }
+                MappingError::from(e)
+            })?;
 
-        let result = result
-            .map(|r| if r.is_some() { None } else { Some(label) })
-            .map_err(MappingError::from);
+        // We don't have time measurements for each call (though that would be nice)
+        // Use the average time of all calls that we want to observe as the time for
+        // each call
+        let to_observe = results.iter().map(|(_, source)| source.observe()).count() as f64;
+        let elapsed = start.elapsed().as_secs_f64() / to_observe;
 
-        if source.observe() {
-            let elapsed = start.elapsed();
+        results
+            .iter()
+            .zip(metrics)
+            .zip(calls)
+            .for_each(|(((_, source), metrics), call)| {
+                if source.observe() {
+                    metrics.observe_eth_call_execution_time(
+                        elapsed,
+                        &call.contract_name,
+                        &call.function.name,
+                    );
+                }
+            });
 
-            metrics.observe_eth_call_execution_time(
-                elapsed.as_secs_f64(),
-                &eth_call.contract_name,
-                &function_name,
-            );
-        }
-
-        result
+        let labels = results
+            .iter()
+            .zip(labels)
+            .filter_map(|((res, _), label)| if res.is_none() { Some(label) } else { None })
+            .map(|s| s.to_string())
+            .collect();
+        Ok(labels)
     }
 }
 
@@ -1054,7 +1090,7 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
     ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
         /// Log information about failed eth calls. 'Failure' here simply
         /// means that the call was reverted; outright errors lead to a real
-        /// error. For reverted calls, `self.eth_call` returns the label
+        /// error. For reverted calls, `self.eth_calls` returns the label
         /// from the manifest for that call.
         ///
         /// One reason why declared calls can fail is if they are attached
@@ -1065,20 +1101,15 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
         /// calls
         fn log_results(
             logger: &Logger,
-            results: &[Option<String>],
+            failures: &[String],
+            calls_count: usize,
             trigger_count: usize,
             elapsed: Duration,
         ) {
-            let calls_count = results.len();
-            let fail_count = results.iter().filter(|r| r.is_some()).count();
+            let fail_count = failures.len();
 
             if fail_count > 0 {
-                let mut counts: Vec<_> = results
-                    .iter()
-                    .filter_map(|r| r.as_ref())
-                    .counts()
-                    .into_iter()
-                    .collect();
+                let mut counts: Vec<_> = failures.iter().counts().into_iter().collect();
                 counts.sort_by_key(|(label, _)| *label);
                 let counts = counts
                     .into_iter()
@@ -1150,13 +1181,15 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
             calls
         };
 
-        let results = graph::prelude::futures03::future::try_join_all(
-            calls
-                .into_iter()
-                .map(|(metrics, call)| self.eth_call(logger, block_ptr, metrics, call)),
-        )
-        .await?;
-        log_results(logger, &results, runnables.len(), start.elapsed());
+        let calls_count = calls.len();
+        let results = self.eth_calls(logger, block_ptr, calls).await?;
+        log_results(
+            logger,
+            &results,
+            calls_count,
+            runnables.len(),
+            start.elapsed(),
+        );
 
         Ok(runnables)
     }
