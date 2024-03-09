@@ -37,7 +37,7 @@ pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
 #[derive(Clone, Debug)]
-pub struct EthereumContractCall {
+pub struct ContractCall {
     pub address: Address,
     pub block_ptr: BlockPtr,
     pub function: Function,
@@ -46,7 +46,7 @@ pub struct EthereumContractCall {
 }
 
 #[derive(Error, Debug)]
-pub enum EthereumGetBalanceError {
+pub enum GetBalanceError {
     #[error("call error: {0}")]
     Web3Error(web3::Error),
     #[error("ethereum node took too long to perform call")]
@@ -54,7 +54,7 @@ pub enum EthereumGetBalanceError {
 }
 
 #[derive(Error, Debug)]
-pub enum EthereumContractCallError {
+pub enum ContractCallError {
     #[error("ABI error: {0}")]
     ABIError(#[from] ABIError),
     /// `Token` is not of expected `ParamType`
@@ -971,9 +971,9 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn contract_call(
         &self,
         logger: &Logger,
-        call: &EthereumContractCall,
+        call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError>;
+    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError>;
 
     /// Make multiple contract calls in a single batch. The returned `Vec`
     /// has results in the same order as the calls in `calls` on input. The
@@ -981,16 +981,16 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn contract_calls(
         &self,
         logger: &Logger,
-        calls: &[&EthereumContractCall],
+        calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, EthereumContractCallError>;
+    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError>;
 
     fn get_balance(
         &self,
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = EthereumGetBalanceError> + Send>;
+    ) -> Box<dyn Future<Item = U256, Error = GetBalanceError> + Send>;
 }
 
 #[cfg(test)]

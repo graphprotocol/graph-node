@@ -1,11 +1,10 @@
 use std::{sync::Arc, time::Instant};
 
-use crate::adapter::EthereumGetBalanceError;
+use crate::adapter::GetBalanceError;
 use crate::data_source::MappingABI;
 use crate::{
-    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
-    EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
-    ENV_VARS,
+    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCall,
+    ContractCallError, DataSource, EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
 };
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
@@ -188,9 +187,9 @@ fn eth_get_balance(
             Ok(asc_new(ctx.heap, &bigint, &ctx.gas)?)
         }
         // Retry on any kind of error
-        Err(EthereumGetBalanceError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
-        Err(EthereumGetBalanceError::Timeout) => Err(HostExportError::PossibleReorg(
-            EthereumGetBalanceError::Timeout.into(),
+        Err(GetBalanceError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(GetBalanceError::Timeout) => Err(HostExportError::PossibleReorg(
+            GetBalanceError::Timeout.into(),
         )),
     }
 }
@@ -242,7 +241,7 @@ fn eth_call(
         )
         .map_err(HostExportError::Deterministic)?;
 
-    let call = EthereumContractCall {
+    let call = ContractCall {
         address: unresolved_call.contract_address,
         block_ptr: block_ptr.cheap_clone(),
         function: function.clone(),
@@ -264,7 +263,7 @@ fn eth_call(
             // Any error reported by the Ethereum node could be due to the block no longer being on
             // the main chain. This is very unespecific but we don't want to risk failing a
             // subgraph due to a transient error such as a reorg.
-            Err(EthereumContractCallError::Web3Error(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+            Err(ContractCallError::Web3Error(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,
@@ -272,7 +271,7 @@ fn eth_call(
             ))),
 
             // Also retry on timeouts.
-            Err(EthereumContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+            Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,

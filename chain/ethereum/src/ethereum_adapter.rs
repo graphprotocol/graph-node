@@ -46,7 +46,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::adapter::EthereumGetBalanceError;
+use crate::adapter::GetBalanceError;
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
 use crate::trigger::LogRef;
@@ -54,9 +54,9 @@ use crate::Chain;
 use crate::NodeCapabilities;
 use crate::{
     adapter::{
-        EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
-        EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumLogFilter,
-        ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+        ContractCall, ContractCallError, EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait,
+        EthereumBlockFilter, EthereumCallFilter, EthereumLogFilter, ProviderEthRpcMetrics,
+        SubgraphEthRpcMetrics,
     },
     transport::Transport,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
@@ -419,7 +419,7 @@ impl EthereumAdapter {
         logger: &Logger,
         address: Address,
         block_ptr: BlockPtr,
-    ) -> impl Future<Item = U256, Error = EthereumGetBalanceError> + Send {
+    ) -> impl Future<Item = U256, Error = GetBalanceError> + Send {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -446,11 +446,11 @@ impl EthereumAdapter {
                         web3.eth().balance(address, Some(block_id)).boxed().await;
                     match result {
                         Ok(balance) => Ok(balance),
-                        Err(err) => Err(EthereumGetBalanceError::Web3Error(err)),
+                        Err(err) => Err(GetBalanceError::Web3Error(err)),
                     }
                 }
             })
-            .map_err(|e| e.into_inner().unwrap_or(EthereumGetBalanceError::Timeout))
+            .map_err(|e| e.into_inner().unwrap_or(GetBalanceError::Timeout))
             .boxed()
             .compat()
     }
@@ -461,11 +461,8 @@ impl EthereumAdapter {
         call_data: call::Request,
         block_ptr: BlockPtr,
         gas: Option<u32>,
-    ) -> Result<call::Retval, EthereumContractCallError> {
-        fn reverted(
-            logger: &Logger,
-            reason: &str,
-        ) -> Result<call::Retval, EthereumContractCallError> {
+    ) -> Result<call::Retval, ContractCallError> {
+        fn reverted(logger: &Logger, reason: &str) -> Result<call::Retval, ContractCallError> {
             info!(logger, "Contract call reverted"; "reason" => reason);
             Ok(call::Retval::Null)
         }
@@ -602,18 +599,18 @@ impl EthereumAdapter {
                                 }
 
                                 // The VM execution error was not identified as a revert.
-                                _ => Err(EthereumContractCallError::Web3Error(web3::Error::Rpc(
+                                _ => Err(ContractCallError::Web3Error(web3::Error::Rpc(
                                     rpc_error.clone(),
                                 ))),
                             }
                         }
 
                         // The error was not identified as a revert.
-                        Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                        Err(err) => Err(ContractCallError::Web3Error(err)),
                     }
                 }
             })
-            .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
+            .map_err(|e| e.into_inner().unwrap_or(ContractCallError::Timeout))
             .boxed()
             .await
     }
@@ -621,10 +618,10 @@ impl EthereumAdapter {
     async fn call_and_cache(
         &self,
         logger: &Logger,
-        call: &EthereumContractCall,
+        call: &ContractCall,
         req: call::Request,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<call::Response, EthereumContractCallError> {
+    ) -> Result<call::Response, ContractCallError> {
         let result = self
             .call(
                 logger.clone(),
@@ -1331,7 +1328,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = EthereumGetBalanceError> + Send> {
+    ) -> Box<dyn Future<Item = U256, Error = GetBalanceError> + Send> {
         debug!(
             logger, "eth_getBalance";
             "address" => format!("{}", address),
@@ -1343,9 +1340,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn contract_call(
         &self,
         logger: &Logger,
-        inp_call: &EthereumContractCall,
+        inp_call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
+    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError> {
         let mut result = self.contract_calls(logger, &[inp_call], cache).await?;
         // unwrap: self.contract_calls returns as many results as there were calls
         Ok(result.pop().unwrap())
@@ -1354,14 +1351,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn contract_calls(
         &self,
         logger: &Logger,
-        calls: &[&EthereumContractCall],
+        calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, EthereumContractCallError> {
+    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError> {
         fn as_req(
             logger: &Logger,
-            call: &EthereumContractCall,
+            call: &ContractCall,
             index: u32,
-        ) -> Result<call::Request, EthereumContractCallError> {
+        ) -> Result<call::Request, ContractCallError> {
             // Emit custom error for type mismatches.
             for (token, kind) in call
                 .args
@@ -1369,10 +1366,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .zip(call.function.inputs.iter().map(|p| &p.kind))
             {
                 if !token.type_check(kind) {
-                    return Err(EthereumContractCallError::TypeError(
-                        token.clone(),
-                        kind.clone(),
-                    ));
+                    return Err(ContractCallError::TypeError(token.clone(), kind.clone()));
                 }
             }
 
@@ -1381,7 +1375,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let encoded_call = call
                     .function
                     .encode_input(&call.args)
-                    .map_err(EthereumContractCallError::EncodingError)?;
+                    .map_err(ContractCallError::EncodingError)?;
                 call::Request::new(call.address, encoded_call, index)
             };
 
@@ -1398,8 +1392,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
         fn decode(
             logger: &Logger,
             resp: call::Response,
-            call: &EthereumContractCall,
-        ) -> Result<(Option<Vec<Token>>, call::Source), EthereumContractCallError> {
+            call: &ContractCall,
+        ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError> {
             let call::Response {
                 retval,
                 source,
@@ -1433,7 +1427,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let block_ptr = calls.first().unwrap().block_ptr.clone();
         if calls.iter().any(|call| call.block_ptr != block_ptr) {
-            return Err(EthereumContractCallError::Internal(
+            return Err(ContractCallError::Internal(
                 "all calls must have the same block pointer".to_string(),
             ));
         }
