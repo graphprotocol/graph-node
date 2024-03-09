@@ -1421,6 +1421,20 @@ impl EthereumAdapterTrait for EthereumAdapter {
             }
         }
 
+        fn log_call_error(logger: &Logger, e: &ContractCallError, call: &ContractCall) {
+            match e {
+                ContractCallError::Web3Error(e) => error!(logger,
+                    "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
+                    call.function.name, call.contract_name, e),
+                ContractCallError::Timeout => error!(logger,
+                    "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
+                    call.function.name, call.contract_name),
+                _ => error!(logger,
+                    "Failed to call function \"{}\" of contract \"{}\": {}",
+                    call.function.name, call.contract_name, e),
+            }
+        }
+
         if calls.is_empty() {
             return Ok(Vec::new());
         }
@@ -1444,8 +1458,17 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .unwrap_or_else(|_| (Vec::new(), reqs));
 
         let futs = missing.into_iter().map(|req| {
-            let call = calls[req.index as usize];
-            self.call_and_cache(logger, call, req, cache.clone())
+            let cache = cache.clone();
+            async move {
+                let call = calls[req.index as usize];
+                match self.call_and_cache(logger, call, req, cache.clone()).await {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => {
+                        log_call_error(logger, &e, call);
+                        Err(e)
+                    }
+                }
+            }
         });
         resps.extend(try_join_all(futs).await?);
 

@@ -47,7 +47,7 @@ use crate::adapter::EthereumAdapter as _;
 use crate::chain::Chain;
 use crate::network::EthereumNetworkAdapters;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
-use crate::{ContractCall, ContractCallError, NodeCapabilities};
+use crate::{ContractCall, NodeCapabilities};
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
@@ -965,16 +965,16 @@ impl DeclaredCall {
         Ok(calls)
     }
 
-    fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (ContractCall, String, String) {
+    fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (ContractCall, String) {
         (
             ContractCall {
+                contract_name: self.contract_name,
                 address: self.address,
                 block_ptr,
                 function: self.function,
                 args: self.args,
                 gas,
             },
-            self.contract_name,
             self.label,
         )
     }
@@ -1010,13 +1010,13 @@ impl DecoderHook {
     ) -> Result<Option<String>, MappingError> {
         let start = Instant::now();
         let function_name = call.function.name.clone();
-        let (eth_call, contract_name, label) =
-            call.as_eth_call(block_ptr.clone(), self.eth_call_gas);
+        let (eth_call, label) = call.as_eth_call(block_ptr.clone(), self.eth_call_gas);
         let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
             archive: true,
             traces: false,
         }))?;
 
+        // For errors, we set the source to 'Rpc' as that's where errors happen
         let (result, source) = match eth_adapter
             .contract_call(logger, &eth_call, self.call_cache.cheap_clone())
             .await
@@ -1025,46 +1025,16 @@ impl DecoderHook {
             Err(e) => (Err(e), call::Source::Rpc),
         };
 
-        // This error analysis is very much modeled on the one in
-        // `crate::runtime_adapter::eth_call`; it would be better to
-        // make them the same but there are subtle differences (return
-        // type, error type)
-        //
-        // For errors, we set the source to 'Rpc' as that's where errors happen
-        let result= match result {
-                Ok(r) => Ok(if r.is_some() { None } else { Some(label) }),
-
-                // Any error reported by the Ethereum node could be due to the block no longer being on
-                // the main chain. This is very unespecific but we don't want to risk failing a
-                // subgraph due to a transient error such as a reorg.
-                Err(ContractCallError::Web3Error(e)) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
-                    "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
-                    function_name,
-                    contract_name,
-                    e
-                ))),
-
-                // Also retry on timeouts.
-                Err(ContractCallError::Timeout) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
-                    "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
-                    function_name,
-                    contract_name,
-                ))),
-
-                Err(e) => Err(MappingError::Unknown(anyhow::anyhow!(
-                    "Failed to call function \"{}\" of contract \"{}\": {}",
-                    function_name,
-                    contract_name,
-                    e
-                ))),
-            };
+        let result = result
+            .map(|r| if r.is_some() { None } else { Some(label) })
+            .map_err(MappingError::from);
 
         if source.observe() {
             let elapsed = start.elapsed();
 
             metrics.observe_eth_call_execution_time(
                 elapsed.as_secs_f64(),
-                &contract_name,
+                &eth_call.contract_name,
                 &function_name,
             );
         }
