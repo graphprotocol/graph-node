@@ -1393,7 +1393,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             logger: &Logger,
             resp: call::Response,
             call: &ContractCall,
-        ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError> {
+        ) -> (Option<Vec<Token>>, call::Source) {
             let call::Response {
                 retval,
                 source,
@@ -1402,13 +1402,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
             use call::Retval::*;
             match retval {
                 Value(output) => match call.function.decode_output(&output) {
-                    Ok(tokens) => Ok((Some(tokens), source)),
+                    Ok(tokens) => (Some(tokens), source),
                     Err(e) => {
                         // Decode failures are reverts. The reasoning is that if Solidity fails to
                         // decode an argument, that's a revert, so the same goes for the output.
                         let reason = format!("failed to decode output: {}", e);
                         info!(logger, "Contract call reverted"; "reason" => reason);
-                        Ok((None, call::Source::Rpc))
+                        (None, call::Source::Rpc)
                     }
                 },
                 Null => {
@@ -1416,7 +1416,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     // that the contract actually returned an empty response. A view call is meant
                     // to return something, so we treat empty responses the same as reverts.
                     info!(logger, "Contract call reverted"; "reason" => "empty response");
-                    Ok((None, call::Source::Rpc))
+                    (None, call::Source::Rpc)
                 }
             }
         }
@@ -1461,7 +1461,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let call = &calls[res.req.index as usize];
                 decode(logger, res, call)
             })
-            .collect::<Result<_, _>>()?;
+            .collect();
 
         Ok(decoded)
     }
