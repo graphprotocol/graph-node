@@ -28,7 +28,7 @@ pub mod network;
 pub mod trigger;
 
 pub use crate::adapter::{
-    EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
+    ContractCall, ContractCallError, EthereumAdapter as EthereumAdapterTrait,
     ProviderEthRpcMetrics, SubgraphEthRpcMetrics, TriggerFilter,
 };
 pub use crate::chain::Chain;

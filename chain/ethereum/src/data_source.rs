@@ -47,7 +47,7 @@ use crate::adapter::EthereumAdapter as _;
 use crate::chain::Chain;
 use crate::network::EthereumNetworkAdapters;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
-use crate::{EthereumContractCall, EthereumContractCallError, NodeCapabilities};
+use crate::{ContractCall, ContractCallError, NodeCapabilities};
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
@@ -965,13 +965,9 @@ impl DeclaredCall {
         Ok(calls)
     }
 
-    fn as_eth_call(
-        self,
-        block_ptr: BlockPtr,
-        gas: Option<u32>,
-    ) -> (EthereumContractCall, String, String) {
+    fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (ContractCall, String, String) {
         (
-            EthereumContractCall {
+            ContractCall {
                 address: self.address,
                 block_ptr,
                 function: self.function,
@@ -1041,7 +1037,7 @@ impl DecoderHook {
                 // Any error reported by the Ethereum node could be due to the block no longer being on
                 // the main chain. This is very unespecific but we don't want to risk failing a
                 // subgraph due to a transient error such as a reorg.
-                Err(EthereumContractCallError::Web3Error(e)) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
+                Err(ContractCallError::Web3Error(e)) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
                     "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                     function_name,
                     contract_name,
@@ -1049,7 +1045,7 @@ impl DecoderHook {
                 ))),
 
                 // Also retry on timeouts.
-                Err(EthereumContractCallError::Timeout) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
+                Err(ContractCallError::Timeout) => Err(MappingError::PossibleReorg(anyhow::anyhow!(
                     "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
                     function_name,
                     contract_name,
