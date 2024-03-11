@@ -46,7 +46,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::adapter::GetBalanceError;
+use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
 use crate::trigger::LogRef;
@@ -414,22 +414,62 @@ impl EthereumAdapter {
         .boxed()
     }
 
+    // Method to determine block_id based on support for EIP-1898
+    fn block_ptr_to_id(&self, block_ptr: &BlockPtr) -> BlockId {
+        // Ganache does not support calls by block hash.
+        // See https://github.com/trufflesuite/ganache-cli/issues/973
+        if !self.supports_eip_1898 {
+            BlockId::Number(block_ptr.number.into())
+        } else {
+            BlockId::Hash(block_ptr.hash_as_h256())
+        }
+    }
+
+    fn code(
+        &self,
+        logger: &Logger,
+        address: Address,
+        block_ptr: BlockPtr,
+    ) -> impl Future<Item = Bytes, Error = EthereumRpcError> + Send {
+        let web3 = self.web3.clone();
+        let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
+
+        let block_id = self.block_ptr_to_id(&block_ptr);
+        let retry_log_message = format!("eth_getCode RPC call for block {}", block_ptr);
+
+        retry(retry_log_message, &logger)
+            .when(|result| match result {
+                Ok(_) => false,
+                Err(_) => true,
+            })
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    let result: Result<Bytes, web3::Error> =
+                        web3.eth().code(address, Some(block_id)).boxed().await;
+                    match result {
+                        Ok(code) => Ok(code),
+                        Err(err) => Err(EthereumRpcError::Web3Error(err)),
+                    }
+                }
+            })
+            .map_err(|e| e.into_inner().unwrap_or(EthereumRpcError::Timeout))
+            .boxed()
+            .compat()
+    }
+
     fn balance(
         &self,
         logger: &Logger,
         address: Address,
         block_ptr: BlockPtr,
-    ) -> impl Future<Item = U256, Error = GetBalanceError> + Send {
+    ) -> impl Future<Item = U256, Error = EthereumRpcError> + Send {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        // Ganache does not support calls by block hash.
-        // See https://github.com/trufflesuite/ganache-cli/issues/973
-        let block_id = if !self.supports_eip_1898 {
-            BlockId::Number(block_ptr.number.into())
-        } else {
-            BlockId::Hash(block_ptr.hash_as_h256())
-        };
+        let block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -446,11 +486,11 @@ impl EthereumAdapter {
                         web3.eth().balance(address, Some(block_id)).boxed().await;
                     match result {
                         Ok(balance) => Ok(balance),
-                        Err(err) => Err(GetBalanceError::Web3Error(err)),
+                        Err(err) => Err(EthereumRpcError::Web3Error(err)),
                     }
                 }
             })
-            .map_err(|e| e.into_inner().unwrap_or(GetBalanceError::Timeout))
+            .map_err(|e| e.into_inner().unwrap_or(EthereumRpcError::Timeout))
             .boxed()
             .compat()
     }
@@ -470,13 +510,7 @@ impl EthereumAdapter {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        // Ganache does not support calls by block hash.
-        // See https://github.com/trufflesuite/ganache-cli/issues/973
-        let block_id = if !self.supports_eip_1898 {
-            BlockId::Number(block_ptr.number.into())
-        } else {
-            BlockId::Hash(block_ptr.hash_as_h256())
-        };
+        let block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
             .limit(ENV_VARS.request_retries)
@@ -1328,13 +1362,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = GetBalanceError> + Send> {
+    ) -> Box<dyn Future<Item = U256, Error = EthereumRpcError> + Send> {
         debug!(
             logger, "eth_getBalance";
             "address" => format!("{}", address),
             "block" => format!("{}", block_ptr)
         );
         Box::new(self.balance(logger, address, block_ptr))
+    }
+
+    fn get_code(
+        &self,
+        logger: &Logger,
+        address: H160,
+        block_ptr: BlockPtr,
+    ) -> Box<dyn Future<Item = Bytes, Error = EthereumRpcError> + Send> {
+        debug!(
+            logger, "eth_getCode";
+            "address" => format!("{}", address),
+            "block" => format!("{}", block_ptr)
+        );
+        Box::new(self.code(logger, address, block_ptr))
     }
 
     async fn contract_call(

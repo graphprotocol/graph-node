@@ -7,6 +7,7 @@ use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
+use graph::prelude::web3::types::Bytes;
 use graph::prelude::web3::types::H160;
 use graph::prelude::web3::types::U256;
 use itertools::Itertools;
@@ -48,7 +49,7 @@ pub struct ContractCall {
 }
 
 #[derive(Error, Debug)]
-pub enum GetBalanceError {
+pub enum EthereumRpcError {
     #[error("call error: {0}")]
     Web3Error(web3::Error),
     #[error("ethereum node took too long to perform call")]
@@ -1010,7 +1011,15 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = GetBalanceError> + Send>;
+    ) -> Box<dyn Future<Item = U256, Error = EthereumRpcError> + Send>;
+
+    // Returns the compiled bytecode of a smart contract
+    fn get_code(
+        &self,
+        logger: &Logger,
+        address: H160,
+        block_ptr: BlockPtr,
+    ) -> Box<dyn Future<Item = Bytes, Error = EthereumRpcError> + Send>;
 }
 
 #[cfg(test)]
