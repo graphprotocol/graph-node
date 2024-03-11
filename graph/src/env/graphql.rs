@@ -94,6 +94,9 @@ pub struct EnvVarsGraphQl {
     /// header `X-GraphTraceQuery` set to this value will include a trace of
     /// the SQL queries that were run.
     pub query_trace_token: String,
+    /// Set by the env var `GRAPH_PARALLEL_BLOCK_CONSTRAINTS`
+    /// Whether to run top-level queries with different block constraints in parallel
+    pub parallel_block_constraints: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -138,6 +141,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             disable_bool_filters: x.disable_bool_filters.0,
             disable_child_sorting: x.disable_child_sorting.0,
             query_trace_token: x.query_trace_token,
+            parallel_block_constraints: x.parallel_block_constraints.0,
         }
     }
 }
@@ -187,4 +191,6 @@ pub struct InnerGraphQl {
     pub disable_child_sorting: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GRAPHQL_TRACE_TOKEN", default = "")]
     query_trace_token: String,
+    #[envconfig(from = "GRAPH_PARALLEL_BLOCK_CONSTRAINTS", default = "false")]
+    pub parallel_block_constraints: EnvVarBoolean,
 }
