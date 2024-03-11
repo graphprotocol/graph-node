@@ -23,6 +23,16 @@ impl ToAscObj<Uint8Array> for web3::H160 {
     }
 }
 
+impl ToAscObj<Uint8Array> for web3::Bytes {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<Uint8Array, HostExportError> {
+        self.0.to_asc_obj(heap, gas)
+    }
+}
+
 impl FromAscObj<Uint8Array> for web3::H160 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
