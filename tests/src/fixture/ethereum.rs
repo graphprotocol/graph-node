@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::{
-    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
-    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
+    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
+    NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
@@ -59,7 +59,7 @@ pub async fn chain(
         block_stream_builder.clone(),
         Arc::new(StaticBlockRefetcher { x: PhantomData }),
         triggers_adapter,
-        Arc::new(NoopRuntimeAdapter { x: PhantomData }),
+        Arc::new(NoopRuntimeAdapterBuilder {}),
         eth_adapters,
         ENV_VARS.reorg_threshold,
         ENV_VARS.ingestor_polling_interval,

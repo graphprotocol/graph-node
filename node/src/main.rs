@@ -1,6 +1,9 @@
 use clap::Parser as _;
-use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
-use ethereum::{BlockIngestor, EthereumNetworks, RuntimeAdapter};
+use ethereum::chain::{
+    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumRuntimeAdapterBuilder,
+    EthereumStreamBuilder,
+};
+use ethereum::{BlockIngestor, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
 use graph_chain_ethereum::codec::HeaderOnlyBlock;
@@ -867,17 +870,7 @@ fn ethereum_networks_as_chains(
                 chain_store.clone(),
             );
 
-            // Use a call cache that buffers in memory. It is important that
-            // the `RuntimeAdapter` and the `Chain` use the same call cache
-            // as that is used to pass the results of declared calls into
-            // mappings.
-            let call_cache = Arc::new(ethereum::BufferedCallCache::new(chain_store.cheap_clone()));
-
-            let runtime_adapter = Arc::new(RuntimeAdapter {
-                eth_adapters: Arc::new(eth_adapters.clone()),
-                call_cache: call_cache.cheap_clone(),
-                chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
-            });
+            let call_cache = chain_store.cheap_clone();
 
             let chain_config = config.chains.chains.get(network_name).unwrap();
             let chain = ethereum::Chain::new(
@@ -892,7 +885,7 @@ fn ethereum_networks_as_chains(
                 Arc::new(EthereumStreamBuilder {}),
                 Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
-                runtime_adapter,
+                Arc::new(EthereumRuntimeAdapterBuilder {}),
                 Arc::new(eth_adapters.clone()),
                 ENV_VARS.reorg_threshold,
                 chain_config.polling_interval,

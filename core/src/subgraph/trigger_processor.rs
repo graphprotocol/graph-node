@@ -107,9 +107,9 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    pub fn new(chain: &C) -> Self {
+    pub fn new(hook: C::DecoderHook) -> Self {
         Decoder {
-            hook: chain.decoder_hook(),
+            hook,
             _builder: PhantomData,
         }
     }
