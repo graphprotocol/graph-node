@@ -107,7 +107,7 @@ pub async fn run(
 
     println!("Pausing deployments");
     for deployment in &deployments {
-        let paused = pause_or_resume(primary.clone(), &sender, &deployment.locator(), true);
+        let paused = pause_or_resume(primary.clone(), &sender, &deployment.locator(), true)?;
 
         if paused.is_ok() {
             // There's no good way to tell that a subgraph has in fact stopped
