@@ -1191,12 +1191,9 @@ async fn main() -> anyhow::Result<()> {
         Pause { deployment } => {
             let sender = ctx.notification_sender();
             let pool = ctx.primary_pool();
-            commands::assign::pause_or_resume(
-                ctx_clone.primary_pool(),
-                &sender,
-                &deployment.locate_unique(&pool).unwrap(),
-                true,
-            )
+            let locator = &deployment.locate_unique(&pool)?;
+            commands::assign::pause_or_resume(pool, &sender, locator, true)
+        }
         }
         Resume { deployment } => {
             let sender = ctx.notification_sender();
