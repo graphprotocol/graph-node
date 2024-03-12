@@ -359,7 +359,7 @@ pub struct Log {
     #[prost(bytes = "vec", tag = "3")]
     pub data: ::prost::alloc::vec::Vec<u8>,
     /// Index is the index of the log relative to the transaction. This index
-    /// is always populated regardless of the state revertion of the the call
+    /// is always populated regardless of the state revertion of the call
     /// that emitted this log.
     #[prost(uint32, tag = "4")]
     pub index: u32,

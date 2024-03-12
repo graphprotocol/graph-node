@@ -285,7 +285,7 @@ message Log {
   bytes data = 3;
 
   // Index is the index of the log relative to the transaction. This index
-  // is always populated regardless of the state revertion of the the call
+  // is always populated regardless of the state revertion of the call
   // that emitted this log.
   uint32 index = 4;
 

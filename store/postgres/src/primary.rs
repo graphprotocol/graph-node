@@ -920,7 +920,7 @@ impl<'a> Connection<'a> {
             .unwrap()
             .as_secs();
 
-        // Check the current state of the the subgraph. If no subgraph with the
+        // Check the current state of the subgraph. If no subgraph with the
         // name exists, create one
         let info = s::table
             .left_outer_join(v::table.on(s::current_version.eq(v::id.nullable())))
