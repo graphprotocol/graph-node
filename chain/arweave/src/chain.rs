@@ -163,8 +163,8 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
@@ -180,10 +180,6 @@ impl Blockchain for Chain {
             self.name.clone(),
         );
         Ok(Box::new(ingestor))
-    }
-
-    fn decoder_hook(&self) -> Self::DecoderHook {
-        NoopDecoderHook
     }
 }
 

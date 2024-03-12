@@ -371,7 +371,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn runtime_adapter(&self) -> std::sync::Arc<dyn RuntimeAdapter<Self>> {
+    fn runtime(&self) -> (std::sync::Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook) {
         todo!()
     }
 
@@ -380,10 +380,6 @@ impl Blockchain for MockBlockchain {
     }
 
     fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
-        todo!()
-    }
-
-    fn decoder_hook(&self) -> Self::DecoderHook {
         todo!()
     }
 }

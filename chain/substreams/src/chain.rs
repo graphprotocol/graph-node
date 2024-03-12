@@ -181,8 +181,8 @@ impl Blockchain for Chain {
             number,
         })
     }
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
@@ -197,10 +197,6 @@ impl Blockchain for Chain {
             "substreams".to_string(),
             self.metrics_registry.cheap_clone(),
         )))
-    }
-
-    fn decoder_hook(&self) -> Self::DecoderHook {
-        NoopDecoderHook
     }
 }
 
