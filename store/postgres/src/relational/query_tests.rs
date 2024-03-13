@@ -12,7 +12,7 @@ use crate::{
     relational_queries::FromColumnValue,
 };
 
-use crate::relational_queries::QueryFilter;
+use crate::relational_queries::Filter;
 
 #[test]
 fn gql_value_from_bytes() {
@@ -50,7 +50,7 @@ fn filter_contains(filter: EntityFilter, sql: &str) {
     let table = layout
         .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
         .unwrap();
-    let filter = QueryFilter::new(&filter, table.as_ref(), &layout, Default::default()).unwrap();
+    let filter = Filter::main(&layout, table.as_ref(), &filter, Default::default()).unwrap();
     let query = debug_query::<Pg, _>(&filter);
     assert!(
         query.to_string().contains(sql),
@@ -66,22 +66,22 @@ fn prefix() {
     let filter = EntityFilter::Equal("name".to_string(), "Bibi".into());
     filter_contains(
         filter,
-        r#"left("name", 256) = left($1, 256) -- binds: ["Bibi"]"#,
+        r#"left(c."name", 256) = left($1, 256) -- binds: ["Bibi"]"#,
     );
 
     let filter = EntityFilter::In("name".to_string(), vec!["Bibi".into(), "Julian".into()]);
     filter_contains(
         filter,
-        r#"left("name", 256) in ($1, $2) -- binds: ["Bibi", "Julian"]"#,
+        r#"left(c."name", 256) in ($1, $2) -- binds: ["Bibi", "Julian"]"#,
     );
 
     // Bytes prefixes
     let filter = EntityFilter::Equal("address".to_string(), "0xbeef".into());
     filter_contains(
         filter,
-        r#"substring("address", 1, 64) = substring($1, 1, 64)"#,
+        r#"substring(c."address", 1, 64) = substring($1, 1, 64)"#,
     );
 
     let filter = EntityFilter::In("address".to_string(), vec!["0xbeef".into()]);
-    filter_contains(filter, r#"substring("address", 1, 64) in ($1)"#);
+    filter_contains(filter, r#"substring(c."address", 1, 64) in ($1)"#);
 }

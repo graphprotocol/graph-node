@@ -33,15 +33,15 @@ impl Table {
     /// (exclusive)
     fn vid_range(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         first_block: BlockNumber,
         last_block: BlockNumber,
     ) -> Result<(i64, i64), StoreError> {
         #[derive(QueryableByName)]
         struct VidRange {
-            #[sql_type = "BigInt"]
+            #[diesel(sql_type = BigInt)]
             min_vid: i64,
-            #[sql_type = "BigInt"]
+            #[diesel(sql_type = BigInt)]
             max_vid: i64,
         }
 
@@ -81,7 +81,7 @@ impl TablePair {
     /// the same structure as the `src` table in the database, but in a
     /// different namespace so that the names of indexes etc. don't clash
     fn create(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Table>,
         src_nsp: Namespace,
         dst_nsp: Namespace,
@@ -112,7 +112,7 @@ impl TablePair {
     /// concurrently to this copy
     fn copy_final_entities(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         earliest_block: BlockNumber,
         final_block: BlockNumber,
@@ -128,7 +128,7 @@ impl TablePair {
         let mut next_vid = min_vid;
         while next_vid <= max_vid {
             let start = Instant::now();
-            let rows = conn.transaction(|| {
+            let rows = conn.transaction(|conn| {
                 // Page through all rows in `src` in batches of `batch_size`
                 // and copy the ones that are visible to queries at block
                 // heights between `earliest_block` and `final_block`, but
@@ -177,7 +177,7 @@ impl TablePair {
     /// other write activity to the source table is blocked while we copy
     fn copy_nonfinal_entities(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         final_block: BlockNumber,
     ) -> Result<(), StoreError> {
@@ -193,7 +193,7 @@ impl TablePair {
         let mut next_vid = min_vid;
         while next_vid <= max_vid {
             let start = Instant::now();
-            let rows = conn.transaction(|| {
+            let rows = conn.transaction(|conn| {
                 // Page through all the rows in `src` in batches of
                 // `batch_size` that are visible to queries at block heights
                 // starting right after `final_block`.
@@ -233,7 +233,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    fn switch(self, logger: &Logger, conn: &PgConnection) -> Result<(), StoreError> {
+    fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -259,7 +259,7 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction(|| conn.batch_execute(&query))?;
+        conn.transaction(|conn| conn.batch_execute(&query))?;
 
         Ok(())
     }
@@ -277,7 +277,7 @@ impl Layout {
     /// this `Layout`
     fn analyze_tables(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         mut tables: Vec<&Arc<Table>>,
         cancel: &CancelHandle,
@@ -304,7 +304,7 @@ impl Layout {
     /// consider needing analysis.
     fn version_stats(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         analyze_all: bool,
         cancel: &CancelHandle,
@@ -388,7 +388,7 @@ impl Layout {
         &self,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         req: &PruneRequest,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
@@ -442,11 +442,11 @@ impl Layout {
                     // the smaller `dst` table
                     // see also: deployment-lock-for-update
                     reporter.start_switch();
-                    deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
+                    deployment::with_lock(conn, &self.site, |conn| -> Result<_, StoreError> {
                         pair.copy_nonfinal_entities(conn, reporter, req.final_block)?;
                         cancel.check_cancel().map_err(CancelableError::from)?;
 
-                        conn.transaction(|| pair.switch(logger, conn))?;
+                        conn.transaction(|conn| pair.switch(logger, conn))?;
                         cancel.check_cancel().map_err(CancelableError::from)?;
 
                         Ok(())

@@ -38,7 +38,7 @@ graph-store-postgres = { path = "../store/postgres" }
 serde = { version = "1.0.126", features = ["derive", "rc"] }
 shellexpand = "3.1.0"
 termcolor = "1.4.1"
-diesel = "1.4.8"
+diesel = { workspace = true }
 http = "0.2.5" # must be compatible with the version rust-web3 uses
 prometheus = { version = "0.13.3", features = ["push"] }
 json-structural-diff = { version = "0.1", features = ["colorize"] }

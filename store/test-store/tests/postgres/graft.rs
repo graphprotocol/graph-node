@@ -482,7 +482,7 @@ fn on_sync() {
                 writable.start_subgraph_deployment(&LOGGER).await?;
                 writable.deployment_synced()?;
 
-                let primary = primary_connection();
+                let mut primary = primary_connection();
                 let src_site = primary.locate_site(src)?.unwrap();
                 let src_node = primary.assigned_node(&src_site)?;
                 let dst_site = primary.locate_site(dst)?.unwrap();
@@ -531,7 +531,7 @@ fn on_sync() {
             // Perform the copy
             writable.start_subgraph_deployment(&LOGGER).await?;
 
-            let primary = primary_connection();
+            let mut primary = primary_connection();
             let src_site = primary.locate_site(src.clone())?.unwrap();
             primary.unassign_subgraph(&src_site)?;
             store.activate(&dst)?;

@@ -31,10 +31,10 @@ struct Scope {
 impl Scope {
     /// Try to lock the deployment in this scope with the given id. Return
     /// `true` if we got the lock, and `false` if it is already locked.
-    fn try_lock(&self, conn: &PgConnection, id: DeploymentId) -> Result<bool, StoreError> {
+    fn try_lock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<bool, StoreError> {
         #[derive(QueryableByName)]
         struct Locked {
-            #[sql_type = "Bool"]
+            #[diesel(sql_type = Bool)]
             locked: bool,
         }
 
@@ -49,7 +49,7 @@ impl Scope {
 
     /// Lock the deployment in this scope with the given id. Blocks until we
     /// can get the lock
-    fn lock(&self, conn: &PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+    fn lock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
         sql_query(format!("select pg_advisory_lock({}, {id})", self.id))
             .execute(conn)
             .map(|_| ())
@@ -57,7 +57,7 @@ impl Scope {
     }
 
     /// Unlock the deployment in this scope with the given id.
-    fn unlock(&self, conn: &PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+    fn unlock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
         sql_query(format!("select pg_advisory_unlock({}, {id})", self.id))
             .execute(conn)
             .map(|_| ())
@@ -70,26 +70,26 @@ const WRITE: Scope = Scope { id: 2 };
 const PRUNE: Scope = Scope { id: 3 };
 
 /// Get a lock for running migrations. Blocks until we get the lock.
-pub(crate) fn lock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+pub(crate) fn lock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_lock(1)").execute(conn)?;
 
     Ok(())
 }
 
 /// Release the migration lock.
-pub(crate) fn unlock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+pub(crate) fn unlock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_unlock(1)").execute(conn)?;
     Ok(())
 }
 
 /// Take the lock used to keep two copy operations to run simultaneously on
 /// the same deployment. Block until we can get the lock
-pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) fn lock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
     COPY.lock(conn, dst.id)
 }
 
 /// Release the lock acquired with `lock_copying`.
-pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
     COPY.unlock(conn, dst.id)
 }
 
@@ -98,7 +98,7 @@ pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), Stor
 /// not. You don't want to use this directly. Instead, use
 /// `deployment::with_lock`
 pub(crate) fn lock_deployment_session(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
 ) -> Result<bool, StoreError> {
     WRITE.try_lock(conn, site.id)
@@ -106,7 +106,7 @@ pub(crate) fn lock_deployment_session(
 
 /// Release the lock acquired with `lock_deployment_session`.
 pub(crate) fn unlock_deployment_session(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
 ) -> Result<(), StoreError> {
     WRITE.unlock(conn, site.id)
@@ -114,10 +114,10 @@ pub(crate) fn unlock_deployment_session(
 
 /// Try to take the lock used to prevent two prune operations from running at the
 /// same time. Return `true` if we got the lock, and `false` otherwise.
-pub(crate) fn try_lock_pruning(conn: &PgConnection, site: &Site) -> Result<bool, StoreError> {
+pub(crate) fn try_lock_pruning(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
     PRUNE.try_lock(conn, site.id)
 }
 
-pub(crate) fn unlock_pruning(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+pub(crate) fn unlock_pruning(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     PRUNE.unlock(conn, site.id)
 }

@@ -1,12 +1,10 @@
 use diesel::{
-    pg::Pg,
-    serialize::Output,
+    deserialize::{FromSql, FromSqlRow},
+    pg::{Pg, PgValue},
+    serialize::{Output, ToSql},
     sql_types::Integer,
-    types::{FromSql, ToSql},
-    FromSqlRow,
 };
 use std::fmt;
-use std::io;
 
 use crate::components::subgraph::Entity;
 
@@ -31,14 +29,14 @@ impl fmt::Display for CausalityRegion {
 }
 
 impl FromSql<Integer, Pg> for CausalityRegion {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: PgValue) -> diesel::deserialize::Result<Self> {
         <i32 as FromSql<Integer, Pg>>::from_sql(bytes).map(CausalityRegion)
     }
 }
 
 impl ToSql<Integer, Pg> for CausalityRegion {
-    fn to_sql<W: io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
-        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
+        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 

@@ -13,21 +13,21 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
-    io::Write,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use diesel::{
+    deserialize::FromSql,
     dsl::sql,
     insert_into,
     pg::Pg,
     r2d2::{ConnectionManager, PooledConnection},
     select,
     serialize::Output,
+    serialize::ToSql,
     sql_query,
     sql_types::{BigInt, Integer},
-    types::{FromSql, ToSql},
     update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl,
 };
@@ -120,7 +120,7 @@ struct CopyState {
 
 impl CopyState {
     fn new(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -168,7 +168,7 @@ impl CopyState {
     }
 
     fn load(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -183,7 +183,7 @@ impl CopyState {
     }
 
     fn create(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -245,7 +245,7 @@ impl CopyState {
         self.dst.site.shard != self.src.site.shard
     }
 
-    fn finished(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         use copy_state as cs;
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
@@ -283,7 +283,10 @@ impl CopyState {
     }
 }
 
-pub(crate) fn source(conn: &PgConnection, dst: &Site) -> Result<Option<DeploymentId>, StoreError> {
+pub(crate) fn source(
+    conn: &mut PgConnection,
+    dst: &Site,
+) -> Result<Option<DeploymentId>, StoreError> {
     use copy_state as cs;
 
     cs::table
@@ -327,13 +330,13 @@ impl AdaptiveBatchSize {
 }
 
 impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <i64 as ToSql<BigInt, Pg>>::to_sql(&self.size, out)
     }
 }
 
 impl FromSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let size = <i64 as FromSql<BigInt, Pg>>::from_sql(bytes)?;
         Ok(AdaptiveBatchSize { size })
     }
@@ -370,7 +373,7 @@ impl BatchCopy {
 
     /// Copy one batch of entities and update internal state so that the
     /// next call to `run` will copy the next batch
-    pub fn run(&mut self, conn: &PgConnection) -> Result<Duration, StoreError> {
+    pub fn run(&mut self, conn: &mut PgConnection) -> Result<Duration, StoreError> {
         let start = Instant::now();
 
         // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
@@ -402,7 +405,7 @@ struct TableState {
 
 impl TableState {
     fn init(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         dst_site: Arc<Site>,
         src: Arc<Table>,
         dst: Arc<Table>,
@@ -410,7 +413,7 @@ impl TableState {
     ) -> Result<Self, StoreError> {
         #[derive(QueryableByName)]
         struct MaxVid {
-            #[sql_type = "diesel::sql_types::BigInt"]
+            #[diesel(sql_type = BigInt)]
             max_vid: i64,
         }
 
@@ -442,7 +445,7 @@ impl TableState {
     }
 
     fn load(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src_layout: &Layout,
         dst_layout: &Layout,
     ) -> Result<Vec<TableState>, StoreError> {
@@ -518,7 +521,7 @@ impl TableState {
 
     fn record_progress(
         &mut self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         elapsed: Duration,
         first_batch: bool,
     ) -> Result<(), StoreError> {
@@ -554,7 +557,7 @@ impl TableState {
         Ok(())
     }
 
-    fn record_finished(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn record_finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         update(
@@ -567,7 +570,7 @@ impl TableState {
         Ok(())
     }
 
-    fn is_cancelled(&self, conn: &PgConnection) -> Result<bool, StoreError> {
+    fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
         use active_copies as ac;
 
         let dst = self.dst_site.as_ref();
@@ -585,7 +588,7 @@ impl TableState {
         Ok(canceled)
     }
 
-    fn copy_batch(&mut self, conn: &PgConnection) -> Result<Status, StoreError> {
+    fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
         let first_batch = self.batch.next_vid == 0;
 
         let duration = self.batch.run(conn)?;
@@ -738,17 +741,17 @@ impl Connection {
         })
     }
 
-    fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
+    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
     where
-        F: FnOnce(&PgConnection) -> Result<T, StoreError>,
+        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
-        self.conn.transaction(|| f(&self.conn))
+        self.conn.transaction(|conn| f(conn))
     }
 
-    fn copy_private_data_sources(&self, state: &CopyState) -> Result<(), StoreError> {
+    fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
         if state.src.site.schema_version.private_data_sources() {
             DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                &self.conn,
+                &mut self.conn,
                 &DataSourcesTable::new(state.dst.site.namespace.clone()),
                 state.target_block.number,
                 &self.src_manifest_idx_and_name,
@@ -758,17 +761,14 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
-        let mut state = self.transaction(|conn| {
-            CopyState::new(
-                conn,
-                self.src.clone(),
-                self.dst.clone(),
-                self.target_block.clone(),
-            )
-        })?;
+    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
+        let src = self.src.clone();
+        let dst = self.dst.clone();
+        let target_block = self.target_block.clone();
+        let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
 
-        let mut progress = CopyProgress::new(&self.logger, &state);
+        let logger = &self.logger.clone();
+        let mut progress = CopyProgress::new(logger, &state);
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
@@ -776,13 +776,13 @@ impl Connection {
                 // It is important that this check happens outside the write
                 // transaction so that we do not hold on to locks acquired
                 // by the check
-                if table.is_cancelled(&self.conn)? {
+                if table.is_cancelled(&mut self.conn)? {
                     return Ok(Status::Cancelled);
                 }
 
                 // Pause copying if replication is lagging behind to avoid
                 // overloading replicas
-                let mut lag = catalog::replication_lag(&self.conn)?;
+                let mut lag = catalog::replication_lag(&mut self.conn)?;
                 if lag > MAX_REPLICATION_LAG {
                     loop {
                         info!(&self.logger,
@@ -790,7 +790,7 @@ impl Connection {
                              REPLICATION_SLEEP.as_secs();
                              "lag_s" => lag.as_secs());
                         std::thread::sleep(REPLICATION_SLEEP);
-                        lag = catalog::replication_lag(&self.conn)?;
+                        lag = catalog::replication_lag(&mut self.conn)?;
                         if lag <= ACCEPTABLE_REPLICATION_LAG {
                             break;
                         }
@@ -828,7 +828,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&self) -> Result<Status, StoreError> {
+    pub fn copy_data(&mut self) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
@@ -841,9 +841,9 @@ impl Connection {
             &self.logger,
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
-        advisory_lock::lock_copying(&self.conn, self.dst.site.as_ref())?;
+        advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
         let res = self.copy_data_internal();
-        advisory_lock::unlock_copying(&self.conn, self.dst.site.as_ref())?;
+        advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
         }

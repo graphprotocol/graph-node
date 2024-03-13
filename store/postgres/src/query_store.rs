@@ -43,13 +43,13 @@ impl QueryStoreTrait for QueryStore {
     ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let start = Instant::now();
-        let conn = self
+        let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let wait = start.elapsed();
         self.store
-            .execute_query(&conn, self.site.clone(), query)
+            .execute_query(&mut conn, self.site.clone(), query)
             .map(|(entities, mut trace)| {
                 trace.conn_wait(wait);
                 (entities, trace)

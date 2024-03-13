@@ -224,14 +224,14 @@ impl Config {
 
         let template_uri = self.db.template_url();
 
-        let conn = PgConnection::establish(&template_uri)
+        let mut conn = PgConnection::establish(&template_uri)
             .expect("Failed to connect to template1 to reset database");
         conn.batch_execute(&drop_db)
             .expect("Failed to drop old database");
         conn.batch_execute(&create_db)
             .expect("Failed to create new database");
 
-        let conn = PgConnection::establish(&self.db.url())
+        let mut conn = PgConnection::establish(&self.db.url())
             .expect("Failed to connect to graph-node database");
         conn.batch_execute(&setup)
             .expect("Failed to reset Postgres database");

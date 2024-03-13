@@ -27,8 +27,8 @@ use graph_store_postgres::{
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
-        let conn = primary.get()?;
-        block_store::load_chains(&conn)?
+        let mut conn = primary.get()?;
+        block_store::load_chains(&mut conn)?
     };
     chains.sort_by_key(|chain| chain.name.clone());
 
@@ -97,10 +97,10 @@ pub async fn info(
         }
     }
 
-    let conn = primary.get()?;
+    let mut conn = primary.get()?;
 
-    let chain =
-        block_store::find_chain(&conn, &name)?.ok_or_else(|| anyhow!("unknown chain: {}", name))?;
+    let chain = block_store::find_chain(&mut conn, &name)?
+        .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
 
     let chain_store = store
         .chain_store(&chain.name)
@@ -132,7 +132,8 @@ pub async fn info(
 
 pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> Result<(), Error> {
     let sites = {
-        let conn = graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
+        let mut conn =
+            graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
         conn.find_sites_for_network(&name)?
     };
 
@@ -161,10 +162,10 @@ pub fn change_block_cache_shard(
 ) -> Result<(), Error> {
     println!("Changing block cache shard for {} to {}", chain_name, shard);
 
-    let conn = primary_store.get()?;
+    let mut conn = primary_store.get()?;
 
-    let chain =
-        find_chain(&conn, &chain_name)?.ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
+    let chain = find_chain(&mut conn, &chain_name)?
+        .ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
     let old_shard = chain.shard;
 
     println!("Current shard: {}", old_shard);
@@ -174,11 +175,11 @@ pub fn change_block_cache_shard(
         .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
     let new_name = format!("{}-old", &chain_name);
 
-    conn.transaction(|| -> Result<(), StoreError> {
+    conn.transaction(|conn| -> Result<(), StoreError> {
         let ident = chain_store.chain_identifier.clone();
         let shard = Shard::new(shard.to_string())?;
 
-        let chain = BlockStore::allocate_chain(&conn, &chain_name, &shard, &ident)?;
+        let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident)?;
 
         store.add_chain_store(&chain,ChainStatus::Ingestible, true)?;
 
@@ -186,20 +187,20 @@ pub fn change_block_cache_shard(
         sql_query(
             "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
         )
-        .execute(&conn)?;
+        .execute(conn)?;
 
         // Update the current chain name to chain-old
-        update_chain_name(&conn, &chain_name, &new_name)?;
+        update_chain_name(conn, &chain_name, &new_name)?;
 
 
         // Create a new chain with the name in the destination shard
-        let _=  add_chain(&conn, &chain_name, &ident, &shard)?;
+        let _=  add_chain(conn, &chain_name, &ident, &shard)?;
 
         // Re-add the foreign key constraint
         sql_query(
             "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
         )
-         .execute(&conn)?;
+         .execute(conn)?;
         Ok(())
     })?;
 

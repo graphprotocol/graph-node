@@ -87,11 +87,14 @@ impl DeploymentSearch {
     }
 
     pub fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
-        let conn = primary.get()?;
-        self.lookup_with_conn(&conn)
+        let mut conn = primary.get()?;
+        self.lookup_with_conn(&mut conn)
     }
 
-    pub fn lookup_with_conn(&self, conn: &PgConnection) -> Result<Vec<Deployment>, anyhow::Error> {
+    pub fn lookup_with_conn(
+        &self,
+        conn: &mut PgConnection,
+    ) -> Result<Vec<Deployment>, anyhow::Error> {
         use store_catalog::deployment_schemas as ds;
         use store_catalog::subgraph as s;
         use store_catalog::subgraph_deployment_assignment as a;

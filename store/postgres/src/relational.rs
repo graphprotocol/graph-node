@@ -18,12 +18,12 @@ pub(crate) mod index;
 mod prune;
 mod rollup;
 
+use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
-use diesel::serialize::Output;
+use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
-use diesel::{debug_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
+use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::RowGroup;
@@ -49,7 +49,10 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindDerivedQuery, FindPossibleDeletionsQuery};
+use crate::relational_queries::{
+    ConflictingEntityData, FindChangesQuery, FindDerivedQuery, FindPossibleDeletionsQuery,
+    ReturnedEntityData,
+};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -181,13 +184,13 @@ impl Borrow<str> for &SqlName {
 }
 
 impl FromSql<Text, Pg> for SqlName {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         <String as FromSql<Text, Pg>>::from_sql(bytes).map(|s| SqlName::verbatim(s))
     }
 }
 
 impl ToSql<Text, Pg> for SqlName {
-    fn to_sql<W: std::io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
@@ -377,7 +380,7 @@ impl Layout {
     }
 
     pub fn create_relational_schema(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
@@ -411,7 +414,7 @@ impl Layout {
     /// Import the database schema for this layout from its own database
     /// shard (in `self.site.shard`) into the database represented by `conn`
     /// if the schema for this layout does not exist yet
-    pub fn import_schema(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    pub fn import_schema(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let make_query = || -> Result<String, fmt::Error> {
             let nsp = self.site.namespace.as_str();
             let srvname = ForeignServer::name(&self.site.shard);
@@ -460,7 +463,7 @@ impl Layout {
 
     pub fn find(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
@@ -475,7 +478,7 @@ impl Layout {
     // An optimization when looking up multiple entities, it will generate a single sql query using `UNION ALL`.
     pub fn find_many(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -511,7 +514,7 @@ impl Layout {
 
     pub fn find_derived(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
         excluded_keys: &Vec<EntityKey>,
@@ -534,7 +537,7 @@ impl Layout {
 
     pub fn find_changes(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut tables = Vec::new();
@@ -545,11 +548,9 @@ impl Layout {
         }
 
         let inserts_or_updates =
-            FindChangesQuery::new(&self.catalog.site.namespace, &tables[..], block)
-                .load::<EntityData>(conn)?;
+            FindChangesQuery::new(&tables[..], block).load::<EntityData>(conn)?;
         let deletions =
-            FindPossibleDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
-                .load::<EntityDeletion>(conn)?;
+            FindPossibleDeletionsQuery::new(&tables[..], block).load::<EntityDeletion>(conn)?;
 
         let mut processed_entities = HashSet::new();
         let mut changes = Vec::new();
@@ -584,7 +585,7 @@ impl Layout {
 
     pub fn insert<'a>(
         &'a self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
@@ -605,21 +606,21 @@ impl Layout {
 
     pub fn conflicting_entity(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         entity_id: &Id,
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
             .load(conn)?
             .pop()
-            .map(|data| data.entity))
+            .map(|data: ConflictingEntityData| data.entity))
     }
 
     /// order is a tuple (attribute, value_type, direction)
     pub fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         fn log_query_timing(
@@ -682,7 +683,7 @@ impl Layout {
 
         let start = Instant::now();
         let values = conn
-            .transaction(|| {
+            .transaction(|conn| {
                 if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
                     conn.batch_execute(timeout_sql)?;
                 }
@@ -704,7 +705,7 @@ impl Layout {
                     }
                 };
                 match e {
-                    DatabaseError(DatabaseErrorKind::__Unknown, ref info)
+                    DatabaseError(DatabaseErrorKind::Unknown, ref info)
                         if info.message().starts_with("syntax error in tsquery") =>
                     {
                         QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
@@ -730,7 +731,7 @@ impl Layout {
 
     pub fn update<'a>(
         &'a self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -775,7 +776,7 @@ impl Layout {
 
     pub fn delete(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         group: &RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -808,9 +809,9 @@ impl Layout {
         Ok(count)
     }
 
-    pub fn truncate_tables(&self, conn: &PgConnection) -> Result<StoreEvent, StoreError> {
+    pub fn truncate_tables(&self, conn: &mut PgConnection) -> Result<StoreEvent, StoreError> {
         for table in self.tables.values() {
-            conn.execute(&format!("TRUNCATE TABLE {}", table.qualified_name))?;
+            sql_query(&format!("TRUNCATE TABLE {}", table.qualified_name)).execute(conn)?;
         }
         Ok(StoreEvent::new(vec![]))
     }
@@ -821,7 +822,7 @@ impl Layout {
     /// remain
     pub fn revert_block(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<(StoreEvent, i32), StoreError> {
         let mut changes: Vec<EntityChange> = Vec::new();
@@ -830,10 +831,10 @@ impl Layout {
         for table in self.tables.values() {
             // Remove all versions whose entire block range lies beyond
             // `block`
-            let removed = RevertRemoveQuery::new(table, block)
-                .get_results(conn)?
+            let removed: HashSet<_> = RevertRemoveQuery::new(table, block)
+                .get_results::<ReturnedEntityData>(conn)?
                 .into_iter()
-                .collect::<HashSet<_>>();
+                .collect();
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
             // deleted at `block`
@@ -878,7 +879,7 @@ impl Layout {
     /// For metadata, reversion always means deletion since the metadata that
     /// is subject to reversion is only ever created but never updated
     pub fn revert_metadata(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
@@ -905,7 +906,7 @@ impl Layout {
     /// `Layout` in case changes were made
     fn refresh(
         self: Arc<Self>,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
@@ -935,7 +936,7 @@ impl Layout {
 
     pub(crate) fn block_time(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<Option<BlockTime>, StoreError> {
         let block_time_name = self.input_schema.poi_block_time();
@@ -1016,7 +1017,7 @@ impl Layout {
     /// numbers and block times which we do not have anywhere in graph-node.
     pub(crate) fn rollup(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         last_rollup: Option<BlockTime>,
         block_times: &[(BlockNumber, BlockTime)],
     ) -> Result<(), StoreError> {
@@ -1120,6 +1121,22 @@ impl From<IdType> for ColumnType {
             IdType::Bytes => ColumnType::Bytes,
             IdType::String => ColumnType::String,
             IdType::Int8 => ColumnType::Int8,
+        }
+    }
+}
+
+impl std::fmt::Display for ColumnType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ColumnType::Boolean => write!(f, "Boolean"),
+            ColumnType::BigDecimal => write!(f, "BigDecimal"),
+            ColumnType::BigInt => write!(f, "BigInt"),
+            ColumnType::Bytes => write!(f, "Bytes"),
+            ColumnType::Int => write!(f, "Int"),
+            ColumnType::Int8 => write!(f, "Int8"),
+            ColumnType::String => write!(f, "String"),
+            ColumnType::TSVector(_) => write!(f, "TSVector"),
+            ColumnType::Enum(enum_type) => write!(f, "Enum({})", enum_type.name),
         }
     }
 }
@@ -1502,10 +1519,10 @@ impl Table {
             .expect("every table has a primary key")
     }
 
-    pub(crate) fn analyze(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    pub(crate) fn analyze(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let table_name = &self.qualified_name;
         let sql = format!("analyze (skip_locked) {table_name}");
-        conn.execute(&sql)?;
+        sql_query(&sql).execute(conn)?;
         Ok(())
     }
 
@@ -1545,7 +1562,7 @@ impl LayoutCache {
         }
     }
 
-    fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+    fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
         let has_causality_region =
             deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
@@ -1581,7 +1598,7 @@ impl LayoutCache {
     pub fn get(
         &self,
         logger: &Logger,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
         let now = Instant::now();

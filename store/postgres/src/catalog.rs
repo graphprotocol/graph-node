@@ -126,7 +126,7 @@ pub struct Locale {
 
 impl Locale {
     /// Load locale information for current database
-    pub fn load(conn: &PgConnection) -> Result<Locale, StoreError> {
+    pub fn load(conn: &mut PgConnection) -> Result<Locale, StoreError> {
         use diesel::dsl::sql;
         use pg_database as db;
 
@@ -191,7 +191,7 @@ pub struct Catalog {
 impl Catalog {
     /// Load the catalog for an existing subgraph
     pub fn load(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         use_bytea_prefix: bool,
         entities_with_causality_region: Vec<EntityType>,
@@ -212,7 +212,7 @@ impl Catalog {
 
     /// Return a new catalog suitable for creating a new subgraph
     pub fn for_creation(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Self, StoreError> {
@@ -272,7 +272,7 @@ impl Catalog {
 }
 
 fn get_text_columns(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<HashMap<String, HashSet<String>>, StoreError> {
     const QUERY: &str = "
@@ -282,9 +282,9 @@ fn get_text_columns(
 
     #[derive(Debug, QueryableByName)]
     struct Column {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub table_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub column_name: String,
     }
 
@@ -302,13 +302,13 @@ fn get_text_columns(
 }
 
 pub fn table_exists(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     namespace: &str,
     table: &SqlName,
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
     struct Table {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         #[allow(dead_code)]
         pub table_name: String,
     }
@@ -322,7 +322,7 @@ pub fn table_exists(
 }
 
 pub fn supports_proof_of_indexing(
-    conn: &diesel::pg::PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
     lazy_static! {
@@ -331,10 +331,10 @@ pub fn supports_proof_of_indexing(
     table_exists(conn, namespace.as_str(), &POI_TABLE_NAME)
 }
 
-pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
+pub fn current_servers(conn: &mut PgConnection) -> Result<Vec<String>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         srvname: String,
     }
     Ok(sql_query("select srvname from pg_foreign_server")
@@ -347,12 +347,12 @@ pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
 /// Return the options for the foreign server `name` as a map of option
 /// names to values
 pub fn server_options(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     name: &str,
 ) -> Result<HashMap<String, Option<String>>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
-        #[sql_type = "Array<Text>"]
+        #[diesel(sql_type = Array<Text>)]
         srvoptions: Vec<String>,
     }
     let entries = sql_query("select srvoptions from pg_foreign_server where srvname = $1")
@@ -370,7 +370,7 @@ pub fn server_options(
     Ok(HashMap::from_iter(entries))
 }
 
-pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {
+pub fn has_namespace(conn: &mut PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {
     use pg_namespace as nsp;
 
     Ok(select(diesel::dsl::exists(
@@ -383,7 +383,7 @@ pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool,
 /// another database. If the schema does not exist, or is not a foreign
 /// schema, do nothing. This crucially depends on the fact that we never mix
 /// foreign and local tables in the same schema.
-pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreError> {
+pub fn drop_foreign_schema(conn: &mut PgConnection, src: &Site) -> Result<(), StoreError> {
     use foreign_tables as ft;
 
     let is_foreign = select(diesel::dsl::exists(
@@ -400,7 +400,7 @@ pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreE
 
 /// Drop the schema `nsp` and all its contents if it exists, and create it
 /// again so that `nsp` is an empty schema
-pub fn recreate_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
+pub fn recreate_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
     let query = format!(
         "drop schema if exists {nsp} cascade;\
          create schema {nsp};",
@@ -410,12 +410,12 @@ pub fn recreate_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError>
 }
 
 /// Drop the schema `nsp` and all its contents if it exists
-pub fn drop_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
+pub fn drop_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
     let query = format!("drop schema if exists {nsp} cascade;", nsp = nsp);
     Ok(conn.batch_execute(&query)?)
 }
 
-pub fn migration_count(conn: &PgConnection) -> Result<usize, StoreError> {
+pub fn migration_count(conn: &mut PgConnection) -> Result<usize, StoreError> {
     use __diesel_schema_migrations as m;
 
     if !table_exists(conn, NAMESPACE_PUBLIC, &MIGRATIONS_TABLE)? {
@@ -429,7 +429,7 @@ pub fn migration_count(conn: &PgConnection) -> Result<usize, StoreError> {
         .map_err(StoreError::from)
 }
 
-pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
+pub fn account_like(conn: &mut PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
     use table_stats as ts;
     let names = ts::table
         .filter(ts::deployment.eq(site.id))
@@ -450,7 +450,7 @@ pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>,
 }
 
 pub fn set_account_like(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     table_name: &SqlName,
     is_account_like: bool,
@@ -469,7 +469,11 @@ pub fn set_account_like(
     Ok(())
 }
 
-pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize, StoreError> {
+pub fn copy_account_like(
+    conn: &mut PgConnection,
+    src: &Site,
+    dst: &Site,
+) -> Result<usize, StoreError> {
     let src_nsp = ForeignServer::metadata_schema_in(&src.shard, &dst.shard);
     let query = format!(
         "insert into subgraphs.table_stats(deployment, table_name, is_account_like, last_pruned_block)
@@ -485,7 +489,7 @@ pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<
 }
 
 pub fn set_last_pruned_block(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     table_name: &SqlName,
     last_pruned_block: BlockNumber,
@@ -517,15 +521,15 @@ pub(crate) mod table_schema {
 
     #[derive(QueryableByName)]
     struct ColumnInfo {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         column_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         data_type: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         udt_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         udt_schema: String,
-        #[sql_type = "Nullable<Text>"]
+        #[diesel(sql_type = Nullable<Text>)]
         elem_type: Option<String>,
     }
 
@@ -549,7 +553,7 @@ pub(crate) mod table_schema {
     }
 
     pub fn columns(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         nsp: &str,
         table_name: &str,
     ) -> Result<Vec<Column>, StoreError> {
@@ -578,7 +582,7 @@ pub(crate) mod table_schema {
 /// `{dst_nsp}.{table_name}` for the server `server` which has the same
 /// schema as the (local) table `{src_nsp}.{table_name}`
 pub fn create_foreign_table(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     src_nsp: &str,
     table_name: &str,
     dst_nsp: &str,
@@ -624,13 +628,13 @@ pub fn create_foreign_table(
 
 /// Checks in the database if a given index is valid.
 pub(crate) fn check_index_is_valid(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     schema_name: &str,
     index_name: &str,
 ) -> Result<bool, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct ManualIndexCheck {
-        #[sql_type = "Bool"]
+        #[diesel(sql_type = Bool)]
         is_valid: bool,
     }
 
@@ -655,14 +659,14 @@ pub(crate) fn check_index_is_valid(
 }
 
 pub(crate) fn indexes_for_table(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     schema_name: &str,
     table_name: &str,
 ) -> Result<Vec<String>, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct IndexName {
-        #[sql_type = "Text"]
-        #[column_name = "indexdef"]
+        #[diesel(sql_type = Text)]
+        #[diesel(column_name = indexdef)]
         def: String,
     }
 
@@ -684,7 +688,7 @@ pub(crate) fn indexes_for_table(
     Ok(results.into_iter().map(|i| i.def).collect())
 }
 pub(crate) fn drop_index(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     schema_name: &str,
     index_name: &str,
 ) -> Result<(), StoreError> {
@@ -697,19 +701,19 @@ pub(crate) fn drop_index(
     Ok(())
 }
 
-pub fn stats(conn: &PgConnection, site: &Site) -> Result<Vec<VersionStats>, StoreError> {
+pub fn stats(conn: &mut PgConnection, site: &Site) -> Result<Vec<VersionStats>, StoreError> {
     #[derive(Queryable, QueryableByName)]
     pub struct DbStats {
-        #[sql_type = "BigInt"]
+        #[diesel(sql_type = BigInt)]
         pub entities: i64,
-        #[sql_type = "BigInt"]
+        #[diesel(sql_type = BigInt)]
         pub versions: i64,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub tablename: String,
         /// The ratio `entities / versions`
-        #[sql_type = "Double"]
+        #[diesel(sql_type = Double)]
         pub ratio: f64,
-        #[sql_type = "Nullable<Integer>"]
+        #[diesel(sql_type = Nullable<Integer>)]
         pub last_pruned_block: Option<i32>,
     }
 
@@ -764,10 +768,10 @@ pub fn stats(conn: &PgConnection, site: &Site) -> Result<Vec<VersionStats>, Stor
 /// Return by how much the slowest replica connected to the database `conn`
 /// is lagging. The returned value has millisecond precision. If the
 /// database has no replicas, return `0`
-pub(crate) fn replication_lag(conn: &PgConnection) -> Result<Duration, StoreError> {
+pub(crate) fn replication_lag(conn: &mut PgConnection) -> Result<Duration, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct Lag {
-        #[sql_type = "Nullable<Integer>"]
+        #[diesel(sql_type = Nullable<Integer>)]
         ms: Option<i32>,
     }
 
@@ -785,7 +789,10 @@ pub(crate) fn replication_lag(conn: &PgConnection) -> Result<Duration, StoreErro
     Ok(Duration::from_millis(lag))
 }
 
-pub(crate) fn cancel_vacuum(conn: &PgConnection, namespace: &Namespace) -> Result<(), StoreError> {
+pub(crate) fn cancel_vacuum(
+    conn: &mut PgConnection,
+    namespace: &Namespace,
+) -> Result<(), StoreError> {
     sql_query(
         "select pg_cancel_backend(v.pid) \
            from pg_stat_progress_vacuum v, \
@@ -800,10 +807,10 @@ pub(crate) fn cancel_vacuum(conn: &PgConnection, namespace: &Namespace) -> Resul
     Ok(())
 }
 
-pub(crate) fn default_stats_target(conn: &PgConnection) -> Result<i32, StoreError> {
+pub(crate) fn default_stats_target(conn: &mut PgConnection) -> Result<i32, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct Target {
-        #[sql_type = "Integer"]
+        #[diesel(sql_type = Integer)]
         setting: i32,
     }
 
@@ -814,7 +821,7 @@ pub(crate) fn default_stats_target(conn: &PgConnection) -> Result<i32, StoreErro
 }
 
 pub(crate) fn stats_targets(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<BTreeMap<SqlName, BTreeMap<SqlName, i32>>, StoreError> {
     use pg_attribute as a;
@@ -843,7 +850,7 @@ pub(crate) fn stats_targets(
 }
 
 pub(crate) fn set_stats_target(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
     table: &SqlName,
     columns: &[&SqlName],
@@ -864,7 +871,7 @@ pub(crate) fn set_stats_target(
 /// daemon](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM)
 /// uses
 pub(crate) fn needs_autoanalyze(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<Vec<SqlName>, StoreError> {
     const QUERY: &str = "select relname \
@@ -875,7 +882,7 @@ pub(crate) fn needs_autoanalyze(
 
     #[derive(Queryable, QueryableByName)]
     struct TableName {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         name: SqlName,
     }
 
@@ -891,14 +898,14 @@ pub(crate) fn needs_autoanalyze(
 
 /// Check whether the database for `conn` supports the `minmax_multi_ops`
 /// introduced in Postgres 14
-fn has_minmax_multi_ops(conn: &PgConnection) -> Result<bool, StoreError> {
+fn has_minmax_multi_ops(conn: &mut PgConnection) -> Result<bool, StoreError> {
     const QUERY: &str = "select count(*) = 2 as has_ops \
                            from pg_opclass \
                           where opcname in('int8_minmax_multi_ops', 'int4_minmax_multi_ops')";
 
     #[derive(Queryable, QueryableByName)]
     struct Ops {
-        #[sql_type = "Bool"]
+        #[diesel(sql_type = Bool)]
         has_ops: bool,
     }
 

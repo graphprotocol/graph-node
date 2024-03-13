@@ -1,14 +1,12 @@
 use crate::prelude::{q, s, CacheWeight};
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 use diesel::pg::Pg;
-use diesel::serialize::{self, Output};
+use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::types::ToSql;
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
-use std::io::Write;
 use std::iter::FromIterator;
 
 /// An immutable string that is more memory-efficient since it only has an
@@ -74,8 +72,8 @@ impl<'de> serde::Deserialize<'de> for Word {
 }
 
 impl ToSql<Text, Pg> for Word {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        <str as ToSql<Text, Pg>>::to_sql(&self.0, out)
+    fn to_sql(&self, out: &mut Output<Pg>) -> serialize::Result {
+        <str as ToSql<Text, Pg>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 

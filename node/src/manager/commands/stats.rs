@@ -23,8 +23,8 @@ fn site_and_conn(
     let primary_pool = pools.get(&*PRIMARY_SHARD).unwrap();
     let locator = search.locate_unique(primary_pool)?;
 
-    let conn = primary_pool.get()?;
-    let conn = store_catalog::Connection::new(conn);
+    let pconn = primary_pool.get()?;
+    let mut conn = store_catalog::Connection::new(pconn);
 
     let site = conn
         .locate_site(locator)?
@@ -106,11 +106,11 @@ pub fn show(
     pools: HashMap<Shard, ConnectionPool>,
     search: &DeploymentSearch,
 ) -> Result<(), anyhow::Error> {
-    let (site, conn) = site_and_conn(pools, search)?;
+    let (site, mut conn) = site_and_conn(pools, search)?;
 
-    let stats = store_catalog::stats(&conn, &site)?;
+    let stats = store_catalog::stats(&mut conn, &site)?;
 
-    let account_like = store_catalog::account_like(&conn, &site)?;
+    let account_like = store_catalog::account_like(&mut conn, &site)?;
 
     show_stats(stats.as_slice(), account_like)
 }
