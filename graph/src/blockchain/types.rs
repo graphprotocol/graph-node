@@ -1,14 +1,12 @@
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
+use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
-use diesel::serialize::Output;
+use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Timestamptz;
 use diesel::sql_types::{Bytea, Nullable, Text};
-use diesel::types::FromSql;
-use diesel::types::ToSql;
-use diesel_derives::{AsExpression, FromSqlRow};
+use diesel_derives::FromSqlRow;
 use std::convert::TryFrom;
-use std::io::Write;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
@@ -20,7 +18,7 @@ use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Default, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow)]
 pub struct BlockHash(pub Box<[u8]>);
 
 impl_stable_hash!(BlockHash(transparent: AsBytes));
@@ -95,7 +93,7 @@ impl FromStr for BlockHash {
 }
 
 impl FromSql<Nullable<Text>, Pg> for BlockHash {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         BlockHash::try_from(s.as_str())
             .map_err(|e| format!("invalid block hash `{}`: {}", s, e).into())
@@ -103,7 +101,7 @@ impl FromSql<Nullable<Text>, Pg> for BlockHash {
 }
 
 impl FromSql<Text, Pg> for BlockHash {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         BlockHash::try_from(s.as_str())
             .map_err(|e| format!("invalid block hash `{}`: {}", s, e).into())
@@ -111,7 +109,7 @@ impl FromSql<Text, Pg> for BlockHash {
 }
 
 impl FromSql<Bytea, Pg> for BlockHash {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let bytes = <Vec<u8> as FromSql<Bytea, Pg>>::from_sql(bytes)?;
         Ok(BlockHash::from(bytes))
     }
@@ -396,7 +394,7 @@ impl TryFrom<&Value> for BlockTime {
 }
 
 impl ToSql<Timestamptz, Pg> for BlockTime {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <DateTime<Utc> as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
     }
 }

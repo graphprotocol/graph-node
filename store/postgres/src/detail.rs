@@ -2,7 +2,7 @@
 //!
 // For git_testament_macros
 #![allow(unused_macros)]
-use diesel::dsl;
+use diesel::dsl::sql;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl,
@@ -39,7 +39,7 @@ const CARGO_PKG_VERSION_PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
 type Bytes = Vec<u8>;
 
 #[derive(Queryable, QueryableByName)]
-#[table_name = "subgraph_deployment"]
+#[diesel(table_name = subgraph_deployment)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
@@ -69,7 +69,7 @@ pub struct DeploymentDetail {
 }
 
 #[derive(Queryable, QueryableByName)]
-#[table_name = "subgraph_error"]
+#[diesel(table_name = subgraph_error)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
@@ -88,7 +88,7 @@ impl ErrorDetail {
     /// Fetches the fatal error, if present, associated with the given
     /// [`DeploymentHash`].
     pub fn fatal(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         deployment_id: &DeploymentHash,
     ) -> Result<Option<Self>, StoreError> {
         use subgraph_deployment as d;
@@ -254,7 +254,7 @@ pub(crate) fn info_from_details(
 
 /// Return the details for `deployments`
 pub(crate) fn deployment_details(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     deployments: Vec<String>,
 ) -> Result<Vec<DeploymentDetail>, StoreError> {
     use subgraph_deployment as d;
@@ -271,7 +271,7 @@ pub(crate) fn deployment_details(
 }
 
 pub(crate) fn deployment_statuses(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     sites: &[Arc<Site>],
 ) -> Result<Vec<status::Info>, StoreError> {
     use subgraph_deployment as d;
@@ -299,7 +299,9 @@ pub(crate) fn deployment_statuses(
     };
 
     let mut non_fatal_errors = {
-        let join = e::table.on(e::id.eq(dsl::any(d::non_fatal_errors)));
+        #[allow(deprecated)]
+        let join =
+            e::table.on(e::id.eq(sql("any(subgraphs.subgraph_deployment.non_fatal_errors)")));
 
         if sites.is_empty() {
             d::table
@@ -343,8 +345,8 @@ pub(crate) fn deployment_statuses(
 }
 
 #[derive(Queryable, QueryableByName, Identifiable, Associations)]
-#[table_name = "subgraph_manifest"]
-#[belongs_to(GraphNodeVersion)]
+#[diesel(table_name = subgraph_manifest)]
+#[diesel(belongs_to(GraphNodeVersion))]
 // We never read the id field but map it to make the interaction with Diesel
 // simpler
 #[allow(dead_code)]
@@ -451,7 +453,7 @@ impl StoredDeploymentEntity {
 }
 
 pub fn deployment_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     schema: &InputSchema,
 ) -> Result<SubgraphDeploymentEntity, StoreError> {
@@ -470,7 +472,7 @@ pub fn deployment_entity(
 }
 
 #[derive(Queryable, Identifiable, Insertable)]
-#[table_name = "graph_node_versions"]
+#[diesel(table_name = graph_node_versions)]
 pub struct GraphNodeVersion {
     pub id: i32,
     pub git_commit_hash: String,
@@ -482,7 +484,7 @@ pub struct GraphNodeVersion {
 }
 
 impl GraphNodeVersion {
-    pub(crate) fn create_or_get(conn: &PgConnection) -> anyhow::Result<i32> {
+    pub(crate) fn create_or_get(conn: &mut PgConnection) -> anyhow::Result<i32> {
         let git_commit_hash = version_commit_hash!();
         let git_repository_dirty = !&TESTAMENT.modifications.is_empty();
         let crate_version = CARGO_PKG_VERSION;

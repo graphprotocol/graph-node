@@ -98,11 +98,11 @@ pub mod primary {
         }
     }
 
-    pub fn load_chains(conn: &PgConnection) -> Result<Vec<Chain>, StoreError> {
+    pub fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
         Ok(chains::table.load(conn)?)
     }
 
-    pub fn find_chain(conn: &PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
+    pub fn find_chain(conn: &mut PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
         Ok(chains::table
             .filter(chains::name.eq(name))
             .first(conn)
@@ -110,7 +110,7 @@ pub mod primary {
     }
 
     pub fn add_chain(
-        conn: &PooledConnection<ConnectionManager<PgConnection>>,
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
         name: &str,
         ident: &ChainIdentifier,
         shard: &Shard,
@@ -147,15 +147,15 @@ pub mod primary {
     }
 
     pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
-        delete(chains::table.filter(chains::name.eq(name))).execute(&conn)?;
+        delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
         Ok(())
     }
 
     // update chain name where chain name is 'name'
     pub fn update_chain_name(
-        conn: &PooledConnection<ConnectionManager<PgConnection>>,
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
         name: &str,
         new_name: &str,
     ) -> Result<(), StoreError> {
@@ -302,8 +302,8 @@ impl BlockStore {
                     block_store.add_chain_store(chain, status, false)?;
                 }
                 None => {
-                    let conn = block_store.mirror.primary().get()?;
-                    let chain = primary::add_chain(&conn, &chain_name, &ident, &shard)?;
+                    let mut conn = block_store.mirror.primary().get()?;
+                    let chain = primary::add_chain(&mut conn, &chain_name, &ident, &shard)?;
                     block_store.add_chain_store(&chain, ChainStatus::Ingestible, true)?;
                 }
             };
@@ -336,14 +336,14 @@ impl BlockStore {
     }
 
     pub fn allocate_chain(
-        conn: &PooledConnection<ConnectionManager<PgConnection>>,
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
         name: &String,
         shard: &Shard,
         ident: &ChainIdentifier,
     ) -> Result<Chain, StoreError> {
         #[derive(QueryableByName, Debug)]
         struct ChainIdSeq {
-            #[sql_type = "diesel::sql_types::BigInt"]
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
             last_value: i64,
         }
 
@@ -419,12 +419,12 @@ impl BlockStore {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
                 Some(cached) => cached,
                 None => {
-                    let conn = match pool.get() {
+                    let mut conn = match pool.get() {
                         Ok(conn) => conn,
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
                     };
-                    let heads = Arc::new(ChainStore::chain_head_pointers(&conn)?);
+                    let heads = Arc::new(ChainStore::chain_head_pointers(&mut conn)?);
                     self.chain_head_cache.set(shard.to_string(), heads.clone());
                     heads
                 }
@@ -543,13 +543,13 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let connection = primary_pool.get()?;
-        let version: i64 = dbv::table.select(dbv::version).get_result(&connection)?;
+        let mut conn = primary_pool.get()?;
+        let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
         if version < 3 {
             self.truncate_block_caches()?;
             diesel::update(dbv::table)
                 .set(dbv::version.eq(3))
-                .execute(&connection)?;
+                .execute(&mut conn)?;
         };
         Ok(())
     }

@@ -265,7 +265,7 @@ impl Rollup {
 
     pub(crate) fn insert(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         bucket: &Range<BlockTime>,
         block: BlockNumber,
     ) -> Result<usize, diesel::result::Error> {

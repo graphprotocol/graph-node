@@ -13,7 +13,7 @@ use graph::{
 };
 
 pub fn load(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,
@@ -25,7 +25,7 @@ pub fn load(
 }
 
 pub(crate) fn insert(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     data_sources: &write::DataSources,
     manifest_idx_and_name: &[(u32, String)],
@@ -37,7 +37,7 @@ pub(crate) fn insert(
 }
 
 pub(crate) fn revert(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -48,7 +48,7 @@ pub(crate) fn revert(
 }
 
 pub(crate) fn update_offchain_status(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     data_sources: &write::DataSources,
 ) -> Result<(), StoreError> {
@@ -68,7 +68,7 @@ pub(crate) fn update_offchain_status(
 
 /// The maximum assigned causality region. Any higher number is therefore free to be assigned.
 pub(crate) fn causality_region_curr_val(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
 ) -> Result<Option<CausalityRegion>, StoreError> {
     match site.schema_version.private_data_sources() {

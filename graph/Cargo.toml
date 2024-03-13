@@ -8,17 +8,14 @@ anyhow = "1.0"
 async-trait = "0.1.74"
 async-stream = "0.3"
 atomic_refcell = "0.1.13"
-bigdecimal = { version = "0.1.0", features = ["serde"] }
+# Make sure no newer version of bigdecmal library is used in diesel dependencies reflected in the Cargo.lock file.
+# Automatic reneratiion of the Cargo.lock file would break compilation as only diesel dependencies would be updated.
+# Using a higher version of bigdecimal in complete graph-node project would change the PoI, hence break the consensus.
+bigdecimal = { version = "=0.1.2", features = ["serde"] }
 bytes = "1.0.1"
 cid = "0.11.0"
-diesel = { version = "1.4.8", features = [
-    "postgres",
-    "serde_json",
-    "numeric",
-    "r2d2",
-    "chrono",
-] }
-diesel_derives = "1.4"
+diesel = { workspace = true }
+diesel_derives = { workspace = true }
 chrono = "0.4.31"
 envconfig = "0.10.0"
 Inflector = "0.11.3"
@@ -32,7 +29,7 @@ lru_time_cache = "0.11"
 graphql-parser = "0.4.0"
 humantime = "2.1.0"
 lazy_static = "1.4.0"
-num-bigint = { version = "^0.2.6", features = ["serde"] }
+num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-traits = "=0.2.17"
 rand = "0.8.4"
 regex = "1.5.4"
