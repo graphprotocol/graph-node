@@ -188,9 +188,9 @@ pub struct EnvVars {
     pub subgraph_settings: Option<String>,
     /// Whether to prefer substreams blocks streams over firehose when available.
     pub prefer_substreams_block_streams: bool,
-    /// Set by the flag `GRAPH_ENABLE_GAS_METRICS`. Whether to enable
+    /// Set by the flag `GRAPH_ENABLE_DIPS_METRICS`. Whether to enable
     /// gas metrics. Off by default.
-    pub enable_gas_metrics: bool,
+    pub enable_dips_metrics: bool,
     /// Set by the env var `GRAPH_HISTORY_BLOCKS_OVERRIDE`. Defaults to None
     /// Sets an override for the amount history to keep regardless of the
     /// historyBlocks set in the manifest
@@ -199,6 +199,10 @@ pub struct EnvVars {
     /// The amount of history to keep when using 'min' historyBlocks
     /// in the manifest
     pub min_history_blocks: BlockNumber,
+
+    /// Set by the env var `dips_metrics_object_store_url`
+    /// The name of the object store bucket to store DIPS metrics
+    pub dips_metrics_object_store_url: Option<String>,
 }
 
 impl EnvVars {
@@ -263,11 +267,12 @@ impl EnvVars {
             ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
-            enable_gas_metrics: inner.enable_gas_metrics.0,
+            enable_dips_metrics: inner.enable_dips_metrics.0,
             history_blocks_override: inner.history_blocks_override,
             min_history_blocks: inner
                 .min_history_blocks
                 .unwrap_or(2 * inner.reorg_threshold),
+            dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
         })
     }
 
@@ -399,12 +404,14 @@ struct Inner {
         default = "false"
     )]
     prefer_substreams_block_streams: bool,
-    #[envconfig(from = "GRAPH_ENABLE_GAS_METRICS", default = "false")]
-    enable_gas_metrics: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_ENABLE_DIPS_METRICS", default = "false")]
+    enable_dips_metrics: EnvVarBoolean,
     #[envconfig(from = "GRAPH_HISTORY_BLOCKS_OVERRIDE")]
     history_blocks_override: Option<BlockNumber>,
     #[envconfig(from = "GRAPH_MIN_HISTORY_BLOCKS")]
     min_history_blocks: Option<BlockNumber>,
+    #[envconfig(from = "GRAPH_DIPS_METRICS_OBJECT_STORE_URL")]
+    dips_metrics_object_store_url: Option<String>,
 }
 
 #[derive(Clone, Debug)]

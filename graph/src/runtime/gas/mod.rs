@@ -101,7 +101,7 @@ impl GasCounter {
         amount += costs::HOST_EXPORT_GAS;
 
         // If gas metrics are enabled, track the gas used
-        if ENV_VARS.enable_gas_metrics {
+        if ENV_VARS.enable_dips_metrics {
             if let Some(method) = method {
                 self.metrics.track_gas(method, amount.0);
                 self.metrics.track_operations(method, 1);
