@@ -320,12 +320,6 @@ lazy_static! {
             "json_typeof", // Returns the type of the top-level JSON value as a text string.
             "jsonb_typeof", // Returns the type of the top-level JSONB value as a text string.
 
-            // Sequence manipulation functions https://www.postgresql.org/docs/14/functions-sequence.html#FUNCTIONS-SEQUENCE-TABLE
-            "nextval", // Advance sequence and return new value
-            "setval", // Set sequence's current value
-            "currval", // Return value most recently obtained with nextval
-            "lastval", // Return value most recently obtained with nextval
-
             // Conditional Expressions hhttps://www.postgresql.org/docs/14/functions-conditional.html
             "coalesce", // Return first non-null argument.
             "nullif", // Return null if two arguments are equal, otherwise return the first argument.
@@ -520,7 +514,7 @@ lazy_static! {
             "pg_ts_template_is_visible", // Is text search template visible in search path?
             "pg_type_is_visible", // Is type (or domain) visible in search path?
 
-        // System Catalog Information Functions https://www.postgresql.org/docs/14/functions-info.html#FUNCTIONS-INFO-CATALOG-TABLE
+            // System Catalog Information Functions https://www.postgresql.org/docs/14/functions-info.html#FUNCTIONS-INFO-CATALOG-TABLE
             "format_type", // Returns the SQL name of a data type that is identified by its type OID and possibly a type modifier.
             "pg_get_catalog_foreign_keys", // Returns a set of records describing the foreign key relationships that exist within the PostgreSQL system catalogs.
             "pg_get_constraintdef", // Returns the definition of a constraint.
@@ -719,6 +713,12 @@ lazy_static! {
             "pg_event_trigger_ddl_commands", // Returns the list of DDL commands executed by the current command.
             "pg_event_trigger_table_rewrite_oid", // Returns the OID of the table that is being rewritten by the current command.
             "pg_event_trigger_table_rewrite_reason", // Returns the reason why the current command is rewriting a table.
+
+            // Sequence manipulation functions https://www.postgresql.org/docs/14/functions-sequence.html#FUNCTIONS-SEQUENCE-TABLE
+            "nextval", // Advance sequence and return new value
+            "setval", // Set sequence's current value
+            "currval", // Return value most recently obtained with nextval
+            "lastval", // Return value most recently obtained with nextval
 
         ].into_iter().collect()
     };

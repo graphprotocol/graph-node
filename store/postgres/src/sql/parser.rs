@@ -13,6 +13,12 @@ pub fn generate_table_prelude_from_layout(layout: &Layout) -> String {
         .map(|(_, table)| {
             let table_name = table.name.as_str();
 
+            let mut block_column = "block_range";
+
+            if table.immutable {
+                block_column = "block$";
+            }
+
             let columns = table
                 .columns
                 .iter()
@@ -27,6 +33,7 @@ pub fn generate_table_prelude_from_layout(layout: &Layout) -> String {
                         col.name.to_string()
                     }
                 })
+                .chain(std::iter::once(block_column.to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{table_name} AS (SELECT {columns} FROM {schema}.{table_name})",)
