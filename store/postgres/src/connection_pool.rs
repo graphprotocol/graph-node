@@ -795,7 +795,8 @@ impl PoolInner {
             builder.build_unchecked(conn_manager)
         });
 
-        let limiter = Arc::new(Semaphore::new(pool_size as usize));
+        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
+        let limiter = Arc::new(Semaphore::new(max_concurrent_queries));
         info!(logger_store, "Pool successfully connected to Postgres");
 
         let semaphore_wait_gauge = registry
@@ -805,7 +806,6 @@ impl PoolInner {
                 const_labels,
             )
             .expect("failed to create `query_effort_ms` counter");
-        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,
