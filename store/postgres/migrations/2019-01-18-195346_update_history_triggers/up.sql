@@ -3,7 +3,7 @@
 *
 * History trigger functions have been updated to store the row
 * level operation type (insert, update, or delete). Now the op_id
-* is stored in the the entity_history table (moved from event_meta_data).
+* is stored in the entity_history table (moved from event_meta_data).
 *
 * The history triggers and trigger functions have been consolidated
 * to a single function for all operations with logic to store the

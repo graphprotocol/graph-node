@@ -3,7 +3,7 @@
 *
 * History trigger functions have been updated to store the row
 * level operation type (insert, update, or delete). Now it
-* is stored in the the entity_history table (moved from event_meta_data).
+* is stored in the entity_history table (moved from event_meta_data).
 *
 * Several of the revert functions have been updated to reflect the data
 * restructuring: revert transaction, revert_transaction_group, and rerun_entity.
