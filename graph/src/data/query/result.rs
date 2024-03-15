@@ -1,4 +1,6 @@
 use super::error::{QueryError, QueryExecutionError};
+use super::trace::TRACE_NONE;
+use crate::cheap_clone::CheapClone;
 use crate::data::value::Object;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http::header::{
@@ -47,12 +49,14 @@ pub type Data = Object;
 /// A collection of query results that is serialized as a single result.
 pub struct QueryResults {
     results: Vec<Arc<QueryResult>>,
+    pub trace: Trace,
 }
 
 impl QueryResults {
-    pub fn empty() -> Self {
+    pub fn empty(trace: Trace) -> Self {
         QueryResults {
             results: Vec::new(),
+            trace,
         }
     }
 
@@ -75,10 +79,6 @@ impl QueryResults {
             .next()
     }
 
-    pub fn traces(&self) -> Vec<&Trace> {
-        self.results.iter().map(|res| &res.trace).collect()
-    }
-
     pub fn errors(&self) -> Vec<QueryError> {
         self.results.iter().flat_map(|r| r.errors.clone()).collect()
     }
@@ -95,14 +95,7 @@ impl Serialize for QueryResults {
         if has_errors {
             len += 1;
         }
-        let first_trace = self
-            .results
-            .iter()
-            .find(|r| !r.trace.is_none())
-            .map(|r| &r.trace);
-        if first_trace.is_some() {
-            len += 1;
-        }
+        len += 1;
         let mut state = serializer.serialize_struct("QueryResults", len)?;
 
         // Serialize data.
@@ -138,8 +131,8 @@ impl Serialize for QueryResults {
             state.serialize_field("errors", &SerError(self))?;
         }
 
-        if let Some(trace) = first_trace {
-            state.serialize_field("trace", trace)?;
+        if !self.trace.is_none() {
+            state.serialize_field("trace", &self.trace)?;
         }
         state.end()
     }
@@ -149,6 +142,7 @@ impl From<Data> for QueryResults {
     fn from(x: Data) -> Self {
         QueryResults {
             results: vec![Arc::new(x.into())],
+            trace: Trace::None,
         }
     }
 }
@@ -157,13 +151,17 @@ impl From<QueryResult> for QueryResults {
     fn from(x: QueryResult) -> Self {
         QueryResults {
             results: vec![Arc::new(x)],
+            trace: Trace::None,
         }
     }
 }
 
 impl From<Arc<QueryResult>> for QueryResults {
     fn from(x: Arc<QueryResult>) -> Self {
-        QueryResults { results: vec![x] }
+        QueryResults {
+            results: vec![x],
+            trace: Trace::None,
+        }
     }
 }
 
@@ -171,6 +169,7 @@ impl From<QueryExecutionError> for QueryResults {
     fn from(x: QueryExecutionError) -> Self {
         QueryResults {
             results: vec![Arc::new(x.into())],
+            trace: Trace::None,
         }
     }
 }
@@ -179,12 +178,15 @@ impl From<Vec<QueryExecutionError>> for QueryResults {
     fn from(x: Vec<QueryExecutionError>) -> Self {
         QueryResults {
             results: vec![Arc::new(x.into())],
+            trace: Trace::None,
         }
     }
 }
 
 impl QueryResults {
     pub fn append(&mut self, other: Arc<QueryResult>) {
+        let trace = other.trace.cheap_clone();
+        self.trace.append(trace);
         self.results.push(other);
     }
 
@@ -222,7 +224,7 @@ pub struct QueryResult {
     #[serde(skip_serializing)]
     pub deployment: Option<DeploymentHash>,
     #[serde(skip_serializing)]
-    pub trace: Trace,
+    pub trace: Arc<Trace>,
 }
 
 impl QueryResult {
@@ -231,7 +233,7 @@ impl QueryResult {
             data: Some(data),
             errors: Vec::new(),
             deployment: None,
-            trace: Trace::None,
+            trace: TRACE_NONE.cheap_clone(),
         }
     }
 
@@ -243,7 +245,7 @@ impl QueryResult {
             data: self.data.clone(),
             errors: self.errors.clone(),
             deployment: self.deployment.clone(),
-            trace: Trace::None,
+            trace: TRACE_NONE.cheap_clone(),
         }
     }
 
@@ -299,7 +301,7 @@ impl From<QueryExecutionError> for QueryResult {
             data: None,
             errors: vec![e.into()],
             deployment: None,
-            trace: Trace::None,
+            trace: TRACE_NONE.cheap_clone(),
         }
     }
 }
@@ -310,7 +312,7 @@ impl From<QueryError> for QueryResult {
             data: None,
             errors: vec![e],
             deployment: None,
-            trace: Trace::None,
+            trace: TRACE_NONE.cheap_clone(),
         }
     }
 }
@@ -321,7 +323,7 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
             data: None,
             errors: e.into_iter().map(QueryError::from).collect(),
             deployment: None,
-            trace: Trace::None,
+            trace: TRACE_NONE.cheap_clone(),
         }
     }
 }
@@ -335,7 +337,7 @@ impl From<Object> for QueryResult {
 impl From<(Object, Trace)> for QueryResult {
     fn from((val, trace): (Object, Trace)) -> Self {
         let mut res = QueryResult::new(val);
-        res.trace = trace;
+        res.trace = Arc::new(trace);
         res
     }
 }
@@ -383,7 +385,8 @@ fn multiple_data_items() {
     let obj1 = make_obj("key1", "value1");
     let obj2 = make_obj("key2", "value2");
 
-    let mut res = QueryResults::empty();
+    let trace = Trace::None;
+    let mut res = QueryResults::empty(trace);
     res.append(obj1);
     res.append(obj2);
 

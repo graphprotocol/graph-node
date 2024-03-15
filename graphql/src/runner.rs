@@ -123,7 +123,7 @@ where
             .unwrap_or(state);
 
         let max_depth = max_depth.unwrap_or(ENV_VARS.graphql.max_depth);
-        let trace = query.trace;
+        let do_trace = query.trace;
         let query = crate::execution::Query::new(
             &self.logger,
             schema,
@@ -144,7 +144,7 @@ where
             .to_result()?;
         let by_block_constraint = query.block_constraint()?;
         let mut max_block = 0;
-        let mut result: QueryResults = QueryResults::empty();
+        let mut result: QueryResults = QueryResults::empty(query.root_trace(do_trace));
         let mut query_res_futures: Vec<_> = vec![];
 
         // Note: This will always iterate at least once.
@@ -172,7 +172,7 @@ where
                     deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
                     max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
-                    trace,
+                    trace: do_trace,
                 },
             ));
         }
