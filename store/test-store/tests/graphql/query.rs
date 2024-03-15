@@ -1,4 +1,5 @@
 use graph::blockchain::{Block, BlockTime};
+use graph::data::query::Trace;
 use graph::data::store::scalar::Timestamp;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::LATEST_VERSION;
@@ -2951,24 +2952,63 @@ fn can_query_with_or_implicit_and_filter() {
 
 #[test]
 fn trace_works() {
-    run_test_sequentially(|store| async move {
-        let deployment = setup_readonly(store.as_ref()).await;
+    const QUERY1: &str = "query { musicians(first: 100) { name } }";
+
+    const QUERY2: &str = r#"
+    query {
+        m0: musicians(first: 100, block: { number: 0 }) { name }
+        m1: musicians(first: 100, block: { number: 1 }) { name }
+    }"#;
+
+    async fn run_query(deployment: &DeploymentLocator, query: &str) -> QueryResults {
         let query = Query::new(
-            graphql_parser::parse_query("query { musicians(first: 100) { name } }")
-                .unwrap()
-                .into_static(),
+            graphql_parser::parse_query(query).unwrap().into_static(),
             None,
             true,
         );
-
-        let result = execute_subgraph_query(
+        execute_subgraph_query(
             query,
-            QueryTarget::Deployment(deployment.hash, Default::default()),
+            QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
         )
-        .await;
+        .await
+    }
+
+    run_test_sequentially(|store| async move {
+        let deployment = setup_readonly(store.as_ref()).await;
+
+        let result = run_query(&deployment, QUERY1).await;
 
         let trace = &result.first().unwrap().trace;
-        assert!(!trace.is_none(), "result has a trace");
+        assert!(!trace.is_none(), "first result has a trace");
+        assert!(!result.trace.is_none(), "results has a trace");
+
+        // Check that with block constraints we get a trace for each block
+        let result = run_query(&deployment, QUERY2).await;
+        use Trace::*;
+        match &result.trace {
+            None => panic!("expected Root got None"),
+            Root { blocks, .. } => {
+                assert_eq!(2, blocks.len());
+                for block in blocks {
+                    match block.as_ref() {
+                        Block {
+                            block, children, ..
+                        } => {
+                            assert!([0, 1].contains(block));
+                            assert_eq!(1, children.len());
+                            assert_eq!(format!("m{}", block), children[0].0);
+                            match &children[0].1 {
+                                Query { .. } => {}
+                                _ => panic!("expected Query got {:?}", children[0]),
+                            }
+                        }
+                        _ => panic!("expected Block got {:?}", block),
+                    }
+                }
+            }
+            Block { .. } => panic!("expected Root got Block"),
+            Query { .. } => panic!("expected Root got Query"),
+        }
     })
 }
 

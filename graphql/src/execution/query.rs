@@ -14,8 +14,8 @@ use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
 use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
-use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
+use graph::data::query::{QueryExecutionError, Trace};
 use graph::prelude::{
     info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, EntityRange, GraphQLMetrics,
     Logger, TryFromValue, ENV_VARS,
@@ -280,6 +280,15 @@ impl Query {
         };
 
         Ok(Arc::new(query))
+    }
+
+    pub fn root_trace(&self, do_trace: bool) -> Trace {
+        Trace::root(
+            &self.query_text,
+            &self.variables_text,
+            &self.query_id,
+            do_trace,
+        )
     }
 
     /// Return the block constraint for the toplevel query field(s), merging

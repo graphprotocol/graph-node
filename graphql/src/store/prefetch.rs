@@ -554,13 +554,7 @@ pub fn run(
 ) -> Result<(r::Value, Trace), Vec<QueryExecutionError>> {
     let loader = Loader::new(resolver, ctx);
 
-    let trace = Trace::root(
-        &ctx.query.query_text,
-        &ctx.query.variables_text,
-        &ctx.query.query_id,
-        resolver.block_number(),
-        ctx.trace,
-    );
+    let trace = Trace::block(resolver.block_number(), ctx.trace);
 
     // Execute the root selection set against the root query type.
     let (nodes, trace) =

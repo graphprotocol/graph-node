@@ -77,13 +77,12 @@ pub async fn run(
     // interesting SQL queries
     if let Some(trace) = trace {
         let mut f = File::create(trace)?;
-        let json = serde_json::to_string(&res.traces())?;
+        let json = serde_json::to_string(&res.trace)?;
         writeln!(f, "{}", json)?;
     }
 
-    for trace in res.traces() {
-        print_brief_trace("root", trace, 0)?;
-    }
+    print_brief_trace("root", &res.trace, 0)?;
+
     Ok(())
 }
 
@@ -93,7 +92,10 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
     fn query_time(trace: &Trace) -> Duration {
         match trace {
             None => Duration::from_millis(0),
-            Root { children, .. } => children.iter().map(|(_, trace)| query_time(trace)).sum(),
+            Root {
+                blocks: children, ..
+            } => children.iter().map(|trace| query_time(trace)).sum(),
+            Block { children, .. } => children.iter().map(|(_, trace)| query_time(trace)).sum(),
             Query {
                 elapsed, children, ..
             } => *elapsed + children.iter().map(|(_, trace)| query_time(trace)).sum(),
@@ -103,6 +105,30 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
     match trace {
         None => { /* do nothing */ }
         Root {
+            elapsed,
+            blocks: children,
+            ..
+        } => {
+            let elapsed = *elapsed.lock().unwrap();
+            let qt = query_time(trace);
+            let pt = elapsed - qt;
+
+            println!(
+                "{space:indent$}{name:rest$} {elapsed:7}ms",
+                space = " ",
+                indent = indent,
+                rest = 48 - indent,
+                name = name,
+                elapsed = elapsed.as_millis(),
+            );
+            for trace in children {
+                print_brief_trace(name, trace, indent + 2)?;
+            }
+            println!("\nquery:      {:7}ms", qt.as_millis());
+            println!("other:      {:7}ms", pt.as_millis());
+            println!("total:      {:7}ms", elapsed.as_millis())
+        }
+        Block {
             elapsed, children, ..
         } => {
             let elapsed = *elapsed.lock().unwrap();
@@ -124,6 +150,7 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
             println!("other:      {:7}ms", pt.as_millis());
             println!("total:      {:7}ms", elapsed.as_millis())
         }
+
         Query {
             elapsed,
             entity_count,
