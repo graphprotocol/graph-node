@@ -73,7 +73,7 @@ pub async fn run(
     let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
     let ipfs_service = ipfs_service(
         ipfs_client,
-        env_vars.mappings.max_ipfs_file_bytes as u64,
+        env_vars.mappings.max_ipfs_file_bytes,
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
     );
