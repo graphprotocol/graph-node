@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::env::EnvVars;
+use crate::ipfs_client::IpfsError;
 use crate::util::futures::RetryConfigNoTimeout;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -13,7 +14,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use crate::{
-    ipfs_client::{IpfsClient, StatApi},
+    ipfs_client::IpfsClient,
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
 
@@ -21,7 +22,7 @@ fn retry_policy<I: Send + Sync>(
     always_retry: bool,
     op: &'static str,
     logger: &Logger,
-) -> RetryConfigNoTimeout<I, crate::prelude::reqwest::Error> {
+) -> RetryConfigNoTimeout<I, IpfsError> {
     // Even if retries were not requested, networking errors are still retried until we either get
     // a valid HTTP response or a timeout.
     if always_retry {
@@ -29,8 +30,9 @@ fn retry_policy<I: Send + Sync>(
     } else {
         retry(op, logger)
             .no_limit()
-            .when(|res: &Result<_, reqwest::Error>| match res {
+            .when(|res: &Result<_, IpfsError>| match res {
                 Ok(_) => false,
+                Err(IpfsError::FileTooLarge(..)) => false,
                 Err(e) => !(e.is_status() || e.is_timeout()),
             })
     }
@@ -43,44 +45,38 @@ fn retry_policy<I: Send + Sync>(
 /// of clients where hopefully one already has the file, and just get the file
 /// from that.
 ///
-/// The strategy here then is to use a stat API as a proxy for "do you have the
+/// The strategy here then is to cat a single byte as a proxy for "do you have the
 /// file". Whichever client has or gets the file first wins. This API is a good
 /// choice, because it doesn't involve us actually starting to download the file
 /// from each client, which would be wasteful of bandwidth and memory in the
-/// case multiple clients respond in a timely manner. In addition, we may make
-/// good use of the stat returned.
-async fn select_fastest_client_with_stat(
+/// case multiple clients respond in a timely manner.
+async fn select_fastest_client(
     clients: Arc<Vec<IpfsClient>>,
     logger: Logger,
-    api: StatApi,
     path: String,
     timeout: Duration,
     do_retry: bool,
-) -> Result<(u64, IpfsClient), Error> {
+) -> Result<IpfsClient, Error> {
     let mut err: Option<Error> = None;
 
-    let mut stats: FuturesUnordered<_> = clients
+    let mut exists: FuturesUnordered<_> = clients
         .iter()
         .enumerate()
         .map(|(i, c)| {
             let c = c.cheap_clone();
             let path = path.clone();
-            retry_policy(do_retry, "IPFS stat", &logger).run(move || {
+            retry_policy(do_retry, "IPFS exists", &logger).run(move || {
                 let path = path.clone();
                 let c = c.cheap_clone();
-                async move {
-                    c.stat_size(api, path, timeout)
-                        .map_ok(move |s| (s, i))
-                        .await
-                }
+                async move { c.exists(&path, Some(timeout)).map_ok(|()| i).await }
             })
         })
         .collect();
 
-    while let Some(result) = stats.next().await {
+    while let Some(result) = exists.next().await {
         match result {
-            Ok((stat, index)) => {
-                return Ok((stat, clients[index].cheap_clone()));
+            Ok(index) => {
+                return Ok(clients[index].cheap_clone());
             }
             Err(e) => err = Some(e.into()),
         }
@@ -88,23 +84,10 @@ async fn select_fastest_client_with_stat(
 
     Err(err.unwrap_or_else(|| {
         anyhow!(
-            "No IPFS clients were supplied to handle the call to object.stat. File: {}",
+            "No IPFS clients were supplied to handle the call. File: {}",
             path
         )
     }))
-}
-
-// Returns an error if the stat is bigger than `max_file_bytes`
-fn restrict_file_size(path: &str, size: u64, max_file_bytes: usize) -> Result<(), Error> {
-    if size > max_file_bytes as u64 {
-        return Err(anyhow!(
-            "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
-            path,
-            max_file_bytes,
-            size
-        ));
-    }
-    Ok(())
 }
 
 #[derive(Clone)]
@@ -171,10 +154,9 @@ impl LinkResolverTrait for IpfsResolver {
         }
         trace!(logger, "IPFS cache miss"; "hash" => &path);
 
-        let (size, client) = select_fastest_client_with_stat(
+        let client = select_fastest_client(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
-            StatApi::Files,
             path.clone(),
             self.timeout,
             self.retry,
@@ -183,7 +165,6 @@ impl LinkResolverTrait for IpfsResolver {
 
         let max_cache_file_size = self.env_vars.mappings.max_ipfs_cache_file_size;
         let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes;
-        restrict_file_size(&path, size, max_file_size)?;
 
         let req_path = path.clone();
         let timeout = self.timeout;
@@ -191,12 +172,14 @@ impl LinkResolverTrait for IpfsResolver {
             .run(move || {
                 let path = req_path.clone();
                 let client = client.clone();
-                async move { Ok(client.cat_all(&path, timeout).await?.to_vec()) }
+                async move {
+                    Ok(client
+                        .cat_all(&path, Some(timeout), max_file_size)
+                        .await?
+                        .to_vec())
+                }
             })
             .await?;
-
-        // The size reported by `files/stat` is not guaranteed to be exact, so check the limit again.
-        restrict_file_size(&path, data.len() as u64, max_file_size)?;
 
         // Only cache files if they are not too large
         if data.len() <= max_cache_file_size {
@@ -216,19 +199,17 @@ impl LinkResolverTrait for IpfsResolver {
 
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         trace!(logger, "IPFS block get"; "hash" => &link.link);
-        let (size, client) = select_fastest_client_with_stat(
+        let client = select_fastest_client(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
-            StatApi::Block,
             link.link.clone(),
             self.timeout,
             self.retry,
         )
         .await?;
 
-        let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes;
-        restrict_file_size(&link.link, size, max_file_size)?;
-
+        // Note: The IPFS protocol limits the size of blocks to 1MB, so we don't need to enforce size
+        // limits here.
         let link = link.link.clone();
         let data = retry_policy(self.retry, "ipfs.getBlock", logger)
             .run(move || {
@@ -236,7 +217,7 @@ impl LinkResolverTrait for IpfsResolver {
                 let client = client.clone();
                 async move {
                     let data = client.get_block(link.clone()).await?.to_vec();
-                    Result::<Vec<u8>, reqwest::Error>::Ok(data)
+                    Result::<Vec<u8>, _>::Ok(data)
                 }
             })
             .await?;
@@ -246,12 +227,11 @@ impl LinkResolverTrait for IpfsResolver {
 
     async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
-        let path = link.link.trim_start_matches("/ipfs/");
+        let path = link.link.trim_start_matches("/ipfs/").to_string();
 
-        let (size, client) = select_fastest_client_with_stat(
+        let client = select_fastest_client(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
-            StatApi::Files,
             path.to_string(),
             self.timeout,
             self.retry,
@@ -259,9 +239,14 @@ impl LinkResolverTrait for IpfsResolver {
         .await?;
 
         let max_file_size = self.env_vars.mappings.max_ipfs_map_file_size;
-        restrict_file_size(path, size, max_file_size)?;
+        let mut cummulative_file_size = 0;
 
-        let mut stream = client.cat(path, None).await?.fuse().boxed().compat();
+        let mut stream = client
+            .cat_stream(&path, None)
+            .await?
+            .fuse()
+            .boxed()
+            .compat();
 
         let mut buf = BytesMut::with_capacity(1024);
 
@@ -274,6 +259,16 @@ impl LinkResolverTrait for IpfsResolver {
         let stream: JsonValueStream = Box::pin(
             poll_fn(move || -> Poll<Option<JsonStreamValue>, Error> {
                 loop {
+                    cummulative_file_size += buf.len();
+
+                    if cummulative_file_size > max_file_size {
+                        return Err(anyhow!(
+                            "IPFS file {} is too large. It can be at most {} bytes",
+                            path,
+                            max_file_size,
+                        ));
+                    }
+
                     if let Some(offset) = buf.iter().position(|b| *b == b'\n') {
                         let line_bytes = buf.split_to(offset + 1);
                         count += 1;
@@ -348,7 +343,7 @@ mod tests {
         assert_eq!(
             err.to_string(),
             format!(
-                "IPFS file {} is too large. It can be at most 200 bytes but is 212 bytes",
+                "IPFS file {} is too large. It can be at most 200 bytes",
                 link
             )
         );

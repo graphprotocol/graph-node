@@ -2,7 +2,9 @@ use crate::prelude::CheapClone;
 use anyhow::anyhow;
 use anyhow::Error;
 use bytes::Bytes;
+use bytes::BytesMut;
 use cid::Cid;
+use futures03::stream::TryStreamExt as _;
 use futures03::Stream;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
@@ -11,6 +13,37 @@ use serde::Deserialize;
 use std::fmt::Display;
 use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
+
+#[derive(Debug, thiserror::Error)]
+pub enum IpfsError {
+    #[error("Request error: {0}")]
+    Request(#[from] reqwest::Error),
+    #[error("IPFS file {0} is too large. It can be at most {1} bytes")]
+    FileTooLarge(String, usize),
+}
+
+impl IpfsError {
+    pub fn is_timeout(&self) -> bool {
+        match self {
+            Self::Request(e) => e.is_timeout(),
+            _ => false,
+        }
+    }
+
+    pub fn is_status(&self) -> bool {
+        match self {
+            Self::Request(e) => e.is_status(),
+            _ => false,
+        }
+    }
+
+    pub fn status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::Request(e) => e.status(),
+            _ => None,
+        }
+    }
+}
 
 /// Represents a file on Ipfs. This file can be the CID or a path within a folder CID.
 /// The path cannot have a prefix (ie CID/hello.json would be cid: CID path: "hello.json")
@@ -71,33 +104,6 @@ impl FromStr for CidFile {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum StatApi {
-    Block,
-    Files,
-}
-
-impl StatApi {
-    fn route(&self) -> &'static str {
-        match self {
-            Self::Block => "block",
-            Self::Files => "files",
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct BlockStatResponse {
-    size: u64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct FilesStatResponse {
-    cumulative_size: u64,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct AddResponse {
@@ -139,41 +145,42 @@ impl IpfsClient {
         }
     }
 
-    /// Calls stat for the given API route, and returns the total size of the object.
-    pub async fn stat_size(
-        &self,
-        api: StatApi,
-        mut cid: String,
-        timeout: Duration,
-    ) -> Result<u64, reqwest::Error> {
-        let route = format!("{}/stat", api.route());
-        if api == StatApi::Files {
-            // files/stat requires a leading `/ipfs/`.
-            cid = format!("/ipfs/{}", cid);
-        }
-        let url = self.url(&route, &cid);
-        let res = self.call(url, None, Some(timeout)).await?;
-        match api {
-            StatApi::Files => Ok(res.json::<FilesStatResponse>().await?.cumulative_size),
-            StatApi::Block => Ok(res.json::<BlockStatResponse>().await?.size),
-        }
+    /// To check the existence of a cid, we do a cat of a single byte.
+    pub async fn exists(&self, cid: &str, timeout: Option<Duration>) -> Result<(), IpfsError> {
+        self.call(self.cat_url("cat", cid, Some(1)), None, timeout)
+            .await?;
+        Ok(())
     }
 
-    /// Download the entire contents.
-    pub async fn cat_all(&self, cid: &str, timeout: Duration) -> Result<Bytes, reqwest::Error> {
-        self.call(self.url("cat", cid), None, Some(timeout))
-            .await?
-            .bytes()
-            .await
-    }
-
-    pub async fn cat(
+    pub async fn cat_all(
         &self,
         cid: &str,
         timeout: Option<Duration>,
-    ) -> Result<impl Stream<Item = Result<Bytes, reqwest::Error>>, reqwest::Error> {
+        max_file_size: usize,
+    ) -> Result<Bytes, IpfsError> {
+        let byte_stream = self.cat_stream(cid, timeout).await?;
+        let bytes = byte_stream
+            .err_into()
+            .try_fold(BytesMut::new(), |mut acc, chunk| async move {
+                acc.extend_from_slice(&chunk);
+
+                // Check size limit
+                if acc.len() > max_file_size as usize {
+                    return Err(IpfsError::FileTooLarge(cid.to_string(), max_file_size));
+                }
+
+                Ok(acc)
+            })
+            .await?;
+        Ok(bytes.into())
+    }
+    pub async fn cat_stream(
+        &self,
+        cid: &str,
+        timeout: Option<Duration>,
+    ) -> Result<impl Stream<Item = Result<Bytes, reqwest::Error>> + 'static, reqwest::Error> {
         Ok(self
-            .call(self.url("cat", cid), None, timeout)
+            .call(self.cat_url("cat", cid, None), None, timeout)
             .await?
             .bytes_stream())
     }
@@ -201,10 +208,14 @@ impl IpfsClient {
             .await
     }
 
-    fn url(&self, route: &str, arg: &str) -> String {
+    fn cat_url(&self, route: &str, arg: &str, length: Option<u64>) -> String {
         // URL security: We control the base and the route, user-supplied input goes only into the
         // query parameters.
-        format!("{}api/v0/{}?arg={}", self.base, route, arg)
+        let mut url = format!("{}api/v0/{}?arg={}", self.base, route, arg);
+        if let Some(length) = length {
+            url.push_str(&format!("&length={}", length));
+        }
+        url
     }
 
     async fn call(

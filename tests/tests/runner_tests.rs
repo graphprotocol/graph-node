@@ -669,7 +669,11 @@ async fn file_data_sources() {
 
     // CID of `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
     let id = "QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq";
-    let content_bytes = ctx.ipfs.cat_all(id, Duration::from_secs(10)).await.unwrap();
+    let content_bytes = ctx
+        .ipfs
+        .cat_all(id, Some(Duration::from_secs(10)), usize::MAX)
+        .await
+        .unwrap();
     let content = String::from_utf8(content_bytes.into()).unwrap();
     let query_res = ctx
         .query(&format!(r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,))
