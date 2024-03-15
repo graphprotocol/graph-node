@@ -169,9 +169,14 @@ impl BlockIngestor for SubstreamsBlockIngestor {
             // If the error is retryable it will print the error and return the cursor
             // therefore if we get an error here it has to be a fatal error.
             // This is a bit brittle and should probably be improved at some point.
-            let res = self.process_blocks(latest_cursor, stream).await;
+            let res = self.process_blocks(latest_cursor.clone(), stream).await;
             match res {
-                Ok(cursor) => latest_cursor = cursor,
+                Ok(cursor) => {
+                    if cursor.as_ref() != latest_cursor.as_ref() {
+                        backoff.reset();
+                        latest_cursor = cursor;
+                    }
+                }
                 Err(BlockStreamError::Fatal(e)) => {
                     error!(
                         self.logger,
