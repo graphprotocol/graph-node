@@ -171,7 +171,12 @@ impl BlockIngestor for SubstreamsBlockIngestor {
             // This is a bit brittle and should probably be improved at some point.
             let res = self.process_blocks(latest_cursor, stream).await;
             match res {
-                Ok(cursor) => latest_cursor = cursor,
+                Ok(cursor) => {
+                    if cursor != latest_cursor {
+                        backoff.reset();
+                        latest_cursor = cursor;
+                    }
+                }
                 Err(BlockStreamError::Fatal(e)) => {
                     error!(
                         self.logger,

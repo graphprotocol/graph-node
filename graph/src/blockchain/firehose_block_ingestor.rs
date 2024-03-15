@@ -207,7 +207,11 @@ where
                     info!(logger, "Blockstream connected, consuming blocks");
 
                     // Consume the stream of blocks until an error is hit
-                    latest_cursor = self.process_blocks(latest_cursor, stream).await
+                    let cursor = self.process_blocks(latest_cursor.clone(), stream).await;
+                    if cursor != latest_cursor {
+                        backoff.reset();
+                        latest_cursor = cursor;
+                    }
                 }
                 Err(e) => {
                     error!(logger, "Unable to connect to endpoint: {:#}", e);
