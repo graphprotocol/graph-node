@@ -209,7 +209,7 @@ impl WasmInstanceContext<'_> {
     /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
     /// Always returns a trap.
     pub fn abort(
-        &self,
+        &mut self,
         gas: &GasCounter,
         message_ptr: AscPtr<AscString>,
         file_name_ptr: AscPtr<AscString>,
@@ -233,10 +233,17 @@ impl WasmInstanceContext<'_> {
             _ => Some(column_number),
         };
 
-        self.as_ref()
-            .ctx
-            .host_exports
-            .abort(message, file_name, line_number, column_number, gas)
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports.abort(
+            message,
+            file_name,
+            line_number,
+            column_number,
+            gas,
+            &mut ctx.state,
+        )
     }
 
     /// function store.set(entity: string, id: string, data: Entity): void
@@ -363,14 +370,12 @@ impl WasmInstanceContext<'_> {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let string = host_exports.bytes_to_string(
-            &self.as_ref().ctx.logger,
-            asc_get(self, bytes_ptr, gas)?,
-            gas,
-        )?;
+        let bytes = asc_get(self, bytes_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let string = host_exports.bytes_to_string(&ctx.logger, bytes, gas, &mut ctx.state)?;
         asc_new(self, &string, gas)
     }
-
     /// Converts bytes to a hex string.
     /// function typeConversion.bytesToHex(bytes: Bytes): string
     /// References:
@@ -382,7 +387,11 @@ impl WasmInstanceContext<'_> {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
-        gas.consume_host_fn_with_metrics(
+        let ctx = &mut self.as_mut().ctx;
+
+        HostExports::track_gas_and_ops(
+            gas,
+            &mut ctx.state,
             gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes),
             "bytes_to_hex",
         )?;
@@ -400,7 +409,10 @@ impl WasmInstanceContext<'_> {
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
-        gas.consume_host_fn_with_metrics(
+        let ctx = &mut self.as_mut().ctx;
+        HostExports::track_gas_and_ops(
+            gas,
+            &mut ctx.state,
             gas::DEFAULT_GAS_OP.with_args(gas::complexity::Mul, (&n, &n)),
             "big_int_to_string",
         )?;
@@ -414,7 +426,9 @@ impl WasmInstanceContext<'_> {
         string_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.big_int_from_string(asc_get(self, string_ptr, gas)?, gas)?;
+        let s = asc_get(self, string_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_int_from_string(s, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -425,7 +439,9 @@ impl WasmInstanceContext<'_> {
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
-        let hex = self.as_ref().ctx.host_exports.big_int_to_hex(n, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let hex = host_exports.big_int_to_hex(n, gas, &mut ctx.state)?;
         asc_new(self, &hex, gas)
     }
 
@@ -436,7 +452,9 @@ impl WasmInstanceContext<'_> {
         str_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscH160>, HostExportError> {
         let s: String = asc_get(self, str_ptr, gas)?;
-        let h160 = self.as_ref().ctx.host_exports.string_to_h160(&s, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let h160 = host_exports.string_to_h160(&s, gas, &mut ctx.state)?;
         asc_new(self, &h160, gas)
     }
 
@@ -448,8 +466,9 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
         let result = host_exports
-            .json_from_bytes(&bytes, gas)
+            .json_from_bytes(&bytes, gas, &mut ctx.state)
             .with_context(|| {
                 format!(
                     "Failed to parse JSON from byte array. Bytes (truncated to 1024 chars): `{:?}`",
@@ -468,18 +487,21 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.json_from_bytes(&bytes, gas).map_err(|e| {
-            warn!(
-                &self.as_ref().ctx.logger,
-                "Failed to parse JSON from byte array";
-                "bytes" => format!("{:?}", bytes),
-                "error" => format!("{}", e)
-            );
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports
+            .json_from_bytes(&bytes, gas, &mut ctx.state)
+            .map_err(|e| {
+                warn!(
+                    &self.as_ref().ctx.logger,
+                    "Failed to parse JSON from byte array";
+                    "bytes" => format!("{:?}", bytes),
+                    "error" => format!("{}", e)
+                );
 
-            // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
-            // result type expected by mappings
-            true
-        });
+                // Map JSON errors to boolean to match the `Result<JSONValue, boolean>`
+                // result type expected by mappings
+                true
+            });
         asc_new(self, &result, gas)
     }
 
@@ -615,37 +637,41 @@ impl WasmInstanceContext<'_> {
     /// Expects a decimal string.
     /// function json.toI64(json: String): i64
     pub fn json_to_i64(
-        &self,
-
+        &mut self,
         gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<i64, DeterministicHostError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        host_exports.json_to_i64(asc_get(self, json_ptr, gas)?, gas)
+        let json = asc_get(self, json_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        host_exports.json_to_i64(json, gas, &mut ctx.state)
     }
 
     /// Expects a decimal string.
     /// function json.toU64(json: String): u64
     pub fn json_to_u64(
-        &self,
+        &mut self,
 
         gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<u64, DeterministicHostError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        host_exports.json_to_u64(asc_get(self, json_ptr, gas)?, gas)
+        let json: String = asc_get(self, json_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        host_exports.json_to_u64(json, gas, &mut ctx.state)
     }
 
     /// Expects a decimal string.
     /// function json.toF64(json: String): f64
     pub fn json_to_f64(
-        &self,
-
+        &mut self,
         gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
     ) -> Result<f64, DeterministicHostError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        host_exports.json_to_f64(asc_get(self, json_ptr, gas)?, gas)
+        let json = asc_get(self, json_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        host_exports.json_to_f64(json, gas, &mut ctx.state)
     }
 
     /// Expects a decimal string.
@@ -657,7 +683,9 @@ impl WasmInstanceContext<'_> {
         json_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let big_int = host_exports.json_to_big_int(asc_get(self, json_ptr, gas)?, gas)?;
+        let json = asc_get(self, json_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        let big_int = host_exports.json_to_big_int(json, gas, &mut ctx.state)?;
         asc_new(self, &*big_int, gas)
     }
 
@@ -669,7 +697,10 @@ impl WasmInstanceContext<'_> {
         input_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let input = host_exports.crypto_keccak_256(asc_get(self, input_ptr, gas)?, gas)?;
+        let input = asc_get(self, input_ptr, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let input = host_exports.crypto_keccak_256(input, gas, &mut ctx.state)?;
         asc_new(self, input.as_ref(), gas)
     }
 
@@ -684,7 +715,9 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_int_plus(x, y, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_int_plus(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -697,10 +730,11 @@ impl WasmInstanceContext<'_> {
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_int_minus(x, y, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_int_minus(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -715,7 +749,9 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_int_times(x, y, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_int_times(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -729,11 +765,10 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = self
-            .as_ref()
-            .ctx
-            .host_exports
-            .big_int_divided_by(x, y, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_int_divided_by(x, y, gas, &mut ctx.state)?;
+
         asc_new(self, &result, gas)
     }
 
@@ -746,8 +781,12 @@ impl WasmInstanceContext<'_> {
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let x = BigDecimal::new(asc_get(self, x_ptr, gas)?, 0);
+
+        let y = asc_get(self, y_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.big_decimal_divided_by(x, asc_get(self, y_ptr, gas)?, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_decimal_divided_by(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -762,7 +801,9 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_int_mod(x, y, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_int_mod(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -775,8 +816,11 @@ impl WasmInstanceContext<'_> {
         exp: u32,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let exp = u8::try_from(exp).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
+        let x = asc_get(self, x_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.big_int_pow(asc_get(self, x_ptr, gas)?, exp, gas)?;
+
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_int_pow(x, exp, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -788,10 +832,12 @@ impl WasmInstanceContext<'_> {
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
-        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_int_bit_or(x, y, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_int_bit_or(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -806,7 +852,9 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_int_bit_and(x, y, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_int_bit_and(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -819,8 +867,10 @@ impl WasmInstanceContext<'_> {
         bits: u32,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
+        let x = asc_get(self, x_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.big_int_left_shift(asc_get(self, x_ptr, gas)?, bits, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_int_left_shift(x, bits, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -833,8 +883,11 @@ impl WasmInstanceContext<'_> {
         bits: u32,
     ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
+        let x = asc_get(self, x_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.big_int_right_shift(asc_get(self, x_ptr, gas)?, bits, gas)?;
+
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_int_right_shift(x, bits, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -845,8 +898,10 @@ impl WasmInstanceContext<'_> {
         gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
+        let bytes = asc_get(self, bytes_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.bytes_to_base58(asc_get(self, bytes_ptr, gas)?, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.bytes_to_base58(bytes, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -857,9 +912,10 @@ impl WasmInstanceContext<'_> {
         gas: &GasCounter,
         big_decimal_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
+        let x = asc_get(self, big_decimal_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result =
-            host_exports.big_decimal_to_string(asc_get(self, big_decimal_ptr, gas)?, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_decimal_to_string(x, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -870,8 +926,10 @@ impl WasmInstanceContext<'_> {
         gas: &GasCounter,
         string_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
+        let s = asc_get(self, string_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let result = host_exports.big_decimal_from_string(asc_get(self, string_ptr, gas)?, gas)?;
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.big_decimal_from_string(s, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -882,10 +940,12 @@ impl WasmInstanceContext<'_> {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
-        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_decimal_plus(x, y, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_decimal_plus(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -896,10 +956,12 @@ impl WasmInstanceContext<'_> {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
-        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_decimal_minus(x, y, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_decimal_minus(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -910,10 +972,12 @@ impl WasmInstanceContext<'_> {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
-        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_decimal_times(x, y, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_decimal_times(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -924,10 +988,12 @@ impl WasmInstanceContext<'_> {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
-        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        let result = host_exports.big_decimal_divided_by(x, y, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports.big_decimal_divided_by(x, y, gas, &mut ctx.state)?;
         asc_new(self, &result, gas)
     }
 
@@ -938,10 +1004,12 @@ impl WasmInstanceContext<'_> {
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
     ) -> Result<bool, HostExportError> {
-        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let x = asc_get(self, x_ptr, gas)?;
         let y = asc_get(self, y_ptr, gas)?;
-        host_exports.big_decimal_equals(x, y, gas)
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports.big_decimal_equals(x, y, gas, &mut ctx.state)
     }
 
     /// function dataSource.create(name: string, params: Array<string>): void
@@ -999,7 +1067,9 @@ impl WasmInstanceContext<'_> {
         &mut self,
         gas: &GasCounter,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
-        let addr = self.as_ref().ctx.host_exports.data_source_address(gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let addr = host_exports.data_source_address(gas, &mut ctx.state)?;
         asc_new(self, addr.as_slice(), gas)
     }
 
@@ -1008,11 +1078,10 @@ impl WasmInstanceContext<'_> {
         &mut self,
         gas: &GasCounter,
     ) -> Result<AscPtr<AscString>, HostExportError> {
-        asc_new(
-            self,
-            &self.as_ref().ctx.host_exports.data_source_network(gas)?,
-            gas,
-        )
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let data_source_network = host_exports.data_source_network(gas, &mut ctx.state)?;
+        asc_new(self, &data_source_network, gas)
     }
 
     /// function dataSource.context(): DataSourceContext
@@ -1020,11 +1089,10 @@ impl WasmInstanceContext<'_> {
         &mut self,
         gas: &GasCounter,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
-        let ds_ctx = &self
-            .as_ref()
-            .ctx
-            .host_exports
-            .data_source_context(gas)?
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let ds_ctx = &host_exports
+            .data_source_context(gas, &mut ctx.state)?
             .map(|e| e.sorted())
             .unwrap_or(vec![]);
 
@@ -1037,11 +1105,9 @@ impl WasmInstanceContext<'_> {
         hash_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let hash: String = asc_get(self, hash_ptr, gas)?;
-        let name = self
-            .as_ref()
-            .ctx
-            .host_exports
-            .ens_name_by_hash(&hash, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let name = host_exports.ens_name_by_hash(&hash, gas, &mut ctx.state)?;
         if name.is_none() && self.as_ref().ctx.host_exports.is_ens_data_empty()? {
             return Err(anyhow!(
                 "Missing ENS data: see https://github.com/graphprotocol/ens-rainbow"
@@ -1055,17 +1121,16 @@ impl WasmInstanceContext<'_> {
     }
 
     pub fn log_log(
-        &self,
+        &mut self,
         gas: &GasCounter,
         level: u32,
         msg: AscPtr<AscString>,
     ) -> Result<(), DeterministicHostError> {
         let level = LogLevel::from(level).into();
         let msg: String = asc_get(self, msg, gas)?;
-        self.as_ref()
-            .ctx
-            .host_exports
-            .log_log(&self.as_ref().ctx.mapping_logger, level, msg, gas)
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        host_exports.log_log(&ctx.mapping_logger, level, msg, gas, &mut ctx.state)
     }
 
     /// function encode(token: ethereum.Value): Bytes | null
@@ -1074,12 +1139,10 @@ impl WasmInstanceContext<'_> {
         gas: &GasCounter,
         token_ptr: AscPtr<AscEnum<EthereumValueKind>>,
     ) -> Result<AscPtr<Uint8Array>, HostExportError> {
-        let data = self
-            .as_ref()
-            .ctx
-            .host_exports
-            .ethereum_encode(asc_get(self, token_ptr, gas)?, gas);
-
+        let token = asc_get(self, token_ptr, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let data = host_exports.ethereum_encode(token, gas, &mut ctx.state);
         // return `null` if it fails
         data.map(|bytes| asc_new(self, &*bytes, gas))
             .unwrap_or(Ok(AscPtr::null()))
@@ -1094,11 +1157,9 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, HostExportError> {
         let types = asc_get(self, types_ptr, gas)?;
         let data = asc_get(self, data_ptr, gas)?;
-        let result = self
-            .as_ref()
-            .ctx
-            .host_exports
-            .ethereum_decode(types, data, gas);
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.ethereum_decode(types, data, gas, &mut ctx.state);
 
         // return `null` if it fails
         result

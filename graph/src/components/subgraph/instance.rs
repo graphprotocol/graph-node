@@ -13,6 +13,7 @@ use crate::{
     data::{store::Id, subgraph::schema::SubgraphError},
     data_source::{DataSourceTemplate, DataSourceTemplateInfo},
     prelude::*,
+    runtime::gas::Gas,
     schema::EntityType,
     spawn,
 };
@@ -185,11 +186,11 @@ impl BlockStateMetrics {
         Ok(())
     }
 
-    pub fn track_gas_and_ops(&mut self, method: &str, gas_used: u64) {
+    pub fn track_gas_and_ops(&mut self, gas_used: Gas, method: &str) {
         if ENV_VARS.enable_dips_metrics {
             let key = CounterKey::from(method);
             let counter = self.gas_counter.entry(key.clone()).or_insert(0);
-            *counter += gas_used;
+            *counter += gas_used.0;
 
             let counter = self.op_counter.entry(key).or_insert(0);
             *counter += 1;
