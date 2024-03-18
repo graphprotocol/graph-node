@@ -54,10 +54,7 @@ fn table_is_sane() {
 fn check_eqv(left: &str, right: &str) {
     let left_s = left.split_whitespace().join(" ");
     let right_s = right.split_whitespace().join(" ");
-    if left_s != right_s {
-        // Make sure the original strings show up in the error message
-        assert_eq!(left, right);
-    }
+    assert_eq!(left_s, right_s);
 }
 
 #[test]
@@ -750,11 +747,6 @@ on "sgd0815"."data" using btree("group_2");
 create index attr_0_3_data_amount
 on "sgd0815"."data" using btree("amount");
 
-create index data_groups0
-on "sgd0815"."data"("group_1", timestamp);
-create index data_groups1
-on "sgd0815"."data"("group_1", "group_2", timestamp);
-
 create table "sgd0815"."stats_1_hour" (
     vid                  bigserial primary key,
     block$                int not null,
@@ -804,7 +796,8 @@ create index attr_5_1_stats_2_hour_group_1
 on "sgd0815"."stats_2_hour" using btree("group_1");
 create index attr_5_2_stats_2_hour_volume
 on "sgd0815"."stats_2_hour" using btree("volume");
-
+create index stats_2_hour_dims
+on "sgd0815"."stats_2_hour"(group_1, timestamp);
 
 create table "sgd0815"."stats_2_day" (
     vid                  bigserial primary key,
@@ -823,7 +816,8 @@ create index attr_6_1_stats_2_day_group_1
 on "sgd0815"."stats_2_day" using btree("group_1");
 create index attr_6_2_stats_2_day_volume
 on "sgd0815"."stats_2_day" using btree("volume");
-
+create index stats_2_day_dims
+on "sgd0815"."stats_2_day"(group_1, timestamp);
 
 create table "sgd0815"."stats_3_hour" (
     vid                  bigserial primary key,
@@ -845,7 +839,8 @@ create index attr_7_2_stats_3_hour_group_1
 on "sgd0815"."stats_3_hour" using btree("group_1");
 create index attr_7_3_stats_3_hour_volume
 on "sgd0815"."stats_3_hour" using btree("volume");
-
+create index stats_3_hour_dims
+on "sgd0815"."stats_3_hour"(group_2, group_1, timestamp);
 
 create table "sgd0815"."stats_3_day" (
     vid                  bigserial primary key,
@@ -867,4 +862,6 @@ create index attr_8_2_stats_3_day_group_1
 on "sgd0815"."stats_3_day" using btree("group_1");
 create index attr_8_3_stats_3_day_volume
 on "sgd0815"."stats_3_day" using btree("volume");
+create index stats_3_day_dims
+on "sgd0815"."stats_3_day"(group_2, group_1, timestamp);
 "#;
