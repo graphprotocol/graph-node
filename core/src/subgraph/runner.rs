@@ -553,6 +553,7 @@ where
         let BlockState {
             deterministic_errors,
             mut persisted_data_sources,
+            metrics: block_state_metrics,
             ..
         } = block_state;
 
@@ -564,7 +565,7 @@ where
         self.inputs
             .store
             .transact_block_operations(
-                block_ptr,
+                block_ptr.clone(),
                 block.timestamp(),
                 firehose_cursor,
                 mods,
@@ -595,6 +596,12 @@ where
             .subgraph
             .block_ops_transaction_duration
             .observe(elapsed);
+
+        block_state_metrics.flush_metrics_to_store(
+            &logger,
+            block_ptr,
+            self.inputs.deployment.id,
+        )?;
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
