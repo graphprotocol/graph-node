@@ -139,8 +139,8 @@ pub mod prelude {
         SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
-        BlockState, HostMetrics, InstanceDSTemplateInfo, RuntimeHost, RuntimeHostBuilder,
-        SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
+        BlockState, BlockStateMetrics, HostMetrics, InstanceDSTemplateInfo, RuntimeHost,
+        RuntimeHostBuilder, SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
         SubgraphVersionSwitchingMode,
     };
     pub use crate::components::trigger_processor::TriggerProcessor;

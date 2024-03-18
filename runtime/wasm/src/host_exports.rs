@@ -331,6 +331,8 @@ impl HostExports {
         );
         poi_section.end();
 
+        state.metrics.track_entity_write(&entity_type, &entity);
+
         state.entity_cache.set(key, entity)?;
 
         Ok(())
@@ -394,6 +396,10 @@ impl HostExports {
             "store_get",
         )?;
 
+        if let Some(ref entity) = result {
+            state.metrics.track_entity_read(&entity_type, &entity)
+        }
+
         Ok(result)
     }
 
@@ -420,6 +426,8 @@ impl HostExports {
             gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)),
             "store_load_related",
         )?;
+
+        state.metrics.track_entity_read_batch(&entity_type, &result);
 
         Ok(result)
     }
