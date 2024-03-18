@@ -301,56 +301,42 @@ impl Table {
         writeln!(out)
     }
 
-    /// If `self` is the source of aggregations, create indexes on the
-    /// dimensions of each aggregation that has a cumulative aggregate. That
-    /// supports the lookup of previous aggregation values we do in the
-    /// rollup query since that filters by all dimensions with an `=` and by
-    /// timestamp with a `<`
+    /// If `self` is an aggregation and has cumulative aggregates, create an
+    /// index on the dimensions. That supports the lookup of previous
+    /// aggregation values we do in the rollup query since that filters by
+    /// all dimensions with an `=` and by timestamp with a `<`
     fn create_aggregate_indexes(&self, schema: &InputSchema, out: &mut String) -> fmt::Result {
-        // Only consider aggregations that use `self` as the source, that
-        // contain a cumulative aggregate, and that have at least one
-        // dimension
-        let aggs: Vec<_> = schema
+        let agg = schema
             .agg_mappings()
-            .filter(|mapping| mapping.source_type(schema) == self.object)
+            .find(|mapping| mapping.agg_type(schema) == self.object)
             .map(|mapping| mapping.aggregation(schema))
             .filter(|agg| agg.aggregates.iter().any(|a| a.cumulative))
-            .filter(|agg| agg.dimensions().count() > 0)
-            .collect();
+            .filter(|agg| agg.dimensions().count() > 0);
 
-        if aggs.is_empty() {
+        let Some(agg) = agg else {
             return Ok(());
-        }
+        };
 
-        // Find all unique combination of dimensions that aggregations over
-        // this table use
-        let mut groups: Vec<_> = aggs
-            .iter()
-            .map(|agg| {
-                let mut group = agg
-                    .dimensions()
-                    .map(|dim| {
-                        self.column_for_field(&dim.name)
-                            .expect("columns for dimensions exist")
-                    })
-                    .map(|col| col.name.quoted())
-                    .collect::<Vec<_>>();
-                group.sort();
-                group
+        let dim_cols: Vec<_> = agg
+            .dimensions()
+            .map(|dim| {
+                self.column_for_field(&dim.name)
+                    .map(|col| &col.name)
+                    // We don't have a good way to return an error
+                    // indicating that somehow the table is wrong (which
+                    // should not happen). We can only return a generic
+                    // formatting error
+                    .map_err(|_| fmt::Error)
             })
-            .collect();
-        groups.sort();
-        groups.dedup();
+            .collect::<Result<_, _>>()?;
 
-        for (idx, group) in groups.iter().enumerate() {
-            write!(
-                out,
-                "create index {table_name}_groups{idx}\n    on {qname}({dims}, timestamp);\n",
-                table_name = self.name,
-                qname = self.qualified_name,
-                dims = group.join(", ")
-            )?;
-        }
+        write!(
+            out,
+            "create index {table_name}_dims\n    on {qname}({dims}, timestamp);\n",
+            table_name = self.name,
+            qname = self.qualified_name,
+            dims = dim_cols.join(", ")
+        )?;
         Ok(())
     }
 
