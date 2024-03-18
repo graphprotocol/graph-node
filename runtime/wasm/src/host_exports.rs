@@ -113,6 +113,19 @@ impl HostExports {
         }
     }
 
+    pub fn track_gas_and_ops(
+        gas: &GasCounter,
+        state: &mut BlockState,
+        gas_used: Gas,
+        method: &str,
+    ) -> Result<(), DeterministicHostError> {
+        gas.consume_host_fn_with_metrics(gas_used, method)?;
+
+        state.metrics.track_gas_and_ops(gas_used, method);
+
+        Ok(())
+    }
+
     /// Enfore the entity type access restrictions. See also: entity-type-access
     fn check_entity_type_access(&self, entity_type: &EntityType) -> Result<(), HostExportError> {
         match self.data_source.entity_type_access.allows(entity_type) {
@@ -135,8 +148,9 @@ impl HostExports {
         line_number: Option<u32>,
         column_number: Option<u32>,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Never, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(Gas::new(gas::DEFAULT_BASE_COST), "abort")?;
+        Self::track_gas_and_ops(gas, state, Gas::new(gas::DEFAULT_BASE_COST), "abort")?;
 
         let message = message
             .map(|message| format!("message: {}", message))
@@ -259,7 +273,9 @@ impl HostExports {
         let key = entity_type.parse_key_in(entity_id, self.data_source.causality_region)?;
         self.check_entity_type_access(&key.entity_type)?;
 
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::STORE_SET.with_args(complexity::Linear, (&key, &data)),
             "store_set",
         )?;
@@ -362,7 +378,9 @@ impl HostExports {
         let key = entity_type.parse_key_in(entity_id, self.data_source.causality_region)?;
         self.check_entity_type_access(&key.entity_type)?;
 
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::STORE_REMOVE.with_args(complexity::Size, &key),
             "store_remove",
         )?;
@@ -388,7 +406,9 @@ impl HostExports {
 
         let result = state.entity_cache.get(&store_key, scope)?;
 
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::STORE_GET.with_args(
                 complexity::Linear,
                 (&store_key, result.as_ref().map(|e| e.as_ref())),
@@ -422,7 +442,10 @@ impl HostExports {
         self.check_entity_type_access(&store_key.entity_type)?;
 
         let result = state.entity_cache.load_related(&store_key)?;
-        gas.consume_host_fn_with_metrics(
+
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)),
             "store_load_related",
         )?;
@@ -441,8 +464,11 @@ impl HostExports {
         &self,
         n: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &n),
             "big_int_to_hex",
         )?;
@@ -550,8 +576,11 @@ impl HostExports {
         &self,
         json: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<i64, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &json),
             "json_to_i64",
         )?;
@@ -565,8 +594,11 @@ impl HostExports {
         &self,
         json: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<u64, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &json),
             "json_to_u64",
         )?;
@@ -581,8 +613,11 @@ impl HostExports {
         &self,
         json: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<f64, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &json),
             "json_to_f64",
         )?;
@@ -597,8 +632,11 @@ impl HostExports {
         &self,
         json: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Vec<u8>, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &json),
             "json_to_big_int",
         )?;
@@ -613,9 +651,12 @@ impl HostExports {
         &self,
         input: Vec<u8>,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<[u8; 32], DeterministicHostError> {
         let data = &input[..];
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, data),
             "crypto_keccak_256",
         )?;
@@ -627,8 +668,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Max, (&x, &y)),
             "big_int_plus",
         )?;
@@ -640,8 +684,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Max, (&x, &y)),
             "big_int_minus",
         )?;
@@ -653,8 +700,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)),
             "big_int_times",
         )?;
@@ -666,8 +716,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)),
             "big_int_divided_by",
         )?;
@@ -685,8 +738,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)),
             "big_int_mod",
         )?;
@@ -705,8 +761,11 @@ impl HostExports {
         x: BigInt,
         exp: u8,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP
                 .with_args(complexity::Exponential, (&x, (exp as f32).log2() as u8)),
             "big_int_pow",
@@ -718,8 +777,11 @@ impl HostExports {
         &self,
         s: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &s),
             "big_int_from_string",
         )?;
@@ -733,8 +795,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Max, (&x, &y)),
             "big_int_bit_or",
         )?;
@@ -746,8 +811,11 @@ impl HostExports {
         x: BigInt,
         y: BigInt,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Min, (&x, &y)),
             "big_int_bit_and",
         )?;
@@ -759,8 +827,11 @@ impl HostExports {
         x: BigInt,
         bits: u8,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Linear, (&x, &bits)),
             "big_int_left_shift",
         )?;
@@ -772,8 +843,11 @@ impl HostExports {
         x: BigInt,
         bits: u8,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigInt, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Linear, (&x, &bits)),
             "big_int_right_shift",
         )?;
@@ -785,8 +859,11 @@ impl HostExports {
         &self,
         bytes: Vec<u8>,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &bytes),
             "bytes_to_base58",
         )?;
@@ -798,8 +875,11 @@ impl HostExports {
         x: BigDecimal,
         y: BigDecimal,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigDecimal, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Linear, (&x, &y)),
             "big_decimal_plus",
         )?;
@@ -811,8 +891,11 @@ impl HostExports {
         x: BigDecimal,
         y: BigDecimal,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigDecimal, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Linear, (&x, &y)),
             "big_decimal_minus",
         )?;
@@ -824,8 +907,11 @@ impl HostExports {
         x: BigDecimal,
         y: BigDecimal,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigDecimal, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)),
             "big_decimal_times",
         )?;
@@ -838,8 +924,11 @@ impl HostExports {
         x: BigDecimal,
         y: BigDecimal,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigDecimal, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Mul, (&x, &y)),
             "big_decimal_divided_by",
         )?;
@@ -857,8 +946,11 @@ impl HostExports {
         x: BigDecimal,
         y: BigDecimal,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<bool, HostExportError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::BIG_MATH_GAS_OP.with_args(complexity::Min, (&x, &y)),
             "big_decimal_equals",
         )?;
@@ -869,8 +961,11 @@ impl HostExports {
         &self,
         x: BigDecimal,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Mul, (&x, &x)),
             "big_decimal_to_string",
         )?;
@@ -881,8 +976,11 @@ impl HostExports {
         &self,
         s: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<BigDecimal, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &s),
             "big_decimal_from_string",
         )?;
@@ -901,7 +999,7 @@ impl HostExports {
         creation_block: BlockNumber,
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
-        gas.consume_host_fn_with_metrics(gas::CREATE_DATA_SOURCE, "data_source_create")?;
+        Self::track_gas_and_ops(gas, state, gas::CREATE_DATA_SOURCE, "data_source_create")?;
         info!(
             logger,
             "Create data source";
@@ -948,8 +1046,9 @@ impl HostExports {
         &self,
         hash: &str,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Option<String>, anyhow::Error> {
-        gas.consume_host_fn_with_metrics(gas::ENS_NAME_BY_HASH, "ens_name_by_hash")?;
+        Self::track_gas_and_ops(gas, state, gas::ENS_NAME_BY_HASH, "ens_name_by_hash")?;
         Ok(self.ens_lookup.find_name(hash)?)
     }
 
@@ -963,8 +1062,14 @@ impl HostExports {
         level: slog::Level,
         msg: String,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<(), DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(gas::LOG_OP.with_args(complexity::Size, &msg), "log_log")?;
+        Self::track_gas_and_ops(
+            gas,
+            state,
+            gas::LOG_OP.with_args(complexity::Size, &msg),
+            "log_log",
+        )?;
 
         let rs = record_static!(level, self.data_source.name.as_str());
 
@@ -985,24 +1090,42 @@ impl HostExports {
     pub(crate) fn data_source_address(
         &self,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Vec<u8>, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(Gas::new(gas::DEFAULT_BASE_COST), "data_source_address")?;
+        Self::track_gas_and_ops(
+            gas,
+            state,
+            Gas::new(gas::DEFAULT_BASE_COST),
+            "data_source_address",
+        )?;
         Ok(self.data_source.address.clone())
     }
 
     pub(crate) fn data_source_network(
         &self,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(Gas::new(gas::DEFAULT_BASE_COST), "data_source_network")?;
+        Self::track_gas_and_ops(
+            gas,
+            state,
+            Gas::new(gas::DEFAULT_BASE_COST),
+            "data_source_network",
+        )?;
         Ok(self.subgraph_network.clone())
     }
 
     pub(crate) fn data_source_context(
         &self,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Option<DataSourceContext>, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(Gas::new(gas::DEFAULT_BASE_COST), "data_source_context")?;
+        Self::track_gas_and_ops(
+            gas,
+            state,
+            Gas::new(gas::DEFAULT_BASE_COST),
+            "data_source_context",
+        )?;
         Ok(self.data_source.context.as_ref().clone())
     }
 
@@ -1010,11 +1133,14 @@ impl HostExports {
         &self,
         bytes: &Vec<u8>,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<serde_json::Value, DeterministicHostError> {
         // Max JSON size is 10MB.
         const MAX_JSON_SIZE: usize = 10_000_000;
 
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::JSON_FROM_BYTES.with_args(gas::complexity::Size, &bytes),
             "json_from_bytes",
         )?;
@@ -1033,8 +1159,11 @@ impl HostExports {
         &self,
         string: &str,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<H160, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &string),
             "string_to_h160",
         )?;
@@ -1046,8 +1175,11 @@ impl HostExports {
         logger: &Logger,
         bytes: Vec<u8>,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &bytes),
             "bytes_to_string",
         )?;
@@ -1059,10 +1191,13 @@ impl HostExports {
         &self,
         token: Token,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Vec<u8>, DeterministicHostError> {
         let encoded = encode(&[token]);
 
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &encoded),
             "ethereum_encode",
         )?;
@@ -1075,8 +1210,11 @@ impl HostExports {
         types: String,
         data: Vec<u8>,
         gas: &GasCounter,
+        state: &mut BlockState,
     ) -> Result<Token, anyhow::Error> {
-        gas.consume_host_fn_with_metrics(
+        Self::track_gas_and_ops(
+            gas,
+            state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &data),
             "ethereum_decode",
         )?;

@@ -55,7 +55,7 @@ pub trait GasSizeOf {
 
 /// This wrapper ensures saturating arithmetic is used
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
-pub struct Gas(u64);
+pub struct Gas(pub u64);
 
 impl Gas {
     pub const ZERO: Gas = Gas(0);
