@@ -199,6 +199,10 @@ pub struct EnvVars {
     /// The amount of history to keep when using 'min' historyBlocks
     /// in the manifest
     pub min_history_blocks: BlockNumber,
+    /// Write a list of how sections are nested to the file `section_map`
+    /// which must be an absolute path. This only has an effect in debug
+    /// builds. Set with `GRAPH_SECTION_MAP`. Defaults to `None`.
+    pub section_map: Option<String>,
 }
 
 impl EnvVars {
@@ -268,6 +272,7 @@ impl EnvVars {
             min_history_blocks: inner
                 .min_history_blocks
                 .unwrap_or(2 * inner.reorg_threshold),
+            section_map: inner.section_map,
         })
     }
 
@@ -405,6 +410,8 @@ struct Inner {
     history_blocks_override: Option<BlockNumber>,
     #[envconfig(from = "GRAPH_MIN_HISTORY_BLOCKS")]
     min_history_blocks: Option<BlockNumber>,
+    #[envconfig(from = "GRAPH_SECTION_MAP")]
+    section_map: Option<String>,
 }
 
 #[derive(Clone, Debug)]
