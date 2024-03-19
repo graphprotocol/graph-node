@@ -13,7 +13,7 @@ use graph::components::store::{
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
-use graph::data::store::{Id, IdList};
+use graph::data::store::IdList;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
@@ -279,36 +279,25 @@ impl DeploymentStore {
         layout.query(&logger, conn, query)
     }
 
-    fn check_interface_entity_uniqueness(
+    fn check_intf_uniqueness(
         &self,
         conn: &mut PgConnection,
         layout: &Layout,
-        entity_type: &EntityType,
-        entity_id: &Id,
+        group: &RowGroup,
     ) -> Result<(), StoreError> {
-        // Collect all types that share an interface implementation with this
-        // entity type, and make sure there are no conflicting IDs.
-        //
-        // To understand why this is necessary, suppose that `Dog` and `Cat` are
-        // types and both implement an interface `Pet`, and both have instances
-        // with `id: "Fred"`. If a type `PetOwner` has a field `pets: [Pet]`
-        // then with the value `pets: ["Fred"]`, there's no way to disambiguate
-        // if that's Fred the Dog, Fred the Cat or both.
-        //
-        // This assumes that there are no concurrent writes to a subgraph.
-        let entity_type_str = entity_type.to_string();
-        let types_with_shared_interface = entity_type.share_interfaces()?;
+        let types_with_shared_interface = group.entity_type.share_interfaces()?;
+        if types_with_shared_interface.is_empty() {
+            return Ok(());
+        }
 
-        if !types_with_shared_interface.is_empty() {
-            if let Some(conflicting_entity) =
-                layout.conflicting_entity(conn, entity_id, types_with_shared_interface)?
-            {
-                return Err(StoreError::ConflictingId(
-                    entity_type_str,
-                    entity_id.to_string(),
-                    conflicting_entity,
-                ));
-            }
+        if let Some((conflicting_entity, id)) =
+            layout.conflicting_entities(conn, &types_with_shared_interface, group)?
+        {
+            return Err(StoreError::ConflictingId(
+                group.entity_type.to_string(),
+                id,
+                conflicting_entity,
+            ));
         }
         Ok(())
     }
@@ -332,10 +321,7 @@ impl DeploymentStore {
             section.end();
 
             let section = stopwatch.start_section("check_interface_entity_uniqueness");
-            for row in group.writes().filter(|emod| emod.creates_entity()) {
-                // WARNING: This will potentially execute 2 queries for each entity key.
-                self.check_interface_entity_uniqueness(conn, layout, &group.entity_type, row.id())?;
-            }
+            self.check_intf_uniqueness(conn, layout, group)?;
             section.end();
 
             let section = stopwatch.start_section("apply_entity_modifications_insert");

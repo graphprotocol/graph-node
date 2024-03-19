@@ -50,14 +50,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
-    ConflictingEntityData, FindChangesQuery, FindDerivedQuery, FindPossibleDeletionsQuery,
-    ReturnedEntityData,
+    ConflictingEntitiesData, ConflictingEntitiesQuery, FindChangesQuery, FindDerivedQuery,
+    FindPossibleDeletionsQuery, ReturnedEntityData,
 };
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
-        ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
-        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        ClampRangeQuery, EntityData, EntityDeletion, FilterCollection, FilterQuery, FindManyQuery,
+        FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::DerivedEntityQuery;
@@ -606,16 +606,16 @@ impl Layout {
         Ok(())
     }
 
-    pub fn conflicting_entity(
+    pub fn conflicting_entities(
         &self,
         conn: &mut PgConnection,
-        entity_id: &Id,
-        entities: Vec<EntityType>,
-    ) -> Result<Option<String>, StoreError> {
-        Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
+        entities: &[EntityType],
+        group: &RowGroup,
+    ) -> Result<Option<(String, String)>, StoreError> {
+        Ok(ConflictingEntitiesQuery::new(self, entities, group)?
             .load(conn)?
             .pop()
-            .map(|data: ConflictingEntityData| data.entity))
+            .map(|data: ConflictingEntitiesData| (data.entity, data.id)))
     }
 
     /// order is a tuple (attribute, value_type, direction)

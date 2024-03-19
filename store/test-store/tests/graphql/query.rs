@@ -283,6 +283,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         reviews: [SongReview!]! @derivedFrom(field: \"song\")
         media: [Media!]!
         release: Release! @derivedFrom(field: \"songs\")
+        stats: [SongStat!]! @derivedFrom(field: \"id\")
     }
 
     type SongStat @entity {

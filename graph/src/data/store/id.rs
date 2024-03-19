@@ -306,6 +306,16 @@ impl<'a> IdRef<'a> {
     }
 }
 
+impl<'a> From<&'a Id> for IdRef<'a> {
+    fn from(id: &'a Id) -> Self {
+        match id {
+            Id::String(s) => IdRef::String(s.as_str()),
+            Id::Bytes(b) => IdRef::Bytes(b.as_slice()),
+            Id::Int8(i) => IdRef::Int8(*i),
+        }
+    }
+}
+
 /// A homogeneous list of entity ids, i.e., all ids in the list are of the
 /// same `IdType`
 #[derive(Clone, Debug, PartialEq, Eq)]
