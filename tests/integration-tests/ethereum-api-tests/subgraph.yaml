@@ -9,6 +9,10 @@ dataSources:
       address: "@SimpleContract@"
       abi: Contract
       startBlock: 1
+    context:
+      contract:
+        type: String
+        data: "@SimpleContract@"
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9

@@ -1,5 +1,5 @@
 {
-  "name": "eth-get-balance",
+  "name": "ethereum-api-tests",
   "version": "0.1.0",
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "0.62.0",
-    "@graphprotocol/graph-ts": "0.33.0-alpha-20240214061300-75be02a",
+    "@graphprotocol/graph-ts": "0.34.0-alpha-20240319121936-1ceb12b",
     "solc": "^0.8.2"
   },
   "dependencies": {

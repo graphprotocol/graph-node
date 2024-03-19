@@ -25,8 +25,12 @@ use tokio::task::JoinError;
 use tokio::time::sleep;
 
 type TestFn = Box<
-    dyn FnOnce(Subgraph) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> + Sync + Send,
+    dyn FnOnce(Subgraph, TestContext) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>
+        + Sync
+        + Send,
 >;
+
+struct TestContext {}
 
 enum TestStatus {
     Ok,
@@ -90,15 +94,15 @@ struct TestCase {
 }
 
 impl TestCase {
-    fn new<T>(name: &str, test: fn(Subgraph) -> T) -> Self
+    fn new<T>(name: &str, test: fn(Subgraph, TestContext) -> T) -> Self
     where
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
-        fn force_boxed<T>(f: fn(Subgraph) -> T) -> TestFn
+        fn force_boxed<T>(f: fn(Subgraph, TestContext) -> T) -> TestFn
         where
             T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
         {
-            Box::new(move |sg| Box::pin(f(sg)))
+            Box::new(move |sg, ctx| Box::pin(f(sg, ctx)))
         }
 
         Self {
@@ -138,9 +142,11 @@ impl TestCase {
             status!(&self.name, "Subgraph ({}) has failed", subgraph.deployment);
         }
 
+        let ctx = TestContext {};
+
         status!(&self.name, "Starting test");
         let subgraph2 = subgraph.clone();
-        let res = tokio::spawn(async move { (self.test)(subgraph).await }).await;
+        let res = tokio::spawn(async move { (self.test)(subgraph, ctx).await }).await;
         let status = match res {
             Ok(Ok(())) => {
                 status!(&self.name, "Test succeeded");
@@ -221,7 +227,7 @@ pub async fn query_succeeds(
 * the `cases` variable in `integration_tests`.
 */
 
-async fn test_int8(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_int8(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     let resp = subgraph
@@ -248,7 +254,7 @@ async fn test_int8(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_block_handlers(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_block_handlers(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     // test non-filtered blockHandler
@@ -385,20 +391,21 @@ async fn test_block_handlers(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_eth_get_balance(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_eth_api(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     let expected_response = json!({
         "foo": {
             "id": "1",
-            "value": "10000000000000000000000",
+            "balance": "10000000000000000000000",
+            "hasCode": true,
         }
     });
 
     query_succeeds(
         "Balance should be right",
         &subgraph,
-        "{ foo(id: \"1\") { id value } }",
+        "{ foo(id: \"1\") { id balance hasCode } }",
         expected_response,
     )
     .await?;
@@ -406,7 +413,7 @@ async fn test_eth_get_balance(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_ganache_reverts(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_ganache_reverts(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     let exp = json!({
@@ -434,12 +441,12 @@ async fn test_ganache_reverts(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_host_exports(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_host_exports(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
     Ok(())
 }
 
-async fn test_non_fatal_errors(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_non_fatal_errors(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(!subgraph.healthy);
 
     let query = "query GetSubgraphFeatures($deployment: String!) {
@@ -483,7 +490,7 @@ async fn test_non_fatal_errors(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_overloaded_functions(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_overloaded_functions(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     // all overloads of the contract function are called
     assert!(subgraph.healthy);
 
@@ -513,7 +520,7 @@ async fn test_overloaded_functions(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_value_roundtrip(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_value_roundtrip(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     let exp = json!({
@@ -531,7 +538,7 @@ async fn test_value_roundtrip(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_remove_then_update(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_remove_then_update(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     let exp = json!({
@@ -549,7 +556,7 @@ async fn test_remove_then_update(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_poi_for_failed_subgraph(subgraph: Subgraph) -> anyhow::Result<()> {
+async fn test_poi_for_failed_subgraph(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     const INDEXING_STATUS: &str = r#"
     query statuses($subgraphName: String!) {
         statuses: indexingStatusesForSubgraphName(subgraphName: $subgraphName) {
@@ -655,7 +662,7 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("value-roundtrip", test_value_roundtrip),
         TestCase::new("int8", test_int8),
         TestCase::new("block-handlers", test_block_handlers),
-        TestCase::new("eth-get-balance", test_eth_get_balance),
+        TestCase::new("ethereum-api-tests", test_eth_api),
     ];
 
     let contracts = Contract::deploy_all().await?;

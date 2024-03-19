@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
-use crate::adapter::EthereumGetBalanceError;
+use crate::adapter::EthereumRpcError;
 use crate::data_source::MappingABI;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
@@ -27,7 +27,7 @@ use graph::{
     semver::Version,
     slog::{info, trace, Logger},
 };
-use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, EthereumValueKind};
+use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, AscWrapped, EthereumValueKind};
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 
@@ -53,6 +53,9 @@ pub const ETHEREUM_CALL: Gas = Gas::new(5_000_000_000);
 
 // TODO: Determine the appropriate gas cost for `ETH_GET_BALANCE`, initially aligned with `ETHEREUM_CALL`.
 pub const ETH_GET_BALANCE: Gas = Gas::new(5_000_000_000);
+
+// TODO: Determine the appropriate gas cost for `ETH_HAS_CODE`, initially aligned with `ETHEREUM_CALL`.
+pub const ETH_HAS_CODE: Gas = Gas::new(5_000_000_000);
 
 pub struct RuntimeAdapter {
     pub eth_adapters: Arc<EthereumNetworkAdapters>,
@@ -110,7 +113,19 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
             }),
         };
 
-        Ok(vec![ethereum_call, ethereum_get_balance])
+        let eth_adapters = self.eth_adapters.cheap_clone();
+        let ethereum_get_code = HostFn {
+            name: "ethereum.hasCode",
+            func: Arc::new(move |ctx, wasm_ptr| {
+                let eth_adapter = eth_adapters.cheapest_with(&NodeCapabilities {
+                    archive,
+                    traces: false,
+                })?;
+                eth_has_code(&eth_adapter, ctx, wasm_ptr).map(|ptr| ptr.wasm_ptr())
+            }),
+        };
+
+        Ok(vec![ethereum_call, ethereum_get_balance, ethereum_get_code])
     }
 }
 
@@ -182,9 +197,45 @@ fn eth_get_balance(
             Ok(asc_new(ctx.heap, &bigint, &ctx.gas)?)
         }
         // Retry on any kind of error
-        Err(EthereumGetBalanceError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
-        Err(EthereumGetBalanceError::Timeout) => Err(HostExportError::PossibleReorg(
-            EthereumGetBalanceError::Timeout.into(),
+        Err(EthereumRpcError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(EthereumRpcError::Timeout) => Err(HostExportError::PossibleReorg(
+            EthereumRpcError::Timeout.into(),
+        )),
+    }
+}
+
+fn eth_has_code(
+    eth_adapter: &EthereumAdapter,
+    ctx: HostFnCtx<'_>,
+    wasm_ptr: u32,
+) -> Result<AscPtr<AscWrapped<bool>>, HostExportError> {
+    ctx.gas
+        .consume_host_fn_with_metrics(ETH_HAS_CODE, "eth_has_code")?;
+
+    if ctx.heap.api_version() < API_VERSION_0_0_9 {
+        return Err(HostExportError::Deterministic(anyhow!(
+            "ethereum.hasCode call is not supported before API version 0.0.9"
+        )));
+    }
+
+    let logger = &ctx.logger;
+    let block_ptr = &ctx.block_ptr;
+
+    let address: H160 = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
+
+    let result = graph::block_on(
+        eth_adapter
+            .get_code(logger, address, block_ptr.clone())
+            .compat(),
+    )
+    .map(|v| !v.0.is_empty());
+
+    match result {
+        Ok(v) => Ok(asc_new(ctx.heap, &AscWrapped { inner: v }, &ctx.gas)?),
+        // Retry on any kind of error
+        Err(EthereumRpcError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(EthereumRpcError::Timeout) => Err(HostExportError::PossibleReorg(
+            EthereumRpcError::Timeout.into(),
         )),
     }
 }
