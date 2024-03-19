@@ -57,6 +57,10 @@ async fn select_fastest_client(
     timeout: Duration,
     do_retry: bool,
 ) -> Result<IpfsClient, Error> {
+    if clients.len() == 1 {
+        return Ok(clients[0].cheap_clone());
+    }
+
     let mut err: Option<Error> = None;
 
     let mut exists: FuturesUnordered<_> = clients
