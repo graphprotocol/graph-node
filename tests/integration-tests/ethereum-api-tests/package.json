@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "0.69.0",
-    "@graphprotocol/graph-ts": "0.34.0-alpha-20240311104414-5f75d93",
+    "@graphprotocol/graph-ts": "0.34.0-alpha-20240319121936-1ceb12b",
     "solc": "^0.8.2"
   },
   "dependencies": {

@@ -15,7 +15,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context};
 use futures::StreamExt;
-use graph::prelude::hex;
 use graph::prelude::serde_json::{json, Value};
 use graph_tests::contract::Contract;
 use graph_tests::helpers::{run_checked, TestFile};
@@ -31,9 +30,7 @@ type TestFn = Box<
         + Send,
 >;
 
-struct TestContext {
-    contracts: Vec<Contract>,
-}
+struct TestContext {}
 
 enum TestStatus {
     Ok,
@@ -145,9 +142,7 @@ impl TestCase {
             status!(&self.name, "Subgraph ({}) has failed", subgraph.deployment);
         }
 
-        let ctx = TestContext {
-            contracts: contracts.to_vec(),
-        };
+        let ctx = TestContext {};
 
         status!(&self.name, "Starting test");
         let subgraph2 = subgraph.clone();
@@ -428,30 +423,21 @@ async fn test_block_handlers(subgraph: Subgraph, _ctx: TestContext) -> anyhow::R
     Ok(())
 }
 
-async fn test_eth_api(subgraph: Subgraph, ctx: TestContext) -> anyhow::Result<()> {
+async fn test_eth_api(subgraph: Subgraph, _ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
-
-    let simple_contract = ctx
-        .contracts
-        .iter()
-        .find(|c| c.name == "SimpleContract")
-        .unwrap();
-
-    let code = simple_contract.code().await;
-    let code_hex = hex::encode(&code.0);
 
     let expected_response = json!({
         "foo": {
             "id": "1",
             "balance": "10000000000000000000000",
-            "code": format!("0x{}", code_hex),
+            "hasCode": true,
         }
     });
 
     query_succeeds(
         "Balance should be right",
         &subgraph,
-        "{ foo(id: \"1\") { id balance code } }",
+        "{ foo(id: \"1\") { id balance hasCode } }",
         expected_response,
     )
     .await?;

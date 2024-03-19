@@ -13,14 +13,14 @@ export function handleTrigger(event: Trigger): void {
   let address_str = dataSource.context().getString("contract");
   let address = Address.fromString(address_str);
 
-  let code = ethereum.getCode(address);
+  let hasCode = ethereum.hasCode(address);
 
   if (!entity) {
     entity = new Foo(event.params.x.toString());
   }
 
   entity.balance = balance;
-  entity.code = code;
+  entity.hasCode = hasCode;
 
   entity.save();
 }

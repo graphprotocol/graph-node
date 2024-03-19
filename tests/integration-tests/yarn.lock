@@ -911,10 +911,10 @@
   dependencies:
     assemblyscript "0.19.10"
 
-"@graphprotocol/graph-ts@0.34.0-alpha-20240311104414-5f75d93":
-  version "0.34.0-alpha-20240311104414-5f75d93"
-  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.34.0-alpha-20240311104414-5f75d93.tgz#1d8826127e02b39379565b50a6113c4d1f09f794"
-  integrity sha512-Z5FCd/kfqR5r/truhuDYO/K2KOKZxau7PDeEFkVIB1SZFFz/FThVYboGldTL3xF278Fxu/cYaBQGMpTJy4nqYQ==
+"@graphprotocol/graph-ts@0.34.0-alpha-20240319121936-1ceb12b":
+  version "0.34.0-alpha-20240319121936-1ceb12b"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.34.0-alpha-20240319121936-1ceb12b.tgz#5adc6aa0ad4d5f4d2f002b91b817cfa5f989aba4"
+  integrity sha512-N4n5B62cbdduHlbaeddg0v6GujLkrdRoBi1aHEVLMcfIQpPzw3fyK4dNDMLmO85PHnzuKCkucVel2RyRKqtPYA==
   dependencies:
     assemblyscript "0.19.10"
 
