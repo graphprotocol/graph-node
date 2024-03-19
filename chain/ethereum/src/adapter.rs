@@ -35,6 +35,53 @@ use crate::{Chain, Mapping, ENV_VARS};
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EventSignatureWithTopics {
+    pub address: Option<Address>,
+    pub signature: H256,
+    pub topic1: Option<Vec<H256>>,
+    pub topic2: Option<Vec<H256>>,
+    pub topic3: Option<Vec<H256>>,
+}
+
+impl EventSignatureWithTopics {
+    pub fn new(
+        address: Option<Address>,
+        signature: H256,
+        topic1: Option<Vec<H256>>,
+        topic2: Option<Vec<H256>>,
+        topic3: Option<Vec<H256>>,
+    ) -> Self {
+        EventSignatureWithTopics {
+            address,
+            signature,
+            topic1,
+            topic2,
+            topic3,
+        }
+    }
+
+    pub fn matches(&self, address: Option<&H160>, sig: H256, topics: &Vec<H256>) -> bool {
+        // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
+        let address_matches = match self.address {
+            Some(ref self_addr) => address == Some(self_addr),
+            None => true, // self.address is None, so it matches any address.
+        };
+
+        address_matches
+            && self.signature == sig
+            && self.topic1.as_ref().map_or(true, |t1| {
+                topics.get(1).map_or(false, |topic| t1.contains(topic))
+            })
+            && self.topic2.as_ref().map_or(true, |t2| {
+                topics.get(2).map_or(false, |topic| t2.contains(topic))
+            })
+            && self.topic3.as_ref().map_or(true, |t3| {
+                topics.get(3).map_or(false, |topic| t3.contains(topic))
+            })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EthereumContractCall {
     pub address: Address,
@@ -80,6 +127,9 @@ enum LogFilterNode {
 pub struct EthGetLogsFilter {
     pub contracts: Vec<Address>,
     pub event_signatures: Vec<EventSignature>,
+    pub topic1: Option<Vec<EventSignature>>,
+    pub topic2: Option<Vec<EventSignature>>,
+    pub topic3: Option<Vec<EventSignature>>,
 }
 
 impl EthGetLogsFilter {
@@ -87,6 +137,9 @@ impl EthGetLogsFilter {
         EthGetLogsFilter {
             contracts: vec![address],
             event_signatures: vec![],
+            topic1: None,
+            topic2: None,
+            topic3: None,
         }
     }
 
@@ -94,29 +147,62 @@ impl EthGetLogsFilter {
         EthGetLogsFilter {
             contracts: vec![],
             event_signatures: vec![event],
+            topic1: None,
+            topic2: None,
+            topic3: None,
+        }
+    }
+
+    fn from_event_with_topics(event: EventSignatureWithTopics) -> Self {
+        EthGetLogsFilter {
+            contracts: event.address.map_or(vec![], |a| vec![a]),
+            event_signatures: vec![event.signature],
+            topic1: event.topic1,
+            topic2: event.topic2,
+            topic3: event.topic3,
         }
     }
 }
 
 impl fmt::Display for EthGetLogsFilter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.contracts.len() == 1 {
-            write!(
-                f,
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let base_msg = if self.contracts.len() == 1 {
+            format!(
                 "contract {:?}, {} events",
                 self.contracts[0],
                 self.event_signatures.len()
             )
         } else if self.event_signatures.len() == 1 {
-            write!(
-                f,
+            format!(
                 "event {:?}, {} contracts",
                 self.event_signatures[0],
                 self.contracts.len()
             )
         } else {
-            write!(f, "unreachable")
-        }
+            "unspecified filter".to_string()
+        };
+
+        // Helper to format topics as strings
+        let format_topics = |topics: &Option<Vec<EventSignature>>| -> String {
+            topics.as_ref().map_or_else(
+                || "None".to_string(),
+                |ts| {
+                    let signatures: Vec<String> = ts.iter().map(|t| format!("{:?}", t)).collect();
+                    signatures.join(", ")
+                },
+            )
+        };
+
+        // Constructing topic strings
+        let topics_msg = format!(
+            ", topic1: [{}], topic2: [{}], topic3: [{}]",
+            format_topics(&self.topic1),
+            format_topics(&self.topic2),
+            format_topics(&self.topic3),
+        );
+
+        // Combine the base message with topic information
+        write!(f, "{}{}", base_msg, topics_msg)
     }
 }
 
@@ -220,6 +306,8 @@ pub struct EthereumLogFilter {
     /// Event sigs with no associated address, matching on all addresses.
     /// Maps to a boolean representing if a trigger requires a transaction receipt.
     wildcard_events: HashMap<EventSignature, bool>,
+    /// Events with any of the topic filters set
+    events_with_topic_filters: HashMap<EventSignatureWithTopics, bool>,
 }
 
 impl From<EthereumLogFilter> for Vec<LogFilter> {
@@ -229,6 +317,7 @@ impl From<EthereumLogFilter> for Vec<LogFilter> {
                 |EthGetLogsFilter {
                      contracts,
                      event_signatures,
+                     .. // TODO: Handle events with topic filters for firehose
                  }| LogFilter {
                     addresses: contracts
                         .iter()
@@ -261,6 +350,10 @@ impl EthereumLogFilter {
                     .all_edges()
                     .any(|(s, t, _)| (s == contract && t == event) || (t == contract && s == event))
                     || self.wildcard_events.contains_key(sig)
+                    || self
+                        .events_with_topic_filters
+                        .iter()
+                        .any(|(e, _)| e.matches(Some(&log.address), *sig, &log.topics))
             }
         }
     }
@@ -270,20 +363,42 @@ impl EthereumLogFilter {
         &self,
         event_signature: &H256,
         contract_address: Option<&Address>,
+        topics: &Vec<H256>,
     ) -> bool {
-        if let Some(true) = self.wildcard_events.get(event_signature) {
-            true
-        } else if let Some(address) = contract_address {
-            let contract = LogFilterNode::Contract(*address);
-            let event = LogFilterNode::Event(*event_signature);
-            self.contracts_and_events_graph
-                .all_edges()
-                .any(|(s, t, r)| {
-                    *r && (s == contract && t == event) || (t == contract && s == event)
-                })
-        } else {
-            false
+        // Check for wildcard events first.
+        if self.wildcard_events.get(event_signature) == Some(&true) {
+            return true;
         }
+
+        // Next, check events with topic filters.
+        if self
+            .events_with_topic_filters
+            .iter()
+            .any(|(event_with_topics, &requires_receipt)| {
+                requires_receipt
+                    && event_with_topics.matches(contract_address, *event_signature, topics)
+            })
+        {
+            return true;
+        }
+
+        // Finally, check the contracts_and_events_graph if a contract address is specified.
+        if let Some(address) = contract_address {
+            let contract_node = LogFilterNode::Contract(*address);
+            let event_node = LogFilterNode::Event(*event_signature);
+
+            // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
+            for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
+                if r && ((s == contract_node && t == event_node)
+                    || (t == contract_node && s == event_node))
+                {
+                    return true;
+                }
+            }
+        }
+
+        // If none of the conditions above match, return false.
+        false
     }
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
@@ -292,16 +407,42 @@ impl EthereumLogFilter {
             for event_handler in ds.mapping.event_handlers.iter() {
                 let event_sig = event_handler.topic0();
                 match ds.address {
-                    Some(contract) => {
+                    Some(contract) if event_handler.has_no_additional_topics() => {
                         this.contracts_and_events_graph.add_edge(
                             LogFilterNode::Contract(contract),
                             LogFilterNode::Event(event_sig),
                             event_handler.receipt,
                         );
                     }
-                    None => {
+                    Some(contract) => {
+                        this.events_with_topic_filters.insert(
+                            EventSignatureWithTopics {
+                                address: Some(contract),
+                                signature: event_sig,
+                                topic1: None,
+                                topic2: None,
+                                topic3: None,
+                            },
+                            event_handler.receipt,
+                        );
+                    }
+
+                    None if (event_handler.has_no_additional_topics()) => {
                         this.wildcard_events
                             .insert(event_sig, event_handler.receipt);
+                    }
+
+                    None => {
+                        this.events_with_topic_filters.insert(
+                            EventSignatureWithTopics::new(
+                                ds.address,
+                                event_sig,
+                                event_handler.topic1.clone(),
+                                event_handler.topic2.clone(),
+                                event_handler.topic3.clone(),
+                            ),
+                            event_handler.receipt,
+                        );
                     }
                 }
             }
@@ -329,11 +470,14 @@ impl EthereumLogFilter {
         let EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
+            events_with_topic_filters,
         } = other;
         for (s, t, e) in contracts_and_events_graph.all_edges() {
             self.contracts_and_events_graph.add_edge(s, t, *e);
         }
         self.wildcard_events.extend(wildcard_events);
+        self.events_with_topic_filters
+            .extend(events_with_topic_filters);
     }
 
     /// An empty filter is one that never matches.
@@ -342,20 +486,34 @@ impl EthereumLogFilter {
         let EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
+            events_with_topic_filters,
         } = self;
-        contracts_and_events_graph.edge_count() == 0 && wildcard_events.is_empty()
+        contracts_and_events_graph.edge_count() == 0
+            && wildcard_events.is_empty()
+            && events_with_topic_filters.is_empty()
     }
 
     /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
     /// to balance between having granular filters but too many calls and having few calls but too
     /// broad filters causing the Ethereum endpoint to timeout.
     pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
+        let mut filters = Vec::new();
+
         // Start with the wildcard event filters.
-        let mut filters = self
-            .wildcard_events
-            .into_keys()
-            .map(EthGetLogsFilter::from_event)
-            .collect_vec();
+        filters.extend(
+            self.wildcard_events
+                .into_keys()
+                .map(EthGetLogsFilter::from_event),
+        );
+
+        // Handle events with topic filters.
+        filters.extend(
+            self.events_with_topic_filters
+                .into_iter()
+                .map(|(event_with_topics, _)| {
+                    EthGetLogsFilter::from_event_with_topics(event_with_topics)
+                }),
+        );
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
         // of its edges into a filter. This is nice because it is neutral between filtering by
@@ -1089,6 +1247,7 @@ mod tests {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
                 wildcard_events: HashMap::new(),
+                events_with_topic_filters: HashMap::new(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::from_iter(vec![
@@ -1214,6 +1373,7 @@ mod tests {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
                 wildcard_events: HashMap::new(),
+                events_with_topic_filters: HashMap::new(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::new(),
@@ -1605,6 +1765,7 @@ fn complete_log_filter() {
             let logs_filters: Vec<_> = EthereumLogFilter {
                 contracts_and_events_graph,
                 wildcard_events: HashMap::new(),
+                events_with_topic_filters: HashMap::new(),
             }
             .eth_get_logs_filters()
             .collect();
@@ -1654,6 +1815,8 @@ fn log_filter_require_transacion_receipt_method() {
     .into_iter()
     .collect();
 
+    let events_with_topic_filters = HashMap::new(); // TODO(krishna): Test events with topic filters
+
     let alien_event_signature = H256::from_low_u64_be(8); // those will not be inserted in the graph
     let alien_contract_address = Address::from_low_u64_be(9);
 
@@ -1697,34 +1860,91 @@ fn log_filter_require_transacion_receipt_method() {
     let filter = EthereumLogFilter {
         contracts_and_events_graph,
         wildcard_events,
+        events_with_topic_filters,
     };
 
+    let empty_vec: Vec<H256> = vec![];
+
     // connected contracts and events graph
-    assert!(filter.requires_transaction_receipt(&event_signature_a, Some(&contract_a)));
-    assert!(filter.requires_transaction_receipt(&event_signature_b, Some(&contract_b)));
-    assert!(filter.requires_transaction_receipt(&event_signature_c, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&contract_b)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&contract_a)));
+    assert!(filter.requires_transaction_receipt(&event_signature_a, Some(&contract_a), &empty_vec));
+    assert!(filter.requires_transaction_receipt(&event_signature_b, Some(&contract_b), &empty_vec));
+    assert!(filter.requires_transaction_receipt(&event_signature_c, Some(&contract_c), &empty_vec));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_a,
+        Some(&contract_b),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_b,
+        Some(&contract_a),
+        &empty_vec
+    ));
 
     // Event C and Contract C are not connected to the other events and contracts
-    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_a)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&contract_b)));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_a,
+        Some(&contract_c),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_b,
+        Some(&contract_c),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_c,
+        Some(&contract_a),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_c,
+        Some(&contract_b),
+        &empty_vec
+    ));
 
     // Wildcard events
-    assert!(filter.requires_transaction_receipt(&wildcard_event_with_receipt, None));
-    assert!(!filter.requires_transaction_receipt(&wildcard_event_without_receipt, None));
+    assert!(filter.requires_transaction_receipt(&wildcard_event_with_receipt, None, &empty_vec));
+    assert!(!filter.requires_transaction_receipt(
+        &wildcard_event_without_receipt,
+        None,
+        &empty_vec
+    ));
 
     // Alien events and contracts always return false
-    assert!(
-        !filter.requires_transaction_receipt(&alien_event_signature, Some(&alien_contract_address))
-    );
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, None));
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_a)));
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_b)));
-    assert!(!filter.requires_transaction_receipt(&alien_event_signature, Some(&contract_c)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_a, Some(&alien_contract_address)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_b, Some(&alien_contract_address)));
-    assert!(!filter.requires_transaction_receipt(&event_signature_c, Some(&alien_contract_address)));
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(&alien_event_signature, None, &empty_vec),);
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&contract_a),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&contract_b),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &alien_event_signature,
+        Some(&contract_c),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_a,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_b,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
+    assert!(!filter.requires_transaction_receipt(
+        &event_signature_c,
+        Some(&alien_contract_address),
+        &empty_vec
+    ));
 }

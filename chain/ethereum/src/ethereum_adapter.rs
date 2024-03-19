@@ -242,13 +242,17 @@ impl EthereumAdapter {
 
                 async move {
                     let start = Instant::now();
-
                     // Create a log filter
                     let log_filter: Filter = FilterBuilder::default()
                         .from_block(from.into())
                         .to_block(to.into())
                         .address(filter.contracts.clone())
-                        .topics(Some(filter.event_signatures.clone()), None, None, None)
+                        .topics(
+                            Some(filter.event_signatures.clone()),
+                            filter.topic1.clone(),
+                            filter.topic2.clone(),
+                            filter.topic3.clone(),
+                        )
                         .build();
 
                     // Request logs from client
@@ -2120,7 +2124,7 @@ async fn get_logs_and_transactions(
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
         .filter(|log| {
             if let Some(signature) = log.topics.first() {
-                log_filter.requires_transaction_receipt(signature, Some(&log.address))
+                log_filter.requires_transaction_receipt(signature, Some(&log.address), &log.topics)
             } else {
                 false
             }
