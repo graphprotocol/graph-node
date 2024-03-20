@@ -700,39 +700,14 @@ impl DeploymentStore {
         let entity_name = entity_name.to_owned();
         self.with_conn(move |mut conn, _| {
             let schema_name = site.namespace.clone();
-            let layout = store.layout(&mut conn, site)?;
-            let table = resolve_table_name(&layout, &entity_name)?;
-            let (column_names, index_exprs) =
-                resolve_column_names_and_index_exprs(table, &field_names)?;
-
-            let column_names_sep_by_underscores = column_names.join("_");
-            let index_exprs_joined = index_exprs.join(", ");
-            let table_name = &table.name;
-            let index_name = format!(
-                "manual_{table_name}_{column_names_sep_by_underscores}{}",
-                after.map_or_else(String::new, |a| format!("_{}", a))
-            );
-
-            let mut sql = format!(
-                "create index concurrently if not exists {index_name} \
-                 on {schema_name}.{table_name} using {index_method} \
-                 ({index_exprs_joined}) ",
-            );
-
-            // If 'after' is provided and the table is not immutable, add a WHERE clause for partial indexing
-            if let Some(after) = after {
-                if !table.immutable {
-                    sql.push_str(&format!(
-                        " where coalesce(upper({}), 2147483647) > {}",
-                        BLOCK_RANGE_COLUMN, after
-                    ));
-                } else {
-                    return Err(CancelableError::Error(StoreError::Unknown(anyhow!(
-                        "Partial index not allowed on immutable table `{}`",
-                        table_name
-                    ))));
-                }
-            }
+            let layout = store.layout(conn, site)?;
+            let (index_name, sql) = generate_index_creation_sql(
+                layout,
+                &entity_name,
+                field_names,
+                index_method,
+                after,
+            )?;
 
             // This might take a long time.
             sql_query(sql).execute(conn)?;
@@ -1879,6 +1854,49 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
         })
 }
 
+fn generate_index_creation_sql(
+    layout: Arc<Layout>,
+    entity_name: &str,
+    field_names: Vec<String>,
+    index_method: Method,
+    after: Option<BlockNumber>,
+) -> Result<(String, String), StoreError> {
+    let schema_name = layout.site.namespace.clone();
+    let table = resolve_table_name(&layout, &entity_name)?;
+    let (column_names, index_exprs) = resolve_column_names_and_index_exprs(table, &field_names)?;
+
+    let column_names_sep_by_underscores = column_names.join("_");
+    let index_exprs_joined = index_exprs.join(", ");
+    let table_name = &table.name;
+    let index_name = format!(
+        "manual_{table_name}_{column_names_sep_by_underscores}{}",
+        after.map_or_else(String::new, |a| format!("_{}", a))
+    );
+
+    let mut sql = format!(
+        "create index concurrently if not exists {index_name} \
+         on {schema_name}.{table_name} using {index_method} \
+         ({index_exprs_joined}) ",
+    );
+
+    // If 'after' is provided and the table is not immutable, add a WHERE clause for partial indexing
+    if let Some(after) = after {
+        if !table.immutable {
+            sql.push_str(&format!(
+                " where coalesce(upper({}), 2147483647) > {}",
+                BLOCK_RANGE_COLUMN, after
+            ));
+        } else {
+            return Err(StoreError::Unknown(anyhow!(
+                "Partial index not allowed on immutable table `{}`",
+                table_name
+            )));
+        }
+    }
+
+    Ok((index_name, sql))
+}
+
 /// Resolves column names against the `table`. The `field_names` can be
 /// either GraphQL attributes or the SQL names of columns. We also accept
 /// the names `block_range` and `block$` and map that to the correct name
@@ -1918,8 +1936,7 @@ fn resolve_column<'a>(table: &'a Table, field: &str) -> Result<(&'a SqlName, Str
                 .ok_or_else(|| StoreError::UnknownField(table.name.to_string(), field.to_string()))
         })
         .map(|column| {
-            let index_expr =
-                Table::calculate_index_method_and_expression(table.immutable, column).1;
+            let index_expr = Table::calculate_index_method_and_expression(column).1;
             (&column.name, index_expr)
         })
 }
