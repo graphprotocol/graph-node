@@ -80,7 +80,7 @@ wasmparser = "0.118.1"
 thiserror = "1.0.25"
 parking_lot = "0.12.1"
 itertools = "0.12.0"
-defer = "0.1"
+defer = "0.2"
 
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
