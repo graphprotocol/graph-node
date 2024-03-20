@@ -16,6 +16,8 @@ pub mod stopwatch;
 
 pub mod gas;
 
+pub mod block_state;
+
 /// Create an unregistered counter with labels
 pub fn counter_with_labels(
     name: &str,
