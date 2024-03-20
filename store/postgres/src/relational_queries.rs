@@ -1758,10 +1758,8 @@ impl<'a> Filter<'a> {
         }
 
         if have_non_nulls {
-            if
-            /* column.use_prefix_comparison
-            && */
-            PrefixType::new(column).is_ok()
+            if column.column().use_prefix_comparison
+                && PrefixType::new(column).is_ok()
                 && values.iter().all(|v| match &v.value {
                     SqlValue::Text(s) => s.len() < STRING_PREFIX_SIZE,
                     SqlValue::String(s) => s.len() < STRING_PREFIX_SIZE,
