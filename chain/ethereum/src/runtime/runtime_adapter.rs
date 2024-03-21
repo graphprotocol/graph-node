@@ -44,7 +44,7 @@ const ETH_CALL_GAS: u32 = 50_000_000;
 // When making an ethereum call, the maximum ethereum gas is ETH_CALL_GAS which is 50 million. One
 // unit of Ethereum gas is at least 100ns according to these benchmarks [1], so 1000 of our gas. In
 // the worst case an Ethereum call could therefore consume 50 billion of our gas. However the
-// averarge call a subgraph makes is much cheaper or even cached in the call cache. So this cost is
+// average call a subgraph makes is much cheaper or even cached in the call cache. So this cost is
 // set to 5 billion gas as a compromise. This allows for 2000 calls per handler with the current
 // limits.
 //
