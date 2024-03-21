@@ -14,7 +14,7 @@ graph-runtime-derive = { path = "../derive" }
 semver = "1.0.20"
 uuid = { version = "1.6.1", features = ["v4"] }
 anyhow = "1.0"
-defer = "0.1"
+defer = "0.2"
 never = "0.1"
 
 wasmtime.workspace = true
