@@ -406,11 +406,11 @@ mod tests {
 
         assert_eq!(
             coerce_to_definition(Value::Int(1234.into()), "", &resolver),
-            Ok(Value::String("1234".to_string()))
+            Ok(Value::Int(1234))
         );
         assert_eq!(
             coerce_to_definition(Value::Int((-1234_i32).into()), "", &resolver,),
-            Ok(Value::String("-1234".to_string()))
+            Ok(Value::Int(-1234))
         );
     }
 
