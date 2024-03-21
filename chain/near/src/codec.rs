@@ -122,7 +122,7 @@ impl execution_outcome::Status {
 }
 
 fn block_time_from_header(header: &BlockHeader) -> BlockTime {
-    // The timstamp is in ns since the epoch
+    // The timestamp is in ns since the epoch
     let ts = i64::try_from(header.timestamp_nanosec).unwrap();
     let secs = ts / 1_000_000_000;
     let ns: u32 = (ts % 1_000_000_000) as u32;

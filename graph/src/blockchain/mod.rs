@@ -359,7 +359,7 @@ pub trait TriggerData {
     /// data sources. But this optimization is not required, so returning `None` is always correct.
     ///
     /// When this does return `Some`, make sure that the `DataSource::address` of matching data
-    /// sources is equal to the addresssed returned here.
+    /// sources is equal to the addressed returned here.
     fn address_match(&self) -> Option<&[u8]>;
 }
 
