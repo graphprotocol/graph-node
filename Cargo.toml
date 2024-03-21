@@ -31,7 +31,7 @@ diesel_migrations = "2.1.0"
 prost = "0.11.9"
 prost-types = "0.11.9"
 tonic = { version = "0.8.3", features = ["tls-roots", "gzip"] }
-tonic-build = { version = "0.8.4", features = ["prost"] }
+tonic-build = { version = "0.11.0", features = ["prost"] }
 wasmtime = "15.0.1"
 wasmparser = "0.118.1"
 

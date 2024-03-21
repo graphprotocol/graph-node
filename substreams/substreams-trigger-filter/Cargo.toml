@@ -18,4 +18,4 @@ substreams-near-core = "0.10.1"
 trigger-filters.path = "../trigger-filters"
 
 [build-dependencies]
-tonic-build = { version = "0.8.4", features = ["prost"] }
+tonic-build = { version = "0.11.0", features = ["prost"] }
