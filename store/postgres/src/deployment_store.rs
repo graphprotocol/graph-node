@@ -698,7 +698,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(move |mut conn, _| {
+        self.with_conn(move |conn, _| {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let (index_name, sql) = generate_index_creation_sql(
@@ -1854,7 +1854,7 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
         })
 }
 
-fn generate_index_creation_sql(
+pub fn generate_index_creation_sql(
     layout: Arc<Layout>,
     entity_name: &str,
     field_names: Vec<String>,
