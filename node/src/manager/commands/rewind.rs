@@ -5,7 +5,7 @@ use std::{collections::HashSet, convert::TryFrom};
 
 use graph::anyhow::bail;
 use graph::components::store::{BlockStore as _, ChainStore as _};
-use graph::prelude::{anyhow, BlockNumber, BlockPtr, NodeId, SubgraphStore};
+use graph::prelude::{anyhow, BlockNumber, BlockPtr, SubgraphStore};
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
@@ -65,8 +65,6 @@ pub async fn run(
     sleep: Duration,
     start_block: bool,
 ) -> Result<(), anyhow::Error> {
-    const PAUSED: &str = "paused_";
-
     // Sanity check
     if !start_block && (block_hash.is_none() || block_number.is_none()) {
         bail!("--block-hash and --block-number must be specified when --start-block is not set");
@@ -106,16 +104,20 @@ pub async fn run(
     println!("Pausing deployments");
     let mut paused = false;
     for deployment in &deployments {
-        if let Some(node) = &deployment.node_id {
-            if !node.starts_with(PAUSED) {
-                let loc = deployment.locator();
-                let node =
-                    NodeId::new(format!("{}{}", PAUSED, node)).expect("paused_ node id is valid");
-                subgraph_store.reassign_subgraph(&loc, &node)?;
-                println!("  ... paused {}", loc);
-                paused = true;
+        let loc = deployment.locator();
+
+        match subgraph_store.assignment_status(&loc)? {
+            Some((_, is_paused)) => {
+                if !is_paused {
+                    subgraph_store.pause_subgraph(&loc)?;
+                    println!("  ... paused {}", loc);
+                    paused = true;
+                }
             }
-        }
+            None => {
+                println!("deployment {loc} not found");
+            }
+        };
     }
 
     if paused {
@@ -158,11 +160,10 @@ pub async fn run(
 
     println!("Resuming deployments");
     for deployment in &deployments {
-        if let Some(node) = &deployment.node_id {
-            let loc = deployment.locator();
-            let node = NodeId::new(node.clone()).expect("node id is valid");
-            subgraph_store.reassign_subgraph(&loc, &node)?;
-        }
+        let loc = deployment.locator();
+
+        subgraph_store.resume_subgraph(&loc)?;
+        println!("  ... resumed {}", loc);
     }
     Ok(())
 }
