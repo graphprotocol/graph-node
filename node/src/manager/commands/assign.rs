@@ -43,6 +43,16 @@ pub fn reassign(
     let site = conn
         .locate_site(locator.clone())?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
+
+    let (_, is_paused) = conn
+        .assignment_status(&site)?
+        .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
+
+    // pause the subgraph before reassigning to avoid racing conditions
+    if !is_paused {
+        conn.pause_subgraph(&site)?;
+    }
+
     let changes = match conn.assigned_node(&site)? {
         Some(cur) => {
             if cur == node {
@@ -59,6 +69,11 @@ pub fn reassign(
         }
     };
     conn.send_store_event(sender, &StoreEvent::new(changes))?;
+
+    // resume subgraph if we paused it
+    if !is_paused {
+        conn.resume_subgraph(&site)?;
+    }
 
     // It's easy to make a typo in the name of the node; if this operation
     // assigns to a node that wasn't used before, warn the user that they
