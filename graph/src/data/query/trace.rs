@@ -5,7 +5,12 @@ use std::{
 
 use serde::{ser::SerializeMap, Serialize};
 
-use crate::{components::store::BlockNumber, prelude::lazy_static, prelude::CheapClone};
+use crate::{
+    components::store::{BlockNumber, QueryPermit},
+    prelude::{lazy_static, CheapClone},
+};
+
+use super::QueryExecutionError;
 
 lazy_static! {
     pub static ref TRACE_NONE: Arc<Trace> = Arc::new(Trace::None);
@@ -19,21 +24,27 @@ pub enum Trace {
         variables: Arc<String>,
         query_id: String,
         elapsed: Mutex<Duration>,
-        permit_wait: Mutex<Duration>,
         blocks: Vec<Arc<Trace>>,
     },
     Block {
         block: BlockNumber,
         elapsed: Mutex<Duration>,
-        permit_wait: Mutex<Duration>,
+        permit_wait: Duration,
+        /// Pairs of response key and traces. Each trace is either a `Trace::Query` or a `Trace::None`
         children: Vec<(String, Trace)>,
     },
     Query {
+        /// The SQL query that was executed
         query: String,
+        /// How long executing the SQL query took. This is just the time it
+        /// took to send the already built query to the database and receive
+        /// results.
         elapsed: Duration,
+        /// How long we had to wait for a connection from the pool
         conn_wait: Duration,
-        permit_wait: Mutex<Duration>,
+        permit_wait: Duration,
         entity_count: usize,
+        /// Pairs of response key and traces. Each trace is either a `Trace::Query` or a `Trace::None`
         children: Vec<(String, Trace)>,
     },
 }
@@ -57,7 +68,6 @@ impl Trace {
                 variables: variables.cheap_clone(),
                 query_id: query_id.to_string(),
                 elapsed: Mutex::new(Duration::from_millis(0)),
-                permit_wait: Mutex::new(Duration::from_millis(0)),
                 blocks: Vec::new(),
             }
         } else {
@@ -70,7 +80,7 @@ impl Trace {
             Trace::Block {
                 block,
                 elapsed: Mutex::new(Duration::from_millis(0)),
-                permit_wait: Mutex::new(Duration::from_millis(0)),
+                permit_wait: Duration::from_millis(0),
                 children: Vec::new(),
             }
         } else {
@@ -91,7 +101,7 @@ impl Trace {
             query: query.to_string(),
             elapsed,
             conn_wait: Duration::from_millis(0),
-            permit_wait: Mutex::new(Duration::from_millis(0)),
+            permit_wait: Duration::from_millis(0),
             entity_count,
             children: Vec::new(),
         }
@@ -130,12 +140,19 @@ impl Trace {
         }
     }
 
-    pub fn permit_wait(&self, time: Duration) {
+    pub fn permit_wait(&mut self, res: &Result<QueryPermit, QueryExecutionError>) {
+        let time = match res {
+            Ok(permit) => permit.wait,
+            Err(_) => {
+                return;
+            }
+        };
         match self {
             Trace::None => { /* nothing to do  */ }
-            Trace::Root { permit_wait, .. }
-            | Trace::Block { permit_wait, .. }
-            | Trace::Query { permit_wait, .. } => *permit_wait.lock().unwrap() += time,
+            Trace::Root { .. } => unreachable!("can not add permit_wait to Root"),
+            Trace::Block { permit_wait, .. } | Trace::Query { permit_wait, .. } => {
+                *permit_wait += time
+            }
         }
     }
 
@@ -162,7 +179,6 @@ impl Serialize for Trace {
                 variables,
                 query_id,
                 elapsed,
-                permit_wait,
                 blocks: children,
             } => {
                 let mut map = ser.serialize_map(Some(children.len() + 2))?;
@@ -173,7 +189,6 @@ impl Serialize for Trace {
                 map.serialize_entry("query_id", query_id)?;
                 map.serialize_entry("elapsed_ms", &elapsed.lock().unwrap().as_millis())?;
                 map.serialize_entry("blocks", children)?;
-                map.serialize_entry("permit_wait_ms", &permit_wait.lock().unwrap().as_millis())?;
                 map.end()
             }
             Trace::Block {
@@ -188,7 +203,7 @@ impl Serialize for Trace {
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;
                 }
-                map.serialize_entry("permit_wait_ms", &permit_wait.lock().unwrap().as_millis())?;
+                map.serialize_entry("permit_wait_ms", &permit_wait.as_millis())?;
                 map.end()
             }
             Trace::Query {
@@ -203,7 +218,7 @@ impl Serialize for Trace {
                 map.serialize_entry("query", query)?;
                 map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
                 map.serialize_entry("conn_wait_ms", &conn_wait.as_millis())?;
-                map.serialize_entry("permit_wait_ms", &permit_wait.lock().unwrap().as_millis())?;
+                map.serialize_entry("permit_wait_ms", &permit_wait.as_millis())?;
                 map.serialize_entry("entity_count", entity_count)?;
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;
