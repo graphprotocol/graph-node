@@ -19,6 +19,21 @@ pub struct TraceWithCacheStatus {
     pub cache_status: CacheStatus,
 }
 
+#[derive(Debug, Default)]
+pub struct HttpTrace {
+    to_json: Duration,
+    cache_weight: usize,
+}
+
+impl HttpTrace {
+    pub fn new(to_json: Duration, cache_weight: usize) -> Self {
+        HttpTrace {
+            to_json,
+            cache_weight,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Trace {
     None,
@@ -34,6 +49,7 @@ pub enum Trace {
         /// and the processing time for all SQL queries. It does not include
         /// the time it takes to serialize the result
         elapsed: Duration,
+        query_parsing: Duration,
         /// A list of `Trace::Block`, one for each block constraint in the query
         blocks: Vec<TraceWithCacheStatus>,
     },
@@ -80,6 +96,7 @@ impl Trace {
                 query_id: query_id.to_string(),
                 elapsed: Duration::ZERO,
                 setup: Duration::ZERO,
+                query_parsing: Duration::ZERO,
                 blocks: Vec::new(),
             }
         } else {
@@ -220,6 +237,16 @@ impl Trace {
         }
     }
 
+    pub fn query_parsing(&mut self, time: Duration) {
+        match self {
+            Trace::None => { /* nothing to do  */ }
+            Trace::Root { query_parsing, .. } => *query_parsing += time,
+            Trace::Block { .. } | Trace::Query { .. } => {
+                unreachable!("can not add query_parsing to Block or Query")
+            }
+        }
+    }
+
     /// Return the total time spent executing database queries
     pub fn query_total(&self) -> QueryTotal {
         QueryTotal::calculate(self)
@@ -296,10 +323,11 @@ impl Serialize for Trace {
                 query_id,
                 elapsed,
                 setup,
+                query_parsing,
                 blocks,
             } => {
                 let qt = self.query_total();
-                let mut map = ser.serialize_map(Some(blocks.len() + 2))?;
+                let mut map = ser.serialize_map(Some(8))?;
                 map.serialize_entry("query", query)?;
                 if !variables.is_empty() && variables.as_str() != "{}" {
                     map.serialize_entry("variables", variables)?;
@@ -307,6 +335,7 @@ impl Serialize for Trace {
                 map.serialize_entry("query_id", query_id)?;
                 map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
                 map.serialize_entry("setup_ms", &setup.as_millis())?;
+                map.serialize_entry("query_parsing_ms", &query_parsing.as_millis())?;
                 map.serialize_entry("db", &qt)?;
                 map.serialize_entry("blocks", blocks)?;
                 map.end()
@@ -357,6 +386,18 @@ impl Serialize for TraceWithCacheStatus {
         let mut map = ser.serialize_map(Some(2))?;
         map.serialize_entry("trace", &self.trace)?;
         map.serialize_entry("cache", &self.cache_status)?;
+        map.end()
+    }
+}
+
+impl Serialize for HttpTrace {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = ser.serialize_map(Some(3))?;
+        map.serialize_entry("to_json", &format!("{:?}", self.to_json))?;
+        map.serialize_entry("cache_weight", &self.cache_weight)?;
         map.end()
     }
 }

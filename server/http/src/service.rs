@@ -185,12 +185,13 @@ where
         let query = parse_graphql_request(&body, trace);
         let query_parsing_time = start.elapsed();
 
-        let result = match query {
+        let mut result = match query {
             Ok(query) => service.graphql_runner.run_query(query, target).await,
             Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
             Err(e) => return Err(e),
         };
 
+        result.trace.query_parsing(query_parsing_time);
         self.graphql_runner
             .metrics()
             .observe_query_parsing(query_parsing_time, &result);
