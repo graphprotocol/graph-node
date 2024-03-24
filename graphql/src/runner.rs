@@ -99,6 +99,8 @@ where
         max_skip: Option<u32>,
         metrics: Arc<GraphQLMetrics>,
     ) -> Result<QueryResults, QueryResults> {
+        let execute_start = Instant::now();
+
         // We need to use the same `QueryStore` for the entire query to ensure
         // we have a consistent view if the world, even when replicas, which
         // are eventually consistent, are in use. If we run different parts
@@ -146,9 +148,9 @@ where
         let mut max_block = 0;
         let mut result: QueryResults = QueryResults::empty(query.root_trace(do_trace));
         let mut query_res_futures: Vec<_> = vec![];
+        let setup_elapsed = execute_start.elapsed();
 
         // Note: This will always iterate at least once.
-        let query_start = Instant::now();
         for (bc, (selection_set, error_policy)) in by_block_constraint {
             let resolver = StoreResolver::at_block(
                 &self.logger,
@@ -188,11 +190,11 @@ where
         };
 
         for query_res in results {
-            query_res.trace.finish(query_start.elapsed());
             result.append(query_res);
         }
 
         query.log_execution(max_block);
+        result.trace.finish(setup_elapsed, execute_start.elapsed());
         self.deployment_changed(store.as_ref(), state, max_block as u64)
             .await
             .map_err(QueryResults::from)

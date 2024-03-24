@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use serde::{ser::SerializeMap, Serialize};
 
@@ -23,12 +20,20 @@ pub enum Trace {
         query: Arc<String>,
         variables: Arc<String>,
         query_id: String,
-        elapsed: Mutex<Duration>,
+        /// How long setup took before we executed queries. This includes
+        /// the time to get the current state of the deployment and setting
+        /// up the `QueryStore`
+        setup: Duration,
+        /// The total time it took to execute the query; that includes setup
+        /// and the processing time for all SQL queries. It does not include
+        /// the time it takes to serialize the result
+        elapsed: Duration,
+        /// A list of `Trace::Block`, one for each block constraint in the query
         blocks: Vec<Arc<Trace>>,
     },
     Block {
         block: BlockNumber,
-        elapsed: Mutex<Duration>,
+        elapsed: Duration,
         permit_wait: Duration,
         /// Pairs of response key and traces. Each trace is either a `Trace::Query` or a `Trace::None`
         children: Vec<(String, Trace)>,
@@ -67,7 +72,8 @@ impl Trace {
                 query: query.cheap_clone(),
                 variables: variables.cheap_clone(),
                 query_id: query_id.to_string(),
-                elapsed: Mutex::new(Duration::from_millis(0)),
+                elapsed: Duration::ZERO,
+                setup: Duration::ZERO,
                 blocks: Vec::new(),
             }
         } else {
@@ -79,7 +85,7 @@ impl Trace {
         if do_trace {
             Trace::Block {
                 block,
-                elapsed: Mutex::new(Duration::from_millis(0)),
+                elapsed: Duration::from_millis(0),
                 permit_wait: Duration::from_millis(0),
                 children: Vec::new(),
             }
@@ -88,11 +94,42 @@ impl Trace {
         }
     }
 
-    pub fn finish(&self, dur: Duration) {
+    pub fn query_done(&mut self, dur: Duration, permit: &Result<QueryPermit, QueryExecutionError>) {
+        let permit_dur = match permit {
+            Ok(permit) => permit.wait,
+            Err(_) => Duration::from_millis(0),
+        };
         match self {
-            Trace::None | Trace::Query { .. } => { /* nothing to do */ }
-            Trace::Block { elapsed, .. } => *elapsed.lock().unwrap() = dur,
-            Trace::Root { elapsed, .. } => *elapsed.lock().unwrap() = dur,
+            Trace::None => { /* nothing to do */ }
+            Trace::Root { .. } => {
+                unreachable!("can not call query_done on Root")
+            }
+            Trace::Block {
+                elapsed,
+                permit_wait,
+                ..
+            }
+            | Trace::Query {
+                elapsed,
+                permit_wait,
+                ..
+            } => {
+                *elapsed = dur;
+                *permit_wait = permit_dur;
+            }
+        }
+    }
+
+    pub fn finish(&mut self, setup_dur: Duration, total: Duration) {
+        match self {
+            Trace::None => { /* nothing to do */ }
+            Trace::Query { .. } | Trace::Block { .. } => {
+                unreachable!("can not call finish on Query or Block")
+            }
+            Trace::Root { elapsed, setup, .. } => {
+                *setup = setup_dur;
+                *elapsed = total
+            }
         }
     }
 
@@ -179,6 +216,7 @@ impl Serialize for Trace {
                 variables,
                 query_id,
                 elapsed,
+                setup,
                 blocks: children,
             } => {
                 let mut map = ser.serialize_map(Some(children.len() + 2))?;
@@ -187,7 +225,8 @@ impl Serialize for Trace {
                     map.serialize_entry("variables", variables)?;
                 }
                 map.serialize_entry("query_id", query_id)?;
-                map.serialize_entry("elapsed_ms", &elapsed.lock().unwrap().as_millis())?;
+                map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
+                map.serialize_entry("setup_ms", &setup.as_millis())?;
                 map.serialize_entry("blocks", children)?;
                 map.end()
             }
@@ -199,7 +238,7 @@ impl Serialize for Trace {
             } => {
                 let mut map = ser.serialize_map(Some(children.len() + 3))?;
                 map.serialize_entry("block", block)?;
-                map.serialize_entry("elapsed_ms", &elapsed.lock().unwrap().as_millis())?;
+                map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;
                 }
