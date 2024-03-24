@@ -160,7 +160,7 @@ where
                 max_skip: std::u32::MAX,
                 trace: false,
             };
-            let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
+            let (result, _) = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);
             // Index status queries are not cacheable, so we may unwrap this.
             Arc::try_unwrap(result).unwrap()

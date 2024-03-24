@@ -109,8 +109,8 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
                 setup = setup.as_millis(),
                 elapsed = elapsed.as_millis(),
             );
-            for trace in children {
-                print_brief_trace(name, trace, indent + 2)?;
+            for twc in children {
+                print_brief_trace(name, &twc.trace, indent + 2)?;
             }
             println!("\nquery:      {:7}ms", qt.elapsed.as_millis());
             println!("other:      {:7}ms", pt.as_millis());

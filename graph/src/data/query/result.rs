@@ -12,7 +12,7 @@ use serde::Serialize;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use super::Trace;
+use super::{CacheStatus, Trace};
 
 fn serialize_data<S>(data: &Option<Data>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -184,9 +184,9 @@ impl From<Vec<QueryExecutionError>> for QueryResults {
 }
 
 impl QueryResults {
-    pub fn append(&mut self, other: Arc<QueryResult>) {
+    pub fn append(&mut self, other: Arc<QueryResult>, cache_status: CacheStatus) {
         let trace = other.trace.cheap_clone();
-        self.trace.append(trace);
+        self.trace.append(trace, cache_status);
         self.results.push(other);
     }
 
@@ -387,8 +387,8 @@ fn multiple_data_items() {
 
     let trace = Trace::None;
     let mut res = QueryResults::empty(trace);
-    res.append(obj1);
-    res.append(obj2);
+    res.append(obj1, CacheStatus::default());
+    res.append(obj2, CacheStatus::default());
 
     let expected =
         serde_json::to_string(&json!({"data":{"key1": "value1", "key2": "value2"}})).unwrap();
