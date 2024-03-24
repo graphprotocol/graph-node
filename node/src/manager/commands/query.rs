@@ -106,19 +106,21 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
         None => { /* do nothing */ }
         Root {
             elapsed,
+            setup,
             blocks: children,
             ..
         } => {
-            let elapsed = *elapsed.lock().unwrap();
+            let elapsed = *elapsed;
             let qt = query_time(trace);
             let pt = elapsed - qt;
 
             println!(
-                "{space:indent$}{name:rest$} {elapsed:7}ms",
+                "{space:indent$}{name:rest$} {setup:7}ms {elapsed:7}ms",
                 space = " ",
                 indent = indent,
                 rest = 48 - indent,
                 name = name,
+                setup = setup.as_millis(),
                 elapsed = elapsed.as_millis(),
             );
             for trace in children {
@@ -131,7 +133,7 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
         Block {
             elapsed, children, ..
         } => {
-            let elapsed = *elapsed.lock().unwrap();
+            let elapsed = *elapsed;
             let qt = query_time(trace);
             let pt = elapsed - qt;
 

@@ -355,6 +355,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     let execute_root_type = root_type.cheap_clone();
     let run_query = async move {
         let _permit = execute_ctx.resolver.query_permit().await;
+        let query_start = Instant::now();
 
         let logger = execute_ctx.logger.clone();
         let query_text = execute_ctx.query.query_text.cheap_clone();
@@ -367,7 +368,7 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
                     &execute_root_type,
                 ))
                 .map(|(obj, mut trace)| {
-                    trace.permit_wait(&_permit);
+                    trace.query_done(query_start.elapsed(), &_permit);
                     (obj, trace)
                 }),
             );
