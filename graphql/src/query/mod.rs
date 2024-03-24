@@ -1,4 +1,7 @@
-use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
+use graph::{
+    data::query::CacheStatus,
+    prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult},
+};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -35,7 +38,7 @@ pub async fn execute_query<R>(
     selection_set: Option<a::SelectionSet>,
     block_ptr: Option<BlockPtr>,
     options: QueryExecutionOptions<R>,
-) -> Arc<QueryResult>
+) -> (Arc<QueryResult>, CacheStatus)
 where
     R: Resolver,
 {
@@ -52,8 +55,11 @@ where
     });
 
     if !query.is_query() {
-        return Arc::new(
-            QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
+        return (
+            Arc::new(
+                QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
+            ),
+            CacheStatus::default(),
         );
     }
     let selection_set = selection_set
@@ -80,5 +86,5 @@ where
         start,
         cache_status.to_string(),
     );
-    result
+    (result, cache_status)
 }

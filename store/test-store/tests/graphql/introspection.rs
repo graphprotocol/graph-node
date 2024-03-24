@@ -133,7 +133,8 @@ async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult
     let result =
         match PreparedQuery::new(&logger, schema, None, query, None, 100, graphql_metrics()) {
             Ok(query) => {
-                Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap())
+                let (res, _) = execute_query(query, None, None, options).await;
+                Ok(Arc::try_unwrap(res).unwrap())
             }
             Err(e) => Err(e),
         };

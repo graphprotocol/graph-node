@@ -189,8 +189,8 @@ where
             results
         };
 
-        for query_res in results {
-            result.append(query_res);
+        for (query_res, cache_status) in results {
+            result.append(query_res, cache_status);
         }
 
         query.log_execution(max_block);

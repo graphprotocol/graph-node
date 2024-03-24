@@ -548,21 +548,20 @@ async fn execute_subgraph_query_internal(
             )
             .await
         );
-        result.append(
-            execute_query(
-                query.clone(),
-                Some(selection_set),
-                None,
-                QueryExecutionOptions {
-                    resolver,
-                    deadline,
-                    max_first: std::u32::MAX,
-                    max_skip: std::u32::MAX,
-                    trace,
-                },
-            )
-            .await,
+        let (res, status) = execute_query(
+            query.clone(),
+            Some(selection_set),
+            None,
+            QueryExecutionOptions {
+                resolver,
+                deadline,
+                max_first: std::u32::MAX,
+                max_skip: std::u32::MAX,
+                trace,
+            },
         )
+        .await;
+        result.append(res, status);
     }
     result
 }

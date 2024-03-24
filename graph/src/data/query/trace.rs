@@ -7,10 +7,16 @@ use crate::{
     prelude::{lazy_static, CheapClone},
 };
 
-use super::QueryExecutionError;
+use super::{CacheStatus, QueryExecutionError};
 
 lazy_static! {
     pub static ref TRACE_NONE: Arc<Trace> = Arc::new(Trace::None);
+}
+
+#[derive(Debug)]
+pub struct TraceWithCacheStatus {
+    pub trace: Arc<Trace>,
+    pub cache_status: CacheStatus,
 }
 
 #[derive(Debug)]
@@ -29,7 +35,7 @@ pub enum Trace {
         /// the time it takes to serialize the result
         elapsed: Duration,
         /// A list of `Trace::Block`, one for each block constraint in the query
-        blocks: Vec<Arc<Trace>>,
+        blocks: Vec<TraceWithCacheStatus>,
     },
     Block {
         block: BlockNumber,
@@ -201,12 +207,15 @@ impl Trace {
         }
     }
 
-    pub fn append(&mut self, other: Arc<Trace>) {
+    pub fn append(&mut self, trace: Arc<Trace>, cache_status: CacheStatus) {
         match self {
             Trace::None => { /* tracing turned off */ }
-            Trace::Root { blocks, .. } => blocks.push(other),
+            Trace::Root { blocks, .. } => blocks.push(TraceWithCacheStatus {
+                trace,
+                cache_status,
+            }),
             s => {
-                unreachable!("can not append self: {:#?} trace: {:#?}", s, other)
+                unreachable!("can not append self: {:#?} trace: {:#?}", s, trace)
             }
         }
     }
@@ -231,7 +240,7 @@ impl QueryTotal {
         match trace {
             None => { /* nothing to do */ }
             Root { blocks, .. } => {
-                blocks.iter().for_each(|trace| self.add(trace));
+                blocks.iter().for_each(|twc| self.add(&twc.trace));
             }
             Block { children, .. } => {
                 children.iter().for_each(|(_, trace)| self.add(trace));
@@ -337,5 +346,17 @@ impl Serialize for Trace {
                 map.end()
             }
         }
+    }
+}
+
+impl Serialize for TraceWithCacheStatus {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = ser.serialize_map(Some(2))?;
+        map.serialize_entry("trace", &self.trace)?;
+        map.serialize_entry("cache", &self.cache_status)?;
+        map.end()
     }
 }

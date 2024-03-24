@@ -2989,8 +2989,8 @@ fn trace_works() {
             None => panic!("expected Root got None"),
             Root { blocks, .. } => {
                 assert_eq!(2, blocks.len());
-                for block in blocks {
-                    match block.as_ref() {
+                for twc in blocks {
+                    match twc.trace.as_ref() {
                         Block {
                             block, children, ..
                         } => {
@@ -3002,7 +3002,7 @@ fn trace_works() {
                                 _ => panic!("expected Query got {:?}", children[0]),
                             }
                         }
-                        _ => panic!("expected Block got {:?}", block),
+                        _ => panic!("expected Block got {:?}", twc.trace),
                     }
                 }
             }
