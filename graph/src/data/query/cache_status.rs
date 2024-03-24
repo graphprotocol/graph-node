@@ -46,6 +46,13 @@ impl CacheStatus {
             CacheStatus::Miss => "miss",
         }
     }
+
+    pub fn uses_database(&self) -> bool {
+        match self {
+            CacheStatus::Hit | CacheStatus::Shared => false,
+            CacheStatus::Insert | CacheStatus::Miss => true,
+        }
+    }
 }
 
 impl Serialize for CacheStatus {
