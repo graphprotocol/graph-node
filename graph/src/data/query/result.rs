@@ -1,5 +1,5 @@
 use super::error::{QueryError, QueryExecutionError};
-use super::trace::TRACE_NONE;
+use super::trace::{HttpTrace, TRACE_NONE};
 use crate::cheap_clone::CheapClone;
 use crate::data::value::Object;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
@@ -11,6 +11,7 @@ use serde::ser::*;
 use serde::Serialize;
 use std::convert::TryFrom;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::{CacheStatus, Trace};
 
@@ -86,6 +87,7 @@ impl QueryResults {
 
 impl Serialize for QueryResults {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let start = Instant::now();
         let mut len = 0;
         let has_data = self.results.iter().any(|r| r.has_data());
         if has_data {
@@ -132,7 +134,9 @@ impl Serialize for QueryResults {
         }
 
         if !self.trace.is_none() {
+            let http = HttpTrace::new(start.elapsed(), self.results.weight());
             state.serialize_field("trace", &self.trace)?;
+            state.serialize_field("http", &http)?;
         }
         state.end()
     }
@@ -190,7 +194,7 @@ impl QueryResults {
         self.results.push(other);
     }
 
-    pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
+    pub fn as_http_response<T: From<String>>(&mut self) -> http::Response<T> {
         let status_code = http::StatusCode::OK;
 
         let json =
