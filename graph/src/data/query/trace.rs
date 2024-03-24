@@ -134,8 +134,16 @@ impl Trace {
     }
 
     pub fn query(query: &str, elapsed: Duration, entity_count: usize) -> Trace {
+        // Strip out the comment `/* .. */` that adds various tags to the
+        // query that are irrelevant for us
+        let query = match query.find("*/") {
+            Some(pos) => &query[pos + 2..],
+            None => query,
+        };
+
+        let query = query.replace("\t", "").replace("\"", "");
         Trace::Query {
-            query: query.to_string(),
+            query,
             elapsed,
             conn_wait: Duration::from_millis(0),
             permit_wait: Duration::from_millis(0),
