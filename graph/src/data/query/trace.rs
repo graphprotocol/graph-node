@@ -259,6 +259,8 @@ pub struct QueryTotal {
     pub conn_wait: Duration,
     pub permit_wait: Duration,
     pub entity_count: usize,
+    pub query_count: usize,
+    pub cached_count: usize,
 }
 
 impl QueryTotal {
@@ -267,7 +269,14 @@ impl QueryTotal {
         match trace {
             None => { /* nothing to do */ }
             Root { blocks, .. } => {
-                blocks.iter().for_each(|twc| self.add(&twc.trace));
+                blocks.iter().for_each(|twc| {
+                    if twc.cache_status.uses_database() {
+                        self.query_count += 1;
+                        self.add(&twc.trace)
+                    } else {
+                        self.cached_count += 1
+                    }
+                });
             }
             Block { children, .. } => {
                 children.iter().for_each(|(_, trace)| self.add(trace));
@@ -306,6 +315,8 @@ impl Serialize for QueryTotal {
         map.serialize_entry("conn_wait_ms", &self.conn_wait.as_millis())?;
         map.serialize_entry("permit_wait_ms", &self.permit_wait.as_millis())?;
         map.serialize_entry("entity_count", &self.entity_count)?;
+        map.serialize_entry("query_count", &self.query_count)?;
+        map.serialize_entry("cached_count", &self.cached_count)?;
         map.end()
     }
 }
