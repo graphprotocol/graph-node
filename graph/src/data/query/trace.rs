@@ -202,6 +202,68 @@ impl Trace {
             }
         }
     }
+
+    /// Return the total time spent executing database queries
+    pub fn query_total(&self) -> QueryTotal {
+        QueryTotal::calculate(self)
+    }
+}
+
+#[derive(Default)]
+pub struct QueryTotal {
+    pub elapsed: Duration,
+    pub conn_wait: Duration,
+    pub permit_wait: Duration,
+    pub entity_count: usize,
+}
+
+impl QueryTotal {
+    fn add(&mut self, trace: &Trace) {
+        use Trace::*;
+        match trace {
+            None => { /* nothing to do */ }
+            Root { blocks, .. } => {
+                blocks.iter().for_each(|trace| self.add(trace));
+            }
+            Block { children, .. } => {
+                children.iter().for_each(|(_, trace)| self.add(trace));
+            }
+            Query {
+                elapsed,
+                conn_wait,
+                permit_wait,
+                children,
+                entity_count,
+                ..
+            } => {
+                self.elapsed += *elapsed;
+                self.conn_wait += *conn_wait;
+                self.permit_wait += *permit_wait;
+                self.entity_count += entity_count;
+                children.iter().for_each(|(_, trace)| self.add(trace));
+            }
+        }
+    }
+
+    fn calculate(trace: &Trace) -> Self {
+        let mut qt = QueryTotal::default();
+        qt.add(trace);
+        qt
+    }
+}
+
+impl Serialize for QueryTotal {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut map = ser.serialize_map(Some(4))?;
+        map.serialize_entry("elapsed_ms", &self.elapsed.as_millis())?;
+        map.serialize_entry("conn_wait_ms", &self.conn_wait.as_millis())?;
+        map.serialize_entry("permit_wait_ms", &self.permit_wait.as_millis())?;
+        map.serialize_entry("entity_count", &self.entity_count)?;
+        map.end()
+    }
 }
 
 impl Serialize for Trace {
@@ -217,9 +279,10 @@ impl Serialize for Trace {
                 query_id,
                 elapsed,
                 setup,
-                blocks: children,
+                blocks,
             } => {
-                let mut map = ser.serialize_map(Some(children.len() + 2))?;
+                let qt = self.query_total();
+                let mut map = ser.serialize_map(Some(blocks.len() + 2))?;
                 map.serialize_entry("query", query)?;
                 if !variables.is_empty() && variables.as_str() != "{}" {
                     map.serialize_entry("variables", variables)?;
@@ -227,7 +290,8 @@ impl Serialize for Trace {
                 map.serialize_entry("query_id", query_id)?;
                 map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
                 map.serialize_entry("setup_ms", &setup.as_millis())?;
-                map.serialize_entry("blocks", children)?;
+                map.serialize_entry("db", &qt)?;
+                map.serialize_entry("blocks", blocks)?;
                 map.end()
             }
             Trace::Block {

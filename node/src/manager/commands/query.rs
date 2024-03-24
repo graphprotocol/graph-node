@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::Write;
 use std::iter::FromIterator;
-use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 use graph::data::query::Trace;
@@ -89,19 +88,6 @@ pub async fn run(
 fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), anyhow::Error> {
     use Trace::*;
 
-    fn query_time(trace: &Trace) -> Duration {
-        match trace {
-            None => Duration::from_millis(0),
-            Root {
-                blocks: children, ..
-            } => children.iter().map(|trace| query_time(trace)).sum(),
-            Block { children, .. } => children.iter().map(|(_, trace)| query_time(trace)).sum(),
-            Query {
-                elapsed, children, ..
-            } => *elapsed + children.iter().map(|(_, trace)| query_time(trace)).sum(),
-        }
-    }
-
     match trace {
         None => { /* do nothing */ }
         Root {
@@ -111,8 +97,8 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
             ..
         } => {
             let elapsed = *elapsed;
-            let qt = query_time(trace);
-            let pt = elapsed - qt;
+            let qt = trace.query_total();
+            let pt = elapsed - qt.elapsed;
 
             println!(
                 "{space:indent$}{name:rest$} {setup:7}ms {elapsed:7}ms",
@@ -126,31 +112,14 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
             for trace in children {
                 print_brief_trace(name, trace, indent + 2)?;
             }
-            println!("\nquery:      {:7}ms", qt.as_millis());
+            println!("\nquery:      {:7}ms", qt.elapsed.as_millis());
             println!("other:      {:7}ms", pt.as_millis());
             println!("total:      {:7}ms", elapsed.as_millis())
         }
-        Block {
-            elapsed, children, ..
-        } => {
-            let elapsed = *elapsed;
-            let qt = query_time(trace);
-            let pt = elapsed - qt;
-
-            println!(
-                "{space:indent$}{name:rest$} {elapsed:7}ms",
-                space = " ",
-                indent = indent,
-                rest = 48 - indent,
-                name = name,
-                elapsed = elapsed.as_millis(),
-            );
+        Block { children, .. } => {
             for (name, trace) in children {
                 print_brief_trace(name, trace, indent + 2)?;
             }
-            println!("\nquery:      {:7}ms", qt.as_millis());
-            println!("other:      {:7}ms", pt.as_millis());
-            println!("total:      {:7}ms", elapsed.as_millis())
         }
 
         Query {
