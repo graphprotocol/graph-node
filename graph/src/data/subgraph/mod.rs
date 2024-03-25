@@ -1026,6 +1026,8 @@ pub struct DeploymentState {
     pub latest_block: BlockPtr,
     /// The earliest block that the subgraph has processed
     pub earliest_block_number: BlockNumber,
+    /// The first block at which the subgraph has a deterministic error
+    pub first_error_block: Option<BlockNumber>,
 }
 
 impl DeploymentState {
@@ -1050,6 +1052,13 @@ impl DeploymentState {
             ));
         }
         Ok(())
+    }
+
+    /// Return `true` if the subgraph has a deterministic error visible at
+    /// `block`
+    pub fn has_deterministic_errors(&self, block: &BlockPtr) -> bool {
+        self.first_error_block
+            .map_or(false, |first_error_block| first_error_block <= block.number)
     }
 }
 
