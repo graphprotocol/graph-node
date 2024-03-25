@@ -111,9 +111,7 @@ impl StoreResolver {
         let blocks_behind = state.latest_block.number - block_ptr.ptr.number;
         graphql_metrics.observe_query_blocks_behind(blocks_behind, &deployment);
 
-        let has_non_fatal_errors = store
-            .has_deterministic_errors(block_ptr.ptr.block_number())
-            .await?;
+        let has_non_fatal_errors = state.has_deterministic_errors(&block_ptr.ptr);
 
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),

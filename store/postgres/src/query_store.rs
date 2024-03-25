@@ -108,15 +108,6 @@ impl QueryStoreTrait for QueryStore {
         self.store.wait_stats(self.replica_id)
     }
 
-    async fn has_deterministic_errors(&self, block: BlockNumber) -> Result<bool, StoreError> {
-        let id = self.site.deployment.clone();
-        self.store
-            .with_conn(move |conn, _| {
-                crate::deployment::has_deterministic_errors(conn, &id, block).map_err(|e| e.into())
-            })
-            .await
-    }
-
     async fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError> {
         Ok(self
             .store

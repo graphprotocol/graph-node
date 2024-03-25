@@ -697,19 +697,16 @@ fn fatal_vs_non_fatal() {
             .await
             .unwrap();
 
-        assert!(!query_store
-            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
-            .await
-            .unwrap());
+        let state = query_store.deployment_state().await.unwrap();
+
+        assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
 
         transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error()], false)
             .await
             .unwrap();
 
-        assert!(query_store
-            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
-            .await
-            .unwrap());
+        let state = query_store.deployment_state().await.unwrap();
+        assert!(state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
     })
 }
 
@@ -745,10 +742,8 @@ fn fail_unfail_deterministic_error() {
         .unwrap();
 
         // We don't have any errors and the subgraph is healthy.
-        assert!(!query_store
-            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
-            .await
-            .unwrap());
+        let state = query_store.deployment_state().await.unwrap();
+        assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
         let vi = get_version_info(&store, NAME);
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
@@ -765,10 +760,8 @@ fn fail_unfail_deterministic_error() {
         .unwrap();
 
         // Still no fatal errors.
-        assert!(!query_store
-            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
-            .await
-            .unwrap());
+        let state = query_store.deployment_state().await.unwrap();
+        assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
         let vi = get_version_info(&store, NAME);
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
@@ -792,10 +785,8 @@ fn fail_unfail_deterministic_error() {
         writable.fail_subgraph(error).await.unwrap();
 
         // Now we have a fatal error because the subgraph failed.
-        assert!(query_store
-            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
-            .await
-            .unwrap());
+        let state = query_store.deployment_state().await.unwrap();
+        assert!(state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
         let vi = get_version_info(&store, NAME);
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
@@ -809,10 +800,8 @@ fn fail_unfail_deterministic_error() {
 
         // We don't have fatal errors anymore and the block got reverted.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
-        assert!(!query_store
-            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
-            .await
-            .unwrap());
+        let state = query_store.deployment_state().await.unwrap();
+        assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
         let vi = get_version_info(&store, NAME);
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
