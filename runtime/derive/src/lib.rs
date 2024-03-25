@@ -37,41 +37,6 @@ impl Parse for Args {
     }
 }
 
-#[derive(Debug)]
-struct TypeParam(syn::Ident);
-
-impl syn::parse::Parse for TypeParam {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let content;
-        syn::parenthesized!(content in input);
-        let typ = content.parse()?;
-        Ok(TypeParam(typ))
-    }
-}
-
-#[derive(Debug)]
-struct TypeParamList(Vec<syn::Ident>);
-
-impl syn::parse::Parse for TypeParamList {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let content;
-        syn::parenthesized!(content in input);
-
-        let mut params: Vec<syn::Ident> = Vec::new();
-
-        while !content.is_empty() {
-            let typ = content.parse()?;
-            params.push(typ);
-
-            if !content.is_empty() {
-                let _comma: syn::Token![,] = content.parse()?;
-            }
-        }
-
-        Ok(TypeParamList(params))
-    }
-}
-
 //generates graph::runtime::ToAscObj implementation for the type
 //takes optional optional list of required fields '__required__{name:TypeName}' and enumerations field decraration with types, i.e. sum{single: ModeInfoSingle,multi: ModeInfoMulti}
 //intended use is in build.rs with tonic_build's type_attribute(<...>, <...>) to generate type implementation of graph::runtime::ToAscObj
