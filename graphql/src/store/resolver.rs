@@ -128,21 +128,13 @@ impl StoreResolver {
 
         match bc {
             BlockConstraint::Hash(hash) => {
-                let ptr = store
-                    .block_number_with_timestamp_and_parent_hash(&hash)
-                    .await
-                    .map_err(Into::into)
-                    .and_then(|result| {
-                        result
-                            .ok_or_else(|| {
-                                QueryExecutionError::ValueParseError(
-                                    "block.hash".to_owned(),
-                                    "no block with that hash found".to_owned(),
-                                )
-                            })
-                            .map(|(number, _, _)| BlockPtr::new(hash, number))
-                    })?;
-
+                let Some(number) = store.block_number(&hash).await? else {
+                    return Err(QueryExecutionError::ValueParseError(
+                        "block.hash".to_owned(),
+                        "no block with that hash found".to_owned(),
+                    ));
+                };
+                let ptr = BlockPtr::new(hash, number);
                 block_queryable(state, ptr.number)?;
                 Ok(ptr)
             }
