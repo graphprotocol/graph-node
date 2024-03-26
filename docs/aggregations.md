@@ -98,14 +98,6 @@ directive also accepts a boolean flag `cumulative` that indicates whether
 the aggregation should be cumulative. Cumulative aggregations aggregate over
 the entire timeseries up to the end of the time interval for the bucket.
 
-**TODO** Since average is a little more complicated to handle for cumulative
-aggregations, and it doesn't seem like it used in practice, we won't
-initially support it. (same for variance, stddev etc.)
-
-**TODO** It might be necessary to allow `@aggregate` fields that are only
-used for some intervals. We could allow that with syntax like
-`@aggregate(fn: .., arg: .., interval: "day")`
-
 ## Specification
 
 ### Timeseries
@@ -186,9 +178,6 @@ contains the mentioned fields:
 
 ## Querying
 
-_This section is not implemented yet, and will require a bit more thought
-about details_
-
 We create a toplevel query field for each aggregation. That query field
 accepts the following arguments:
 
@@ -201,9 +190,6 @@ accepts the following arguments:
 - Optional `timestamp_{gte|gt|lt|lte|eq|in}` filters to restrict the range
   of timestamps to return
 - Timeseries are always sorted by `timestamp` and `id` in descending order
-
-**TODO** It would be nicer to sort by the dimensions and `timestamp`, but we
-don't have the internal plumbing for multi-column sort in place.
 
 ```graphql
 token_stats(interval: "hour",
@@ -219,6 +205,3 @@ token_stats(interval: "hour",
   avgVolume
 }
 ```
-
-**TODO**: what about time-travel? Is it possible to include a block
-constraint?
