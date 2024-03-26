@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use futures::future;
 use futures::prelude::*;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};

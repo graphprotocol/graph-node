@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 pub mod ethereum;
 pub mod substreams;
 

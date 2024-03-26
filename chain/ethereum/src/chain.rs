@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
