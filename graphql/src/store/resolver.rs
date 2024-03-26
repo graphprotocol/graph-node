@@ -28,29 +28,12 @@ pub struct StoreResolver {
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
-    pub(crate) block_ptr: Option<BlockPtrExt>,
+    pub(crate) block_ptr: Option<BlockPtr>,
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
     graphql_metrics: Arc<GraphQLMetrics>,
     load_manager: Arc<LoadManager>,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct BlockPtrExt {
-    pub ptr: BlockPtr,
-}
-
-impl From<BlockPtr> for BlockPtrExt {
-    fn from(ptr: BlockPtr) -> Self {
-        Self { ptr }
-    }
-}
-
-impl From<&BlockPtrExt> for BlockPtr {
-    fn from(ptr: &BlockPtrExt) -> Self {
-        ptr.ptr.cheap_clone()
-    }
 }
 
 impl CheapClone for StoreResolver {}
@@ -102,10 +85,10 @@ impl StoreResolver {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
 
-        let blocks_behind = state.latest_block.number - block_ptr.ptr.number;
+        let blocks_behind = state.latest_block.number - block_ptr.number;
         graphql_metrics.observe_query_blocks_behind(blocks_behind, &deployment);
 
-        let has_non_fatal_errors = state.has_deterministic_errors(&block_ptr.ptr);
+        let has_non_fatal_errors = state.has_deterministic_errors(&block_ptr);
 
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -124,7 +107,7 @@ impl StoreResolver {
     pub fn block_number(&self) -> BlockNumber {
         self.block_ptr
             .as_ref()
-            .map(|ptr| ptr.ptr.number as BlockNumber)
+            .map(|ptr| ptr.number as BlockNumber)
             .unwrap_or(BLOCK_NUMBER_MAX)
     }
 
@@ -133,7 +116,7 @@ impl StoreResolver {
         store: &dyn QueryStore,
         bc: BlockConstraint,
         state: &DeploymentState,
-    ) -> Result<BlockPtrExt, QueryExecutionError> {
+    ) -> Result<BlockPtr, QueryExecutionError> {
         fn block_queryable(
             state: &DeploymentState,
             block: BlockNumber,
@@ -157,12 +140,10 @@ impl StoreResolver {
                                     "no block with that hash found".to_owned(),
                                 )
                             })
-                            .map(|(number, _, _)| BlockPtrExt {
-                                ptr: BlockPtr::new(hash, number),
-                            })
+                            .map(|(number, _, _)| BlockPtr::new(hash, number))
                     })?;
 
-                block_queryable(state, ptr.ptr.number)?;
+                block_queryable(state, ptr.number)?;
                 Ok(ptr)
             }
             BlockConstraint::Number(number) => {
@@ -187,19 +168,16 @@ impl StoreResolver {
                         ),
                     ));
                 }
-                Ok(BlockPtrExt { ptr })
+                Ok(ptr)
             }
-            BlockConstraint::Latest => Ok(BlockPtrExt {
-                ptr: state.latest_block.cheap_clone(),
-            }),
+            BlockConstraint::Latest => Ok(state.latest_block.cheap_clone()),
         }
     }
 
     async fn lookup_meta(&self) -> Result<r::Value, QueryExecutionError> {
-        // Pretend that the whole `_meta` field was loaded by prefetch. Eager
-        // loading this is ok until we add more information to this field
-        // that would force us to query the database; when that happens, we
-        // need to switch to loading on demand
+        // Pretend that the whole `_meta` field was loaded by prefetch. We
+        // load egerly here even though that is only needed if timestamp or
+        // parentHash are used in the query
         let Some(block_ptr) = &self.block_ptr else {
             return Err(QueryExecutionError::ResolveEntitiesError(
                 "cannot resolve _meta without a block pointer".to_string(),
@@ -207,7 +185,7 @@ impl StoreResolver {
         };
         let (timestamp, parent_hash) = match self
             .store
-            .block_number_with_timestamp_and_parent_hash(&block_ptr.ptr.hash)
+            .block_number_with_timestamp_and_parent_hash(&block_ptr.hash)
             .await
             .map_err(Into::<QueryExecutionError>::into)?
         {
@@ -222,7 +200,7 @@ impl StoreResolver {
                 // locate_block indicates that we do not have a block hash
                 // by setting the hash to `zero`
                 // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                let hash_h256 = ptr.ptr.hash_as_h256();
+                let hash_h256 = ptr.hash_as_h256();
                 if hash_h256 == web3::types::H256::zero() {
                     None
                 } else {
@@ -233,7 +211,7 @@ impl StoreResolver {
         let number = self
             .block_ptr
             .as_ref()
-            .map(|ptr| r::Value::Int(ptr.ptr.number.into()))
+            .map(|ptr| r::Value::Int(ptr.number.into()))
             .unwrap_or(r::Value::Null);
 
         let timestamp = timestamp

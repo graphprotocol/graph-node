@@ -168,7 +168,7 @@ where
             query_res_futures.push(execute_query(
                 query.clone(),
                 Some(selection_set),
-                resolver.block_ptr.as_ref().map(Into::into).clone(),
+                resolver.block_ptr.clone(),
                 QueryExecutionOptions {
                     resolver,
                     deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),
