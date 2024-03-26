@@ -49,6 +49,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -886,16 +887,27 @@ fn ethereum_networks_as_chains(
                 Arc::new(EthereumStreamBuilder {}),
                 Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
-                runtime_adapter,
+                runtime_adapter.cheap_clone(),
                 ENV_VARS.reorg_threshold,
                 chain_config.polling_interval,
                 is_ingestible,
             );
-            (network_name.clone(), Arc::new(chain))
+            (network_name.clone(), Arc::new(chain), runtime_adapter)
         })
         .collect();
 
-    for (network_name, chain) in chains.iter().cloned() {
+    for (network_name, chain, runtime_adapter) in chains.iter().cloned() {
+        let dataset_chain = graph_chain_dataset::Chain::new(
+            Some(runtime_adapter.eth_adapters.cheap_clone()),
+            runtime_adapter.call_cache.cheap_clone(),
+            logger_factory.clone(),
+            metrics_registry.cheap_clone(),
+            store.subgraph_store(),
+            store.block_store().chain_store(&network_name).unwrap(),
+        );
+
+        blockchain_map
+            .insert::<graph_chain_dataset::Chain>(network_name.clone(), Arc::new(dataset_chain));
         blockchain_map.insert::<graph_chain_ethereum::Chain>(network_name, chain)
     }
 
@@ -919,5 +931,5 @@ fn ethereum_networks_as_chains(
         }
     }
 
-    HashMap::from_iter(chains)
+    HashMap::from_iter(chains.into_iter().map(|(a, b, _c)| (a, b)))
 }

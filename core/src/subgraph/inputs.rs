@@ -1,7 +1,8 @@
 use graph::{
     blockchain::{Blockchain, TriggersAdapter},
+    cheap_clone::CheapClone,
     components::{
-        store::{DeploymentLocator, SubgraphFork, WritableStore},
+        store::{DeploymentLocator, SubgraphFork, SubgraphStore, WritableStore},
         subgraph::ProofOfIndexingVersion,
     },
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
@@ -12,6 +13,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 pub struct IndexingInputs<C: Blockchain> {
+    pub dataset: Option<DeploymentLocator>,
     pub deployment: DeploymentLocator,
     pub features: BTreeSet<SubgraphFeature>,
     pub start_blocks: Vec<BlockNumber>,
@@ -26,6 +28,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub static_filters: bool,
     pub poi_version: ProofOfIndexingVersion,
     pub network: String,
+    pub subgraph_store: Arc<dyn SubgraphStore>,
 
     /// Whether to instrument trigger processing and log additional,
     /// possibly expensive and noisy, information
@@ -50,6 +53,8 @@ impl<C: Blockchain> IndexingInputs<C> {
             poi_version,
             network,
             instrument,
+            subgraph_store,
+            dataset,
         } = self;
         IndexingInputs {
             deployment: deployment.clone(),
@@ -67,6 +72,8 @@ impl<C: Blockchain> IndexingInputs<C> {
             poi_version: *poi_version,
             network: network.clone(),
             instrument: *instrument,
+            subgraph_store: subgraph_store.cheap_clone(),
+            dataset: dataset.clone(),
         }
     }
 }

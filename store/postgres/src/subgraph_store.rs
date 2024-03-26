@@ -17,7 +17,7 @@ use graph::{
         server::index_node::VersionInfo,
         store::{
             self, BlockPtrForNumber, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait,
-            PruneReporter, PruneRequest, SubgraphFork,
+            PruneReporter, PruneRequest, SubgraphFork, SubgraphSegment, SubgraphSegmentId,
         },
     },
     constraint_violation,
@@ -38,7 +38,7 @@ use graph::{
 use crate::{
     connection_pool::ConnectionPool,
     deployment::{OnSync, SubgraphHealth},
-    primary,
+    primary::{self},
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::{index::Method, Layout},
     writable::WritableStore,
@@ -283,7 +283,7 @@ pub struct SubgraphStoreInner {
     sites: TimedCache<DeploymentHash, Site>,
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
-    writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
+    writables: Mutex<HashMap<(DeploymentId, SubgraphSegmentId), Arc<WritableStore>>>,
     registry: Arc<MetricsRegistry>,
 }
 
@@ -1454,13 +1454,19 @@ impl SubgraphStoreTrait for SubgraphStore {
         self: Arc<Self>,
         logger: Logger,
         deployment: graph::components::store::DeploymentId,
+        segment: SubgraphSegment,
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
         let deployment = deployment.into();
         // We cache writables to make sure calls to this method are
         // idempotent and there is ever only one `WritableStore` for any
         // deployment
-        if let Some(writable) = self.writables.lock().unwrap().get(&deployment) {
+        if let Some(writable) = self
+            .writables
+            .lock()
+            .unwrap()
+            .get(&(deployment, segment.id().unwrap_or_default()))
+        {
             // A poisoned writable will not write anything anymore; we
             // discard it and create a new one that is properly initialized
             // according to the state in the database.
@@ -1482,15 +1488,16 @@ impl SubgraphStoreTrait for SubgraphStore {
                 self.as_ref().clone(),
                 logger,
                 site,
+                segment.clone(),
                 manifest_idx_and_name,
                 self.registry.clone(),
             )
             .await?,
         );
-        self.writables
-            .lock()
-            .unwrap()
-            .insert(deployment, writable.cheap_clone());
+        self.writables.lock().unwrap().insert(
+            (deployment, segment.id().unwrap_or_default()),
+            writable.cheap_clone(),
+        );
         Ok(writable)
     }
 
@@ -1499,7 +1506,11 @@ impl SubgraphStoreTrait for SubgraphStore {
 
         // Remove the writable from the cache and stop it
         let deployment = loc.id.into();
-        let writable = self.writables.lock().unwrap().remove(&deployment);
+        let writable = self
+            .writables
+            .lock()
+            .unwrap()
+            .remove(&(deployment, SubgraphSegmentId::default()));
         match writable {
             Some(writable) => writable.stop().await,
             None => Ok(()),

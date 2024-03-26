@@ -199,10 +199,10 @@ pub struct EnvVars {
     /// The amount of history to keep when using 'min' historyBlocks
     /// in the manifest
     pub min_history_blocks: BlockNumber,
-
     /// Set by the env var `dips_metrics_object_store_url`
     /// The name of the object store bucket to store DIPS metrics
     pub dips_metrics_object_store_url: Option<String>,
+    pub dataset_subgraphs_enabled: bool,
 }
 
 impl EnvVars {
@@ -273,6 +273,7 @@ impl EnvVars {
                 .min_history_blocks
                 .unwrap_or(2 * inner.reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
+            dataset_subgraphs_enabled: inner.experimental_dataset_subgraphs_enabled.0,
         })
     }
 
@@ -357,6 +358,8 @@ struct Inner {
     log_levels: Option<String>,
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
+    #[envconfig(from = "EXPERIMENTAL_DATASET_SUBGRAPHS_ENABLED", default = "true")]
+    experimental_dataset_subgraphs_enabled: EnvVarBoolean,
     #[envconfig(
         from = "EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE",
         default = "instant"

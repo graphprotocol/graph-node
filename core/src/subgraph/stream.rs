@@ -1,7 +1,7 @@
 use crate::subgraph::inputs::IndexingInputs;
 use anyhow::bail;
 use graph::blockchain::block_stream::{BlockStream, BufferedBlockStream};
-use graph::blockchain::Blockchain;
+use graph::blockchain::{Blockchain, BlockchainKind};
 use graph::prelude::{CheapClone, Error, SubgraphInstanceMetrics};
 use std::sync::Arc;
 
@@ -12,14 +12,22 @@ pub async fn new_block_stream<C: Blockchain>(
 ) -> Result<Box<dyn BlockStream<C>>, Error> {
     let is_firehose = inputs.chain.chain_client().is_firehose();
 
+    // HACK: Need to find a better way for this
+    let deployment = if C::KIND == BlockchainKind::Dataset {
+        inputs.dataset.clone().unwrap()
+    } else {
+        inputs.deployment.clone()
+    };
+
     match inputs
         .chain
         .new_block_stream(
-            inputs.deployment.clone(),
+            deployment,
             inputs.store.cheap_clone(),
             inputs.start_blocks.clone(),
             Arc::new(filter.clone()),
             inputs.unified_api_version.clone(),
+            metrics.stopwatch.cheap_clone(),
         )
         .await
     {

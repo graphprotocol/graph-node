@@ -78,7 +78,7 @@ where
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub fn new(
-        manifest: SubgraphManifest<C>,
+        manifest: &SubgraphManifest<C>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         causality_region_seq: CausalityRegionSeq,
@@ -87,7 +87,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     ) -> Self {
         let instance = SubgraphInstance::new(
-            manifest,
+            &manifest,
             host_builder,
             host_metrics.clone(),
             causality_region_seq,

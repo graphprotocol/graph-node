@@ -543,7 +543,7 @@ impl IntoValue for DeploymentFeatures {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<C, S, D, T> {
     pub id: DeploymentHash,
@@ -562,7 +562,7 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub indexer_hints: Option<IndexerHints>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
     prune: Option<Prune>,
@@ -577,7 +577,7 @@ impl IndexerHints {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Prune {
     Auto,
     Never,

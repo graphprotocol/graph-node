@@ -397,6 +397,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "borsh"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f58b559fd6448c6e2fd0adb5720cd98a2506594cafa4737ff98c396f3e82f667"
+dependencies = [
+ "borsh-derive",
+ "cfg_aliases",
+]
+
+[[package]]
+name = "borsh-derive"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aadb5b6ccbd078890f6d7003694e33816e6b784358f18e15e7e6d9f065a57cd"
+dependencies = [
+ "once_cell",
+ "proc-macro-crate 3.1.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.48",
+ "syn_derive",
+]
+
+[[package]]
 name = "bs58"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -456,6 +480,12 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "cfg_aliases"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
 name = "chrono"
@@ -1281,6 +1311,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1493,6 +1533,7 @@ dependencies = [
  "async-trait",
  "atomic_refcell",
  "bigdecimal 0.1.2",
+ "borsh",
  "bytes",
  "chrono",
  "cid",
@@ -1534,6 +1575,7 @@ dependencies = [
  "serde_plain",
  "serde_regex",
  "serde_yaml",
+ "sled",
  "slog",
  "slog-async",
  "slog-envlogger",
@@ -1594,6 +1636,26 @@ dependencies = [
  "prost-types",
  "semver",
  "serde",
+ "tonic-build",
+]
+
+[[package]]
+name = "graph-chain-dataset"
+version = "0.34.0"
+dependencies = [
+ "anyhow",
+ "base64 0.20.0",
+ "graph",
+ "graph-chain-ethereum",
+ "graph-runtime-wasm",
+ "hex",
+ "lazy_static",
+ "prost",
+ "prost-types",
+ "semver",
+ "serde",
+ "sled",
+ "tokio",
  "tonic-build",
 ]
 
@@ -1682,11 +1744,13 @@ dependencies = [
  "atomic_refcell",
  "bytes",
  "cid",
+ "ethabi",
  "futures 0.1.31",
  "futures 0.3.16",
  "graph",
  "graph-chain-arweave",
  "graph-chain-cosmos",
+ "graph-chain-dataset",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-starknet",
@@ -1694,9 +1758,18 @@ dependencies = [
  "graph-runtime-wasm",
  "ipfs-api",
  "ipfs-api-backend-hyper",
+ "lru_time_cache",
+ "once_cell",
+ "semver",
+ "serde",
+ "serde_json",
  "serde_yaml",
+ "sled",
+ "substreams",
+ "substreams-ethereum 0.8.0",
  "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
+ "uniswap",
  "uuid",
 ]
 
@@ -1720,6 +1793,7 @@ dependencies = [
 name = "graph-node"
 version = "0.34.0"
 dependencies = [
+ "borsh",
  "clap",
  "diesel",
  "env_logger",
@@ -1728,6 +1802,7 @@ dependencies = [
  "graph",
  "graph-chain-arweave",
  "graph-chain-cosmos",
+ "graph-chain-dataset",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-starknet",
@@ -1747,7 +1822,9 @@ dependencies = [
  "prometheus",
  "serde",
  "shellexpand",
+ "sled",
  "termcolor",
+ "uniswap",
  "url",
 ]
 
@@ -2843,7 +2920,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc076939022111618a5026d3be019fd8b366e76314538ff9a1b59ffbcbf98bcd"
 dependencies = [
- "proc-macro-crate",
+ "proc-macro-crate 1.1.0",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -3075,7 +3152,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c6e626dc84025ff56bf1476ed0e30d10c84d7f89a475ef46ebabee1095a8fba"
 dependencies = [
- "proc-macro-crate",
+ "proc-macro-crate 1.1.0",
  "proc-macro2",
  "quote",
  "syn 1.0.107",
@@ -3163,7 +3240,40 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dfb61232e34fcb633f43d12c58f83c1df82962dcdfa565a4e866ffc17dafe12"
 dependencies = [
- "phf_shared",
+ "phf_shared 0.8.0",
+]
+
+[[package]]
+name = "phf"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ade2d8b8f33c7333b51bcf0428d37e217e9f32192ae4772156f65063b8ce03dc"
+dependencies = [
+ "phf_macros",
+ "phf_shared 0.11.2",
+]
+
+[[package]]
+name = "phf_generator"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48e4cc64c2ad9ebe670cb8fd69dd50ae301650392e81c05f9bfcb2d5bdbc24b0"
+dependencies = [
+ "phf_shared 0.11.2",
+ "rand",
+]
+
+[[package]]
+name = "phf_macros"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3444646e286606587e49f3bcf1679b8cef1dc2c5ecc29ddacaffc305180d464b"
+dependencies = [
+ "phf_generator",
+ "phf_shared 0.11.2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.48",
 ]
 
 [[package]]
@@ -3171,6 +3281,15 @@ name = "phf_shared"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c00cf8b9eafe68dde5e9eaa2cef8ee84a9336a47d566ec55ca16589633b65af7"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90fcb95eef784c2ac79119d1dd819e162b5da872ce6f3c3abe1e8ca1c082f72b"
 dependencies = [
  "siphasher",
 ]
@@ -3335,6 +3454,15 @@ checksum = "1ebace6889caf889b4d3f76becee12e90353f2b8c7d875534a71e5742f8f6f83"
 dependencies = [
  "thiserror",
  "toml 0.5.11",
+]
+
+[[package]]
+name = "proc-macro-crate"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d37c51ca738a55da99dc0c4a34860fd675453b8b36209178c2249bb13651284"
+dependencies = [
+ "toml_edit 0.21.0",
 ]
 
 [[package]]
@@ -4135,6 +4263,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c307a32c1c5c437f38c7fd45d753050587732ba8628319fbdf12a7e289ccc590"
 
 [[package]]
+name = "sled"
+version = "0.34.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f96b4737c2ce5987354855aed3797279def4ebf734436c6aa4552cf8e169935"
+dependencies = [
+ "crc32fast",
+ "crossbeam-epoch",
+ "crossbeam-utils",
+ "fs2",
+ "fxhash",
+ "libc",
+ "log",
+ "parking_lot 0.11.2",
+]
+
+[[package]]
 name = "slice-group-by"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4401,6 +4545,130 @@ dependencies = [
 ]
 
 [[package]]
+name = "substreams-ethereum"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03a426822f6032fa28145cb2cb7661e70554da839a40ee08b6348f1479a44e1b"
+dependencies = [
+ "getrandom",
+ "substreams",
+ "substreams-ethereum-abigen 0.8.0",
+ "substreams-ethereum-core 0.8.0",
+ "substreams-ethereum-derive 0.8.0",
+]
+
+[[package]]
+name = "substreams-ethereum"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48f45dc04be50b7ca08d6d5c4560ee3eeba16ccaa1c124d0361bb30b5b84e28b"
+dependencies = [
+ "getrandom",
+ "num-bigint 0.4.4",
+ "substreams",
+ "substreams-ethereum-abigen 0.9.9",
+ "substreams-ethereum-core 0.9.9",
+ "substreams-ethereum-derive 0.9.9",
+]
+
+[[package]]
+name = "substreams-ethereum-abigen"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd2ba34bc4d19288e7487aa2b13ee75955222809d2dab48c9dad33230a6f4732"
+dependencies = [
+ "anyhow",
+ "ethabi",
+ "heck",
+ "hex",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "substreams-ethereum-core 0.8.0",
+ "syn 1.0.107",
+]
+
+[[package]]
+name = "substreams-ethereum-abigen"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c04307913a355aaf2a1bb7186d4bc7e36875f3d4aff77b47e83f1b63b24da55"
+dependencies = [
+ "anyhow",
+ "ethabi",
+ "heck",
+ "hex",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "substreams-ethereum-core 0.9.9",
+ "syn 1.0.107",
+]
+
+[[package]]
+name = "substreams-ethereum-core"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f680a56fc8df55dfd0b3465af2ed6f0eb471b4a0b5a9e0e56c13377911104b01"
+dependencies = [
+ "bigdecimal 0.3.1",
+ "ethabi",
+ "getrandom",
+ "num-bigint 0.4.4",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "substreams",
+]
+
+[[package]]
+name = "substreams-ethereum-core"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db9048cc9a66873ab7069ef958c2684994e6ee323da49c186b19156fdb4ca131"
+dependencies = [
+ "bigdecimal 0.3.1",
+ "ethabi",
+ "getrandom",
+ "num-bigint 0.4.4",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "substreams",
+]
+
+[[package]]
+name = "substreams-ethereum-derive"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b40d3bcb83759b62c2ed372b582be8ba46fc844362a7f7a35fa0269590066118"
+dependencies = [
+ "ethabi",
+ "heck",
+ "hex",
+ "proc-macro2",
+ "quote",
+ "substreams-ethereum-abigen 0.8.0",
+ "syn 1.0.107",
+]
+
+[[package]]
+name = "substreams-ethereum-derive"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e862928bee8653f5c9291ac619c8dc0da14ca61d8cd8d89b3acdbbde4d0bf304"
+dependencies = [
+ "ethabi",
+ "heck",
+ "hex",
+ "num-bigint 0.4.4",
+ "proc-macro2",
+ "quote",
+ "substreams-ethereum-abigen 0.9.9",
+ "syn 1.0.107",
+]
+
+[[package]]
 name = "substreams-head-tracker"
 version = "0.34.0"
 
@@ -4467,6 +4735,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syn_derive"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1329189c02ff984e9736652b1631330da25eaa6bc639089ed4915d25446cbe7b"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.48",
 ]
 
 [[package]]
@@ -4738,7 +5018,7 @@ dependencies = [
  "log",
  "parking_lot 0.11.2",
  "percent-encoding",
- "phf",
+ "phf 0.8.0",
  "pin-project-lite",
  "postgres-protocol",
  "postgres-types",
@@ -5212,6 +5492,28 @@ name = "unicode-xid"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
+
+[[package]]
+name = "uniswap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borsh",
+ "ethabi",
+ "graph",
+ "hex",
+ "num-bigint 0.4.4",
+ "num-traits",
+ "phf 0.11.2",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "substreams",
+ "substreams-entity-change",
+ "substreams-ethereum 0.9.9",
+ "tiny-keccak 2.0.2",
+ "tonic-build",
+]
 
 [[package]]
 name = "unreachable"

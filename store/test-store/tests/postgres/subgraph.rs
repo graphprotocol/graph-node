@@ -1,7 +1,7 @@
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{DeploymentId, DeploymentLocator, StatusStore},
+        store::{DeploymentId, DeploymentLocator, StatusStore, SubgraphSegment},
     },
     data::query::QueryTarget,
     data::subgraph::{schema::SubgraphHealth, SubgraphFeature},
@@ -63,7 +63,12 @@ fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
 async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), deployment_id, Arc::new(Vec::new()))
+        .writable(
+            LOGGER.clone(),
+            deployment_id,
+            SubgraphSegment::default(),
+            Arc::new(Vec::new()),
+        )
         .await
         .expect("can get writable")
         .block_ptr()
@@ -188,6 +193,7 @@ fn create_subgraph() {
         futures03::executor::block_on(store.cheap_clone().writable(
             LOGGER.clone(),
             deployment.id,
+            SubgraphSegment::default(),
             Arc::new(Vec::new()),
         ))
         .expect("can get writable")
@@ -429,7 +435,12 @@ fn status() {
 
         store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("can get writable")
             .fail_subgraph(error)
@@ -690,7 +701,12 @@ fn fatal_vs_non_fatal() {
 
         store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("can get writable")
             .fail_subgraph(error())
@@ -784,7 +800,12 @@ fn fail_unfail_deterministic_error() {
 
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("can get writable");
 
@@ -876,7 +897,12 @@ fn fail_unfail_deterministic_error_noop() {
 
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("can get writable");
 
@@ -1003,7 +1029,12 @@ fn fail_unfail_non_deterministic_error() {
 
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("can get writable");
 
@@ -1103,7 +1134,12 @@ fn fail_unfail_non_deterministic_error_noop() {
 
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("can get writable");
 

@@ -5,6 +5,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopRuntimeAdapter,
 };
+use graph::components::metrics::stopwatch::StopwatchMetrics;
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
@@ -136,6 +137,7 @@ impl Blockchain for Chain {
         _start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
             .build_substreams(

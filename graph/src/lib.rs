@@ -37,6 +37,8 @@ pub mod schema;
 /// Helpers for parsing environment variables.
 pub mod env;
 
+pub mod indexer;
+
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
 pub use task_spawn::{
