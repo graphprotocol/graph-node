@@ -166,23 +166,52 @@ impl StoreResolver {
         }
     }
 
-    async fn lookup_meta(&self) -> Result<r::Value, QueryExecutionError> {
-        // Pretend that the whole `_meta` field was loaded by prefetch. We
-        // load egerly here even though that is only needed if timestamp or
-        // parentHash are used in the query
+    /// Lookup information for the `_meta` field `field`
+    async fn lookup_meta(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        // These constants are closely related to the `_Meta_` type in
+        // `graph/src/schema/meta.graphql`
+        const BLOCK: &str = "block";
+        const TIMESTAMP: &str = "timestamp";
+        const PARENT_HASH: &str = "parentHash";
+
+        /// Check if field is of the form `_ { block { X }}` where X is
+        /// either `timestamp` or `parentHash`. In that case, we need to
+        /// query the database
+        fn lookup_needed(field: &a::Field) -> bool {
+            let Some(block) = field
+                .selection_set
+                .fields()
+                .map(|(_, iter)| iter)
+                .flatten()
+                .find(|f| f.name == BLOCK)
+            else {
+                return false;
+            };
+            block
+                .selection_set
+                .fields()
+                .map(|(_, iter)| iter)
+                .flatten()
+                .any(|f| f.name == TIMESTAMP || f.name == PARENT_HASH)
+        }
+
         let Some(block_ptr) = &self.block_ptr else {
             return Err(QueryExecutionError::ResolveEntitiesError(
                 "cannot resolve _meta without a block pointer".to_string(),
             ));
         };
-        let (timestamp, parent_hash) = match self
-            .store
-            .block_number_with_timestamp_and_parent_hash(&block_ptr.hash)
-            .await
-            .map_err(Into::<QueryExecutionError>::into)?
-        {
-            Some((_, ts, parent_hash)) => (ts, parent_hash),
-            _ => (None, None),
+        let (timestamp, parent_hash) = if lookup_needed(field) {
+            match self
+                .store
+                .block_number_with_timestamp_and_parent_hash(&block_ptr.hash)
+                .await
+                .map_err(Into::<QueryExecutionError>::into)?
+            {
+                Some((_, ts, parent_hash)) => (ts, parent_hash),
+                _ => (None, None),
+            }
+        } else {
+            (None, None)
         };
 
         let hash = self
@@ -222,7 +251,8 @@ impl StoreResolver {
             parentHash: parent_hash,
             __typename: BLOCK_FIELD_TYPE
         };
-        map.insert("prefetch:block".into(), r::Value::List(vec![block]));
+        let block_key = Word::from(format!("prefetch:{BLOCK}"));
+        map.insert(block_key, r::Value::List(vec![block]));
         map.insert(
             "deployment".into(),
             r::Value::String(self.deployment.to_string()),
@@ -283,7 +313,7 @@ impl Resolver for StoreResolver {
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         if object_type.is_meta() {
-            return self.lookup_meta().await;
+            return self.lookup_meta(field).await;
         }
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
