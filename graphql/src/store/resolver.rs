@@ -229,74 +229,67 @@ impl StoreResolver {
         }
     }
 
-    fn handle_meta(
-        &self,
-        prefetched_object: Option<r::Value>,
-        object_type: &ObjectOrInterface<'_>,
-    ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
+    fn lookup_meta(&self) -> Result<r::Value, QueryExecutionError> {
         // Pretend that the whole `_meta` field was loaded by prefetch. Eager
         // loading this is ok until we add more information to this field
         // that would force us to query the database; when that happens, we
         // need to switch to loading on demand
-        if object_type.is_meta() {
-            let hash = self
-                .block_ptr
+        let hash = self
+            .block_ptr
+            .as_ref()
+            .and_then(|ptr| {
+                // locate_block indicates that we do not have a block hash
+                // by setting the hash to `zero`
+                // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                let hash_h256 = ptr.ptr.hash_as_h256();
+                if hash_h256 == web3::types::H256::zero() {
+                    None
+                } else {
+                    Some(r::Value::String(format!("0x{:x}", hash_h256)))
+                }
+            })
+            .unwrap_or(r::Value::Null);
+        let number = self
+            .block_ptr
+            .as_ref()
+            .map(|ptr| r::Value::Int(ptr.ptr.number.into()))
+            .unwrap_or(r::Value::Null);
+
+        let timestamp = self.block_ptr.as_ref().map(|ptr| {
+            ptr.timestamp
+                .map(|ts| r::Value::Int(ts as i64))
+                .unwrap_or(r::Value::Null)
+        });
+
+        let parent_hash = self.block_ptr.as_ref().map(|ptr| {
+            ptr.parent_hash
                 .as_ref()
-                .and_then(|ptr| {
-                    // locate_block indicates that we do not have a block hash
-                    // by setting the hash to `zero`
-                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                    let hash_h256 = ptr.ptr.hash_as_h256();
-                    if hash_h256 == web3::types::H256::zero() {
-                        None
-                    } else {
-                        Some(r::Value::String(format!("0x{:x}", hash_h256)))
-                    }
-                })
-                .unwrap_or(r::Value::Null);
-            let number = self
-                .block_ptr
-                .as_ref()
-                .map(|ptr| r::Value::Int(ptr.ptr.number.into()))
-                .unwrap_or(r::Value::Null);
+                .map(|hash| r::Value::String(format!("{}", hash)))
+                .unwrap_or(r::Value::Null)
+        });
 
-            let timestamp = self.block_ptr.as_ref().map(|ptr| {
-                ptr.timestamp
-                    .map(|ts| r::Value::Int(ts as i64))
-                    .unwrap_or(r::Value::Null)
-            });
-
-            let parent_hash = self.block_ptr.as_ref().map(|ptr| {
-                ptr.parent_hash
-                    .as_ref()
-                    .map(|hash| r::Value::String(format!("{}", hash)))
-                    .unwrap_or(r::Value::Null)
-            });
-
-            let mut map = BTreeMap::new();
-            let block = object! {
-                hash: hash,
-                number: number,
-                timestamp: timestamp,
-                parentHash: parent_hash,
-                __typename: BLOCK_FIELD_TYPE
-            };
-            map.insert("prefetch:block".into(), r::Value::List(vec![block]));
-            map.insert(
-                "deployment".into(),
-                r::Value::String(self.deployment.to_string()),
-            );
-            map.insert(
-                "hasIndexingErrors".into(),
-                r::Value::Boolean(self.has_non_fatal_errors),
-            );
-            map.insert(
-                "__typename".into(),
-                r::Value::String(META_FIELD_TYPE.to_string()),
-            );
-            return Ok((None, Some(r::Value::object(map))));
-        }
-        Ok((prefetched_object, None))
+        let mut map = BTreeMap::new();
+        let block = object! {
+            hash: hash,
+            number: number,
+            timestamp: timestamp,
+            parentHash: parent_hash,
+            __typename: BLOCK_FIELD_TYPE
+        };
+        map.insert("prefetch:block".into(), r::Value::List(vec![block]));
+        map.insert(
+            "deployment".into(),
+            r::Value::String(self.deployment.to_string()),
+        );
+        map.insert(
+            "hasIndexingErrors".into(),
+            r::Value::Boolean(self.has_non_fatal_errors),
+        );
+        map.insert(
+            "__typename".into(),
+            r::Value::String(META_FIELD_TYPE.to_string()),
+        );
+        return Ok(r::Value::object(map));
     }
 }
 
@@ -343,9 +336,8 @@ impl Resolver for StoreResolver {
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
-        let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
-        if let Some(meta) = meta {
-            return Ok(meta);
+        if object_type.is_meta() {
+            return self.lookup_meta();
         }
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
