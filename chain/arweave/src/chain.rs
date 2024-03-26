@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use graph::anyhow;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;

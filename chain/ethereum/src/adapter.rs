@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use graph::blockchain::ChainIdentifier;

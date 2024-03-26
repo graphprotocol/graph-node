@@ -1,4 +1,3 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
 use anyhow::Error;
 use graph::{
     blockchain::{
@@ -17,6 +16,7 @@ use graph::{
 };
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
+use std::sync::Arc;
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
 

@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use std::sync::Arc;
 
 use diesel::sql_query;

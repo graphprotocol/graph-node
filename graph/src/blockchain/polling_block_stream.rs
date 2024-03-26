@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use anyhow::Error;
 use futures03::{stream::Stream, Future, FutureExt};
 use std::cmp;

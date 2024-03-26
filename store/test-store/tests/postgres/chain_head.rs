@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 

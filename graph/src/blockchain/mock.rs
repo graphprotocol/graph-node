@@ -1,5 +1,3 @@
-// Portions copyright (2023) Vulcanize, Inc.
-
 use crate::{
     components::{
         link_resolver::LinkResolver,
