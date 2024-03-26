@@ -39,17 +39,11 @@ pub struct StoreResolver {
 #[derive(Clone, Debug)]
 pub(crate) struct BlockPtrExt {
     pub ptr: BlockPtr,
-    pub timestamp: Option<u64>,
-    pub parent_hash: Option<BlockHash>,
 }
 
 impl From<BlockPtr> for BlockPtrExt {
     fn from(ptr: BlockPtr) -> Self {
-        Self {
-            ptr,
-            timestamp: None,
-            parent_hash: None,
-        }
+        Self { ptr }
     }
 }
 
@@ -149,20 +143,6 @@ impl StoreResolver {
                 .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
         }
 
-        async fn get_block_ts(
-            store: &dyn QueryStore,
-            ptr: &BlockPtr,
-        ) -> Result<(Option<u64>, Option<BlockHash>), QueryExecutionError> {
-            match store
-                .block_number_with_timestamp_and_parent_hash(&ptr.hash)
-                .await
-                .map_err(Into::<QueryExecutionError>::into)?
-            {
-                Some((_, ts, parent_hash)) => Ok((ts, parent_hash)),
-                _ => Ok((None, None)),
-            }
-        }
-
         match bc {
             BlockConstraint::Hash(hash) => {
                 let ptr = store
@@ -177,10 +157,8 @@ impl StoreResolver {
                                     "no block with that hash found".to_owned(),
                                 )
                             })
-                            .map(|(number, ts, parent_hash)| BlockPtrExt {
+                            .map(|(number, _, _)| BlockPtrExt {
                                 ptr: BlockPtr::new(hash, number),
-                                timestamp: ts,
-                                parent_hash,
                             })
                     })?;
 
@@ -209,31 +187,34 @@ impl StoreResolver {
                         ),
                     ));
                 }
-                let (timestamp, parent_hash) = get_block_ts(store, &state.latest_block).await?;
-
-                Ok(BlockPtrExt {
-                    ptr,
-                    timestamp,
-                    parent_hash,
-                })
+                Ok(BlockPtrExt { ptr })
             }
-            BlockConstraint::Latest => {
-                let (timestamp, parent_hash) = get_block_ts(store, &state.latest_block).await?;
-
-                Ok(BlockPtrExt {
-                    ptr: state.latest_block.cheap_clone(),
-                    timestamp,
-                    parent_hash,
-                })
-            }
+            BlockConstraint::Latest => Ok(BlockPtrExt {
+                ptr: state.latest_block.cheap_clone(),
+            }),
         }
     }
 
-    fn lookup_meta(&self) -> Result<r::Value, QueryExecutionError> {
+    async fn lookup_meta(&self) -> Result<r::Value, QueryExecutionError> {
         // Pretend that the whole `_meta` field was loaded by prefetch. Eager
         // loading this is ok until we add more information to this field
         // that would force us to query the database; when that happens, we
         // need to switch to loading on demand
+        let Some(block_ptr) = &self.block_ptr else {
+            return Err(QueryExecutionError::ResolveEntitiesError(
+                "cannot resolve _meta without a block pointer".to_string(),
+            ));
+        };
+        let (timestamp, parent_hash) = match self
+            .store
+            .block_number_with_timestamp_and_parent_hash(&block_ptr.ptr.hash)
+            .await
+            .map_err(Into::<QueryExecutionError>::into)?
+        {
+            Some((_, ts, parent_hash)) => (ts, parent_hash),
+            _ => (None, None),
+        };
+
         let hash = self
             .block_ptr
             .as_ref()
@@ -255,18 +236,13 @@ impl StoreResolver {
             .map(|ptr| r::Value::Int(ptr.ptr.number.into()))
             .unwrap_or(r::Value::Null);
 
-        let timestamp = self.block_ptr.as_ref().map(|ptr| {
-            ptr.timestamp
-                .map(|ts| r::Value::Int(ts as i64))
-                .unwrap_or(r::Value::Null)
-        });
+        let timestamp = timestamp
+            .map(|ts| r::Value::Int(ts as i64))
+            .unwrap_or(r::Value::Null);
 
-        let parent_hash = self.block_ptr.as_ref().map(|ptr| {
-            ptr.parent_hash
-                .as_ref()
-                .map(|hash| r::Value::String(format!("{}", hash)))
-                .unwrap_or(r::Value::Null)
-        });
+        let parent_hash = parent_hash
+            .map(|hash| r::Value::String(format!("{}", hash)))
+            .unwrap_or(r::Value::Null);
 
         let mut map = BTreeMap::new();
         let block = object! {
@@ -337,7 +313,7 @@ impl Resolver for StoreResolver {
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         if object_type.is_meta() {
-            return self.lookup_meta();
+            return self.lookup_meta().await;
         }
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
