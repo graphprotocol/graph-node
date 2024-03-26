@@ -1,6 +1,7 @@
 use super::{constants::SQL_DIALECT, formatter::Formatter, validation::Validator};
 use crate::relational::{ColumnType, Layout};
 use anyhow::{anyhow, Ok, Result};
+use graph::components::store::BLOCK_NUMBER_MAX;
 use itertools::Itertools;
 use std::sync::Arc;
 
@@ -13,11 +14,14 @@ pub fn generate_table_prelude_from_layout(layout: &Layout) -> String {
         .map(|(_, table)| {
             let table_name = table.name.as_str();
 
-            let mut block_column = "block_range";
-
-            if table.immutable {
-                block_column = "block$";
-            }
+            let (block_column, filter) = if !table.immutable {
+                (
+                    "block_range",
+                    Some(format!(" WHERE block_range @> {}", BLOCK_NUMBER_MAX)),
+                )
+            } else {
+                ("block$", None)
+            };
 
             let columns = table
                 .columns
@@ -36,7 +40,10 @@ pub fn generate_table_prelude_from_layout(layout: &Layout) -> String {
                 .chain(std::iter::once(block_column.to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{table_name} AS (SELECT {columns} FROM {schema}.{table_name})",)
+            format!(
+                "{table_name} AS (SELECT {columns} FROM {schema}.{table_name}{})",
+                filter.unwrap_or_default()
+            )
         })
         .sorted()
         .collect::<Vec<_>>()
@@ -75,15 +82,15 @@ impl Parser {
         let mut statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql)?;
 
         let mut validator = Validator::new(&self.schema);
-        validator.validate_statements(&mut statements)?;
+        validator.validate_statements(&statements)?;
 
         let mut formatter = Formatter::new(&self.prelude);
 
-        let mut statement = statements
+        let statement = statements
             .get_mut(0)
             .ok_or_else(|| anyhow!("No SQL statements found"))?;
 
-        let result = formatter.format(&mut statement);
+        let result = formatter.format(statement);
 
         Ok(result)
     }
@@ -109,7 +116,15 @@ mod test {
             blockNumber: BigInt!
             blockTimestamp: BigInt!
             transactionHash: Bytes!
-        }      
+        }
+
+        type Token @entity {
+            id: ID!
+            address: Bytes! # address
+            symbol: String!
+            name: String!
+            decimals: Int!
+        }
     ";
 
     const NAMESPACE: &str = "sgd0815";
@@ -168,7 +183,7 @@ mod test {
 
         assert_eq!(
             query,
-            "WITH swap_multi AS (SELECT concat('0x', encode(id, 'hex')) AS id, concat('0x', encode(sender, 'hex')) AS sender, amounts_in, tokens_in, amounts_out, tokens_out, referral_code, block_number, block_timestamp, concat('0x', encode(transaction_hash, 'hex')) AS transaction_hash FROM sgd0815.swap_multi) SELECT to_jsonb(sub.*) AS data FROM ( WITH tokens AS (SELECT * FROM (VALUES ('0x0000000000000000000000000000000000000000', 'ETH', 'Ethereum', 18), ('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 'USDC', 'USD Coin', 6)) AS t (address, symbol, name, decimals)) SELECT date, t.symbol, SUM(amount) / pow(10, t.decimals) AS amount FROM (SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount FROM swap_multi AS sm, UNNEST(sm.amounts_in, sm.tokens_in) AS smi (amount, token) UNION ALL SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount FROM swap_multi AS sm, UNNEST(sm.amounts_out, sm.tokens_out) AS smo (amount, token)) AS tp JOIN tokens AS t ON t.address = '0x' || encode(tp.token, 'hex') GROUP BY tp.date, t.symbol, t.decimals ORDER BY tp.date DESC, amount DESC ) AS sub"
+            "WITH swap_multi AS (SELECT concat('0x', encode(id, 'hex')) AS id, concat('0x', encode(sender, 'hex')) AS sender, amounts_in, tokens_in, amounts_out, tokens_out, referral_code, block_number, block_timestamp, concat('0x', encode(transaction_hash, 'hex')) AS transaction_hash, block$ FROM sgd0815.swap_multi),\ntoken AS (SELECT id, concat('0x', encode(address, 'hex')) AS address, symbol, name, decimals, block_range FROM sgd0815.token WHERE block_range @> 2147483647) SELECT to_jsonb(sub.*) AS data FROM ( WITH tokens AS (SELECT * FROM (VALUES ('0x0000000000000000000000000000000000000000', 'ETH', 'Ethereum', 18), ('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 'USDC', 'USD Coin', 6)) AS t (address, symbol, name, decimals)) SELECT date, t.symbol, SUM(amount) / pow(10, t.decimals) AS amount FROM (SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount FROM swap_multi AS sm, UNNEST(sm.amounts_in, sm.tokens_in) AS smi (amount, token) UNION ALL SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount FROM swap_multi AS sm, UNNEST(sm.amounts_out, sm.tokens_out) AS smo (amount, token)) AS tp JOIN tokens AS t ON t.address = '0x' || encode(tp.token, 'hex') GROUP BY tp.date, t.symbol, t.decimals ORDER BY tp.date DESC, amount DESC ) AS sub"
         );
     }
 }
