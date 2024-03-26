@@ -5124,7 +5124,11 @@ fn iter_column_names<'a, 'b>(
     include_block_range_column: bool,
 ) -> impl Iterator<Item = &'b str> {
     let extra = if include_block_range_column {
-        [BLOCK_RANGE_COLUMN].iter()
+        if table.immutable {
+            [BLOCK_COLUMN].iter()
+        } else {
+            [BLOCK_RANGE_COLUMN].iter()
+        }
     } else {
         [].iter()
     }
