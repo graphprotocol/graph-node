@@ -37,7 +37,13 @@ lazy_static! {
     };
 
     // We will not add entries to the cache that exceed this weight.
-    static ref MAX_ENTRY_WEIGHT: usize = *MAX_WEIGHT / 3;
+    static ref MAX_ENTRY_WEIGHT: usize = {
+        if ENV_VARS.graphql.query_cache_max_entry_ratio == 0 {
+            usize::MAX
+        } else {
+        *MAX_WEIGHT / ENV_VARS.graphql.query_cache_max_entry_ratio
+        }
+    };
 
     // Sharded query results cache for recent blocks by network.
     // The `VecDeque` works as a ring buffer with a capacity of `QUERY_CACHE_BLOCKS`.
