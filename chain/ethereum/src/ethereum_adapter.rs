@@ -328,11 +328,11 @@ impl EthereumAdapter {
         filter: EthGetLogsFilter,
     ) -> DynTryFuture<'static, Vec<Log>, Error> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
-        // The first one is for Infura when it hits the log limit, the rest for Alchemy timeouts.
         const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
-            "ServerError(-32005)",
-            "503 Service Unavailable",
-            "ServerError(-32000)",
+            "ServerError(-32005)",       // Infura
+            "503 Service Unavailable",   // Alchemy
+            "ServerError(-32000)",       // Alchemy
+            "Try with this block range", // zKSync era
         ];
 
         if from > to {
