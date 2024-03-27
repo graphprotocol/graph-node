@@ -17,7 +17,7 @@ use crate::data::graphql::IntoValue;
 use crate::data::store::scalar::Timestamp;
 use crate::derive::CheapClone;
 use crate::object;
-use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
+use crate::prelude::{r, Value};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 
 /// A simple marker for byte arrays that are really block hashes
@@ -299,23 +299,6 @@ impl TryFrom<(&[u8], i64)> for BlockPtr {
             ));
         };
         Ok(BlockPtr::from((hash, number)))
-    }
-}
-
-impl TryFromValue for BlockPtr {
-    fn try_from_value(value: &r::Value) -> Result<Self, anyhow::Error> {
-        match value {
-            r::Value::Object(o) => {
-                let number = o.get_required::<BigInt>("number")?.to_u64() as BlockNumber;
-                let hash = o.get_required::<BlockHash>("hash")?;
-
-                Ok(BlockPtr::new(hash, number))
-            }
-            _ => Err(anyhow!(
-                "failed to parse non-object value into BlockPtr: {:?}",
-                value
-            )),
-        }
     }
 }
 
