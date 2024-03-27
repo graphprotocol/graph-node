@@ -532,7 +532,9 @@ async fn execute_subgraph_query_internal(
         .await
         .unwrap();
     let state = store.deployment_state().await.unwrap();
-    for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
+    let by_block_constraint =
+        return_err!(StoreResolver::locate_blocks(store.as_ref(), &state, &query).await);
+    for (ptr, (selection_set, error_policy)) in by_block_constraint {
         let logger = logger.clone();
         let resolver = return_err!(
             StoreResolver::at_block(
@@ -540,7 +542,7 @@ async fn execute_subgraph_query_internal(
                 store.clone(),
                 &state,
                 SUBSCRIPTION_MANAGER.clone(),
-                bc,
+                ptr,
                 error_policy,
                 query.schema.id().clone(),
                 graphql_metrics(),

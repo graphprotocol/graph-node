@@ -71,6 +71,18 @@ impl Default for BlockConstraint {
     }
 }
 
+impl BlockConstraint {
+    /// Return the `Some(hash)` if this constraint constrains by hash,
+    /// otherwise return `None`
+    pub fn hash(&self) -> Option<&BlockHash> {
+        use BlockConstraint::*;
+        match self {
+            Hash(hash) => Some(hash),
+            Number(_) | Min(_) | Latest => None,
+        }
+    }
+}
+
 impl TryFromValue for BlockConstraint {
     /// `value` should be the output of input object coercion.
     fn try_from_value(value: &r::Value) -> Result<Self, Error> {

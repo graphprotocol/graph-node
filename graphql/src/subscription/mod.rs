@@ -7,11 +7,7 @@ use graph::schema::ApiSchema;
 use graph::{components::store::SubscriptionManager, prelude::*, schema::ErrorPolicy};
 
 use crate::metrics::GraphQLMetrics;
-use crate::{
-    execution::ast as a,
-    execution::*,
-    prelude::{BlockConstraint, StoreResolver},
-};
+use crate::{execution::ast as a, execution::*, prelude::StoreResolver};
 
 /// Options available for subscription execution.
 pub struct SubscriptionExecutionOptions {
@@ -206,7 +202,7 @@ async fn execute_subscription_event(
             store,
             &state,
             subscription_manager,
-            BlockConstraint::Latest,
+            state.latest_block.clone(),
             ErrorPolicy::Deny,
             query.schema.id().clone(),
             metrics,

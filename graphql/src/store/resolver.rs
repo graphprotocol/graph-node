@@ -6,7 +6,7 @@ use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
-use graph::data::query::{CacheStatus, Trace};
+use graph::data::query::{CacheStatus, QueryResults, Trace};
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph::schema::{
@@ -76,15 +76,12 @@ impl StoreResolver {
         store: Arc<dyn QueryStore>,
         state: &DeploymentState,
         subscription_manager: Arc<dyn SubscriptionManager>,
-        bc: BlockConstraint,
+        block_ptr: BlockPtr,
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
         graphql_metrics: Arc<GraphQLMetrics>,
         load_manager: Arc<LoadManager>,
     ) -> Result<Self, QueryExecutionError> {
-        let store_clone = store.cheap_clone();
-        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
-
         let blocks_behind = state.latest_block.number - block_ptr.number;
         graphql_metrics.observe_query_blocks_behind(blocks_behind, &deployment);
 
@@ -111,12 +108,14 @@ impl StoreResolver {
             .unwrap_or(BLOCK_NUMBER_MAX)
     }
 
-    /// locate_block returns the block pointer and it's timestamp when available.
-    async fn locate_block(
+    /// Locate all the blocks needed for the query by resolving block
+    /// constraints and return the selection sets with the blocks at which
+    /// they should be executed
+    pub async fn locate_blocks(
         store: &dyn QueryStore,
-        bc: BlockConstraint,
         state: &DeploymentState,
-    ) -> Result<BlockPtr, QueryExecutionError> {
+        query: &Query,
+    ) -> Result<Vec<(BlockPtr, (a::SelectionSet, ErrorPolicy))>, QueryResults> {
         fn block_queryable(
             state: &DeploymentState,
             block: BlockNumber,
@@ -126,44 +125,60 @@ impl StoreResolver {
                 .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
         }
 
-        match bc {
-            BlockConstraint::Hash(hash) => {
-                let Some(number) = store.block_number(&hash).await? else {
-                    return Err(QueryExecutionError::ValueParseError(
-                        "block.hash".to_owned(),
-                        "no block with that hash found".to_owned(),
-                    ));
-                };
-                let ptr = BlockPtr::new(hash, number);
-                block_queryable(state, ptr.number)?;
-                Ok(ptr)
-            }
-            BlockConstraint::Number(number) => {
-                block_queryable(state, number)?;
-                // We don't have a way here to look the block hash up from
-                // the database, and even if we did, there is no guarantee
-                // that we have the block in our cache. We therefore
-                // always return an all zeroes hash when users specify
-                // a block number
-                // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)).into())
-            }
-            BlockConstraint::Min(min) => {
-                let ptr = state.latest_block.cheap_clone();
-                if ptr.number < min {
-                    return Err(QueryExecutionError::ValueParseError(
-                        "block.number_gte".to_owned(),
-                        format!(
-                            "subgraph {} has only indexed up to block number {} \
-                                and data for block number {} is therefore not yet available",
-                            state.id, ptr.number, min
-                        ),
-                    ));
+        let by_block_constraint = query.block_constraint()?;
+        let hashes: Vec<_> = by_block_constraint
+            .iter()
+            .filter_map(|(bc, _)| bc.hash())
+            .cloned()
+            .collect();
+        let hashes = store
+            .block_numbers(hashes)
+            .await
+            .map_err(QueryExecutionError::from)?;
+        let mut ptrs_and_sels = Vec::new();
+        for (bc, sel) in by_block_constraint {
+            let ptr = match bc {
+                BlockConstraint::Hash(hash) => {
+                    let Some(number) = hashes.get(&hash) else {
+                        return Err(QueryExecutionError::ValueParseError(
+                            "block.hash".to_owned(),
+                            "no block with that hash found".to_owned(),
+                        )
+                        .into());
+                    };
+                    let ptr = BlockPtr::new(hash, *number);
+                    block_queryable(state, ptr.number)?;
+                    ptr
                 }
-                Ok(ptr)
-            }
-            BlockConstraint::Latest => Ok(state.latest_block.cheap_clone()),
+                BlockConstraint::Number(number) => {
+                    block_queryable(state, number)?;
+                    // We don't have a way here to look the block hash up from
+                    // the database, and even if we did, there is no guarantee
+                    // that we have the block in our cache. We therefore
+                    // always return an all zeroes hash when users specify
+                    // a block number
+                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                    BlockPtr::new(BlockHash::zero(), number)
+                }
+                BlockConstraint::Min(min) => {
+                    let ptr = state.latest_block.cheap_clone();
+                    if ptr.number < min {
+                        return Err(QueryExecutionError::ValueParseError(
+                                "block.number_gte".to_owned(),
+                                format!(
+                                    "subgraph {} has only indexed up to block number {} \
+                                        and data for block number {} is therefore not yet available",
+                                    state.id, ptr.number, min
+                                ),
+                            ).into());
+                    }
+                    ptr
+                }
+                BlockConstraint::Latest => state.latest_block.cheap_clone(),
+            };
+            ptrs_and_sels.push((ptr, sel));
         }
+        Ok(ptrs_and_sels)
     }
 
     /// Lookup information for the `_meta` field `field`

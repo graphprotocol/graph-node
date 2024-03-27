@@ -144,20 +144,21 @@ where
                 query.query_text.as_ref(),
             )
             .to_result()?;
-        let by_block_constraint = query.block_constraint()?;
+        let by_block_constraint =
+            StoreResolver::locate_blocks(store.as_ref(), &state, &query).await?;
         let mut max_block = 0;
         let mut result: QueryResults = QueryResults::empty(query.root_trace(do_trace));
         let mut query_res_futures: Vec<_> = vec![];
         let setup_elapsed = execute_start.elapsed();
 
         // Note: This will always iterate at least once.
-        for (bc, (selection_set, error_policy)) in by_block_constraint {
+        for (ptr, (selection_set, error_policy)) in by_block_constraint {
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
                 &state,
                 self.subscription_manager.cheap_clone(),
-                bc,
+                ptr,
                 error_policy,
                 query.schema.id().clone(),
                 metrics.cheap_clone(),
