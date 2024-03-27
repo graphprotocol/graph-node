@@ -2,7 +2,7 @@ use anyhow::{anyhow, Error};
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use graph::{
-    ipfs_client::{CidFile, IpfsClient, StatApi},
+    ipfs_client::{CidFile, IpfsClient},
     prelude::CheapClone,
 };
 use std::time::Duration;
@@ -15,7 +15,7 @@ pub type IpfsService = Buffer<CidFile, BoxFuture<'static, Result<Option<Bytes>, 
 
 pub fn ipfs_service(
     client: IpfsClient,
-    max_file_size: u64,
+    max_file_size: usize,
     timeout: Duration,
     rate_limit: u16,
 ) -> IpfsService {
@@ -38,7 +38,7 @@ pub fn ipfs_service(
 #[derive(Clone)]
 struct IpfsServiceInner {
     client: IpfsClient,
-    max_file_size: u64,
+    max_file_size: usize,
     timeout: Duration,
 }
 
@@ -65,33 +65,20 @@ impl IpfsServiceInner {
             None => cid.to_string(),
         };
 
-        let size = match self
+        let res = self
             .client
-            .stat_size(StatApi::Files, cid_str.clone(), self.timeout)
-            .await
-        {
-            Ok(size) => size,
+            .cat_all(&cid_str, Some(self.timeout), self.max_file_size)
+            .await;
+
+        match res {
+            Ok(file_bytes) => Ok(Some(file_bytes)),
             Err(e) => match e.status().map(|e| e.as_u16()) {
+                // Timeouts in IPFS mean the file is not available, so we return `None`
                 Some(GATEWAY_TIMEOUT) | Some(CLOUDFLARE_TIMEOUT) => return Ok(None),
                 _ if e.is_timeout() => return Ok(None),
                 _ => return Err(e.into()),
             },
-        };
-
-        if size > self.max_file_size {
-            return Err(anyhow!(
-                "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
-                cid_str,
-                self.max_file_size,
-                size
-            ));
         }
-
-        Ok(self
-            .client
-            .cat_all(&cid_str, self.timeout)
-            .await
-            .map(Some)?)
     }
 }
 
