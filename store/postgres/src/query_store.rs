@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
@@ -102,6 +103,13 @@ impl QueryStoreTrait for QueryStore {
         self.block_number_with_timestamp_and_parent_hash(block_hash)
             .await
             .map(|opt| opt.map(|(number, _, _)| number))
+    }
+
+    async fn block_numbers(
+        &self,
+        block_hashes: Vec<BlockHash>,
+    ) -> Result<HashMap<BlockHash, BlockNumber>, StoreError> {
+        self.chain_store.block_numbers(block_hashes).await
     }
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {

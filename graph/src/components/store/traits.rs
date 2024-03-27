@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Error;
 use async_trait::async_trait;
 use web3::types::{Address, H256};
@@ -507,6 +509,12 @@ pub trait ChainStore: Send + Sync + 'static {
         hash: &BlockHash,
     ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError>;
 
+    /// Do the same lookup as `block_number`, but in bulk
+    async fn block_numbers(
+        &self,
+        hashes: Vec<BlockHash>,
+    ) -> Result<HashMap<BlockHash, BlockNumber>, StoreError>;
+
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(
         &self,
@@ -560,6 +568,11 @@ pub trait QueryStore: Send + Sync {
 
     async fn block_number(&self, block_hash: &BlockHash)
         -> Result<Option<BlockNumber>, StoreError>;
+
+    async fn block_numbers(
+        &self,
+        block_hashes: Vec<BlockHash>,
+    ) -> Result<HashMap<BlockHash, BlockNumber>, StoreError>;
 
     /// Returns the blocknumber, timestamp and the parentHash. Timestamp depends on the chain block type
     /// and can have multiple formats, it can also not be prevent. For now this is only available
