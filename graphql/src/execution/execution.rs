@@ -431,17 +431,18 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         ctx.cache_status.store(CacheStatus::Shared);
     }
 
+    // Calculate the weight once outside the lock.
+    let weight = result.weight();
+
     // Check if this query should be cached.
     // Share errors from the herd cache, but don't store them in generational cache.
     // In particular, there is a problem where asking for a block pointer beyond the chain
     // head can cause the legitimate cache to be thrown out.
     // It would be redundant to insert herd cache hits.
-    let no_cache = herd_hit || result.has_errors() || result.weight() > *MAX_ENTRY_WEIGHT;
+    let no_cache = herd_hit || result.has_errors() || weight > *MAX_ENTRY_WEIGHT;
     if let (false, Some(key), Some(block_ptr), Some(network)) =
         (no_cache, key, block_ptr, &ctx.query.network)
     {
-        // Calculate the weight outside the lock.
-        let weight = result.weight();
         let shard = (key[0] as usize) % QUERY_BLOCK_CACHE.len();
         let inserted = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger).insert(
             network,
