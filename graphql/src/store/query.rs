@@ -34,6 +34,7 @@ pub(crate) fn build_query<'a>(
     max_skip: u32,
     schema: &InputSchema,
 ) -> Result<EntityQuery, QueryExecutionError> {
+    let order = build_order(entity, field, schema)?;
     let object_types = entity
         .object_types()
         .into_iter()
@@ -48,76 +49,6 @@ pub(crate) fn build_query<'a>(
     if let Some(filter) = build_filter(entity, field, schema)? {
         query = query.filter(filter);
     }
-    let order = match (
-        build_order_by(entity, field, schema)?,
-        build_order_direction(field)?,
-    ) {
-        (Some((attr, value_type, None)), OrderDirection::Ascending) => {
-            EntityOrder::Ascending(attr, value_type)
-        }
-        (Some((attr, value_type, None)), OrderDirection::Descending) => {
-            EntityOrder::Descending(attr, value_type)
-        }
-        (Some((attr, _, Some(child))), OrderDirection::Ascending) => {
-            if ENV_VARS.graphql.disable_child_sorting {
-                return Err(QueryExecutionError::NotSupported(
-                    "Sorting by child attributes is not supported".to_string(),
-                ));
-            }
-            match child {
-                OrderByChild::Object(child) => {
-                    EntityOrder::ChildAscending(EntityOrderByChild::Object(
-                        EntityOrderByChildInfo {
-                            sort_by_attribute: attr,
-                            join_attribute: child.join_attribute,
-                            derived: child.derived,
-                        },
-                        child.entity_type,
-                    ))
-                }
-                OrderByChild::Interface(child) => {
-                    EntityOrder::ChildAscending(EntityOrderByChild::Interface(
-                        EntityOrderByChildInfo {
-                            sort_by_attribute: attr,
-                            join_attribute: child.join_attribute,
-                            derived: child.derived,
-                        },
-                        child.entity_types,
-                    ))
-                }
-            }
-        }
-        (Some((attr, _, Some(child))), OrderDirection::Descending) => {
-            if ENV_VARS.graphql.disable_child_sorting {
-                return Err(QueryExecutionError::NotSupported(
-                    "Sorting by child attributes is not supported".to_string(),
-                ));
-            }
-            match child {
-                OrderByChild::Object(child) => {
-                    EntityOrder::ChildDescending(EntityOrderByChild::Object(
-                        EntityOrderByChildInfo {
-                            sort_by_attribute: attr,
-                            join_attribute: child.join_attribute,
-                            derived: child.derived,
-                        },
-                        child.entity_type,
-                    ))
-                }
-                OrderByChild::Interface(child) => {
-                    EntityOrder::ChildDescending(EntityOrderByChild::Interface(
-                        EntityOrderByChildInfo {
-                            sort_by_attribute: attr,
-                            join_attribute: child.join_attribute,
-                            derived: child.derived,
-                        },
-                        child.entity_types,
-                    ))
-                }
-            }
-        }
-        (None, _) => EntityOrder::Default,
-    };
     query = query.order(order);
     Ok(query)
 }
@@ -522,6 +453,84 @@ struct InterfaceOrderDetails {
 enum OrderByChild {
     Object(ObjectOrderDetails),
     Interface(InterfaceOrderDetails),
+}
+
+fn build_order(
+    entity: &ObjectOrInterface<'_>,
+    field: &a::Field,
+    schema: &InputSchema,
+) -> Result<EntityOrder, QueryExecutionError> {
+    let order = match (
+        build_order_by(entity, field, schema)?,
+        build_order_direction(field)?,
+    ) {
+        (Some((attr, value_type, None)), OrderDirection::Ascending) => {
+            EntityOrder::Ascending(attr, value_type)
+        }
+        (Some((attr, value_type, None)), OrderDirection::Descending) => {
+            EntityOrder::Descending(attr, value_type)
+        }
+        (Some((attr, _, Some(child))), OrderDirection::Ascending) => {
+            if ENV_VARS.graphql.disable_child_sorting {
+                return Err(QueryExecutionError::NotSupported(
+                    "Sorting by child attributes is not supported".to_string(),
+                ));
+            }
+            match child {
+                OrderByChild::Object(child) => {
+                    EntityOrder::ChildAscending(EntityOrderByChild::Object(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_type,
+                    ))
+                }
+                OrderByChild::Interface(child) => {
+                    EntityOrder::ChildAscending(EntityOrderByChild::Interface(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_types,
+                    ))
+                }
+            }
+        }
+        (Some((attr, _, Some(child))), OrderDirection::Descending) => {
+            if ENV_VARS.graphql.disable_child_sorting {
+                return Err(QueryExecutionError::NotSupported(
+                    "Sorting by child attributes is not supported".to_string(),
+                ));
+            }
+            match child {
+                OrderByChild::Object(child) => {
+                    EntityOrder::ChildDescending(EntityOrderByChild::Object(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_type,
+                    ))
+                }
+                OrderByChild::Interface(child) => {
+                    EntityOrder::ChildDescending(EntityOrderByChild::Interface(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_types,
+                    ))
+                }
+            }
+        }
+        (None, _) => EntityOrder::Default,
+    };
+    Ok(order)
 }
 
 /// Parses GraphQL arguments into an field name to order by, if present.
