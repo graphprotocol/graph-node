@@ -39,7 +39,7 @@ pub(crate) fn build_query<'a>(
         .object_types()
         .into_iter()
         .map(|entity_type| {
-            let selected_columns = field.selected_attrs(&entity_type);
+            let selected_columns = field.selected_attrs(&entity_type, &order);
             selected_columns.map(|selected_columns| (entity_type, selected_columns))
         })
         .collect::<Result<_, _>>()?;
@@ -707,6 +707,7 @@ pub(crate) fn collect_entities_from_query_field(
 #[cfg(test)]
 mod tests {
     use graph::components::store::EntityQuery;
+    use graph::data::store::ID;
     use graph::env::ENV_VARS;
     use graph::{
         components::store::ChildMultiplicity,
@@ -875,7 +876,10 @@ mod tests {
     #[test]
     fn build_query_uses_the_entity_name() {
         let attrs = if ENV_VARS.enable_select_by_specific_attributes {
-            AttributeNames::Select(BTreeSet::new())
+            // The query uses the default order, i.e., sorting by id
+            let mut attrs = BTreeSet::new();
+            attrs.insert(ID.to_string());
+            AttributeNames::Select(attrs)
         } else {
             AttributeNames::All
         };
