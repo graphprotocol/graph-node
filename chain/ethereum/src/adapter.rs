@@ -942,13 +942,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block: LightEthereumBlock,
     ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send>>;
 
-    /// Load block pointer for the specified `block number`.
-    fn block_pointer_from_number(
-        &self,
-        logger: &Logger,
-        block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = BlockPtr, Error = bc::IngestorError> + Send>;
-
     /// Find a block by its number, according to the Ethereum node.
     ///
     /// Careful: don't use this function without considering race conditions.
@@ -963,6 +956,17 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
+
+    /// Finds the hash and number of the lowest non-null block with height greater than or equal to
+    /// the given number.
+    ///
+    /// Note that the same caveats on reorgs apply as for `block_hash_by_block_number`, and must
+    /// also be considered for the resolved block, in case it is higher than the requested number.
+    async fn nearest_block_ptr_to_number(
+        &self,
+        logger: &Logger,
+        block_number: BlockNumber,
+    ) -> Result<BlockPtr, Error>;
 
     /// Call the function of a smart contract.
     fn contract_call(

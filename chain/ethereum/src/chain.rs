@@ -424,9 +424,9 @@ impl Blockchain for Chain {
                     .clone();
 
                 adapter
-                    .block_pointer_from_number(logger, number)
-                    .compat()
+                    .nearest_block_ptr_to_number(logger, number)
                     .await
+                    .map_err(From::from)
             }
         }
     }
@@ -617,7 +617,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         from: BlockNumber,
         to: BlockNumber,
         filter: &TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
+    ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         blocks_with_triggers(
             self.chain_client.rpc()?.cheapest_with(&self.capabilities)?,
             self.logger.clone(),
@@ -651,7 +651,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             BlockFinality::Final(_) => {
                 let adapter = self.chain_client.rpc()?.cheapest_with(&self.capabilities)?;
                 let block_number = block.number() as BlockNumber;
-                let blocks = blocks_with_triggers(
+                let (blocks, _) = blocks_with_triggers(
                     adapter,
                     logger.clone(),
                     self.chain_store.clone(),
@@ -691,11 +691,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         ptr: BlockPtr,
         offset: BlockNumber,
+        root: Option<BlockHash>,
     ) -> Result<Option<BlockFinality>, Error> {
         let block: Option<EthereumBlock> = self
             .chain_store
             .cheap_clone()
-            .ancestor_block(ptr, offset)
+            .ancestor_block(ptr, offset, root)
             .await?
             .map(json::from_value)
             .transpose()?;
