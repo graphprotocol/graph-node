@@ -342,7 +342,7 @@ where
                 .min()
                 .unwrap_or(BLOCK_NUMBER_MAX);
 
-            // End either just before the the next data source start_block or just
+            // End either just before the next data source start_block or just
             // prior to the reorg threshold. It isn't safe to go farther than the
             // reorg threshold due to race conditions.
             let to_limit = cmp::min(head_ptr.number - reorg_threshold, next_start_block - 1);
