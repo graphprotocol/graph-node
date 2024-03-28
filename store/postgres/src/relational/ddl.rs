@@ -212,7 +212,7 @@ impl Table {
     /// A tuple `(String, String)` where:
     /// - The first element is the indexing method ("btree", "gist", or "gin"),
     /// - The second element is the index expression as a string.
-    pub fn calculate_index_method_and_expression(
+    fn calculate_attr_index_method_and_expression(
         immutable: bool,
         column: &Column,
     ) -> (String, String) {
@@ -225,31 +225,35 @@ impl Table {
                 ("gist".to_string(), index_expr)
             }
         } else {
-            let index_expr = if column.use_prefix_comparison {
-                match column.column_type {
-                    ColumnType::String => {
-                        format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
-                    }
-                    ColumnType::Bytes => format!(
-                        "substring({}, 1, {})",
-                        column.name.quoted(),
-                        BYTE_ARRAY_PREFIX_SIZE
-                    ),
-                    // Handle other types if necessary, or maintain the unreachable statement
-                    _ => unreachable!("only String and Bytes can have arbitrary size"),
-                }
-            } else {
-                column.name.quoted()
-            };
-
-            let method = if column.is_list() || column.is_fulltext() {
-                "gin".to_string()
-            } else {
-                "btree".to_string()
-            };
-
-            (method, index_expr)
+            Self::calculate_index_method_and_expression(column)
         }
+    }
+
+    pub fn calculate_index_method_and_expression(column: &Column) -> (String, String) {
+        let index_expr = if column.use_prefix_comparison {
+            match column.column_type {
+                ColumnType::String => {
+                    format!("left({}, {})", column.name.quoted(), STRING_PREFIX_SIZE)
+                }
+                ColumnType::Bytes => format!(
+                    "substring({}, 1, {})",
+                    column.name.quoted(),
+                    BYTE_ARRAY_PREFIX_SIZE
+                ),
+                // Handle other types if necessary, or maintain the unreachable statement
+                _ => unreachable!("only String and Bytes can have arbitrary size"),
+            }
+        } else {
+            column.name.quoted()
+        };
+
+        let method = if column.is_list() || column.is_fulltext() {
+            "gin".to_string()
+        } else {
+            "btree".to_string()
+        };
+
+        (method, index_expr)
     }
 
     fn create_attribute_indexes(&self, out: &mut String) -> fmt::Result {
@@ -281,7 +285,7 @@ impl Table {
 
         for (column_index, column) in columns.enumerate() {
             let (method, index_expr) =
-                Self::calculate_index_method_and_expression(self.immutable, column);
+                Self::calculate_attr_index_method_and_expression(self.immutable, column);
             // If `create_gin_indexes` is set to false, we don't create
             // indexes on array attributes. Experience has shown that these
             // indexes are very expensive to update and can have a very bad
