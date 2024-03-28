@@ -10,7 +10,7 @@ use graph::{
         firehose_block_ingestor::FirehoseBlockIngestor,
         firehose_block_stream::FirehoseBlockStream,
         BasicBlockchainBuilder, Block, BlockIngestor, BlockPtr, Blockchain, BlockchainBuilder,
-        BlockchainKind, EmptyNodeCapabilities, IngestorError, NoopRuntimeAdapter,
+        BlockchainKind, EmptyNodeCapabilities, IngestorError, NoopDecoderHook, NoopRuntimeAdapter,
         RuntimeAdapter as RuntimeAdapterTrait,
     },
     cheap_clone::CheapClone,
@@ -94,6 +94,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _log: &DeploymentLocator,
@@ -153,8 +155,8 @@ impl Blockchain for Chain {
             .await
     }
 
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
@@ -430,7 +432,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 mod tests {
     use std::sync::Arc;
 
-    use graph::blockchain::DataSource as _;
+    use graph::{blockchain::DataSource as _, data::subgraph::LATEST_VERSION};
 
     use crate::{
         data_source::{
@@ -443,7 +445,7 @@ mod tests {
     fn validate_no_handler() {
         let ds = new_data_source(None);
 
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(
             errs[0].to_string(),
@@ -458,7 +460,7 @@ mod tests {
             handler: "asdf".into(),
         });
 
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(
             errs[0].to_string(),
@@ -474,7 +476,7 @@ mod tests {
             event_selector: [2u8; 32].into(),
         });
 
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(errs[0].to_string(), "subgraph source address is required");
     }

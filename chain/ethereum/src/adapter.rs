@@ -2,6 +2,8 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
+use graph::components::subgraph::MappingError;
+use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
@@ -36,7 +38,8 @@ pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
 #[derive(Clone, Debug)]
-pub struct EthereumContractCall {
+pub struct ContractCall {
+    pub contract_name: String,
     pub address: Address,
     pub block_ptr: BlockPtr,
     pub function: Function,
@@ -45,7 +48,7 @@ pub struct EthereumContractCall {
 }
 
 #[derive(Error, Debug)]
-pub enum EthereumGetBalanceError {
+pub enum GetBalanceError {
     #[error("call error: {0}")]
     Web3Error(web3::Error),
     #[error("ethereum node took too long to perform call")]
@@ -53,7 +56,7 @@ pub enum EthereumGetBalanceError {
 }
 
 #[derive(Error, Debug)]
-pub enum EthereumContractCallError {
+pub enum ContractCallError {
     #[error("ABI error: {0}")]
     ABIError(#[from] ABIError),
     /// `Token` is not of expected `ParamType`
@@ -63,10 +66,28 @@ pub enum EthereumContractCallError {
     EncodingError(ethabi::Error),
     #[error("call error: {0}")]
     Web3Error(web3::Error),
-    #[error("call reverted: {0}")]
-    Revert(String),
     #[error("ethereum node took too long to perform call")]
     Timeout,
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+impl From<ContractCallError> for MappingError {
+    fn from(e: ContractCallError) -> Self {
+        match e {
+            // Any error reported by the Ethereum node could be due to the block no longer being on
+            // the main chain. This is very unespecific but we don't want to risk failing a
+            // subgraph due to a transient error such as a reorg.
+            ContractCallError::Web3Error(e) => MappingError::PossibleReorg(anyhow::anyhow!(
+                "Ethereum node returned an error for an eth_call: {e}"
+            )),
+            // Also retry on timeouts.
+            ContractCallError::Timeout => MappingError::PossibleReorg(anyhow::anyhow!(
+                "Ethereum node did not respond in time to eth_call"
+            )),
+            e => MappingError::Unknown(anyhow::anyhow!("Error when making an eth_call: {e}")),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
@@ -964,20 +985,32 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
 
-    /// Call the function of a smart contract.
-    fn contract_call(
+    /// Call the function of a smart contract. A return of `None` indicates
+    /// that the call reverted. The returned `CallSource` indicates where
+    /// the result came from for accounting purposes
+    async fn contract_call(
         &self,
         logger: &Logger,
-        call: EthereumContractCall,
+        call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError>;
+
+    /// Make multiple contract calls in a single batch. The returned `Vec`
+    /// has results in the same order as the calls in `calls` on input. The
+    /// calls must all be for the same block
+    async fn contract_calls(
+        &self,
+        logger: &Logger,
+        calls: &[&ContractCall],
+        cache: Arc<dyn EthereumCallCache>,
+    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError>;
 
     fn get_balance(
         &self,
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = EthereumGetBalanceError> + Send>;
+    ) -> Box<dyn Future<Item = U256, Error = GetBalanceError> + Send>;
 }
 
 #[cfg(test)]

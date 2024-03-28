@@ -1,14 +1,16 @@
-use futures::future;
 use futures::prelude::*;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
+use graph::data::store::ethereum::call;
+use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
+use graph::prelude::futures03::future::try_join_all;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
@@ -44,7 +46,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::adapter::EthereumGetBalanceError;
+use crate::adapter::GetBalanceError;
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
 use crate::trigger::LogRef;
@@ -52,9 +54,9 @@ use crate::Chain;
 use crate::NodeCapabilities;
 use crate::{
     adapter::{
-        EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
-        EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumLogFilter,
-        ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
+        ContractCall, ContractCallError, EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait,
+        EthereumBlockFilter, EthereumCallFilter, EthereumLogFilter, ProviderEthRpcMetrics,
+        SubgraphEthRpcMetrics,
     },
     transport::Transport,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
@@ -417,7 +419,7 @@ impl EthereumAdapter {
         logger: &Logger,
         address: Address,
         block_ptr: BlockPtr,
-    ) -> impl Future<Item = U256, Error = EthereumGetBalanceError> + Send {
+    ) -> impl Future<Item = U256, Error = GetBalanceError> + Send {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -444,23 +446,27 @@ impl EthereumAdapter {
                         web3.eth().balance(address, Some(block_id)).boxed().await;
                     match result {
                         Ok(balance) => Ok(balance),
-                        Err(err) => Err(EthereumGetBalanceError::Web3Error(err)),
+                        Err(err) => Err(GetBalanceError::Web3Error(err)),
                     }
                 }
             })
-            .map_err(|e| e.into_inner().unwrap_or(EthereumGetBalanceError::Timeout))
+            .map_err(|e| e.into_inner().unwrap_or(GetBalanceError::Timeout))
             .boxed()
             .compat()
     }
 
-    fn call(
+    async fn call(
         &self,
         logger: Logger,
-        contract_address: Address,
-        call_data: Bytes,
+        call_data: call::Request,
         block_ptr: BlockPtr,
         gas: Option<u32>,
-    ) -> impl Future<Item = Bytes, Error = EthereumContractCallError> + Send {
+    ) -> Result<call::Retval, ContractCallError> {
+        fn reverted(logger: &Logger, reason: &str) -> Result<call::Retval, ContractCallError> {
+            info!(logger, "Contract call reverted"; "reason" => reason);
+            Ok(call::Retval::Null)
+        }
+
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -473,20 +479,17 @@ impl EthereumAdapter {
         };
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
-            .when(|result| match result {
-                Ok(_) | Err(EthereumContractCallError::Revert(_)) => false,
-                Err(_) => true,
-            })
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let call_data = call_data.clone();
                 let web3 = web3.cheap_clone();
+                let logger = logger.cheap_clone();
                 async move {
                     let req = CallRequest {
-                        to: Some(contract_address),
+                        to: Some(call_data.address),
                         gas: gas.map(|val| web3::types::U256::from(val)),
-                        data: Some(call_data.clone()),
+                        data: Some(Bytes::from(call_data.encoded_call.to_vec())),
                         from: None,
                         gas_price: None,
                         value: None,
@@ -557,14 +560,14 @@ impl EthereumAdapter {
 
                     match result {
                         // A successful response.
-                        Ok(bytes) => Ok(bytes),
+                        Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
                             if geth_execution_errors
                                 .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
                         {
-                            Err(EthereumContractCallError::Revert(rpc_error.message))
+                            reverted(&logger, &rpc_error.message)
                         }
 
                         // Check for Parity revert.
@@ -592,26 +595,56 @@ impl EthereumAdapter {
                                             })
                                             .unwrap_or("no reason".to_owned())
                                     };
-                                    Err(EthereumContractCallError::Revert(reason))
+                                    reverted(&logger, &reason)
                                 }
 
                                 // The VM execution error was not identified as a revert.
-                                _ => Err(EthereumContractCallError::Web3Error(web3::Error::Rpc(
+                                _ => Err(ContractCallError::Web3Error(web3::Error::Rpc(
                                     rpc_error.clone(),
                                 ))),
                             }
                         }
 
                         // The error was not identified as a revert.
-                        Err(err) => Err(EthereumContractCallError::Web3Error(err)),
+                        Err(err) => Err(ContractCallError::Web3Error(err)),
                     }
                 }
             })
-            .map_err(|e| e.into_inner().unwrap_or(EthereumContractCallError::Timeout))
+            .map_err(|e| e.into_inner().unwrap_or(ContractCallError::Timeout))
             .boxed()
-            .compat()
+            .await
     }
 
+    async fn call_and_cache(
+        &self,
+        logger: &Logger,
+        call: &ContractCall,
+        req: call::Request,
+        cache: Arc<dyn EthereumCallCache>,
+    ) -> Result<call::Response, ContractCallError> {
+        let result = self
+            .call(
+                logger.clone(),
+                req.cheap_clone(),
+                call.block_ptr.clone(),
+                call.gas,
+            )
+            .await?;
+        let _ = cache
+            .set_call(
+                &logger,
+                req.cheap_clone(),
+                call.block_ptr.cheap_clone(),
+                result.clone(),
+            )
+            .map_err(|e| {
+                error!(logger, "EthereumAdapter: call cache set error";
+                        "contract_address" => format!("{:?}", req.address),
+                        "error" => e.to_string())
+            });
+
+        Ok(req.response(result, call::Source::Rpc))
+    }
     /// Request blocks by hash through JSON-RPC.
     fn load_blocks_rpc(
         &self,
@@ -1295,7 +1328,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = EthereumGetBalanceError> + Send> {
+    ) -> Box<dyn Future<Item = U256, Error = GetBalanceError> + Send> {
         debug!(
             logger, "eth_getBalance";
             "address" => format!("{}", address),
@@ -1304,102 +1337,156 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(self.balance(logger, address, block_ptr))
     }
 
-    fn contract_call(
+    async fn contract_call(
         &self,
         logger: &Logger,
-        call: EthereumContractCall,
+        inp_call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send> {
-        // Emit custom error for type mismatches.
-        for (token, kind) in call
-            .args
-            .iter()
-            .zip(call.function.inputs.iter().map(|p| &p.kind))
-        {
-            if !token.type_check(kind) {
-                return Box::new(future::err(EthereumContractCallError::TypeError(
-                    token.clone(),
-                    kind.clone(),
-                )));
+    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError> {
+        let mut result = self.contract_calls(logger, &[inp_call], cache).await?;
+        // unwrap: self.contract_calls returns as many results as there were calls
+        Ok(result.pop().unwrap())
+    }
+
+    async fn contract_calls(
+        &self,
+        logger: &Logger,
+        calls: &[&ContractCall],
+        cache: Arc<dyn EthereumCallCache>,
+    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError> {
+        fn as_req(
+            logger: &Logger,
+            call: &ContractCall,
+            index: u32,
+        ) -> Result<call::Request, ContractCallError> {
+            // Emit custom error for type mismatches.
+            for (token, kind) in call
+                .args
+                .iter()
+                .zip(call.function.inputs.iter().map(|p| &p.kind))
+            {
+                if !token.type_check(kind) {
+                    return Err(ContractCallError::TypeError(token.clone(), kind.clone()));
+                }
             }
+
+            // Encode the call parameters according to the ABI
+            let req = {
+                let encoded_call = call
+                    .function
+                    .encode_input(&call.args)
+                    .map_err(ContractCallError::EncodingError)?;
+                call::Request::new(call.address, encoded_call, index)
+            };
+
+            trace!(logger, "eth_call";
+                "fn" => &call.function.name,
+                "address" => hex::encode(call.address),
+                "data" => hex::encode(req.encoded_call.as_ref()),
+                "block_hash" => call.block_ptr.hash_hex(),
+                "block_number" => call.block_ptr.block_number()
+            );
+            Ok(req)
         }
 
-        // Encode the call parameters according to the ABI
-        let call_data = match call.function.encode_input(&call.args) {
-            Ok(data) => data,
-            Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
-        };
-
-        debug!(logger, "eth_call";
-            "fn" => &call.function.name,
-            "address" => hex::encode(call.address),
-            "data" => hex::encode(&call_data),
-            "block_hash" => call.block_ptr.hash_hex(),
-            "block_number" => call.block_ptr.block_number()
-        );
-
-        // Check if we have it cached, if not do the call and cache.
-        Box::new(
-            match cache
-                .get_call(call.address, &call_data, call.block_ptr.clone())
-                .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
-                .ok()
-                .flatten()
-            {
-                Some(result) => {
-                    Box::new(future::ok(result)) as Box<dyn Future<Item = _, Error = _> + Send>
-                }
-                None => {
-                    let cache = cache.clone();
-                    let call = call.clone();
-                    let logger = logger.clone();
-                    Box::new(
-                        self.call(
-                            logger.clone(),
-                            call.address,
-                            Bytes(call_data.clone()),
-                            call.block_ptr.clone(),
-                            call.gas,
-                        )
-                        .map(move |result| {
-                            // Don't block handler execution on writing to the cache.
-                            let for_cache = result.0.clone();
-                            if !result.0.is_empty() {
-                                let _ = graph::spawn_blocking_allow_panic(move || {
-                                    cache
-                                        .set_call(
-                                            call.address,
-                                            &call_data,
-                                            call.block_ptr,
-                                            &for_cache,
-                                        )
-                                        .map_err(|e| {
-                                            error!(logger, "call cache set error";
-                                                       "error" => e.to_string())
-                                        })
-                                });
-                            }
-                            result.0
-                        }),
-                    )
-                }
-            }
-            // Decode the return values according to the ABI
-            .and_then(move |output| {
-                if output.is_empty() {
+        fn decode(
+            logger: &Logger,
+            resp: call::Response,
+            call: &ContractCall,
+        ) -> (Option<Vec<Token>>, call::Source) {
+            let call::Response {
+                retval,
+                source,
+                req: _,
+            } = resp;
+            use call::Retval::*;
+            match retval {
+                Value(output) => match call.function.decode_output(&output) {
+                    Ok(tokens) => (Some(tokens), source),
+                    Err(e) => {
+                        // Decode failures are reverts. The reasoning is that if Solidity fails to
+                        // decode an argument, that's a revert, so the same goes for the output.
+                        let reason = format!("failed to decode output: {}", e);
+                        info!(logger, "Contract call reverted"; "reason" => reason);
+                        (None, call::Source::Rpc)
+                    }
+                },
+                Null => {
                     // We got a `0x` response. For old Geth, this can mean a revert. It can also be
                     // that the contract actually returned an empty response. A view call is meant
                     // to return something, so we treat empty responses the same as reverts.
-                    Err(EthereumContractCallError::Revert("empty response".into()))
-                } else {
-                    // Decode failures are reverts. The reasoning is that if Solidity fails to
-                    // decode an argument, that's a revert, so the same goes for the output.
-                    call.function.decode_output(&output).map_err(|e| {
-                        EthereumContractCallError::Revert(format!("failed to decode output: {}", e))
-                    })
+                    info!(logger, "Contract call reverted"; "reason" => "empty response");
+                    (None, call::Source::Rpc)
                 }
-            }),
-        )
+            }
+        }
+
+        fn log_call_error(logger: &Logger, e: &ContractCallError, call: &ContractCall) {
+            match e {
+                ContractCallError::Web3Error(e) => error!(logger,
+                    "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
+                    call.function.name, call.contract_name, e),
+                ContractCallError::Timeout => error!(logger,
+                    "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
+                    call.function.name, call.contract_name),
+                _ => error!(logger,
+                    "Failed to call function \"{}\" of contract \"{}\": {}",
+                    call.function.name, call.contract_name, e),
+            }
+        }
+
+        if calls.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let block_ptr = calls.first().unwrap().block_ptr.clone();
+        if calls.iter().any(|call| call.block_ptr != block_ptr) {
+            return Err(ContractCallError::Internal(
+                "all calls must have the same block pointer".to_string(),
+            ));
+        }
+
+        let reqs: Vec<_> = calls
+            .iter()
+            .enumerate()
+            .map(|(index, call)| as_req(logger, call, index as u32))
+            .collect::<Result<_, _>>()?;
+
+        let (mut resps, missing) = cache
+            .get_calls(&reqs, block_ptr)
+            .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
+            .unwrap_or_else(|_| (Vec::new(), reqs));
+
+        let futs = missing.into_iter().map(|req| {
+            let cache = cache.clone();
+            async move {
+                let call = calls[req.index as usize];
+                match self.call_and_cache(logger, call, req, cache.clone()).await {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => {
+                        log_call_error(logger, &e, call);
+                        Err(e)
+                    }
+                }
+            }
+        });
+        resps.extend(try_join_all(futs).await?);
+
+        // If we make it here, we have a response for every call.
+        debug_assert_eq!(resps.len(), calls.len());
+
+        // Bring the responses into the same order as the calls
+        resps.sort_by_key(|resp| resp.req.index);
+
+        let decoded: Vec<_> = resps
+            .into_iter()
+            .map(|res| {
+                let call = &calls[res.req.index as usize];
+                decode(logger, res, call)
+            })
+            .collect();
+
+        Ok(decoded)
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.

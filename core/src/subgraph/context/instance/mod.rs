@@ -13,7 +13,7 @@ use graph::{
 use hosts::{OffchainHosts, OnchainHosts};
 use std::collections::HashMap;
 
-pub(super) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
+pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,

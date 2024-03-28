@@ -6,13 +6,14 @@ use web3::types::{Address, H256};
 
 use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
-use crate::blockchain::BlockTime;
+use crate::blockchain::{BlockTime, ChainIdentifier};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
+use crate::data::store::ethereum::call;
 use crate::data::store::QueryObject;
 use crate::data::subgraph::{status, DeploymentFeatures};
 use crate::data::{query::QueryTarget, subgraph::schema::*};
@@ -523,17 +524,29 @@ pub trait ChainStore: Send + Sync + 'static {
 
     /// Clears call cache of the chain for the given `from` and `to` block number.
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error>;
+
+    /// Return the chain identifier for this store.
+    fn chain_identifier(&self) -> &ChainIdentifier;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {
-    /// Returns the return value of the provided Ethereum call, if present in
-    /// the cache.
+    /// Returns the return value of the provided Ethereum call, if present
+    /// in the cache. A return of `None` indicates that we know nothing
+    /// about the call.
     fn get_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        call: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<Vec<u8>>, Error>;
+    ) -> Result<Option<call::Response>, Error>;
+
+    /// Get the return values of many Ethereum calls. For the ones found in
+    /// the cache, return a `Response`; the ones that were not found are
+    /// returned as the original `Request`
+    fn get_calls(
+        &self,
+        reqs: &[call::Request],
+        block: BlockPtr,
+    ) -> Result<(Vec<call::Response>, Vec<call::Request>), Error>;
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
@@ -542,10 +555,10 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     /// Stores the provided Ethereum call in the cache.
     fn set_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        logger: &Logger,
+        call: call::Request,
         block: BlockPtr,
-        return_value: &[u8],
+        return_value: call::Retval,
     ) -> Result<(), Error>;
 }
 

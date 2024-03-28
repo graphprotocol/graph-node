@@ -16,7 +16,7 @@ use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
     client::ChainClient,
     BlockIngestor, BlockTime, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
-    TriggerWithHandler,
+    NoopDecoderHook, TriggerWithHandler,
 };
 
 use super::{
@@ -140,7 +140,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
         todo!()
     }
 
-    fn validate(&self) -> Vec<anyhow::Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<anyhow::Error> {
         todo!()
     }
 }
@@ -325,6 +325,8 @@ impl Blockchain for MockBlockchain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _loc: &crate::components::store::DeploymentLocator,
@@ -369,7 +371,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn runtime_adapter(&self) -> std::sync::Arc<dyn RuntimeAdapter<Self>> {
+    fn runtime(&self) -> (std::sync::Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook) {
         todo!()
     }
 

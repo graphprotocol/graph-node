@@ -193,7 +193,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
     }
 
-    fn validate(&self) -> Vec<Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<Error> {
         let mut errors = Vec::new();
 
         if self.kind != COSMOS_KIND {
@@ -555,7 +555,7 @@ fn duplicate_url_type(message: &str) -> Error {
 mod tests {
     use super::*;
 
-    use graph::blockchain::DataSource as _;
+    use graph::{blockchain::DataSource as _, data::subgraph::LATEST_VERSION};
 
     #[test]
     fn test_event_handlers_origin_validation() {
@@ -597,7 +597,7 @@ mod tests {
         ];
 
         for (data_source, errors) in &cases {
-            let validation_errors = data_source.validate();
+            let validation_errors = data_source.validate(&LATEST_VERSION);
 
             assert_eq!(errors.len(), validation_errors.len());
 
@@ -645,7 +645,7 @@ mod tests {
         ];
 
         for (data_source, errors) in &cases {
-            let validation_errors = data_source.validate();
+            let validation_errors = data_source.validate(&LATEST_VERSION);
 
             assert_eq!(errors.len(), validation_errors.len());
 

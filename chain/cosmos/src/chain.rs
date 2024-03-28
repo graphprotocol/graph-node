@@ -1,5 +1,5 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::BlockIngestor;
+use graph::blockchain::{BlockIngestor, NoopDecoderHook};
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
@@ -82,6 +82,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn is_refetch_block_required(&self) -> bool {
         false
     }
@@ -155,8 +157,8 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {

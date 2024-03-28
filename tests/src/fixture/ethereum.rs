@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::{
-    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
-    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
+    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
+    NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
@@ -13,6 +13,7 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
 use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
+use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
 use graph_chain_ethereum::Chain;
 use graph_chain_ethereum::{
@@ -44,6 +45,8 @@ pub async fn chain(
     let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
     let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
 
+    let eth_adapters = Arc::new(EthereumNetworkAdapters::default());
+
     let chain = Chain::new(
         logger_factory,
         stores.network_name.clone(),
@@ -56,7 +59,8 @@ pub async fn chain(
         block_stream_builder.clone(),
         Arc::new(StaticBlockRefetcher { x: PhantomData }),
         triggers_adapter,
-        Arc::new(NoopRuntimeAdapter { x: PhantomData }),
+        Arc::new(NoopRuntimeAdapterBuilder {}),
+        eth_adapters,
         ENV_VARS.reorg_threshold,
         ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now

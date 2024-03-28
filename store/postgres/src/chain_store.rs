@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::data::store::ethereum::call;
 use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
@@ -22,9 +23,9 @@ use graph::blockchain::{Block, BlockHash, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    async_trait, ethabi, serde_json as json, transaction_receipt::LightTransactionReceipt,
-    BlockNumber, BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait,
-    Error, EthereumCallCache, StoreError,
+    async_trait, serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber,
+    BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error,
+    EthereumCallCache, StoreError,
 };
 use graph::{constraint_violation, ensure};
 
@@ -87,6 +88,7 @@ mod data {
     };
     use graph::blockchain::{Block, BlockHash};
     use graph::constraint_violation;
+    use graph::data::store::scalar::Bytes;
     use graph::prelude::ethabi::ethereum_types::H160;
     use graph::prelude::transaction_receipt::LightTransactionReceipt;
     use graph::prelude::web3::types::H256;
@@ -1117,7 +1119,7 @@ mod data {
             &self,
             conn: &mut PgConnection,
             id: &[u8],
-        ) -> Result<Option<(Vec<u8>, bool)>, Error> {
+        ) -> Result<Option<(Bytes, bool)>, Error> {
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as cache;
@@ -1154,10 +1156,62 @@ mod data {
                             CallMetaTable::ACCESSED_AT
                         )),
                     ))
-                    .first(conn)
+                    .first::<(Vec<u8>, bool)>(conn)
                     .optional()
                     .map_err(Error::from),
             }
+            .map(|row| row.map(|(return_value, expired)| (Bytes::from(return_value), expired)))
+        }
+
+        pub(super) fn get_calls_and_access(
+            &self,
+            conn: &mut PgConnection,
+            ids: &[&[u8]],
+        ) -> Result<Vec<(Vec<u8>, Bytes, bool)>, Error> {
+            let rows = match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+                    use public::eth_call_meta as meta;
+
+                    cache::table
+                        .inner_join(meta::table)
+                        .filter(cache::id.eq_any(ids))
+                        .select((
+                            cache::id,
+                            cache::return_value,
+                            sql::<Bool>("CURRENT_DATE > eth_call_meta.accessed_at"),
+                        ))
+                        .load(conn)
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema {
+                    call_cache,
+                    call_meta,
+                    ..
+                }) => call_cache
+                    .table()
+                    .inner_join(
+                        call_meta.table().on(call_meta
+                            .contract_address()
+                            .eq(call_cache.contract_address())),
+                    )
+                    .filter(call_cache.id().eq_any(ids))
+                    .select((
+                        call_cache.id(),
+                        call_cache.return_value(),
+                        sql::<Bool>(&format!(
+                            "CURRENT_DATE > {}.{}",
+                            CallMetaTable::TABLE_NAME,
+                            CallMetaTable::ACCESSED_AT
+                        )),
+                    ))
+                    .load::<(Vec<u8>, Vec<u8>, bool)>(conn)
+                    .map_err(Error::from),
+            }?;
+            Ok(rows
+                .into_iter()
+                .map(|(id, return_value, expired)| (id, Bytes::from(return_value), expired))
+                .collect())
         }
 
         pub(super) fn get_calls_in_block(
@@ -2195,6 +2249,10 @@ impl ChainStoreTrait for ChainStore {
         })
         .await
     }
+
+    fn chain_identifier(&self) -> &ChainIdentifier {
+        &self.chain_identifier
+    }
 }
 
 mod recent_blocks_cache {
@@ -2389,29 +2447,71 @@ fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
 impl EthereumCallCache for ChainStore {
     fn get_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        req: &call::Request,
         block: BlockPtr,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        let id = contract_call_id(&contract_address, encoded_call, &block);
+    ) -> Result<Option<call::Response>, Error> {
+        let id = contract_call_id(req, &block);
         let conn = &mut *self.get_conn()?;
-        if let Some(call_output) = conn.transaction::<_, Error, _>(|conn| {
+        let return_value = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
                 self.storage.get_call_and_access(conn, id.as_ref())?
             {
                 if update_accessed_at {
                     self.storage
-                        .update_accessed_at(conn, contract_address.as_ref())?;
+                        .update_accessed_at(conn, req.address.as_ref())?;
                 }
                 Ok(Some(return_value))
             } else {
                 Ok(None)
             }
-        })? {
-            Ok(Some(call_output))
-        } else {
-            Ok(None)
+        })?;
+        Ok(return_value.map(|return_value| {
+            req.cheap_clone()
+                .response(call::Retval::Value(return_value), call::Source::Store)
+        }))
+    }
+
+    fn get_calls(
+        &self,
+        reqs: &[call::Request],
+        block: BlockPtr,
+    ) -> Result<(Vec<call::Response>, Vec<call::Request>), Error> {
+        if reqs.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
         }
+
+        let ids: Vec<_> = reqs
+            .into_iter()
+            .map(|req| contract_call_id(req, &block))
+            .collect();
+        let id_refs: Vec<_> = ids.iter().map(|id| id.as_slice()).collect();
+
+        let conn = &mut *self.get_conn()?;
+        let rows = conn
+            .transaction::<_, Error, _>(|conn| self.storage.get_calls_and_access(conn, &id_refs))?;
+
+        let mut found: Vec<usize> = Vec::new();
+        let mut resps = Vec::new();
+        for (id, retval, _) in rows {
+            let idx = ids.iter().position(|i| i.as_ref() == id).ok_or_else(|| {
+                constraint_violation!(
+                    "get_calls returned a call id that was not requested: {}",
+                    hex::encode(id)
+                )
+            })?;
+            found.push(idx);
+            let resp = reqs[idx]
+                .cheap_clone()
+                .response(call::Retval::Value(retval), call::Source::Store);
+            resps.push(resp);
+        }
+        let calls = reqs
+            .into_iter()
+            .enumerate()
+            .filter(|(idx, _)| !found.contains(&idx))
+            .map(|(_, call)| call.cheap_clone())
+            .collect();
+        Ok((resps, calls))
     }
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
@@ -2421,20 +2521,27 @@ impl EthereumCallCache for ChainStore {
 
     fn set_call(
         &self,
-        contract_address: ethabi::Address,
-        encoded_call: &[u8],
+        _: &Logger,
+        call: call::Request,
         block: BlockPtr,
-        return_value: &[u8],
+        return_value: call::Retval,
     ) -> Result<(), Error> {
-        let id = contract_call_id(&contract_address, encoded_call, &block);
+        let call::Retval::Value(return_value) = return_value else {
+            // We do not want to cache unsuccessful calls as some RPC nodes
+            // have weird behavior near the chain head. The details are lost
+            // to time, but we had issues with some RPC clients in the past
+            // where calls first failed and later succeeded
+            return Ok(());
+        };
+        let id = contract_call_id(&call, &block);
         let conn = &mut *self.get_conn()?;
         conn.transaction(|conn| {
             self.storage.set_call(
                 conn,
                 id.as_ref(),
-                contract_address.as_ref(),
+                call.address.as_ref(),
                 block.number,
-                return_value,
+                &return_value,
             )
         })
     }
@@ -2443,14 +2550,10 @@ impl EthereumCallCache for ChainStore {
 /// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
 /// 256 bits of output, and therefore 128 bits of security against collisions, are needed since this
 /// could be targeted by a birthday attack.
-fn contract_call_id(
-    contract_address: &ethabi::Address,
-    encoded_call: &[u8],
-    block: &BlockPtr,
-) -> [u8; 32] {
+fn contract_call_id(call: &call::Request, block: &BlockPtr) -> [u8; 32] {
     let mut hash = blake3::Hasher::new();
-    hash.update(encoded_call);
-    hash.update(contract_address.as_ref());
+    hash.update(&call.encoded_call);
+    hash.update(call.address.as_ref());
     hash.update(block.hash_slice());
     *hash.finalize().as_bytes()
 }

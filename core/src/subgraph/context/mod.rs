@@ -15,7 +15,7 @@ use graph::{
     data_source::{
         causality_region::CausalityRegionSeq,
         offchain::{self, Base64},
-        CausalityRegion, DataSource, DataSourceTemplate, TriggerData,
+        CausalityRegion, DataSource, DataSourceTemplate,
     },
     ipfs_client::CidFile,
     prelude::{
@@ -30,6 +30,8 @@ use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, time::Instant};
 
 use self::instance::SubgraphInstance;
+
+use super::Decoder;
 
 #[derive(Clone, Debug)]
 pub struct SubgraphKeepAlive {
@@ -69,11 +71,12 @@ where
     T: RuntimeHostBuilder<C>,
     C: Blockchain,
 {
-    instance: SubgraphInstance<C, T>,
+    pub(crate) instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
     pub filter: Option<C::TriggerFilter>,
-    trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    pub(crate) decoder: Box<Decoder<C, T>>,
 }
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
@@ -85,6 +88,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         instances: SubgraphKeepAlive,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+        decoder: Box<Decoder<C, T>>,
     ) -> Self {
         let instance = SubgraphInstance::new(
             manifest,
@@ -99,34 +103,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             offchain_monitor,
             filter: None,
             trigger_processor,
+            decoder,
         }
-    }
-
-    pub async fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        self.process_trigger_in_hosts(
-            logger,
-            self.instance.hosts_for_trigger(trigger),
-            block,
-            trigger,
-            state,
-            proof_of_indexing,
-            causality_region,
-            debug_fork,
-            subgraph_metrics,
-            instrument,
-        )
-        .await
     }
 
     pub async fn process_block(
@@ -188,34 +166,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         }
 
         Ok(state)
-    }
-    pub async fn process_trigger_in_hosts(
-        &self,
-        logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        self.trigger_processor
-            .process_trigger(
-                logger,
-                hosts,
-                block,
-                trigger,
-                state,
-                proof_of_indexing,
-                causality_region,
-                debug_fork,
-                subgraph_metrics,
-                instrument,
-            )
-            .await
     }
 
     /// Removes data sources hosts with a creation block greater or equal to `reverted_block`, so

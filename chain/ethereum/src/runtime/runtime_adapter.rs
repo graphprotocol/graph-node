@@ -1,21 +1,22 @@
 use std::{sync::Arc, time::Instant};
 
-use crate::adapter::EthereumGetBalanceError;
+use crate::adapter::GetBalanceError;
 use crate::data_source::MappingABI;
 use crate::{
-    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
-    EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
-    ENV_VARS,
+    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCall,
+    ContractCallError, DataSource, EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
 };
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::HostMetrics;
+use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
+use graph::slog::debug;
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
@@ -25,9 +26,10 @@ use graph::{
     },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
-    slog::{info, trace, Logger},
+    slog::Logger,
 };
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, EthereumValueKind};
+use itertools::Itertools;
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 
@@ -60,23 +62,26 @@ pub struct RuntimeAdapter {
     pub chain_identifier: Arc<ChainIdentifier>,
 }
 
+pub fn eth_call_gas(chain_identifier: &ChainIdentifier) -> Option<u32> {
+    // Check if the current network version is in the eth_call_no_gas list
+    let should_skip_gas = ENV_VARS
+        .eth_call_no_gas
+        .contains(&chain_identifier.net_version);
+
+    if should_skip_gas {
+        None
+    } else {
+        Some(ETH_CALL_GAS)
+    }
+}
+
 impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
     fn host_fns(&self, ds: &DataSource) -> Result<Vec<HostFn>, Error> {
         let abis = ds.mapping.abis.clone();
         let call_cache = self.call_cache.cheap_clone();
         let eth_adapters = self.eth_adapters.cheap_clone();
         let archive = ds.mapping.requires_archive()?;
-
-        // Check if the current network version is in the eth_call_no_gas list
-        let should_skip_gas = ENV_VARS
-            .eth_call_no_gas
-            .contains(&self.chain_identifier.net_version);
-
-        let eth_call_gas = if should_skip_gas {
-            None
-        } else {
-            Some(ETH_CALL_GAS)
-        };
+        let eth_call_gas = eth_call_gas(&self.chain_identifier);
 
         let ethereum_call = HostFn {
             name: "ethereum.call",
@@ -182,9 +187,9 @@ fn eth_get_balance(
             Ok(asc_new(ctx.heap, &bigint, &ctx.gas)?)
         }
         // Retry on any kind of error
-        Err(EthereumGetBalanceError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
-        Err(EthereumGetBalanceError::Timeout) => Err(HostExportError::PossibleReorg(
-            EthereumGetBalanceError::Timeout.into(),
+        Err(GetBalanceError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(GetBalanceError::Timeout) => Err(HostExportError::PossibleReorg(
+            GetBalanceError::Timeout.into(),
         )),
     }
 }
@@ -200,10 +205,23 @@ fn eth_call(
     eth_call_gas: Option<u32>,
     metrics: Arc<HostMetrics>,
 ) -> Result<Option<Vec<Token>>, HostExportError> {
+    // Helpers to log the result of the call at the end
+    fn tokens_as_string(tokens: &[Token]) -> String {
+        tokens.iter().map(|arg| arg.to_string()).join(", ")
+    }
+
+    fn result_as_string(result: &Result<Option<Vec<Token>>, HostExportError>) -> String {
+        match result {
+            Ok(Some(tokens)) => format!("({})", tokens_as_string(&tokens)),
+            Ok(None) => "none".to_string(),
+            Err(_) => "error".to_string(),
+        }
+    }
+
     let start_time = Instant::now();
 
     // Obtain the path to the contract ABI
-    let contract = abis
+    let abi = abis
         .iter()
         .find(|abi| abi.name == unresolved_call.contract_name)
         .with_context(|| {
@@ -213,51 +231,18 @@ fn eth_call(
                 unresolved_call.contract_name
             )
         })
-        .map_err(HostExportError::Deterministic)?
-        .contract
-        .clone();
+        .map_err(HostExportError::Deterministic)?;
 
-    let function = match unresolved_call.function_signature {
-        // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
-        // functions this always picks the same overloaded variant, which is incorrect
-        // and may lead to encoding/decoding errors
-        None => contract
-            .function(unresolved_call.function_name.as_str())
-            .with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime",
-                    unresolved_call.contract_name, unresolved_call.function_name
-                )
-            })
-            .map_err(HostExportError::Deterministic)?,
+    let function = abi
+        .function(
+            &unresolved_call.contract_name,
+            &unresolved_call.function_name,
+            unresolved_call.function_signature.as_deref(),
+        )
+        .map_err(HostExportError::Deterministic)?;
 
-        // Behavior for apiVersion >= 0.0.04: look up function by signature of
-        // the form `functionName(uint256,string) returns (bytes32,string)`; this
-        // correctly picks the correct variant of an overloaded function
-        Some(ref function_signature) => contract
-            .functions_by_name(unresolved_call.function_name.as_str())
-            .with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime",
-                    unresolved_call.contract_name, unresolved_call.function_name
-                )
-            })
-            .map_err(HostExportError::Deterministic)?
-            .iter()
-            .find(|f| function_signature == &f.signature())
-            .with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" with signature `{}` \
-                         called from WASM runtime",
-                    unresolved_call.contract_name,
-                    unresolved_call.function_name,
-                    function_signature,
-                )
-            })
-            .map_err(HostExportError::Deterministic)?,
-    };
-
-    let call = EthereumContractCall {
+    let call = ContractCall {
+        contract_name: unresolved_call.contract_name.clone(),
         address: unresolved_call.contract_address,
         block_ptr: block_ptr.cheap_clone(),
         function: function.clone(),
@@ -268,19 +253,18 @@ fn eth_call(
     // Run Ethereum call in tokio runtime
     let logger1 = logger.clone();
     let call_cache = call_cache.clone();
-    let result = match graph::block_on(
-            eth_adapter.contract_call(&logger1, call, call_cache).compat()
-        ) {
-            Ok(tokens) => Ok(Some(tokens)),
-            Err(EthereumContractCallError::Revert(reason)) => {
-                info!(logger, "Contract call reverted"; "reason" => reason);
-                Ok(None)
-            }
+    let (result, source) =
+        match graph::block_on(eth_adapter.contract_call(&logger1, &call, call_cache)) {
+            Ok((result, source)) => (Ok(result), source),
+            Err(e) => (Err(e), call::Source::Rpc),
+        };
+    let result = match result {
+            Ok(res) => Ok(res),
 
             // Any error reported by the Ethereum node could be due to the block no longer being on
             // the main chain. This is very unespecific but we don't want to risk failing a
             // subgraph due to a transient error such as a reorg.
-            Err(EthereumContractCallError::Web3Error(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+            Err(ContractCallError::Web3Error(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,
@@ -288,7 +272,7 @@ fn eth_call(
             ))),
 
             // Also retry on timeouts.
-            Err(EthereumContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+            Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,
@@ -304,18 +288,24 @@ fn eth_call(
 
     let elapsed = start_time.elapsed();
 
-    metrics.observe_eth_call_execution_time(
-        elapsed.as_secs_f64(),
-        &unresolved_call.contract_name,
-        &unresolved_call.function_name,
-    );
+    if source.observe() {
+        metrics.observe_eth_call_execution_time(
+            elapsed.as_secs_f64(),
+            &unresolved_call.contract_name,
+            &unresolved_call.function_name,
+        );
+    }
 
-    trace!(logger, "Contract call finished";
-              "address" => &unresolved_call.contract_address.to_string(),
+    debug!(logger, "Contract call finished";
+              "address" => format!("0x{:x}", &unresolved_call.contract_address),
               "contract" => &unresolved_call.contract_name,
-              "function" => &unresolved_call.function_name,
-              "function_signature" => &unresolved_call.function_signature,
-              "time" => format!("{}ms", elapsed.as_millis()));
+              "signature" => &unresolved_call.function_signature,
+              "args" => format!("[{}]", tokens_as_string(&unresolved_call.function_args)),
+              "time_ms" => format!("{}ms", elapsed.as_millis()),
+              "result" => result_as_string(&result),
+              "block_hash" => block_ptr.hash_hex(),
+              "block_number" => block_ptr.block_number(),
+              "source" => source.to_string());
 
     result
 }

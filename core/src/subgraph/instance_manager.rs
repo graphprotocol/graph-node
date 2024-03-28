@@ -2,6 +2,7 @@ use crate::polling_monitor::{ArweaveService, IpfsService};
 use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
+use crate::subgraph::Decoder;
 use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
@@ -389,8 +390,9 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
+        let (runtime_adapter, decoder_hook) = chain.runtime();
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
-            chain.runtime_adapter(),
+            runtime_adapter,
             self.link_resolver.cheap_clone(),
             subgraph_store.ens_lookup(),
         );
@@ -407,6 +409,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
         let instrument = self.subgraph_store.instrument(&deployment)?;
+
+        let decoder = Box::new(Decoder::new(decoder_hook));
 
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
@@ -438,6 +442,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 self.instances.cheap_clone(),
                 offchain_monitor,
                 tp,
+                decoder,
             );
             for data_source in data_sources {
                 ctx.add_dynamic_data_source(&logger, data_source)?;

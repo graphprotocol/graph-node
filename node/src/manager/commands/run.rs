@@ -10,8 +10,11 @@ use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
-use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
-use ethereum::{ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
+use ethereum::chain::{
+    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumRuntimeAdapterBuilder,
+    EthereumStreamBuilder,
+};
+use ethereum::ProviderEthRpcMetrics;
 use graph::anyhow::{bail, format_err};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockchainKind, BlockchainMap};
@@ -125,7 +128,6 @@ pub async fn run(
     };
 
     let eth_adapters2 = eth_adapters.clone();
-
     let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await?;
     // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
     //     &logger,
@@ -147,6 +149,8 @@ pub async fn run(
 
     let client = Arc::new(ChainClient::new(firehose_endpoints, eth_adapters));
 
+    let call_cache = Arc::new(ethereum::BufferedCallCache::new(chain_store.cheap_clone()));
+
     let chain_config = config.chains.chains.get(&network_name).unwrap();
     let chain = ethereum::Chain::new(
         logger_factory.clone(),
@@ -154,7 +158,7 @@ pub async fn run(
         node_id.clone(),
         metrics_registry.clone(),
         chain_store.cheap_clone(),
-        chain_store.cheap_clone(),
+        call_cache.cheap_clone(),
         client.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
@@ -165,11 +169,8 @@ pub async fn run(
             metrics_registry.clone(),
             chain_store.cheap_clone(),
         )),
-        Arc::new(EthereumRuntimeAdapter {
-            call_cache: chain_store.cheap_clone(),
-            eth_adapters: Arc::new(eth_adapters2),
-            chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
-        }),
+        Arc::new(EthereumRuntimeAdapterBuilder {}),
+        Arc::new(eth_adapters2),
         graph::env::ENV_VARS.reorg_threshold,
         chain_config.polling_interval,
         // We assume the tested chain is always ingestible for now

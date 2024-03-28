@@ -20,7 +20,7 @@ use graph::blockchain::{
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
-use graph::components::store::{BlockStore, DeploymentLocator};
+use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
@@ -38,6 +38,8 @@ use graph::prelude::{
     SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::schema::InputSchema;
+use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
+use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
@@ -224,7 +226,9 @@ impl TestContext {
         RuntimeHostBuilder<graph_chain_substreams::Chain>,
     > {
         let (logger, deployment, raw) = self.get_runner_context().await;
-        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
+        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(
+            graph_chain_substreams::TriggerProcessor::new(deployment.clone()),
+        );
 
         self.instance_manager
             .build_subgraph_runner(
@@ -864,6 +868,19 @@ impl<C: Blockchain> RuntimeAdapter<C> for NoopRuntimeAdapter<C> {
         _ds: &<C as Blockchain>::DataSource,
     ) -> Result<Vec<graph::blockchain::HostFn>, Error> {
         Ok(vec![])
+    }
+}
+
+struct NoopRuntimeAdapterBuilder {}
+
+impl RuntimeAdapterBuilder for NoopRuntimeAdapterBuilder {
+    fn build(
+        &self,
+        _: Arc<EthereumNetworkAdapters>,
+        _: Arc<dyn EthereumCallCache + 'static>,
+        _: Arc<ChainIdentifier>,
+    ) -> Arc<dyn graph::blockchain::RuntimeAdapter<graph_chain_ethereum::Chain> + 'static> {
+        Arc::new(NoopRuntimeAdapter { x: PhantomData })
     }
 }
 

@@ -1,4 +1,5 @@
 mod adapter;
+mod buffered_call_cache;
 mod capabilities;
 pub mod codec;
 mod data_source;
@@ -14,6 +15,8 @@ pub use self::runtime::RuntimeAdapter;
 pub use self::transport::Transport;
 pub use env::ENV_VARS;
 
+pub use buffered_call_cache::BufferedCallCache;
+
 // ETHDEP: These concrete types should probably not be exposed.
 pub use data_source::{
     BlockHandlerFilter, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
@@ -25,7 +28,7 @@ pub mod network;
 pub mod trigger;
 
 pub use crate::adapter::{
-    EthereumAdapter as EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
+    ContractCall, ContractCallError, EthereumAdapter as EthereumAdapterTrait,
     ProviderEthRpcMetrics, SubgraphEthRpcMetrics, TriggerFilter,
 };
 pub use crate::chain::Chain;

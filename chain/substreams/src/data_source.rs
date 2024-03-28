@@ -106,7 +106,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         unimplemented!("{}", DYNAMIC_DATA_SOURCE_ERROR)
     }
 
-    fn validate(&self) -> Vec<Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<Error> {
         let mut errs = vec![];
 
         if &self.kind != SUBSTREAMS_KIND {
@@ -327,11 +327,14 @@ mod test {
     use graph::{
         blockchain::{DataSource as _, UnresolvedDataSource as _},
         components::link_resolver::LinkResolver,
+        data::subgraph::LATEST_VERSION,
         prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
-        substreams::module::{Kind, KindMap, KindStore},
         substreams::{
-            module::input::{Input, Params},
+            module::{
+                input::{Input, Params},
+                Kind, KindMap, KindStore,
+            },
             Module, Modules, Package,
         },
     };
@@ -459,15 +462,19 @@ mod test {
     #[test]
     fn data_source_validation() {
         let mut ds = gen_data_source();
-        assert_eq!(true, ds.validate().is_empty());
+        assert_eq!(true, ds.validate(LATEST_VERSION).is_empty());
 
         ds.network = None;
-        assert_eq!(true, ds.validate().is_empty());
+        assert_eq!(true, ds.validate(LATEST_VERSION).is_empty());
 
         ds.kind = "asdasd".into();
         ds.name = "".into();
         ds.mapping.kind = "asdasd".into();
-        let errs: Vec<String> = ds.validate().into_iter().map(|e| e.to_string()).collect();
+        let errs: Vec<String> = ds
+            .validate(LATEST_VERSION)
+            .into_iter()
+            .map(|e| e.to_string())
+            .collect();
         assert_eq!(
             errs,
             vec![
