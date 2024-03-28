@@ -5,7 +5,7 @@ on:
     branches: [master]
   pull_request:
     types: [opened, synchronize, reopened]
-  workflow_disptach:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
