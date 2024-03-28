@@ -1140,8 +1140,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send + '_>,
     >;
 
-    /// Find a block by its number, according to the Ethereum node. If `retries` is passed, limits
-    /// the number of attempts.
+    /// Find a block by its number, according to the Ethereum node.
     ///
     /// Careful: don't use this function without considering race conditions.
     /// Chain reorgs could happen at any time, and could affect the answer received.
@@ -1161,7 +1160,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ///
     /// Note that the same caveats on reorgs apply as for `block_hash_by_block_number`, and must
     /// also be considered for the resolved block, in case it is higher than the requested number.
-    async fn nearest_block_hash_to_number(
+    async fn nearest_block_ptr_to_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,

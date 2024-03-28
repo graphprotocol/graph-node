@@ -465,7 +465,7 @@ impl Blockchain for Chain {
                     .clone();
 
                 adapter
-                    .nearest_block_hash_to_number(logger, number)
+                    .nearest_block_ptr_to_number(logger, number)
                     .await
                     .map_err(From::from)
             }
