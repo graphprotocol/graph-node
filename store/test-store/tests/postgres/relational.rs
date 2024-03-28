@@ -1,7 +1,8 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::data::store::{scalar, Id};
+use graph::components::store::write::{EntityModification, RowGroup};
+use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
@@ -877,11 +878,25 @@ fn conflicting_entity() {
         dog: &str,
         ferret: &str,
     ) {
-        let conflicting = |conn: &mut PgConnection, types: Vec<&EntityType>| {
-            let types = types.into_iter().cloned().collect();
-            let id = Id::try_from(id.clone()).unwrap();
-            layout.conflicting_entity(conn, &id, types)
-        };
+        let conflicting =
+            |conn: &mut PgConnection, entity_type: &EntityType, types: Vec<&EntityType>| {
+                let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
+                let fred = Arc::new(fred);
+                let types: Vec<_> = types.into_iter().cloned().collect();
+                let mut group = RowGroup::new(entity_type.clone(), false);
+                group
+                    .push(
+                        EntityModification::Insert {
+                            key: entity_type.key(fred.id()),
+                            data: fred,
+                            block: 2,
+                            end: None,
+                        },
+                        2,
+                    )
+                    .unwrap();
+                layout.conflicting_entities(conn, &types, &group)
+            };
 
         let cat_type = layout.input_schema.entity_type(cat).unwrap();
         let dog_type = layout.input_schema.entity_type(dog).unwrap();
@@ -891,11 +906,11 @@ fn conflicting_entity() {
         insert_entity(conn, layout, &cat_type, vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
-        let conflict = conflicting(conn, vec![&cat_type, &ferret_type]).unwrap();
-        assert_eq!(Some(cat.to_string()), conflict);
+        let conflict = conflicting(conn, &dog_type, vec![&cat_type, &ferret_type]).unwrap();
+        assert_eq!(Some(cat.to_string()), conflict.map(|r| r.0));
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
-        let conflict = conflicting(conn, vec![&dog_type, &ferret_type]).unwrap();
+        let conflict = conflicting(conn, &cat_type, vec![&dog_type, &ferret_type]).unwrap();
         assert_eq!(None, conflict);
     }
 
