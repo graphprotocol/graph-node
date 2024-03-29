@@ -150,7 +150,7 @@ pub struct EnvVars {
     pub subgraph_error_retry_jitter: f64,
     /// Experimental feature.
     ///
-    /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. Off by
+    /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. On by
     /// default.
     pub enable_select_by_specific_attributes: bool,
     /// Verbose logging of mapping inputs.
@@ -376,7 +376,7 @@ struct Inner {
     subgraph_error_retry_ceil_in_secs: u64,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_JITTER", default = "0.2")]
     subgraph_error_retry_jitter: f64,
-    #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "false")]
+    #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "true")]
     enable_select_by_specific_attributes: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
