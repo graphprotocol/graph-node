@@ -233,10 +233,9 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
     type Error = Error;
 
     fn try_into(self) -> Result<EthereumBlockWithCalls, Self::Error> {
-        let header = self
-            .header
-            .as_ref()
-            .expect("block header should always be present from gRPC Firehose");
+        let header = self.header.as_ref().ok_or_else(|| {
+            format_err!("block header should always be present from gRPC Firehose")
+        })?;
 
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
