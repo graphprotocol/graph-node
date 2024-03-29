@@ -737,8 +737,19 @@ mod tests {
     }
 
     #[track_caller]
-    fn query(obj_type: &str, field: &a::Field) -> EntityQuery {
-        let object = INPUT_SCHEMA.object_or_interface(obj_type, None).unwrap();
+    fn query(field: &a::Field) -> EntityQuery {
+        // We only allow one entity type in these tests
+        assert_eq!(field.selection_set.fields().count(), 1);
+        let obj_type = field
+            .selection_set
+            .fields()
+            .map(|(obj, _)| &obj.name)
+            .next()
+            .expect("there is one object type");
+        let Some(object) = INPUT_SCHEMA.object_or_interface(obj_type, None) else {
+            panic!("object type {} not found", obj_type);
+        };
+
         build_query(
             &object,
             BLOCK_NUMBER_MAX,
@@ -807,12 +818,12 @@ mod tests {
         }
     }
 
-    fn default_field() -> a::Field {
+    fn field(obj_type: &str) -> a::Field {
         let arguments = vec![
             ("first".to_string(), r::Value::Int(100.into())),
             ("skip".to_string(), r::Value::Int(0.into())),
         ];
-        let obj_type = Arc::new(object("SomeType")).into();
+        let obj_type = Arc::new(object(obj_type)).into();
         a::Field {
             position: Default::default(),
             alias: None,
@@ -824,51 +835,60 @@ mod tests {
         }
     }
 
-    fn default_field_with(arg_name: &str, arg_value: r::Value) -> a::Field {
-        let mut field = default_field();
+    fn default_field() -> a::Field {
+        field(DEFAULT_OBJECT)
+    }
+
+    fn field_with(obj_type: &str, arg_name: &str, arg_value: r::Value) -> a::Field {
+        let mut field = field(obj_type);
         field.arguments.push((arg_name.to_string(), arg_value));
         field
     }
 
-    fn default_field_with_vec(args: Vec<(&str, r::Value)>) -> a::Field {
-        let mut field = default_field();
+    fn default_field_with(arg_name: &str, arg_value: r::Value) -> a::Field {
+        field_with(DEFAULT_OBJECT, arg_name, arg_value)
+    }
+
+    fn field_with_vec(obj_type: &str, args: Vec<(&str, r::Value)>) -> a::Field {
+        let mut field = field(obj_type);
         for (name, value) in args {
             field.arguments.push((name.to_string(), value));
         }
         field
     }
 
+    fn default_field_with_vec(args: Vec<(&str, r::Value)>) -> a::Field {
+        field_with_vec(DEFAULT_OBJECT, args)
+    }
+
     #[test]
     fn build_query_uses_the_entity_name() {
         assert_eq!(
-            query(ENTITY1, &default_field()).collection,
+            query(&field(ENTITY1)).collection,
             EntityCollection::All(vec![(entity_type(ENTITY1), AttributeNames::All)])
         );
         assert_eq!(
-            query(ENTITY2, &default_field()).collection,
+            query(&field(ENTITY2)).collection,
             EntityCollection::All(vec![(entity_type(ENTITY2), AttributeNames::All)])
         );
     }
 
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
-        assert_eq!(
-            query(DEFAULT_OBJECT, &default_field()).order,
-            EntityOrder::Default,
-        );
+        assert_eq!(query(&default_field()).order, EntityOrder::Default);
     }
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
         let field = default_field_with("orderBy", r::Value::Enum("name".to_string()));
         assert_eq!(
-            query(DEFAULT_OBJECT, &field).order,
+            query(&field).order,
             EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
         let field = default_field_with("orderBy", r::Value::Enum("email".to_string()));
         assert_eq!(
-            query(DEFAULT_OBJECT, &field).order,
+            query(&field).order,
             EntityOrder::Ascending("email".to_string(), ValueType::String)
         );
     }
@@ -876,10 +896,10 @@ mod tests {
     #[test]
     fn build_query_ignores_order_by_from_non_enum_values() {
         let field = default_field_with("orderBy", r::Value::String("name".to_string()));
-        assert_eq!(query(DEFAULT_OBJECT, &field).order, EntityOrder::Default);
+        assert_eq!(query(&field).order, EntityOrder::Default);
 
         let field = default_field_with("orderBy", r::Value::String("email".to_string()));
-        assert_eq!(query(DEFAULT_OBJECT, &field).order, EntityOrder::Default);
+        assert_eq!(query(&field).order, EntityOrder::Default);
     }
 
     #[test]
@@ -889,7 +909,7 @@ mod tests {
             ("orderDirection", r::Value::Enum("asc".to_string())),
         ]);
         assert_eq!(
-            query(DEFAULT_OBJECT, &field).order,
+            query(&field).order,
             EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
@@ -898,7 +918,7 @@ mod tests {
             ("orderDirection", r::Value::Enum("desc".to_string())),
         ]);
         assert_eq!(
-            query(DEFAULT_OBJECT, &field).order,
+            query(&field).order,
             EntityOrder::Descending("name".to_string(), ValueType::String)
         );
 
@@ -910,7 +930,7 @@ mod tests {
             ),
         ]);
         assert_eq!(
-            query(DEFAULT_OBJECT, &field).order,
+            query(&field).order,
             EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
@@ -919,15 +939,12 @@ mod tests {
             "orderDirection",
             r::Value::Enum("descending...".to_string()),
         );
-        assert_eq!(query(DEFAULT_OBJECT, &field).order, EntityOrder::Default);
+        assert_eq!(query(&field).order, EntityOrder::Default);
     }
 
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
-        assert_eq!(
-            query(DEFAULT_OBJECT, &default_field()).range,
-            EntityRange::first(100)
-        );
+        assert_eq!(query(&default_field()).range, EntityRange::first(100));
     }
 
     #[test]
@@ -936,7 +953,7 @@ mod tests {
         field.arguments = vec![("skip".to_string(), r::Value::Int(50))];
 
         assert_eq!(
-            query(DEFAULT_OBJECT, &field,).range,
+            query(&field).range,
             EntityRange {
                 first: Some(100),
                 skip: 50,
@@ -954,7 +971,7 @@ mod tests {
             )])),
         );
         assert_eq!(
-            query(DEFAULT_OBJECT, &query_field,).filter,
+            query(&query_field).filter,
             Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_string(),
                 Value::String("ello".to_string()),
@@ -975,7 +992,7 @@ mod tests {
             )])),
         );
         assert_eq!(
-            query(DEFAULT_OBJECT, &query_field,).filter,
+            query(&query_field).filter,
             Some(EntityFilter::And(vec![EntityFilter::ChangeBlockGte(10)]))
         )
     }
