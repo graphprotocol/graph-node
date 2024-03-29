@@ -151,22 +151,17 @@ impl<'a> TryInto<web3::types::Log> for LogAt<'a> {
     }
 }
 
-impl From<TransactionTraceStatus> for web3::types::U64 {
-    fn from(val: TransactionTraceStatus) -> Self {
-        let status: Option<web3::types::U64> = val.into();
-        status.unwrap_or_else(|| web3::types::U64::from(0))
-    }
-}
+impl TryFrom<TransactionTraceStatus> for Option<web3::types::U64> {
+    type Error = Error;
 
-impl Into<Option<web3::types::U64>> for TransactionTraceStatus {
-    fn into(self) -> Option<web3::types::U64> {
-        match self {
-            Self::Unknown => {
-                panic!("Got a transaction trace with status UNKNOWN, datasource is broken")
-            }
-            Self::Succeeded => Some(web3::types::U64::from(1)),
-            Self::Failed => Some(web3::types::U64::from(0)),
-            Self::Reverted => Some(web3::types::U64::from(0)),
+    fn try_from(val: TransactionTraceStatus) -> Result<Self, Self::Error> {
+        match val {
+            TransactionTraceStatus::Unknown => Err(format_err!(
+                "Got a transaction trace with status UNKNOWN, datasource is broken"
+            )),
+            TransactionTraceStatus::Succeeded => Ok(Some(web3::types::U64::from(1))),
+            TransactionTraceStatus::Failed => Ok(Some(web3::types::U64::from(0))),
+            TransactionTraceStatus::Reverted => Ok(Some(web3::types::U64::from(0))),
         }
     }
 }
@@ -347,7 +342,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                                             t.status
                                         )
                                     })?
-                                    .into(),
+                                    .try_into()?,
                                 root: match r.state_root.len() {
                                     0 => None, // FIXME (SF): should this instead map to [0;32]?
                                     // FIXME (SF): if len < 32, what do we do?
