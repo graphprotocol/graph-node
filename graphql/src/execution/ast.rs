@@ -2,7 +2,6 @@ use std::collections::{BTreeSet, HashSet};
 
 use graph::{
     components::store::{AttributeNames, ChildMultiplicity},
-    constraint_violation,
     data::graphql::ObjectOrInterface,
     env::ENV_VARS,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
@@ -334,13 +333,7 @@ impl Field {
             Some(r::Value::Enum(e)) => {
                 column_names.insert(e.clone());
             }
-            Some(v) => {
-                return Err(constraint_violation!(
-                    "'orderBy' attribute must be an enum but is {:?}",
-                    v
-                )
-                .into());
-            }
+            Some(_) => { /* ignore incorrect values */ }
         }
 
         Ok(AttributeNames::Select(column_names))

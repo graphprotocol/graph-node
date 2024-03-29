@@ -698,6 +698,7 @@ pub(crate) fn collect_entities_from_query_field(
 #[cfg(test)]
 mod tests {
     use graph::components::store::EntityQuery;
+    use graph::env::ENV_VARS;
     use graph::{
         components::store::ChildMultiplicity,
         data::value::Object,
@@ -710,6 +711,7 @@ mod tests {
         },
         schema::{EntityType, InputSchema},
     };
+    use std::collections::BTreeSet;
     use std::{iter::FromIterator, sync::Arc};
 
     use super::{a, build_query};
@@ -863,13 +865,18 @@ mod tests {
 
     #[test]
     fn build_query_uses_the_entity_name() {
+        let attrs = if ENV_VARS.enable_select_by_specific_attributes {
+            AttributeNames::Select(BTreeSet::new())
+        } else {
+            AttributeNames::All
+        };
         assert_eq!(
             query(&field(ENTITY1)).collection,
-            EntityCollection::All(vec![(entity_type(ENTITY1), AttributeNames::All)])
+            EntityCollection::All(vec![(entity_type(ENTITY1), attrs.clone())])
         );
         assert_eq!(
             query(&field(ENTITY2)).collection,
-            EntityCollection::All(vec![(entity_type(ENTITY2), AttributeNames::All)])
+            EntityCollection::All(vec![(entity_type(ENTITY2), attrs)])
         );
     }
 
