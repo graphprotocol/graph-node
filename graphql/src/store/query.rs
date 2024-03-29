@@ -697,22 +697,63 @@ pub(crate) fn collect_entities_from_query_field(
 
 #[cfg(test)]
 mod tests {
+    use graph::components::store::EntityQuery;
     use graph::{
         components::store::ChildMultiplicity,
         data::value::Object,
+        prelude::lazy_static,
         prelude::{
-            r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Value,
-            ValueType, BLOCK_NUMBER_MAX,
-        },
-        prelude::{
+            r,
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
-            EntityOrder,
+            AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityOrder,
+            EntityRange, Value, ValueType, BLOCK_NUMBER_MAX,
         },
-        schema::InputSchema,
+        schema::{EntityType, InputSchema},
     };
     use std::{iter::FromIterator, sync::Arc};
 
     use super::{a, build_query};
+
+    const DEFAULT_OBJECT: &str = "DefaultObject";
+    const ENTITY1: &str = "Entity1";
+    const ENTITY2: &str = "Entity2";
+
+    lazy_static! {
+        static ref INPUT_SCHEMA: InputSchema = {
+            const INPUT_SCHEMA: &str = r#"
+            type Entity1 @entity { id: ID! }
+            type Entity2 @entity { id: ID! }
+            type DefaultObject @entity {
+                id: ID!
+                name: String
+                email: String
+            }
+        "#;
+
+            let id = DeploymentHash::new("id").unwrap();
+
+            InputSchema::parse_latest(INPUT_SCHEMA, id.clone()).unwrap()
+        };
+    }
+
+    #[track_caller]
+    fn query(obj_type: &str, field: &a::Field) -> EntityQuery {
+        let object = INPUT_SCHEMA.object_or_interface(obj_type, None).unwrap();
+        build_query(
+            &object,
+            BLOCK_NUMBER_MAX,
+            field,
+            std::u32::MAX,
+            std::u32::MAX,
+            &*&INPUT_SCHEMA,
+        )
+        .unwrap()
+    }
+
+    #[track_caller]
+    fn entity_type(name: &str) -> EntityType {
+        INPUT_SCHEMA.entity_type(name).unwrap()
+    }
 
     fn default_object() -> ObjectType {
         let subgraph_id_argument = (
@@ -752,7 +793,7 @@ mod tests {
         ObjectType {
             position: Default::default(),
             description: None,
-            name: "DefaultObject".to_string(),
+            name: DEFAULT_OBJECT.to_string(),
             implements_interfaces: vec![],
             directives: vec![subgraph_id_directive],
             fields: vec![name_field, email_field],
@@ -797,168 +838,58 @@ mod tests {
         field
     }
 
-    fn build_default_schema() -> InputSchema {
-        const INPUT_SCHEMA: &str = r#"
-        type Entity1 @entity { id: ID! }
-        type Entity2 @entity { id: ID! }
-        type DefaultObject @entity {
-            id: ID!
-            name: String
-            email: String
-        }
-    "#;
-
-        let id = DeploymentHash::new("id").unwrap();
-        InputSchema::parse_latest(INPUT_SCHEMA, id.clone()).unwrap()
-    }
-
     #[test]
     fn build_query_uses_the_entity_name() {
-        let schema = build_default_schema();
-        let entity1 = &schema.object_or_interface("Entity1", None).unwrap();
-        let entity2 = &schema.object_or_interface("Entity2", None).unwrap();
         assert_eq!(
-            build_query(
-                entity1,
-                BLOCK_NUMBER_MAX,
-                &default_field(),
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .collection,
-            EntityCollection::All(vec![(
-                schema.entity_type("Entity1").unwrap(),
-                AttributeNames::All
-            )])
+            query(ENTITY1, &default_field()).collection,
+            EntityCollection::All(vec![(entity_type(ENTITY1), AttributeNames::All)])
         );
         assert_eq!(
-            build_query(
-                entity2,
-                BLOCK_NUMBER_MAX,
-                &default_field(),
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .collection,
-            EntityCollection::All(vec![(
-                schema.entity_type("Entity2").unwrap(),
-                AttributeNames::All
-            )])
+            query(ENTITY2, &default_field()).collection,
+            EntityCollection::All(vec![(entity_type(ENTITY2), AttributeNames::All)])
         );
     }
 
     #[test]
     fn build_query_yields_no_order_if_order_arguments_are_missing() {
-        let schema = build_default_schema();
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &default_field(),
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
+            query(DEFAULT_OBJECT, &default_field()).order,
             EntityOrder::Default,
         );
     }
 
     #[test]
     fn build_query_parses_order_by_from_enum_values_correctly() {
-        let schema = build_default_schema();
         let field = default_field_with("orderBy", r::Value::Enum("name".to_string()));
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
+            query(DEFAULT_OBJECT, &field).order,
             EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
         let field = default_field_with("orderBy", r::Value::Enum("email".to_string()));
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
+            query(DEFAULT_OBJECT, &field).order,
             EntityOrder::Ascending("email".to_string(), ValueType::String)
         );
     }
 
     #[test]
     fn build_query_ignores_order_by_from_non_enum_values() {
-        let schema = build_default_schema();
         let field = default_field_with("orderBy", r::Value::String("name".to_string()));
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
-        assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
-            EntityOrder::Default
-        );
+        assert_eq!(query(DEFAULT_OBJECT, &field).order, EntityOrder::Default);
 
         let field = default_field_with("orderBy", r::Value::String("email".to_string()));
-        assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
-            EntityOrder::Default
-        );
+        assert_eq!(query(DEFAULT_OBJECT, &field).order, EntityOrder::Default);
     }
 
     #[test]
     fn build_query_parses_order_direction_from_enum_values_correctly() {
-        let schema = build_default_schema();
         let field = default_field_with_vec(vec![
             ("orderBy", r::Value::Enum("name".to_string())),
             ("orderDirection", r::Value::Enum("asc".to_string())),
         ]);
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
+            query(DEFAULT_OBJECT, &field).order,
             EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
@@ -967,16 +898,7 @@ mod tests {
             ("orderDirection", r::Value::Enum("desc".to_string())),
         ]);
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema,
-            )
-            .unwrap()
-            .order,
+            query(DEFAULT_OBJECT, &field).order,
             EntityOrder::Descending("name".to_string(), ValueType::String)
         );
 
@@ -988,16 +910,7 @@ mod tests {
             ),
         ]);
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema
-            )
-            .unwrap()
-            .order,
+            query(DEFAULT_OBJECT, &field).order,
             EntityOrder::Ascending("name".to_string(), ValueType::String)
         );
 
@@ -1006,59 +919,24 @@ mod tests {
             "orderDirection",
             r::Value::Enum("descending...".to_string()),
         );
-        assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema
-            )
-            .unwrap()
-            .order,
-            EntityOrder::Default
-        );
+        assert_eq!(query(DEFAULT_OBJECT, &field).order, EntityOrder::Default);
     }
 
     #[test]
     fn build_query_yields_default_range_if_none_is_present() {
-        let schema = build_default_schema();
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
-
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &default_field(),
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema
-            )
-            .unwrap()
-            .range,
+            query(DEFAULT_OBJECT, &default_field()).range,
             EntityRange::first(100)
         );
     }
 
     #[test]
     fn build_query_yields_default_first_if_only_skip_is_present() {
-        let schema = build_default_schema();
         let mut field = default_field();
         field.arguments = vec![("skip".to_string(), r::Value::Int(50))];
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
 
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema
-            )
-            .unwrap()
-            .range,
+            query(DEFAULT_OBJECT, &field,).range,
             EntityRange {
                 first: Some(100),
                 skip: 50,
@@ -1068,7 +946,6 @@ mod tests {
 
     #[test]
     fn build_query_yields_filters() {
-        let schema = build_default_schema();
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
@@ -1076,18 +953,8 @@ mod tests {
                 r::Value::String("ello".to_string()),
             )])),
         );
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &query_field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema
-            )
-            .unwrap()
-            .filter,
+            query(DEFAULT_OBJECT, &query_field,).filter,
             Some(EntityFilter::And(vec![EntityFilter::EndsWith(
                 "name".to_string(),
                 Value::String("ello".to_string()),
@@ -1097,8 +964,6 @@ mod tests {
 
     #[test]
     fn build_query_yields_block_change_gte_filter() {
-        let schema = build_default_schema();
-        let default = &schema.object_or_interface("DefaultObject", None).unwrap();
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
@@ -1110,16 +975,7 @@ mod tests {
             )])),
         );
         assert_eq!(
-            build_query(
-                default,
-                BLOCK_NUMBER_MAX,
-                &query_field,
-                std::u32::MAX,
-                std::u32::MAX,
-                &schema
-            )
-            .unwrap()
-            .filter,
+            query(DEFAULT_OBJECT, &query_field,).filter,
             Some(EntityFilter::And(vec![EntityFilter::ChangeBlockGte(10)]))
         )
     }
