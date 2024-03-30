@@ -510,11 +510,13 @@ impl DeploymentStore {
             instrument: manifest_info.instrument,
         };
 
-        // Insert the schema into the cache.
-        let mut cache = self.subgraph_cache.lock().unwrap();
-        cache.insert(site.deployment.clone(), info);
-
-        Ok(cache.get(&site.deployment).unwrap().clone())
+        if ENV_VARS.store.query_stats_refresh_interval > Duration::ZERO {
+            let mut cache = self.subgraph_cache.lock().unwrap();
+            cache.insert(site.deployment.clone(), info.clone());
+            Ok(cache.get(&site.deployment).unwrap().clone())
+        } else {
+            Ok(info)
+        }
     }
 
     pub(crate) fn subgraph_info(&self, site: &Site) -> Result<SubgraphInfo, StoreError> {

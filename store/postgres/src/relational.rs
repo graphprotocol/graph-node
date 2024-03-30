@@ -1578,7 +1578,7 @@ impl LayoutCache {
     }
 
     fn cache(&self, layout: Arc<Layout>) {
-        if layout.is_cacheable() {
+        if self.ttl > Duration::ZERO && layout.is_cacheable() {
             let deployment = layout.site.deployment.clone();
             let entry = CacheEntry {
                 expires: Instant::now() + self.ttl,
