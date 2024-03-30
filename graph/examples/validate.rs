@@ -38,11 +38,44 @@ use graph::prelude::DeploymentHash;
 use graph::schema::InputSchema;
 use graphql_parser::parse_schema;
 use serde::Deserialize;
+use std::alloc::GlobalAlloc;
+use std::alloc::Layout;
+use std::alloc::System;
 use std::env;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::process::exit;
+use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+use std::time::{Duration, Instant};
+
+use graph::anyhow::{anyhow, bail, Result};
+
+// Install an allocator that tracks allocation sizes
+
+static ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+
+struct Counter;
+
+unsafe impl GlobalAlloc for Counter {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ret = System.alloc(layout);
+        if !ret.is_null() {
+            ALLOCATED.fetch_add(layout.size(), SeqCst);
+        }
+        ret
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        System.dealloc(ptr, layout);
+        ALLOCATED.fetch_sub(layout.size(), SeqCst);
+    }
+}
+
+#[global_allocator]
+static A: Counter = Counter;
 
 pub fn usage(msg: &str) -> ! {
     println!("{}", msg);
@@ -81,6 +114,23 @@ struct Entry {
     schema: String,
 }
 
+enum RunMode {
+    Validate,
+    Size,
+}
+
+impl FromStr for RunMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "validate" => Ok(RunMode::Validate),
+            "size" => Ok(RunMode::Size),
+            _ => Err("Invalid mode".to_string()),
+        }
+    }
+}
+
 #[derive(Parser)]
 #[clap(
     name = "validate",
@@ -95,34 +145,132 @@ struct Opts {
     batch: bool,
     #[clap(long)]
     api: bool,
+    #[clap(short, long, default_value = "validate", possible_values = &["validate", "size"])]
+    mode: RunMode,
     /// Subgraph schemas to validate
     #[clap(required = true)]
     schemas: Vec<String>,
 }
 
-fn parse(raw: &str, name: &str, api: bool) {
-    let schema = ensure(
-        parse_schema(raw).map(|v| v.into_static()),
-        &format!("Failed to parse schema sgd{}", name),
-    );
+fn parse(raw: &str, name: &str, api: bool) -> Result<DeploymentHash> {
+    let schema = parse_schema(raw)
+        .map(|v| v.into_static())
+        .map_err(|e| anyhow!("Failed to parse schema sgd{name}: {e}"))?;
     let id = subgraph_id(&schema);
     let input_schema = match InputSchema::parse(&SPEC_VERSION_1_1_0, raw, id.clone()) {
         Ok(schema) => schema,
         Err(e) => {
-            println!("InputSchema: {}[{}]: {}", name, id, e);
-            return;
+            bail!("InputSchema: {}[{}]: {}", name, id, e);
         }
     };
     if api {
         let _api_schema = match input_schema.api_schema() {
             Ok(schema) => schema,
             Err(e) => {
-                println!("ApiSchema: {}[{}]: {}", name, id, e);
-                return;
+                bail!("ApiSchema: {}[{}]: {}", name, id, e);
             }
         };
     }
-    println!("Schema {}[{}]: OK", name, id);
+    Ok(id)
+}
+
+trait Runner {
+    fn run(&self, raw: &str, name: &str, api: bool);
+}
+
+struct Validator;
+
+impl Runner for Validator {
+    fn run(&self, raw: &str, name: &str, api: bool) {
+        match parse(raw, name, api) {
+            Ok(id) => {
+                println!("Schema {}[{}]: OK", name, id);
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                exit(1);
+            }
+        }
+    }
+}
+
+struct Sizes {
+    /// Size of the input schema as a string
+    text: usize,
+    /// Size of the parsed schema
+    gql: usize,
+    /// Size of the input schema
+    input: usize,
+    /// Size of the API schema
+    api: usize,
+    /// Size of the API schema as a string
+    api_text: usize,
+    /// Time to parse the schema as an input and an API schema
+    time: Duration,
+}
+
+struct Sizer {
+    first: AtomicBool,
+}
+
+impl Sizer {
+    fn size<T, F: Fn() -> Result<T>>(&self, f: F) -> Result<(usize, T)> {
+        f()?;
+        ALLOCATED.store(0, SeqCst);
+        let res = f()?;
+        let end = ALLOCATED.load(SeqCst);
+        Ok((end, res))
+    }
+
+    fn collect_sizes(&self, raw: &str, name: &str) -> Result<Sizes> {
+        // Prime possible lazy_statics etc.
+        let start = Instant::now();
+        let id = parse(raw, name, true)?;
+        let elapsed = start.elapsed();
+        let txt_size = raw.len();
+        let (gql_size, _) = self.size(|| {
+            parse_schema(raw)
+                .map(|v| v.into_static())
+                .map_err(Into::into)
+        })?;
+        let (input_size, input_schema) =
+            self.size(|| InputSchema::parse_latest(raw, id.clone()).map_err(Into::into))?;
+        let (api_size, api) = self.size(|| input_schema.api_schema().map_err(Into::into))?;
+        let api_text = api.document().to_string().len();
+        Ok(Sizes {
+            gql: gql_size,
+            text: txt_size,
+            input: input_size,
+            api: api_size,
+            api_text,
+            time: elapsed,
+        })
+    }
+}
+
+impl Runner for Sizer {
+    fn run(&self, raw: &str, name: &str, _api: bool) {
+        if self.first.swap(false, SeqCst) {
+            println!("name,raw,gql,input,api,api_text,time_ns");
+        }
+        match self.collect_sizes(raw, name) {
+            Ok(sizes) => {
+                println!(
+                    "{name},{},{},{},{},{},{}",
+                    sizes.text,
+                    sizes.gql,
+                    sizes.input,
+                    sizes.api,
+                    sizes.api_text,
+                    sizes.time.as_nanos()
+                );
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                exit(1);
+            }
+        }
+    }
 }
 
 pub fn main() {
@@ -131,9 +279,16 @@ pub fn main() {
 
     let opt = Opts::parse();
 
+    let runner: Box<dyn Runner> = match opt.mode {
+        RunMode::Validate => Box::new(Validator),
+        RunMode::Size => Box::new(Sizer {
+            first: AtomicBool::new(true),
+        }),
+    };
+
     if opt.batch {
         for schema in &opt.schemas {
-            println!("Validating schemas from {schema}");
+            eprintln!("Validating schemas from {schema}");
             let file = File::open(schema).expect("file exists");
             let rdr = BufReader::new(file);
             for line in rdr.lines() {
@@ -142,14 +297,14 @@ pub fn main() {
 
                 let raw = &entry.schema;
                 let name = format!("sgd{}", entry.id);
-                parse(raw, &name, opt.api);
+                runner.run(raw, &name, opt.api);
             }
         }
     } else {
         for schema in &opt.schemas {
-            println!("Validating schema from {schema}");
+            eprintln!("Validating schema from {schema}");
             let raw = std::fs::read_to_string(schema).expect("file exists");
-            parse(&raw, schema, opt.api);
+            runner.run(&raw, schema, opt.api);
         }
     }
 }
