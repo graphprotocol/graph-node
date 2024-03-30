@@ -610,9 +610,8 @@ impl SubgraphStoreInner {
     ) -> Result<DeploymentLocator, StoreError> {
         let src = self.find_site(src.id.into())?;
         let src_store = self.for_site(src.as_ref())?;
-        let src_info = src_store.subgraph_info(src.as_ref())?;
         let src_loc = DeploymentLocator::from(src.as_ref());
-
+        let src_layout = src_store.find_layout(src.cheap_clone())?;
         let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone())?);
         let dst_loc = DeploymentLocator::from(dst.as_ref());
 
@@ -662,7 +661,7 @@ impl SubgraphStoreInner {
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
 
         deployment_store.create_deployment(
-            &src_info.input,
+            &src_layout.input_schema,
             deployment,
             dst.clone(),
             Some(graft_base),
@@ -929,7 +928,8 @@ impl SubgraphStoreInner {
                 .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|block| block.number());
-            let subgraph_info = store.subgraph_info(site.as_ref())?;
+            let subgraph_info = store.subgraph_info(site.cheap_clone())?;
+            let layout = store.find_layout(site.cheap_clone())?;
             let network = site.network.clone();
 
             let info = VersionInfo {
@@ -941,7 +941,7 @@ impl SubgraphStoreInner {
                 failed: status.health.is_failed(),
                 description: subgraph_info.description,
                 repository: subgraph_info.repository,
-                schema: subgraph_info.input,
+                schema: layout.input_schema.cheap_clone(),
                 network,
             };
             Ok(info)
@@ -1416,8 +1416,8 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn input_schema(&self, id: &DeploymentHash) -> Result<InputSchema, StoreError> {
         let (store, site) = self.store(id)?;
-        let info = store.subgraph_info(&site)?;
-        Ok(info.input)
+        let layout = store.find_layout(site)?;
+        Ok(layout.input_schema.cheap_clone())
     }
 
     fn api_schema(
@@ -1426,7 +1426,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         version: &ApiVersion,
     ) -> Result<Arc<ApiSchema>, StoreError> {
         let (store, site) = self.store(id)?;
-        let info = store.subgraph_info(&site)?;
+        let info = store.subgraph_info(site)?;
         Ok(info.api.get(version).unwrap().clone())
     }
 
@@ -1436,9 +1436,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         logger: Logger,
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
         let (store, site) = self.store(id)?;
-        let info = store.subgraph_info(&site)?;
+        let info = store.subgraph_info(site.cheap_clone())?;
+        let layout = store.find_layout(site)?;
         let fork_id = info.debug_fork;
-        let schema = info.input;
+        let schema = layout.input_schema.cheap_clone();
 
         match (self.fork_base.as_ref(), fork_id) {
             (Some(base), Some(id)) => Ok(Some(Arc::new(fork::SubgraphFork::new(
@@ -1566,7 +1567,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment.id.into())?;
         let store = self.for_site(&site)?;
 
-        let info = store.subgraph_info(&site)?;
+        let info = store.subgraph_info(site)?;
         Ok(info.instrument)
     }
 }

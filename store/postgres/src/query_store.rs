@@ -124,13 +124,13 @@ impl QueryStoreTrait for QueryStore {
     }
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
-        let info = self.store.subgraph_info(&self.site)?;
+        let info = self.store.subgraph_info(self.site.cheap_clone())?;
         Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
     fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
-        let info = self.store.subgraph_info(&self.site)?;
-        Ok(info.input)
+        let layout = self.store.find_layout(self.site.cheap_clone())?;
+        Ok(layout.input_schema.cheap_clone())
     }
 
     fn network_name(&self) -> &str {

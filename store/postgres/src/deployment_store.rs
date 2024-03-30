@@ -74,8 +74,6 @@ pub enum ReplicaId {
 /// way as the cache lives for the lifetime of the `Store` object
 #[derive(Clone)]
 pub(crate) struct SubgraphInfo {
-    /// The schema as supplied by the user
-    pub(crate) input: InputSchema,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     pub(crate) api: HashMap<ApiVersion, Arc<ApiSchema>>,
     /// The block number at which this subgraph was grafted onto
@@ -468,13 +466,14 @@ impl DeploymentStore {
     fn subgraph_info_with_conn(
         &self,
         conn: &mut PgConnection,
-        site: &Site,
+        site: Arc<Site>,
     ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
         }
 
-        let manifest_info = deployment::ManifestInfo::load(conn, site)?;
+        let layout = self.layout(conn, site.cheap_clone())?;
+        let manifest_info = deployment::ManifestInfo::load(conn, &site)?;
 
         let graft_block =
             deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number);
@@ -487,7 +486,7 @@ impl DeploymentStore {
 
         for version in VERSIONS.iter() {
             let api_version = ApiVersion::from_version(version).expect("Invalid API version");
-            let schema = manifest_info.input_schema.api_schema()?;
+            let schema = layout.input_schema.api_schema()?;
             api.insert(api_version, Arc::new(schema));
         }
 
@@ -500,7 +499,6 @@ impl DeploymentStore {
         };
 
         let info = SubgraphInfo {
-            input: manifest_info.input_schema,
             api,
             graft_block,
             debug_fork,
@@ -519,7 +517,7 @@ impl DeploymentStore {
         }
     }
 
-    pub(crate) fn subgraph_info(&self, site: &Site) -> Result<SubgraphInfo, StoreError> {
+    pub(crate) fn subgraph_info(&self, site: Arc<Site>) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
         }
@@ -923,8 +921,9 @@ impl DeploymentStore {
         let indexer = *indexer;
         let site2 = site.cheap_clone();
         let store = self.cheap_clone();
-        let info = self.subgraph_info(&site)?;
-        let poi_digest = info.input.poi_digest();
+        let layout = self.find_layout(site.cheap_clone())?;
+        let info = self.subgraph_info(site.cheap_clone())?;
+        let poi_digest = layout.input_schema.poi_digest();
 
         let entities: Option<(Vec<Entity>, BlockPtr)> = self
             .with_conn(move |conn, cancel| {
@@ -970,7 +969,7 @@ impl DeploymentStore {
                         site.deployment.cheap_clone(),
                         block_ptr.number,
                         EntityCollection::All(vec![(
-                            info.input.poi_type().clone(),
+                            layout.input_schema.poi_type().clone(),
                             AttributeNames::All,
                         )]),
                     );
@@ -1374,7 +1373,7 @@ impl DeploymentStore {
         }
 
         // Don't revert past a graft point
-        let info = self.subgraph_info_with_conn(&mut conn, site.as_ref())?;
+        let info = self.subgraph_info_with_conn(&mut conn, site.cheap_clone())?;
         if let Some(graft_block) = info.graft_block {
             if graft_block > block_ptr_to.number {
                 return Err(constraint_violation!(

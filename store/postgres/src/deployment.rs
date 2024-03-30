@@ -311,7 +311,6 @@ pub fn schema(conn: &mut PgConnection, site: &Site) -> Result<(InputSchema, bool
 }
 
 pub struct ManifestInfo {
-    pub input_schema: InputSchema,
     pub description: Option<String>,
     pub repository: Option<String>,
     pub spec_version: String,
@@ -321,15 +320,13 @@ pub struct ManifestInfo {
 impl ManifestInfo {
     pub fn load(conn: &mut PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
         use subgraph_manifest as sm;
-        let (s, description, repository, spec_version, features): (
-            String,
+        let (description, repository, spec_version, features): (
             Option<String>,
             Option<String>,
             String,
             Vec<String>,
         ) = sm::table
             .select((
-                sm::schema,
                 sm::description,
                 sm::repository,
                 sm::spec_version,
@@ -337,7 +334,6 @@ impl ManifestInfo {
             ))
             .filter(sm::id.eq(site.id))
             .first(conn)?;
-        let input_schema = InputSchema::parse_latest(s.as_str(), site.deployment.clone())?;
 
         // Using the features field to store the instrument flag is a bit
         // backhanded, but since this will be used very rarely, should not
@@ -345,7 +341,6 @@ impl ManifestInfo {
         let instrument = features.iter().any(|s| s == "instrument");
 
         Ok(ManifestInfo {
-            input_schema,
             description,
             repository,
             spec_version,
