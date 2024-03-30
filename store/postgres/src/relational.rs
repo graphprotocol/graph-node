@@ -1557,6 +1557,7 @@ pub struct LayoutCache {
     /// Use this so that we only refresh one layout at any given time to
     /// avoid refreshing the same layout multiple times
     refresh: Mutex<()>,
+    last_sweep: Mutex<Instant>,
 }
 
 impl LayoutCache {
@@ -1565,6 +1566,7 @@ impl LayoutCache {
             entries: Mutex::new(HashMap::new()),
             ttl,
             refresh: Mutex::new(()),
+            last_sweep: Mutex::new(Instant::now()),
         }
     }
 
@@ -1612,11 +1614,11 @@ impl LayoutCache {
             let lock = self.entries.lock().unwrap();
             lock.get(&site.deployment).cloned()
         };
-        match entry {
+        let layout = match entry {
             Some(CacheEntry { value, expires }) => {
                 if now <= expires {
                     // Entry is not expired; use it
-                    Ok(value)
+                    value
                 } else {
                     // Only do a cache refresh once; we don't want to have
                     // multiple threads refreshing the same layout
@@ -1624,32 +1626,45 @@ impl LayoutCache {
                     // layout globally
                     let refresh = self.refresh.try_lock();
                     if refresh.is_err() {
-                        return Ok(value);
-                    }
-                    match value.cheap_clone().refresh(conn, site) {
-                        Err(e) => {
-                            warn!(
-                                logger,
-                                "failed to refresh statistics. Continuing with old statistics";
-                                "deployment" => &value.site.deployment,
-                                "error" => e.to_string()
-                            );
-                            // Update the timestamp so we don't retry
-                            // refreshing too often
-                            self.cache(value.cheap_clone());
-                            Ok(value)
-                        }
-                        Ok(layout) => {
-                            self.cache(layout.cheap_clone());
-                            Ok(layout)
-                        }
+                        value
+                    } else {
+                        self.refresh(logger, conn, site, value)
                     }
                 }
             }
             None => {
                 let layout = Self::load(conn, site)?;
                 self.cache(layout.cheap_clone());
-                Ok(layout)
+                layout
+            }
+        };
+        self.sweep(now);
+        Ok(layout)
+    }
+
+    fn refresh(
+        &self,
+        logger: &Logger,
+        conn: &mut PgConnection,
+        site: Arc<Site>,
+        value: Arc<Layout>,
+    ) -> Arc<Layout> {
+        match value.cheap_clone().refresh(conn, site) {
+            Err(e) => {
+                warn!(
+                    logger,
+                    "failed to refresh statistics. Continuing with old statistics";
+                    "deployment" => &value.site.deployment,
+                    "error" => e.to_string()
+                );
+                // Update the timestamp so we don't retry
+                // refreshing too often
+                self.cache(value.cheap_clone());
+                value
+            }
+            Ok(layout) => {
+                self.cache(layout.cheap_clone());
+                layout
             }
         }
     }
@@ -1666,5 +1681,18 @@ impl LayoutCache {
     #[cfg(debug_assertions)]
     pub(crate) fn clear(&self) {
         self.entries.lock().unwrap().clear()
+    }
+
+    /// Periodically sweep the cache to remove expired entries; an entry is
+    /// expired if it was last updated more than 2*self.ttl ago
+    fn sweep(&self, now: Instant) {
+        if now - *self.last_sweep.lock().unwrap() < ENV_VARS.store.schema_cache_ttl {
+            return;
+        }
+        let mut entries = self.entries.lock().unwrap();
+        // We allow entries to stick around for 2*ttl; if an entry was used
+        // in that time, it will get refreshed and have its expiry updated
+        entries.retain(|_, entry| entry.expires + self.ttl > now);
+        *self.last_sweep.lock().unwrap() = now;
     }
 }
