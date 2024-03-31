@@ -24,6 +24,9 @@ use crate::blockchain::BlockHash;
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 
+use old_bigdecimal::BigDecimal as OldBigDecimal;
+pub use old_bigdecimal::ToPrimitive;
+
 /// All operations on `BigDecimal` return a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
 // https://github.com/akubera/bigdecimal-rs/issues/54.
@@ -31,12 +34,12 @@ use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 #[derive(
     Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
 )]
-#[serde(from = "bigdecimal::BigDecimal")]
+#[serde(from = "OldBigDecimal")]
 #[diesel(sql_type = diesel::sql_types::Numeric)]
-pub struct BigDecimal(bigdecimal::BigDecimal);
+pub struct BigDecimal(OldBigDecimal);
 
-impl From<bigdecimal::BigDecimal> for BigDecimal {
-    fn from(big_decimal: bigdecimal::BigDecimal) -> Self {
+impl From<OldBigDecimal> for BigDecimal {
+    fn from(big_decimal: OldBigDecimal) -> Self {
         BigDecimal(big_decimal).normalized()
     }
 }
@@ -50,17 +53,17 @@ impl BigDecimal {
 
     pub fn new(digits: BigInt, exp: i64) -> Self {
         // bigdecimal uses `scale` as the opposite of the power of ten, so negate `exp`.
-        Self::from(bigdecimal::BigDecimal::new(digits.inner(), -exp))
+        Self::from(OldBigDecimal::new(digits.inner(), -exp))
     }
 
     pub fn parse_bytes(bytes: &[u8]) -> Option<Self> {
-        bigdecimal::BigDecimal::parse_bytes(bytes, 10).map(Self)
+        OldBigDecimal::parse_bytes(bytes, 10).map(Self)
     }
 
     pub fn zero() -> BigDecimal {
-        use bigdecimal::Zero;
+        use old_bigdecimal::Zero;
 
-        BigDecimal(bigdecimal::BigDecimal::zero())
+        BigDecimal(OldBigDecimal::zero())
     }
 
     pub fn as_bigint_and_exponent(&self) -> (num_bigint::BigInt, i64) {
@@ -71,7 +74,7 @@ impl BigDecimal {
         self.0.digits()
     }
 
-    // Copy-pasted from `bigdecimal::BigDecimal::normalize`. We can use the upstream version once it
+    // Copy-pasted from `OldBigDecimal::normalize`. We can use the upstream version once it
     // is included in a released version supported by Diesel.
     #[must_use]
     pub fn normalized(&self) -> BigDecimal {
@@ -89,7 +92,7 @@ impl BigDecimal {
         let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
         let scale = exp - trailing_count as i64;
 
-        BigDecimal(bigdecimal::BigDecimal::new(int_val, scale))
+        BigDecimal(OldBigDecimal::new(int_val, scale))
     }
 }
 
@@ -106,34 +109,34 @@ impl fmt::Debug for BigDecimal {
 }
 
 impl FromStr for BigDecimal {
-    type Err = <bigdecimal::BigDecimal as FromStr>::Err;
+    type Err = <OldBigDecimal as FromStr>::Err;
 
     fn from_str(s: &str) -> Result<BigDecimal, Self::Err> {
-        Ok(Self::from(bigdecimal::BigDecimal::from_str(s)?))
+        Ok(Self::from(OldBigDecimal::from_str(s)?))
     }
 }
 
 impl From<i32> for BigDecimal {
     fn from(n: i32) -> Self {
-        Self::from(bigdecimal::BigDecimal::from(n))
+        Self::from(OldBigDecimal::from(n))
     }
 }
 
 impl From<i64> for BigDecimal {
     fn from(n: i64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from(n))
+        Self::from(OldBigDecimal::from(n))
     }
 }
 
 impl From<u64> for BigDecimal {
     fn from(n: u64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from(n))
+        Self::from(OldBigDecimal::from(n))
     }
 }
 
 impl From<f64> for BigDecimal {
     fn from(n: f64) -> Self {
-        Self::from(bigdecimal::BigDecimal::from_f64(n).unwrap_or_default())
+        Self::from(OldBigDecimal::from_f64(n).unwrap_or_default())
     }
 }
 
@@ -185,11 +188,11 @@ impl ToSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
 
 impl FromSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
     fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
-        Ok(Self::from(bigdecimal::BigDecimal::from_sql(bytes)?))
+        Ok(Self::from(OldBigDecimal::from_sql(bytes)?))
     }
 }
 
-impl bigdecimal::ToPrimitive for BigDecimal {
+impl old_bigdecimal::ToPrimitive for BigDecimal {
     fn to_i64(&self) -> Option<i64> {
         self.0.to_i64()
     }
@@ -772,7 +775,7 @@ impl GasSizeOf for Timestamp {
 
 #[cfg(test)]
 mod test {
-    use super::{BigDecimal, BigInt, Bytes};
+    use super::{BigDecimal, BigInt, Bytes, OldBigDecimal};
     use stable_hash_legacy::crypto::SetHasher;
     use stable_hash_legacy::prelude::*;
     use stable_hash_legacy::utils::stable_hash;
@@ -852,17 +855,17 @@ mod test {
         let vals = vec![
             (
                 BigDecimal::new(BigInt::from(10), -2),
-                BigDecimal(bigdecimal::BigDecimal::new(1.into(), 1)),
+                BigDecimal(OldBigDecimal::new(1.into(), 1)),
                 "0.1",
             ),
             (
                 BigDecimal::new(BigInt::from(132400), 4),
-                BigDecimal(bigdecimal::BigDecimal::new(1324.into(), -6)),
+                BigDecimal(OldBigDecimal::new(1324.into(), -6)),
                 "1324000000",
             ),
             (
                 BigDecimal::new(BigInt::from(1_900_000), -3),
-                BigDecimal(bigdecimal::BigDecimal::new(19.into(), -2)),
+                BigDecimal(OldBigDecimal::new(19.into(), -2)),
                 "1900",
             ),
             (BigDecimal::new(0.into(), 3), BigDecimal::zero(), "0"),

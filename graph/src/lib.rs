@@ -70,7 +70,6 @@ pub mod prelude {
     pub use ::anyhow;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use async_trait::async_trait;
-    pub use bigdecimal;
     pub use chrono;
     pub use diesel;
     pub use envconfig;

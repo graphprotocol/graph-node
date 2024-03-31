@@ -25,10 +25,11 @@ use diesel::{
 use graph::{
     components::store::DeploymentLocator,
     constraint_violation,
+    data::store::scalar::ToPrimitive,
     data::subgraph::{status, DeploymentFeatures},
     prelude::{
-        anyhow, bigdecimal::ToPrimitive, serde_json, DeploymentHash, EntityChange,
-        EntityChangeOperation, NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
+        anyhow, serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId,
+        StoreError, SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{

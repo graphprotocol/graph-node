@@ -10,11 +10,9 @@ use diesel::prelude::{
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
+use graph::data::store::scalar::ToPrimitive;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
-use graph::prelude::{
-    bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
-    SubgraphDeploymentEntity,
-};
+use graph::prelude::{BigDecimal, BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity};
 use graph::schema::InputSchema;
 use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
 use itertools::Itertools;

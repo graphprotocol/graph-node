@@ -11,7 +11,8 @@ atomic_refcell = "0.1.13"
 # Make sure no newer version of bigdecmal library is used in diesel dependencies reflected in the Cargo.lock file.
 # Automatic reneratiion of the Cargo.lock file would break compilation as only diesel dependencies would be updated.
 # Using a higher version of bigdecimal in complete graph-node project would change the PoI, hence break the consensus.
-bigdecimal = { version = "=0.1.2", features = ["serde"] }
+# BigDecimals should only by used through graph::store::scalar and not directly from this crate
+old_bigdecimal = { version = "=0.1.2", features = ["serde"], package = "bigdecimal" }
 bytes = "1.0.1"
 cid = "0.11.0"
 diesel = { workspace = true }

@@ -18,18 +18,19 @@ use graph::{
     schema::EntityType,
 };
 use graph::{
+    data::store::scalar::ToPrimitive,
+    prelude::{
+        anyhow, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr, DeploymentHash,
+        DeploymentState, StoreError,
+    },
+    schema::InputSchema,
+};
+use graph::{
     data::subgraph::{
         schema::{DeploymentCreate, SubgraphManifestEntity},
         SubgraphFeature,
     },
     util::backoff::ExponentialBackoff,
-};
-use graph::{
-    prelude::{
-        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-        DeploymentHash, DeploymentState, StoreError,
-    },
-    schema::InputSchema,
 };
 use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};

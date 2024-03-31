@@ -305,8 +305,8 @@ impl From<FromHexError> for QueryExecutionError {
     }
 }
 
-impl From<bigdecimal::ParseBigDecimalError> for QueryExecutionError {
-    fn from(e: bigdecimal::ParseBigDecimalError) -> Self {
+impl From<old_bigdecimal::ParseBigDecimalError> for QueryExecutionError {
+    fn from(e: old_bigdecimal::ParseBigDecimalError) -> Self {
         QueryExecutionError::ValueParseError("BigDecimal".to_string(), format!("{}", e))
     }
 }

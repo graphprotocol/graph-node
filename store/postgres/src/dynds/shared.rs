@@ -12,10 +12,9 @@ use diesel::{insert_into, pg::PgConnection};
 use graph::{
     components::store::{write, StoredDynamicDataSource},
     constraint_violation,
+    data::store::scalar::ToPrimitive,
     data_source::CausalityRegion,
-    prelude::{
-        bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError,
-    },
+    prelude::{serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError},
 };
 
 use crate::connection_pool::ForeignServer;
