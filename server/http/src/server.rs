@@ -1,12 +1,19 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::Arc;
 
 use futures::future::Future;
+use graph::anyhow;
+use graph::log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig};
+use graph::prelude::TryFutureExt;
+use graph::slog::{error, info};
 use hyper::service::make_service_fn;
 use hyper::Server;
-use thiserror::Error;
 
 use crate::service::GraphQLService;
-use graph::prelude::{GraphQLServer as GraphQLServerTrait, GraphQlRunner, *};
+use graph::prelude::{
+    futures03, thiserror, thiserror::Error, GraphQLServer as GraphQLServerTrait, GraphQlRunner,
+    Logger, LoggerFactory, NodeId,
+};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]
@@ -74,7 +81,7 @@ where
                 node_id.clone(),
             );
 
-            futures03::future::ok::<_, Error>(graphql_service)
+            futures03::future::ok::<_, anyhow::Error>(graphql_service)
         });
 
         // Create a task to run the server and handle HTTP requests
