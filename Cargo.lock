@@ -1516,6 +1516,7 @@ dependencies = [
  "lru_time_cache",
  "maplit",
  "num-bigint 0.2.6",
+ "num-integer",
  "num-traits",
  "object_store",
  "parking_lot 0.12.1",
