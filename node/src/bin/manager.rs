@@ -923,19 +923,6 @@ impl Context {
         pools
     }
 
-    fn clone(&self) -> Self {
-        Self {
-            logger: self.logger.clone(),
-            node_id: self.node_id.clone(),
-            config: self.config.clone(),
-            ipfs_url: self.ipfs_url.clone(),
-            arweave_url: self.arweave_url.clone(),
-            fork_base: self.fork_base.clone(),
-            registry: self.registry.clone(),
-            prometheus_registry: self.prometheus_registry.clone(),
-        }
-    }
-
     async fn store_builder(&self) -> StoreBuilder {
         StoreBuilder::new(
             &self.logger,
@@ -1194,7 +1181,7 @@ async fn main() -> anyhow::Result<()> {
             let locator = &deployment.locate_unique(&pool)?;
             commands::assign::pause_or_resume(pool, &sender, locator, true)
         }
-        }
+
         Resume { deployment } => {
             let sender = ctx.notification_sender();
             let pool = ctx.primary_pool();
