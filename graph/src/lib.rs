@@ -126,7 +126,6 @@ pub mod prelude {
         Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError, Registry,
     };
     pub use crate::components::server::index_node::IndexNodeServer;
-    pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
         write::EntityModification, AttributeNames, BlockNumber, CachedEthereumCall, ChainStore,

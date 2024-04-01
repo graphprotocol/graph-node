@@ -11,8 +11,7 @@ use hyper::Server;
 
 use crate::service::GraphQLService;
 use graph::prelude::{
-    futures03, thiserror, thiserror::Error, GraphQLServer as GraphQLServerTrait, GraphQlRunner,
-    Logger, LoggerFactory, NodeId,
+    futures03, thiserror, thiserror::Error, GraphQlRunner, Logger, LoggerFactory, NodeId,
 };
 
 /// Errors that may occur when starting the server.
@@ -29,7 +28,7 @@ pub struct GraphQLServer<Q> {
     node_id: NodeId,
 }
 
-impl<Q> GraphQLServer<Q> {
+impl<Q: GraphQlRunner> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
     pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, node_id: NodeId) -> Self {
         let logger = logger_factory.component_logger(
@@ -46,19 +45,12 @@ impl<Q> GraphQLServer<Q> {
             node_id,
         }
     }
-}
 
-impl<Q> GraphQLServerTrait for GraphQLServer<Q>
-where
-    Q: GraphQlRunner,
-{
-    type ServeError = GraphQLServeError;
-
-    fn serve(
+    pub fn serve(
         &mut self,
         port: u16,
         ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, GraphQLServeError> {
         let logger = self.logger.clone();
 
         info!(

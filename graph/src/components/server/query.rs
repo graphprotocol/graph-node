@@ -1,5 +1,4 @@
 use crate::data::query::QueryError;
-use futures::prelude::*;
 use std::error::Error;
 use std::fmt;
 
@@ -56,16 +55,4 @@ impl Error for GraphQLServerError {
             GraphQLServerError::InternalError(_) => None,
         }
     }
-}
-
-/// Common trait for GraphQL server implementations.
-pub trait GraphQLServer {
-    type ServeError;
-
-    /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
-    fn serve(
-        &mut self,
-        port: u16,
-        ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }
