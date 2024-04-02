@@ -1,9 +1,9 @@
+use graph::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use graph::http::{HeaderValue, Response, StatusCode};
 use graph::{
     data::query::QueryTarget,
     prelude::{SubscriptionServer as SubscriptionServerTrait, *},
 };
-use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
-use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use tokio::net::TcpListener;

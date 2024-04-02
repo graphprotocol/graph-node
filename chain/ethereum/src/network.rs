@@ -269,6 +269,7 @@ impl EthereumNetworks {
 
 #[cfg(test)]
 mod tests {
+    use graph::http::HeaderMap;
     use graph::{
         endpoint::{EndpointMetrics, Provider},
         firehose::SubgraphLimit,
@@ -277,7 +278,6 @@ mod tests {
         tokio,
         url::Url,
     };
-    use http::HeaderMap;
     use std::sync::Arc;
     use uuid::Uuid;
 

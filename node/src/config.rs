@@ -18,7 +18,7 @@ use graph::{
 use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
-use http::{HeaderMap, Uri};
+use graph::http::{HeaderMap, Uri};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -578,9 +578,9 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
     let mut headers = HeaderMap::new();
     for (k, v) in kvs.into_iter() {
         headers.insert(
-            k.parse::<http::header::HeaderName>()
+            k.parse::<graph::http::header::HeaderName>()
                 .unwrap_or_else(|_| panic!("invalid HTTP header name: {}", k)),
-            v.parse::<http::header::HeaderValue>()
+            v.parse::<graph::http::header::HeaderValue>()
                 .unwrap_or_else(|_| panic!("invalid HTTP header value: {}: {}", k, v)),
         );
     }
@@ -1209,9 +1209,9 @@ mod tests {
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
+    use graph::http::{HeaderMap, HeaderValue};
     use graph::prelude::regex::Regex;
     use graph::prelude::{toml, NodeId};
-    use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
     use std::path::{Path, PathBuf};

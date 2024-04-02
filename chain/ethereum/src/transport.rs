@@ -45,7 +45,7 @@ impl Transport {
     /// blocks (one such example is Infura's HTTP endpoint).
     pub fn new_rpc(
         rpc: Url,
-        headers: ::http::HeaderMap,
+        headers: graph::http::HeaderMap,
         metrics: Arc<EndpointMetrics>,
         provider: impl AsRef<str>,
     ) -> Self {
