@@ -11,7 +11,7 @@ graph-chain-common = { path = "../common" }
 graph = { path = "../../graph" }
 prost = { workspace = true }
 prost-types = { workspace = true }
-serde = "1.0"
+serde = { workspace = true }
 anyhow = "1.0"
 semver = "1.0.21"
 

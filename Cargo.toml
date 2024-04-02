@@ -30,6 +30,11 @@ diesel-dynamic-schema = "0.2.1"
 diesel_migrations = "2.1.0"
 prost = "0.11.9"
 prost-types = "0.11.9"
+serde = { version = "1.0.126", features = ["rc"] }
+serde_derive = "1.0.125"
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }
+serde_regex = "1.1.0"
+serde_yaml = "0.9.21"
 tonic = { version = "0.8.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.8.4", features = ["prost"] }
 wasmtime = "15.0.1"
@@ -46,4 +51,3 @@ incremental = false
 lto = true
 opt-level = 's'
 strip = "debuginfo"
-

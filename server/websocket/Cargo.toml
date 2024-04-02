@@ -7,7 +7,7 @@ edition.workspace = true
 futures = "0.1.23"
 graph = { path = "../../graph" }
 graphql-parser = "0.4.0"
-serde = "1.0"
-serde_derive = "1.0"
+serde = { workspace = true }
+serde_derive = { workspace = true }
 tokio-tungstenite = "0.17"
 uuid = { version = "1.6.1", features = ["v4"] }

@@ -11,7 +11,7 @@ base64-url = "2.0.2"
 graph = { path = "../../graph" }
 prost = { workspace = true }
 prost-types = { workspace = true }
-serde = "1.0"
+serde = { workspace = true }
 sha2 = "0.10.8"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }

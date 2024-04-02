@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 futures = "0.1.21"
 graphql-parser = "0.4.0"
-serde = "1.0"
+serde = { workspace = true }
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 
