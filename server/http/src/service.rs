@@ -51,16 +51,6 @@ pub struct GraphQLService<Q> {
     ws_port: u16,
 }
 
-impl<Q> Clone for GraphQLService<Q> {
-    fn clone(&self) -> Self {
-        Self {
-            logger: self.logger.clone(),
-            graphql_runner: self.graphql_runner.clone(),
-            ws_port: self.ws_port,
-        }
-    }
-}
-
 impl<Q> GraphQLService<Q>
 where
     Q: GraphQlRunner,
