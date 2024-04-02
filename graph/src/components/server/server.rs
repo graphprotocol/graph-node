@@ -17,7 +17,7 @@ use crate::{anyhow, tokio};
 
 use crate::prelude::Logger;
 
-use super::query::GraphQLResult;
+use super::query::ServerResult;
 
 /// A handle to the server that can be used to shut it down. The `accepting`
 /// field is only used in tests to check if the server is running
@@ -33,7 +33,7 @@ pub async fn start<F, S>(
 ) -> Result<ServerHandle, anyhow::Error>
 where
     F: Fn(Request<Incoming>) -> S + Send + Clone + 'static,
-    S: Future<Output = GraphQLResult> + Send + 'static,
+    S: Future<Output = ServerResult> + Send + 'static,
 {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await?;

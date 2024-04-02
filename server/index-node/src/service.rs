@@ -5,7 +5,7 @@ use graph::blockchain::BlockchainMap;
 use graph::cheap_clone::CheapClone;
 use graph::components::graphql::{GraphQLMetrics, GraphQlRunner};
 use graph::components::link_resolver::LinkResolver;
-use graph::components::server::query::{GraphQLResponse, GraphQLResult};
+use graph::components::server::query::{ServerResponse, ServerResult};
 use graph::data::subgraph::DeploymentHash;
 use graph::http_body_util::{BodyExt, Full};
 use graph::hyper::body::{Bytes, Incoming};
@@ -15,7 +15,7 @@ use graph::hyper::header::{
 };
 use graph::hyper::{body::Body, Method, Request, Response, StatusCode};
 
-use graph::components::{server::query::GraphQLServerError, store::Store};
+use graph::components::{server::query::ServerError, store::Store};
 use graph::data::query::{Query, QueryError, QueryResult, QueryResults};
 use graph::prelude::serde_json;
 use graph::slog::{debug, error, Logger};
@@ -68,7 +68,6 @@ where
     Q: GraphQlRunner,
     S: Store,
 {
-    /// Creates a new GraphQL service.
     pub fn new(
         logger: Logger,
         blockchain_map: Arc<BlockchainMap>,
@@ -93,7 +92,7 @@ where
     }
 
     /// Serves a static file.
-    fn serve_file(contents: &'static str, content_type: &'static str) -> GraphQLResponse {
+    fn serve_file(contents: &'static str, content_type: &'static str) -> ServerResponse {
         Response::builder()
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, content_type)
@@ -102,7 +101,7 @@ where
             .unwrap()
     }
 
-    fn index() -> GraphQLResponse {
+    fn index() -> ServerResponse {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -111,28 +110,26 @@ where
             .unwrap()
     }
 
-    fn handle_graphiql() -> GraphQLResponse {
+    fn handle_graphiql() -> ServerResponse {
         Self::serve_file(Self::graphiql_html(), "text/html")
     }
 
     pub async fn handle_graphql_query<T: Body>(
         &self,
         request: Request<T>,
-    ) -> Result<QueryResults, GraphQLServerError> {
+    ) -> Result<QueryResults, ServerError> {
         let store = self.store.clone();
 
         let bearer_token = bearer_token(request.headers())
             .map(<[u8]>::to_vec)
             .map(String::from_utf8)
             .transpose()
-            .map_err(|_| {
-                GraphQLServerError::ClientError("Bearer token is invalid UTF-8".to_string())
-            })?;
+            .map_err(|_| ServerError::ClientError("Bearer token is invalid UTF-8".to_string()))?;
 
         let body = request
             .collect()
             .await
-            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))?
+            .map_err(|_| ServerError::InternalError("Failed to read request body".into()))?
             .to_bytes();
 
         let validated = ValidatedRequest::new(body, bearer_token)?;
@@ -180,7 +177,7 @@ where
     }
 
     // Handles OPTIONS requests
-    fn handle_graphql_options<T>(_request: Request<T>) -> GraphQLResponse {
+    fn handle_graphql_options<T>(_request: Request<T>) -> ServerResponse {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -192,11 +189,9 @@ where
     }
 
     /// Handles 302 redirects
-    fn handle_temp_redirect(destination: &str) -> GraphQLResult {
+    fn handle_temp_redirect(destination: &str) -> ServerResult {
         header::HeaderValue::from_str(destination)
-            .map_err(|_| {
-                GraphQLServerError::ClientError("invalid characters in redirect URL".into())
-            })
+            .map_err(|_| ServerError::ClientError("invalid characters in redirect URL".into()))
             .map(|loc_header_val| {
                 Response::builder()
                     .status(StatusCode::FOUND)
@@ -209,7 +204,7 @@ where
     }
 
     /// Handles 404s.
-    pub(crate) fn handle_not_found() -> GraphQLResponse {
+    pub(crate) fn handle_not_found() -> ServerResponse {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -218,7 +213,7 @@ where
             .unwrap()
     }
 
-    async fn handle_call<T: Body>(self, req: Request<T>) -> GraphQLResult {
+    async fn handle_call<T: Body>(self, req: Request<T>) -> ServerResult {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -259,7 +254,7 @@ where
         }
     }
 
-    pub async fn call(&self, req: Request<Incoming>) -> GraphQLResponse {
+    pub async fn call(&self, req: Request<Incoming>) -> ServerResponse {
         let logger = self.logger.clone();
 
         // Returning Err here will prevent the client from receiving any response.
@@ -267,7 +262,7 @@ where
         let result = self.cheap_clone().handle_call(req).await;
         match result {
             Ok(response) => response,
-            Err(err @ GraphQLServerError::ClientError(_)) => {
+            Err(err @ ServerError::ClientError(_)) => {
                 debug!(logger, "IndexNodeService call failed: {}", err);
 
                 Response::builder()
@@ -277,7 +272,7 @@ where
                     .body(Full::from(format!("Invalid request: {}", err)))
                     .unwrap()
             }
-            Err(err @ GraphQLServerError::QueryError(_)) => {
+            Err(err @ ServerError::QueryError(_)) => {
                 error!(logger, "IndexNodeService call failed: {}", err);
 
                 Response::builder()
@@ -287,7 +282,7 @@ where
                     .body(Full::from(format!("Query error: {}", err)))
                     .unwrap()
             }
-            Err(err @ GraphQLServerError::InternalError(_)) => {
+            Err(err @ ServerError::InternalError(_)) => {
                 error!(logger, "IndexNodeService call failed: {}", err);
 
                 Response::builder()
@@ -307,31 +302,31 @@ struct ValidatedRequest {
 }
 
 impl ValidatedRequest {
-    pub fn new(req_body: Bytes, bearer_token: Option<String>) -> Result<Self, GraphQLServerError> {
+    pub fn new(req_body: Bytes, bearer_token: Option<String>) -> Result<Self, ServerError> {
         // Parse request body as JSON
         let json: serde_json::Value = serde_json::from_slice(&req_body)
-            .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
+            .map_err(|e| ServerError::ClientError(format!("{}", e)))?;
 
         // Ensure the JSON data is an object
         let obj = json.as_object().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("ValidatedRequest data is not an object"))
+            ServerError::ClientError(String::from("ValidatedRequest data is not an object"))
         })?;
 
         // Ensure the JSON data has a "query" field
         let query_value = obj.get("query").ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from(
+            ServerError::ClientError(String::from(
                 "The \"query\" field is missing in request data",
             ))
         })?;
 
         // Ensure the "query" field is a string
         let query_string = query_value.as_str().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("The\"query\" field is not a string"))
+            ServerError::ClientError(String::from("The\"query\" field is not a string"))
         })?;
 
         // Parse the "query" field of the JSON body
         let document = graphql_parser::parse_query(query_string)
-            .map_err(|e| GraphQLServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
+            .map_err(|e| ServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
             .into_static();
 
         // Parse the "variables" field of the JSON body, if present
@@ -339,10 +334,10 @@ impl ValidatedRequest {
             None | Some(serde_json::Value::Null) => Ok(None),
             Some(variables @ serde_json::Value::Object(_)) => {
                 serde_json::from_value(variables.clone())
-                    .map_err(|e| GraphQLServerError::ClientError(e.to_string()))
+                    .map_err(|e| ServerError::ClientError(e.to_string()))
                     .map(Some)
             }
-            _ => Err(GraphQLServerError::ClientError(
+            _ => Err(ServerError::ClientError(
                 "Invalid query variables provided".to_string(),
             )),
         }?;
@@ -366,9 +361,9 @@ mod tests {
     use graph::hyper::body::Bytes;
     use std::collections::HashMap;
 
-    use super::{GraphQLServerError, ValidatedRequest};
+    use super::{ServerError, ValidatedRequest};
 
-    fn validate_req(req_body: Bytes) -> Result<Query, GraphQLServerError> {
+    fn validate_req(req_body: Bytes) -> Result<Query, ServerError> {
         Ok(ValidatedRequest::new(req_body, None)?.query)
     }
 

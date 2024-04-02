@@ -1,43 +1,43 @@
 use graph::prelude::serde_json;
 
-use graph::components::server::query::GraphQLServerError;
+use graph::components::server::query::ServerError;
 use graph::hyper::body::Bytes;
 use graph::prelude::*;
 
-pub fn parse_graphql_request(body: &Bytes, trace: bool) -> Result<Query, GraphQLServerError> {
+pub fn parse_graphql_request(body: &Bytes, trace: bool) -> Result<Query, ServerError> {
     // Parse request body as JSON
-    let json: serde_json::Value = serde_json::from_slice(body)
-        .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
+    let json: serde_json::Value =
+        serde_json::from_slice(body).map_err(|e| ServerError::ClientError(format!("{}", e)))?;
 
     // Ensure the JSON data is an object
-    let obj = json.as_object().ok_or_else(|| {
-        GraphQLServerError::ClientError(String::from("Request data is not an object"))
-    })?;
+    let obj = json
+        .as_object()
+        .ok_or_else(|| ServerError::ClientError(String::from("Request data is not an object")))?;
 
     // Ensure the JSON data has a "query" field
     let query_value = obj.get("query").ok_or_else(|| {
-        GraphQLServerError::ClientError(String::from(
+        ServerError::ClientError(String::from(
             "The \"query\" field is missing in request data",
         ))
     })?;
 
     // Ensure the "query" field is a string
     let query_string = query_value.as_str().ok_or_else(|| {
-        GraphQLServerError::ClientError(String::from("The \"query\" field is not a string"))
+        ServerError::ClientError(String::from("The \"query\" field is not a string"))
     })?;
 
     // Parse the "query" field of the JSON body
     let document = graphql_parser::parse_query(query_string)
-        .map_err(|e| GraphQLServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
+        .map_err(|e| ServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
         .into_static();
 
     // Parse the "variables" field of the JSON body, if present
     let variables = match obj.get("variables") {
         None | Some(serde_json::Value::Null) => Ok(None),
         Some(variables @ serde_json::Value::Object(_)) => serde_json::from_value(variables.clone())
-            .map_err(|e| GraphQLServerError::ClientError(e.to_string()))
+            .map_err(|e| ServerError::ClientError(e.to_string()))
             .map(Some),
-        _ => Err(GraphQLServerError::ClientError(
+        _ => Err(ServerError::ClientError(
             "Invalid query variables provided".to_string(),
         )),
     }?;

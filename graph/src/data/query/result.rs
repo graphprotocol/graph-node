@@ -1,7 +1,7 @@
 use super::error::{QueryError, QueryExecutionError};
 use super::trace::{HttpTrace, TRACE_NONE};
 use crate::cheap_clone::CheapClone;
-use crate::components::server::query::GraphQLResponse;
+use crate::components::server::query::ServerResponse;
 use crate::data::value::Object;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http_body_util::Full;
@@ -198,7 +198,7 @@ impl QueryResults {
         self.results.push(other);
     }
 
-    pub fn as_http_response(&self) -> GraphQLResponse {
+    pub fn as_http_response(&self) -> ServerResponse {
         let json = serde_json::to_string(&self).unwrap();
         Response::builder()
             .status(200)

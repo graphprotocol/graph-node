@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use graph::cheap_clone::CheapClone;
 use graph::components::graphql::GraphQlRunner;
-use graph::components::server::query::GraphQLResponse;
-use graph::components::server::query::GraphQLResult;
+use graph::components::server::query::ServerResponse;
+use graph::components::server::query::ServerResult;
 use graph::components::versions::ApiVersion;
 use graph::data::query::QueryResult;
 use graph::data::subgraph::DeploymentHash;
@@ -25,11 +25,11 @@ use graph::semver::VersionReq;
 use graph::slog::error;
 use graph::slog::Logger;
 use graph::url::form_urlencoded;
-use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
+use graph::{components::server::query::ServerError, data::query::QueryTarget};
 
 use crate::request::parse_graphql_request;
 
-fn client_error(msg: impl Into<String>) -> GraphQLResponse {
+fn client_error(msg: impl Into<String>) -> ServerResponse {
     let response_obj = json!({
         "error": msg.into()
     });
@@ -69,7 +69,7 @@ where
             .replace("__WS_PORT__", format!("{}", self.ws_port).as_str())
     }
 
-    async fn index(&self) -> GraphQLResult {
+    async fn index(&self) -> ServerResult {
         let response_obj = json!({
             "message": "Access deployed subgraphs by deployment ID at \
                         /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>"
@@ -85,7 +85,7 @@ where
     }
 
     /// Serves a dynamically created file.
-    fn serve_dynamic_file(&self, contents: String) -> GraphQLResponse {
+    fn serve_dynamic_file(&self, contents: String) -> ServerResponse {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -94,14 +94,11 @@ where
             .unwrap()
     }
 
-    fn handle_graphiql(&self) -> GraphQLResult {
+    fn handle_graphiql(&self) -> ServerResult {
         Ok(self.serve_dynamic_file(self.graphiql_html()))
     }
 
-    fn resolve_api_version<T>(
-        &self,
-        request: &Request<T>,
-    ) -> Result<ApiVersion, GraphQLServerError> {
+    fn resolve_api_version<T>(&self, request: &Request<T>) -> Result<ApiVersion, ServerError> {
         let mut version = ApiVersion::default();
 
         if let Some(query) = request.uri().query() {
@@ -117,9 +114,9 @@ where
             if let Some(version_requirement) = potential_version_requirement {
                 version = ApiVersion::new(
                     &VersionReq::parse(version_requirement)
-                        .map_err(|error| GraphQLServerError::ClientError(error.to_string()))?,
+                        .map_err(|error| ServerError::ClientError(error.to_string()))?,
                 )
-                .map_err(GraphQLServerError::ClientError)?;
+                .map_err(ServerError::ClientError)?;
             }
         }
 
@@ -130,10 +127,10 @@ where
         &self,
         subgraph_name: String,
         request: Request<T>,
-    ) -> GraphQLResult {
+    ) -> ServerResult {
         let version = self.resolve_api_version(&request)?;
         let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
-            GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
+            ServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
         })?;
 
         self.handle_graphql_query(QueryTarget::Name(subgraph_name, version), request)
@@ -144,10 +141,9 @@ where
         &self,
         id: String,
         request: Request<T>,
-    ) -> GraphQLResult {
-        let id = DeploymentHash::new(id).map_err(|id| {
-            GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id))
-        })?;
+    ) -> ServerResult {
+        let id = DeploymentHash::new(id)
+            .map_err(|id| ServerError::ClientError(format!("Invalid subgraph id `{}`", id)))?;
         let version = self.resolve_api_version(&request)?;
 
         self.handle_graphql_query(QueryTarget::Deployment(id, version), request)
@@ -158,7 +154,7 @@ where
         &self,
         target: QueryTarget,
         request: Request<T>,
-    ) -> GraphQLResult {
+    ) -> ServerResult {
         let start = Instant::now();
         let trace = {
             !ENV_VARS.graphql.query_trace_token.is_empty()
@@ -175,7 +171,7 @@ where
         let body = request
             .collect()
             .await
-            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))?
+            .map_err(|_| ServerError::InternalError("Failed to read request body".into()))?
             .to_bytes();
         let query = parse_graphql_request(&body, trace);
         let query_parsing_time = start.elapsed();
@@ -187,7 +183,7 @@ where
                     .run_query(query, target)
                     .await
             }
-            Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
+            Err(ServerError::QueryError(e)) => QueryResult::from(e).into(),
             Err(e) => return Err(e),
         };
 
@@ -203,7 +199,7 @@ where
     }
 
     // Handles OPTIONS requests
-    fn handle_graphql_options<T>(&self, _request: Request<T>) -> GraphQLResult {
+    fn handle_graphql_options<T>(&self, _request: Request<T>) -> ServerResult {
         Ok(Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -215,11 +211,9 @@ where
     }
 
     /// Handles 302 redirects
-    fn handle_temp_redirect(&self, destination: String) -> GraphQLResult {
+    fn handle_temp_redirect(&self, destination: String) -> ServerResult {
         HeaderValue::try_from(destination)
-            .map_err(|_| {
-                GraphQLServerError::ClientError("invalid characters in redirect URL".into())
-            })
+            .map_err(|_| ServerError::ClientError("invalid characters in redirect URL".into()))
             .map(|loc_header_val| {
                 Response::builder()
                     .status(StatusCode::FOUND)
@@ -231,7 +225,7 @@ where
             })
     }
 
-    fn handle_not_found(&self) -> GraphQLResult {
+    fn handle_not_found(&self) -> ServerResult {
         let response_obj = json!({
             "message": "Not found"
         });
@@ -245,16 +239,16 @@ where
             .unwrap())
     }
 
-    fn handle_mutations(&self) -> GraphQLResult {
+    fn handle_mutations(&self) -> ServerResult {
         Ok(client_error("Can't use mutations with GET method"))
     }
     /// Handles requests without content type.
-    fn handle_requests_without_content_type(&self) -> GraphQLResult {
+    fn handle_requests_without_content_type(&self) -> ServerResult {
         Ok(client_error("Content-Type header is required"))
     }
 
     /// Handles requests without body.
-    fn handle_requests_without_body(&self) -> GraphQLResult {
+    fn handle_requests_without_body(&self) -> ServerResult {
         Ok(client_error("Body is required"))
     }
 
@@ -269,7 +263,7 @@ where
         false
     }
 
-    async fn handle_call<T: Body>(&self, req: Request<T>) -> GraphQLResult {
+    async fn handle_call<T: Body>(&self, req: Request<T>) -> ServerResult {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -353,14 +347,14 @@ where
         }
     }
 
-    pub async fn call<T: Body + std::fmt::Debug>(&self, req: Request<T>) -> GraphQLResponse {
+    pub async fn call<T: Body + std::fmt::Debug>(&self, req: Request<T>) -> ServerResponse {
         // Returning Err here will prevent the client from receiving any response.
         // Instead, we generate a Response with an error code and return Ok
         let result = self.handle_call(req).await;
 
         match result {
             Ok(response) => response,
-            Err(err @ GraphQLServerError::ClientError(_)) => {
+            Err(err @ ServerError::ClientError(_)) => {
                 let response_obj = json!({
                     "error": err.to_string()
                 });
@@ -373,7 +367,7 @@ where
                     .body(Full::from(response_str))
                     .unwrap()
             }
-            Err(err @ GraphQLServerError::QueryError(_)) => {
+            Err(err @ ServerError::QueryError(_)) => {
                 error!(self.logger, "GraphQLService call failed: {}", err);
 
                 let response_obj = json!({
@@ -388,7 +382,7 @@ where
                     .body(Full::from(response_str))
                     .unwrap()
             }
-            Err(err @ GraphQLServerError::InternalError(_)) => {
+            Err(err @ ServerError::InternalError(_)) => {
                 error!(self.logger, "GraphQLService call failed: {}", err);
 
                 Response::builder()
