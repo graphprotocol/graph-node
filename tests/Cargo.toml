@@ -18,7 +18,6 @@ graph-store-postgres = { path = "../store/postgres" }
 graph-server-index-node = { path = "../server/index-node" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graphql-parser = "0.4.0"
-hyper = "0.14"
 serde = "1.0"
 serde_yaml = "0.9.21"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }

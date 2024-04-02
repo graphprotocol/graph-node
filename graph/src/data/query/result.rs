@@ -1,12 +1,12 @@
 use super::error::{QueryError, QueryExecutionError};
 use super::trace::{HttpTrace, TRACE_NONE};
 use crate::cheap_clone::CheapClone;
+use crate::components::server::query::GraphQLResponse;
 use crate::data::value::Object;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
-use http::header::{
-    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
-    CONTENT_TYPE,
-};
+use http_body_util::Full;
+use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use hyper::Response;
 use serde::ser::*;
 use serde::Serialize;
 use std::convert::TryFrom;
@@ -82,6 +82,10 @@ impl QueryResults {
 
     pub fn errors(&self) -> Vec<QueryError> {
         self.results.iter().flat_map(|r| r.errors.clone()).collect()
+    }
+
+    pub fn is_attestable(&self) -> bool {
+        self.results.iter().all(|r| r.is_attestable())
     }
 }
 
@@ -194,23 +198,13 @@ impl QueryResults {
         self.results.push(other);
     }
 
-    pub fn as_http_response<T: From<String>>(&mut self) -> http::Response<T> {
-        let status_code = http::StatusCode::OK;
-
-        let json =
-            serde_json::to_string(self).expect("Failed to serialize GraphQL response to JSON");
-
-        http::Response::builder()
-            .status(status_code)
+    pub fn as_http_response(&self) -> GraphQLResponse {
+        let json = serde_json::to_string(&self).unwrap();
+        Response::builder()
+            .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
-            .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
             .header(CONTENT_TYPE, "application/json")
-            .header(
-                "Graph-Attestable",
-                self.results.iter().all(|r| r.is_attestable()).to_string(),
-            )
-            .body(T::from(json))
+            .body(Full::from(json))
             .unwrap()
     }
 }

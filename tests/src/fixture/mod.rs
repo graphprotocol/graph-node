@@ -28,6 +28,9 @@ use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
+use graph::http_body_util::Full;
+use graph::hyper::body::Bytes;
+use graph::hyper::Request;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
@@ -329,7 +332,7 @@ impl TestContext {
             &self.subgraph_name
         );
         let body = json!({ "query": query }).to_string();
-        let req = hyper::Request::new(body.into());
+        let req: Request<Full<Bytes>> = Request::new(body.into());
         let res = self.indexing_status_service.handle_graphql_query(req).await;
         let value = res
             .unwrap()

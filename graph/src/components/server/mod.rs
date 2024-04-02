@@ -6,3 +6,5 @@ pub mod subscription;
 
 /// Component for the index node server.
 pub mod index_node;
+
+pub mod server;

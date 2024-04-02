@@ -45,6 +45,10 @@ pub use task_spawn::{
 
 pub use anyhow;
 pub use bytes;
+pub use http;
+pub use http_body_util;
+pub use hyper;
+pub use hyper_util;
 pub use itertools;
 pub use parking_lot;
 pub use petgraph;

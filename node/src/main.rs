@@ -518,7 +518,7 @@ async fn main() {
             load_manager,
             graphql_metrics_registry,
         ));
-        let mut graphql_server =
+        let graphql_server =
             GraphQLQueryServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
@@ -675,23 +675,13 @@ async fn main() {
         }
 
         // Serve GraphQL queries over HTTP
-        graph::spawn(
-            graphql_server
-                .serve(http_port, ws_port)
-                .expect("Failed to start GraphQL query server")
-                .compat(),
-        );
+        graph::spawn(async move { graphql_server.serve(http_port, ws_port).await });
 
         // Serve GraphQL subscriptions over WebSockets
         graph::spawn(subscription_server.serve(ws_port));
 
         // Run the index node server
-        graph::spawn(
-            index_node_server
-                .serve(index_node_port)
-                .expect("Failed to start index node server")
-                .compat(),
-        );
+        graph::spawn(async move { index_node_server.serve(index_node_port).await });
 
         graph::spawn(async move {
             metrics_server

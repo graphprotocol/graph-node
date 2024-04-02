@@ -1,8 +1,15 @@
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::Response;
+
 use crate::data::query::QueryError;
 use std::error::Error;
 use std::fmt;
 
 use crate::components::store::StoreError;
+
+pub type GraphQLResponse = Response<Full<Bytes>>;
+pub type GraphQLResult = Result<GraphQLResponse, GraphQLServerError>;
 
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]

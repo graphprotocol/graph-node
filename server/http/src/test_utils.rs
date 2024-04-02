@@ -1,46 +1,35 @@
+use graph::http_body_util::{BodyExt, Full};
+use graph::hyper::{body::Bytes, header::ACCESS_CONTROL_ALLOW_ORIGIN, Response, StatusCode};
 use graph::prelude::serde_json;
-use graph::prelude::*;
-use http::StatusCode;
-use hyper::{header::ACCESS_CONTROL_ALLOW_ORIGIN, Body, Response};
 
 /// Asserts that the response is a successful GraphQL response; returns its `"data"` field.
-pub fn assert_successful_response(
-    response: Response<Body>,
+pub async fn assert_successful_response(
+    response: Response<Full<Bytes>>,
 ) -> serde_json::Map<String, serde_json::Value> {
     assert_expected_headers(&response);
-    futures03::executor::block_on(
-        hyper::body::to_bytes(response.into_body())
-            .map_ok(|chunk| {
-                let json: serde_json::Value =
-                    serde_json::from_slice(&chunk).expect("GraphQL response is not valid JSON");
+    let body = response.collect().await.unwrap().to_bytes();
+    let json: serde_json::Value =
+        serde_json::from_slice(&body).expect("GraphQL response is not valid JSON");
 
-                json.as_object()
-                    .expect("GraphQL response must be an object")
-                    .get("data")
-                    .expect("GraphQL response must contain a \"data\" field")
-                    .as_object()
-                    .expect("GraphQL \"data\" field must be an object")
-                    .clone()
-            })
-            .map_err(|e| panic!("Truncated response body {:?}", e)),
-    )
-    .unwrap()
+    json.as_object()
+        .expect("GraphQL response must be an object")
+        .get("data")
+        .expect("GraphQL response must contain a \"data\" field")
+        .as_object()
+        .expect("GraphQL \"data\" field must be an object")
+        .clone()
 }
 
 /// Asserts that the response is a failed GraphQL response; returns its `"errors"` field.
-pub fn assert_error_response(
-    response: Response<Body>,
+pub async fn assert_error_response(
+    response: Response<Full<Bytes>>,
     expected_status: StatusCode,
     graphql_response: bool,
 ) -> Vec<serde_json::Value> {
     assert_eq!(response.status(), expected_status);
     assert_expected_headers(&response);
-    let body = String::from_utf8(
-        futures03::executor::block_on(hyper::body::to_bytes(response.into_body()))
-            .unwrap()
-            .to_vec(),
-    )
-    .unwrap();
+    let body = response.collect().await.unwrap().to_bytes().to_vec();
+    let body = String::from_utf8(body).unwrap();
 
     // In case of a non-graphql response, return the body.
     if !graphql_response {
@@ -60,7 +49,7 @@ pub fn assert_error_response(
 }
 
 #[track_caller]
-pub fn assert_expected_headers(response: &Response<Body>) {
+pub fn assert_expected_headers(response: &Response<Full<Bytes>>) {
     assert_eq!(
         response
             .headers()

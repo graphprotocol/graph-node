@@ -1,8 +1,11 @@
-use hyper::service::make_service_fn;
-use hyper::Server;
-use std::net::{Ipv4Addr, SocketAddrV4};
-
-use graph::{blockchain::BlockchainMap, components::store::Store, prelude::*};
+use graph::{
+    blockchain::BlockchainMap,
+    components::{
+        server::server::{start, ServerHandle},
+        store::Store,
+    },
+    prelude::*,
+};
 
 use crate::service::IndexNodeService;
 use thiserror::Error;
@@ -11,7 +14,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum IndexNodeServeError {
     #[error("Bind error: {0}")]
-    BindError(#[from] hyper::Error),
+    BindError(#[from] graph::hyper::Error),
 }
 
 /// A GraphQL server based on Hyper.
@@ -54,10 +57,7 @@ where
         }
     }
 
-    pub fn serve(
-        &mut self,
-        port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, IndexNodeServeError> {
+    pub async fn serve(&mut self, port: u16) -> Result<ServerHandle, anyhow::Error> {
         let logger = self.logger.clone();
 
         info!(
@@ -65,28 +65,23 @@ where
             "Starting index node server at: http://localhost:{}", port
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-
         // On every incoming request, launch a new GraphQL service that writes
         // incoming queries to the query sink.
         let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
         let store = self.store.clone();
-        let service = IndexNodeService::new(
+        let service = Arc::new(IndexNodeService::new(
             logger_for_service.clone(),
             self.blockchain_map.clone(),
             graphql_runner,
             store,
             self.link_resolver.clone(),
-        );
-        let new_service =
-            make_service_fn(move |_| futures03::future::ok::<_, Error>(service.clone()));
+        ));
 
-        // Create a task to run the server and handle HTTP requests
-        let task = Server::try_bind(&addr.into())?
-            .serve(new_service)
-            .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
-
-        Ok(Box::new(task.compat()))
+        start(logger_for_service.clone(), port, move |req| {
+            let service = service.clone();
+            async move { Ok::<_, _>(service.call(req).await) }
+        })
+        .await
     }
 }
