@@ -7,7 +7,7 @@ use graph::log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig};
 use graph::slog::{error, info};
 
 use crate::service::GraphQLService;
-use graph::prelude::{thiserror, thiserror::Error, GraphQlRunner, Logger, LoggerFactory, NodeId};
+use graph::prelude::{thiserror, thiserror::Error, GraphQlRunner, Logger, LoggerFactory};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]
@@ -20,12 +20,11 @@ pub enum GraphQLServeError {
 pub struct GraphQLServer<Q> {
     logger: Logger,
     graphql_runner: Arc<Q>,
-    node_id: NodeId,
 }
 
 impl<Q: GraphQlRunner> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
-    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, node_id: NodeId) -> Self {
+    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>) -> Self {
         let logger = logger_factory.component_logger(
             "GraphQLServer",
             Some(ComponentLoggerConfig {
@@ -37,7 +36,6 @@ impl<Q: GraphQlRunner> GraphQLServer<Q> {
         GraphQLServer {
             logger,
             graphql_runner,
-            node_id,
         }
     }
 
@@ -50,14 +48,8 @@ impl<Q: GraphQlRunner> GraphQLServer<Q> {
         );
 
         let graphql_runner = self.graphql_runner.clone();
-        let node_id = self.node_id.clone();
 
-        let service = Arc::new(GraphQLService::new(
-            logger.clone(),
-            graphql_runner,
-            ws_port,
-            node_id,
-        ));
+        let service = Arc::new(GraphQLService::new(logger.clone(), graphql_runner, ws_port));
 
         start(logger, port, move |req| {
             let service = service.cheap_clone();

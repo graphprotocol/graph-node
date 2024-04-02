@@ -9,7 +9,6 @@ use graph::components::server::query::GraphQLResponse;
 use graph::components::server::query::GraphQLResult;
 use graph::components::versions::ApiVersion;
 use graph::data::query::QueryResult;
-use graph::data::store::NodeId;
 use graph::data::subgraph::DeploymentHash;
 use graph::data::subgraph::SubgraphName;
 use graph::env::ENV_VARS;
@@ -50,7 +49,6 @@ pub struct GraphQLService<Q> {
     logger: Logger,
     graphql_runner: Arc<Q>,
     ws_port: u16,
-    node_id: NodeId,
 }
 
 impl<Q> Clone for GraphQLService<Q> {
@@ -59,7 +57,6 @@ impl<Q> Clone for GraphQLService<Q> {
             logger: self.logger.clone(),
             graphql_runner: self.graphql_runner.clone(),
             ws_port: self.ws_port,
-            node_id: self.node_id.clone(),
         }
     }
 }
@@ -69,12 +66,11 @@ where
     Q: GraphQlRunner,
 {
     /// Creates a new GraphQL service.
-    pub fn new(logger: Logger, graphql_runner: Arc<Q>, ws_port: u16, node_id: NodeId) -> Self {
+    pub fn new(logger: Logger, graphql_runner: Arc<Q>, ws_port: u16) -> Self {
         GraphQLService {
             logger,
             graphql_runner,
             ws_port,
-            node_id,
         }
     }
 
@@ -487,8 +483,7 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let node_id = NodeId::new("test").unwrap();
-        let service = GraphQLService::new(logger, graphql_runner, 8001, node_id);
+        let service = GraphQLService::new(logger, graphql_runner, 8001);
 
         let request: Request<Full<Bytes>> = Request::builder()
             .method(Method::GET)
@@ -520,8 +515,7 @@ mod tests {
         let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let node_id = NodeId::new("test").unwrap();
-        let service = GraphQLService::new(logger, graphql_runner, 8001, node_id);
+        let service = GraphQLService::new(logger, graphql_runner, 8001);
 
         let request: Request<Full<Bytes>> = Request::builder()
             .method(Method::POST)
@@ -553,8 +547,7 @@ mod tests {
         let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let node_id = NodeId::new("test").unwrap();
-        let service = GraphQLService::new(logger, graphql_runner, 8001, node_id);
+        let service = GraphQLService::new(logger, graphql_runner, 8001);
 
         let request: Request<Full<Bytes>> = Request::builder()
             .method(Method::POST)

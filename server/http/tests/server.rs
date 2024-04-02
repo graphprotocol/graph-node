@@ -149,8 +149,7 @@ mod test {
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
         let id = USERS.clone();
         let query_runner = Arc::new(TestGraphQlRunner);
-        let node_id = NodeId::new("test").unwrap();
-        let server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
+        let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
             .serve(8007, 8008)
             .await
@@ -182,8 +181,7 @@ mod test {
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
         let id = USERS.clone();
         let query_runner = Arc::new(TestGraphQlRunner);
-        let node_id = NodeId::new("test").unwrap();
-        let server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
+        let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
             .serve(8002, 8003)
             .await
@@ -255,8 +253,7 @@ mod test {
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
         let id = USERS.clone();
         let query_runner = Arc::new(TestGraphQlRunner);
-        let node_id = NodeId::new("test").unwrap();
-        let server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
+        let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
             .serve(8003, 8004)
             .await
@@ -293,8 +290,7 @@ mod test {
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
         let id = USERS.clone();
         let query_runner = Arc::new(TestGraphQlRunner);
-        let node_id = NodeId::new("test").unwrap();
-        let server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
+        let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
             .serve(8005, 8006)
             .await

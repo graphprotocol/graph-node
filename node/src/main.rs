@@ -518,8 +518,7 @@ async fn main() {
             load_manager,
             graphql_metrics_registry,
         ));
-        let graphql_server =
-            GraphQLQueryServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
+        let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 
