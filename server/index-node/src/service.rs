@@ -47,20 +47,6 @@ pub struct IndexNodeService<S> {
     link_resolver: Arc<dyn LinkResolver>,
 }
 
-impl<S> Clone for IndexNodeService<S> {
-    fn clone(&self) -> Self {
-        Self {
-            logger: self.logger.clone(),
-            blockchain_map: self.blockchain_map.clone(),
-            store: self.store.clone(),
-            explorer: self.explorer.clone(),
-            link_resolver: self.link_resolver.clone(),
-        }
-    }
-}
-
-impl<S> CheapClone for IndexNodeService<S> {}
-
 impl<S> IndexNodeService<S>
 where
     S: Store,
@@ -208,7 +194,7 @@ where
             .unwrap()
     }
 
-    async fn handle_call<T: Body>(self, req: Request<T>) -> ServerResult {
+    async fn handle_call<T: Body>(&self, req: Request<T>) -> ServerResult {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -254,7 +240,7 @@ where
 
         // Returning Err here will prevent the client from receiving any response.
         // Instead, we generate a Response with an error code and return Ok
-        let result = self.cheap_clone().handle_call(req).await;
+        let result = self.handle_call(req).await;
         match result {
             Ok(response) => response,
             Err(err @ ServerError::ClientError(_)) => {
