@@ -25,7 +25,7 @@ diesel_derives = { workspace = true }
 chrono = "0.4.41"
 envconfig = "0.11.0"
 Inflector = "0.11.3"
-isatty = "0.1.9"
+atty = "0.2"
 reqwest = { version = "0.12.15", features = ["json", "stream", "multipart"] }
 ethabi = "17.2"
 hex = "0.4.3"

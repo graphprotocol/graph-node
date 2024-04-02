@@ -17,7 +17,7 @@ macro_rules! impl_slog_value {
     };
 }
 
-use isatty;
+use atty;
 use slog::*;
 use slog_async;
 use slog_envlogger;
@@ -36,7 +36,7 @@ pub fn logger(show_debug: bool) -> Logger {
 }
 
 pub fn logger_with_levels(show_debug: bool, levels: Option<&str>) -> Logger {
-    let use_color = isatty::stdout_isatty();
+    let use_color = atty::is(atty::Stream::Stdout);
     let decorator = slog_term::TermDecorator::new().build();
     let drain = CustomFormat::new(decorator, use_color).fuse();
     let drain = slog_envlogger::LogBuilder::new(drain)

@@ -78,12 +78,12 @@ pub mod prelude {
     pub use ::anyhow;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use async_trait::async_trait;
+    pub use atty;
     pub use chrono;
     pub use diesel;
     pub use envconfig;
     pub use ethabi;
     pub use hex;
-    pub use isatty;
     pub use lazy_static::lazy_static;
     pub use prost;
     pub use rand;
