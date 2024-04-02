@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use graph::blockchain::BlockchainMap;
 use graph::cheap_clone::CheapClone;
-use graph::components::graphql::{GraphQLMetrics, GraphQlRunner};
+use graph::components::graphql::GraphQLMetrics;
 use graph::components::link_resolver::LinkResolver;
 use graph::components::server::query::{ServerResponse, ServerResult};
 use graph::data::subgraph::DeploymentHash;
@@ -39,21 +39,19 @@ impl GraphQLMetrics for NoopGraphQLMetrics {
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct IndexNodeService<Q, S> {
+pub struct IndexNodeService<S> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
-    graphql_runner: Arc<Q>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
     link_resolver: Arc<dyn LinkResolver>,
 }
 
-impl<Q, S> Clone for IndexNodeService<Q, S> {
+impl<S> Clone for IndexNodeService<S> {
     fn clone(&self) -> Self {
         Self {
             logger: self.logger.clone(),
             blockchain_map: self.blockchain_map.clone(),
-            graphql_runner: self.graphql_runner.clone(),
             store: self.store.clone(),
             explorer: self.explorer.clone(),
             link_resolver: self.link_resolver.clone(),
@@ -61,17 +59,15 @@ impl<Q, S> Clone for IndexNodeService<Q, S> {
     }
 }
 
-impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
+impl<S> CheapClone for IndexNodeService<S> {}
 
-impl<Q, S> IndexNodeService<Q, S>
+impl<S> IndexNodeService<S>
 where
-    Q: GraphQlRunner,
     S: Store,
 {
     pub fn new(
         logger: Logger,
         blockchain_map: Arc<BlockchainMap>,
-        graphql_runner: Arc<Q>,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
     ) -> Self {
@@ -80,7 +76,6 @@ where
         IndexNodeService {
             logger,
             blockchain_map,
-            graphql_runner,
             store,
             explorer,
             link_resolver,

@@ -169,7 +169,7 @@ pub struct TestContext {
     pub env_vars: Arc<EnvVars>,
     pub ipfs: IpfsClient,
     graphql_runner: Arc<GraphQlRunner>,
-    indexing_status_service: Arc<IndexNodeService<GraphQlRunner, graph_store_postgres::Store>>,
+    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store>>,
 }
 
 #[derive(Deserialize)]
@@ -512,7 +512,6 @@ pub async fn setup<C: Blockchain>(
     let indexing_status_service = Arc::new(IndexNodeService::new(
         logger.cheap_clone(),
         blockchain_map.cheap_clone(),
-        graphql_runner.cheap_clone(),
         stores.network_store.cheap_clone(),
         link_resolver.cheap_clone(),
     ));
