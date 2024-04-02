@@ -1844,7 +1844,6 @@ name = "graph-server-metrics"
 version = "0.34.0"
 dependencies = [
  "graph",
- "hyper 0.14.28",
 ]
 
 [[package]]

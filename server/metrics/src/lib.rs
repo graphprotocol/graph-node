@@ -1,10 +1,9 @@
-use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
-use anyhow::Error;
-use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Response, Server};
+use graph::components::server::server::{start, ServerHandle};
+use graph::http_body_util::Full;
+use graph::hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use graph::hyper::Response;
 use thiserror::Error;
 
 use graph::prelude::*;
@@ -14,7 +13,7 @@ use graph::prometheus::{Encoder, Registry, TextEncoder};
 #[derive(Debug, Error)]
 pub enum PrometheusMetricsServeError {
     #[error("Bind error: {0}")]
-    BindError(#[from] hyper::Error),
+    BindError(#[from] graph::hyper::Error),
 }
 
 #[derive(Clone)]
@@ -32,10 +31,7 @@ impl PrometheusMetricsServer {
     }
 
     /// Creates a new Tokio task that, when spawned, brings up the index node server.
-    pub async fn serve(
-        &mut self,
-        port: u16,
-    ) -> Result<Result<(), ()>, PrometheusMetricsServeError> {
+    pub async fn serve(&mut self, port: u16) -> Result<ServerHandle, anyhow::Error> {
         let logger = self.logger.clone();
 
         info!(
@@ -43,33 +39,22 @@ impl PrometheusMetricsServer {
             "Starting metrics server at: http://localhost:{}", port,
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-
         let server = self.clone();
-        let new_service = make_service_fn(move |_req| {
+        start(logger, port, move |_| {
             let server = server.clone();
             async move {
-                Ok::<_, Error>(service_fn(move |_| {
-                    let metric_families = server.registry.gather();
-                    let mut buffer = vec![];
-                    let encoder = TextEncoder::new();
-                    encoder.encode(&metric_families, &mut buffer).unwrap();
-                    futures03::future::ok::<_, Error>(
-                        Response::builder()
-                            .status(200)
-                            .header(CONTENT_TYPE, encoder.format_type())
-                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(buffer))
-                            .unwrap(),
-                    )
-                }))
+                let metric_families = server.registry.gather();
+                let mut buffer = vec![];
+                let encoder = TextEncoder::new();
+                encoder.encode(&metric_families, &mut buffer).unwrap();
+                Ok(Response::builder()
+                    .status(200)
+                    .header(CONTENT_TYPE, encoder.format_type())
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(Full::from(buffer))
+                    .unwrap())
             }
-        });
-
-        let task = Server::try_bind(&addr.into())?
-            .serve(new_service)
-            .map_err(move |e| error!(logger, "Metrics server error"; "error" => format!("{}", e)));
-
-        Ok(task.await)
+        })
+        .await
     }
 }
