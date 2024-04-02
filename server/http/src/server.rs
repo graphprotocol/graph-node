@@ -4,17 +4,10 @@ use graph::anyhow;
 use graph::cheap_clone::CheapClone;
 use graph::components::server::server::{start, ServerHandle};
 use graph::log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig};
-use graph::slog::{error, info};
+use graph::slog::info;
 
 use crate::service::GraphQLService;
-use graph::prelude::{thiserror, thiserror::Error, GraphQlRunner, Logger, LoggerFactory};
-
-/// Errors that may occur when starting the server.
-#[derive(Debug, Error)]
-pub enum GraphQLServeError {
-    #[error("Bind error: {0}")]
-    BindError(#[from] graph::hyper::Error),
-}
+use graph::prelude::{GraphQlRunner, Logger, LoggerFactory};
 
 /// A GraphQL server based on Hyper.
 pub struct GraphQLServer<Q> {

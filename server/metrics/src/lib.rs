@@ -4,17 +4,9 @@ use graph::components::server::server::{start, ServerHandle};
 use graph::http_body_util::Full;
 use graph::hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use graph::hyper::Response;
-use thiserror::Error;
 
 use graph::prelude::*;
 use graph::prometheus::{Encoder, Registry, TextEncoder};
-
-/// Errors that may occur when starting the server.
-#[derive(Debug, Error)]
-pub enum PrometheusMetricsServeError {
-    #[error("Bind error: {0}")]
-    BindError(#[from] graph::hyper::Error),
-}
 
 #[derive(Clone)]
 pub struct PrometheusMetricsServer {

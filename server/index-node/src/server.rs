@@ -8,14 +8,6 @@ use graph::{
 };
 
 use crate::service::IndexNodeService;
-use thiserror::Error;
-
-/// Errors that may occur when starting the server.
-#[derive(Debug, Error)]
-pub enum IndexNodeServeError {
-    #[error("Bind error: {0}")]
-    BindError(#[from] graph::hyper::Error),
-}
 
 /// A GraphQL server based on Hyper.
 pub struct IndexNodeServer<S> {
