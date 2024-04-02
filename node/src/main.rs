@@ -264,8 +264,7 @@ async fn main() {
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
     let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
-    let mut metrics_server =
-        PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
+    let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
@@ -673,17 +672,17 @@ async fn main() {
         }
 
         // Serve GraphQL queries over HTTP
-        graph::spawn(async move { graphql_server.serve(http_port, ws_port).await });
+        graph::spawn(async move { graphql_server.start(http_port, ws_port).await });
 
         // Serve GraphQL subscriptions over WebSockets
         graph::spawn(subscription_server.serve(ws_port));
 
         // Run the index node server
-        graph::spawn(async move { index_node_server.serve(index_node_port).await });
+        graph::spawn(async move { index_node_server.start(index_node_port).await });
 
         graph::spawn(async move {
             metrics_server
-                .serve(metrics_port)
+                .start(metrics_port)
                 .await
                 .expect("Failed to start metrics server")
         });

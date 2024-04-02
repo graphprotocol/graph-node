@@ -23,7 +23,7 @@ impl PrometheusMetricsServer {
     }
 
     /// Creates a new Tokio task that, when spawned, brings up the index node server.
-    pub async fn serve(&mut self, port: u16) -> Result<ServerHandle, anyhow::Error> {
+    pub async fn start(&self, port: u16) -> Result<ServerHandle, anyhow::Error> {
         let logger = self.logger.clone();
 
         info!(
