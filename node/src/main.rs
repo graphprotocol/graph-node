@@ -20,7 +20,7 @@ use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
-use graph::prelude::{IndexNodeServer as _, *};
+use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};

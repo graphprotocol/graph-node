@@ -2,11 +2,7 @@ use hyper::service::make_service_fn;
 use hyper::Server;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use graph::{
-    blockchain::BlockchainMap,
-    components::store::Store,
-    prelude::{IndexNodeServer as IndexNodeServerTrait, *},
-};
+use graph::{blockchain::BlockchainMap, components::store::Store, prelude::*};
 
 use crate::service::IndexNodeService;
 use thiserror::Error;
@@ -27,7 +23,11 @@ pub struct IndexNodeServer<Q, S> {
     link_resolver: Arc<dyn LinkResolver>,
 }
 
-impl<Q, S> IndexNodeServer<Q, S> {
+impl<Q, S> IndexNodeServer<Q, S>
+where
+    Q: GraphQlRunner,
+    S: Store,
+{
     /// Creates a new GraphQL server.
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -53,19 +53,11 @@ impl<Q, S> IndexNodeServer<Q, S> {
             link_resolver,
         }
     }
-}
 
-impl<Q, S> IndexNodeServerTrait for IndexNodeServer<Q, S>
-where
-    Q: GraphQlRunner,
-    S: Store,
-{
-    type ServeError = IndexNodeServeError;
-
-    fn serve(
+    pub fn serve(
         &mut self,
         port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, IndexNodeServeError> {
         let logger = self.logger.clone();
 
         info!(

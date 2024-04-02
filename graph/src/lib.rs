@@ -125,7 +125,6 @@ pub mod prelude {
         stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter, CounterVec, Gauge, GaugeVec,
         Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError, Registry,
     };
-    pub use crate::components::server::index_node::IndexNodeServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
         write::EntityModification, AttributeNames, BlockNumber, CachedEthereumCall, ChainStore,
