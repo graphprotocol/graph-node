@@ -522,7 +522,7 @@ async fn main() {
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 
-        let mut index_node_server = IndexNodeServer::new(
+        let index_node_server = IndexNodeServer::new(
             &logger_factory,
             blockchain_map.clone(),
             graphql_runner.clone(),

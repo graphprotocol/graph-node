@@ -57,7 +57,7 @@ where
         }
     }
 
-    pub async fn serve(&mut self, port: u16) -> Result<ServerHandle, anyhow::Error> {
+    pub async fn serve(&self, port: u16) -> Result<ServerHandle, anyhow::Error> {
         let logger = self.logger.clone();
 
         info!(
