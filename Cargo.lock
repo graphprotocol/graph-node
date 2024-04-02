@@ -1607,7 +1607,6 @@ version = "0.34.0"
 dependencies = [
  "anyhow",
  "base64 0.20.0",
- "dirs-next",
  "envconfig",
  "futures 0.1.31",
  "graph",
@@ -1617,7 +1616,6 @@ dependencies = [
  "http 0.2.8",
  "itertools 0.12.0",
  "jsonrpc-core",
- "lazy_static",
  "prost",
  "prost-types",
  "semver",
@@ -1632,7 +1630,6 @@ name = "graph-chain-near"
 version = "0.34.0"
 dependencies = [
  "anyhow",
- "base64 0.20.0",
  "diesel",
  "graph",
  "graph-runtime-derive",
@@ -1786,7 +1783,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bs58",
- "defer",
  "ethabi",
  "futures 0.1.31",
  "graph",
@@ -1850,12 +1846,10 @@ dependencies = [
 name = "graph-server-websocket"
 version = "0.34.0"
 dependencies = [
- "anyhow",
  "futures 0.1.31",
  "graph",
  "graphql-parser",
  "http 0.2.8",
- "lazy_static",
  "serde",
  "serde_derive",
  "tokio-tungstenite",
