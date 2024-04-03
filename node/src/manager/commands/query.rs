@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use graph::data::query::Trace;
 use graph::log::escape_control_chars;
-use graph::prelude::r;
+use graph::prelude::{q, r};
 use graph::{
     data::query::QueryTarget,
     prelude::{
@@ -36,7 +36,7 @@ pub async fn run(
         QueryTarget::Name(name, Default::default())
     };
 
-    let document = graphql_parser::parse_query(&query)?.into_static();
+    let document = q::parse_query(&query)?.into_static();
     let vars: Vec<(String, r::Value)> = vars
         .into_iter()
         .map(|v| {

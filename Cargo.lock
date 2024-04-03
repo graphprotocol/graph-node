@@ -1708,7 +1708,6 @@ dependencies = [
  "async-recursion",
  "crossbeam",
  "graph",
- "graphql-parser",
  "graphql-tools",
  "lazy_static",
  "parking_lot 0.12.1",
@@ -1740,7 +1739,6 @@ dependencies = [
  "graph-server-metrics",
  "graph-server-websocket",
  "graph-store-postgres",
- "graphql-parser",
  "json-structural-diff",
  "lazy_static",
  "prometheus",
@@ -1802,7 +1800,6 @@ dependencies = [
  "graph",
  "graph-core",
  "graph-graphql",
- "graphql-parser",
  "serde",
 ]
 
@@ -1821,7 +1818,6 @@ dependencies = [
  "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-graphql",
- "graphql-parser",
 ]
 
 [[package]]
@@ -1846,7 +1842,6 @@ version = "0.34.0"
 dependencies = [
  "futures 0.1.31",
  "graph",
- "graphql-parser",
  "serde",
  "serde_derive",
  "tokio-tungstenite",
@@ -1871,7 +1866,6 @@ dependencies = [
  "fallible-iterator 0.3.0",
  "git-testament",
  "graph",
- "graphql-parser",
  "hex",
  "itertools 0.12.0",
  "lazy_static",
@@ -1904,7 +1898,6 @@ dependencies = [
  "graph-runtime-wasm",
  "graph-server-index-node",
  "graph-store-postgres",
- "graphql-parser",
  "secp256k1",
  "serde",
  "serde_yaml",
@@ -4642,7 +4635,6 @@ dependencies = [
  "graph-graphql",
  "graph-node",
  "graph-store-postgres",
- "graphql-parser",
  "hex",
  "hex-literal 0.4.1",
  "lazy_static",

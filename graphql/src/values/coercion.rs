@@ -211,22 +211,20 @@ pub(crate) fn coerce_value<'a>(
 
 #[cfg(test)]
 mod tests {
-    use graph::prelude::r::Value;
-    use graphql_parser::schema::{EnumType, EnumValue, ScalarType, TypeDefinition};
-    use graphql_parser::Pos;
+    use graph::prelude::{r::Value, s};
 
     use super::coerce_to_definition;
 
     #[test]
     fn coercion_using_enum_type_definitions_is_correct() {
-        let enum_type = TypeDefinition::Enum(EnumType {
+        let enum_type = s::TypeDefinition::Enum(s::EnumType {
             name: "Enum".to_string(),
             description: None,
             directives: vec![],
-            position: Pos::default(),
-            values: vec![EnumValue {
+            position: s::Pos::default(),
+            values: vec![s::EnumValue {
                 name: "ValidVariant".to_string(),
-                position: Pos::default(),
+                position: s::Pos::default(),
                 description: None,
                 directives: vec![],
             }],
@@ -260,11 +258,11 @@ mod tests {
 
     #[test]
     fn coercion_using_boolean_type_definitions_is_correct() {
-        let bool_type = TypeDefinition::Scalar(ScalarType {
+        let bool_type = s::TypeDefinition::Scalar(s::ScalarType {
             name: "Boolean".to_string(),
             description: None,
             directives: vec![],
-            position: Pos::default(),
+            position: s::Pos::default(),
         });
         let resolver = |_: &str| Some(&bool_type);
 
@@ -289,7 +287,8 @@ mod tests {
 
     #[test]
     fn coercion_using_big_decimal_type_definitions_is_correct() {
-        let big_decimal_type = TypeDefinition::Scalar(ScalarType::new("BigDecimal".to_string()));
+        let big_decimal_type =
+            s::TypeDefinition::Scalar(s::ScalarType::new("BigDecimal".to_string()));
         let resolver = |_: &str| Some(&big_decimal_type);
 
         // We can coerce from Value::Float -> TypeDefinition::Scalar(BigDecimal)
@@ -329,7 +328,7 @@ mod tests {
 
     #[test]
     fn coercion_using_string_type_definitions_is_correct() {
-        let string_type = TypeDefinition::Scalar(ScalarType::new("String".to_string()));
+        let string_type = s::TypeDefinition::Scalar(s::ScalarType::new("String".to_string()));
         let resolver = |_: &str| Some(&string_type);
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(String)
@@ -353,7 +352,7 @@ mod tests {
 
     #[test]
     fn coercion_using_id_type_definitions_is_correct() {
-        let string_type = TypeDefinition::Scalar(ScalarType::new("ID".to_owned()));
+        let string_type = s::TypeDefinition::Scalar(s::ScalarType::new("ID".to_owned()));
         let resolver = |_: &str| Some(&string_type);
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(ID)
@@ -384,7 +383,7 @@ mod tests {
 
     #[test]
     fn coerce_big_int_scalar() {
-        let big_int_type = TypeDefinition::Scalar(ScalarType::new("BigInt".to_string()));
+        let big_int_type = s::TypeDefinition::Scalar(s::ScalarType::new("BigInt".to_string()));
         let resolver = |_: &str| Some(&big_int_type);
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(BigInt)
@@ -406,7 +405,7 @@ mod tests {
 
     #[test]
     fn coerce_int8_scalar() {
-        let int8_type = TypeDefinition::Scalar(ScalarType::new("Int8".to_string()));
+        let int8_type = s::TypeDefinition::Scalar(s::ScalarType::new("Int8".to_string()));
         let resolver = |_: &str| Some(&int8_type);
 
         assert_eq!(
@@ -421,7 +420,7 @@ mod tests {
 
     #[test]
     fn coerce_bytes_scalar() {
-        let bytes_type = TypeDefinition::Scalar(ScalarType::new("Bytes".to_string()));
+        let bytes_type = s::TypeDefinition::Scalar(s::ScalarType::new("Bytes".to_string()));
         let resolver = |_: &str| Some(&bytes_type);
 
         // We can coerce from Value::String -> TypeDefinition::Scalar(Bytes)
@@ -433,7 +432,7 @@ mod tests {
 
     #[test]
     fn coerce_int_scalar() {
-        let int_type = TypeDefinition::Scalar(ScalarType::new("Int".to_string()));
+        let int_type = s::TypeDefinition::Scalar(s::ScalarType::new("Int".to_string()));
         let resolver = |_: &str| Some(&int_type);
 
         assert_eq!(

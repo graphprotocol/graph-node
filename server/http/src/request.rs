@@ -27,7 +27,7 @@ pub fn parse_graphql_request(body: &Bytes, trace: bool) -> Result<Query, ServerE
     })?;
 
     // Parse the "query" field of the JSON body
-    let document = graphql_parser::parse_query(query_string)
+    let document = q::parse_query(query_string)
         .map_err(|e| ServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
         .into_static();
 
@@ -99,9 +99,7 @@ mod tests {
         let query = request.expect("Should accept valid queries");
         assert_eq!(
             query.document,
-            graphql_parser::parse_query("{ user { name } }")
-                .unwrap()
-                .into_static()
+            q::parse_query("{ user { name } }").unwrap().into_static()
         );
     }
 
@@ -119,9 +117,7 @@ mod tests {
         );
         let query = request.expect("Should accept null variables");
 
-        let expected_query = graphql_parser::parse_query("{ user { name } }")
-            .unwrap()
-            .into_static();
+        let expected_query = q::parse_query("{ user { name } }").unwrap().into_static();
         assert_eq!(query.document, expected_query);
         assert_eq!(query.variables, None);
     }
@@ -157,9 +153,7 @@ mod tests {
         );
         let query = request.expect("Should accept valid queries");
 
-        let expected_query = graphql_parser::parse_query("{ user { name } }")
-            .unwrap()
-            .into_static();
+        let expected_query = q::parse_query("{ user { name } }").unwrap().into_static();
         let expected_variables = QueryVariables::new(HashMap::from_iter(
             vec![
                 (String::from("string"), r::Value::String(String::from("s"))),

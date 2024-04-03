@@ -35,7 +35,7 @@ use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    async_trait, lazy_static, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
+    async_trait, lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
     GraphQlRunner as _, IpfsResolver, LoggerFactory, NodeId, QueryError,
     SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
@@ -304,11 +304,7 @@ impl TestContext {
 
     pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
         let target = QueryTarget::Deployment(self.deployment.hash.clone(), ApiVersion::default());
-        let query = Query::new(
-            graphql_parser::parse_query(query).unwrap().into_static(),
-            None,
-            false,
-        );
+        let query = Query::new(q::parse_query(query).unwrap().into_static(), None, false);
         let query_res = self.graphql_runner.clone().run_query(query, target).await;
         query_res.first().unwrap().duplicate().to_result()
     }

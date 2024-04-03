@@ -25,7 +25,7 @@ async fn insert_and_query(
 
     insert_entities(&deployment, entities).await?;
 
-    let document = graphql_parser::parse_query(query).unwrap().into_static();
+    let document = q::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id, Default::default());
     let query = Query::new(document, None, false);
     Ok(execute_subgraph_query(query, target)

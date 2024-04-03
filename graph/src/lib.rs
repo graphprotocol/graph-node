@@ -190,6 +190,7 @@ pub mod prelude {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {
             pub mod $m {
                 use graphql_parser::$m2 as $m;
+                pub use graphql_parser::Pos;
                 pub use $m::*;
                 $(
                     pub type $n = $m::$n<'static, String>;

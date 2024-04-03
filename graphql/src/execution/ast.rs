@@ -8,7 +8,6 @@ use graph::{
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
     schema::{ast::ObjectType, kw, AggregationInterval, ApiSchema, EntityType},
 };
-use graphql_parser::Pos;
 
 /// A selection set is a table that maps object types to the fields that
 /// should be selected for objects of that type. The types are always
@@ -220,7 +219,7 @@ impl SelectionSet {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Directive {
-    pub position: Pos,
+    pub position: q::Pos,
     pub name: String,
     pub arguments: Vec<(String, r::Value)>,
 }
@@ -260,7 +259,7 @@ impl Directive {
 /// already been coerced to the appropriate types for the field argument
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
-    pub position: Pos,
+    pub position: q::Pos,
     pub alias: Option<String>,
     pub name: String,
     pub arguments: Vec<(String, r::Value)>,

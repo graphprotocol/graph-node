@@ -2,7 +2,6 @@ use graph::components::store::ChildMultiplicity;
 use graph::data::graphql::DocumentExt as _;
 use graph::data::value::{Object, Word};
 use graph::schema::ApiSchema;
-use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
@@ -310,7 +309,7 @@ impl Query {
             let bc = match field.argument_value("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
-                        Pos::default(),
+                        q::Pos::default(),
                         "block".to_string(),
                         bc.clone().into(),
                     )]
@@ -321,7 +320,7 @@ impl Query {
             let field_error_policy = match field.argument_value("subgraphError") {
                 Some(value) => ErrorPolicy::try_from(value).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
-                        Pos::default(),
+                        q::Pos::default(),
                         "subgraphError".to_string(),
                         value.clone().into(),
                     )]
@@ -763,7 +762,7 @@ impl Transform {
     fn interpolate_arguments(
         &self,
         args: Vec<(String, q::Value)>,
-        pos: &Pos,
+        pos: &q::Pos,
     ) -> Vec<(String, r::Value)> {
         args.into_iter()
             .map(|(name, val)| {
@@ -774,7 +773,7 @@ impl Transform {
     }
 
     /// Turn `value` into an `r::Value` by resolving variable references
-    fn interpolate_value(&self, value: q::Value, pos: &Pos) -> r::Value {
+    fn interpolate_value(&self, value: q::Value, pos: &q::Pos) -> r::Value {
         match value {
             q::Value::Variable(var) => self.variable(&var),
             q::Value::Int(ref num) => {

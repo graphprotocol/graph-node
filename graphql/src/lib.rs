@@ -1,5 +1,3 @@
-pub extern crate graphql_parser;
-
 /// Utilities for schema introspection.
 pub mod introspection;
 

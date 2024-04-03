@@ -6,7 +6,6 @@ use graph::data::subgraph::LATEST_VERSION;
 use graph::entity;
 use graph::prelude::{SubscriptionResult, Value};
 use graph::schema::InputSchema;
-use graphql_parser::Pos;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -595,7 +594,7 @@ async fn insert_test_entities(
 }
 
 async fn execute_query(loc: &DeploymentLocator, query: &str) -> QueryResult {
-    let query = graphql_parser::parse_query(query)
+    let query = q::parse_query(query)
         .expect("invalid test query")
         .into_static();
     execute_query_document_with_variables(&loc.hash, query, None).await
@@ -713,7 +712,7 @@ where
 
             let result = {
                 let id = &deployment.hash;
-                let query = graphql_parser::parse_query(&query)
+                let query = q::parse_query(&query)
                     .expect("Invalid test query")
                     .into_static();
                 let variables = variables.clone();
@@ -755,11 +754,7 @@ async fn run_subscription(
         .await
         .unwrap();
 
-    let query = Query::new(
-        graphql_parser::parse_query(query).unwrap().into_static(),
-        None,
-        false,
-    );
+    let query = Query::new(q::parse_query(query).unwrap().into_static(), None, false);
     let options = SubscriptionExecutionOptions {
         logger: logger.clone(),
         store: query_store.clone(),
@@ -1875,7 +1870,7 @@ fn instant_timeout() {
     run_test_sequentially(|store| async move {
         let deployment = setup_readonly(store.as_ref()).await;
         let query = Query::new(
-            graphql_parser::parse_query("query { musicians(first: 100) { name } }")
+            q::parse_query("query { musicians(first: 100) { name } }")
                 .unwrap()
                 .into_static(),
             None,
@@ -2011,7 +2006,7 @@ fn ambiguous_derived_from_result() {
             )) => {
                 assert_eq!(
                     pos,
-                    &Pos {
+                    &q::Pos {
                         line: 1,
                         column: 39
                     }
@@ -2961,11 +2956,7 @@ fn trace_works() {
     }"#;
 
     async fn run_query(deployment: &DeploymentLocator, query: &str) -> QueryResults {
-        let query = Query::new(
-            graphql_parser::parse_query(query).unwrap().into_static(),
-            None,
-            true,
-        );
+        let query = Query::new(q::parse_query(query).unwrap().into_static(), None, true);
         execute_subgraph_query(
             query,
             QueryTarget::Deployment(deployment.hash.clone(), Default::default()),

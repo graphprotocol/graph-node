@@ -75,7 +75,7 @@ fn read_expensive_queries(
         let reader = BufReader::new(file);
         for line in reader.lines() {
             let line = line?;
-            let query = graphql_parser::parse_query(&line)
+            let query = q::parse_query(&line)
                 .map_err(|e| {
                     let msg = format!(
                         "invalid GraphQL query in {}: {}\n{}",

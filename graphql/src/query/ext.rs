@@ -2,7 +2,6 @@
 
 use graph::blockchain::BlockHash;
 use graph::prelude::TryFromValue;
-use graphql_parser::Pos;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -22,7 +21,7 @@ pub trait ValueExt: Sized {
     fn lookup<'a>(
         &'a self,
         vars: &'a HashMap<String, Self>,
-        pos: Pos,
+        pos: q::Pos,
     ) -> Result<&'a Self, QueryExecutionError>;
 }
 
@@ -44,7 +43,7 @@ impl ValueExt for q::Value {
     fn lookup<'a>(
         &'a self,
         vars: &'a HashMap<String, q::Value>,
-        pos: Pos,
+        pos: q::Pos,
     ) -> Result<&'a q::Value, QueryExecutionError> {
         match self {
             q::Value::Variable(name) => vars

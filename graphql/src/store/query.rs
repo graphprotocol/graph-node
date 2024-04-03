@@ -710,7 +710,6 @@ mod tests {
         },
         schema::InputSchema,
     };
-    use graphql_parser::Pos;
     use std::{iter::FromIterator, sync::Arc};
 
     use super::{a, build_query};
@@ -722,11 +721,11 @@ mod tests {
         );
         let subgraph_id_directive = Directive {
             name: "subgraphId".to_string(),
-            position: Pos::default(),
+            position: s::Pos::default(),
             arguments: vec![subgraph_id_argument],
         };
         let name_input_value = InputValue {
-            position: Pos::default(),
+            position: s::Pos::default(),
             description: Some("name input".to_string()),
             name: "name".to_string(),
             value_type: Type::NamedType("String".to_string()),
@@ -734,7 +733,7 @@ mod tests {
             directives: vec![],
         };
         let name_field = Field {
-            position: Pos::default(),
+            position: s::Pos::default(),
             description: Some("name field".to_string()),
             name: "name".to_string(),
             arguments: vec![name_input_value.clone()],
@@ -742,7 +741,7 @@ mod tests {
             directives: vec![],
         };
         let email_field = Field {
-            position: Pos::default(),
+            position: s::Pos::default(),
             description: Some("email field".to_string()),
             name: "email".to_string(),
             arguments: vec![name_input_value],

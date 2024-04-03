@@ -7,7 +7,7 @@ use graph::components::store::QueryPermit;
 use graph::data::graphql::{object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
-    async_trait, o, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
+    async_trait, o, q, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult,
 };
 use graph::schema::{ApiSchema, InputSchema};
@@ -114,11 +114,7 @@ fn expected_mock_schema_introspection() -> r::Value {
 /// Execute an introspection query.
 async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult {
     // Create the query
-    let query = Query::new(
-        graphql_parser::parse_query(query).unwrap().into_static(),
-        None,
-        false,
-    );
+    let query = Query::new(q::parse_query(query).unwrap().into_static(), None, false);
 
     // Execute it
     let logger = Logger::root(slog::Discard, o!());
