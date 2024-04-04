@@ -54,7 +54,7 @@ async fn main() -> Result<(), Error> {
                 },
                 final_blocks_only: false,
                 ..Default::default()
-            })
+            }, &firehose::ConnectionHeaders::new())
             .await
         {
             Ok(s) => s,

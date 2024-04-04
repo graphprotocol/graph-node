@@ -7,7 +7,7 @@ use crate::{
     data::value::Word,
     endpoint::{ConnectionType, EndpointMetrics, Provider, RequestLabels},
     firehose::decode_firehose_block,
-    prelude::{anyhow, debug, info},
+    prelude::{anyhow, debug, info, DeploymentHash},
     substreams_rpc,
 };
 
@@ -26,8 +26,9 @@ use std::{
 };
 use tonic::codegen::InterceptedService;
 use tonic::{
+    Request,
     codegen::CompressionEncoding,
-    metadata::{Ascii, MetadataValue},
+    metadata::{Ascii, MetadataKey, MetadataValue},
     transport::{Channel, ClientTlsConfig},
 };
 
@@ -51,6 +52,28 @@ pub struct FirehoseEndpoint {
     pub subgraph_limit: SubgraphLimit,
     endpoint_metrics: Arc<EndpointMetrics>,
     channel: Channel,
+}
+
+#[derive(Debug)]
+pub struct ConnectionHeaders(HashMap<MetadataKey<Ascii>, MetadataValue<Ascii>>);
+
+impl ConnectionHeaders {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+    pub fn with_deployment(mut self, deployment: DeploymentHash) -> Self {
+        if let Ok(deployment) = deployment.parse() {
+            self.0.insert("x-deployment-id".parse().unwrap(), deployment);
+        }
+        self
+    }
+    pub fn add_to_request<T>(&self, request: T) -> Request<T> {
+        let mut request = Request::new(request);
+        self.0.iter().for_each(|(k, v)| {
+            request.metadata_mut().insert(k, v.clone());
+        });
+        request
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
@@ -406,8 +429,10 @@ impl FirehoseEndpoint {
     pub async fn stream_blocks(
         self: Arc<Self>,
         request: firehose::Request,
+        headers: &ConnectionHeaders,
     ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
         let mut client = self.new_stream_client();
+        let request = headers.add_to_request(request);
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -417,8 +442,10 @@ impl FirehoseEndpoint {
     pub async fn substreams(
         self: Arc<Self>,
         request: substreams_rpc::Request,
+        headers: &ConnectionHeaders,
     ) -> Result<tonic::Streaming<substreams_rpc::Response>, anyhow::Error> {
         let mut client = self.new_substreams_client();
+        let request = headers.add_to_request(request);
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 

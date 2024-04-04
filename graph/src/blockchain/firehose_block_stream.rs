@@ -203,6 +203,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
         debug!(&logger, "Going to check continuity of chain on first block");
     }
 
+    let headers = firehose::ConnectionHeaders::new().with_deployment(deployment.clone());
+
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
@@ -240,7 +242,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             }
 
             let mut connect_start = Instant::now();
-            let req = endpoint.clone().stream_blocks(request);
+            let req = endpoint.clone().stream_blocks(request, &headers);
             let result = tokio::time::timeout(Duration::from_secs(120), req).await.map_err(|x| x.into()).and_then(|x| x);
 
             match result {
