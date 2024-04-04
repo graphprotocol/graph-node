@@ -418,7 +418,6 @@ pub fn transact_block(
     firehose_cursor: &FirehoseCursor,
     count: i32,
 ) -> Result<BlockNumber, StoreError> {
-    use crate::diesel::BoolExpressionMethods;
     use subgraph_deployment as d;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
@@ -426,39 +425,42 @@ pub fn transact_block(
 
     let count_sql = entity_count_sql(count);
 
-    let rows = update(
-        d::table.filter(d::id.eq(site.id)).filter(
-            // Asserts that the processing direction is forward.
-            d::latest_ethereum_block_number
-                .lt(sql(&number))
-                .or(d::latest_ethereum_block_number.is_null()),
-        ),
-    )
-    .set((
-        d::latest_ethereum_block_number.eq(sql(&number)),
-        d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
-        d::firehose_cursor.eq(firehose_cursor.as_ref()),
-        d::entity_count.eq(sql(&count_sql)),
-        d::current_reorg_depth.eq(0),
-    ))
-    .returning(d::earliest_block_number)
-    .get_results::<BlockNumber>(conn)
-    .map_err(StoreError::from)?;
+    // Sanity check: The processing direction is forward.
+    //
+    // Performance note: This costs us an extra DB query on every update. We used to put this in the
+    // `where` clause of the `update` statement, but that caused Postgres to use bitmap scans instead
+    // of a simple primary key lookup. So a separate query it is.
+    let block_ptr = block_ptr(conn, &site.deployment)?;
+    if let Some(block_ptr_from) = block_ptr {
+        if block_ptr_from.number >= ptr.number {
+            return Err(StoreError::DuplicateBlockProcessing(
+                site.deployment.clone(),
+                ptr.number,
+            ));
+        }
+    }
+
+    let rows = update(d::table.filter(d::id.eq(site.id)))
+        .set((
+            d::latest_ethereum_block_number.eq(sql(&number)),
+            d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
+            d::firehose_cursor.eq(firehose_cursor.as_ref()),
+            d::entity_count.eq(sql(&count_sql)),
+            d::current_reorg_depth.eq(0),
+        ))
+        .returning(d::earliest_block_number)
+        .get_results::<BlockNumber>(conn)
+        .map_err(StoreError::from)?;
 
     match rows.len() {
         // Common case: A single row was updated.
         1 => Ok(rows[0]),
 
-        // No matching rows were found. This is an error. By the filter conditions, this can only be
-        // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
-        0 => match block_ptr(conn, &site.deployment)? {
-            Some(block_ptr_from) if block_ptr_from.number >= ptr.number => Err(
-                StoreError::DuplicateBlockProcessing(site.deployment.clone(), ptr.number),
-            ),
-            None | Some(_) => Err(StoreError::Unknown(anyhow!(
-                "unknown error forwarding block ptr"
-            ))),
-        },
+        // No matching rows were found. This is logically impossible, as the `block_ptr` would have
+        // caught a non-existing deployment.
+        0 => Err(StoreError::Unknown(anyhow!(
+            "unknown error forwarding block ptr"
+        ))),
 
         // More than one matching row was found.
         _ => Err(StoreError::ConstraintViolation(
