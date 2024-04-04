@@ -26,10 +26,10 @@ use std::{
 };
 use tonic::codegen::InterceptedService;
 use tonic::{
-    Request,
     codegen::CompressionEncoding,
     metadata::{Ascii, MetadataKey, MetadataValue},
     transport::{Channel, ClientTlsConfig},
+    Request,
 };
 
 use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
@@ -63,7 +63,8 @@ impl ConnectionHeaders {
     }
     pub fn with_deployment(mut self, deployment: DeploymentHash) -> Self {
         if let Ok(deployment) = deployment.parse() {
-            self.0.insert("x-deployment-id".parse().unwrap(), deployment);
+            self.0
+                .insert("x-deployment-id".parse().unwrap(), deployment);
         }
         self
     }
