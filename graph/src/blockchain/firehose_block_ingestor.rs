@@ -199,7 +199,7 @@ where
                     final_blocks_only: false,
                     transforms: self.default_transforms.iter().map(|t| t.into()).collect(),
                     ..Default::default()
-                })
+                }, &firehose::ConnectionHeaders::new())
                 .await;
 
             match result {

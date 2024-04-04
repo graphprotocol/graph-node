@@ -4,6 +4,7 @@ use super::block_stream::{
 use super::client::ChainClient;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
+use crate::firehose::ConnectionHeaders;
 use crate::prelude::*;
 use crate::substreams::Modules;
 use crate::substreams_rpc::{ModulesProgress, Request, Response};
@@ -174,6 +175,8 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
 
     let stop_block_num = manifest_end_block_num as u64;
 
+    let headers = ConnectionHeaders::new().with_deployment(deployment.clone());
+
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
@@ -203,7 +206,7 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
             };
 
 
-            let result = endpoint.clone().substreams(request).await;
+            let result = endpoint.clone().substreams(request, &headers).await;
 
             match result {
                 Ok(stream) => {
