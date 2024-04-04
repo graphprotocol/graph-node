@@ -2170,7 +2170,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
     derived_query: &'a DerivedEntityQuery,
-    excluded_keys: &'a Vec<EntityKey>,
+    excluded_keys: IdList,
     br_column: BlockRangeColumn<'a>,
 }
 
@@ -2179,7 +2179,7 @@ impl<'a> FindDerivedQuery<'a> {
         table: &'a Table,
         derived_query: &'a DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: &'a Vec<EntityKey>,
+        excluded_keys: IdList,
     ) -> Self {
         let br_column = BlockRangeColumn::new(table, "e.", block);
         Self {
@@ -2211,18 +2211,14 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-
+        // This clause with an empty array would filter out everything
         if self.excluded_keys.len() > 0 {
-            let primary_key = self.table.primary_key();
-            out.push_identifier(primary_key.name.as_str())?;
-            out.push_sql(" not in (");
-            for (i, value) in self.excluded_keys.iter().enumerate() {
-                if i > 0 {
-                    out.push_sql(", ");
-                }
-
-                value.entity_id.push_bind_param(&mut out)?;
-            }
+            out.push_identifier(&self.table.primary_key().name)?;
+            // For truly gigantic `excluded_keys` lists, this will be slow, and
+            // we should rewrite this query to use a CTE or a temp table to hold
+            // the excluded keys.
+            out.push_sql(" != any(");
+            self.excluded_keys.push_bind_param(&mut out)?;
             out.push_sql(") and ");
         }
         out.push_identifier(entity_field.to_snake_case().as_str())?;
