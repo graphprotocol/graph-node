@@ -788,9 +788,10 @@ where
                         .store
                         .unfail_non_deterministic_error(&block_ptr)?;
 
+                    // Stop trying to unfail.
+                    self.state.should_try_unfail_non_deterministic = false;
+
                     if let UnfailOutcome::Unfailed = outcome {
-                        // Stop trying to unfail.
-                        self.state.should_try_unfail_non_deterministic = false;
                         self.metrics.stream.deployment_failed.set(0.0);
                         self.state.backoff.reset();
                     }
