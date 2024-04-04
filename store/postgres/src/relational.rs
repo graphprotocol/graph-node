@@ -520,6 +520,8 @@ impl Layout {
         excluded_keys: &Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let table = self.table_for_entity(&derived_query.entity_type)?;
+        let ids = excluded_keys.iter().map(|key| &key.entity_id).cloned();
+        let excluded_keys = IdList::try_from_iter(derived_query.entity_type.id_type()?, ids)?;
         let query = FindDerivedQuery::new(table, derived_query, block, excluded_keys);
 
         let mut entities = BTreeMap::new();
