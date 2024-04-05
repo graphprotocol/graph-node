@@ -386,21 +386,21 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
 
     type Plays @entity(timeseries: true) {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         song: Song!
         user: User!
     }
 
     type SongPlays @aggregation(intervals: [\"hour\"], source: \"Plays\") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         song: Song!
         played: Int! @aggregate(fn: \"count\")
     }
 
     type UserPlays @aggregation(intervals: [\"hour\"], source: \"Plays\") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         user: User!
         played: Int! @aggregate(fn: \"count\")
     }
@@ -3093,6 +3093,10 @@ fn empty_type_c() {
 
 #[test]
 fn simple_aggregation() {
+    fn ts0() -> r::Value {
+        r::Value::Timestamp(Timestamp::since_epoch(0, 0).unwrap())
+    }
+
     const SONG_QUERY: &str = "
     query {
         songPlays_collection(interval: hour) {
@@ -3113,19 +3117,19 @@ fn simple_aggregation() {
         }
     }";
 
-    const USER_QUERY2: &str = "
+    const USER_QUERY2: &str = r#"
     query {
-        userPlays_collection(interval: hour, where: { timestamp_gt: 1 }) {
+        userPlays_collection(interval: hour, where: { timestamp_gt: "1000000" }) {
             id
         }
-    }";
+    }"#;
 
     run_query(SONG_QUERY, |result, id_type| {
         let s = id_type.songs();
         let exp = object! {
             songPlays_collection: vec![
-                object! { id: "5", timestamp: "0", song: object! { id: s[1] }, played: 4 },
-                object! { id: "3", timestamp: "0", song: object! { id: s[2] }, played: 1 },
+                object! { id: "5", timestamp: ts0(), song: object! { id: s[1] }, played: 4 },
+                object! { id: "3", timestamp: ts0(), song: object! { id: s[2] }, played: 1 },
             ]
         };
         let data = extract_data!(result).unwrap();
@@ -3134,8 +3138,8 @@ fn simple_aggregation() {
     run_query(USER_QUERY1, |result, _| {
         let exp = object! {
             userPlays_collection: vec![
-                object! { id: "5", timestamp: "0", user: object! { id: "u1" }, played: 4 },
-                object! { id: "2", timestamp: "0", user: object! { id: "u2" }, played: 1 },
+                object! { id: "5", timestamp: ts0(), user: object! { id: "u1" }, played: 4 },
+                object! { id: "2", timestamp: ts0(), user: object! { id: "u2" }, played: 1 },
             ]
         };
         let data = extract_data!(result).unwrap();

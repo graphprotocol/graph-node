@@ -891,7 +891,8 @@ fn field_filter_ops(set: FilterOpsSet<'_>) -> &'static [&'static str] {
         Aggregation("BigInt")
         | Aggregation("BigDecimal")
         | Aggregation("Int")
-        | Aggregation("Int8") => &["", "gt", "lt", "gte", "lte", "in"],
+        | Aggregation("Int8")
+        | Aggregation("Timestamp") => &["", "gt", "lt", "gte", "lte", "in"],
         Object(_) => &["", "not"],
         Aggregation(_) => &[""],
     }
@@ -2219,13 +2220,13 @@ type Gravatar @entity {
         const SCHEMA: &str = r#"
         type Data @entity(timeseries: true) {
             id: Int8!
-            timestamp: Int8!
+            timestamp: Timestamp!
             value: BigDecimal!
         }
 
         type Stats @aggregation(source: "Data", intervals: ["hour", "day"]) {
             id: Int8!
-            timestamp: Int8!
+            timestamp: Timestamp!
             sum: BigDecimal! @aggregate(fn: "sum", arg: "value")
         }
 

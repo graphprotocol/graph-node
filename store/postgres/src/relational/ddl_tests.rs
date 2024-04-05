@@ -1,5 +1,5 @@
 use itertools::Itertools;
-// use pretty_assertions::assert_eq;
+use pretty_assertions::assert_eq;
 
 use super::*;
 
@@ -625,13 +625,13 @@ create index attr_0_1_thing_orientation
 const TS_GQL: &str = r#"
 type Data @entity(timeseries: true) {
     id: Int8!
-    timestamp: Int8!
+    timestamp: Timestamp!
     amount: BigDecimal!
 }
 
 type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
     id:        Int8!
-    timestamp: Int8!
+    timestamp: Timestamp!
     volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount")
     maxPrice:  BigDecimal! @aggregate(fn: "max", arg: "amount")
 }
@@ -642,7 +642,7 @@ create table "sgd0815"."data" (
     vid                  bigserial primary key,
     block$                int not null,
     "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "amount"             numeric not null,
     unique(id)
 );
@@ -657,7 +657,7 @@ create table "sgd0815"."stats_hour" (
     vid                  bigserial primary key,
     block$                int not null,
     "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "volume"             numeric not null,
     "max_price"          numeric not null,
     unique(id)
@@ -675,7 +675,7 @@ create table "sgd0815"."stats_day" (
     vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "volume"             numeric not null,
     "max_price"          numeric not null,
     unique(id)
@@ -692,7 +692,7 @@ create index attr_2_2_stats_day_max_price
 const LIFETIME_GQL: &str = r#"
     type Data @entity(timeseries: true) {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         group1: Int!
         group2: Int!
         amount: BigDecimal!
@@ -700,20 +700,20 @@ const LIFETIME_GQL: &str = r#"
 
     type Stats1 @aggregation(intervals: ["hour", "day"], source: "Data") {
         id:        Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
     }
 
     type Stats2 @aggregation(intervals: ["hour", "day"], source: "Data") {
         id:        Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         group1: Int!
         volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
     }
 
     type Stats3 @aggregation(intervals: ["hour", "day"], source: "Data") {
         id:        Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         group2: Int!
         group1: Int!
         volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
@@ -721,7 +721,7 @@ const LIFETIME_GQL: &str = r#"
 
     type Stats2 @aggregation(intervals: ["hour", "day"], source: "Data") {
         id:        Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         group1: Int!
         group2: Int!
         volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
@@ -733,7 +733,7 @@ create table "sgd0815"."data" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "group_1"            int4 not null,
     "group_2"            int4 not null,
     "amount"             numeric not null,
@@ -759,7 +759,7 @@ create table "sgd0815"."stats_1_hour" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "volume"             numeric not null,
     unique(id)
 );
@@ -775,7 +775,7 @@ create table "sgd0815"."stats_1_day" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "volume"             numeric not null,
     unique(id)
 );
@@ -791,7 +791,7 @@ create table "sgd0815"."stats_2_hour" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "group_1"            int4 not null,
     "volume"             numeric not null,
     unique(id)
@@ -810,7 +810,7 @@ create table "sgd0815"."stats_2_day" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "group_1"            int4 not null,
     "volume"             numeric not null,
     unique(id)
@@ -829,7 +829,7 @@ create table "sgd0815"."stats_3_hour" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "group_2"            int4 not null,
     "group_1"            int4 not null,
     "volume"             numeric not null,
@@ -851,7 +851,7 @@ create table "sgd0815"."stats_3_day" (
     vid                  bigserial primary key,
     block$                int not null,
 "id"                 int8 not null,
-    "timestamp"          int8 not null,
+    "timestamp"          timestamptz not null,
     "group_2"            int4 not null,
     "group_1"            int4 not null,
     "volume"             numeric not null,

@@ -1,4 +1,4 @@
-# valid: Minimal example
+# fail: InvalidTimestampType("Stats", "Int8")
 type Data @entity(timeseries: true) {
   id: Int8!
   timestamp: Timestamp!
@@ -7,6 +7,6 @@ type Data @entity(timeseries: true) {
 
 type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
   id: Int8!
-  timestamp: Timestamp!
+  timestamp: Int8!
   sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
 }

@@ -1667,13 +1667,13 @@ async fn test_store_ts() {
     let schema = r#"
     type Data @entity(timeseries: true) {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         amount: BigDecimal!
     }
 
     type Stats @aggregation(intervals: ["hour"], source: "Data") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         max: BigDecimal! @aggregate(fn: "max", arg:"amount")
     }"#;
 

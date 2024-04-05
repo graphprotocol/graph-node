@@ -16,13 +16,13 @@ data points are to be aggregated. A very simple aggregation can be declared like
 ```graphql
 type Data @entity(timeseries: true) {
   id: Int8!
-  timestamp: Int8!
+  timestamp: Timestamp!
   price: BigDecimal!
 }
 
 type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
   id: Int8!
-  timestamp: Int8!
+  timestamp: Timestamp!
   sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
 }
 ```
@@ -48,8 +48,6 @@ for example, to the beginning of the hour for an hourly aggregation. The
 the aggregation. Which one is chosen is not specified and should not be
 relied on.
 
-**TODO**: add a `Timestamp` type and use that for `timestamp`
-
 **TODO**: figure out whether we should just automatically add `id` and
 `timestamp` and have validation just check that these fields don't exist
 
@@ -65,7 +63,7 @@ type Token @entity { .. }
 # Raw data points
 type TokenData @entity(timeseries: true) {
     id: Bytes!
-    timestamp: Int8!
+    timestamp: Timestamp!
     token: Token!
     amount: BigDecimal!
     priceUSD: BigDecimal!
@@ -74,7 +72,7 @@ type TokenData @entity(timeseries: true) {
 # Aggregations over TokenData
 type TokenStats @aggregation(intervals: ["hour", "day"], source: "TokenData") {
   id: Int8!
-  timestamp: Int8!
+  timestamp: Timestamp!
   token: Token!
   totalVolume: BigDecimal! @aggregate(fn: "sum", arg: "amount")
   priceUSD: BigDecimal! @aggregate(fn: "last", arg: "priceUSD")
@@ -103,9 +101,9 @@ the entire timeseries up to the end of the time interval for the bucket.
 ### Timeseries
 
 A timeseries is an entity type with the annotation `@entity(timeseries:
-true)`. It must have an `id` attribute and a `timestamp` attribute of type
-`Int8`. It must not also be annotated with `immutable: false` as timeseries
-are always immutable.
+true)`. It must have an `id` attribute of type `Int8` and a `timestamp`
+attribute of type `Timestamp`. It must not also be annotated with
+`immutable: false` as timeseries are always immutable.
 
 ### Aggregations
 
@@ -117,8 +115,8 @@ must have two arguments:
 - `source`: the name of a timeseries type. Aggregates are computed based on
   the attributes of the timeseries type.
 
-The aggregation type must have an `id` attribute and a `timestamp` attribute
-of type `Int8`.
+The aggregation type must have an `id` attribute of type `Int8` and a
+`timestamp` attribute of type `Timestamp`.
 
 The aggregation type must have at least one attribute with the `@aggregate`
 annotation. These attributes must be of a numeric type (`Int`, `Int8`,
@@ -188,7 +186,9 @@ accepts the following arguments:
   partially filled bucket in the response. Can be either `ignore` (the
   default) or `include` (still **TODO** and not implemented)
 - Optional `timestamp_{gte|gt|lt|lte|eq|in}` filters to restrict the range
-  of timestamps to return
+  of timestamps to return. The timestamp to filter by must be a string
+  containing microseconds since the epoch. The value `"1704164640000000"`
+  corresponds to `2024-01-02T03:04Z`.
 - Timeseries are always sorted by `timestamp` and `id` in descending order
 
 ```graphql

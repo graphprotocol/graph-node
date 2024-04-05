@@ -2625,7 +2625,7 @@ mod validations {
             errors
         }
 
-        /// Aggregations must have a `timestamp` field of type Int8
+        /// Aggregations must have a `timestamp` field of type `Timestamp`
         /// FIXME: introduce a timestamp type and use that
         fn valid_timestamp_field(agg_type: &s::ObjectType) -> Option<Err> {
             let field = match agg_type.field(kw::TIMESTAMP) {
@@ -2636,7 +2636,7 @@ mod validations {
             };
 
             match field.field_type.value_type() {
-                Ok(ValueType::Int8) => None,
+                Ok(ValueType::Timestamp) => None,
                 Ok(_) | Err(_) => Some(Err::InvalidTimestampType(
                     agg_type.name.to_owned(),
                     field.field_type.get_base_type().to_owned(),
@@ -3096,13 +3096,13 @@ mod tests {
       type HippoData @entity(timeseries: true) {
         id: Int8!
         hippo: Hippo!
-        timestamp: Int8!
+        timestamp: Timestamp!
         weight: BigDecimal!
       }
 
       type HippoStats @aggregation(intervals: ["hour"], source: "HippoData") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         hippo: Hippo!
         maxWeight: BigDecimal! @aggregate(fn: "max", arg:"weight")
       }

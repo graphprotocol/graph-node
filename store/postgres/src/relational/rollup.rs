@@ -60,7 +60,7 @@ use std::sync::Arc;
 
 use diesel::{sql_query, PgConnection, RunQueryDsl as _};
 
-use diesel::sql_types::{BigInt, Integer};
+use diesel::sql_types::{Integer, Timestamptz};
 use graph::blockchain::BlockTime;
 use graph::components::store::{BlockNumber, StoreError};
 use graph::constraint_violation;
@@ -270,8 +270,8 @@ impl Rollup {
         block: BlockNumber,
     ) -> Result<usize, diesel::result::Error> {
         let query = sql_query(&self.insert_sql)
-            .bind::<BigInt, _>(bucket.start.as_secs_since_epoch())
-            .bind::<BigInt, _>(bucket.end.as_secs_since_epoch())
+            .bind::<Timestamptz, _>(bucket.start)
+            .bind::<Timestamptz, _>(bucket.end)
             .bind::<Integer, _>(block);
         query.execute(conn)
     }
@@ -343,7 +343,7 @@ impl<'a> RollupSql<'a> {
         let secs = self.interval.as_duration().as_secs();
         write!(
             w,
-            " from (select id, timestamp/{secs}*{secs} as timestamp, "
+            " from (select id, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp, "
         )?;
         write_dims(self.dimensions, w)?;
         let agg_srcs: Vec<&str> = {
@@ -555,7 +555,7 @@ mod tests {
         const SCHEMA: &str = r#"
     type Data @entity(timeseries: true) {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         token: Bytes!
         price: BigDecimal!
         amount: Int!
@@ -563,7 +563,7 @@ mod tests {
 
       type Stats @aggregation(intervals: ["day", "hour"], source: "Data") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         token: Bytes!
         sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
         max: BigDecimal! @aggregate(fn: "max", arg: "amount")
@@ -571,14 +571,14 @@ mod tests {
 
       type TotalStats @aggregation(intervals: ["day"], source: "Data") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         max: BigDecimal! @aggregate(fn: "max", arg: "price")
         max_value: BigDecimal! @aggregate(fn: "max", arg: "price * amount")
       }
 
       type OpenClose @aggregation(intervals: ["day"], source: "Data") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         open: BigDecimal! @aggregate(fn: "first", arg: "price")
         close: BigDecimal! @aggregate(fn: "last", arg: "price")
         first_amt: Int! @aggregate(fn: "first", arg: "amount")
@@ -586,7 +586,7 @@ mod tests {
 
       type Lifetime @aggregation(intervals: ["day"], source: "Data") {
         id: Int8!
-        timestamp: Int8!
+        timestamp: Timestamp!
         count: Int8! @aggregate(fn: "count")
         sum: BigDecimal! @aggregate(fn: "sum", arg: "amount")
         total_count: Int8! @aggregate(fn: "count", cumulative: true)
@@ -597,7 +597,7 @@ mod tests {
         const STATS_HOUR_SQL: &str = r#"\
         insert into "sgd007"."stats_hour"(id, timestamp, block$, "token", "sum", "max") \
         select max(id) as id, timestamp, $3, "token", sum("price") as "sum", max("amount") as "max" from (\
-            select id, timestamp/3600*3600 as timestamp, "token", "amount", "price" \
+            select id, date_bin('3600s', timestamp, 'epoch'::timestamptz) as timestamp, "token", "amount", "price" \
               from "sgd007"."data" \
              where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
              order by "sgd007"."data".timestamp) data \
@@ -606,7 +606,7 @@ mod tests {
         const STATS_DAY_SQL: &str = r#"\
         insert into "sgd007"."stats_day"(id, timestamp, block$, "token", "sum", "max") \
         select max(id) as id, timestamp, $3, "token", sum("price") as "sum", max("amount") as "max" from (\
-            select id, timestamp/86400*86400 as timestamp, "token", "amount", "price" \
+            select id, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, "token", "amount", "price" \
               from "sgd007"."data" \
              where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
              order by "sgd007"."data".timestamp) data \
@@ -616,7 +616,7 @@ mod tests {
         insert into "sgd007"."total_stats_day"(id, timestamp, block$, "max", "max_value") \
         select max(id) as id, timestamp, $3, max("price") as "max", \
                max("price" * "amount") as "max_value" from (\
-            select id, timestamp/86400*86400 as timestamp, "amount", "price" from "sgd007"."data" \
+            select id, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, "amount", "price" from "sgd007"."data" \
              where "sgd007"."data".timestamp >= $1 and "sgd007"."data".timestamp < $2 \
              order by "sgd007"."data".timestamp) data \
         group by timestamp"#;
@@ -627,7 +627,7 @@ mod tests {
                arg_min_numeric(("price", id)) as "open", \
                arg_max_numeric(("price", id)) as "close", \
                arg_min_int4(("amount", id)) as "first_amt" \
-          from (select id, timestamp/86400*86400 as timestamp, "amount", "price" \
+          from (select id, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, "amount", "price" \
                   from "sgd007"."data"
                  where "sgd007"."data".timestamp >= $1
                    and "sgd007"."data".timestamp < $2
@@ -639,7 +639,7 @@ mod tests {
             select max(id) as id, timestamp, count(*) as "count",
                    sum("amount") as "sum", count(*) as "total_count",
                    sum("amount") as "total_sum"
-              from (select id, timestamp/86400*86400 as timestamp, "amount"
+              from (select id, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, "amount"
                       from "sgd007"."data"
                      where "sgd007"."data".timestamp >= $1
                        and "sgd007"."data".timestamp < $2

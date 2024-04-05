@@ -6,7 +6,7 @@ type Token @entity {
 
 type Data @entity(timeseries: true) {
   id: Int8!
-  timestamp: Int8!
+  timestamp: Timestamp!
   token: Token!
   price: BigDecimal!
 }

@@ -27,7 +27,7 @@ use test_store::{create_test_subgraph, run_test_sequentially, BLOCKS, LOGGER, ME
 const SCHEMA: &str = r#"
 type Data @entity(timeseries: true) {
     id: Int8!
-    timestamp: Int8!
+    timestamp: Timestamp!
     token: Bytes!
     price: BigDecimal!
     amount: BigDecimal!
@@ -35,7 +35,7 @@ type Data @entity(timeseries: true) {
 
   type Stats @aggregation(intervals: ["day", "hour"], source: "Data") {
     id: Int8!
-    timestamp: Int8!
+    timestamp: Timestamp!
     token: Bytes!
     sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
     sum_sq: BigDecimal! @aggregate(fn: "sum", arg: "price * price")
@@ -48,7 +48,7 @@ type Data @entity(timeseries: true) {
 
   type TotalStats @aggregation(intervals: ["hour"], source: "Data") {
     id: Int8!
-    timestamp: Int8!
+    timestamp: Timestamp!
     max: BigDecimal! @aggregate(fn: "max", arg: "price")
   }
   "#;
@@ -123,7 +123,7 @@ fn bd(n: i32) -> Value {
 async fn insert_test_data(store: Arc<dyn WritableStore>, deployment: DeploymentLocator) {
     let schema = ReadStore::input_schema(&store);
 
-    let ts64 = TIMES[0].as_secs_since_epoch();
+    let ts64 = TIMES[0];
     let entities = vec![
         entity! { schema => id: 1i64, timestamp: ts64, token: TOKEN1.clone(), price: bd(1), amount: bd(10) },
         entity! { schema => id: 2i64, timestamp: ts64, token: TOKEN2.clone(), price: bd(1), amount: bd(1) },
@@ -133,7 +133,7 @@ async fn insert_test_data(store: Arc<dyn WritableStore>, deployment: DeploymentL
         .await
         .unwrap();
 
-    let ts64 = TIMES[1].as_secs_since_epoch();
+    let ts64 = TIMES[1];
     let entities = vec![
         entity! { schema => id: 11i64, timestamp: ts64, token: TOKEN1.clone(), price: bd(2), amount: bd(2) },
         entity! { schema => id: 12i64, timestamp: ts64, token: TOKEN2.clone(), price: bd(2), amount: bd(20) },
@@ -142,7 +142,7 @@ async fn insert_test_data(store: Arc<dyn WritableStore>, deployment: DeploymentL
         .await
         .unwrap();
 
-    let ts64 = TIMES[2].as_secs_since_epoch();
+    let ts64 = TIMES[2];
     let entities = vec![
         entity! { schema => id: 21i64, timestamp: ts64, token: TOKEN1.clone(), price: bd(3), amount: bd(30) },
         entity! { schema => id: 22i64, timestamp: ts64, token: TOKEN2.clone(), price: bd(3), amount: bd(3) },
@@ -151,7 +151,7 @@ async fn insert_test_data(store: Arc<dyn WritableStore>, deployment: DeploymentL
         .await
         .unwrap();
 
-    let ts64 = TIMES[3].as_secs_since_epoch();
+    let ts64 = TIMES[3];
     let entities = vec![
         entity! { schema => id: 31i64, timestamp: ts64, token: TOKEN1.clone(), price: bd(4), amount: bd(4) },
         entity! { schema => id: 32i64, timestamp: ts64, token: TOKEN2.clone(), price: bd(4), amount: bd(40) },
@@ -169,23 +169,25 @@ fn stats_hour(schema: &InputSchema) -> Vec<Vec<Entity>> {
     // block after the aggregation interval has finished
 
     // Stats_hour aggregations over BLOCKS[0..=1], i.e., at BLOCKS[2]
+    let ts2 = BlockTime::since_epoch(0, 0);
     let block2 = vec![
-        entity! { schema => id: 11i64, timestamp: 0i64, token: TOKEN1.clone(),
+        entity! { schema => id: 11i64, timestamp: ts2, token: TOKEN1.clone(),
         sum: bd(3), sum_sq: bd(5), max: bd(10), first: bd(10), last: bd(2),
         value: bd(14), totalValue: bd(14) },
-        entity! { schema => id: 12i64, timestamp: 0i64, token: TOKEN2.clone(),
+        entity! { schema => id: 12i64, timestamp: ts2, token: TOKEN2.clone(),
         sum: bd(3), sum_sq: bd(5), max: bd(20), first: bd(1),  last: bd(20),
         value: bd(41), totalValue: bd(41) },
     ];
 
+    let ts3 = BlockTime::since_epoch(3600, 0);
     let block3 = {
         let mut v1 = block2.clone();
         // Stats_hour aggregations over BLOCKS[2], i.e., at BLOCKS[3]
         let mut v2 = vec![
-            entity! { schema => id: 21i64, timestamp: 3600i64, token: TOKEN1.clone(),
+            entity! { schema => id: 21i64, timestamp: ts3, token: TOKEN1.clone(),
             sum: bd(3), sum_sq: bd(9), max: bd(30), first: bd(30), last: bd(30),
             value: bd(90), totalValue: bd(104) },
-            entity! { schema => id: 22i64, timestamp: 3600i64, token: TOKEN2.clone(),
+            entity! { schema => id: 22i64, timestamp: ts3, token: TOKEN2.clone(),
             sum: bd(3), sum_sq: bd(9), max: bd(3),  first: bd(3), last: bd(3),
             value: bd(9), totalValue: bd(50)},
         ];

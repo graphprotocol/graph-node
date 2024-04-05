@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use chrono::{DateTime, Utc};
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
@@ -12,6 +11,7 @@ use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
 use crate::data::graphql::IntoValue;
+use crate::data::store::scalar::Timestamp;
 use crate::object;
 use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
@@ -331,23 +331,24 @@ impl fmt::Display for ChainIdentifier {
 
 /// The timestamp associated with a block. This is used whenever a time
 /// needs to be connected to data within the block
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct BlockTime(DateTime<Utc>);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, FromSqlRow, AsExpression)]
+#[diesel(sql_type = Timestamptz)]
+pub struct BlockTime(Timestamp);
 
 impl BlockTime {
     /// A timestamp from a long long time ago used to indicate that we don't
     /// have a timestamp
-    pub const NONE: Self = Self(DateTime::<Utc>::MIN_UTC);
+    pub const NONE: Self = Self(Timestamp::NONE);
 
-    pub const MAX: Self = Self(DateTime::<Utc>::MAX_UTC);
+    pub const MAX: Self = Self(Timestamp::MAX);
 
-    pub const MIN: Self = Self(DateTime::<Utc>::MIN_UTC);
+    pub const MIN: Self = Self(Timestamp::MIN);
 
     /// Construct a block time that is the given number of seconds and
     /// nanoseconds after the Unix epoch
     pub fn since_epoch(secs: i64, nanos: u32) -> Self {
         Self(
-            DateTime::from_timestamp(secs, nanos)
+            Timestamp::since_epoch(secs, nanos)
                 .ok_or_else(|| anyhow!("invalid block time: {}s {}ns", secs, nanos))
                 .unwrap(),
         )
@@ -362,7 +363,7 @@ impl BlockTime {
     }
 
     pub fn as_secs_since_epoch(&self) -> i64 {
-        self.0.timestamp()
+        self.0.as_secs_since_epoch()
     }
 
     /// Return the number of the last bucket that starts before `self`
@@ -385,7 +386,7 @@ impl From<Duration> for BlockTime {
 
 impl From<BlockTime> for Value {
     fn from(block_time: BlockTime) -> Self {
-        Value::Int8(block_time.as_secs_since_epoch())
+        Value::Timestamp(block_time.0)
     }
 }
 
@@ -402,6 +403,6 @@ impl TryFrom<&Value> for BlockTime {
 
 impl ToSql<Timestamptz, Pg> for BlockTime {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
-        <DateTime<Utc> as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
+        <Timestamp as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
     }
 }

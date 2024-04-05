@@ -147,7 +147,7 @@ pub enum SchemaValidationError {
     MutableTimeseries(String),
     #[error("Timeseries {0} is missing a `timestamp` field")]
     TimeseriesMissingTimestamp(String),
-    #[error("Type {0} has a `timestamp` field of type {1}, but it must be of type Int8")]
+    #[error("Type {0} has a `timestamp` field of type {1}, but it must be of type Timestamp")]
     InvalidTimestampType(String, String),
     #[error("Aggregaton {0} uses {1} as the source, but there is no timeseries of that name")]
     AggregationUnknownSource(String, String),

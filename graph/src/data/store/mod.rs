@@ -414,7 +414,7 @@ impl Value {
                         Value::Timestamp(scalar::Timestamp::parse_timestamp(s).map_err(|_| {
                             QueryExecutionError::ValueParseError(
                                 "Timestamp".to_string(),
-                                format!("{}", s),
+                                format!("xxx{}", s),
                             )
                         })?)
                     }
@@ -427,7 +427,7 @@ impl Value {
             (r::Value::Null, _) => Value::Null,
             _ => {
                 return Err(QueryExecutionError::AttributeTypeError(
-                    value.to_string(),
+                    format!("{:?}", value),
                     ty.to_string(),
                 ));
             }

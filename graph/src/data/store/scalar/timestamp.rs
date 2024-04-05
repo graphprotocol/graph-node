@@ -8,7 +8,7 @@ use std::num::ParseIntError;
 
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Timestamp(pub DateTime<Utc>);
 
 #[derive(thiserror::Error, Debug)]
@@ -20,6 +20,14 @@ pub enum TimestampError {
 }
 
 impl Timestamp {
+    /// A timestamp from a long long time ago used to indicate that we don't
+    /// have a timestamp
+    pub const NONE: Self = Self(DateTime::<Utc>::MIN_UTC);
+
+    pub const MAX: Self = Self(DateTime::<Utc>::MAX_UTC);
+
+    pub const MIN: Self = Self(DateTime::<Utc>::MIN_UTC);
+
     pub fn parse_timestamp(v: &str) -> Result<Self, TimestampError> {
         let as_num: i64 = v.parse().map_err(TimestampError::StringParseError)?;
         Timestamp::from_microseconds_since_epoch(as_num)
@@ -41,6 +49,18 @@ impl Timestamp {
 
     pub fn as_microseconds_since_epoch(&self) -> i64 {
         self.0.timestamp_micros()
+    }
+
+    pub fn since_epoch(secs: i64, nanos: u32) -> Option<Self> {
+        DateTime::from_timestamp(secs, nanos).map(|dt| Timestamp(dt))
+    }
+
+    pub fn as_secs_since_epoch(&self) -> i64 {
+        self.0.timestamp()
+    }
+
+    pub(crate) fn timestamp_millis(&self) -> i64 {
+        self.0.timestamp_millis()
     }
 }
 

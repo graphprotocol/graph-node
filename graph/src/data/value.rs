@@ -297,7 +297,7 @@ impl std::fmt::Debug for Object {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -541,6 +541,7 @@ impl From<Value> for q::Value {
     }
 }
 
+/*
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -558,3 +559,4 @@ impl std::fmt::Debug for Value {
         }
     }
 }
+*/
