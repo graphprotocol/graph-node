@@ -79,10 +79,8 @@ pub fn pause_or_resume(
     locator: &DeploymentLocator,
     should_pause: bool,
 ) -> Result<(), Error> {
-    let locator = search.locate_unique(&primary)?;
-
     let conn = primary.get()?;
-    let conn = catalog::Connection::new(conn);
+    let mut conn = catalog::Connection::new(conn);
 
     let site = conn
         .locate_site(locator.clone())?

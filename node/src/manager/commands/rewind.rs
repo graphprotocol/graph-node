@@ -67,8 +67,6 @@ pub async fn run(
     sleep: Duration,
     start_block: bool,
 ) -> Result<(), anyhow::Error> {
-    const PAUSED: &str = "paused_";
-
     // Sanity check
     if !start_block && (block_hash.is_none() || block_number.is_none()) {
         bail!("--block-hash and --block-number must be specified when --start-block is not set");
