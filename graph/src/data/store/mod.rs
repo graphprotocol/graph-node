@@ -423,6 +423,7 @@ impl Value {
             }
             (r::Value::Int(i), _) => Value::Int(*i as i32),
             (r::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
+            (r::Value::Timestamp(ts), _) => Value::Timestamp(*ts),
             (r::Value::Null, _) => Value::Null,
             _ => {
                 return Err(QueryExecutionError::AttributeTypeError(

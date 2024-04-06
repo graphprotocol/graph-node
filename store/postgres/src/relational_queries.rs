@@ -836,6 +836,7 @@ impl Comparison {
                 Value::String(_)
                 | Value::Int(_)
                 | Value::Int8(_)
+                | Value::Timestamp(_)
                 | Value::BigDecimal(_)
                 | Value::BigInt(_)
                 | Value::Bytes(_),
@@ -846,7 +847,7 @@ impl Comparison {
                 | Comparison::LessOrEqual
                 | Comparison::GreaterOrEqual
                 | Comparison::Greater,
-                Value::Timestamp(_) | Value::Bool(_) | Value::List(_) | Value::Null,
+                Value::Bool(_) | Value::List(_) | Value::Null,
             )
             | (Comparison::Match, _) => {
                 return Err(StoreError::UnsupportedFilter(

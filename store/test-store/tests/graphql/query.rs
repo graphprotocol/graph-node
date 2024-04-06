@@ -826,6 +826,44 @@ fn can_query_one_to_one_relationship() {
 }
 
 #[test]
+fn can_filter_by_timestamp() {
+    const QUERY1: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { birthDate_gt: \"1710837304040955\" }) {
+            name
+        }
+    }
+    ";
+
+    const QUERY2: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { birthDate_lt: \"1710837304040955\" }) {
+            name
+        }
+    }
+    ";
+
+    run_query(QUERY1, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John" },
+                object! { name: "Lisa" },
+                object! { name: "Tom" },
+                object! { name: "Valerie" }
+            ],
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+
+    run_query(QUERY2, |result, _| {
+        let exp = object! { musicians: Vec::<r::Value>::new() };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
 fn can_query_one_to_many_relationships_in_both_directions() {
     const QUERY: &str = "
     query {

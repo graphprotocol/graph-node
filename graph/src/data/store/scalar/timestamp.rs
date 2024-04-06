@@ -8,7 +8,7 @@ use std::num::ParseIntError;
 
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Timestamp(pub DateTime<Utc>);
 
 #[derive(thiserror::Error, Debug)]
