@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package zklend.starknet.transform.v1;
+
+option go_package = "github.com/starknet-graph/firehose-starknet/types/pb/zklend/starknet/type/v1;pbtransform";
+
+// Stream block headers only. The `transactions` field is always empty.
+message BlockHeaderOnly {}
+
+// Stream every single block, but each block will only contain transactions that match with `event_filters`.
+// A TransactionEventFilter message with an empty `event_filters` is invalid. Do not send any filter instead
+// if you wish to receive full blocks.
+message TransactionEventFilter {
+  repeated ContractEventFilter event_filters = 1;
+}
+
+// Only include transactions which emit at least one event that *BOTH*
+// * is emitted by `contract_address`
+// * matches with at least one topic in `topics`
+message ContractEventFilter {
+  bytes contract_address = 1;
+  repeated TopicWithRanges topics = 2;
+}
+
+// Matches events whose `keys[0]` equals `topic`, *AND* in any of the `block_ranges`.
+message TopicWithRanges {
+  bytes topic = 1;
+  repeated BlockRange block_ranges = 2;
+}
+
+// A range of blocks. Both `start_block` and `end_block` are inclusive. When `end_block` is `0`, it means that any
+// block height >= `start_block` is matched.
+message BlockRange {
+  uint64 start_block = 1;
+  uint64 end_block = 2;
+}

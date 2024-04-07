@@ -63,6 +63,12 @@ impl FromStr for Felt {
     }
 }
 
+impl From<&Felt> for Vec<u8> {
+    fn from(value: &Felt) -> Self {
+        value.0.to_vec()
+    }
+}
+
 impl<'de> Deserialize<'de> for Felt {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

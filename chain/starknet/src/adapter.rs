@@ -3,7 +3,20 @@ use std::collections::{hash_map::Entry, HashMap};
 use graph::{
     blockchain::{EmptyNodeCapabilities, TriggerFilter as TriggerFilterTrait},
     components::store::BlockNumber,
+    firehose::{
+        BlockHeaderOnly as FirehoseFilterBlockHeaderOnly, BlockRange as FirehoseFilterBlockRange,
+        ContractEventFilter as FirehoseFilterContractEventFilter,
+        TopicWithRanges as FirehoseFilterTopicWithRanges,
+        TransactionEventFilter as FirehoseFilterTransactionEventFilter,
+    },
 };
+use prost::Message;
+use prost_types::Any;
+
+const BLOCK_HEADER_ONLY_TYPE_URL: &str =
+    "type.googleapis.com/zklend.starknet.transform.v1.BlockHeaderOnly";
+const TRANSACTION_EVENT_FILTER_TYPE_URL: &str =
+    "type.googleapis.com/zklend.starknet.transform.v1.TransactionEventFilter";
 
 use crate::{
     data_source::{DataSource, DataSourceTemplate},
@@ -50,7 +63,43 @@ impl TriggerFilterTrait<Chain> for TriggerFilter {
     }
 
     fn to_firehose_filter(self) -> Vec<prost_types::Any> {
-        todo!()
+        // An empty event filter list means that the subgraph is not interested in events at all.
+        // So we can stream just header-only blocks.
+        if self.event.is_empty() {
+            return vec![Any {
+                type_url: BLOCK_HEADER_ONLY_TYPE_URL.into(),
+                value: FirehoseFilterBlockHeaderOnly {}.encode_to_vec(),
+            }];
+        }
+
+        let event_filters = self
+            .event
+            .contract_addresses
+            .iter()
+            .map(
+                |(contract_address, topic_with_ranges)| FirehoseFilterContractEventFilter {
+                    contract_address: contract_address.into(),
+                    topics: topic_with_ranges
+                        .iter()
+                        .map(|(topic, ranges)| FirehoseFilterTopicWithRanges {
+                            topic: topic.into(),
+                            block_ranges: ranges
+                                .iter()
+                                .map(|range| FirehoseFilterBlockRange {
+                                    start_block: range.start_block as u64,
+                                    end_block: range.end_block.unwrap_or_default() as u64,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                },
+            )
+            .collect();
+
+        vec![Any {
+            type_url: TRANSACTION_EVENT_FILTER_TYPE_URL.into(),
+            value: FirehoseFilterTransactionEventFilter { event_filters }.encode_to_vec(),
+        }]
     }
 }
 

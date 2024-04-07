@@ -14,7 +14,12 @@ mod pbnear;
 #[path = "sf.cosmos.transform.v1.rs"]
 mod pbcosmos;
 
+#[rustfmt::skip]
+#[path = "zklend.starknet.transform.v1.rs"]
+mod pbstarknet;
+
 pub use pbcosmos::*;
 pub use pbethereum::*;
 pub use pbfirehose::*;
 pub use pbnear::*;
+pub use pbstarknet::*;
