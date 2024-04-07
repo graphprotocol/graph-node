@@ -83,7 +83,6 @@ pub async fn run(
     ));
     let arweave_service = arweave_service(
         arweave_resolver.cheap_clone(),
-        env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
         match env_vars.mappings.max_ipfs_file_bytes {
             0 => FileSizeLimit::Unlimited,

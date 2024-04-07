@@ -13,13 +13,11 @@ pub type ArweaveService = Buffer<Base64, BoxFuture<'static, Result<Option<Bytes>
 
 pub fn arweave_service(
     client: Arc<ArweaveClient>,
-    timeout: Duration,
     rate_limit: u16,
     max_file_size: FileSizeLimit,
 ) -> ArweaveService {
     let arweave = ArweaveServiceInner {
         client,
-        timeout,
         max_file_size,
     };
 
@@ -36,7 +34,6 @@ pub fn arweave_service(
 #[derive(Clone)]
 struct ArweaveServiceInner {
     client: Arc<ArweaveClient>,
-    timeout: Duration,
     max_file_size: FileSizeLimit,
 }
 
@@ -44,7 +41,6 @@ impl CheapClone for ArweaveServiceInner {
     fn cheap_clone(&self) -> Self {
         Self {
             client: self.client.cheap_clone(),
-            timeout: self.timeout,
             max_file_size: self.max_file_size.cheap_clone(),
         }
     }
