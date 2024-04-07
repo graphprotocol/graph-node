@@ -18,6 +18,7 @@ use crate::data::store::{
     self, EntityValidationError, IdType, IntoEntityIterator, TryIntoEntityIterator, ValueType, ID,
 };
 use crate::data::value::Word;
+use crate::derive::CheapClone;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api::api_schema;
@@ -58,7 +59,7 @@ pub mod kw {
 ///
 /// There's no need to put this into an `Arc`, since `InputSchema` already
 /// does that internally and is `CheapClone`
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, CheapClone, Debug, PartialEq)]
 pub struct InputSchema {
     inner: Arc<Inner>,
 }
@@ -297,7 +298,7 @@ impl Field {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, CheapClone)]
 pub enum ObjectOrInterface<'a> {
     Object(&'a InputSchema, &'a ObjectType),
     Interface(&'a InputSchema, &'a InterfaceType),
@@ -378,8 +379,6 @@ impl<'a> ObjectOrInterface<'a> {
         }
     }
 }
-
-impl CheapClone for ObjectOrInterface<'_> {}
 
 impl std::fmt::Debug for ObjectOrInterface<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -942,14 +941,6 @@ pub struct Inner {
     pool: Arc<AtomPool>,
     /// A list of all timeseries types by interval
     agg_mappings: Box<[AggregationMapping]>,
-}
-
-impl CheapClone for InputSchema {
-    fn cheap_clone(&self) -> Self {
-        InputSchema {
-            inner: self.inner.cheap_clone(),
-        }
-    }
 }
 
 impl InputSchema {

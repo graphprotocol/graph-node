@@ -4,6 +4,7 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
 use graph::data::store::ethereum::call;
+use graph::derive::CheapClone;
 use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
@@ -1603,10 +1604,8 @@ impl ChainStoreMetrics {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 struct BlocksLookupResult(Arc<Result<Vec<JsonBlock>, StoreError>>);
-
-impl CheapClone for BlocksLookupResult {}
 
 pub struct ChainStore {
     logger: Logger,

@@ -34,6 +34,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
+use graph_derive::CheapClone;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
@@ -414,19 +415,10 @@ pub struct HostFnCtx<'a> {
 
 /// Host fn that receives one u32 argument and returns an u32.
 /// The name for an AS fuction is in the format `<namespace>.<function>`.
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct HostFn {
     pub name: &'static str,
     pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
-}
-
-impl CheapClone for HostFn {
-    fn cheap_clone(&self) -> Self {
-        HostFn {
-            name: self.name,
-            func: self.func.cheap_clone(),
-        }
-    }
 }
 
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {

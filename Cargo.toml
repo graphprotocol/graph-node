@@ -11,6 +11,7 @@ members = [
     "substreams/*",
     "graph",
     "tests",
+    "graph/derive",
 ]
 
 [workspace.package]

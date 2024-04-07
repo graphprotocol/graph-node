@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use graph::{
+    derive::CheapClone,
     ipfs_client::{CidFile, IpfsClient},
     prelude::CheapClone,
 };
@@ -35,21 +36,11 @@ pub fn ipfs_service(
     Buffer::new(svc, u32::MAX as usize)
 }
 
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 struct IpfsServiceInner {
     client: IpfsClient,
     max_file_size: usize,
     timeout: Duration,
-}
-
-impl CheapClone for IpfsServiceInner {
-    fn cheap_clone(&self) -> Self {
-        Self {
-            client: self.client.cheap_clone(),
-            max_file_size: self.max_file_size,
-            timeout: self.timeout,
-        }
-    }
 }
 
 impl IpfsServiceInner {

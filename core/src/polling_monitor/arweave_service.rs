@@ -4,6 +4,7 @@ use futures::future::BoxFuture;
 use graph::{
     components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit},
     data_source::offchain::Base64,
+    derive::CheapClone,
     prelude::CheapClone,
 };
 use std::{sync::Arc, time::Duration};
@@ -31,19 +32,10 @@ pub fn arweave_service(
     Buffer::new(svc, u32::MAX as usize)
 }
 
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 struct ArweaveServiceInner {
     client: Arc<ArweaveClient>,
     max_file_size: FileSizeLimit,
-}
-
-impl CheapClone for ArweaveServiceInner {
-    fn cheap_clone(&self) -> Self {
-        Self {
-            client: self.client.cheap_clone(),
-            max_file_size: self.max_file_size.cheap_clone(),
-        }
-    }
 }
 
 impl ArweaveServiceInner {

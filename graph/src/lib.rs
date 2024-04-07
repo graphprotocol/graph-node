@@ -45,6 +45,7 @@ pub use task_spawn::{
 
 pub use anyhow;
 pub use bytes;
+pub use graph_derive as derive;
 pub use http;
 pub use http_body_util;
 pub use hyper;

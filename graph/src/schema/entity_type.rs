@@ -13,6 +13,8 @@ use crate::{
 
 use super::{EntityKey, Field, InputSchema, InterfaceType, ObjectType, POI_OBJECT};
 
+use graph_derive::CheapClone;
+
 /// A reference to a type in the input schema. It should mostly be the
 /// reference to a concrete entity type, either one declared with `@entity`
 /// in the input schema, or the object type that stores aggregations for a
@@ -23,7 +25,7 @@ use super::{EntityKey, Field, InputSchema, InterfaceType, ObjectType, POI_OBJECT
 /// Even though it is not implemented as a string type, it behaves as if it
 /// were the string name of the type for all external purposes like
 /// comparison, ordering, and serialization
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct EntityType {
     schema: InputSchema,
     pub(in crate::schema) atom: Atom,
@@ -161,8 +163,6 @@ impl Borrow<str> for EntityType {
         self.as_str()
     }
 }
-
-impl CheapClone for EntityType {}
 
 impl std::fmt::Debug for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

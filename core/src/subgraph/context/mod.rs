@@ -17,6 +17,7 @@ use graph::{
         offchain::{self, Base64},
         CausalityRegion, DataSource, DataSourceTemplate,
     },
+    derive::CheapClone,
     ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
@@ -33,13 +34,11 @@ use self::instance::SubgraphInstance;
 
 use super::Decoder;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, CheapClone, Debug)]
 pub struct SubgraphKeepAlive {
     alive_map: Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>,
     sg_metrics: Arc<SubgraphCountMetric>,
 }
-
-impl CheapClone for SubgraphKeepAlive {}
 
 impl SubgraphKeepAlive {
     pub fn new(sg_metrics: Arc<SubgraphCountMetric>) -> Self {

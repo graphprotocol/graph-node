@@ -1,4 +1,3 @@
-use crate::prelude::CheapClone;
 use anyhow::anyhow;
 use anyhow::Error;
 use bytes::Bytes;
@@ -13,6 +12,8 @@ use serde::Deserialize;
 use std::fmt::Display;
 use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
+
+use crate::derive::CheapClone;
 
 #[derive(Debug, thiserror::Error)]
 pub enum IpfsError {
@@ -114,21 +115,12 @@ pub struct AddResponse {
 }
 
 /// Reference type, clones will share the connection pool.
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct IpfsClient {
     base: Arc<Uri>,
     // reqwest::Client doesn't need to be `Arc` because it has one internally
     // already.
     client: reqwest::Client,
-}
-
-impl CheapClone for IpfsClient {
-    fn cheap_clone(&self) -> Self {
-        IpfsClient {
-            base: self.base.cheap_clone(),
-            client: self.client.cheap_clone(),
-        }
-    }
 }
 
 impl IpfsClient {

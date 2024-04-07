@@ -4,9 +4,9 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::cheap_clone::CheapClone;
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectOrInterface};
+use crate::derive::CheapClone;
 use crate::prelude::anyhow::anyhow;
 use crate::prelude::{s, Error, ValueType};
 
@@ -83,7 +83,7 @@ pub fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
 }
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
-#[derive(Clone, Debug)]
+#[derive(Clone, CheapClone, Debug)]
 pub struct ObjectType(Arc<s::ObjectType>);
 
 impl Ord for ObjectType {
@@ -131,8 +131,6 @@ impl Deref for ObjectType {
         &self.0
     }
 }
-
-impl CheapClone for ObjectType {}
 
 impl AsEntityTypeName for &ObjectType {
     fn name(&self) -> &str {

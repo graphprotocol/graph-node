@@ -10,15 +10,15 @@ use std::time::Duration;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
+use crate::components::store::BlockNumber;
 use crate::data::graphql::IntoValue;
 use crate::data::store::scalar::Timestamp;
+use crate::derive::CheapClone;
 use crate::object;
 use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
-use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
-
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
+#[derive(Clone, CheapClone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
 #[diesel(sql_type = Bytea)]
 pub struct BlockHash(pub Box<[u8]>);
 
@@ -59,8 +59,6 @@ impl fmt::LowerHex for BlockHash {
         f.write_str(&hex::encode(&self.0))
     }
 }
-
-impl CheapClone for BlockHash {}
 
 impl From<H256> for BlockHash {
     fn from(hash: H256) -> Self {
@@ -125,13 +123,11 @@ impl ToSql<Bytea, Pg> for BlockHash {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, CheapClone, PartialEq, Eq, Hash)]
 pub struct BlockPtr {
     pub hash: BlockHash,
     pub number: BlockNumber,
 }
-
-impl CheapClone for BlockPtr {}
 
 impl_stable_hash!(BlockPtr { hash, number });
 

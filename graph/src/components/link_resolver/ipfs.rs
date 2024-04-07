@@ -14,6 +14,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use crate::{
+    derive::CheapClone,
     ipfs_client::IpfsClient,
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
@@ -94,7 +95,7 @@ async fn select_fastest_client(
     }))
 }
 
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct IpfsResolver {
     clients: Arc<Vec<IpfsClient>>,
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
@@ -124,12 +125,6 @@ impl Debug for IpfsResolver {
             .field("retry", &self.retry)
             .field("env_vars", &self.env_vars)
             .finish()
-    }
-}
-
-impl CheapClone for IpfsResolver {
-    fn cheap_clone(&self) -> Self {
-        self.clone()
     }
 }
 

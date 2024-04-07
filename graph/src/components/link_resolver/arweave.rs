@@ -7,8 +7,8 @@ use serde_json::Value;
 use slog::{debug, Logger};
 use thiserror::Error;
 
-use crate::cheap_clone::CheapClone;
 use crate::data_source::offchain::Base64;
+use crate::derive::CheapClone;
 use crate::prelude::Error;
 use std::fmt::Debug;
 
@@ -30,13 +30,11 @@ pub struct ArweaveClient {
     logger: Logger,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CheapClone)]
 pub enum FileSizeLimit {
     Unlimited,
     MaxBytes(u64),
 }
-
-impl CheapClone for FileSizeLimit {}
 
 impl Default for ArweaveClient {
     fn default() -> Self {

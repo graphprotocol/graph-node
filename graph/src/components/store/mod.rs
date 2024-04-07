@@ -33,6 +33,7 @@ use crate::data::store::scalar::Bytes;
 use crate::data::store::{Id, IdList, Value};
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
+use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
 use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
 use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
@@ -872,13 +873,11 @@ impl DeploymentId {
 /// identifier (`hash`) and its unique internal identifier (`id`) which
 /// ensures we are talking about a unique location for the deployment's data
 /// in the store
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, CheapClone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DeploymentLocator {
     pub id: DeploymentId,
     pub hash: DeploymentHash,
 }
-
-impl CheapClone for DeploymentLocator {}
 
 impl slog::Value for DeploymentLocator {
     fn serialize(

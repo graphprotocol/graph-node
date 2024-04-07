@@ -8,6 +8,7 @@ use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::{CacheStatus, QueryResults, Trace};
 use graph::data::value::{Object, Word};
+use graph::derive::CheapClone;
 use graph::prelude::*;
 use graph::schema::{
     ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
@@ -22,7 +23,7 @@ use crate::query::ext::BlockConstraint;
 use crate::store::query::collect_entities_from_query_field;
 
 /// A resolver that fetches entities from a `Store`.
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct StoreResolver {
     #[allow(dead_code)]
     logger: Logger,
@@ -35,8 +36,6 @@ pub struct StoreResolver {
     graphql_metrics: Arc<GraphQLMetrics>,
     load_manager: Arc<LoadManager>,
 }
-
-impl CheapClone for StoreResolver {}
 
 impl StoreResolver {
     /// Create a resolver that looks up entities at whatever block is the

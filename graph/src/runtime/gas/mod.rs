@@ -4,7 +4,8 @@ mod ops;
 mod saturating;
 mod size_of;
 use crate::components::metrics::gas::GasMetrics;
-use crate::prelude::{CheapClone, ENV_VARS};
+use crate::derive::CheapClone;
+use crate::prelude::ENV_VARS;
 use crate::runtime::DeterministicHostError;
 pub use combinators::*;
 pub use costs::DEFAULT_BASE_COST;
@@ -76,13 +77,11 @@ impl Display for Gas {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct GasCounter {
     counter: Arc<AtomicU64>,
     metrics: GasMetrics,
 }
-
-impl CheapClone for GasCounter {}
 
 impl GasCounter {
     pub fn new(metrics: GasMetrics) -> Self {

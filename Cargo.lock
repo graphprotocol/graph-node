@@ -1505,6 +1505,7 @@ dependencies = [
  "ethabi",
  "futures 0.1.31",
  "futures 0.3.16",
+ "graph_derive",
  "graphql-parser",
  "hex",
  "hex-literal 0.4.1",
@@ -1904,6 +1905,16 @@ dependencies = [
  "slog",
  "tokio",
  "tokio-stream",
+]
+
+[[package]]
+name = "graph_derive"
+version = "0.34.0"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.107",
 ]
 
 [[package]]

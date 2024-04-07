@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, sync::Arc};
 
 use graph::blockchain::{Block, BlockHash, MappingTriggerTrait, TriggerData};
-use graph::cheap_clone::CheapClone;
+use graph::derive::CheapClone;
 use graph::prelude::{BlockNumber, Error};
 use graph::runtime::HostExportError;
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr};
@@ -59,7 +59,7 @@ impl ToAscPtr for CosmosTrigger {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub enum CosmosTrigger {
     Block(Arc<codec::Block>),
     Event {
@@ -69,8 +69,6 @@ pub enum CosmosTrigger {
     Transaction(Arc<codec::TransactionData>),
     Message(Arc<codec::MessageData>),
 }
-
-impl CheapClone for CosmosTrigger {}
 
 impl PartialEq for CosmosTrigger {
     fn eq(&self, other: &Self) -> bool {

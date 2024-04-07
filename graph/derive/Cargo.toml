@@ -1,0 +1,18 @@
+[package]
+name = "graph_derive"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1.0.98", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0.73"
+heck = "0.4"
