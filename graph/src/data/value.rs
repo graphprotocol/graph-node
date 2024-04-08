@@ -280,7 +280,7 @@ impl CacheWeight for Entry {
 
 impl CacheWeight for Object {
     fn indirect_weight(&self) -> usize {
-        self.0.iter().map(CacheWeight::indirect_weight).sum()
+        self.0.indirect_weight()
     }
 }
 
@@ -297,7 +297,7 @@ impl std::fmt::Debug for Object {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -541,7 +541,6 @@ impl From<Value> for q::Value {
     }
 }
 
-/*
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -559,4 +558,38 @@ impl std::fmt::Debug for Value {
         }
     }
 }
-*/
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::CacheWeight;
+
+    use super::{Entry, Object, Value, Word};
+
+    /// Test that we measure cache weight properly. If the definition of
+    /// `Value` changes, it's ok if these tests fail. They will then just
+    /// need to be adapted to the changed layout of `Value`
+    #[test]
+    fn cache_weight() {
+        let e = Entry::new(Word::from("hello"), Value::Int(42));
+        assert_eq!(e.weight(), 48 + 5);
+
+        let o = Object(vec![e.clone(), e.clone()].into_boxed_slice());
+        assert_eq!(o.weight(), 16 + 2 * (48 + 5));
+
+        let map = vec![
+            (Word::from("a"), Value::Int(1)),
+            (Word::from("b"), Value::Int(2)),
+        ];
+        let entries_weight = 2 * (16 + 1 + 32);
+        assert_eq!(map.weight(), 24 + entries_weight);
+
+        let v = Value::String("hello".to_string());
+        assert_eq!(v.weight(), 32 + 5);
+        let v = Value::Int(42);
+        assert_eq!(v.weight(), 32);
+
+        let v = Value::Object(Object::from_iter(map));
+        // Not entirely sure where the 8 comes from
+        assert_eq!(v.weight(), 24 + 8 + entries_weight);
+    }
+}

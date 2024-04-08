@@ -46,6 +46,12 @@ impl CacheWeight for bool {
     }
 }
 
+impl<T1: CacheWeight, T2: CacheWeight> CacheWeight for (T1, T2) {
+    fn indirect_weight(&self) -> usize {
+        self.0.indirect_weight() + self.1.indirect_weight()
+    }
+}
+
 impl<T: CacheWeight> CacheWeight for Option<T> {
     fn indirect_weight(&self) -> usize {
         match self {
