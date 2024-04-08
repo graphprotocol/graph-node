@@ -8,6 +8,7 @@ use crate::{
     constraint_violation,
     data::{store::Id, subgraph::schema::SubgraphError},
     data_source::CausalityRegion,
+    derive::CacheWeight,
     prelude::DeploymentHash,
     util::cache_weight::CacheWeight,
 };
@@ -36,7 +37,7 @@ use super::{BlockNumber, EntityKey, EntityType, StoreError, StoreEvent, StoredDy
 /// `append_row`, eliminates an update in the database which would otherwise
 /// be needed to clamp the open block range of the entity to the block
 /// contained in `end`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, CacheWeight, Debug, PartialEq, Eq)]
 pub enum EntityModification {
     /// Insert the entity
     Insert {
@@ -291,7 +292,7 @@ impl EntityModification {
 }
 
 /// A list of entity changes grouped by the entity type
-#[derive(Debug)]
+#[derive(Debug, CacheWeight)]
 pub struct RowGroup {
     pub entity_type: EntityType,
     /// All changes for this entity type, ordered by block; i.e., if `i < j`
@@ -527,7 +528,7 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 }
 
 /// A list of entity changes with one group per entity type
-#[derive(Debug)]
+#[derive(Debug, CacheWeight)]
 pub struct RowGroups {
     pub groups: Vec<RowGroup>,
 }
@@ -791,30 +792,6 @@ impl Batch {
 impl CacheWeight for Batch {
     fn indirect_weight(&self) -> usize {
         self.indirect_weight
-    }
-}
-
-impl CacheWeight for RowGroups {
-    fn indirect_weight(&self) -> usize {
-        self.groups.indirect_weight()
-    }
-}
-
-impl CacheWeight for RowGroup {
-    fn indirect_weight(&self) -> usize {
-        self.rows.indirect_weight()
-    }
-}
-
-impl CacheWeight for EntityModification {
-    fn indirect_weight(&self) -> usize {
-        match self {
-            EntityModification::Insert { key, data, .. }
-            | EntityModification::Overwrite { key, data, .. } => {
-                key.indirect_weight() + data.indirect_weight()
-            }
-            EntityModification::Remove { key, .. } => key.indirect_weight(),
-        }
     }
 }
 

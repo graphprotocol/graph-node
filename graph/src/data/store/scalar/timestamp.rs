@@ -6,9 +6,12 @@ use stable_hash::StableHash;
 use std::fmt::{self, Display, Formatter};
 use std::num::ParseIntError;
 
+use crate::derive::CacheWeight;
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, CacheWeight, Debug, Deserialize, Serialize, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub struct Timestamp(pub DateTime<Utc>);
 
 #[derive(thiserror::Error, Debug)]

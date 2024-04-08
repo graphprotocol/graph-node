@@ -3,12 +3,13 @@ use std::fmt;
 use crate::components::store::StoreError;
 use crate::data::store::{Id, Value};
 use crate::data_source::CausalityRegion;
+use crate::derive::CacheWeight;
 use crate::schema::EntityType;
 use crate::util::intern;
 
 /// Key by which an individual entity in the store can be accessed. Stores
 /// only the entity type and id. The deployment must be known from context.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, CacheWeight, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
     /// Name of the entity type.
     pub entity_type: EntityType,

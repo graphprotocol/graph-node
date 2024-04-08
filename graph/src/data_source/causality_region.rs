@@ -7,6 +7,7 @@ use diesel::{
 use std::fmt;
 
 use crate::components::subgraph::Entity;
+use crate::derive::CacheWeight;
 
 /// The causality region of a data source. All onchain data sources share the same causality region,
 /// but each offchain data source is assigned its own. This isolates offchain data sources from
@@ -19,7 +20,7 @@ use crate::components::subgraph::Entity;
 /// This necessary for determinism because offchain data sources don't have a deterministic order of
 /// execution, for example an IPFS file may become available at any point in time. The isolation
 /// rules make the indexing result reproducible, given a set of available files.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromSqlRow, Hash, PartialOrd, Ord)]
+#[derive(Debug, CacheWeight, Copy, Clone, PartialEq, Eq, FromSqlRow, Hash, PartialOrd, Ord)]
 pub struct CausalityRegion(i32);
 
 impl fmt::Display for CausalityRegion {

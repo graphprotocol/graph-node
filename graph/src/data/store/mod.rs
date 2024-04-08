@@ -1,5 +1,6 @@
 use crate::{
     components::store::DeploymentLocator,
+    derive::CacheWeight,
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
     schema::{EntityKey, EntityType},
@@ -737,7 +738,7 @@ lazy_static! {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, CacheWeight, PartialEq, Eq, Serialize)]
 pub struct Entity(Object<Value>);
 
 impl<'a> IntoIterator for &'a Entity {
@@ -1056,12 +1057,6 @@ impl Entity {
 impl<'a> From<&'a Entity> for Cow<'a, Entity> {
     fn from(entity: &'a Entity) -> Self {
         Cow::Borrowed(entity)
-    }
-}
-
-impl CacheWeight for Entity {
-    fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
     }
 }
 

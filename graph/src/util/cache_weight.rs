@@ -1,12 +1,15 @@
+use chrono::{DateTime, TimeZone};
+
 use crate::{
     data::value::Word,
     prelude::{q, BigDecimal, BigInt, Value},
-    schema::{EntityKey, EntityType},
+    schema::EntityType,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     mem,
     sync::Arc,
+    time::Duration,
 };
 
 /// Estimate of how much memory a value consumes.
@@ -20,6 +23,18 @@ pub trait CacheWeight {
     /// The weight of values pointed to by this value but logically owned by it, which is not
     /// accounted for by `size_of`.
     fn indirect_weight(&self) -> usize;
+}
+
+impl CacheWeight for () {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for u8 {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
 }
 
 impl CacheWeight for i32 {
@@ -41,6 +56,12 @@ impl CacheWeight for f64 {
 }
 
 impl CacheWeight for bool {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for Duration {
     fn indirect_weight(&self) -> usize {
         0
     }
@@ -123,9 +144,9 @@ impl CacheWeight for BigInt {
     }
 }
 
-impl CacheWeight for crate::data::store::scalar::Bytes {
+impl<TZ: TimeZone> CacheWeight for DateTime<TZ> {
     fn indirect_weight(&self) -> usize {
-        self.as_slice().len()
+        0
     }
 }
 
@@ -164,12 +185,6 @@ impl CacheWeight for usize {
 impl CacheWeight for EntityType {
     fn indirect_weight(&self) -> usize {
         0
-    }
-}
-
-impl CacheWeight for EntityKey {
-    fn indirect_weight(&self) -> usize {
-        self.entity_id.indirect_weight() + self.entity_type.indirect_weight()
     }
 }
 

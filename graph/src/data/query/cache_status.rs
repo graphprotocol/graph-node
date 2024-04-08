@@ -3,8 +3,10 @@ use std::slice::Iter;
 
 use serde::Serialize;
 
+use crate::derive::CacheWeight;
+
 /// Used for checking if a response hit the cache.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, CacheWeight, Debug, PartialEq, Eq, Hash)]
 pub enum CacheStatus {
     /// Hit is a hit in the generational cache.
     Hit,

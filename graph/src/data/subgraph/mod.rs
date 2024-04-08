@@ -46,7 +46,7 @@ use crate::{
         offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
         UnresolvedDataSourceTemplate,
     },
-    derive::CheapClone,
+    derive::{CacheWeight, CheapClone},
     ensure,
     prelude::{r, Value, ENV_VARS},
     schema::{InputSchema, SchemaValidationError},
@@ -77,7 +77,7 @@ where
 
 /// The IPFS hash used to identifiy a deployment externally, i.e., the
 /// `Qm..` string that `graph-cli` prints when deploying to a subgraph
-#[derive(Clone, CheapClone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(Clone, CheapClone, CacheWeight, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DeploymentHash(String);
 
 impl stable_hash_legacy::StableHash for DeploymentHash {

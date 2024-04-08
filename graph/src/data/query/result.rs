@@ -3,6 +3,7 @@ use super::trace::{HttpTrace, TRACE_NONE};
 use crate::cheap_clone::CheapClone;
 use crate::components::server::query::ServerResponse;
 use crate::data::value::Object;
+use crate::derive::CacheWeight;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http_body_util::Full;
 use hyper::header::{
@@ -218,7 +219,7 @@ impl QueryResults {
 }
 
 /// The result of running a query, if successful.
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, CacheWeight, Default, Serialize)]
 pub struct QueryResult {
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -365,12 +366,6 @@ impl<V: Into<QueryResult>, E: Into<QueryResult>> From<Result<V, E>> for QueryRes
             Ok(v) => v.into(),
             Err(e) => e.into(),
         }
-    }
-}
-
-impl CacheWeight for QueryResult {
-    fn indirect_weight(&self) -> usize {
-        self.data.indirect_weight() + self.errors.indirect_weight()
     }
 }
 

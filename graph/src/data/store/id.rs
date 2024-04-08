@@ -22,7 +22,8 @@ use crate::{
     components::store::StoreError,
     constraint_violation,
     data::value::Word,
-    prelude::{CacheWeight, QueryExecutionError},
+    derive::CacheWeight,
+    prelude::QueryExecutionError,
     runtime::gas::{Gas, GasSizeOf},
 };
 
@@ -137,7 +138,7 @@ impl std::fmt::Display for IdType {
 }
 
 /// Values for the ids of entities
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, CacheWeight, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Id {
     String(Word),
     Bytes(scalar::Bytes),
@@ -214,16 +215,6 @@ impl std::fmt::Display for Id {
             Id::String(s) => write!(f, "{}", s),
             Id::Bytes(b) => write!(f, "{}", b),
             Id::Int8(i) => write!(f, "{}", i),
-        }
-    }
-}
-
-impl CacheWeight for Id {
-    fn indirect_weight(&self) -> usize {
-        match self {
-            Id::String(s) => s.indirect_weight(),
-            Id::Bytes(b) => b.indirect_weight(),
-            Id::Int8(_) => 0,
         }
     }
 }

@@ -1,4 +1,5 @@
-use crate::prelude::{q, s, CacheWeight};
+use crate::derive::CacheWeight;
+use crate::prelude::{q, s};
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
@@ -120,7 +121,7 @@ impl PartialEq<Word> for &str {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, CacheWeight, Debug, PartialEq)]
 struct Entry {
     key: Option<Word>,
     value: Value,
@@ -142,7 +143,7 @@ impl Entry {
     }
 }
 
-#[derive(Clone, PartialEq, Default)]
+#[derive(Clone, CacheWeight, PartialEq, Default)]
 pub struct Object(Box<[Entry]>);
 
 impl Object {
@@ -272,18 +273,6 @@ impl<'a> IntoIterator for &'a Object {
     }
 }
 
-impl CacheWeight for Entry {
-    fn indirect_weight(&self) -> usize {
-        self.key.indirect_weight() + self.value.indirect_weight()
-    }
-}
-
-impl CacheWeight for Object {
-    fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
-    }
-}
-
 impl std::fmt::Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
@@ -297,7 +286,7 @@ impl std::fmt::Debug for Object {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, CacheWeight, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -404,21 +393,6 @@ impl std::fmt::Display for Value {
             Value::Timestamp(ref ts) => {
                 write!(f, "\"{}\"", ts.as_microseconds_since_epoch().to_string())
             }
-        }
-    }
-}
-
-impl CacheWeight for Value {
-    fn indirect_weight(&self) -> usize {
-        match self {
-            Value::Boolean(_)
-            | Value::Int(_)
-            | Value::Null
-            | Value::Float(_)
-            | Value::Timestamp(_) => 0,
-            Value::Enum(s) | Value::String(s) => s.indirect_weight(),
-            Value::List(l) => l.indirect_weight(),
-            Value::Object(o) => o.indirect_weight(),
         }
     }
 }

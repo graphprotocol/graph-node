@@ -8,10 +8,11 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use crate::blockchain::BlockHash;
+use crate::derive::CacheWeight;
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 
 /// A byte array that's serialized as a hex string prefixed by `0x`.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, CacheWeight, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Bytes(Box<[u8]>);
 
 impl Deref for Bytes {

@@ -4,6 +4,7 @@ use serde::{ser::SerializeMap, Serialize};
 
 use crate::{
     components::store::{BlockNumber, QueryPermit},
+    derive::CacheWeight,
     prelude::{lazy_static, CheapClone},
 };
 
@@ -13,7 +14,7 @@ lazy_static! {
     pub static ref TRACE_NONE: Arc<Trace> = Arc::new(Trace::None);
 }
 
-#[derive(Debug)]
+#[derive(Debug, CacheWeight)]
 pub struct TraceWithCacheStatus {
     pub trace: Arc<Trace>,
     pub cache_status: CacheStatus,
@@ -34,7 +35,7 @@ impl HttpTrace {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, CacheWeight)]
 pub enum Trace {
     None,
     Root {
