@@ -70,8 +70,7 @@ pub struct EnvVars {
     /// assertions](https://doc.rust-lang.org/reference/conditional-compilation.html#debug_assertions)
     /// are enabled.
     pub allow_non_deterministic_fulltext_search: bool,
-    /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`. The default
-    /// value is `0.0.7`.
+    /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`.
     pub max_spec_version: Version,
     /// Set by the environment variable `GRAPH_LOAD_WINDOW_SIZE` (expressed in
     /// seconds). The default value is 300 seconds.
@@ -325,7 +324,7 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "1.0.0")]
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "1.2.0")]
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
     load_window_size_in_secs: u64,

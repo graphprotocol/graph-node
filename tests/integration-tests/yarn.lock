@@ -759,6 +759,13 @@
   dependencies:
     assemblyscript "0.19.10"
 
+"@graphprotocol/graph-ts@0.34.0":
+  version "0.34.0"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.34.0.tgz#ca47398295b114f25b412faa364b98af31fa2bb7"
+  integrity sha512-gnhjai65AV4YMYe9QHGz+HP/jdzI54z/nOfEXZFfh6m987EP2iy3ycLXrTi+ahcogHH7vtoWFdXbUzZbE8bCAg==
+  dependencies:
+    assemblyscript "0.19.10"
+
 "@graphql-tools/batch-execute@8.5.1":
   version "8.5.1"
   resolved "https://registry.yarnpkg.com/@graphql-tools/batch-execute/-/batch-execute-8.5.1.tgz#fa3321d58c64041650be44250b1ebc3aab0ba7a9"

@@ -583,10 +583,10 @@ dataSources:
 schema:
   file:
     /: /ipfs/Qmschema
-specVersion: 0.0.9
+specVersion: 1.2.0
 ";
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_9).await;
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_1_2_0).await;
     // Check if end block is parsed correctly
     let data_source = manifest.data_sources.first().unwrap();
     let topic1 = &data_source.as_onchain().unwrap().mapping.event_handlers[0].topic1;
