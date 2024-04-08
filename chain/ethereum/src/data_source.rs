@@ -1592,17 +1592,19 @@ impl MappingEventHandler {
     }
 
     pub fn matches(&self, log: &Log) -> bool {
+        let matches_topic = |index: usize, topic_opt: &Option<Vec<H256>>| -> bool {
+            topic_opt.as_ref().map_or(true, |topic_vec| {
+                log.topics
+                    .get(index)
+                    .map_or(false, |log_topic| topic_vec.contains(log_topic))
+            })
+        };
+
         if let Some(topic0) = log.topics.get(0) {
             return self.topic0() == *topic0
-                && self.topic1.as_ref().map_or(true, |t1| {
-                    log.topics.get(1).map_or(false, |topic| t1.contains(topic))
-                })
-                && self.topic2.as_ref().map_or(true, |t2| {
-                    log.topics.get(2).map_or(false, |topic| t2.contains(topic))
-                })
-                && self.topic3.as_ref().map_or(true, |t3| {
-                    log.topics.get(3).map_or(false, |topic| t3.contains(topic))
-                });
+                && matches_topic(1, &self.topic1)
+                && matches_topic(2, &self.topic2)
+                && matches_topic(3, &self.topic3);
         }
 
         // Logs without topic0 should simply be skipped

@@ -39,6 +39,9 @@ use crate::{Chain, Mapping, ENV_VARS};
 pub type EventSignature = H256;
 pub type FunctionSelector = [u8; 4];
 
+/// `EventSignatureWithTopics` is used to match events with
+/// indexed arguments when they are defined in the subgraph
+/// manifest.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventSignatureWithTopics {
     pub address: Option<Address>,
@@ -65,6 +68,10 @@ impl EventSignatureWithTopics {
         }
     }
 
+    /// Checks if an event matches the `EventSignatureWithTopics`
+    /// If self.address is None, it's considered a wildcard match.
+    /// Otherwise, it must match the provided address.
+    /// It must also match the topics if they are Some
     pub fn matches(&self, address: Option<&H160>, sig: H256, topics: &Vec<H256>) -> bool {
         // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
         let address_matches = match self.address {
@@ -330,6 +337,7 @@ pub struct EthereumLogFilter {
     /// Maps to a boolean representing if a trigger requires a transaction receipt.
     wildcard_events: HashMap<EventSignature, bool>,
     /// Events with any of the topic filters set
+    /// Maps to a boolean representing if a trigger requires a transaction receipt.
     events_with_topic_filters: HashMap<EventSignatureWithTopics, bool>,
 }
 
