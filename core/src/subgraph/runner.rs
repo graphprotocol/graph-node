@@ -110,10 +110,13 @@ where
         self.run_inner(break_on_restart).await
     }
 
+    fn is_static_filters_enabled(&self) -> bool {
+        self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold
+    }
+
     fn build_filter(&self) -> C::TriggerFilter {
         let current_ptr = self.inputs.store.block_ptr();
-        let static_filters =
-            self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold;
+        let static_filters = self.is_static_filters_enabled();
 
         // Filter out data sources that have reached their end block
         let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
@@ -347,7 +350,7 @@ where
         // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
         let created_data_sources_needs_restart =
-            !self.inputs.static_filters && block_state.has_created_on_chain_data_sources();
+            !self.is_static_filters_enabled() && block_state.has_created_on_chain_data_sources();
 
         // Determine if the block stream needs to be restarted due to newly created on-chain data sources
         // or data sources that have reached their end block.
