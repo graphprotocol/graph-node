@@ -6,8 +6,10 @@ use std::{
 use graph::anyhow::{self, anyhow};
 use serde::{de::Visitor, Deserialize};
 
-/// Represents the primitive `FieldElement` type used in Starknet. Each `FieldElement` is 252-bit
-/// in size.
+/// Represents the universal primitive `FieldElement` type used in Starknet. Each `FieldElement` is
+/// 252-bit in size. All data structures on Starknet inherently consist of `FieldElement`, despite
+/// higher-level abstraction. Contract addresses, transaction calldata, event keys (similar to
+/// topics in Ethereum) and data etc. are all `FieldElement`.
 #[derive(Hash, Clone, PartialEq, Eq)]
 pub struct Felt([u8; 32]);
 

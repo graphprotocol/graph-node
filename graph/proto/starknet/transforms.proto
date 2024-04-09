@@ -28,8 +28,8 @@ message TopicWithRanges {
   repeated BlockRange block_ranges = 2;
 }
 
-// A range of blocks. Both `start_block` and `end_block` are inclusive. When `end_block` is `0`, it means that any
-// block height >= `start_block` is matched.
+// A range of blocks. `start_block` is inclusive, and `end_block` is exclusive. When `end_block` is `0`, it means
+// that any block height >= `start_block` is matched.
 message BlockRange {
   uint64 start_block = 1;
   uint64 end_block = 2;

@@ -31,8 +31,8 @@ pub struct TopicWithRanges {
     #[prost(message, repeated, tag = "2")]
     pub block_ranges: ::prost::alloc::vec::Vec<BlockRange>,
 }
-/// A range of blocks. Both `start_block` and `end_block` are inclusive. When `end_block` is `0`, it means that any
-/// block height >= `start_block` is matched.
+/// A range of blocks. `start_block` is inclusive, and `end_block` is exclusive. When `end_block` is `0`, it means
+/// that any block height >= `start_block` is matched.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockRange {

@@ -1,6 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 
 use graph::{
+    anyhow::Error,
     blockchain::{EmptyNodeCapabilities, TriggerFilter as TriggerFilterTrait},
     components::store::BlockNumber,
     firehose::{
@@ -19,33 +20,73 @@ const TRANSACTION_EVENT_FILTER_TYPE_URL: &str =
     "type.googleapis.com/zklend.starknet.transform.v1.TransactionEventFilter";
 
 use crate::{
+    codec::Event,
     data_source::{DataSource, DataSourceTemplate},
     felt::Felt,
     Chain,
 };
 
-type TopicWithRanges = HashMap<Felt, Vec<BlockRange>>;
+/// Starknet contract address, represented by the primitive [Felt] type.
+type Address = Felt;
 
+/// Starknet event signature, encoded as the first element of any event's `keys` array.
+type EventSignature = Felt;
+
+/// A hashmap for quick lookup on whether an event matches with the filter. If the event's signature
+/// exists, further comparison needs to be made against the block ranges.
+type EventSignatureWithRanges = HashMap<EventSignature, Vec<BlockRange>>;
+
+/// Contains event and block filters. The two types of filters function independently: event
+/// filters are only applied to event triggers; and block filters are only applied to block
+/// triggers.
 #[derive(Default, Clone)]
 pub struct TriggerFilter {
-    pub(crate) event: StarknetEventFilter,
-    pub(crate) block: StarknetBlockFilter,
+    event: EventFilter,
+    block: BlockFilter,
 }
 
+/// An event trigger is matched if and only if *ALL* conditions are met for the event:
+///
+/// - it's emitted from one of the `contract_addresses` keys
+/// - its event signature matches with one of the keys in [EventSignatureWithRanges]
+/// - it's emitted in a block within one of the block ranges for that matched signature
 #[derive(Default, Clone)]
-pub struct StarknetEventFilter {
-    pub contract_addresses: HashMap<Felt, TopicWithRanges>,
+struct EventFilter {
+    contract_addresses: HashMap<Address, EventSignatureWithRanges>,
 }
 
+/// A block trigger is matched if and only if its height falls into any one of the defined
+/// `block_ranges`.
+///
+/// Note that this filter is only used to match block triggers interally inside `graph-node`, and
+/// is never sent to upstream Firehose providers, as we always need the block headers for marking
+/// chain head.
 #[derive(Default, Clone)]
-pub struct StarknetBlockFilter {
-    pub block_ranges: Vec<BlockRange>,
+struct BlockFilter {
+    block_ranges: Vec<BlockRange>,
 }
 
+/// A range of blocks defined by starting and (optional) ending height.
+///
+/// `start_block` is inclusive. `end_block` (if defined) is exclusive.
 #[derive(Clone, PartialEq, Eq)]
-pub struct BlockRange {
-    pub start_block: BlockNumber,
-    pub end_block: Option<BlockNumber>,
+struct BlockRange {
+    start_block: BlockNumber,
+    end_block: Option<BlockNumber>,
+}
+
+impl TriggerFilter {
+    pub fn is_block_matched(&self, block_height: BlockNumber) -> bool {
+        self.block.is_matched(block_height)
+    }
+
+    pub fn is_event_matched(
+        &self,
+        event: &Event,
+        block_height: BlockNumber,
+    ) -> Result<bool, Error> {
+        self.event.is_matched(event, block_height)
+    }
 }
 
 impl TriggerFilterTrait<Chain> for TriggerFilter {
@@ -53,9 +94,9 @@ impl TriggerFilterTrait<Chain> for TriggerFilter {
 
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.event
-            .extend(StarknetEventFilter::from_data_sources(data_sources.clone()));
+            .extend(EventFilter::from_data_sources(data_sources.clone()));
         self.block
-            .extend(StarknetBlockFilter::from_data_sources(data_sources));
+            .extend(BlockFilter::from_data_sources(data_sources));
     }
 
     fn node_capabilities(&self) -> EmptyNodeCapabilities<Chain> {
@@ -77,12 +118,12 @@ impl TriggerFilterTrait<Chain> for TriggerFilter {
             .contract_addresses
             .iter()
             .map(
-                |(contract_address, topic_with_ranges)| FirehoseFilterContractEventFilter {
+                |(contract_address, sig_with_ranges)| FirehoseFilterContractEventFilter {
                     contract_address: contract_address.into(),
-                    topics: topic_with_ranges
+                    topics: sig_with_ranges
                         .iter()
-                        .map(|(topic, ranges)| FirehoseFilterTopicWithRanges {
-                            topic: topic.into(),
+                        .map(|(sig, ranges)| FirehoseFilterTopicWithRanges {
+                            topic: sig.into(),
                             block_ranges: ranges
                                 .iter()
                                 .map(|range| FirehoseFilterBlockRange {
@@ -103,7 +144,7 @@ impl TriggerFilterTrait<Chain> for TriggerFilter {
     }
 }
 
-impl StarknetEventFilter {
+impl EventFilter {
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
             // Using `filter_map` instead of `filter` to avoid having to unwrap source address in
@@ -148,31 +189,31 @@ impl StarknetEventFilter {
             )
     }
 
-    pub fn extend(&mut self, other: StarknetEventFilter) {
+    pub fn extend(&mut self, other: EventFilter) {
         if other.is_empty() {
             return;
         }
 
-        let StarknetEventFilter { contract_addresses } = other;
+        let EventFilter { contract_addresses } = other;
 
-        for (address, topic_with_ranges) in contract_addresses.into_iter() {
+        for (address, sig_with_ranges) in contract_addresses.into_iter() {
             match self.contract_addresses.entry(address) {
                 Entry::Occupied(entry) => {
                     let entry = entry.into_mut();
-                    for (topic, mut block_ranges) in topic_with_ranges.into_iter() {
-                        match entry.entry(topic) {
-                            Entry::Occupied(topic_entry) => {
+                    for (sig, mut block_ranges) in sig_with_ranges.into_iter() {
+                        match entry.entry(sig) {
+                            Entry::Occupied(sig_entry) => {
                                 // TODO: merge overlapping block ranges
-                                topic_entry.into_mut().append(&mut block_ranges);
+                                sig_entry.into_mut().append(&mut block_ranges);
                             }
-                            Entry::Vacant(topic_entry) => {
-                                topic_entry.insert(block_ranges);
+                            Entry::Vacant(sig_entry) => {
+                                sig_entry.insert(block_ranges);
                             }
                         }
                     }
                 }
                 Entry::Vacant(entry) => {
-                    entry.insert(topic_with_ranges);
+                    entry.insert(sig_with_ranges);
                 }
             }
         }
@@ -181,9 +222,40 @@ impl StarknetEventFilter {
     pub fn is_empty(&self) -> bool {
         self.contract_addresses.is_empty()
     }
+
+    pub fn is_matched(&self, event: &Event, block_height: BlockNumber) -> Result<bool, Error> {
+        let from_addr: Felt = event.from_addr.as_slice().try_into()?;
+
+        Ok(match self.contract_addresses.get(&from_addr) {
+            Some(entry) => {
+                let event_sig = match event.keys.first() {
+                    Some(sig) => sig,
+                    // Non-standard events with an empty `keys` array never match.
+                    None => return Ok(false),
+                };
+                let event_sig: Felt = event_sig.as_slice().try_into()?;
+
+                match entry.get(&event_sig) {
+                    Some(block_ranges) => block_ranges.iter().any(|range| {
+                        if block_height >= range.start_block {
+                            match range.end_block {
+                                // `end_block` is exclusive
+                                Some(end_block) => block_height < end_block,
+                                None => true,
+                            }
+                        } else {
+                            false
+                        }
+                    }),
+                    None => false,
+                }
+            }
+            None => false,
+        })
+    }
 }
 
-impl StarknetBlockFilter {
+impl BlockFilter {
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
             .filter(|data_source| data_source.mapping.block_handler.is_some())
@@ -198,12 +270,12 @@ impl StarknetBlockFilter {
             })
     }
 
-    pub fn extend(&mut self, other: StarknetBlockFilter) {
+    pub fn extend(&mut self, other: BlockFilter) {
         if other.is_empty() {
             return;
         }
 
-        let StarknetBlockFilter { block_ranges } = other;
+        let BlockFilter { block_ranges } = other;
 
         // TODO: merge overlapping block ranges
         for new_range in block_ranges.into_iter() {
@@ -215,5 +287,18 @@ impl StarknetBlockFilter {
 
     pub fn is_empty(&self) -> bool {
         self.block_ranges.is_empty()
+    }
+
+    pub fn is_matched(&self, block_height: BlockNumber) -> bool {
+        self.block_ranges.iter().any(|range| {
+            if block_height >= range.start_block {
+                match range.end_block {
+                    Some(end_block) => block_height < end_block,
+                    None => true,
+                }
+            } else {
+                false
+            }
+        })
     }
 }

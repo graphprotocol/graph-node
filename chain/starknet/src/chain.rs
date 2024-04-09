@@ -34,7 +34,6 @@ use crate::{
     data_source::{
         DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
     },
-    felt::Felt,
     trigger::{StarknetBlockTrigger, StarknetEventTrigger, StarknetTrigger},
 };
 
@@ -384,65 +383,24 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let block_height = block.height as BlockNumber;
         let shared_block = Arc::new(block.clone());
 
-        let mut triggers: Vec<_> = shared_block
-            .transactions
-            .iter()
-            .flat_map(|transaction| -> Vec<StarknetTrigger> {
-                let transaction = Arc::new(transaction.clone());
-                transaction
-                    .events
-                    .iter()
-                    .filter_map(|event| {
-                        let from_addr: Felt = event.from_addr.as_slice().try_into().ok()?;
+        let mut triggers = vec![];
 
-                        match filter.event.contract_addresses.get(&from_addr) {
-                            Some(entry) => {
-                                let event_topic: Felt =
-                                    event.keys.first()?.as_slice().try_into().ok()?;
+        // Using for loops instead of iterators to make error handling easier (using ?).
+        for transaction in shared_block.transactions.iter() {
+            let transaction = Arc::new(transaction.clone());
 
-                                match entry.get(&event_topic) {
-                                    Some(block_ranges) => {
-                                        let block_matched = block_ranges.iter().any(|range| {
-                                            if block_height >= range.start_block {
-                                                match range.end_block {
-                                                    Some(end_block) => block_height < end_block,
-                                                    None => true,
-                                                }
-                                            } else {
-                                                false
-                                            }
-                                        });
-
-                                        if block_matched {
-                                            Some(StarknetTrigger::Event(StarknetEventTrigger {
-                                                event: Arc::new(event.clone()),
-                                                block: shared_block.clone(),
-                                                transaction: transaction.clone(),
-                                            }))
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    None => None,
-                                }
-                            }
-                            None => None,
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
-
-        if filter.block.block_ranges.iter().any(|range| {
-            if block_height >= range.start_block {
-                match range.end_block {
-                    Some(end_block) => block_height < end_block,
-                    None => true,
+            for event in transaction.events.iter() {
+                if filter.is_event_matched(event, block_height)? {
+                    triggers.push(StarknetTrigger::Event(StarknetEventTrigger {
+                        event: Arc::new(event.clone()),
+                        block: shared_block.clone(),
+                        transaction: transaction.clone(),
+                    }));
                 }
-            } else {
-                false
             }
-        }) {
+        }
+
+        if filter.is_block_matched(block_height) {
             triggers.push(StarknetTrigger::Block(StarknetBlockTrigger {
                 block: shared_block,
             }));
