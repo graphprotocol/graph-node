@@ -302,3 +302,202 @@ impl BlockFilter {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn starknet_trigger_empty_filter_to_firehose() {
+        let filter = TriggerFilter::default();
+
+        // Produces a "header-only" Firehose filter to not stream any transaction.
+        assert_eq!(
+            filter.to_firehose_filter(),
+            vec![Any {
+                type_url: BLOCK_HEADER_ONLY_TYPE_URL.into(),
+                value: FirehoseFilterBlockHeaderOnly {}.encode_to_vec(),
+            }]
+        );
+    }
+
+    #[test]
+    fn starknet_trigger_filter_no_events_to_firehose() {
+        let filter = create_block_only_filter();
+
+        // [BlockFilter] is discarded as we would always stream block headers.
+        assert_eq!(
+            filter.to_firehose_filter(),
+            vec![Any {
+                type_url: BLOCK_HEADER_ONLY_TYPE_URL.into(),
+                value: FirehoseFilterBlockHeaderOnly {}.encode_to_vec(),
+            }]
+        );
+    }
+
+    #[test]
+    fn starknet_trigger_event_filter_to_firehose() {
+        let filter = create_event_only_filter();
+
+        // [BlockFilter] is discarded as we would always stream block headers.
+        assert_eq!(
+            filter.to_firehose_filter(),
+            vec![Any {
+                type_url: TRANSACTION_EVENT_FILTER_TYPE_URL.into(),
+                value: FirehoseFilterTransactionEventFilter {
+                    event_filters: vec![FirehoseFilterContractEventFilter {
+                        contract_address: Address::from_str("0x1234").unwrap().as_ref().into(),
+                        topics: vec![FirehoseFilterTopicWithRanges {
+                            topic: EventSignature::from_str("0x8888").unwrap().as_ref().into(),
+                            block_ranges: vec![FirehoseFilterBlockRange {
+                                start_block: 100,
+                                end_block: 200
+                            }]
+                        }]
+                    }]
+                }
+                .encode_to_vec(),
+            }]
+        );
+    }
+
+    #[test]
+    fn starknet_trigger_block_filter_matched() {
+        let filter = create_block_only_filter();
+
+        assert!(filter.is_block_matched(100));
+        assert!(filter.is_block_matched(199));
+    }
+
+    #[test]
+    fn starknet_trigger_block_filter_not_matched() {
+        let filter = create_block_only_filter();
+
+        assert_eq!(filter.is_block_matched(99), false);
+
+        // `end_block` is exclusive
+        assert_eq!(filter.is_block_matched(200), false);
+    }
+
+    #[test]
+    fn starknet_trigger_block_filter_open_ended() {
+        let filter = TriggerFilter {
+            event: EventFilter::default(),
+            block: BlockFilter {
+                block_ranges: vec![BlockRange {
+                    start_block: 100,
+                    end_block: None,
+                }],
+            },
+        };
+
+        assert_eq!(filter.is_block_matched(99), false);
+        assert_eq!(filter.is_block_matched(100), true);
+        assert_eq!(filter.is_block_matched(1000), true);
+    }
+
+    #[test]
+    fn starknet_trigger_event_filter_matched() {
+        let filter = create_event_only_filter();
+
+        assert_eq!(
+            filter
+                .is_event_matched(
+                    &Event {
+                        from_addr: Address::from_str("0x1234").unwrap().as_ref().into(),
+                        keys: vec![EventSignature::from_str("0x8888").unwrap().as_ref().into()],
+                        data: vec![]
+                    },
+                    100
+                )
+                .unwrap(),
+            true
+        );
+    }
+
+    #[test]
+    fn starknet_trigger_event_filter_not_matched() {
+        let filter = create_event_only_filter();
+
+        // Address mismatch
+        assert_eq!(
+            filter
+                .is_event_matched(
+                    &Event {
+                        from_addr: Address::from_str("0x4321").unwrap().as_ref().into(),
+                        keys: vec![EventSignature::from_str("0x8888").unwrap().as_ref().into()],
+                        data: vec![]
+                    },
+                    100
+                )
+                .unwrap(),
+            false
+        );
+
+        // Missing event keys (non-standard events)
+        assert_eq!(
+            filter
+                .is_event_matched(
+                    &Event {
+                        from_addr: Address::from_str("0x1234").unwrap().as_ref().into(),
+                        keys: vec![],
+                        data: vec![]
+                    },
+                    100
+                )
+                .unwrap(),
+            false
+        );
+
+        // Block out of range
+        assert_eq!(
+            filter
+                .is_event_matched(
+                    &Event {
+                        from_addr: Address::from_str("0x4321").unwrap().as_ref().into(),
+                        keys: vec![EventSignature::from_str("0x8888").unwrap().as_ref().into()],
+                        data: vec![]
+                    },
+                    200
+                )
+                .unwrap(),
+            false
+        );
+    }
+
+    fn create_block_only_filter() -> TriggerFilter {
+        TriggerFilter {
+            event: EventFilter::default(),
+            block: BlockFilter {
+                block_ranges: vec![BlockRange {
+                    start_block: 100,
+                    end_block: Some(200),
+                }],
+            },
+        }
+    }
+
+    fn create_event_only_filter() -> TriggerFilter {
+        TriggerFilter {
+            event: EventFilter {
+                contract_addresses: [(
+                    Address::from_str("0x1234").unwrap(),
+                    [(
+                        EventSignature::from_str("0x8888").unwrap(),
+                        vec![BlockRange {
+                            start_block: 100,
+                            end_block: Some(200),
+                        }],
+                    )]
+                    .into_iter()
+                    .collect(),
+                )]
+                .into_iter()
+                .collect(),
+            },
+            block: BlockFilter::default(),
+        }
+    }
+}
