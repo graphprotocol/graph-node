@@ -1,10 +1,82 @@
 # NEWS
 
-## Unreleased
+## v0.35.0
+### What's new
 
-- The ElasticSearch index to which `graph-node` logs can now be configured
-  with the `GRAPH_ELASTIC_SEARCH_INDEX` environment variable which defaults
-  to `subgraph`
+- **Aggregations** - Declarative aggregations defined in the subgraph schema allow the developer to aggregate values on specific intervals using flexible aggregation functions. [(#5082)](https://github.com/graphprotocol/graph-node/pull/5082) [(#5184)](https://github.com/graphprotocol/graph-node/pull/5184) [(#5209)](https://github.com/graphprotocol/graph-node/pull/5209) [(#5242)](https://github.com/graphprotocol/graph-node/pull/5242) [(#5208)](https://github.com/graphprotocol/graph-node/pull/5208)
+- **Add pause and resume to admin JSON-RPC API** - Adds support for explicit pausing and resuming of subgraph deployments with a field tracking the paused state in `indexerStatuses`. [(#5190)](https://github.com/graphprotocol/graph-node/pull/5190)
+- **Support eth_getBalance calls in subgraph mappings** - Enables fetching the Eth balance of an address from the mappings using `ethereum.getBalance(address)`. [(#5202)](https://github.com/graphprotocol/graph-node/pull/5202)
+- **Add parentHash to _meta query** - Particularly useful when polling for data each block to verify the sequence of blocks. [(#5232)](https://github.com/graphprotocol/graph-node/pull/5232)
+- **Parallel execution of all top-level queries in a single query body** [(#5273)](https://github.com/graphprotocol/graph-node/pull/5273)
+- The ElasticSearch index to which `graph-node` logs can now be configured with the `GRAPH_ELASTIC_SEARCH_INDEX` environment variable which defaults to `subgraph`. [(#5210)](https://github.com/graphprotocol/graph-node/pull/5210)
+- Some small prefetch simplifications. [(#5132)](https://github.com/graphprotocol/graph-node/pull/5132)
+- Migration changing the type of health column to text. [(#5077)](https://github.com/graphprotocol/graph-node/pull/5077)
+- Disable eth_call_execution_time metric by default. [(#5164)](https://github.com/graphprotocol/graph-node/pull/5164)
+- Call revert_state_to whenever blockstream is restarted. [(#5187)](https://github.com/graphprotocol/graph-node/pull/5187)
+- Pruning performance improvement: only analyze when rebuilding. [(#5186)](https://github.com/graphprotocol/graph-node/pull/5186)
+- Disallow grafts within the reorg threshold. [(#5135)](https://github.com/graphprotocol/graph-node/pull/5135)
+- Optimize subgraph synced check-less. [(#5198)](https://github.com/graphprotocol/graph-node/pull/5198)
+- Improve error log. [(#5217)](https://github.com/graphprotocol/graph-node/pull/5217)
+- Update provider docs. [(#5216)](https://github.com/graphprotocol/graph-node/pull/5216)
+- Downgrade 'Entity cache statistics' log to trace. [(#5241)](https://github.com/graphprotocol/graph-node/pull/5241)
+- Do not clone MappingEventHandlers in match_and_decode. [(#5244)](https://github.com/graphprotocol/graph-node/pull/5244)
+- Make batching conditional on caught-up status. [(#5252)](https://github.com/graphprotocol/graph-node/pull/5252)
+- Remove hack in chain_head_listener. [(#5240)](https://github.com/graphprotocol/graph-node/pull/5240)
+- Increase sleep time in write queue processing. [(#5266)](https://github.com/graphprotocol/graph-node/pull/5266)
+- Memoize Batch.indirect_weight. [(#5276)](https://github.com/graphprotocol/graph-node/pull/5276) 
+- Optionally track detailed indexing gas metrics in csv. [(#5215)](https://github.com/graphprotocol/graph-node/pull/5215)
+- store: Do not use prefix comparisons for primary keys. [(#5289)](https://github.com/graphprotocol/graph-node/pull/5289)
+
+### Graphman
+
+- Add ability to list removed unused deployment by id. [(#5152)](https://github.com/graphprotocol/graph-node/pull/5152)
+- Add command to change block cache shard. [(#5169)](https://github.com/graphprotocol/graph-node/pull/5169)
+
+### Firehose and Substreams
+
+- **Add key-based authentication for Firehose/Substreams providers.** [(#5259)](https://github.com/graphprotocol/graph-node/pull/5259)
+- Increase blockstream buffer size for substreams. [(#5182)](https://github.com/graphprotocol/graph-node/pull/5182)
+- Improve substreams error handling. [(#5160)](https://github.com/graphprotocol/graph-node/pull/5160)
+- Reset substreams/firehose block ingestor backoff. [(#5047)](https://github.com/graphprotocol/graph-node/pull/5047)
+
+### Bug Fixes
+
+- Fix graphiql issue when querying subgraph names with multiple path segments. [(#5136)](https://github.com/graphprotocol/graph-node/pull/5136)
+- Fix change_health_column migration for sharded setup. [(#5183)](https://github.com/graphprotocol/graph-node/pull/5183)
+- Fix conversion of BlockTime for NEAR. [(#5206)](https://github.com/graphprotocol/graph-node/pull/5206)
+- Call revert_state_to to last good block instead of current block. [(#5195)](https://github.com/graphprotocol/graph-node/pull/5195)
+- Fix Action::block_finished. [(#5218)](https://github.com/graphprotocol/graph-node/pull/5218)
+- Fix runtime timeouts. [(#5236)](https://github.com/graphprotocol/graph-node/pull/5236)
+- Remove panic from rewind and truncate. [(#5233)](https://github.com/graphprotocol/graph-node/pull/5233)
+- Fix version stats for huge number of versions. [(#5261)](https://github.com/graphprotocol/graph-node/pull/5261)
+- Fix _meta query failure due to incorrect selection set use. [(#5265)](https://github.com/graphprotocol/graph-node/pull/5265)
+
+### Major dependency upgrades
+
+- Update to diesel 2. [(#5002)](https://github.com/graphprotocol/graph-node/pull/5002)
+- bump rust version. [(#4985)](https://github.com/graphprotocol/graph-node/pull/4985)
+
+### Contributors
+
+Thank you to all the contributors! `@incrypto32`, `@mangas`, `@lutter`, `@leoyvens`, `@zorancv`, `@YaroShkvorets`, `@seem-less`
+
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.34.1...v0.35.0
+
+<!--
+Not relevant
+* chore: fix typos by @vuittont60. [(#5214)](https://github.com/graphprotocol/graph-node/pull/5214)
+* bump openssl from 0.10.60 to 0.10.63 by @dependabot. [(#5154)](https://github.com/graphprotocol/graph-node/pull/5154)
+* bump h2 from 0.3.17 to 0.3.24 by @dependabot. [(#5150)](https://github.com/graphprotocol/graph-node/pull/5150)
+* bump crossbeam from 0.8.2 to 0.8.4 by @dependabot. [(#5145)](https://github.com/graphprotocol/graph-node/pull/5145)
+* bump termcolor from 1.4.0 to 1.4.1 by @dependabot. [(#5143)](https://github.com/graphprotocol/graph-node/pull/5143)
+* bump unsafe-libyaml from 0.2.8 to 0.2.10 by @dependabot. [(#5089)](https://github.com/graphprotocol/graph-node/pull/5089)
+* bump anyhow from 1.0.75 to 1.0.79 by @dependabot. [(#5142)](https://github.com/graphprotocol/graph-node/pull/5142)
+-->
+
+## v0.34.1
+## Bug fixes
+- Fixed an issue that caused an increase in data size of /metrics endpoint of graph-node. [(#5161)](https://github.com/graphprotocol/graph-node/issues/5161)
+- Fixed an issue that caused subgraphs with file data sources to skip non-deterministic errors that occurred in a file data source mapping handler.
 
 ## v0.34.0
 ### What's New
