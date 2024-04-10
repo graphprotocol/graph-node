@@ -10,7 +10,7 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::{components::store::BLOCK_NUMBER_MAX, object};
+use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
@@ -46,7 +46,7 @@ use crate::{
         offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
         UnresolvedDataSourceTemplate,
     },
-    derive::{CacheWeight, CheapClone},
+    derive::CacheWeight,
     ensure,
     prelude::{r, Value, ENV_VARS},
     schema::{InputSchema, SchemaValidationError},
@@ -77,8 +77,14 @@ where
 
 /// The IPFS hash used to identifiy a deployment externally, i.e., the
 /// `Qm..` string that `graph-cli` prints when deploying to a subgraph
-#[derive(Clone, CheapClone, CacheWeight, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(Clone, CacheWeight, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DeploymentHash(String);
+
+impl CheapClone for DeploymentHash {
+    fn cheap_clone(&self) -> Self {
+        self.clone()
+    }
+}
 
 impl stable_hash_legacy::StableHash for DeploymentHash {
     #[inline]

@@ -10,6 +10,7 @@ use std::time::Duration;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
+use crate::cheap_clone::CheapClone;
 use crate::components::store::BlockNumber;
 use crate::data::graphql::IntoValue;
 use crate::data::store::scalar::Timestamp;
@@ -17,8 +18,9 @@ use crate::derive::CheapClone;
 use crate::object;
 use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
+
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, CheapClone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
 #[diesel(sql_type = Bytea)]
 pub struct BlockHash(pub Box<[u8]>);
 
@@ -39,6 +41,12 @@ impl BlockHash {
 
     pub fn zero() -> Self {
         Self::from(H256::zero())
+    }
+}
+
+impl CheapClone for BlockHash {
+    fn cheap_clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 

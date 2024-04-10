@@ -14,6 +14,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use crate::{
+    cheap_clone::CheapClone,
     derive::CheapClone,
     ipfs_client::IpfsClient,
     prelude::{LinkResolver as LinkResolverTrait, *},

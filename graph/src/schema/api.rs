@@ -16,6 +16,7 @@ use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use crate::data::graphql::ext::{
     camel_cased_names, DefinitionExt, DirectiveExt, DocumentExt, ValueExt,
 };
+use crate::derive::CheapClone;
 use crate::prelude::{q, r, s, DeploymentHash};
 
 use super::{Aggregation, Field, InputSchema, Schema, TypeKind};
@@ -39,7 +40,7 @@ const BLOCK_HEIGHT: &str = "Block_height";
 const CHANGE_BLOCK_FILTER_NAME: &str = "BlockChangedFilter";
 const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, CheapClone)]
 pub enum ErrorPolicy {
     Allow,
     Deny,

@@ -8,7 +8,6 @@ use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
-use graph::derive::CheapClone;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::futures03::future::try_join_all;
@@ -64,7 +63,7 @@ use crate::{
     TriggerFilter, ENV_VARS,
 };
 
-#[derive(Debug, Clone, CheapClone)]
+#[derive(Debug, Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
@@ -72,6 +71,19 @@ pub struct EthereumAdapter {
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
+}
+
+impl CheapClone for EthereumAdapter {
+    fn cheap_clone(&self) -> Self {
+        Self {
+            logger: self.logger.clone(),
+            provider: self.provider.clone(),
+            web3: self.web3.cheap_clone(),
+            metrics: self.metrics.cheap_clone(),
+            supports_eip_1898: self.supports_eip_1898,
+            call_only: self.call_only,
+        }
+    }
 }
 
 impl EthereumAdapter {

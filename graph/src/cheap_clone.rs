@@ -38,3 +38,29 @@ impl<M: diesel::r2d2::ManageConnection> CheapClone for diesel::r2d2::Pool<M> {}
 impl<F: Future> CheapClone for futures03::future::Shared<F> {}
 
 impl CheapClone for Channel {}
+
+macro_rules! cheap_clone_is_copy {
+    ($($t:ty),*) => {
+        $(
+            impl CheapClone for $t {
+                #[inline]
+                fn cheap_clone(&self) -> Self {
+                    *self
+                }
+            }
+        )*
+    };
+}
+
+cheap_clone_is_copy!(
+    (),
+    bool,
+    u16,
+    u32,
+    i32,
+    u64,
+    usize,
+    &'static str,
+    std::time::Duration
+);
+cheap_clone_is_copy!(ethabi::Address);

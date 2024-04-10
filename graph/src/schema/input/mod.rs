@@ -298,10 +298,23 @@ impl Field {
     }
 }
 
-#[derive(Copy, Clone, CheapClone)]
+#[derive(Copy, Clone)]
 pub enum ObjectOrInterface<'a> {
     Object(&'a InputSchema, &'a ObjectType),
     Interface(&'a InputSchema, &'a InterfaceType),
+}
+
+impl<'a> CheapClone for ObjectOrInterface<'a> {
+    fn cheap_clone(&self) -> Self {
+        match self {
+            ObjectOrInterface::Object(schema, object) => {
+                ObjectOrInterface::Object(*schema, *object)
+            }
+            ObjectOrInterface::Interface(schema, interface) => {
+                ObjectOrInterface::Interface(*schema, *interface)
+            }
+        }
+    }
 }
 
 impl<'a> ObjectOrInterface<'a> {

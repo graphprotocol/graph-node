@@ -8,6 +8,7 @@ use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
     data::subgraph::DataSourceContext,
+    derive::CheapClone,
     prelude::{
         anyhow, async_trait, BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger,
     },
@@ -517,7 +518,7 @@ pub struct Source {
     pub(crate) end_block: Option<BlockNumber>,
 }
 
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Copy, CheapClone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub enum EventOrigin {
     BeginBlock,
     DeliverTx,
