@@ -1,4 +1,5 @@
 use super::scalar;
+use crate::derive::CheapClone;
 use crate::prelude::*;
 use web3::types::{Address, Bytes, H2048, H256, H64, U64};
 
@@ -101,7 +102,7 @@ pub mod call {
     /// For equality and hashing, we only consider the address and the
     /// encoded call as the index is set by the caller and has no influence
     /// on the call's return value
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, CheapClone)]
     pub struct Request {
         pub address: ethabi::Address,
         pub encoded_call: Arc<Bytes>,
@@ -109,8 +110,6 @@ pub mod call {
         /// request in related data structures that the caller might have
         pub index: u32,
     }
-
-    impl CheapClone for Request {}
 
     impl Request {
         pub fn new(address: ethabi::Address, encoded_call: Vec<u8>, index: u32) -> Self {

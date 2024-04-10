@@ -27,6 +27,7 @@ use tiny_keccak::{keccak256, Keccak};
 
 use graph::{
     blockchain::{self, Blockchain},
+    derive::CheapClone,
     prelude::{
         async_trait,
         ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
@@ -1576,13 +1577,11 @@ pub struct TemplateSource {
 /// The `address` and `arg` fields can be either `event.address` or
 /// `event.params.<name>`. Each entry under `calls` gets turned into a
 /// `CallDcl`
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
+#[derive(Clone, CheapClone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct CallDecls {
     pub decls: Arc<Vec<CallDecl>>,
     readonly: (),
 }
-
-impl CheapClone for CallDecls {}
 
 /// A single call declaration, like `myCall1:
 /// Contract[address].function(arg1, arg2, ...)`
