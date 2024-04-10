@@ -30,6 +30,7 @@ impl IpfsError {
         }
     }
 
+    /// Is this error from an HTTP status code?
     pub fn is_status(&self) -> bool {
         match self {
             Self::Request(e) => e.is_status(),
@@ -165,7 +166,7 @@ impl IpfsClient {
                 acc.extend_from_slice(&chunk);
 
                 // Check size limit
-                if acc.len() > max_file_size as usize {
+                if acc.len() > max_file_size {
                     return Err(IpfsError::FileTooLarge(cid.to_string(), max_file_size));
                 }
 
