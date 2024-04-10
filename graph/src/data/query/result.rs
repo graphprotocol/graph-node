@@ -5,7 +5,10 @@ use crate::components::server::query::ServerResponse;
 use crate::data::value::Object;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http_body_util::Full;
-use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use hyper::header::{
+    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
+    CONTENT_TYPE,
+};
 use hyper::Response;
 use serde::ser::*;
 use serde::Serialize;
@@ -200,10 +203,15 @@ impl QueryResults {
 
     pub fn as_http_response(&self) -> ServerResponse {
         let json = serde_json::to_string(&self).unwrap();
+        let attestable = self.results.iter().all(|r| r.is_attestable());
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "application/json")
+            .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
+            .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
+            .header(CONTENT_TYPE, "application/json")
+            .header("Graph-Attestable", attestable.to_string())
             .body(Full::from(json))
             .unwrap()
     }

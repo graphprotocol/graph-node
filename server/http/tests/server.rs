@@ -82,6 +82,7 @@ mod test {
 
     use super::*;
     use graph::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+    use graph::hyper::header::{ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS};
     use graph::prelude::reqwest::{Client, Response};
 
     lazy_static! {
@@ -91,7 +92,7 @@ mod test {
     pub async fn assert_successful_response(
         response: Response,
     ) -> serde_json::Map<String, serde_json::Value> {
-        assert_expected_headers(&response);
+        assert_expected_headers(&response, true);
         let body = response.bytes().await.unwrap().to_vec();
         let json: serde_json::Value =
             serde_json::from_slice(&body).expect("GraphQL response is not valid JSON");
@@ -111,7 +112,7 @@ mod test {
         graphql_response: bool,
     ) -> Vec<serde_json::Value> {
         assert_eq!(response.status(), expected_status);
-        assert_expected_headers(&response);
+        assert_expected_headers(&response, false);
         let body = response.bytes().await.unwrap().to_vec();
         let body = String::from_utf8(body).unwrap();
 
@@ -133,14 +134,35 @@ mod test {
     }
 
     #[track_caller]
-    pub fn assert_expected_headers(response: &Response) {
-        assert_eq!(
-            response
-                .headers()
-                .get(ACCESS_CONTROL_ALLOW_ORIGIN)
-                .expect("Missing CORS Header"),
-            &"*"
-        );
+    pub fn assert_expected_headers(response: &Response, success: bool) {
+        #[track_caller]
+        fn assert_header(response: &Response, header: &str, value: &str) {
+            let hdrs = response.headers();
+            let value = Some(value.parse().unwrap());
+            assert_eq!(
+                value.as_ref(),
+                hdrs.get(header),
+                "Header {} has unexpected value",
+                header
+            );
+        }
+
+        assert_header(response, ACCESS_CONTROL_ALLOW_ORIGIN.as_str(), "*");
+        if success {
+            assert_header(
+                response,
+                ACCESS_CONTROL_ALLOW_HEADERS.as_str(),
+                "Content-Type, User-Agent",
+            );
+            assert_header(
+                response,
+                ACCESS_CONTROL_ALLOW_METHODS.as_str(),
+                "GET, OPTIONS, POST",
+            );
+            assert_header(response, CONTENT_TYPE.as_str(), "application/json");
+
+            assert_header(response, "Graph-Attestable", "true");
+        }
     }
 
     #[tokio::test]
