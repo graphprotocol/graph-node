@@ -705,9 +705,8 @@ pub fn state(conn: &mut PgConnection, id: DeploymentHash) -> Result<DeploymentSt
                 e::table
                     .filter(e::subgraph_id.eq(id.as_str()))
                     .filter(e::deterministic)
-                    .select(sql::<Integer>("min(lower(block_range))"))
-                    .first::<i32>(conn)
-                    .optional()?
+                    .select(sql::<Nullable<Integer>>("min(lower(block_range))"))
+                    .first::<Option<i32>>(conn)?
             } else {
                 None
             };
