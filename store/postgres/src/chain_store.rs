@@ -953,33 +953,24 @@ mod data {
             short_circuit_predicate: &str,
             blocks_table_name: &str,
         ) -> String {
-            let join_condition = match self {
-                Storage::Shared => {
-                    format!("a.block_hash = b.hash")
-                }
-                Storage::Private(_) => {
-                    format!("b.hash = encode(a.block_hash, 'hex')")
-                }
-            };
-
             format!(
                 "
-                WITH RECURSIVE ancestors(block_hash, block_offset) AS (
-                    VALUES ($1, 0)
-                    UNION ALL
-                    SELECT b.parent_hash, a.block_offset + 1
-                    FROM ancestors a, {blocks_table_name} b
-                    WHERE a.block_hash = b.hash
-                    AND a.block_offset < $2
+                with recursive ancestors(block_hash, block_offset) as (
+                    values ($1, 0)
+                    union all
+                    select b.parent_hash, a.block_offset + 1
+                    from ancestors a, {blocks_table_name} b
+                    where a.block_hash = b.hash
+                    and a.block_offset < $2
                     {short_circuit_predicate}
                 )
-                SELECT a.block_hash AS hash, b.number AS number
-                FROM ancestors a
-                INNER JOIN {blocks_table_name} b ON {join_condition}
-                ORDER BY a.block_offset DESC LIMIT 1",
+                select a.block_hash as hash, b.number as number
+                from ancestors a
+                inner join {blocks_table_name} b on a.block_hash = b.hash
+                order by a.block_offset desc limit 1
+                ",
                 blocks_table_name = blocks_table_name,
                 short_circuit_predicate = short_circuit_predicate,
-                join_condition = join_condition,
             )
         }
 
