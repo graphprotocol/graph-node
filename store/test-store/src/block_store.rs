@@ -1,6 +1,6 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
-use graph::blockchain::BlockTime;
+use graph::blockchain::{BlockTime, ChainIdentifier};
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
@@ -13,6 +13,8 @@ use graph::{
 };
 use graph_chain_ethereum::codec::{Block, BlockHeader};
 use prost_types::Timestamp;
+
+use crate::{GENESIS_PTR, NETWORK_VERSION};
 
 lazy_static! {
     // Genesis block
@@ -186,10 +188,19 @@ pub type FakeBlockList = Vec<&'static FakeBlock>;
 /// network's genesis block to `genesis_hash`, and head block to
 /// `null`
 pub async fn set_chain(chain: FakeBlockList, network: &str) -> Vec<(BlockPtr, BlockHash)> {
-    let store = crate::store::STORE
-        .block_store()
-        .chain_store(network)
-        .unwrap();
+    let block_store = crate::store::STORE.block_store();
+    let store = match block_store.chain_store(network) {
+        Some(cs) => cs,
+        None => block_store
+            .create_chain_store(
+                network,
+                ChainIdentifier {
+                    net_version: NETWORK_VERSION.to_string(),
+                    genesis_block_hash: GENESIS_PTR.hash.clone(),
+                },
+            )
+            .unwrap(),
+    };
     let chain: Vec<Arc<dyn BlockchainBlock>> = chain
         .iter()
         .cloned()

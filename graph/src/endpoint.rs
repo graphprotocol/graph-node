@@ -9,22 +9,22 @@ use std::{
 use prometheus::IntCounterVec;
 use slog::{warn, Logger};
 
-use crate::{components::metrics::MetricsRegistry, data::value::Word};
+use crate::{
+    components::{adapter::ProviderName, metrics::MetricsRegistry},
+    data::value::Word,
+};
 
 /// ProviderCount is the underlying structure to keep the count,
 /// we require that all the hosts are known ahead of time, this way we can
 /// avoid locking since we don't need to modify the entire struture.
-type ProviderCount = Arc<HashMap<Provider, AtomicU64>>;
-
-/// Provider represents label of the underlying endpoint.
-pub type Provider = Word;
+type ProviderCount = Arc<HashMap<ProviderName, AtomicU64>>;
 
 /// This struct represents all the current labels except for the result
 /// which is added separately. If any new labels are necessary they should
 /// remain in the same order as added in [`EndpointMetrics::new`]
 #[derive(Clone)]
 pub struct RequestLabels {
-    pub provider: Provider,
+    pub provider: ProviderName,
     pub req_type: Word,
     pub conn_type: ConnectionType,
 }
@@ -84,7 +84,7 @@ impl EndpointMetrics {
         let providers = Arc::new(HashMap::from_iter(
             providers
                 .iter()
-                .map(|h| (Provider::from(h.as_ref()), AtomicU64::new(0))),
+                .map(|h| (ProviderName::from(h.as_ref()), AtomicU64::new(0))),
         ));
 
         let counter = registry
@@ -114,7 +114,7 @@ impl EndpointMetrics {
     }
 
     #[cfg(debug_assertions)]
-    pub fn report_for_test(&self, provider: &Provider, success: bool) {
+    pub fn report_for_test(&self, provider: &ProviderName, success: bool) {
         match success {
             true => self.success(&RequestLabels {
                 provider: provider.clone(),
@@ -161,7 +161,7 @@ impl EndpointMetrics {
 
     /// Returns the current error count of a host or 0 if the host
     /// doesn't have a value on the map.
-    pub fn get_count(&self, provider: &Provider) -> u64 {
+    pub fn get_count(&self, provider: &ProviderName) -> u64 {
         self.providers
             .get(provider)
             .map(|c| c.load(Ordering::Relaxed))
@@ -177,12 +177,13 @@ mod test {
 
     use crate::{
         components::metrics::MetricsRegistry,
-        endpoint::{EndpointMetrics, Provider},
+        endpoint::{EndpointMetrics, ProviderName},
     };
 
     #[tokio::test]
     async fn should_increment_and_reset() {
-        let (a, b, c): (Provider, Provider, Provider) = ("a".into(), "b".into(), "c".into());
+        let (a, b, c): (ProviderName, ProviderName, ProviderName) =
+            ("a".into(), "b".into(), "c".into());
         let hosts: &[&str] = &[&a, &b, &c];
         let logger = Logger::root(Discard, o!());
 

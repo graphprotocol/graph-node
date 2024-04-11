@@ -410,6 +410,11 @@ pub trait QueryStoreManager: Send + Sync + 'static {
 pub trait BlockStore: Send + Sync + 'static {
     type ChainStore: ChainStore;
 
+    fn create_chain_store(
+        &self,
+        network: &str,
+        ident: ChainIdentifier,
+    ) -> anyhow::Result<Arc<Self::ChainStore>>;
     fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
 }
 
@@ -536,7 +541,10 @@ pub trait ChainStore: Send + Sync + 'static {
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error>;
 
     /// Return the chain identifier for this store.
-    fn chain_identifier(&self) -> &ChainIdentifier;
+    fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
+
+    /// Update the chain identifier for this store.
+    fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

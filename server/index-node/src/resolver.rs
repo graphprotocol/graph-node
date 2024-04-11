@@ -267,7 +267,7 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let chain = if let Ok(c) = self
             .blockchain_map
-            .get::<graph_chain_ethereum::Chain>(network.clone())
+            .get::<graph_chain_ethereum::Chain>(network.as_str().into())
         {
             c
         } else {
@@ -593,7 +593,7 @@ impl<S: Store> IndexNodeResolver<S> {
             }
             BlockchainKind::Starknet => {
                 let unvalidated_subgraph_manifest =
-                    UnvalidatedSubgraphManifest::<graph_chain_substreams::Chain>::resolve(
+                    UnvalidatedSubgraphManifest::<graph_chain_starknet::Chain>::resolve(
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
@@ -659,7 +659,7 @@ impl<S: Store> IndexNodeResolver<S> {
     ) -> Result<Option<BlockPtr>, QueryExecutionError> {
         macro_rules! try_resolve_for_chain {
             ( $typ:path ) => {
-                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
+                let blockchain = self.blockchain_map.get::<$typ>(network.as_str().into()).ok();
 
                 if let Some(blockchain) = blockchain {
                     debug!(

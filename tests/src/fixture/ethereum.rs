@@ -45,7 +45,7 @@ pub async fn chain(
     let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
     let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
 
-    let eth_adapters = Arc::new(EthereumNetworkAdapters::default());
+    let eth_adapters = Arc::new(EthereumNetworkAdapters::empty_for_testing());
 
     let chain = Chain::new(
         logger_factory,

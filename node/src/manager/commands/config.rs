@@ -2,7 +2,10 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::{
     anyhow::{bail, Context},
-    components::subgraph::{Setting, Settings},
+    components::{
+        adapter::{ChainId, MockIdentValidator},
+        subgraph::{Setting, Settings},
+    },
     endpoint::EndpointMetrics,
     env::EnvVars,
     itertools::Itertools,
@@ -12,10 +15,10 @@ use graph::{
     },
     slog::Logger,
 };
-use graph_chain_ethereum::{NodeCapabilities, ProviderEthRpcMetrics};
+use graph_chain_ethereum::NodeCapabilities;
 use graph_store_postgres::DeploymentPlacer;
 
-use crate::{chain::create_ethereum_networks_for_chain, config::Config};
+use crate::{config::Config, network_setup::Networks};
 
 pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result<(), Error> {
     match placer.place(name, network).map_err(|s| anyhow!(s))? {
@@ -138,15 +141,18 @@ pub async fn provider(
 
     let metrics = Arc::new(EndpointMetrics::mock());
     let caps = caps_from_features(features)?;
-    let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
-    let networks =
-        create_ethereum_networks_for_chain(&logger, eth_rpc_metrics, config, &network, metrics)
-            .await?;
-    let adapters = networks
-        .networks
-        .get(&network)
-        .ok_or_else(|| anyhow!("unknown network {}", network))?;
-    let adapters = adapters.all_cheapest_with(&caps);
+    let networks = Networks::from_config(
+        logger,
+        &config,
+        registry,
+        metrics,
+        Arc::new(MockIdentValidator),
+    )
+    .await?;
+    let network: ChainId = network.into();
+    let adapters = networks.ethereum_rpcs(network.clone());
+
+    let adapters = adapters.all_cheapest_with(&caps).await;
     println!(
         "deploy on network {} with features [{}] on node {}\neligible providers: {}",
         network,

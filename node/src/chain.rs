@@ -1,23 +1,44 @@
 use crate::config::{Config, ProviderDetails};
-use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
-use graph::anyhow::{bail, Error};
-use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
+use crate::network_setup::{
+    AdapterConfiguration, EthAdapterConfig, FirehoseAdapterConfig, Networks,
+};
+use ethereum::chain::{
+    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumRuntimeAdapterBuilder,
+    EthereumStreamBuilder,
+};
+use ethereum::network::EthereumNetworkAdapter;
+use ethereum::ProviderEthRpcMetrics;
+use graph::anyhow::bail;
+use graph::blockchain::client::ChainClient;
+use graph::blockchain::{
+    BasicBlockchainBuilder, Blockchain as _, BlockchainBuilder as _, BlockchainKind, BlockchainMap,
+    ChainIdentifier,
+};
 use graph::cheap_clone::CheapClone;
+use graph::components::adapter::ChainId;
+use graph::components::store::{BlockStore as _, ChainStore};
+use graph::data::store::NodeId;
 use graph::endpoint::EndpointMetrics;
-use graph::firehose::{FirehoseEndpoint, FirehoseNetworks, SubgraphLimit};
-use graph::futures03::future::{join_all, try_join_all};
+use graph::env::{EnvVars, ENV_VARS};
+use graph::firehose::{
+    FirehoseEndpoint, FirehoseGenesisDecoder, GenesisDecoder, SubgraphLimit,
+    SubstreamsGenesisDecoder,
+};
+use graph::futures03::future::try_join_all;
 use graph::futures03::TryFutureExt;
 use graph::ipfs_client::IpfsClient;
-use graph::prelude::{anyhow, tokio};
-use graph::prelude::{prost, MetricsRegistry};
+use graph::itertools::Itertools;
+use graph::log::factory::LoggerFactory;
+use graph::prelude::anyhow;
+use graph::prelude::MetricsRegistry;
 use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
-use graph::util::futures::retry;
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
-use std::collections::{btree_map, BTreeMap};
+use graph_chain_ethereum::{self as ethereum, Transport};
+use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 // The status of a provider that we learned from connecting to it
 #[derive(PartialEq)]
@@ -31,11 +52,6 @@ pub enum ProviderNetworkStatus {
         ident: ChainIdentifier,
     },
 }
-
-/// How long we will hold up node startup to get the net version and genesis
-/// hash from the client. If we can't get it within that time, we'll try and
-/// continue regardless.
-const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
 
 pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument
@@ -108,7 +124,7 @@ pub fn create_substreams_networks(
     logger: Logger,
     config: &Config,
     endpoint_metrics: Arc<EndpointMetrics>,
-) -> BTreeMap<BlockchainKind, FirehoseNetworks> {
+) -> Vec<AdapterConfiguration> {
     debug!(
         logger,
         "Creating firehose networks [{} chains, ingestor {}]",
@@ -116,50 +132,60 @@ pub fn create_substreams_networks(
         config.chains.ingestor,
     );
 
-    let mut networks_by_kind = BTreeMap::new();
+    let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainId), Vec<Arc<FirehoseEndpoint>>> =
+        BTreeMap::new();
 
     for (name, chain) in &config.chains.chains {
+        let name: ChainId = name.as_str().into();
         for provider in &chain.providers {
             if let ProviderDetails::Substreams(ref firehose) = provider.details {
                 info!(
                     logger,
-                    "Configuring firehose endpoint";
+                    "Configuring substreams endpoint";
                     "provider" => &provider.label,
+                    "network" => &name.to_string(),
                 );
 
                 let parsed_networks = networks_by_kind
-                    .entry(chain.protocol)
-                    .or_insert_with(FirehoseNetworks::new);
+                    .entry((chain.protocol, name.clone()))
+                    .or_insert_with(Vec::new);
 
                 for _ in 0..firehose.conn_pool_size {
-                    parsed_networks.insert(
-                        name.to_string(),
-                        Arc::new(FirehoseEndpoint::new(
-                            // This label needs to be the original label so that the metrics
-                            // can be deduped.
-                            &provider.label,
-                            &firehose.url,
-                            firehose.token.clone(),
-                            firehose.key.clone(),
-                            firehose.filters_enabled(),
-                            firehose.compression_enabled(),
-                            SubgraphLimit::Unlimited,
-                            endpoint_metrics.clone(),
-                        )),
-                    );
+                    parsed_networks.push(Arc::new(FirehoseEndpoint::new(
+                        // This label needs to be the original label so that the metrics
+                        // can be deduped.
+                        &provider.label,
+                        &firehose.url,
+                        firehose.token.clone(),
+                        firehose.key.clone(),
+                        firehose.filters_enabled(),
+                        firehose.compression_enabled(),
+                        SubgraphLimit::Unlimited,
+                        endpoint_metrics.clone(),
+                        Box::new(SubstreamsGenesisDecoder {}),
+                    )));
                 }
             }
         }
     }
 
     networks_by_kind
+        .into_iter()
+        .map(|((kind, chain_id), endpoints)| {
+            AdapterConfiguration::Substreams(FirehoseAdapterConfig {
+                chain_id,
+                kind,
+                adapters: endpoints.into(),
+            })
+        })
+        .collect()
 }
 
 pub fn create_firehose_networks(
     logger: Logger,
     config: &Config,
     endpoint_metrics: Arc<EndpointMetrics>,
-) -> BTreeMap<BlockchainKind, FirehoseNetworks> {
+) -> Vec<AdapterConfiguration> {
     debug!(
         logger,
         "Creating firehose networks [{} chains, ingestor {}]",
@@ -167,20 +193,45 @@ pub fn create_firehose_networks(
         config.chains.ingestor,
     );
 
-    let mut networks_by_kind = BTreeMap::new();
+    let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainId), Vec<Arc<FirehoseEndpoint>>> =
+        BTreeMap::new();
 
     for (name, chain) in &config.chains.chains {
+        let name: ChainId = name.as_str().into();
         for provider in &chain.providers {
+            let logger = logger.cheap_clone();
             if let ProviderDetails::Firehose(ref firehose) = provider.details {
                 info!(
-                    logger,
+                    &logger,
                     "Configuring firehose endpoint";
                     "provider" => &provider.label,
+                    "network" => &name.to_string(),
                 );
 
                 let parsed_networks = networks_by_kind
-                    .entry(chain.protocol)
-                    .or_insert_with(FirehoseNetworks::new);
+                    .entry((chain.protocol, name.clone()))
+                    .or_insert_with(Vec::new);
+
+                let decoder: Box<dyn GenesisDecoder> = match chain.protocol {
+                    BlockchainKind::Arweave => {
+                        FirehoseGenesisDecoder::<graph_chain_arweave::Block>::new(logger)
+                    }
+                    BlockchainKind::Ethereum => {
+                        FirehoseGenesisDecoder::<graph_chain_ethereum::codec::Block>::new(logger)
+                    }
+                    BlockchainKind::Near => {
+                        FirehoseGenesisDecoder::<graph_chain_near::HeaderOnlyBlock>::new(logger)
+                    }
+                    BlockchainKind::Cosmos => {
+                        FirehoseGenesisDecoder::<graph_chain_cosmos::Block>::new(logger)
+                    }
+                    BlockchainKind::Substreams => {
+                        unreachable!("Substreams configuration should not be handled here");
+                    }
+                    BlockchainKind::Starknet => {
+                        FirehoseGenesisDecoder::<graph_chain_starknet::Block>::new(logger)
+                    }
+                };
 
                 // Create n FirehoseEndpoints where n is the size of the pool. If a
                 // subgraph limit is defined for this endpoint then each endpoint
@@ -189,240 +240,34 @@ pub fn create_firehose_networks(
                 // of FirehoseEndpoint and each of those instance can be used in 2 different
                 // SubgraphInstances.
                 for _ in 0..firehose.conn_pool_size {
-                    parsed_networks.insert(
-                        name.to_string(),
-                        Arc::new(FirehoseEndpoint::new(
-                            // This label needs to be the original label so that the metrics
-                            // can be deduped.
-                            &provider.label,
-                            &firehose.url,
-                            firehose.token.clone(),
-                            firehose.key.clone(),
-                            firehose.filters_enabled(),
-                            firehose.compression_enabled(),
-                            firehose.limit_for(&config.node),
-                            endpoint_metrics.cheap_clone(),
-                        )),
-                    );
+                    parsed_networks.push(Arc::new(FirehoseEndpoint::new(
+                        // This label needs to be the original label so that the metrics
+                        // can be deduped.
+                        &provider.label,
+                        &firehose.url,
+                        firehose.token.clone(),
+                        firehose.key.clone(),
+                        firehose.filters_enabled(),
+                        firehose.compression_enabled(),
+                        firehose.limit_for(&config.node),
+                        endpoint_metrics.cheap_clone(),
+                        decoder.box_clone(),
+                    )));
                 }
             }
         }
     }
 
     networks_by_kind
-}
-
-/// Try to connect to all the providers in `eth_networks` and get their net
-/// version and genesis block. Return the same `eth_networks` and the
-/// retrieved net identifiers grouped by network name. Remove all providers
-/// for which trying to connect resulted in an error from the returned
-/// `EthereumNetworks`, since it's likely pointless to try and connect to
-/// them. If the connection attempt to a provider times out after
-/// `NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
-/// version for it.
-pub async fn connect_ethereum_networks(
-    logger: &Logger,
-    mut eth_networks: EthereumNetworks,
-) -> Result<(EthereumNetworks, BTreeMap<String, ChainIdentifier>), anyhow::Error> {
-    // This has one entry for each provider, and therefore multiple entries
-    // for each network
-    let statuses = join_all(
-        eth_networks
-            .flatten()
-            .into_iter()
-            .map(|(network_name, capabilities, eth_adapter)| {
-                (network_name, capabilities, eth_adapter, logger.clone())
+        .into_iter()
+        .map(|((kind, chain_id), endpoints)| {
+            AdapterConfiguration::Firehose(FirehoseAdapterConfig {
+                chain_id,
+                kind,
+                adapters: endpoints.into(),
             })
-            .map(|(network, capabilities, eth_adapter, logger)| async move {
-                let logger = logger.new(o!("provider" => eth_adapter.provider().to_string()));
-                info!(
-                    logger, "Connecting to Ethereum to get network identifier";
-                    "capabilities" => &capabilities
-                );
-                match tokio::time::timeout(NET_VERSION_WAIT_TIME, eth_adapter.net_identifiers())
-                    .await
-                    .map_err(Error::from)
-                {
-                    // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
-                    // on the URL)
-                    Ok(Err(e)) | Err(e) => {
-                        error!(logger, "Connection to provider failed. Not using this provider";
-                                       "error" =>  e.to_string());
-                        ProviderNetworkStatus::Broken {
-                            chain_id: network,
-                            provider: eth_adapter.provider().to_string(),
-                        }
-                    }
-                    Ok(Ok(ident)) => {
-                        info!(
-                            logger,
-                            "Connected to Ethereum";
-                            "network_version" => &ident.net_version,
-                            "capabilities" => &capabilities
-                        );
-                        ProviderNetworkStatus::Version {
-                            chain_id: network,
-                            ident,
-                        }
-                    }
-                }
-            }),
-    )
-    .await;
-
-    // Group identifiers by network name
-    let idents: BTreeMap<String, ChainIdentifier> =
-        statuses
-            .into_iter()
-            .try_fold(BTreeMap::new(), |mut networks, status| {
-                match status {
-                    ProviderNetworkStatus::Broken {
-                        chain_id: network,
-                        provider,
-                    } => eth_networks.remove(&network, &provider),
-                    ProviderNetworkStatus::Version {
-                        chain_id: network,
-                        ident,
-                    } => match networks.entry(network.clone()) {
-                        btree_map::Entry::Vacant(entry) => {
-                            entry.insert(ident);
-                        }
-                        btree_map::Entry::Occupied(entry) => {
-                            if &ident != entry.get() {
-                                return Err(anyhow!(
-                                    "conflicting network identifiers for chain {}: `{}` != `{}`",
-                                    network,
-                                    ident,
-                                    entry.get()
-                                ));
-                            }
-                        }
-                    },
-                }
-                Ok(networks)
-            })?;
-    Ok((eth_networks, idents))
-}
-
-/// Try to connect to all the providers in `firehose_networks` and get their net
-/// version and genesis block. Return the same `eth_networks` and the
-/// retrieved net identifiers grouped by network name. Remove all providers
-/// for which trying to connect resulted in an error from the returned
-/// `EthereumNetworks`, since it's likely pointless to try and connect to
-/// them. If the connection attempt to a provider times out after
-/// `NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
-/// version for it.
-pub async fn connect_firehose_networks<M>(
-    logger: &Logger,
-    mut firehose_networks: FirehoseNetworks,
-) -> Result<(FirehoseNetworks, BTreeMap<String, ChainIdentifier>), Error>
-where
-    M: prost::Message + BlockchainBlock + Default + 'static,
-{
-    // This has one entry for each provider, and therefore multiple entries
-    // for each network
-    let statuses = join_all(
-        firehose_networks
-            .flatten()
-            .into_iter()
-            .map(|(chain_id, endpoint)| (chain_id, endpoint, logger.clone()))
-            .map(|((chain_id, _), endpoint, logger)| async move {
-                let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
-                info!(
-                    logger, "Connecting to Firehose to get chain identifier";
-                    "provider" => &endpoint.provider.to_string(),
-                );
-
-                let retry_endpoint = endpoint.clone();
-                let retry_logger = logger.clone();
-                let req = retry("firehose startup connection test", &logger)
-                    .no_limit()
-                    .no_timeout()
-                    .run(move || {
-                        let retry_endpoint = retry_endpoint.clone();
-                        let retry_logger = retry_logger.clone();
-                        async move { retry_endpoint.genesis_block_ptr::<M>(&retry_logger).await }
-                    });
-
-                match tokio::time::timeout(NET_VERSION_WAIT_TIME, req)
-                    .await
-                    .map_err(Error::from)
-                {
-                    // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
-                    // on the URL)
-                    Ok(Err(e)) | Err(e) => {
-                        error!(logger, "Connection to provider failed. Not using this provider";
-                                       "error" =>  format!("{:#}", e));
-                        ProviderNetworkStatus::Broken {
-                            chain_id,
-                            provider: endpoint.provider.to_string(),
-                        }
-                    }
-                    Ok(Ok(ptr)) => {
-                        info!(
-                            logger,
-                            "Connected to Firehose";
-                            "provider" => &endpoint.provider.to_string(),
-                            "genesis_block" => format_args!("{}", &ptr),
-                        );
-
-                        // BUG: Firehose doesn't provide the net_version.
-                        // See also: firehose-no-net-version
-                        let ident = ChainIdentifier {
-                            net_version: "0".to_string(),
-                            genesis_block_hash: ptr.hash,
-                        };
-
-                        ProviderNetworkStatus::Version { chain_id, ident }
-                    }
-                }
-            }),
-    )
-    .await;
-
-    // Group identifiers by chain id
-    let idents: BTreeMap<String, ChainIdentifier> =
-        statuses
-            .into_iter()
-            .try_fold(BTreeMap::new(), |mut networks, status| {
-                match status {
-                    ProviderNetworkStatus::Broken { chain_id, provider } => {
-                        firehose_networks.remove(&chain_id, &provider)
-                    }
-                    ProviderNetworkStatus::Version { chain_id, ident } => {
-                        match networks.entry(chain_id.clone()) {
-                            btree_map::Entry::Vacant(entry) => {
-                                entry.insert(ident);
-                            }
-                            btree_map::Entry::Occupied(entry) => {
-                                if &ident != entry.get() {
-                                    return Err(anyhow!(
-                                    "conflicting network identifiers for chain {}: `{}` != `{}`",
-                                    chain_id,
-                                    ident,
-                                    entry.get()
-                                ));
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(networks)
-            })?;
-
-    // Clean-up chains with 0 provider
-    firehose_networks.networks.retain(|chain_id, endpoints| {
-        if endpoints.len() == 0 {
-            error!(
-                logger,
-                "No non-broken providers available for chain {}; ignoring this chain", chain_id
-            );
-        }
-
-        endpoints.len() > 0
-    });
-
-    Ok((firehose_networks, idents))
+        })
+        .collect()
 }
 
 /// Parses all Ethereum connection strings and returns their network names and
@@ -432,7 +277,7 @@ pub async fn create_all_ethereum_networks(
     registry: Arc<MetricsRegistry>,
     config: &Config,
     endpoint_metrics: Arc<EndpointMetrics>,
-) -> anyhow::Result<EthereumNetworks> {
+) -> anyhow::Result<Vec<AdapterConfiguration>> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let eth_networks_futures = config
         .chains
@@ -449,14 +294,7 @@ pub async fn create_all_ethereum_networks(
             )
         });
 
-    Ok(try_join_all(eth_networks_futures)
-        .await?
-        .into_iter()
-        .reduce(|mut a, b| {
-            a.extend(b);
-            a
-        })
-        .unwrap_or_else(|| EthereumNetworks::new(endpoint_metrics)))
+    Ok(try_join_all(eth_networks_futures).await?)
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
@@ -466,20 +304,21 @@ pub async fn create_ethereum_networks_for_chain(
     config: &Config,
     network_name: &str,
     endpoint_metrics: Arc<EndpointMetrics>,
-) -> anyhow::Result<EthereumNetworks> {
-    let mut parsed_networks = EthereumNetworks::new(endpoint_metrics.cheap_clone());
+) -> anyhow::Result<AdapterConfiguration> {
     let chain = config
         .chains
         .chains
         .get(network_name)
         .ok_or_else(|| anyhow!("unknown network {}", network_name))?;
+    let mut adapters = vec![];
+    let mut call_only_adapters = vec![];
 
     for provider in &chain.providers {
         let (web3, call_only) = match &provider.details {
             ProviderDetails::Web3Call(web3) => (web3, true),
             ProviderDetails::Web3(web3) => (web3, false),
             _ => {
-                parsed_networks.insert_empty(network_name.to_string());
+                // parsed_networks.insert_empty(network_name.to_string());
                 continue;
             }
         };
@@ -511,9 +350,8 @@ pub async fn create_ethereum_networks_for_chain(
         };
 
         let supports_eip_1898 = !web3.features.contains("no_eip1898");
-
-        parsed_networks.insert(
-            network_name.to_string(),
+        let adapter = EthereumNetworkAdapter::new(
+            endpoint_metrics.cheap_clone(),
             capabilities,
             Arc::new(
                 graph_chain_ethereum::EthereumAdapter::new(
@@ -528,20 +366,272 @@ pub async fn create_ethereum_networks_for_chain(
             ),
             web3.limit_for(&config.node),
         );
+
+        if call_only {
+            call_only_adapters.push(adapter);
+        } else {
+            adapters.push(adapter);
+        }
     }
 
-    parsed_networks.sort();
-    Ok(parsed_networks)
+    adapters.sort_by(|a, b| {
+        a.capabilities
+            .partial_cmp(&b.capabilities)
+            // We can't define a total ordering over node capabilities,
+            // so incomparable items are considered equal and end up
+            // near each other.
+            .unwrap_or(Ordering::Equal)
+    });
+
+    Ok(AdapterConfiguration::Rpc(EthAdapterConfig {
+        chain_id: network_name.into(),
+        adapters,
+        call_only: call_only_adapters,
+        polling_interval: Some(chain.polling_interval),
+    }))
+}
+
+pub async fn networks_as_chains(
+    config: &Arc<EnvVars>,
+    blockchain_map: &mut BlockchainMap,
+    node_id: &NodeId,
+    logger: &Logger,
+    networks: &Networks,
+    store: Arc<BlockStore>,
+    logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
+    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+) {
+    let adapters = networks
+        .adapters
+        .iter()
+        .chunk_by(|a| a.chain_id())
+        .into_iter()
+        .map(|(chain_id, adapters)| (chain_id, adapters.into_iter().collect_vec()))
+        .collect_vec();
+
+    let substreams: Vec<&FirehoseAdapterConfig> = networks
+        .adapters
+        .iter()
+        .flat_map(|a| a.as_substreams())
+        .collect();
+
+    let chains = adapters.into_iter().map(|(chain_id, adapters)| {
+        let adapters: Vec<&AdapterConfiguration> = adapters.into_iter().collect();
+        let kind = adapters
+            .iter()
+            .map(|a| a.kind())
+            .reduce(|a1, a2| match (a1, a2) {
+                (BlockchainKind::Substreams, k) => k,
+                (k, BlockchainKind::Substreams) => k,
+                (k, _) => k,
+            })
+            .expect("validation should have checked we have at least one provider");
+        (chain_id, adapters, kind)
+    });
+    for (chain_id, adapters, kind) in chains.into_iter() {
+        let chain_store = match store.chain_store(chain_id) {
+            Some(c) => c,
+            None => {
+                let ident = networks
+                    .chain_identifier(&logger, chain_id)
+                    .await
+                    .expect("must be able to get chain identity to create a store");
+                store
+                    .create_chain_store(chain_id, ident)
+                    .expect("must be able to create store if one is not yet setup for the chain")
+            }
+        };
+
+        match kind {
+            BlockchainKind::Arweave => {
+                let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
+
+                blockchain_map.insert::<graph_chain_arweave::Chain>(
+                    chain_id.clone(),
+                    Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            firehose_endpoints,
+                            metrics_registry: metrics_registry.clone(),
+                        }
+                        .build(config)
+                        .await,
+                    ),
+                );
+            }
+            BlockchainKind::Ethereum => {
+                // polling interval is set per chain so if set all adapter configuration will have
+                // the same value.
+                let polling_interval = adapters
+                    .first()
+                    .and_then(|a| a.as_rpc().and_then(|a| a.polling_interval))
+                    .unwrap_or(config.ingestor_polling_interval);
+
+                let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
+                let eth_adapters = networks.ethereum_rpcs(chain_id.clone());
+
+                let cc = if firehose_endpoints.len() > 0 {
+                    ChainClient::<graph_chain_ethereum::Chain>::new_firehose(firehose_endpoints)
+                } else {
+                    ChainClient::<graph_chain_ethereum::Chain>::new_rpc(eth_adapters.clone())
+                };
+
+                let client = Arc::new(cc);
+                let adapter_selector = EthereumAdapterSelector::new(
+                    logger_factory.clone(),
+                    client.clone(),
+                    metrics_registry.clone(),
+                    chain_store.clone(),
+                );
+
+                let call_cache = chain_store.cheap_clone();
+
+                let chain = ethereum::Chain::new(
+                    logger_factory.clone(),
+                    chain_id.clone(),
+                    node_id.clone(),
+                    metrics_registry.clone(),
+                    chain_store.cheap_clone(),
+                    call_cache,
+                    client,
+                    chain_head_update_listener.clone(),
+                    Arc::new(EthereumStreamBuilder {}),
+                    Arc::new(EthereumBlockRefetcher {}),
+                    Arc::new(adapter_selector),
+                    Arc::new(EthereumRuntimeAdapterBuilder {}),
+                    Arc::new(eth_adapters.clone()),
+                    ENV_VARS.reorg_threshold,
+                    polling_interval,
+                    true,
+                );
+
+                blockchain_map
+                    .insert::<graph_chain_ethereum::Chain>(chain_id.clone(), Arc::new(chain));
+            }
+            BlockchainKind::Near => {
+                let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
+                blockchain_map.insert::<graph_chain_near::Chain>(
+                    chain_id.clone(),
+                    Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            firehose_endpoints,
+                            metrics_registry: metrics_registry.clone(),
+                        }
+                        .build(config)
+                        .await,
+                    ),
+                );
+            }
+            BlockchainKind::Cosmos => {
+                let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
+                blockchain_map.insert::<graph_chain_cosmos::Chain>(
+                    chain_id.clone(),
+                    Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            firehose_endpoints,
+                            metrics_registry: metrics_registry.clone(),
+                        }
+                        .build(config)
+                        .await,
+                    ),
+                );
+            }
+            BlockchainKind::Starknet => {
+                let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
+                blockchain_map.insert::<graph_chain_starknet::Chain>(
+                    chain_id.clone(),
+                    Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            firehose_endpoints,
+                            metrics_registry: metrics_registry.clone(),
+                        }
+                        .build(config)
+                        .await,
+                    ),
+                );
+            }
+            BlockchainKind::Substreams => {}
+        }
+    }
+
+    fn chain_store(
+        blockchain_map: &BlockchainMap,
+        kind: &BlockchainKind,
+        network: ChainId,
+    ) -> anyhow::Result<Arc<dyn ChainStore>> {
+        let chain_store: Arc<dyn ChainStore> = match kind {
+            BlockchainKind::Arweave => blockchain_map
+                .get::<graph_chain_arweave::Chain>(network)
+                .map(|c| c.chain_store())?,
+            BlockchainKind::Ethereum => blockchain_map
+                .get::<graph_chain_ethereum::Chain>(network)
+                .map(|c| c.chain_store())?,
+            BlockchainKind::Near => blockchain_map
+                .get::<graph_chain_near::Chain>(network)
+                .map(|c| c.chain_store())?,
+            BlockchainKind::Cosmos => blockchain_map
+                .get::<graph_chain_cosmos::Chain>(network)
+                .map(|c| c.chain_store())?,
+            BlockchainKind::Substreams => blockchain_map
+                .get::<graph_chain_substreams::Chain>(network)
+                .map(|c| c.chain_store())?,
+            BlockchainKind::Starknet => blockchain_map
+                .get::<graph_chain_starknet::Chain>(network)
+                .map(|c| c.chain_store())?,
+        };
+
+        Ok(chain_store)
+    }
+
+    for FirehoseAdapterConfig {
+        chain_id,
+        kind,
+        adapters: _,
+    } in substreams.iter()
+    {
+        let chain_store = chain_store(&blockchain_map, kind, chain_id.clone()).expect(&format!(
+            "{} requires an rpc or firehose endpoint defined",
+            chain_id
+        ));
+        let substreams_endpoints = networks.substreams_endpoints(chain_id.clone());
+
+        blockchain_map.insert::<graph_chain_substreams::Chain>(
+            chain_id.clone(),
+            Arc::new(
+                BasicBlockchainBuilder {
+                    logger_factory: logger_factory.clone(),
+                    name: chain_id.clone(),
+                    chain_store,
+                    firehose_endpoints: substreams_endpoints,
+                    metrics_registry: metrics_registry.clone(),
+                }
+                .build(config)
+                .await,
+            ),
+        );
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::chain::create_all_ethereum_networks;
     use crate::config::{Config, Opt};
+    use crate::network_setup::{AdapterConfiguration, Networks};
+    use graph::components::adapter::{ChainId, MockIdentValidator};
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};
-    use graph::prometheus::Registry;
     use graph_chain_ethereum::NodeCapabilities;
     use std::sync::Arc;
 
@@ -570,17 +660,18 @@ mod test {
 
         let metrics = Arc::new(EndpointMetrics::mock());
         let config = Config::load(&logger, &opt).expect("can create config");
-        let prometheus_registry = Arc::new(Registry::new());
-        let metrics_registry = Arc::new(MetricsRegistry::new(
-            logger.clone(),
-            prometheus_registry.clone(),
-        ));
+        let metrics_registry = Arc::new(MetricsRegistry::mock());
+        let ident_validator = Arc::new(MockIdentValidator);
 
-        let ethereum_networks =
-            create_all_ethereum_networks(logger, metrics_registry, &config, metrics)
+        let networks =
+            Networks::from_config(logger, &config, metrics_registry, metrics, ident_validator)
                 .await
-                .expect("Correctly parse Ethereum network args");
-        let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();
+                .expect("can parse config");
+        let mut network_names = networks
+            .adapters
+            .iter()
+            .map(|a| a.chain_id())
+            .collect::<Vec<&ChainId>>();
         network_names.sort();
 
         let traces = NodeCapabilities {
@@ -592,45 +683,26 @@ mod test {
             traces: false,
         };
 
-        let has_mainnet_with_traces = ethereum_networks
-            .adapter_with_capabilities("mainnet".to_string(), &traces)
-            .is_ok();
-        let has_goerli_with_archive = ethereum_networks
-            .adapter_with_capabilities("goerli".to_string(), &archive)
-            .is_ok();
-        let has_mainnet_with_archive = ethereum_networks
-            .adapter_with_capabilities("mainnet".to_string(), &archive)
-            .is_ok();
-        let has_goerli_with_traces = ethereum_networks
-            .adapter_with_capabilities("goerli".to_string(), &traces)
-            .is_ok();
-
-        assert_eq!(has_mainnet_with_traces, true);
-        assert_eq!(has_goerli_with_archive, true);
-        assert_eq!(has_mainnet_with_archive, false);
-        assert_eq!(has_goerli_with_traces, false);
-
-        let goerli_capability = ethereum_networks
-            .networks
-            .get("goerli")
-            .unwrap()
+        let mainnet: Vec<&AdapterConfiguration> = networks
             .adapters
-            .first()
-            .unwrap()
-            .capabilities;
-        let mainnet_capability = ethereum_networks
-            .networks
-            .get("mainnet")
-            .unwrap()
+            .iter()
+            .filter(|a| a.chain_id().as_str().eq("mainnet"))
+            .collect();
+        assert_eq!(mainnet.len(), 1);
+        let mainnet = mainnet.first().unwrap().as_rpc().unwrap();
+        assert_eq!(mainnet.adapters.len(), 1);
+        let mainnet = mainnet.adapters.first().unwrap();
+        assert_eq!(mainnet.capabilities, traces);
+
+        let goerli: Vec<&AdapterConfiguration> = networks
             .adapters
-            .first()
-            .unwrap()
-            .capabilities;
-        assert_eq!(
-            network_names,
-            vec![&"goerli".to_string(), &"mainnet".to_string()]
-        );
-        assert_eq!(goerli_capability, archive);
-        assert_eq!(mainnet_capability, traces);
+            .iter()
+            .filter(|a| a.chain_id().as_str().eq("goerli"))
+            .collect();
+        assert_eq!(goerli.len(), 1);
+        let goerli = goerli.first().unwrap().as_rpc().unwrap();
+        assert_eq!(goerli.adapters.len(), 1);
+        let goerli = goerli.adapters.first().unwrap();
+        assert_eq!(goerli.capabilities, archive);
     }
 }
