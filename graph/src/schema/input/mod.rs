@@ -2626,7 +2626,6 @@ mod validations {
         }
 
         /// Aggregations must have a `timestamp` field of type `Timestamp`
-        /// FIXME: introduce a timestamp type and use that
         fn valid_timestamp_field(agg_type: &s::ObjectType) -> Option<Err> {
             let field = match agg_type.field(kw::TIMESTAMP) {
                 Some(field) => field,
