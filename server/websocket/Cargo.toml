@@ -9,4 +9,4 @@ graph = { path = "../../graph" }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 tokio-tungstenite = "0.17"
-uuid = { version = "1.6.1", features = ["v4"] }
+uuid = { version = "1.8.0", features = ["v4"] }
