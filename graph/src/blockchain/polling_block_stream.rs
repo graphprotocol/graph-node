@@ -382,8 +382,14 @@ where
             let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter).await?;
             let range_size = to - from + 1;
 
-            // There were no non-null finalized blocks greater than or equal to `to`.
-            // Retry until we find one.
+            // If the target block (`to`) is within the reorg threshold, indicating no non-null finalized blocks are
+            // greater than or equal to `to`, we retry later. This deferment allows the chain head to advance,
+            // ensuring the target block range becomes finalized. It effectively minimizes the risk of chain reorg
+            // affecting the processing by waiting for a more stable set of blocks.
+            if to > head_ptr.number - reorg_threshold {
+                return Ok(ReconciliationStep::Retry);
+            }
+
             if to > head_ptr.number - reorg_threshold {
                 return Ok(ReconciliationStep::Retry);
             }
