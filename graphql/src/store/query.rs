@@ -388,25 +388,19 @@ fn build_child_filter_from_object(
 /// Parses a list of GraphQL values into a vector of entity field values.
 fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecutionError> {
     match value {
-        Value::List(ref values) if !values.is_empty() => {
+        Value::List(values) => {
             // Check that all values in list are of the same type
             let root_discriminant = discriminant(&values[0]);
-            values
-                .iter()
-                .map(|value| {
-                    let current_discriminant = discriminant(value);
-                    if root_discriminant == current_discriminant {
-                        Ok(value.clone())
-                    } else {
-                        Err(QueryExecutionError::ListTypesError(
-                            filter_type.to_string(),
-                            vec![values[0].to_string(), value.to_string()],
-                        ))
-                    }
-                })
-                .collect::<Result<Vec<_>, _>>()
+            for value in &values {
+                if root_discriminant != discriminant(value) {
+                    return Err(QueryExecutionError::ListTypesError(
+                        filter_type.to_string(),
+                        vec![values[0].to_string(), value.to_string()],
+                    ));
+                }
+            }
+            Ok(values)
         }
-        Value::List(ref values) if values.is_empty() => Ok(vec![]),
         _ => Err(QueryExecutionError::ListFilterError(
             filter_type.to_string(),
         )),
