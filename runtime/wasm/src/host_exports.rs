@@ -485,6 +485,14 @@ impl HostExports {
         ))
     }
 
+    pub(crate) fn download_url(
+        &self,
+        logger: &Logger,
+        url: String,
+    ) -> Result<Vec<u8>, anyhow::Error> {
+        self.ipfs_cat(&logger, url)
+    }
+
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
         // Does not consume gas because this is not a part of the deterministic feature set.
         // Ideally this would first consume gas for fetching the file stats, and then again

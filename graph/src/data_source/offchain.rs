@@ -30,6 +30,7 @@ lazy_static! {
     pub static ref OFFCHAIN_KINDS: HashMap<&'static str, OffchainDataSourceKind> = [
         ("file/ipfs", OffchainDataSourceKind::Ipfs),
         ("file/arweave", OffchainDataSourceKind::Arweave),
+        ("file/http", OffchainDataSourceKind::Http),
     ]
     .into_iter()
     .collect();
@@ -42,6 +43,7 @@ const NOT_DONE_VALUE: i32 = -1;
 pub enum OffchainDataSourceKind {
     Ipfs,
     Arweave,
+    Http,
 }
 impl OffchainDataSourceKind {
     pub fn try_parse_source(&self, bs: Bytes) -> Result<Source, anyhow::Error> {
@@ -53,6 +55,10 @@ impl OffchainDataSourceKind {
             OffchainDataSourceKind::Arweave => {
                 let base64 = Word::from(String::from_utf8(bs.to_vec())?);
                 Source::Arweave(base64)
+            }
+            OffchainDataSourceKind::Http => {
+                let url = Word::from(String::from_utf8(bs.to_vec())?);
+                Source::Http(url)
             }
         };
         Ok(source)
@@ -190,6 +196,7 @@ impl DataSource {
                 Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
             },
             OffchainDataSourceKind::Arweave => Source::Arweave(Word::from(source)),
+            OffchainDataSourceKind::Http => Source::Http(Word::from(source)),
         };
 
         Ok(Self {
@@ -315,6 +322,7 @@ pub type Base64 = Word;
 pub enum Source {
     Ipfs(CidFile),
     Arweave(Base64),
+    Http(Word),
 }
 
 impl Source {
@@ -328,6 +336,7 @@ impl Source {
         match self {
             Source::Ipfs(ref cid) => Some(cid.to_bytes()),
             Source::Arweave(ref base64) => Some(base64.as_bytes().to_vec()),
+            Source::Http(ref url) => Some(url.as_bytes().to_vec()),
         }
     }
 }
@@ -337,6 +346,7 @@ impl Into<Bytes> for Source {
         match self {
             Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
             Source::Arweave(ref base64) => Bytes::from(base64.as_bytes()),
+            Source::Http(ref url) => Bytes::from(url.as_bytes().to_vec()),
         }
     }
 }

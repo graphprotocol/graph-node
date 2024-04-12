@@ -1,4 +1,7 @@
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
 use graph::data::value::Word;
+use graph::prelude::tiny_keccak::keccak256;
 use graph::runtime::gas;
 use graph::util::lfu_cache::LfuCache;
 use std::collections::HashMap;
@@ -137,6 +140,9 @@ impl WasmInstanceData {
         )
     }
 }
+
+const METHOD_BYTES: &[u8] = &[0x80, 0x19, 0xf9, 0xb1];
+const METHOD_UTF8: &[u8] = &[0x6f, 0x35, 0x7c, 0x6a];
 
 impl WasmInstanceContext<'_> {
     fn store_get_scoped(
@@ -503,6 +509,116 @@ impl WasmInstanceContext<'_> {
                 true
             });
         asc_new(self, &result, gas)
+    }
+
+    fn download_url(&mut self, gas: &GasCounter, url: String) -> Result<Vec<u8>, HostExportError> {
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let logger = self.as_ref().ctx.logger.cheap_clone();
+        host_exports.download_url(&logger, url).map_err(Into::into)
+    }
+
+    pub fn decode_verifiable_uri(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<(String, Vec<u8>, Vec<u8>), anyhow::Error> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let code: u16 = BigEndian::read_u16(&bytes);
+        if code == 0 {
+            // VerifiableURI
+            let method = &bytes[2..6];
+            let length: u16 = BigEndian::read_u16(&bytes[6..]);
+            let desired_hash = &bytes[8..(8 + length as usize)];
+            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone()).unwrap();
+            return Ok((url, method.to_vec(), desired_hash.to_vec()));
+        }
+        let method = &bytes[0..4]; // 0..3
+        let desired_hash = &bytes[4..8];
+        let url = String::from_utf8(bytes[8..].to_vec().clone()).unwrap();
+        Ok((url, method.to_vec(), desired_hash.to_vec()))
+    }
+
+    pub fn decode_verifiable_uri_public(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let code: u16 = BigEndian::read_u16(&bytes);
+        if code == 0 {
+            // VerifiableURI
+            let method = &bytes[2..6];
+            let length: u16 = BigEndian::read_u16(&bytes[6..]);
+            let desired_hash = &bytes[8..(8 + length as usize)];
+            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone()).unwrap();
+            let value = serde_json::json!({
+                "url": url,
+                "method": hex::encode(method),
+                "data": hex::encode(desired_hash),
+            });
+            return asc_new(self, &value, gas);
+        }
+        let method = &bytes[0..4]; // 0..3
+        let desired_hash = &bytes[4..8];
+        let url = String::from_utf8(bytes[8..].to_vec().clone()).unwrap();
+
+        let value = serde_json::json!({
+            "url": url,
+            "method": hex::encode(method),
+            "data": hex::encode(desired_hash),
+        });
+        asc_new(self, &value, gas)
+    }
+
+    pub fn fetch_verifiable_uri(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let (url, method, desired_hash) = self.decode_verifiable_uri(gas, bytes_ptr)?;
+        let src = url.replace("ipfs://", "https://api.universalprofile.cloud/ipfs/");
+        let bytes = self.download_url(gas, src)?;
+        let raw_hash = keccak256(&bytes).to_vec();
+        let str =
+            String::from_utf8(bytes.clone()).map_err(|e| HostExportError::from(Error::from(e)))?;
+        let data = serde_json::from_str(&str).map_err(|e| HostExportError::from(Error::from(e)))?;
+        let verified = if method == METHOD_BYTES || method == METHOD_UTF8 {
+            let str =
+                serde_json::to_string(&data).map_err(|e| HostExportError::from(Error::from(e)))?;
+            let bytes = str.as_bytes();
+            let hash = keccak256(bytes).to_vec();
+            if desired_hash == hash || desired_hash == raw_hash {
+                Some(true)
+            } else {
+                Some(false)
+            }
+        } else {
+            None
+        };
+        let data = match data {
+            serde_json::Value::Object(mut map) => {
+                let mut inner_map = serde_json::Map::new();
+                inner_map.insert("url".to_string(), serde_json::Value::String(url));
+                inner_map.insert(
+                    "method".to_string(),
+                    serde_json::Value::String(hex::encode(method)),
+                );
+                inner_map.insert(
+                    "data".to_string(),
+                    serde_json::Value::String(hex::encode(desired_hash)),
+                );
+                if let Some(verified) = verified {
+                    inner_map.insert("verified".to_string(), serde_json::Value::Bool(verified));
+                }
+                map.insert(
+                    "_verification".to_string(),
+                    serde_json::Value::Object(inner_map),
+                );
+                serde_json::Value::Object(map)
+            }
+            _ => data,
+        };
+        asc_new(self, &data, gas)
     }
 
     /// function ipfs.cat(link: String): Bytes

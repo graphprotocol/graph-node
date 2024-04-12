@@ -7,6 +7,7 @@ use crate::prelude::Error;
 use std::fmt::Debug;
 
 mod arweave;
+mod http;
 mod ipfs;
 
 pub use arweave::*;

@@ -25,6 +25,7 @@ use graph::components::subgraph::Settings;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
+use graph::http_client::HttpClient;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, IpfsResolver, LoggerFactory, NodeId,
     SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
@@ -32,7 +33,7 @@ use graph::prelude::{
 };
 use graph::slog::{debug, info, Logger};
 use graph_chain_ethereum as ethereum;
-use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use graph_core::polling_monitor::{arweave_service, http_service, ipfs_service};
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -88,6 +89,18 @@ pub async fn run(
             0 => FileSizeLimit::Unlimited,
             n => FileSizeLimit::MaxBytes(n as u64),
         },
+    );
+
+    let http_client = Arc::new(HttpClient::new(
+        logger.clone(),
+        &env_vars.mappings.ipfs_timeout,
+        true,
+    ));
+    let http_service = http_service(
+        http_client,
+        env_vars.mappings.max_ipfs_file_bytes,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
     );
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
@@ -195,6 +208,7 @@ pub async fn run(
         ipfs_service,
         arweave_service,
         static_filters,
+        http_service,
     );
 
     // Create IPFS-based subgraph provider

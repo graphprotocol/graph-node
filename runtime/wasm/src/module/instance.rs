@@ -442,6 +442,17 @@ impl WasmInstance {
             user_data,
             flags
         );
+        link!(
+            "erc725.decode_verifiable_uri",
+            decode_verifiable_uri_public,
+            bytes_ptr
+        );
+        link!(
+            "erc725.fetch_verifiable_uri",
+            fetch_verifiable_uri,
+            bytes_ptr
+        );
+
         // The previous ipfs-related functions are unconditionally linked for backward compatibility
         if experimental_features.allow_non_deterministic_ipfs {
             link!(
