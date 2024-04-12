@@ -9,8 +9,8 @@
     "deploy:test": "graph deploy test/int8 --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "0.62.0",
-    "@graphprotocol/graph-ts": "0.31.0",
+    "@graphprotocol/graph-cli": "0.69.0",
+    "@graphprotocol/graph-ts": "0.34.0",
     "solc": "^0.8.2"
   },
   "dependencies": {

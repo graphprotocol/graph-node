@@ -3,6 +3,7 @@ use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::endpoint::EndpointMetrics;
+use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
@@ -310,9 +311,10 @@ pub enum Command {
         /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
         #[clap(long, short)]
         delete_threshold: Option<f64>,
-        /// How much history to keep in blocks
-        #[clap(long, short = 'y', default_value = "10000")]
-        history: usize,
+        /// How much history to keep in blocks. Defaults to
+        /// GRAPH_MIN_HISTORY_BLOCKS
+        #[clap(long, short = 'y')]
+        history: Option<usize>,
         /// Prune only this once
         #[clap(long, short)]
         once: bool,
@@ -374,8 +376,12 @@ pub enum UnusedCommand {
     /// List unused deployments
     List {
         /// Only list unused deployments that still exist
-        #[clap(short, long)]
+        #[clap(short, long, conflicts_with = "deployment")]
         existing: bool,
+
+        /// Deployment
+        #[clap(short, long)]
+        deployment: Option<DeploymentSearch>,
     },
     /// Update and record currently unused deployments
     Record,
@@ -539,6 +545,16 @@ pub enum ChainCommand {
         /// Skips confirmation prompt
         #[clap(long, short)]
         force: bool,
+    },
+
+    /// Change the block cache shard for a chain
+    ChangeShard {
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(empty_values = false)]
+        chain_name: String,
+        /// Shard name
+        #[clap(empty_values = false)]
+        shard: String,
     },
 
     /// Execute operations on call cache.
@@ -1114,7 +1130,10 @@ async fn main() -> anyhow::Result<()> {
             use UnusedCommand::*;
 
             match cmd {
-                List { existing } => commands::unused_deployments::list(store, existing),
+                List {
+                    existing,
+                    deployment,
+                } => commands::unused_deployments::list(store, existing, deployment),
                 Record => commands::unused_deployments::record(store),
                 Remove {
                     count,
@@ -1286,6 +1305,15 @@ async fn main() -> anyhow::Result<()> {
                 Remove { name } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
                     commands::chain::remove(primary, block_store, name)
+                }
+                ChangeShard { chain_name, shard } => {
+                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    commands::chain::change_block_cache_shard(
+                        primary,
+                        block_store,
+                        chain_name,
+                        shard,
+                    )
                 }
                 CheckBlocks { method, chain_name } => {
                     use commands::check_blocks::{by_hash, by_number, by_range};
@@ -1493,6 +1521,7 @@ async fn main() -> anyhow::Result<()> {
             once,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
+            let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
             commands::prune::run(
                 store,
                 primary_pool,

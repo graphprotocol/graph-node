@@ -1,4 +1,4 @@
-pub mod instance;
+mod instance;
 
 use crate::polling_monitor::{
     spawn_monitor, ArweaveService, IpfsService, PollingMonitor, PollingMonitorMetrics,
@@ -6,20 +6,23 @@ use crate::polling_monitor::{
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{
-    blockchain::Blockchain,
+    blockchain::{BlockTime, Blockchain},
     components::{
         store::{DeploymentId, SubgraphFork},
-        subgraph::{MappingError, SharedProofOfIndexing},
+        subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
     },
+    data::subgraph::SubgraphManifest,
     data_source::{
+        causality_region::CausalityRegionSeq,
         offchain::{self, Base64},
-        CausalityRegion, DataSource, TriggerData,
+        CausalityRegion, DataSource, DataSourceTemplate,
     },
+    derive::CheapClone,
     ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
-        MetricsRegistry, RuntimeHost, RuntimeHostBuilder, SubgraphCountMetric,
-        SubgraphInstanceMetrics, TriggerProcessor,
+        MetricsRegistry, RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics,
+        TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
@@ -29,13 +32,13 @@ use std::{collections::HashMap, time::Instant};
 
 use self::instance::SubgraphInstance;
 
-#[derive(Clone, Debug)]
+use super::Decoder;
+
+#[derive(Clone, CheapClone, Debug)]
 pub struct SubgraphKeepAlive {
     alive_map: Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>,
     sg_metrics: Arc<SubgraphCountMetric>,
 }
-
-impl CheapClone for SubgraphKeepAlive {}
 
 impl SubgraphKeepAlive {
     pub fn new(sg_metrics: Arc<SubgraphCountMetric>) -> Self {
@@ -50,8 +53,10 @@ impl SubgraphKeepAlive {
         self.sg_metrics.running_count.dec();
     }
     pub fn insert(&self, deployment_id: DeploymentId, guard: CancelGuard) {
-        self.alive_map.write().unwrap().insert(deployment_id, guard);
-        self.sg_metrics.running_count.inc();
+        let old = self.alive_map.write().unwrap().insert(deployment_id, guard);
+        if old.is_none() {
+            self.sg_metrics.running_count.inc();
+        }
     }
 }
 
@@ -65,69 +70,56 @@ where
     T: RuntimeHostBuilder<C>,
     C: Blockchain,
 {
-    instance: SubgraphInstance<C, T>,
+    pub(crate) instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
     pub filter: Option<C::TriggerFilter>,
-    trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    pub(crate) decoder: Box<Decoder<C, T>>,
 }
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub fn new(
-        instance: SubgraphInstance<C, T>,
+        manifest: SubgraphManifest<C>,
+        host_builder: T,
+        host_metrics: Arc<HostMetrics>,
+        causality_region_seq: CausalityRegionSeq,
         instances: SubgraphKeepAlive,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+        decoder: Box<Decoder<C, T>>,
     ) -> Self {
+        let instance = SubgraphInstance::new(
+            manifest,
+            host_builder,
+            host_metrics.clone(),
+            causality_region_seq,
+        );
+
         Self {
             instance,
             instances,
             offchain_monitor,
             filter: None,
             trigger_processor,
+            decoder,
         }
-    }
-
-    pub async fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState<C>,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
-        self.process_trigger_in_hosts(
-            logger,
-            self.instance.hosts_for_trigger(trigger),
-            block,
-            trigger,
-            state,
-            proof_of_indexing,
-            causality_region,
-            debug_fork,
-            subgraph_metrics,
-            instrument,
-        )
-        .await
     }
 
     pub async fn process_block(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
-        mut state: BlockState<C>,
+        mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let error_count = state.deterministic_errors.len();
 
         if let Some(proof_of_indexing) = proof_of_indexing {
@@ -142,12 +134,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         // gets executed every block.
         state = self
             .instance
-            .hosts()
-            .first()
+            .first_host()
             .expect("Expected this flow to have exactly one host")
             .process_block(
                 logger,
                 block_ptr,
+                block_time,
                 block_data,
                 handler,
                 state,
@@ -174,34 +166,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 
         Ok(state)
     }
-    pub async fn process_trigger_in_hosts(
-        &self,
-        logger: &Logger,
-        hosts: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState<C>,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
-        self.trigger_processor
-            .process_trigger(
-                logger,
-                hosts,
-                block,
-                trigger,
-                state,
-                proof_of_indexing,
-                causality_region,
-                debug_fork,
-                subgraph_metrics,
-                instrument,
-            )
-            .await
-    }
 
     /// Removes data sources hosts with a creation block greater or equal to `reverted_block`, so
     /// that they are no longer candidates for `process_trigger`.
@@ -225,12 +189,17 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         logger: &Logger,
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
-        let source = data_source.as_offchain().map(|ds| ds.source.clone());
+        let offchain_fields = data_source
+            .as_offchain()
+            .map(|ds| (ds.source.clone(), ds.is_processed()));
         let host = self.instance.add_dynamic_data_source(logger, data_source)?;
 
         if host.is_some() {
-            if let Some(source) = source {
-                self.offchain_monitor.add_source(source)?;
+            if let Some((source, is_processed)) = offchain_fields {
+                // monitor data source only if it has not yet been processed.
+                if !is_processed {
+                    self.offchain_monitor.add_source(source)?;
+                }
             }
         }
 
@@ -241,8 +210,20 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         self.instance.causality_region_next_value()
     }
 
-    pub fn instance(&self) -> &SubgraphInstance<C, T> {
-        &self.instance
+    pub fn hosts_len(&self) -> usize {
+        self.instance.hosts_len()
+    }
+
+    pub fn onchain_data_sources(&self) -> impl Iterator<Item = &C::DataSource> + Clone {
+        self.instance.onchain_data_sources()
+    }
+
+    pub fn static_data_sources(&self) -> &[DataSource<C>] {
+        &self.instance.static_data_sources
+    }
+
+    pub fn templates(&self) -> &[DataSourceTemplate<C>] {
+        &self.instance.templates
     }
 }
 

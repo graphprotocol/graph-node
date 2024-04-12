@@ -4,8 +4,10 @@ use std::str::FromStr;
 use crate::codec::{entity_change, EntityChanges};
 use anyhow::{anyhow, Error};
 use graph::blockchain::block_stream::{
-    BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor, SubstreamsError,
+    BlockStreamError, BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor,
+    SubstreamsError,
 };
+use graph::blockchain::BlockTime;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
 use graph::data::value::Word;
@@ -13,6 +15,7 @@ use graph::data_source::CausalityRegion;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::prelude::{BigDecimal, BlockPtr};
 use graph::schema::InputSchema;
+use graph::slog::error;
 use graph::substreams::Clock;
 use prost::Message;
 
@@ -27,7 +30,10 @@ pub struct WasmBlockMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for WasmBlockMapper {
-    fn decode_block(&self, _output: Option<&[u8]>) -> Result<Option<crate::Block>, Error> {
+    fn decode_block(
+        &self,
+        _output: Option<&[u8]>,
+    ) -> Result<Option<crate::Block>, BlockStreamError> {
         unreachable!("WasmBlockMapper does not do block decoding")
     }
 
@@ -35,32 +41,48 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
         &self,
         _logger: &Logger,
         _block: crate::Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         unreachable!("WasmBlockMapper does not do trigger decoding")
     }
 
     async fn handle_substreams_block(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         clock: Clock,
         cursor: FirehoseCursor,
         block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         let Clock {
             id,
             number,
-            timestamp: _,
+            timestamp,
         } = clock;
 
         let block_ptr = BlockPtr {
             hash: BlockHash::from(id.into_bytes()),
-            number: BlockNumber::from(TryInto::<i32>::try_into(number)?),
+            number: BlockNumber::from(TryInto::<i32>::try_into(number).map_err(Error::from)?),
         };
 
         let block_data = block.into_boxed_slice();
 
+        // `timestamp` is an `Option`, but it should always be set
+        let timestamp = match timestamp {
+            None => {
+                error!(logger,
+                    "Substream block is missing a timestamp";
+                    "cursor" => cursor.to_string(),
+                    "number" => number,
+                );
+                return Err(anyhow!(
+                    "Substream block is missing a timestamp at cursor {cursor}, block number {number}"
+                )).map_err(BlockStreamError::from);
+            }
+            Some(ts) => BlockTime::since_epoch(ts.seconds, ts.nanos as u32),
+        };
+
         Ok(BlockStreamEvent::ProcessWasmBlock(
             block_ptr,
+            timestamp,
             block_data,
             self.handler.clone(),
             cursor,
@@ -82,7 +104,7 @@ pub struct Mapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for Mapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<Block>, Error> {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<Block>, BlockStreamError> {
         let changes: EntityChanges = match output {
             Some(msg) => Message::decode(msg).map_err(SubstreamsError::DecodingError)?,
             None => EntityChanges {
@@ -112,7 +134,7 @@ impl BlockStreamMapper<Chain> for Mapper {
         &self,
         logger: &Logger,
         block: Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         let mut triggers = vec![];
         if block.changes.entity_changes.len() >= 1 {
             triggers.push(TriggerData {});
@@ -127,9 +149,9 @@ impl BlockStreamMapper<Chain> for Mapper {
         clock: Clock,
         cursor: FirehoseCursor,
         block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
-        let block_number: BlockNumber = clock.number.try_into()?;
-        let block_hash = clock.id.as_bytes().to_vec().try_into()?;
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
+        let block_number: BlockNumber = clock.number.try_into().map_err(Error::from)?;
+        let block_hash = clock.id.as_bytes().to_vec().into();
 
         let block = self
             .decode_block(Some(&block))?
@@ -150,7 +172,7 @@ impl BlockStreamMapper<Chain> for Mapper {
 fn parse_changes(
     changes: &EntityChanges,
     schema: &InputSchema,
-) -> anyhow::Result<Vec<ParsedChanges>> {
+) -> Result<Vec<ParsedChanges>, SubstreamsError> {
     let mut parsed_changes = vec![];
     for entity_change in changes.entity_changes.iter() {
         let mut parsed_data: HashMap<Word, Value> = HashMap::default();
@@ -197,9 +219,7 @@ fn parse_changes(
                         .entry(Word::from(field.name.as_str()))
                         .or_insert(Value::Null) = value;
                 }
-                let entity = schema
-                    .make_entity(parsed_data)
-                    .map_err(anyhow::Error::from)?;
+                let entity = schema.make_entity(parsed_data)?;
 
                 ParsedChanges::Upsert { key, entity }
             }

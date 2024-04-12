@@ -1,30 +1,23 @@
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::sync::Arc;
 
-use futures::future::Future;
-use hyper::service::make_service_fn;
-use hyper::Server;
-use thiserror::Error;
+use graph::anyhow;
+use graph::cheap_clone::CheapClone;
+use graph::components::server::server::{start, ServerHandle};
+use graph::log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig};
+use graph::slog::info;
 
 use crate::service::GraphQLService;
-use graph::prelude::{GraphQLServer as GraphQLServerTrait, GraphQlRunner, *};
-
-/// Errors that may occur when starting the server.
-#[derive(Debug, Error)]
-pub enum GraphQLServeError {
-    #[error("Bind error: {0}")]
-    BindError(#[from] hyper::Error),
-}
+use graph::prelude::{GraphQlRunner, Logger, LoggerFactory};
 
 /// A GraphQL server based on Hyper.
 pub struct GraphQLServer<Q> {
     logger: Logger,
     graphql_runner: Arc<Q>,
-    node_id: NodeId,
 }
 
-impl<Q> GraphQLServer<Q> {
+impl<Q: GraphQlRunner> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
-    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, node_id: NodeId) -> Self {
+    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>) -> Self {
         let logger = logger_factory.component_logger(
             "GraphQLServer",
             Some(ComponentLoggerConfig {
@@ -36,22 +29,10 @@ impl<Q> GraphQLServer<Q> {
         GraphQLServer {
             logger,
             graphql_runner,
-            node_id,
         }
     }
-}
 
-impl<Q> GraphQLServerTrait for GraphQLServer<Q>
-where
-    Q: GraphQlRunner,
-{
-    type ServeError = GraphQLServeError;
-
-    fn serve(
-        &mut self,
-        port: u16,
-        ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    pub async fn start(&self, port: u16, ws_port: u16) -> Result<ServerHandle, anyhow::Error> {
         let logger = self.logger.clone();
 
         info!(
@@ -59,29 +40,14 @@ where
             "Starting GraphQL HTTP server at: http://localhost:{}", port
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-
-        // On every incoming request, launch a new GraphQL service that writes
-        // incoming queries to the query sink.
-        let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
-        let node_id = self.node_id.clone();
-        let new_service = make_service_fn(move |_| {
-            let graphql_service = GraphQLService::new(
-                logger_for_service.clone(),
-                graphql_runner.clone(),
-                ws_port,
-                node_id.clone(),
-            );
 
-            futures03::future::ok::<_, Error>(graphql_service)
-        });
+        let service = Arc::new(GraphQLService::new(logger.clone(), graphql_runner, ws_port));
 
-        // Create a task to run the server and handle HTTP requests
-        let task = Server::try_bind(&addr.into())?
-            .serve(new_service)
-            .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
-
-        Ok(Box::new(task.compat()))
+        start(logger, port, move |req| {
+            let service = service.cheap_clone();
+            async move { Ok::<_, _>(service.cheap_clone().call(req).await) }
+        })
+        .await
     }
 }

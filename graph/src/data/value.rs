@@ -1,15 +1,16 @@
-use crate::prelude::{q, s, CacheWeight};
+use crate::derive::CacheWeight;
+use crate::prelude::{q, s};
 use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 use diesel::pg::Pg;
-use diesel::serialize::{self, Output};
+use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::types::ToSql;
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
-use std::io::Write;
 use std::iter::FromIterator;
+
+use super::store::scalar;
 
 /// An immutable string that is more memory-efficient since it only has an
 /// overhead of 16 bytes for storing a string vs the 24 bytes that `String`
@@ -74,8 +75,8 @@ impl<'de> serde::Deserialize<'de> for Word {
 }
 
 impl ToSql<Text, Pg> for Word {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        <str as ToSql<Text, Pg>>::to_sql(&self.0, out)
+    fn to_sql(&self, out: &mut Output<Pg>) -> serialize::Result {
+        <str as ToSql<Text, Pg>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 
@@ -120,7 +121,7 @@ impl PartialEq<Word> for &str {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, CacheWeight, Debug, PartialEq)]
 struct Entry {
     key: Option<Word>,
     value: Value,
@@ -142,7 +143,7 @@ impl Entry {
     }
 }
 
-#[derive(Clone, PartialEq, Default)]
+#[derive(Clone, CacheWeight, PartialEq, Default)]
 pub struct Object(Box<[Entry]>);
 
 impl Object {
@@ -272,18 +273,6 @@ impl<'a> IntoIterator for &'a Object {
     }
 }
 
-impl CacheWeight for Entry {
-    fn indirect_weight(&self) -> usize {
-        self.key.indirect_weight() + self.value.indirect_weight()
-    }
-}
-
-impl CacheWeight for Object {
-    fn indirect_weight(&self) -> usize {
-        self.0.iter().map(CacheWeight::indirect_weight).sum()
-    }
-}
-
 impl std::fmt::Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
@@ -297,7 +286,7 @@ impl std::fmt::Debug for Object {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, CacheWeight, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -307,6 +296,7 @@ pub enum Value {
     Enum(String),
     List(Vec<Value>),
     Object(Object),
+    Timestamp(scalar::Timestamp),
 }
 
 impl Value {
@@ -350,6 +340,10 @@ impl Value {
             }
             ("Int8", Value::Int(num)) => Ok(Value::String(num.to_string())),
             ("Int8", Value::String(num)) => Ok(Value::String(num)),
+            ("Timestamp", Value::Timestamp(ts)) => Ok(Value::Timestamp(ts)),
+            ("Timestamp", Value::String(ts_str)) => Ok(Value::Timestamp(
+                scalar::Timestamp::parse_timestamp(&ts_str).map_err(|_| Value::String(ts_str))?,
+            )),
             ("String", Value::String(s)) => Ok(Value::String(s)),
             ("ID", Value::String(s)) => Ok(Value::String(s)),
             ("ID", Value::Int(n)) => Ok(Value::String(n.to_string())),
@@ -396,17 +390,9 @@ impl std::fmt::Display for Value {
                 }
                 write!(f, "}}")
             }
-        }
-    }
-}
-
-impl CacheWeight for Value {
-    fn indirect_weight(&self) -> usize {
-        match self {
-            Value::Boolean(_) | Value::Int(_) | Value::Null | Value::Float(_) => 0,
-            Value::Enum(s) | Value::String(s) => s.indirect_weight(),
-            Value::List(l) => l.indirect_weight(),
-            Value::Object(o) => o.indirect_weight(),
+            Value::Timestamp(ref ts) => {
+                write!(f, "\"{}\"", ts.as_microseconds_since_epoch().to_string())
+            }
         }
     }
 }
@@ -427,6 +413,9 @@ impl Serialize for Value {
                     seq.serialize_element(v)?;
                 }
                 seq.end()
+            }
+            Value::Timestamp(ts) => {
+                serializer.serialize_str(&ts.as_microseconds_since_epoch().to_string().as_str())
             }
             Value::Null => serializer.serialize_none(),
             Value::String(s) => serializer.serialize_str(s),
@@ -521,6 +510,7 @@ impl From<Value> for q::Value {
                 }
                 q::Value::Object(rmap)
             }
+            Value::Timestamp(ts) => q::Value::String(ts.as_microseconds_since_epoch().to_string()),
         }
     }
 }
@@ -536,6 +526,44 @@ impl std::fmt::Debug for Value {
             Value::Enum(e) => write!(f, "{e}"),
             Value::List(l) => f.debug_list().entries(l).finish(),
             Value::Object(o) => write!(f, "{o:?}"),
+            Value::Timestamp(ts) => {
+                write!(f, "{:?}", ts.as_microseconds_since_epoch().to_string())
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::CacheWeight;
+
+    use super::{Entry, Object, Value, Word};
+
+    /// Test that we measure cache weight properly. If the definition of
+    /// `Value` changes, it's ok if these tests fail. They will then just
+    /// need to be adapted to the changed layout of `Value`
+    #[test]
+    fn cache_weight() {
+        let e = Entry::new(Word::from("hello"), Value::Int(42));
+        assert_eq!(e.weight(), 48 + 5);
+
+        let o = Object(vec![e.clone(), e.clone()].into_boxed_slice());
+        assert_eq!(o.weight(), 16 + 2 * (48 + 5));
+
+        let map = vec![
+            (Word::from("a"), Value::Int(1)),
+            (Word::from("b"), Value::Int(2)),
+        ];
+        let entries_weight = 2 * (16 + 1 + 32);
+        assert_eq!(map.weight(), 24 + entries_weight);
+
+        let v = Value::String("hello".to_string());
+        assert_eq!(v.weight(), 32 + 5);
+        let v = Value::Int(42);
+        assert_eq!(v.weight(), 32);
+
+        let v = Value::Object(Object::from_iter(map));
+        // Not entirely sure where the 8 comes from
+        assert_eq!(v.weight(), 24 + 8 + entries_weight);
     }
 }

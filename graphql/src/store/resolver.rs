@@ -6,8 +6,9 @@ use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
-use graph::data::query::{CacheStatus, Trace};
+use graph::data::query::{CacheStatus, QueryResults, Trace};
 use graph::data::value::{Object, Word};
+use graph::derive::CheapClone;
 use graph::prelude::*;
 use graph::schema::{
     ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
@@ -22,42 +23,19 @@ use crate::query::ext::BlockConstraint;
 use crate::store::query::collect_entities_from_query_field;
 
 /// A resolver that fetches entities from a `Store`.
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct StoreResolver {
     #[allow(dead_code)]
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     subscription_manager: Arc<dyn SubscriptionManager>,
-    pub(crate) block_ptr: Option<BlockPtrTs>,
+    pub(crate) block_ptr: Option<BlockPtr>,
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
     graphql_metrics: Arc<GraphQLMetrics>,
     load_manager: Arc<LoadManager>,
 }
-
-#[derive(Clone, Debug)]
-pub(crate) struct BlockPtrTs {
-    pub ptr: BlockPtr,
-    pub timestamp: Option<u64>,
-}
-
-impl From<BlockPtr> for BlockPtrTs {
-    fn from(ptr: BlockPtr) -> Self {
-        Self {
-            ptr,
-            timestamp: None,
-        }
-    }
-}
-
-impl From<&BlockPtrTs> for BlockPtr {
-    fn from(ptr: &BlockPtrTs) -> Self {
-        ptr.ptr.cheap_clone()
-    }
-}
-
-impl CheapClone for StoreResolver {}
 
 impl StoreResolver {
     /// Create a resolver that looks up entities at whatever block is the
@@ -97,21 +75,16 @@ impl StoreResolver {
         store: Arc<dyn QueryStore>,
         state: &DeploymentState,
         subscription_manager: Arc<dyn SubscriptionManager>,
-        bc: BlockConstraint,
+        block_ptr: BlockPtr,
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
         graphql_metrics: Arc<GraphQLMetrics>,
         load_manager: Arc<LoadManager>,
     ) -> Result<Self, QueryExecutionError> {
-        let store_clone = store.cheap_clone();
-        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
-
-        let blocks_behind = state.latest_block.number - block_ptr.ptr.number;
+        let blocks_behind = state.latest_block.number - block_ptr.number;
         graphql_metrics.observe_query_blocks_behind(blocks_behind, &deployment);
 
-        let has_non_fatal_errors = store
-            .has_deterministic_errors(block_ptr.ptr.block_number())
-            .await?;
+        let has_non_fatal_errors = state.has_deterministic_errors(&block_ptr);
 
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -130,16 +103,18 @@ impl StoreResolver {
     pub fn block_number(&self) -> BlockNumber {
         self.block_ptr
             .as_ref()
-            .map(|ptr| ptr.ptr.number as BlockNumber)
+            .map(|ptr| ptr.number as BlockNumber)
             .unwrap_or(BLOCK_NUMBER_MAX)
     }
 
-    /// locate_block returns the block pointer and it's timestamp when available.
-    async fn locate_block(
+    /// Locate all the blocks needed for the query by resolving block
+    /// constraints and return the selection sets with the blocks at which
+    /// they should be executed
+    pub async fn locate_blocks(
         store: &dyn QueryStore,
-        bc: BlockConstraint,
         state: &DeploymentState,
-    ) -> Result<BlockPtrTs, QueryExecutionError> {
+        query: &Query,
+    ) -> Result<Vec<(BlockPtr, (a::SelectionSet, ErrorPolicy))>, QueryResults> {
         fn block_queryable(
             state: &DeploymentState,
             block: BlockNumber,
@@ -149,140 +124,162 @@ impl StoreResolver {
                 .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
         }
 
-        async fn get_block_ts(
-            store: &dyn QueryStore,
-            ptr: &BlockPtr,
-        ) -> Result<Option<u64>, QueryExecutionError> {
-            match store
-                .block_number_with_timestamp(&ptr.hash)
+        let by_block_constraint = query.block_constraint()?;
+        let hashes: Vec<_> = by_block_constraint
+            .iter()
+            .filter_map(|(bc, _)| bc.hash())
+            .cloned()
+            .collect();
+        let hashes = store
+            .block_numbers(hashes)
+            .await
+            .map_err(QueryExecutionError::from)?;
+        let mut ptrs_and_sels = Vec::new();
+        for (bc, sel) in by_block_constraint {
+            let ptr = match bc {
+                BlockConstraint::Hash(hash) => {
+                    let Some(number) = hashes.get(&hash) else {
+                        return Err(QueryExecutionError::ValueParseError(
+                            "block.hash".to_owned(),
+                            "no block with that hash found".to_owned(),
+                        )
+                        .into());
+                    };
+                    let ptr = BlockPtr::new(hash, *number);
+                    block_queryable(state, ptr.number)?;
+                    ptr
+                }
+                BlockConstraint::Number(number) => {
+                    block_queryable(state, number)?;
+                    // We don't have a way here to look the block hash up from
+                    // the database, and even if we did, there is no guarantee
+                    // that we have the block in our cache. We therefore
+                    // always return an all zeroes hash when users specify
+                    // a block number
+                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                    BlockPtr::new(BlockHash::zero(), number)
+                }
+                BlockConstraint::Min(min) => {
+                    let ptr = state.latest_block.cheap_clone();
+                    if ptr.number < min {
+                        return Err(QueryExecutionError::ValueParseError(
+                                "block.number_gte".to_owned(),
+                                format!(
+                                    "subgraph {} has only indexed up to block number {} \
+                                        and data for block number {} is therefore not yet available",
+                                    state.id, ptr.number, min
+                                ),
+                            ).into());
+                    }
+                    ptr
+                }
+                BlockConstraint::Latest => state.latest_block.cheap_clone(),
+            };
+            ptrs_and_sels.push((ptr, sel));
+        }
+        Ok(ptrs_and_sels)
+    }
+
+    /// Lookup information for the `_meta` field `field`
+    async fn lookup_meta(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        // These constants are closely related to the `_Meta_` type in
+        // `graph/src/schema/meta.graphql`
+        const BLOCK: &str = "block";
+        const TIMESTAMP: &str = "timestamp";
+        const PARENT_HASH: &str = "parentHash";
+
+        /// Check if field is of the form `_ { block { X }}` where X is
+        /// either `timestamp` or `parentHash`. In that case, we need to
+        /// query the database
+        fn lookup_needed(field: &a::Field) -> bool {
+            let Some(block) = field
+                .selection_set
+                .fields()
+                .map(|(_, iter)| iter)
+                .flatten()
+                .find(|f| f.name == BLOCK)
+            else {
+                return false;
+            };
+            block
+                .selection_set
+                .fields()
+                .map(|(_, iter)| iter)
+                .flatten()
+                .any(|f| f.name == TIMESTAMP || f.name == PARENT_HASH)
+        }
+
+        let Some(block_ptr) = &self.block_ptr else {
+            return Err(QueryExecutionError::ResolveEntitiesError(
+                "cannot resolve _meta without a block pointer".to_string(),
+            ));
+        };
+        let (timestamp, parent_hash) = if lookup_needed(field) {
+            match self
+                .store
+                .block_number_with_timestamp_and_parent_hash(&block_ptr.hash)
                 .await
                 .map_err(Into::<QueryExecutionError>::into)?
             {
-                Some((_, Some(ts))) => Ok(Some(ts)),
-                _ => Ok(None),
+                Some((_, ts, parent_hash)) => (ts, parent_hash),
+                _ => (None, None),
             }
-        }
+        } else {
+            (None, None)
+        };
 
-        match bc {
-            BlockConstraint::Hash(hash) => {
-                let ptr = store
-                    .block_number_with_timestamp(&hash)
-                    .await
-                    .map_err(Into::into)
-                    .and_then(|result| {
-                        result
-                            .ok_or_else(|| {
-                                QueryExecutionError::ValueParseError(
-                                    "block.hash".to_owned(),
-                                    "no block with that hash found".to_owned(),
-                                )
-                            })
-                            .map(|(number, ts)| BlockPtrTs {
-                                ptr: BlockPtr::new(hash, number),
-                                timestamp: ts,
-                            })
-                    })?;
-
-                block_queryable(state, ptr.ptr.number)?;
-                Ok(ptr)
-            }
-            BlockConstraint::Number(number) => {
-                block_queryable(state, number)?;
-                // We don't have a way here to look the block hash up from
-                // the database, and even if we did, there is no guarantee
-                // that we have the block in our cache. We therefore
-                // always return an all zeroes hash when users specify
-                // a block number
+        let hash = self
+            .block_ptr
+            .as_ref()
+            .and_then(|ptr| {
+                // locate_block indicates that we do not have a block hash
+                // by setting the hash to `zero`
                 // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)).into())
-            }
-            BlockConstraint::Min(min) => {
-                let ptr = state.latest_block.cheap_clone();
-                if ptr.number < min {
-                    return Err(QueryExecutionError::ValueParseError(
-                        "block.number_gte".to_owned(),
-                        format!(
-                            "subgraph {} has only indexed up to block number {} \
-                                and data for block number {} is therefore not yet available",
-                            state.id, ptr.number, min
-                        ),
-                    ));
+                let hash_h256 = ptr.hash_as_h256();
+                if hash_h256 == web3::types::H256::zero() {
+                    None
+                } else {
+                    Some(r::Value::String(format!("0x{:x}", hash_h256)))
                 }
-                let timestamp = get_block_ts(store, &state.latest_block).await?;
+            })
+            .unwrap_or(r::Value::Null);
+        let number = self
+            .block_ptr
+            .as_ref()
+            .map(|ptr| r::Value::Int(ptr.number.into()))
+            .unwrap_or(r::Value::Null);
 
-                Ok(BlockPtrTs { ptr, timestamp })
-            }
-            BlockConstraint::Latest => {
-                let timestamp = get_block_ts(store, &state.latest_block).await?;
+        let timestamp = timestamp
+            .map(|ts| r::Value::Int(ts as i64))
+            .unwrap_or(r::Value::Null);
 
-                Ok(BlockPtrTs {
-                    ptr: state.latest_block.cheap_clone(),
-                    timestamp,
-                })
-            }
-        }
-    }
+        let parent_hash = parent_hash
+            .map(|hash| r::Value::String(format!("{}", hash)))
+            .unwrap_or(r::Value::Null);
 
-    fn handle_meta(
-        &self,
-        prefetched_object: Option<r::Value>,
-        object_type: &ObjectOrInterface<'_>,
-    ) -> Result<(Option<r::Value>, Option<r::Value>), QueryExecutionError> {
-        // Pretend that the whole `_meta` field was loaded by prefetch. Eager
-        // loading this is ok until we add more information to this field
-        // that would force us to query the database; when that happens, we
-        // need to switch to loading on demand
-        if object_type.is_meta() {
-            let hash = self
-                .block_ptr
-                .as_ref()
-                .and_then(|ptr| {
-                    // locate_block indicates that we do not have a block hash
-                    // by setting the hash to `zero`
-                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                    let hash_h256 = ptr.ptr.hash_as_h256();
-                    if hash_h256 == web3::types::H256::zero() {
-                        None
-                    } else {
-                        Some(r::Value::String(format!("0x{:x}", hash_h256)))
-                    }
-                })
-                .unwrap_or(r::Value::Null);
-            let number = self
-                .block_ptr
-                .as_ref()
-                .map(|ptr| r::Value::Int(ptr.ptr.number.into()))
-                .unwrap_or(r::Value::Null);
-
-            let timestamp = self.block_ptr.as_ref().map(|ptr| {
-                ptr.timestamp
-                    .map(|ts| r::Value::Int(ts as i64))
-                    .unwrap_or(r::Value::Null)
-            });
-
-            let mut map = BTreeMap::new();
-            let block = object! {
-                hash: hash,
-                number: number,
-                timestamp: timestamp,
-                __typename: BLOCK_FIELD_TYPE
-            };
-            map.insert("prefetch:block".into(), r::Value::List(vec![block]));
-            map.insert(
-                "deployment".into(),
-                r::Value::String(self.deployment.to_string()),
-            );
-            map.insert(
-                "hasIndexingErrors".into(),
-                r::Value::Boolean(self.has_non_fatal_errors),
-            );
-            map.insert(
-                "__typename".into(),
-                r::Value::String(META_FIELD_TYPE.to_string()),
-            );
-            return Ok((None, Some(r::Value::object(map))));
-        }
-        Ok((prefetched_object, None))
+        let mut map = BTreeMap::new();
+        let block = object! {
+            hash: hash,
+            number: number,
+            timestamp: timestamp,
+            parentHash: parent_hash,
+            __typename: BLOCK_FIELD_TYPE
+        };
+        let block_key = Word::from(format!("prefetch:{BLOCK}"));
+        map.insert(block_key, r::Value::List(vec![block]));
+        map.insert(
+            "deployment".into(),
+            r::Value::String(self.deployment.to_string()),
+        );
+        map.insert(
+            "hasIndexingErrors".into(),
+            r::Value::Boolean(self.has_non_fatal_errors),
+        );
+        map.insert(
+            "__typename".into(),
+            r::Value::String(META_FIELD_TYPE.to_string()),
+        );
+        return Ok(r::Value::object(map));
     }
 }
 
@@ -329,9 +326,8 @@ impl Resolver for StoreResolver {
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
-        let (prefetched_object, meta) = self.handle_meta(prefetched_object, &object_type)?;
-        if let Some(meta) = meta {
-            return Ok(meta);
+        if object_type.is_meta() {
+            return self.lookup_meta(field).await;
         }
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {

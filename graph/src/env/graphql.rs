@@ -53,6 +53,12 @@ pub struct EnvVarsGraphQl {
     /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
     /// default value is 100.
     pub query_cache_stale_period: u64,
+    /// Limits the maximum size of a cache entry. Query results larger than
+    /// the size of a cache shard divided by this value will not be cached.
+    /// Set by `GRAPH_QUERY_CACHE_MAX_ENTRY_RATIO`. The default is 3. A
+    /// value of 0 means that there is no limit on the size of a cache
+    /// entry.
+    pub query_cache_max_entry_ratio: usize,
     /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
     /// seconds). No default value is provided.
     pub query_timeout: Option<Duration>,
@@ -94,6 +100,9 @@ pub struct EnvVarsGraphQl {
     /// header `X-GraphTraceQuery` set to this value will include a trace of
     /// the SQL queries that were run.
     pub query_trace_token: String,
+    /// Set by the env var `GRAPH_PARALLEL_BLOCK_CONSTRAINTS`
+    /// Whether to run top-level queries with different block constraints in parallel
+    pub parallel_block_constraints: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -126,6 +135,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             query_cache_blocks: x.query_cache_blocks,
             query_cache_max_mem: x.query_cache_max_mem_in_mb.0 * 1000 * 1000,
             query_cache_stale_period: x.query_cache_stale_period,
+            query_cache_max_entry_ratio: x.query_cache_max_entry_ratio,
             query_timeout: x.query_timeout_in_secs.map(Duration::from_secs),
             max_complexity: x.max_complexity.map(|x| x.0),
             max_depth: x.max_depth.0,
@@ -138,6 +148,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             disable_bool_filters: x.disable_bool_filters.0,
             disable_child_sorting: x.disable_child_sorting.0,
             query_trace_token: x.query_trace_token,
+            parallel_block_constraints: x.parallel_block_constraints.0,
         }
     }
 }
@@ -163,6 +174,8 @@ pub struct InnerGraphQl {
     query_cache_max_mem_in_mb: NoUnderscores<usize>,
     #[envconfig(from = "GRAPH_QUERY_CACHE_STALE_PERIOD", default = "100")]
     query_cache_stale_period: u64,
+    #[envconfig(from = "GRAPH_QUERY_CACHE_MAX_ENTRY_RATIO", default = "3")]
+    query_cache_max_entry_ratio: usize,
     #[envconfig(from = "GRAPH_GRAPHQL_QUERY_TIMEOUT")]
     query_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_COMPLEXITY")]
@@ -187,4 +200,6 @@ pub struct InnerGraphQl {
     pub disable_child_sorting: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GRAPHQL_TRACE_TOKEN", default = "")]
     query_trace_token: String,
+    #[envconfig(from = "GRAPH_PARALLEL_BLOCK_CONSTRAINTS", default = "false")]
+    pub parallel_block_constraints: EnvVarBoolean,
 }

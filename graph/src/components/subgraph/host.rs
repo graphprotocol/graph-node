@@ -6,6 +6,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::blockchain::BlockTime;
 use crate::components::metrics::gas::GasMetrics;
 use crate::components::store::SubgraphFork;
 use crate::data_source::{
@@ -47,6 +48,15 @@ impl MappingError {
             Unknown(e) => Unknown(e.context(s)),
         }
     }
+
+    pub fn add_trigger_context<C: Blockchain>(mut self, trigger: &TriggerData<C>) -> MappingError {
+        let error_context = trigger.error_context();
+        if !error_context.is_empty() {
+            self = self.context(error_context)
+        }
+        self = self.context("failed to process trigger".to_string());
+        self
+    }
 }
 
 /// Common trait for runtime host implementations.
@@ -65,24 +75,24 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError>;
+    ) -> Result<BlockState, MappingError>;
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
-        block_ptr: BlockPtr,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError>;
+    ) -> Result<BlockState, MappingError>;
 
     /// Block number in which this host was created.
     /// Returns `None` for static data sources.
@@ -95,6 +105,9 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     /// Convenience function to avoid leaking internal representation of
     /// mutable number. Calling this on OnChain Datasources is a noop.
     fn set_done_at(&self, block: Option<BlockNumber>);
+
+    /// Return a metrics object for this host.
+    fn host_metrics(&self) -> Arc<HostMetrics>;
 }
 
 pub struct HostMetrics {
@@ -126,11 +139,7 @@ impl HostMetrics {
                 "deployment_eth_call_execution_time",
                 "Measures the execution time for eth_call",
                 subgraph,
-                vec![
-                    String::from("contract_name"),
-                    String::from("address"),
-                    String::from("method"),
-                ],
+                vec![String::from("contract_name"), String::from("method")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `deployment_eth_call_execution_time` histogram");
@@ -169,11 +178,10 @@ impl HostMetrics {
         &self,
         duration: f64,
         contract_name: &str,
-        address: &str,
         method: &str,
     ) {
         self.eth_call_execution_time
-            .with_label_values(&[contract_name, address, method][..])
+            .with_label_values(&[contract_name, method][..])
             .observe(duration);
     }
 

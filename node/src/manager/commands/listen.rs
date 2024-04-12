@@ -74,7 +74,7 @@ pub async fn entities(
                 writeln!(buf, "type {entity_type} @entity {{ id: ID! }}").unwrap();
                 buf
             });
-        let schema = InputSchema::parse(&schema, id.clone()).unwrap();
+        let schema = InputSchema::parse_latest(&schema, id.clone()).unwrap();
         entity_types
             .iter()
             .map(|et| schema.entity_type(et))

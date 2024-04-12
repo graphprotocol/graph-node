@@ -1,3 +1,4 @@
+use crate::blockchain::block_stream::BlockStreamError;
 use crate::prelude::tokio::macros::support::Poll;
 use crate::prelude::{Pin, StoreError};
 use futures03::channel::oneshot;
@@ -310,6 +311,12 @@ impl From<diesel::result::Error> for CancelableError<anyhow::Error> {
 impl From<diesel::result::Error> for CancelableError<StoreError> {
     fn from(e: diesel::result::Error) -> Self {
         Self::Error(e.into())
+    }
+}
+
+impl From<BlockStreamError> for CancelableError<BlockStreamError> {
+    fn from(e: BlockStreamError) -> Self {
+        Self::Error(e)
     }
 }
 

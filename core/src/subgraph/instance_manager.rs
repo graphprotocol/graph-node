@@ -2,6 +2,7 @@ use crate::polling_monitor::{ArweaveService, IpfsService};
 use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
+use crate::subgraph::Decoder;
 use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
@@ -376,7 +377,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stopwatch_metrics,
         ));
 
-        let mut offchain_monitor = OffchainMonitor::new(
+        let offchain_monitor = OffchainMonitor::new(
             logger.cheap_clone(),
             registry.cheap_clone(),
             &manifest.id,
@@ -389,8 +390,9 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
+        let (runtime_adapter, decoder_hook) = chain.runtime();
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
-            chain.runtime_adapter(),
+            runtime_adapter,
             self.link_resolver.cheap_clone(),
             subgraph_store.ens_lookup(),
         );
@@ -407,15 +409,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
         let instrument = self.subgraph_store.instrument(&deployment)?;
-        let instance = super::context::instance::SubgraphInstance::from_manifest(
-            &logger,
-            manifest,
-            data_sources,
-            host_builder,
-            host_metrics.clone(),
-            &mut offchain_monitor,
-            causality_region_seq,
-        )?;
+
+        let decoder = Box::new(Decoder::new(decoder_hook));
 
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
@@ -435,9 +430,25 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             instrument,
         };
 
-        // The subgraph state tracks the state of the subgraph instance over time
-        let ctx =
-            IndexingContext::new(instance, self.instances.cheap_clone(), offchain_monitor, tp);
+        // Initialize the indexing context, including both static and dynamic data sources.
+        // The order of inclusion is the order of processing when a same trigger matches
+        // multiple data sources.
+        let ctx = {
+            let mut ctx = IndexingContext::new(
+                manifest,
+                host_builder,
+                host_metrics.clone(),
+                causality_region_seq,
+                self.instances.cheap_clone(),
+                offchain_monitor,
+                tp,
+                decoder,
+            );
+            for data_source in data_sources {
+                ctx.add_dynamic_data_source(&logger, data_source)?;
+            }
+            ctx
+        };
 
         let metrics = RunnerMetrics {
             subgraph: subgraph_metrics,

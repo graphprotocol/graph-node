@@ -1,6 +1,7 @@
-use hyper::header::AUTHORIZATION;
+use graph::hyper::header::AUTHORIZATION;
 
 use graph::env::EnvVars;
+use graph::hyper::HeaderMap;
 
 /// Validation logic for access tokens required to access POI results.
 pub struct PoiProtection {
@@ -48,7 +49,7 @@ impl PoiProtection {
     }
 }
 
-pub fn bearer_token(headers: &hyper::HeaderMap) -> Option<&[u8]> {
+pub fn bearer_token(headers: &HeaderMap) -> Option<&[u8]> {
     let header = headers.get(AUTHORIZATION)?.as_bytes();
     header.strip_prefix(b"Bearer ")
 }

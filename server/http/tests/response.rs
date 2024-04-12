@@ -3,20 +3,20 @@ use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
 
-#[test]
-fn generates_200_for_query_results() {
+#[tokio::test]
+async fn generates_200_for_query_results() {
     let data = Object::from_iter([]);
     let query_result = QueryResults::from(data).as_http_response();
     test_utils::assert_expected_headers(&query_result);
-    test_utils::assert_successful_response(query_result);
+    test_utils::assert_successful_response(query_result).await;
 }
 
-#[test]
-fn generates_valid_json_for_an_empty_result() {
+#[tokio::test]
+async fn generates_valid_json_for_an_empty_result() {
     let data = Object::from_iter([]);
     let query_result = QueryResults::from(data).as_http_response();
     test_utils::assert_expected_headers(&query_result);
-    let data = test_utils::assert_successful_response(query_result);
+    let data = test_utils::assert_successful_response(query_result).await;
     assert!(data.is_empty());
 }
 
@@ -32,7 +32,7 @@ fn canonical_serialization() {
                 use r::Value::*;
                 let _ = match $obj {
                     Object(_) | List(_) | Enum(_) | Null | Int(_) | Float(_) | String(_)
-                    | Boolean(_) => (),
+                    | Timestamp(_) | Boolean(_) => (),
                 };
             }
             let res = QueryResult::try_from($obj).unwrap();

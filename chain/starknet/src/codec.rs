@@ -28,4 +28,8 @@ impl BlockchainBlock for Block {
             })
         }
     }
+
+    fn timestamp(&self) -> graph::blockchain::BlockTime {
+        graph::blockchain::BlockTime::since_epoch(self.timestamp as i64, 0)
+    }
 }

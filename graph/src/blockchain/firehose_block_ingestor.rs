@@ -192,14 +192,17 @@ where
 
             let result = endpoint
                 .clone()
-                .stream_blocks(firehose::Request {
-                    // Starts at current HEAD block of the chain (viewed from Firehose side)
-                    start_block_num: -1,
-                    cursor: latest_cursor.clone(),
-                    final_blocks_only: false,
-                    transforms: self.default_transforms.iter().map(|t| t.into()).collect(),
-                    ..Default::default()
-                })
+                .stream_blocks(
+                    firehose::Request {
+                        // Starts at current HEAD block of the chain (viewed from Firehose side)
+                        start_block_num: -1,
+                        cursor: latest_cursor.clone(),
+                        final_blocks_only: false,
+                        transforms: self.default_transforms.iter().map(|t| t.into()).collect(),
+                        ..Default::default()
+                    },
+                    &firehose::ConnectionHeaders::new(),
+                )
                 .await;
 
             match result {
@@ -207,7 +210,11 @@ where
                     info!(logger, "Blockstream connected, consuming blocks");
 
                     // Consume the stream of blocks until an error is hit
-                    latest_cursor = self.process_blocks(latest_cursor, stream).await
+                    let cursor = self.process_blocks(latest_cursor.clone(), stream).await;
+                    if cursor != latest_cursor {
+                        backoff.reset();
+                        latest_cursor = cursor;
+                    }
                 }
                 Err(e) => {
                     error!(logger, "Unable to connect to endpoint: {:#}", e);

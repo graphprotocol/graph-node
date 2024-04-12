@@ -1,12 +1,11 @@
 use std::fs::File;
 use std::io::Write;
 use std::iter::FromIterator;
-use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 use graph::data::query::Trace;
 use graph::log::escape_control_chars;
-use graph::prelude::r;
+use graph::prelude::{q, r};
 use graph::{
     data::query::QueryTarget,
     prelude::{
@@ -37,7 +36,7 @@ pub async fn run(
         QueryTarget::Name(name, Default::default())
     };
 
-    let document = graphql_parser::parse_query(&query)?.into_static();
+    let document = q::parse_query(&query)?.into_static();
     let vars: Vec<(String, r::Value)> = vars
         .into_iter()
         .map(|v| {
@@ -77,53 +76,52 @@ pub async fn run(
     // interesting SQL queries
     if let Some(trace) = trace {
         let mut f = File::create(trace)?;
-        let json = serde_json::to_string(&res.traces())?;
+        let json = serde_json::to_string(&res.trace)?;
         writeln!(f, "{}", json)?;
     }
 
-    for trace in res.traces() {
-        print_brief_trace("root", trace, 0)?;
-    }
+    print_brief_trace("root", &res.trace, 0)?;
+
     Ok(())
 }
 
 fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), anyhow::Error> {
     use Trace::*;
 
-    fn query_time(trace: &Trace) -> Duration {
-        match trace {
-            None => Duration::from_millis(0),
-            Root { children, .. } => children.iter().map(|(_, trace)| query_time(trace)).sum(),
-            Query {
-                elapsed, children, ..
-            } => *elapsed + children.iter().map(|(_, trace)| query_time(trace)).sum(),
-        }
-    }
-
     match trace {
         None => { /* do nothing */ }
         Root {
-            elapsed, children, ..
+            elapsed,
+            setup,
+            blocks: children,
+            ..
         } => {
-            let elapsed = *elapsed.lock().unwrap();
-            let qt = query_time(trace);
-            let pt = elapsed - qt;
+            let elapsed = *elapsed;
+            let qt = trace.query_total();
+            let pt = elapsed - qt.elapsed;
 
             println!(
-                "{space:indent$}{name:rest$} {elapsed:7}ms",
+                "{space:indent$}{name:rest$} {setup:7}ms {elapsed:7}ms",
                 space = " ",
                 indent = indent,
                 rest = 48 - indent,
                 name = name,
+                setup = setup.as_millis(),
                 elapsed = elapsed.as_millis(),
             );
-            for (name, trace) in children {
-                print_brief_trace(name, trace, indent + 2)?;
+            for twc in children {
+                print_brief_trace(name, &twc.trace, indent + 2)?;
             }
-            println!("\nquery:      {:7}ms", qt.as_millis());
+            println!("\nquery:      {:7}ms", qt.elapsed.as_millis());
             println!("other:      {:7}ms", pt.as_millis());
             println!("total:      {:7}ms", elapsed.as_millis())
         }
+        Block { children, .. } => {
+            for (name, trace) in children {
+                print_brief_trace(name, trace, indent + 2)?;
+            }
+        }
+
         Query {
             elapsed,
             entity_count,

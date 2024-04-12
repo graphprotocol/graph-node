@@ -1,18 +1,24 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use graph::blockchain::BlockchainMap;
-use http::header::{
+use graph::cheap_clone::CheapClone;
+use graph::components::graphql::GraphQLMetrics;
+use graph::components::link_resolver::LinkResolver;
+use graph::components::server::query::{ServerResponse, ServerResult};
+use graph::data::subgraph::DeploymentHash;
+use graph::http_body_util::{BodyExt, Full};
+use graph::hyper::body::{Bytes, Incoming};
+use graph::hyper::header::{
     self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE, LOCATION,
 };
-use hyper::body::Bytes;
-use hyper::service::Service;
-use hyper::{Body, Method, Request, Response, StatusCode};
+use graph::hyper::{body::Body, Method, Request, Response, StatusCode};
 
-use std::task::Context;
-use std::task::Poll;
-
-use graph::components::{server::query::GraphQLServerError, store::Store};
-use graph::data::query::QueryResults;
-use graph::prelude::*;
+use graph::components::{server::query::ServerError, store::Store};
+use graph::data::query::{Query, QueryError, QueryResult, QueryResults};
+use graph::prelude::{q, serde_json};
+use graph::slog::{debug, error, Logger};
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 
 use crate::auth::bearer_token;
@@ -31,45 +37,23 @@ impl GraphQLMetrics for NoopGraphQLMetrics {
     fn observe_query_blocks_behind(&self, _blocks_behind: i32, _id: &DeploymentHash) {}
 }
 
-/// An asynchronous response to a GraphQL request.
-pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQLServerError>;
-
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct IndexNodeService<Q, S> {
+pub struct IndexNodeService<S> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
-    graphql_runner: Arc<Q>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
     link_resolver: Arc<dyn LinkResolver>,
 }
 
-impl<Q, S> Clone for IndexNodeService<Q, S> {
-    fn clone(&self) -> Self {
-        Self {
-            logger: self.logger.clone(),
-            blockchain_map: self.blockchain_map.clone(),
-            graphql_runner: self.graphql_runner.clone(),
-            store: self.store.clone(),
-            explorer: self.explorer.clone(),
-            link_resolver: self.link_resolver.clone(),
-        }
-    }
-}
-
-impl<Q, S> CheapClone for IndexNodeService<Q, S> {}
-
-impl<Q, S> IndexNodeService<Q, S>
+impl<S> IndexNodeService<S>
 where
-    Q: GraphQlRunner,
     S: Store,
 {
-    /// Creates a new GraphQL service.
     pub fn new(
         logger: Logger,
         blockchain_map: Arc<BlockchainMap>,
-        graphql_runner: Arc<Q>,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
     ) -> Self {
@@ -78,7 +62,6 @@ where
         IndexNodeService {
             logger,
             blockchain_map,
-            graphql_runner,
             store,
             explorer,
             link_resolver,
@@ -90,45 +73,50 @@ where
     }
 
     /// Serves a static file.
-    fn serve_file(contents: &'static str, content_type: &'static str) -> Response<Body> {
+    fn serve_file(contents: &'static str, content_type: &'static str) -> ServerResponse {
         Response::builder()
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, content_type)
             .status(200)
-            .body(Body::from(contents))
+            .body(Full::from(contents))
             .unwrap()
     }
 
-    fn index() -> Response<Body> {
+    fn index() -> ServerResponse {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/html")
-            .body(Body::from("OK"))
+            .body(Full::from("OK"))
             .unwrap()
     }
 
-    fn handle_graphiql() -> Response<Body> {
+    fn handle_graphiql() -> ServerResponse {
         Self::serve_file(Self::graphiql_html(), "text/html")
     }
 
-    pub async fn handle_graphql_query(
+    pub async fn handle_graphql_query<T: Body>(
         &self,
-        request: Request<Body>,
-    ) -> Result<QueryResults, GraphQLServerError> {
-        let (req_parts, req_body) = request.into_parts();
+        request: Request<T>,
+    ) -> Result<QueryResults, ServerError> {
         let store = self.store.clone();
 
-        // Obtain the schema for the index node GraphQL API
-        let schema = SCHEMA.clone();
+        let bearer_token = bearer_token(request.headers())
+            .map(<[u8]>::to_vec)
+            .map(String::from_utf8)
+            .transpose()
+            .map_err(|_| ServerError::ClientError("Bearer token is invalid UTF-8".to_string()))?;
 
-        let body = hyper::body::to_bytes(req_body)
-            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
-            .await?;
+        let body = request
+            .collect()
+            .await
+            .map_err(|_| ServerError::InternalError("Failed to read request body".into()))?
+            .to_bytes();
 
-        let validated = ValidatedRequest::new(body, &req_parts.headers)?;
+        let validated = ValidatedRequest::new(body, bearer_token)?;
         let query = validated.query;
 
+        let schema = SCHEMA.clone();
         let query = match PreparedQuery::new(
             &self.logger,
             schema,
@@ -160,7 +148,7 @@ where
                 max_skip: std::u32::MAX,
                 trace: false,
             };
-            let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
+            let (result, _) = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);
             // Index status queries are not cacheable, so we may unwrap this.
             Arc::try_unwrap(result).unwrap()
@@ -170,45 +158,43 @@ where
     }
 
     // Handles OPTIONS requests
-    fn handle_graphql_options(_request: Request<Body>) -> Response<Body> {
+    fn handle_graphql_options<T>(_request: Request<T>) -> ServerResponse {
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/plain")
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
-            .body(Body::from(""))
+            .body(Full::from(""))
             .unwrap()
     }
 
     /// Handles 302 redirects
-    fn handle_temp_redirect(destination: &str) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_temp_redirect(destination: &str) -> ServerResult {
         header::HeaderValue::from_str(destination)
-            .map_err(|_| {
-                GraphQLServerError::ClientError("invalid characters in redirect URL".into())
-            })
+            .map_err(|_| ServerError::ClientError("invalid characters in redirect URL".into()))
             .map(|loc_header_val| {
                 Response::builder()
                     .status(StatusCode::FOUND)
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .header(CONTENT_TYPE, "text/plain")
                     .header(LOCATION, loc_header_val)
-                    .body(Body::from("Redirecting..."))
+                    .body(Full::from("Redirecting..."))
                     .unwrap()
             })
     }
 
     /// Handles 404s.
-    pub(crate) fn handle_not_found() -> Response<Body> {
+    pub(crate) fn handle_not_found() -> ServerResponse {
         Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/plain")
-            .body(Body::from("Not found\n"))
+            .body(Full::from("Not found\n"))
             .unwrap()
     }
 
-    async fn handle_call(self, req: Request<Body>) -> Result<Response<Body>, GraphQLServerError> {
+    async fn handle_call<T: Body>(&self, req: Request<T>) -> ServerResult {
         let method = req.method().clone();
 
         let path = req.uri().path().to_owned();
@@ -248,63 +234,46 @@ where
             _ => Ok(Self::handle_not_found()),
         }
     }
-}
 
-impl<Q, S> Service<Request<Body>> for IndexNodeService<Q, S>
-where
-    Q: GraphQlRunner,
-    S: Store,
-{
-    type Response = Response<Body>;
-    type Error = GraphQLServerError;
-    type Future = IndexNodeServiceResponse;
-
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request<Body>) -> Self::Future {
+    pub async fn call(&self, req: Request<Incoming>) -> ServerResponse {
         let logger = self.logger.clone();
 
         // Returning Err here will prevent the client from receiving any response.
         // Instead, we generate a Response with an error code and return Ok
-        Box::pin(
-            self.cheap_clone()
-                .handle_call(req)
-                .map(move |result| match result {
-                    Ok(response) => Ok(response),
-                    Err(err @ GraphQLServerError::ClientError(_)) => {
-                        debug!(logger, "IndexNodeService call failed: {}", err);
+        let result = self.handle_call(req).await;
+        match result {
+            Ok(response) => response,
+            Err(err @ ServerError::ClientError(_)) => {
+                debug!(logger, "IndexNodeService call failed: {}", err);
 
-                        Ok(Response::builder()
-                            .status(400)
-                            .header(CONTENT_TYPE, "text/plain")
-                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(format!("Invalid request: {}", err)))
-                            .unwrap())
-                    }
-                    Err(err @ GraphQLServerError::QueryError(_)) => {
-                        error!(logger, "IndexNodeService call failed: {}", err);
+                Response::builder()
+                    .status(400)
+                    .header(CONTENT_TYPE, "text/plain")
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(Full::from(format!("Invalid request: {}", err)))
+                    .unwrap()
+            }
+            Err(err @ ServerError::QueryError(_)) => {
+                error!(logger, "IndexNodeService call failed: {}", err);
 
-                        Ok(Response::builder()
-                            .status(400)
-                            .header(CONTENT_TYPE, "text/plain")
-                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(format!("Query error: {}", err)))
-                            .unwrap())
-                    }
-                    Err(err @ GraphQLServerError::InternalError(_)) => {
-                        error!(logger, "IndexNodeService call failed: {}", err);
+                Response::builder()
+                    .status(400)
+                    .header(CONTENT_TYPE, "text/plain")
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(Full::from(format!("Query error: {}", err)))
+                    .unwrap()
+            }
+            Err(err @ ServerError::InternalError(_)) => {
+                error!(logger, "IndexNodeService call failed: {}", err);
 
-                        Ok(Response::builder()
-                            .status(500)
-                            .header(CONTENT_TYPE, "text/plain")
-                            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                            .body(Body::from(format!("Internal server error: {}", err)))
-                            .unwrap())
-                    }
-                }),
-        )
+                Response::builder()
+                    .status(500)
+                    .header(CONTENT_TYPE, "text/plain")
+                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(Full::from(format!("Internal server error: {}", err)))
+                    .unwrap()
+            }
+        }
     }
 }
 
@@ -314,31 +283,31 @@ struct ValidatedRequest {
 }
 
 impl ValidatedRequest {
-    pub fn new(req_body: Bytes, headers: &hyper::HeaderMap) -> Result<Self, GraphQLServerError> {
+    pub fn new(req_body: Bytes, bearer_token: Option<String>) -> Result<Self, ServerError> {
         // Parse request body as JSON
         let json: serde_json::Value = serde_json::from_slice(&req_body)
-            .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
+            .map_err(|e| ServerError::ClientError(format!("{}", e)))?;
 
         // Ensure the JSON data is an object
         let obj = json.as_object().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("ValidatedRequest data is not an object"))
+            ServerError::ClientError(String::from("ValidatedRequest data is not an object"))
         })?;
 
         // Ensure the JSON data has a "query" field
         let query_value = obj.get("query").ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from(
+            ServerError::ClientError(String::from(
                 "The \"query\" field is missing in request data",
             ))
         })?;
 
         // Ensure the "query" field is a string
         let query_string = query_value.as_str().ok_or_else(|| {
-            GraphQLServerError::ClientError(String::from("The\"query\" field is not a string"))
+            ServerError::ClientError(String::from("The\"query\" field is not a string"))
         })?;
 
         // Parse the "query" field of the JSON body
-        let document = graphql_parser::parse_query(query_string)
-            .map_err(|e| GraphQLServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
+        let document = q::parse_query(query_string)
+            .map_err(|e| ServerError::from(QueryError::ParseError(Arc::new(e.into()))))?
             .into_static();
 
         // Parse the "variables" field of the JSON body, if present
@@ -346,22 +315,15 @@ impl ValidatedRequest {
             None | Some(serde_json::Value::Null) => Ok(None),
             Some(variables @ serde_json::Value::Object(_)) => {
                 serde_json::from_value(variables.clone())
-                    .map_err(|e| GraphQLServerError::ClientError(e.to_string()))
+                    .map_err(|e| ServerError::ClientError(e.to_string()))
                     .map(Some)
             }
-            _ => Err(GraphQLServerError::ClientError(
+            _ => Err(ServerError::ClientError(
                 "Invalid query variables provided".to_string(),
             )),
         }?;
 
         let query = Query::new(document, variables, false);
-        let bearer_token = bearer_token(headers)
-            .map(<[u8]>::to_vec)
-            .map(String::from_utf8)
-            .transpose()
-            .map_err(|_| {
-                GraphQLServerError::ClientError("Bearer token is invalid UTF-8".to_string())
-            })?;
 
         Ok(Self {
             query,
@@ -377,14 +339,13 @@ mod tests {
         prelude::*,
     };
 
-    use hyper::body::Bytes;
-    use hyper::HeaderMap;
+    use graph::hyper::body::Bytes;
     use std::collections::HashMap;
 
-    use super::{GraphQLServerError, ValidatedRequest};
+    use super::{ServerError, ValidatedRequest};
 
-    fn validate_req(req_body: Bytes) -> Result<Query, GraphQLServerError> {
-        Ok(ValidatedRequest::new(req_body, &HeaderMap::new())?.query)
+    fn validate_req(req_body: Bytes) -> Result<Query, ServerError> {
+        Ok(ValidatedRequest::new(req_body, None)?.query)
     }
 
     #[test]
@@ -417,9 +378,7 @@ mod tests {
         let query = request.expect("Should accept valid queries");
         assert_eq!(
             query.document,
-            graphql_parser::parse_query("{ user { name } }")
-                .unwrap()
-                .into_static()
+            q::parse_query("{ user { name } }").unwrap().into_static()
         );
     }
 
@@ -434,9 +393,7 @@ mod tests {
         ));
         let query = request.expect("Should accept null variables");
 
-        let expected_query = graphql_parser::parse_query("{ user { name } }")
-            .unwrap()
-            .into_static();
+        let expected_query = q::parse_query("{ user { name } }").unwrap().into_static();
         assert_eq!(query.document, expected_query);
         assert_eq!(query.variables, None);
     }
@@ -466,9 +423,7 @@ mod tests {
         ));
         let query = request.expect("Should accept valid queries");
 
-        let expected_query = graphql_parser::parse_query("{ user { name } }")
-            .unwrap()
-            .into_static();
+        let expected_query = q::parse_query("{ user { name } }").unwrap().into_static();
         let expected_variables = QueryVariables::new(HashMap::from_iter(
             vec![
                 (String::from("string"), r::Value::String(String::from("s"))),

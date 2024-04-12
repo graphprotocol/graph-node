@@ -7,14 +7,14 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 use crate::manager::catalog;
 
 pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
-    fn query(conn: &PgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {
+    fn query(conn: &mut PgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {
         use catalog::pg_catalog::pg_stat_database as d;
         use diesel::dsl::*;
         use diesel::sql_types::BigInt;
         use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 
         let rows = d::table
-            .filter(d::datname.eq(any(vec!["explorer", "graph"])))
+            .filter(d::datname.eq_any(vec!["explorer", "graph"]))
             .select((
                 d::datname,
                 sql::<BigInt>("(xact_commit + xact_rollback)::bigint"),
@@ -31,8 +31,8 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     }
 
     let mut speeds = HashMap::new();
-    let conn = pool.get()?;
-    for (datname, all_txn, write_txn) in query(&conn)? {
+    let mut conn = pool.get()?;
+    for (datname, all_txn, write_txn) in query(&mut conn)? {
         speeds.insert(datname, (all_txn, write_txn));
     }
     println!(
@@ -42,7 +42,7 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     sleep(Duration::from_secs(delay));
     println!("Number of transactions/minute");
     println!("{:10} {:>7} write", "database", "all");
-    for (datname, all_txn, write_txn) in query(&conn)? {
+    for (datname, all_txn, write_txn) in query(&mut conn)? {
         let (all_speed, write_speed) = speeds
             .get(&datname)
             .map(|(all_txn_old, write_txn_old)| {

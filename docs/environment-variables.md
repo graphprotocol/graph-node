@@ -80,7 +80,7 @@ those.
 - `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached (defaults to 50).
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of each cached file (in bytes, defaults to 1MiB).
 - `GRAPH_IPFS_REQUEST_LIMIT`: Limits the number of requests per second to IPFS for file data sources.
-   Defaults to 100.
+  Defaults to 100.
 
 ## GraphQL
 
@@ -142,6 +142,10 @@ those.
 - `GRAPH_QUERY_CACHE_BLOCKS`: How many recent blocks per network should be kept in the query cache. This should be kept small since the lookup time and the cache memory usage are proportional to this value. Set to 0 to disable the cache. Defaults to 1.
 - `GRAPH_QUERY_CACHE_MAX_MEM`: Maximum total memory to be used by the query cache, in MB. The total amount of memory used for caching will be twice this value - once for recent blocks, divided evenly among the `GRAPH_QUERY_CACHE_BLOCKS`, and once for frequent queries against older blocks. The default is plenty for most loads, particularly if `GRAPH_QUERY_CACHE_BLOCKS` is kept small. Defaults to 1000, which corresponds to 1GB.
 - `GRAPH_QUERY_CACHE_STALE_PERIOD`: Number of queries after which a cache entry can be considered stale. Defaults to 100.
+- `GRAPH_QUERY_CACHE_MAX_ENTRY_RATIO`: Limits the maximum size of a cache
+  entry. Query results larger than the size of a cache shard divided by this
+  value will not be cached. The default is 3. A value of 0 means that there
+  is no limit on the size of a cache entry.
 
 ## Miscellaneous
 

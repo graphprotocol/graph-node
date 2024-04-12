@@ -14,6 +14,7 @@ use serde::Serialize;
 
 use crate::cheap_clone::CheapClone;
 use crate::data::value::Word;
+use crate::derive::CheapClone;
 use crate::runtime::gas::{Gas, GasSizeOf};
 
 use super::cache_weight::CacheWeight;
@@ -27,7 +28,7 @@ type AtomInt = u16;
 ///
 /// The ordering for atoms is based on their integer value, and has no
 /// connection to how the strings they represent would be ordered
-#[derive(Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Copy, Debug)]
+#[derive(Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Copy, CheapClone, Debug)]
 pub struct Atom(AtomInt);
 
 /// An atom and the underlying pool. A `FatAtom` can be used in place of a

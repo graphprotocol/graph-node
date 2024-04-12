@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
 
+use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
     data::subgraph::DataSourceContext,
+    derive::CheapClone,
     prelude::{
-        anyhow, async_trait, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
-        LinkResolver, Logger,
+        anyhow, async_trait, BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger,
     },
 };
 
@@ -41,7 +42,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!(TEMPLATE_ERROR))
     }
 
@@ -127,6 +131,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             trigger.cheap_clone(),
             handler,
             block.ptr(),
+            block.timestamp(),
         )))
     }
 
@@ -189,7 +194,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
     }
 
-    fn validate(&self) -> Vec<Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<Error> {
         let mut errors = Vec::new();
 
         if self.kind != COSMOS_KIND {
@@ -513,7 +518,7 @@ pub struct Source {
     pub(crate) end_block: Option<BlockNumber>,
 }
 
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Copy, CheapClone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub enum EventOrigin {
     BeginBlock,
     DeliverTx,
@@ -551,7 +556,7 @@ fn duplicate_url_type(message: &str) -> Error {
 mod tests {
     use super::*;
 
-    use graph::blockchain::DataSource as _;
+    use graph::{blockchain::DataSource as _, data::subgraph::LATEST_VERSION};
 
     #[test]
     fn test_event_handlers_origin_validation() {
@@ -593,7 +598,7 @@ mod tests {
         ];
 
         for (data_source, errors) in &cases {
-            let validation_errors = data_source.validate();
+            let validation_errors = data_source.validate(&LATEST_VERSION);
 
             assert_eq!(errors.len(), validation_errors.len());
 
@@ -641,7 +646,7 @@ mod tests {
         ];
 
         for (data_source, errors) in &cases {
-            let validation_errors = data_source.validate();
+            let validation_errors = data_source.validate(&LATEST_VERSION);
 
             assert_eq!(errors.len(), validation_errors.len());
 

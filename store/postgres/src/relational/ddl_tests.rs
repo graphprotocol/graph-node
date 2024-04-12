@@ -9,7 +9,7 @@ const ID_TYPE: ColumnType = ColumnType::String;
 
 fn test_layout(gql: &str) -> Layout {
     let subgraph = DeploymentHash::new("subgraph").unwrap();
-    let schema = InputSchema::parse(gql, subgraph.clone()).expect("Test schema invalid");
+    let schema = InputSchema::parse_latest(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let ents = {
@@ -54,10 +54,7 @@ fn table_is_sane() {
 fn check_eqv(left: &str, right: &str) {
     let left_s = left.split_whitespace().join(" ");
     let right_s = right.split_whitespace().join(" ");
-    if left_s != right_s {
-        // Make sure the original strings show up in the error message
-        assert_eq!(left, right);
-    }
+    assert_eq!(left_s, right_s);
 }
 
 #[test]
@@ -81,6 +78,14 @@ fn generate_ddl() {
     let layout = test_layout(FORWARD_ENUM_GQL);
     let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(FORWARD_ENUM_SQL, &sql);
+
+    let layout = test_layout(TS_GQL);
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    check_eqv(TS_SQL, &sql);
+
+    let layout = test_layout(LIFETIME_GQL);
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    check_eqv(LIFETIME_SQL, &sql);
 }
 
 #[test]
@@ -244,7 +249,7 @@ create index attr_0_1_thing_big_thing
         block_range          int4range not null,
         "id"                 text not null,
         "bool"               boolean,
-        "int"                integer,
+        "int"                int4,
         "big_decimal"        numeric,
         "string"             text,
         "bytes"              bytea,
@@ -377,9 +382,8 @@ create table "sgd0815"."song" (
 
         unique(id)
 );
-create index brin_song
-    on "sgd0815"."song"
- using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index song_block
+    on "sgd0815"."song"(block$);
 create index attr_2_0_song_title
     on "sgd0815"."song" using btree(left("title", 256));
 create index attr_2_1_song_written_by
@@ -389,7 +393,7 @@ create table "sgd0815"."song_stat" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
-        "played"             integer not null
+        "played"             int4 not null
 );
 alter table "sgd0815"."song_stat"
   add constraint song_stat_id_block_range_excl exclude using gist (id with =, block_range with &&);
@@ -613,4 +617,251 @@ create index attr_0_0_thing_id
 create index attr_0_1_thing_orientation
     on "sgd0815"."thing" using btree("orientation");
 
+"#;
+
+const TS_GQL: &str = r#"
+type Data @entity(timeseries: true) {
+    id: Int8!
+    timestamp: Timestamp!
+    amount: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+    id:        Int8!
+    timestamp: Timestamp!
+    volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount")
+    maxPrice:  BigDecimal! @aggregate(fn: "max", arg: "amount")
+}
+"#;
+
+const TS_SQL: &str = r#"
+create table "sgd0815"."data" (
+    vid                  bigserial primary key,
+    block$                int not null,
+    "id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "amount"             numeric not null,
+    unique(id)
+);
+create index data_block
+    on "sgd0815"."data"(block$);
+create index attr_0_0_data_timestamp
+    on "sgd0815"."data" using btree("timestamp");
+create index attr_0_1_data_amount
+    on "sgd0815"."data" using btree("amount");
+
+create table "sgd0815"."stats_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+    "id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "volume"             numeric not null,
+    "max_price"          numeric not null,
+    unique(id)
+);
+create index stats_hour_block
+    on "sgd0815"."stats_hour"(block$);
+create index attr_1_0_stats_hour_timestamp
+    on "sgd0815"."stats_hour" using btree("timestamp");
+create index attr_1_1_stats_hour_volume
+    on "sgd0815"."stats_hour" using btree("volume");
+create index attr_1_2_stats_hour_max_price
+    on "sgd0815"."stats_hour" using btree("max_price");
+
+create table "sgd0815"."stats_day" (
+    vid                  bigserial primary key,
+    block$               int not null,
+    "id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "volume"             numeric not null,
+    "max_price"          numeric not null,
+    unique(id)
+);
+create index stats_day_block
+    on "sgd0815"."stats_day"(block$);
+create index attr_2_0_stats_day_timestamp
+    on "sgd0815"."stats_day" using btree("timestamp");
+create index attr_2_1_stats_day_volume
+    on "sgd0815"."stats_day" using btree("volume");
+create index attr_2_2_stats_day_max_price
+    on "sgd0815"."stats_day" using btree("max_price");"#;
+
+const LIFETIME_GQL: &str = r#"
+    type Data @entity(timeseries: true) {
+        id: Int8!
+        timestamp: Timestamp!
+        group1: Int!
+        group2: Int!
+        amount: BigDecimal!
+    }
+
+    type Stats1 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Timestamp!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+
+    type Stats2 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Timestamp!
+        group1: Int!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+
+    type Stats3 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Timestamp!
+        group2: Int!
+        group1: Int!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+
+    type Stats2 @aggregation(intervals: ["hour", "day"], source: "Data") {
+        id:        Int8!
+        timestamp: Timestamp!
+        group1: Int!
+        group2: Int!
+        volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount", cumulative: true)
+    }
+    "#;
+
+const LIFETIME_SQL: &str = r#"
+create table "sgd0815"."data" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "group_1"            int4 not null,
+    "group_2"            int4 not null,
+    "amount"             numeric not null,
+    unique(id)
+);
+create index data_block
+on "sgd0815"."data"(block$);
+create index attr_0_0_data_timestamp
+on "sgd0815"."data" using btree("timestamp");
+create index attr_0_1_data_group_1
+on "sgd0815"."data" using btree("group_1");
+create index attr_0_2_data_group_2
+on "sgd0815"."data" using btree("group_2");
+create index attr_0_3_data_amount
+on "sgd0815"."data" using btree("amount");
+
+create table "sgd0815"."stats_1_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_1_hour_block
+on "sgd0815"."stats_1_hour"(block$);
+create index attr_1_0_stats_1_hour_timestamp
+on "sgd0815"."stats_1_hour" using btree("timestamp");
+create index attr_1_1_stats_1_hour_volume
+on "sgd0815"."stats_1_hour" using btree("volume");
+
+
+create table "sgd0815"."stats_1_day" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_1_day_block
+on "sgd0815"."stats_1_day"(block$);
+create index attr_2_0_stats_1_day_timestamp
+on "sgd0815"."stats_1_day" using btree("timestamp");
+create index attr_2_1_stats_1_day_volume
+on "sgd0815"."stats_1_day" using btree("volume");
+
+
+create table "sgd0815"."stats_2_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_2_hour_block
+on "sgd0815"."stats_2_hour"(block$);
+create index attr_5_0_stats_2_hour_timestamp
+on "sgd0815"."stats_2_hour" using btree("timestamp");
+create index attr_5_1_stats_2_hour_group_1
+on "sgd0815"."stats_2_hour" using btree("group_1");
+create index attr_5_2_stats_2_hour_volume
+on "sgd0815"."stats_2_hour" using btree("volume");
+create index stats_2_hour_dims
+on "sgd0815"."stats_2_hour"(group_1, timestamp);
+
+create table "sgd0815"."stats_2_day" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_2_day_block
+on "sgd0815"."stats_2_day"(block$);
+create index attr_6_0_stats_2_day_timestamp
+on "sgd0815"."stats_2_day" using btree("timestamp");
+create index attr_6_1_stats_2_day_group_1
+on "sgd0815"."stats_2_day" using btree("group_1");
+create index attr_6_2_stats_2_day_volume
+on "sgd0815"."stats_2_day" using btree("volume");
+create index stats_2_day_dims
+on "sgd0815"."stats_2_day"(group_1, timestamp);
+
+create table "sgd0815"."stats_3_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "group_2"            int4 not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_3_hour_block
+on "sgd0815"."stats_3_hour"(block$);
+create index attr_7_0_stats_3_hour_timestamp
+on "sgd0815"."stats_3_hour" using btree("timestamp");
+create index attr_7_1_stats_3_hour_group_2
+on "sgd0815"."stats_3_hour" using btree("group_2");
+create index attr_7_2_stats_3_hour_group_1
+on "sgd0815"."stats_3_hour" using btree("group_1");
+create index attr_7_3_stats_3_hour_volume
+on "sgd0815"."stats_3_hour" using btree("volume");
+create index stats_3_hour_dims
+on "sgd0815"."stats_3_hour"(group_2, group_1, timestamp);
+
+create table "sgd0815"."stats_3_day" (
+    vid                  bigserial primary key,
+    block$                int not null,
+"id"                 int8 not null,
+    "timestamp"          timestamptz not null,
+    "group_2"            int4 not null,
+    "group_1"            int4 not null,
+    "volume"             numeric not null,
+    unique(id)
+);
+create index stats_3_day_block
+on "sgd0815"."stats_3_day"(block$);
+create index attr_8_0_stats_3_day_timestamp
+on "sgd0815"."stats_3_day" using btree("timestamp");
+create index attr_8_1_stats_3_day_group_2
+on "sgd0815"."stats_3_day" using btree("group_2");
+create index attr_8_2_stats_3_day_group_1
+on "sgd0815"."stats_3_day" using btree("group_1");
+create index attr_8_3_stats_3_day_volume
+on "sgd0815"."stats_3_day" using btree("volume");
+create index stats_3_day_dims
+on "sgd0815"."stats_3_day"(group_2, group_1, timestamp);
 "#;

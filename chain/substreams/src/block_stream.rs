@@ -53,7 +53,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
                 deployment.hash,
                 chain.chain_client(),
                 subgraph_current_block,
-                block_cursor.as_ref().clone(),
+                block_cursor.clone(),
                 Arc::new(WasmBlockMapper {
                     handler: handler.clone(),
                 }),
@@ -69,7 +69,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
                 deployment.hash,
                 chain.chain_client(),
                 subgraph_current_block,
-                block_cursor.as_ref().clone(),
+                block_cursor.clone(),
                 Arc::new(Mapper {
                     schema: Some(schema),
                     skip_empty_blocks: true,

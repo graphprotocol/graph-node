@@ -1,7 +1,7 @@
+use graph::components::store::ChildMultiplicity;
 use graph::data::graphql::DocumentExt as _;
 use graph::data::value::{Object, Word};
 use graph::schema::ApiSchema;
-use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
@@ -13,8 +13,8 @@ use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
 use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
-use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
+use graph::data::query::{QueryExecutionError, Trace};
 use graph::prelude::{
     info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, EntityRange, GraphQLMetrics,
     Logger, TryFromValue, ENV_VARS,
@@ -281,6 +281,15 @@ impl Query {
         Ok(Arc::new(query))
     }
 
+    pub fn root_trace(&self, do_trace: bool) -> Trace {
+        Trace::root(
+            &self.query_text,
+            &self.variables_text,
+            &self.query_id,
+            do_trace,
+        )
+    }
+
     /// Return the block constraint for the toplevel query field(s), merging
     /// consecutive fields that have the same block constraint, while making
     /// sure that the fields appear in the same order as they did in the
@@ -300,7 +309,7 @@ impl Query {
             let bc = match field.argument_value("block") {
                 Some(bc) => BlockConstraint::try_from_value(bc).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
-                        Pos::default(),
+                        q::Pos::default(),
                         "block".to_string(),
                         bc.clone().into(),
                     )]
@@ -311,7 +320,7 @@ impl Query {
             let field_error_policy = match field.argument_value("subgraphError") {
                 Some(value) => ErrorPolicy::try_from(value).map_err(|_| {
                     vec![QueryExecutionError::InvalidArgumentError(
-                        Pos::default(),
+                        q::Pos::default(),
                         "subgraphError".to_string(),
                         value.clone().into(),
                     )]
@@ -753,7 +762,7 @@ impl Transform {
     fn interpolate_arguments(
         &self,
         args: Vec<(String, q::Value)>,
-        pos: &Pos,
+        pos: &q::Pos,
     ) -> Vec<(String, r::Value)> {
         args.into_iter()
             .map(|(name, val)| {
@@ -764,7 +773,7 @@ impl Transform {
     }
 
     /// Turn `value` into an `r::Value` by resolving variable references
-    fn interpolate_value(&self, value: q::Value, pos: &Pos) -> r::Value {
+    fn interpolate_value(&self, value: q::Value, pos: &q::Pos) -> r::Value {
         match value {
             q::Value::Variable(var) => self.variable(&var),
             q::Value::Int(ref num) => {
@@ -908,6 +917,7 @@ impl Transform {
                 arguments: vec![],
                 directives: vec![],
                 selection_set: a::SelectionSet::new(vec![]),
+                multiplicity: ChildMultiplicity::Single,
             }));
         }
 
@@ -946,6 +956,7 @@ impl Transform {
             self.expand_selection_set(selection_set, &type_set, ty)?
         };
 
+        let multiplicity = ChildMultiplicity::new(field_type);
         Ok(Some(a::Field {
             position,
             alias,
@@ -953,6 +964,7 @@ impl Transform {
             arguments,
             directives,
             selection_set,
+            multiplicity,
         }))
     }
 

@@ -1,4 +1,5 @@
 use ethabi::Contract;
+use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
@@ -9,6 +10,7 @@ use graph::prelude::*;
 use graph_chain_ethereum::{
     Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
 };
+use graph_runtime_wasm::host_exports::DataSourceDetails;
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::env;
@@ -27,8 +29,8 @@ fn mock_host_exports(
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     api_version: Version,
-) -> HostExports<Chain> {
-    let templates = vec![data_source::DataSourceTemplate::Onchain(
+) -> HostExports {
+    let templates = vec![data_source::DataSourceTemplate::Onchain::<Chain>(
         DataSourceTemplate {
             kind: String::from("ethereum/contract"),
             name: String::from("example template"),
@@ -56,12 +58,17 @@ fn mock_host_exports(
 
     let network = data_source.network.clone().unwrap();
     let ens_lookup = store.ens_lookup();
+
+    let ds_details = DataSourceDetails::from_data_source(
+        &graph::data_source::DataSource::Onchain::<Chain>(data_source),
+        Arc::new(templates.iter().map(|t| t.into()).collect()),
+    );
+
     HostExports::new(
         subgraph_id,
-        &data_source::DataSource::Onchain(data_source),
         network,
-        Arc::new(templates),
-        Arc::new(graph_core::LinkResolver::new(
+        ds_details,
+        Arc::new(graph::prelude::IpfsResolver::new(
             vec![IpfsClient::localhost()],
             Arc::new(EnvVars::default()),
         )),
@@ -95,13 +102,14 @@ pub fn mock_context(
     data_source: DataSource,
     store: Arc<impl SubgraphStore>,
     api_version: Version,
-) -> MappingContext<Chain> {
+) -> MappingContext {
     MappingContext {
         logger: Logger::root(slog::Discard, o!()),
         block_ptr: BlockPtr {
             hash: Default::default(),
             number: 0,
         },
+        timestamp: BlockTime::NONE,
         host_exports: Arc::new(mock_host_exports(
             deployment.hash.clone(),
             data_source,

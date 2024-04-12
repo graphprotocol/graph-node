@@ -1,6 +1,7 @@
 use crate::manager::prompt::prompt_for_confirmation;
 use graph::{
     anyhow::{bail, ensure},
+    cheap_clone::CheapClone,
     components::store::ChainStore as ChainStoreTrait,
     prelude::{
         anyhow::{self, anyhow, Context},
@@ -19,7 +20,7 @@ pub async fn by_hash(
     logger: &Logger,
 ) -> anyhow::Result<()> {
     let block_hash = helpers::parse_block_hash(hash)?;
-    run(&block_hash, &chain_store, ethereum_adapter, logger).await
+    run(&block_hash, chain_store, ethereum_adapter, logger).await
 }
 
 pub async fn by_number(
@@ -33,7 +34,7 @@ pub async fn by_number(
 
     match &block_hashes.as_slice() {
         [] => bail!("Could not find a block with number {} in store", number),
-        [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await,
+        [block_hash] => run(block_hash, chain_store, ethereum_adapter, logger).await,
         &block_hashes => {
             handle_multiple_block_hashes(number, block_hashes, &chain_store, delete_duplicates)
                 .await
@@ -63,7 +64,15 @@ pub async fn by_range(
         let block_hashes = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
         match &block_hashes.as_slice() {
             [] => eprintln!("Found no block hash with number {block_number}"),
-            [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await?,
+            [block_hash] => {
+                run(
+                    block_hash,
+                    chain_store.cheap_clone(),
+                    ethereum_adapter,
+                    logger,
+                )
+                .await?
+            }
             &block_hashes => {
                 handle_multiple_block_hashes(
                     block_number,
@@ -95,17 +104,18 @@ pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow
 
 async fn run(
     block_hash: &H256,
-    chain_store: &ChainStore,
+    chain_store: Arc<ChainStore>,
     ethereum_adapter: &EthereumAdapter,
     logger: &Logger,
 ) -> anyhow::Result<()> {
-    let cached_block = steps::fetch_single_cached_block(*block_hash, chain_store)?;
+    let cached_block =
+        steps::fetch_single_cached_block(*block_hash, chain_store.cheap_clone()).await?;
     let provider_block =
         steps::fetch_single_provider_block(block_hash, ethereum_adapter, logger).await?;
     let diff = steps::diff_block_pair(&cached_block, &provider_block);
     steps::report_difference(diff.as_deref(), block_hash);
     if diff.is_some() {
-        steps::delete_block(block_hash, chain_store)?;
+        steps::delete_block(block_hash, &chain_store)?;
     }
     Ok(())
 }
@@ -169,11 +179,11 @@ mod steps {
     /// Queries the [`ChainStore`] for a cached block given a block hash.
     ///
     /// Errors on a non-unary result.
-    pub(super) fn fetch_single_cached_block(
+    pub(super) async fn fetch_single_cached_block(
         block_hash: H256,
-        chain_store: &ChainStore,
+        chain_store: Arc<ChainStore>,
     ) -> anyhow::Result<Value> {
-        let blocks = chain_store.blocks(&[block_hash.into()])?;
+        let blocks = chain_store.blocks(vec![block_hash.into()]).await?;
         match blocks.len() {
             0 => bail!("Failed to locate block with hash {} in store", block_hash),
             1 => {}

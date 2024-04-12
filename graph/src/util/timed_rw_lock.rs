@@ -36,6 +36,10 @@ impl<T> TimedRwLock<T> {
         }
     }
 
+    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<T>> {
+        self.lock.try_read()
+    }
+
     pub fn read(&self, logger: &Logger) -> parking_lot::RwLockReadGuard<T> {
         loop {
             let mut elapsed = Duration::from_secs(0);

@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
     StoredDynamicDataSource, WritableStore,
@@ -29,7 +30,7 @@ lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
-    static ref SCHEMA: InputSchema = InputSchema::parse(
+    static ref SCHEMA: InputSchema = InputSchema::parse_latest(
         "
             type Band @entity {
                 id: ID!
@@ -127,6 +128,7 @@ impl WritableStore for MockStore {
     async fn transact_block_operations(
         &self,
         _: BlockPtr,
+        _: BlockTime,
         _: FirehoseCursor,
         _: Vec<EntityModification>,
         _: &StopwatchMetrics,
@@ -134,11 +136,12 @@ impl WritableStore for MockStore {
         _: Vec<SubgraphError>,
         _: Vec<StoredDynamicDataSource>,
         _: bool,
+        _: bool,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
+    fn is_deployment_synced(&self) -> bool {
         unimplemented!()
     }
 
@@ -315,7 +318,12 @@ const ACCOUNT_GQL: &str = "
         wallets: [Wallet!]! @derivedFrom(field: \"account\")
     }
 
-    type Wallet @entity {
+    interface Purse {
+        id: ID!
+        balance: Int!
+    }
+
+    type Wallet implements Purse @entity {
         id: ID!
         balance: Int!
         account: Account!
@@ -324,13 +332,14 @@ const ACCOUNT_GQL: &str = "
 
 const ACCOUNT: &str = "Account";
 const WALLET: &str = "Wallet";
+const PURSE: &str = "Purse";
 
 lazy_static! {
     static ref LOAD_RELATED_ID_STRING: String = String::from("loadrelatedsubgraph");
     static ref LOAD_RELATED_ID: DeploymentHash =
         DeploymentHash::new(LOAD_RELATED_ID_STRING.as_str()).unwrap();
     static ref LOAD_RELATED_SUBGRAPH: InputSchema =
-        InputSchema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
+        InputSchema::parse_latest(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_1_PTR: BlockPtr = (
         H256::from(hex!(
@@ -341,6 +350,7 @@ lazy_static! {
         .into();
     static ref WALLET_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(WALLET).unwrap();
     static ref ACCOUNT_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(ACCOUNT).unwrap();
+    static ref PURSE_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(PURSE).unwrap();
 }
 
 fn remove_test_data(store: Arc<DieselSubgraphStore>) {
@@ -755,4 +765,24 @@ fn no_internal_keys() {
         let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
         check(&key, &wallet);
     });
+}
+
+#[test]
+fn no_interface_mods() {
+    run_store_test(|mut cache, _, _, _| async move {
+        let key = PURSE_TYPE.parse_key("1").unwrap();
+
+        // This should probably be an error, but changing that would not be
+        // backwards compatible
+        assert_eq!(None, cache.get(&key, GetScope::InBlock).unwrap());
+
+        assert!(matches!(
+            cache.get(&key, GetScope::Store),
+            Err(StoreError::UnknownTable(_))
+        ));
+
+        let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
+
+        cache.set(key, entity).unwrap_err();
+    })
 }

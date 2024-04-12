@@ -1,15 +1,13 @@
 use graph::anyhow::Context;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
+use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::data::subgraph::DataSourceContext;
 use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
-    prelude::{
-        async_trait, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
-        LinkResolver, Logger,
-    },
+    prelude::{async_trait, BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger},
     semver,
 };
 use std::collections::HashSet;
@@ -34,7 +32,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!("Arweave subgraphs do not support templates"))
     }
 
@@ -94,6 +95,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             trigger.cheap_clone(),
             handler.clone(),
             block.ptr(),
+            block.timestamp(),
         )))
     }
 
@@ -155,7 +157,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         todo!()
     }
 
-    fn validate(&self) -> Vec<Error> {
+    fn validate(&self, _: &semver::Version) -> Vec<Error> {
         let mut errors = Vec::new();
 
         if self.kind != ARWEAVE_KIND {

@@ -2,12 +2,13 @@ use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::blockchain::{Blockchain, HostFn};
+use graph::blockchain::{BlockTime, Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
 use graph::runtime::gas::Gas;
+use parity_wasm::elements::ExportEntry;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ pub fn spawn_module<C: Blockchain>(
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
-    let valid_module = Arc::new(ValidModule::new(&logger, raw_module)?);
+    let valid_module = Arc::new(ValidModule::new(&logger, raw_module, timeout)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
@@ -55,11 +56,10 @@ where
                 let logger = ctx.logger.clone();
 
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    instantiate_module(
+                    instantiate_module::<C>(
                         valid_module.cheap_clone(),
                         ctx,
                         host_metrics.cheap_clone(),
-                        timeout,
                         experimental_features,
                     )
                     .map_err(Into::into)
@@ -109,11 +109,10 @@ where
 
 fn instantiate_module<C: Blockchain>(
     valid_module: Arc<ValidModule>,
-    ctx: MappingContext<C>,
+    ctx: MappingContext,
     host_metrics: Arc<HostMetrics>,
-    timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<WasmInstance<C>, anyhow::Error>
+) -> Result<WasmInstance, anyhow::Error>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
@@ -123,7 +122,6 @@ where
         valid_module,
         ctx,
         host_metrics.cheap_clone(),
-        timeout,
         experimental_features,
     )
     .context("module instantiation failed")
@@ -131,10 +129,10 @@ where
 
 fn handle_trigger<C: Blockchain>(
     logger: &Logger,
-    module: WasmInstance<C>,
+    module: WasmInstance,
     trigger: TriggerWithHandler<MappingTrigger<C>>,
     host_metrics: Arc<HostMetrics>,
-) -> Result<(BlockState<C>, Gas), MappingError>
+) -> Result<(BlockState, Gas), MappingError>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
@@ -148,16 +146,16 @@ where
 }
 
 pub struct WasmRequest<C: Blockchain> {
-    pub(crate) ctx: MappingContext<C>,
+    pub(crate) ctx: MappingContext,
     pub(crate) inner: WasmRequestInner<C>,
-    pub(crate) result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
+    pub(crate) result_sender: Sender<Result<(BlockState, Gas), MappingError>>,
 }
 
 impl<C: Blockchain> WasmRequest<C> {
     pub(crate) fn new_trigger(
-        ctx: MappingContext<C>,
+        ctx: MappingContext,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
-        result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
+        result_sender: Sender<Result<(BlockState, Gas), MappingError>>,
     ) -> Self {
         WasmRequest {
             ctx,
@@ -167,10 +165,10 @@ impl<C: Blockchain> WasmRequest<C> {
     }
 
     pub(crate) fn new_block(
-        ctx: MappingContext<C>,
+        ctx: MappingContext,
         handler: String,
         block_data: Box<[u8]>,
-        result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
+        result_sender: Sender<Result<(BlockState, Gas), MappingError>>,
     ) -> Self {
         WasmRequest {
             ctx,
@@ -193,11 +191,12 @@ pub struct BlockRequest {
     pub(crate) block_data: Box<[u8]>,
 }
 
-pub struct MappingContext<C: Blockchain> {
+pub struct MappingContext {
     pub logger: Logger,
-    pub host_exports: Arc<crate::host_exports::HostExports<C>>,
+    pub host_exports: Arc<crate::host_exports::HostExports>,
     pub block_ptr: BlockPtr,
-    pub state: BlockState<C>,
+    pub timestamp: BlockTime,
+    pub state: BlockState,
     pub proof_of_indexing: SharedProofOfIndexing,
     pub host_fns: Arc<Vec<HostFn>>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
@@ -207,12 +206,13 @@ pub struct MappingContext<C: Blockchain> {
     pub instrument: bool,
 }
 
-impl<C: Blockchain> MappingContext<C> {
+impl MappingContext {
     pub fn derive_with_empty_block_state(&self) -> Self {
         MappingContext {
             logger: self.logger.cheap_clone(),
             host_exports: self.host_exports.cheap_clone(),
             block_ptr: self.block_ptr.cheap_clone(),
+            timestamp: self.timestamp,
             state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
@@ -223,9 +223,18 @@ impl<C: Blockchain> MappingContext<C> {
     }
 }
 
+// See the start_index comment below for more information.
+const GN_START_FUNCTION_NAME: &str = "gn::start";
+
 /// A pre-processed and valid WASM module, ready to be started as a WasmModule.
 pub struct ValidModule {
     pub module: wasmtime::Module,
+
+    // Due to our internal architecture we don't want to run the start function at instantiation time,
+    // so we track it separately so that we can run it at an appropriate time.
+    // Since the start function is not an export, we will also create an export for it.
+    // It's an option because start might not be present.
+    pub start_function: Option<String>,
 
     // A wasm import consists of a `module` and a `name`. AS will generate imports such that they
     // have `module` set to the name of the file it is imported from and `name` set to the imported
@@ -236,16 +245,26 @@ pub struct ValidModule {
     // AS now has an `@external("module", "name")` decorator which would make things cleaner, but
     // the ship has sailed.
     pub import_name_to_modules: BTreeMap<String, Vec<String>>,
+
+    // The timeout for the module.
+    pub timeout: Option<Duration>,
+
+    // Used as a guard to terminate this task dependency.
+    epoch_counter_abort_handle: Option<tokio::task::AbortHandle>,
 }
 
 impl ValidModule {
     /// Pre-process and validate the module.
-    pub fn new(logger: &Logger, raw_module: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(
+        logger: &Logger,
+        raw_module: &[u8],
+        timeout: Option<Duration>,
+    ) -> Result<Self, anyhow::Error> {
         // Add the gas calls here. Module name "gas" must match. See also
         // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
         // parity - injecting gas then serializing again.
         let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
-        let parity_module = match parity_module.parse_names() {
+        let mut parity_module = match parity_module.parse_names() {
             Ok(module) => module,
             Err((errs, module)) => {
                 for (index, err) in errs {
@@ -260,6 +279,22 @@ impl ValidModule {
                 module
             }
         };
+
+        let start_function = parity_module.start_section().map(|index| {
+            let name = GN_START_FUNCTION_NAME.to_string();
+
+            parity_module.clear_start_section();
+            parity_module
+                .export_section_mut()
+                .unwrap()
+                .entries_mut()
+                .push(ExportEntry::new(
+                    name.clone(),
+                    parity_wasm::elements::Internal::Function(index),
+                ));
+
+            name
+        });
         let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;
         let raw_module = parity_module.into_bytes()?;
@@ -268,13 +303,11 @@ impl ValidModule {
         // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
         // turn off optional optimizations to be conservative.
         let mut config = wasmtime::Config::new();
-        config.strategy(wasmtime::Strategy::Cranelift).unwrap();
-        config.interruptable(true); // For timeouts.
+        config.strategy(wasmtime::Strategy::Cranelift);
+        config.epoch_interruption(true);
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
-        config
-            .max_wasm_stack(ENV_VARS.mappings.max_stack_size)
-            .unwrap(); // Safe because this only panics if size passed is 0.
+        config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
 
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;
@@ -284,7 +317,7 @@ impl ValidModule {
         // Unwrap: Module linking is disabled.
         for (name, module) in module
             .imports()
-            .map(|import| (import.name().unwrap(), import.module()))
+            .map(|import| (import.name(), import.module()))
         {
             import_name_to_modules
                 .entry(name.to_string())
@@ -292,9 +325,38 @@ impl ValidModule {
                 .push(module.to_string());
         }
 
+        let mut epoch_counter_abort_handle = None;
+        if let Some(timeout) = timeout {
+            let timeout = timeout.clone();
+            let engine = engine.clone();
+
+            // The epoch counter task will perpetually increment the epoch every `timeout` seconds.
+            // Timeouts on instantiated modules will trigger on epoch deltas.
+            // Note: The epoch is an u64 so it will never overflow.
+            // See also: runtime-timeouts
+            let epoch_counter = async move {
+                loop {
+                    tokio::time::sleep(timeout).await;
+                    engine.increment_epoch();
+                }
+            };
+            epoch_counter_abort_handle = Some(graph::spawn(epoch_counter).abort_handle());
+        }
+
         Ok(ValidModule {
             module,
             import_name_to_modules,
+            start_function,
+            timeout,
+            epoch_counter_abort_handle,
         })
+    }
+}
+
+impl Drop for ValidModule {
+    fn drop(&mut self) {
+        if let Some(handle) = self.epoch_counter_abort_handle.take() {
+            handle.abort();
+        }
     }
 }

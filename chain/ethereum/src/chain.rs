@@ -2,7 +2,9 @@ use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
-use graph::blockchain::{BlockIngestor, BlockchainKind, TriggersAdapterSelector};
+use graph::blockchain::{
+    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggersAdapterSelector,
+};
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -42,8 +44,7 @@ use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
 use crate::network::EthereumNetworkAdapters;
-use crate::EthereumAdapter;
-use crate::NodeCapabilities;
+use crate::runtime::runtime_adapter::eth_call_gas;
 use crate::{
     adapter::EthereumAdapter as _,
     codec,
@@ -54,8 +55,10 @@ use crate::{
     },
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
+use crate::{BufferedCallCache, NodeCapabilities};
+use crate::{EthereumAdapter, RuntimeAdapter};
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamMapper, FirehoseCursor,
+    BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
 };
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -251,10 +254,40 @@ impl TriggersAdapterSelector<Chain> for EthereumAdapterSelector {
     }
 }
 
+/// We need this so that the runner tests can use a `NoopRuntimeAdapter`
+/// instead of the `RuntimeAdapter` from this crate to avoid needing
+/// ethereum adapters
+pub trait RuntimeAdapterBuilder: Send + Sync + 'static {
+    fn build(
+        &self,
+        eth_adapters: Arc<EthereumNetworkAdapters>,
+        call_cache: Arc<dyn EthereumCallCache>,
+        chain_identifier: Arc<ChainIdentifier>,
+    ) -> Arc<dyn RuntimeAdapterTrait<Chain>>;
+}
+
+pub struct EthereumRuntimeAdapterBuilder {}
+
+impl RuntimeAdapterBuilder for EthereumRuntimeAdapterBuilder {
+    fn build(
+        &self,
+        eth_adapters: Arc<EthereumNetworkAdapters>,
+        call_cache: Arc<dyn EthereumCallCache>,
+        chain_identifier: Arc<ChainIdentifier>,
+    ) -> Arc<dyn RuntimeAdapterTrait<Chain>> {
+        Arc::new(RuntimeAdapter {
+            eth_adapters,
+            call_cache,
+            chain_identifier,
+        })
+    }
+}
+
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
     node_id: NodeId,
+    chain_identifier: Arc<ChainIdentifier>,
     registry: Arc<MetricsRegistry>,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
@@ -266,7 +299,8 @@ pub struct Chain {
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
     adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
-    runtime_adapter: Arc<dyn RuntimeAdapterTrait<Self>>,
+    runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
+    eth_adapters: Arc<EthereumNetworkAdapters>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -289,15 +323,18 @@ impl Chain {
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
         block_refetcher: Arc<dyn BlockRefetcher<Self>>,
         adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
-        runtime_adapter: Arc<dyn RuntimeAdapterTrait<Self>>,
+        runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
+        eth_adapters: Arc<EthereumNetworkAdapters>,
         reorg_threshold: BlockNumber,
         polling_ingestor_interval: Duration,
         is_ingestible: bool,
     ) -> Self {
+        let chain_identifier = Arc::new(chain_store.chain_identifier().clone());
         Chain {
             logger_factory,
             name,
             node_id,
+            chain_identifier,
             registry,
             client,
             chain_store,
@@ -306,7 +343,8 @@ impl Chain {
             block_stream_builder,
             block_refetcher,
             adapter_selector,
-            runtime_adapter,
+            runtime_adapter_builder,
+            eth_adapters,
             reorg_threshold,
             is_ingestible,
             polling_ingestor_interval,
@@ -353,6 +391,8 @@ impl Blockchain for Chain {
     type TriggerFilter = crate::adapter::TriggerFilter;
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
+
+    type DecoderHook = crate::data_source::DecoderHook;
 
     fn triggers_adapter(
         &self,
@@ -443,8 +483,23 @@ impl Blockchain for Chain {
         self.block_refetcher.get_block(self, logger, cursor).await
     }
 
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        self.runtime_adapter.clone()
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        let call_cache = Arc::new(BufferedCallCache::new(self.call_cache.cheap_clone()));
+
+        let builder = self.runtime_adapter_builder.build(
+            self.eth_adapters.cheap_clone(),
+            call_cache.cheap_clone(),
+            self.chain_identifier.cheap_clone(),
+        );
+        let eth_call_gas = eth_call_gas(&self.chain_identifier);
+
+        let decoder_hook = crate::data_source::DecoderHook::new(
+            self.eth_adapters.cheap_clone(),
+            call_cache,
+            eth_call_gas,
+        );
+
+        (builder, decoder_hook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
@@ -588,6 +643,15 @@ impl Block for BlockFinality {
             BlockFinality::NonFinal(block) => json::to_value(&block.ethereum_block),
         }
     }
+
+    fn timestamp(&self) -> BlockTime {
+        let ts = match self {
+            BlockFinality::Final(block) => block.timestamp,
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.timestamp,
+        };
+        let ts = i64::try_from(ts.as_u64()).unwrap();
+        BlockTime::since_epoch(ts, 0)
+    }
 }
 
 pub struct DummyDataSourceTemplate;
@@ -715,6 +779,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         self.chain_store.cheap_clone(),
                         HashSet::from_iter(Some(block.hash_as_h256())),
                     )
+                    .await
                     .collect()
                     .compat()
                     .await?;
@@ -735,10 +800,15 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for FirehoseMapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<BlockFinality>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&[u8]>,
+    ) -> Result<Option<BlockFinality>, BlockStreamError> {
         let block = match output {
             Some(block) => codec::Block::decode(block)?,
-            None => anyhow::bail!("ethereum mapper is expected to always have a block"),
+            None => Err(anyhow::anyhow!(
+                "ethereum mapper is expected to always have a block"
+            ))?,
         };
 
         // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
@@ -752,10 +822,11 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         block: BlockFinality,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         self.adapter
             .triggers_in_block(logger, block, &self.filter)
             .await
+            .map_err(BlockStreamError::from)
     }
 
     async fn handle_substreams_block(
@@ -764,7 +835,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         _clock: Clock,
         _cursor: FirehoseCursor,
         _block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         unimplemented!()
     }
 }

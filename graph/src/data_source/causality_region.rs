@@ -1,14 +1,13 @@
 use diesel::{
-    pg::Pg,
-    serialize::Output,
+    deserialize::{FromSql, FromSqlRow},
+    pg::{Pg, PgValue},
+    serialize::{Output, ToSql},
     sql_types::Integer,
-    types::{FromSql, ToSql},
-    FromSqlRow,
 };
 use std::fmt;
-use std::io;
 
 use crate::components::subgraph::Entity;
+use crate::derive::CacheWeight;
 
 /// The causality region of a data source. All onchain data sources share the same causality region,
 /// but each offchain data source is assigned its own. This isolates offchain data sources from
@@ -21,7 +20,7 @@ use crate::components::subgraph::Entity;
 /// This necessary for determinism because offchain data sources don't have a deterministic order of
 /// execution, for example an IPFS file may become available at any point in time. The isolation
 /// rules make the indexing result reproducible, given a set of available files.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromSqlRow, Hash, PartialOrd, Ord)]
+#[derive(Debug, CacheWeight, Copy, Clone, PartialEq, Eq, FromSqlRow, Hash, PartialOrd, Ord)]
 pub struct CausalityRegion(i32);
 
 impl fmt::Display for CausalityRegion {
@@ -31,14 +30,14 @@ impl fmt::Display for CausalityRegion {
 }
 
 impl FromSql<Integer, Pg> for CausalityRegion {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: PgValue) -> diesel::deserialize::Result<Self> {
         <i32 as FromSql<Integer, Pg>>::from_sql(bytes).map(CausalityRegion)
     }
 }
 
 impl ToSql<Integer, Pg> for CausalityRegion {
-    fn to_sql<W: io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
-        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
+        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 

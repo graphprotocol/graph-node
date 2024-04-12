@@ -10,8 +10,8 @@
   },
   "note": "Do not update the dependencies below - we want to make sure it's backward comaptible, so we are using an old CLI version on purpose.",
   "devDependencies": {
-    "@graphprotocol/graph-cli": "0.62.0",
-    "@graphprotocol/graph-ts": "0.31.0",
+    "@graphprotocol/graph-cli": "0.69.0",
+    "@graphprotocol/graph-ts": "0.34.0",
     "solc": "^0.8.2"
   },
   "dependencies": {

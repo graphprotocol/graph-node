@@ -7,7 +7,7 @@ use crate::{
     data::value::Word,
     endpoint::{ConnectionType, EndpointMetrics, Provider, RequestLabels},
     firehose::decode_firehose_block,
-    prelude::{anyhow, debug, info},
+    prelude::{anyhow, debug, info, DeploymentHash},
     substreams_rpc,
 };
 
@@ -27,8 +27,9 @@ use std::{
 use tonic::codegen::InterceptedService;
 use tonic::{
     codegen::CompressionEncoding,
-    metadata::{Ascii, MetadataValue},
+    metadata::{Ascii, MetadataKey, MetadataValue},
     transport::{Channel, ClientTlsConfig},
+    Request,
 };
 
 use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
@@ -51,6 +52,29 @@ pub struct FirehoseEndpoint {
     pub subgraph_limit: SubgraphLimit,
     endpoint_metrics: Arc<EndpointMetrics>,
     channel: Channel,
+}
+
+#[derive(Debug)]
+pub struct ConnectionHeaders(HashMap<MetadataKey<Ascii>, MetadataValue<Ascii>>);
+
+impl ConnectionHeaders {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+    pub fn with_deployment(mut self, deployment: DeploymentHash) -> Self {
+        if let Ok(deployment) = deployment.parse() {
+            self.0
+                .insert("x-deployment-id".parse().unwrap(), deployment);
+        }
+        self
+    }
+    pub fn add_to_request<T>(&self, request: T) -> Request<T> {
+        let mut request = Request::new(request);
+        self.0.iter().for_each(|(k, v)| {
+            request.metadata_mut().insert(k, v.clone());
+        });
+        request
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
@@ -119,6 +143,7 @@ impl FirehoseEndpoint {
         provider: S,
         url: S,
         token: Option<String>,
+        key: Option<String>,
         filters_enabled: bool,
         compression_enabled: bool,
         subgraph_limit: SubgraphLimit,
@@ -144,6 +169,12 @@ impl FirehoseEndpoint {
                 bearer_token.parse::<MetadataValue<Ascii>>().map(Some)
             })
             .expect("Firehose token is invalid");
+
+        let key: Option<MetadataValue<Ascii>> = key
+            .map_or(Ok(None), |key| {
+                key.parse::<MetadataValue<Ascii>>().map(Some)
+            })
+            .expect("Firehose key is invalid");
 
         // Note on the connection window size: We run multiple block streams on a same connection,
         // and a problematic subgraph with a stalled block stream might consume the entire window
@@ -174,7 +205,7 @@ impl FirehoseEndpoint {
         FirehoseEndpoint {
             provider: provider.as_ref().into(),
             channel: endpoint.connect_lazy(),
-            auth: AuthInterceptor { token },
+            auth: AuthInterceptor { token, key },
             filters_enabled,
             compression_enabled,
             subgraph_limit,
@@ -399,8 +430,10 @@ impl FirehoseEndpoint {
     pub async fn stream_blocks(
         self: Arc<Self>,
         request: firehose::Request,
+        headers: &ConnectionHeaders,
     ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
         let mut client = self.new_stream_client();
+        let request = headers.add_to_request(request);
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -410,8 +443,10 @@ impl FirehoseEndpoint {
     pub async fn substreams(
         self: Arc<Self>,
         request: substreams_rpc::Request,
+        headers: &ConnectionHeaders,
     ) -> Result<tonic::Streaming<substreams_rpc::Response>, anyhow::Error> {
         let mut client = self.new_substreams_client();
+        let request = headers.add_to_request(request);
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -502,7 +537,7 @@ impl FirehoseNetworks {
     }
 
     /// Returns a `HashMap` where the key is the chain's id and the key is an endpoint for this chain.
-    /// There can be mulitple keys with the same chain id but with different
+    /// There can be multiple keys with the same chain id but with different
     /// endpoint where multiple providers exist for a single chain id. Providers with the same
     /// label do not need to be tested individually, if one is working, every other endpoint in the
     /// pool should also work.
@@ -539,6 +574,7 @@ mod test {
             String::new(),
             "http://127.0.0.1".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Unlimited,
@@ -570,6 +606,7 @@ mod test {
         let endpoint = vec![Arc::new(FirehoseEndpoint::new(
             String::new(),
             "http://127.0.0.1".to_string(),
+            None,
             None,
             false,
             false,
@@ -603,6 +640,7 @@ mod test {
             String::new(),
             "http://127.0.0.1".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Disabled,
@@ -634,6 +672,7 @@ mod test {
             "high_error".to_string(),
             "http://127.0.0.1".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Unlimited,
@@ -642,6 +681,7 @@ mod test {
         let high_error_adapter2 = Arc::new(FirehoseEndpoint::new(
             "high_error".to_string(),
             "http://127.0.0.1".to_string(),
+            None,
             None,
             false,
             false,
@@ -652,6 +692,7 @@ mod test {
             "low availability".to_string(),
             "http://127.0.0.2".to_string(),
             None,
+            None,
             false,
             false,
             SubgraphLimit::Limit(2),
@@ -660,6 +701,7 @@ mod test {
         let high_availability = Arc::new(FirehoseEndpoint::new(
             "high availability".to_string(),
             "http://127.0.0.3".to_string(),
+            None,
             None,
             false,
             false,

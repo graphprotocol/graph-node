@@ -101,7 +101,7 @@ impl LoggerFactory {
                     elastic_logger(
                         ElasticDrainConfig {
                             general: elastic_config,
-                            index: String::from("subgraph-logs"),
+                            index: ENV_VARS.elastic_search_index.clone(),
                             custom_id_key: String::from("subgraphId"),
                             custom_id_value: loc.hash.to_string(),
                             flush_interval: ENV_VARS.elastic_search_flush_interval,

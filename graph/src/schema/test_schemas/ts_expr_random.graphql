@@ -1,0 +1,14 @@
+# fail: ExprNotSupported("Function random is not supported")
+# Random must not be allowed as it would introduce nondeterministic behavior
+type Data @entity(timeseries: true) {
+  id: Int8!
+  timestamp: Timestamp!
+  price0: BigDecimal!
+  price1: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+  id: Int8!
+  timestamp: Timestamp!
+  max_price: BigDecimal! @aggregate(fn: "max", arg: "random()")
+}

@@ -1,8 +1,11 @@
+use graph::blockchain::{Block, BlockTime};
+use graph::data::query::Trace;
+use graph::data::store::scalar::Timestamp;
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::data::subgraph::LATEST_VERSION;
 use graph::entity;
 use graph::prelude::{SubscriptionResult, Value};
 use graph::schema::InputSchema;
-use graphql_parser::Pos;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -10,6 +13,9 @@ use std::time::{Duration, Instant};
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
+};
+use test_store::block_store::{
+    FakeBlock, BLOCK_FOUR, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
 };
 
 use graph::{
@@ -27,13 +33,12 @@ use graph::{
         QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
     },
-    semver::Version,
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
     deployment_state, execute_subgraph_query, execute_subgraph_query_with_deadline,
-    graphql_metrics, revert_block, run_test_sequentially, transact_errors, Store, BLOCK_ONE,
-    GENESIS_PTR, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
+    graphql_metrics, revert_block, run_test_sequentially, transact_errors, Store, LOAD_MANAGER,
+    LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
 
 /// Ids for the various entities that we create in `insert_entities` and
@@ -49,6 +54,11 @@ const MEDIA_INT: [&str; 7] = ["52", "53", "54", "55", "56", "57", "58"];
 lazy_static! {
     /// The id of the sole publisher in the test data
     static ref PUB1: IdVal = IdType::Bytes.parse("0xb1");
+    /// The chain we actually put into the chain store, blocks 0 to 3
+    static ref CHAIN: Vec<FakeBlock> = vec![GENESIS_BLOCK.clone(), BLOCK_ONE.clone(), BLOCK_TWO.clone(), BLOCK_THREE.clone()];
+    /// The known block pointers for blocks 0 to 3 from the chain plus a
+    /// nonexistent block 4
+    static ref BLOCKS: Vec<BlockPtr> = CHAIN.iter().map(|b| b.ptr().clone()).chain(Some(BLOCK_FOUR.ptr().clone())).collect();
 }
 
 /// A convenience wrapper for `Value` and `r::Value` that clones a lot,
@@ -174,7 +184,7 @@ async fn setup(
     features: BTreeSet<SubgraphFeature>,
     id_type: IdType,
 ) -> DeploymentLocator {
-    use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
+    use test_store::block_store;
 
     /// Make sure we get rid of all subgraphs once for the entire test run
     async fn global_init() {
@@ -182,7 +192,7 @@ async fn setup(
             static ref STORE_CLEAN: AtomicBool = AtomicBool::new(false);
         }
         if !STORE_CLEAN.load(Ordering::SeqCst) {
-            let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+            let chain = CHAIN.iter().collect();
             block_store::set_chain(chain, NETWORK_NAME).await;
             test_store::remove_subgraphs();
             STORE_CLEAN.store(true, Ordering::SeqCst);
@@ -198,7 +208,7 @@ async fn setup(
         let schema = test_schema(id.clone(), id_type);
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: id.clone(),
-            spec_version: Version::new(1, 0, 0),
+            spec_version: LATEST_VERSION.clone(),
             features,
             description: None,
             repository: None,
@@ -252,6 +262,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         bands: [Band!]!
         writtenSongs: [Song!]! @derivedFrom(field: \"writtenBy\")
         favoriteCount: Int8!
+        birthDate: Timestamp!
     }
 
     type Band @entity {
@@ -372,9 +383,31 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         bandReviews: [BandReview!]! @derivedFrom(field: \"author\")
         songReviews: [SongReview!]! @derivedFrom(field: \"author\")
     }
+
+    type Plays @entity(timeseries: true) {
+        id: Int8!
+        timestamp: Timestamp!
+        song: Song!
+        user: User!
+    }
+
+    type SongPlays @aggregation(intervals: [\"hour\"], source: \"Plays\") {
+        id: Int8!
+        timestamp: Timestamp!
+        song: Song!
+        played: Int! @aggregate(fn: \"count\")
+    }
+
+    type UserPlays @aggregation(intervals: [\"hour\"], source: \"Plays\") {
+        id: Int8!
+        timestamp: Timestamp!
+        user: User!
+        played: Int! @aggregate(fn: \"count\")
+    }
     ";
 
-    InputSchema::parse(&SCHEMA.replace("@ID@", id_type.as_str()), id).expect("Test schema invalid")
+    InputSchema::parse_latest(&SCHEMA.replace("@ID@", id_type.as_str()), id)
+        .expect("Test schema invalid")
 }
 
 async fn insert_test_entities(
@@ -427,12 +460,15 @@ async fn insert_test_entities(
     let md = id_type.medias();
     let is = &manifest.schema;
     let pub1 = &*PUB1;
+    let ts0 = BlockTime::for_test(&BLOCKS[0]);
+    let timestamp =
+        Timestamp::from_microseconds_since_epoch(1710837304040956).expect("valid timestamp");
     let entities0 = vec![
         (
             "Musician",
             vec![
-                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"], favoriteCount: 10 },
-                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100 },
+                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"], favoriteCount: 10, birthDate: timestamp.clone() },
+                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100, birthDate: timestamp.clone() },
             ],
         ),
         ("Publisher", vec![entity! { is => id: pub1 }]),
@@ -522,25 +558,43 @@ async fn insert_test_entities(
                 entity! { is => id: "rl4",  title: "Silence",        songs: Vec::<graph::prelude::Value>::new() },
             ],
         ),
+        (
+            "Plays",
+            vec![
+                entity! { is => id: 1i64, timestamp: ts0, song: s[1], user: "u1"},
+                entity! { is => id: 2i64, timestamp: ts0, song: s[1], user: "u2"},
+                entity! { is => id: 3i64, timestamp: ts0, song: s[2], user: "u1"},
+                entity! { is => id: 4i64, timestamp: ts0, song: s[1], user: "u1"},
+                entity! { is => id: 5i64, timestamp: ts0, song: s[1], user: "u1"},
+            ],
+        ),
     ];
     let entities0 = insert_ops(&manifest.schema, entities0);
 
     let entities1 = vec![(
         "Musician",
         vec![
-            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"], favoriteCount: 5 },
-            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20 },
+            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"], favoriteCount: 5, birthDate: timestamp.clone() },
+            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20, birthDate: timestamp.clone() },
         ],
     )];
     let entities1 = insert_ops(&manifest.schema, entities1);
 
-    insert_at(entities0, &deployment, GENESIS_PTR.clone()).await;
-    insert_at(entities1, &deployment, BLOCK_ONE.clone()).await;
+    insert_at(entities0, &deployment, BLOCKS[0].clone()).await;
+    insert_at(entities1, &deployment, BLOCKS[1].clone()).await;
+
+    // We ingest block 2 with no changes to the subgraph solely to trigger
+    // an hourly rollup. Make sure that the block times between genesis and
+    // block 2 actually span an hour.
+    let t0 = BlockTime::for_test(&BLOCKS[0]).as_secs_since_epoch();
+    let t2 = BlockTime::for_test(&BLOCKS[2]).as_secs_since_epoch();
+    assert!(t2 - t0 > 3600);
+    insert_at(vec![], &deployment, BLOCKS[2].clone()).await;
     deployment
 }
 
 async fn execute_query(loc: &DeploymentLocator, query: &str) -> QueryResult {
-    let query = graphql_parser::parse_query(query)
+    let query = q::parse_query(query)
         .expect("invalid test query")
         .into_static();
     execute_query_document_with_variables(&loc.hash, query, None).await
@@ -655,11 +709,10 @@ where
                 let repl = id.as_gql(id_type);
                 query = query.replace(&pat, &repl);
             }
-            dbg!(&query);
 
             let result = {
                 let id = &deployment.hash;
-                let query = graphql_parser::parse_query(&query)
+                let query = q::parse_query(&query)
                     .expect("Invalid test query")
                     .into_static();
                 let variables = variables.clone();
@@ -701,11 +754,7 @@ async fn run_subscription(
         .await
         .unwrap();
 
-    let query = Query::new(
-        graphql_parser::parse_query(query).unwrap().into_static(),
-        None,
-        false,
-    );
+    let query = Query::new(q::parse_query(query).unwrap().into_static(), None, false);
     let options = SubscriptionExecutionOptions {
         logger: logger.clone(),
         store: query_store.clone(),
@@ -736,6 +785,7 @@ fn can_query_one_to_one_relationship() {
                 name
             }
             favoriteCount
+            birthDate
         }
         songStats(first: 100, orderBy: id) {
             id
@@ -752,10 +802,10 @@ fn can_query_one_to_one_relationship() {
         let s = id_type.songs();
         let exp = object! {
             musicians: vec![
-                object! { name: "John", mainBand: object! { name: "The Musicians" }, favoriteCount: "10" },
-                object! { name: "Lisa", mainBand: object! { name: "The Musicians" }, favoriteCount: "100" },
-                object! { name: "Tom",  mainBand: object! { name: "The Amateurs" }, favoriteCount: "5" },
-                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: "20" }
+                object! { name: "John", mainBand: object! { name: "The Musicians" }, favoriteCount: "10", birthDate: "1710837304040956" },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" }, favoriteCount: "100", birthDate: "1710837304040956" },
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs" }, favoriteCount: "5", birthDate: "1710837304040956" },
+                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: "20", birthDate: "1710837304040956" }
             ],
             songStats: vec![
                 object! {
@@ -770,6 +820,44 @@ fn can_query_one_to_one_relationship() {
                 }
             ]
         };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data.to_string(), exp.to_string());
+    })
+}
+
+#[test]
+fn can_filter_by_timestamp() {
+    const QUERY1: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { birthDate_gt: \"1710837304040955\" }) {
+            name
+        }
+    }
+    ";
+
+    const QUERY2: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { birthDate_lt: \"1710837304040955\" }) {
+            name
+        }
+    }
+    ";
+
+    run_query(QUERY1, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John" },
+                object! { name: "Lisa" },
+                object! { name: "Tom" },
+                object! { name: "Valerie" }
+            ],
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+
+    run_query(QUERY2, |result, _| {
+        let exp = object! { musicians: Vec::<r::Value>::new() };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
     })
@@ -1820,7 +1908,7 @@ fn instant_timeout() {
     run_test_sequentially(|store| async move {
         let deployment = setup_readonly(store.as_ref()).await;
         let query = Query::new(
-            graphql_parser::parse_query("query { musicians(first: 100) { name } }")
+            q::parse_query("query { musicians(first: 100) { name } }")
                 .unwrap()
                 .into_static(),
             None,
@@ -1956,7 +2044,7 @@ fn ambiguous_derived_from_result() {
             )) => {
                 assert_eq!(
                     pos,
-                    &Pos {
+                    &q::Pos {
                         line: 1,
                         column: 39
                     }
@@ -2341,37 +2429,34 @@ fn check_musicians_at(query0: &str, block_var: r::Value, expected: Expected, qid
 
 #[test]
 fn query_at_block() {
-    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
-
     fn musicians_at(block: &str, expected: Expected, qid: &'static str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
         check_musicians_at(&query, object! {}, expected, qid);
     }
 
-    fn hash(block: &FakeBlock) -> String {
+    fn hash(block: &BlockPtr) -> String {
         format!("hash : \"0x{}\"", block.hash)
     }
 
     const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 7000 is therefore not yet available";
+         up to block number 2 and data for block number 7000 is therefore not yet available";
     const BLOCK_NOT_INDEXED2: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 2 is therefore not yet available";
+         up to block number 2 and data for block number 3 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
     musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
     musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
 
-    musicians_at(&hash(&GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
-    musicians_at(&hash(&BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
-    musicians_at(&hash(&BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at(&hash(&BLOCKS[0]), Ok(vec!["m1", "m2"]), "h0");
+    musicians_at(&hash(&BLOCKS[1]), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at(&hash(&BLOCKS[2]), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at(&hash(&BLOCKS[3]), Err(BLOCK_NOT_INDEXED2), "h3");
+    musicians_at(&hash(&BLOCKS[4]), Err(BLOCK_HASH_NOT_FOUND), "h4");
 }
 
 #[test]
 fn query_at_block_with_vars() {
-    use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
-
     fn musicians_at_nr(block: i32, expected: Expected, qid: &'static str) {
         let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
         let var = object! { block: block };
@@ -2391,7 +2476,7 @@ fn query_at_block_with_vars() {
         check_musicians_at(query, var, expected, qid);
     }
 
-    fn musicians_at_hash(block: &FakeBlock, expected: Expected, qid: &'static str) {
+    fn musicians_at_hash(block: &BlockPtr, expected: Expected, qid: &'static str) {
         let query = "query by_hash($block: Bytes!) { musicians(block: { hash: $block }) { id } }";
         let var = object! { block: block.hash.to_string() };
 
@@ -2399,9 +2484,9 @@ fn query_at_block_with_vars() {
     }
 
     const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 7000 is therefore not yet available";
+         up to block number 2 and data for block number 7000 is therefore not yet available";
     const BLOCK_NOT_INDEXED2: &str = "subgraph @DEPLOYMENT@ has only indexed \
-         up to block number 1 and data for block number 2 is therefore not yet available";
+         up to block number 2 and data for block number 3 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
@@ -2412,10 +2497,11 @@ fn query_at_block_with_vars() {
     musicians_at_nr_gte(0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0");
     musicians_at_nr_gte(1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1");
 
-    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
-    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at_hash(&BLOCK_TWO, Err(BLOCK_NOT_INDEXED2), "h2");
-    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at_hash(&BLOCKS[0], Ok(vec!["m1", "m2"]), "h0");
+    musicians_at_hash(&BLOCKS[1], Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at_hash(&BLOCKS[2], Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at_hash(&BLOCKS[3], Err(BLOCK_NOT_INDEXED2), "h3");
+    musicians_at_hash(&BLOCKS[4], Err(BLOCK_HASH_NOT_FOUND), "h4");
 }
 
 #[test]
@@ -2434,7 +2520,7 @@ fn query_detects_reorg() {
             IdType::String,
         )
         .await;
-        // Initial state with latest block at block 1
+        // Initial state with latest block at block 2
         let state = deployment_state(STORE.as_ref(), &deployment.hash).await;
 
         // Inject a fake initial state; c435c25decbc4ad7bbbadf8e0ced0ff2
@@ -2443,7 +2529,7 @@ fn query_detects_reorg() {
             .unwrap() = Some(state);
 
         // When there is no revert, queries work fine
-        let result = query_at(&deployment, 1).await;
+        let result = query_at(&deployment, 2).await;
 
         assert_eq!(
             extract_data!(result),
@@ -2451,10 +2537,10 @@ fn query_detects_reorg() {
         );
 
         // Revert one block
-        revert_block(&STORE, &deployment, &GENESIS_PTR).await;
+        revert_block(&STORE, &deployment, &BLOCKS[1]).await;
 
         // A query is still fine since we query at block 0; we were at block
-        // 1 when we got `state`, and reorged once by one block, which can
+        // 2 when we got `state`, and reorged once by one block, which can
         // not affect block 0, and it's therefore ok to query at block 0
         // even with a concurrent reorg
         let result = query_at(&deployment, 0).await;
@@ -2464,18 +2550,18 @@ fn query_detects_reorg() {
         );
 
         // We move the subgraph head forward. The state we have is also for
-        // block 1, but with a smaller reorg count and we therefore report
+        // block 2, but with a smaller reorg count and we therefore report
         // an error
         test_store::transact_and_wait(
             &STORE.subgraph_store(),
             &deployment,
-            BLOCK_ONE.clone(),
+            BLOCKS[2].clone(),
             vec![],
         )
         .await
         .unwrap();
 
-        let result = query_at(&deployment, 1).await;
+        let result = query_at(&deployment, 2).await;
         match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */
             }
@@ -2491,16 +2577,17 @@ fn query_detects_reorg() {
 
 #[test]
 fn can_query_meta() {
-    // metadata for the latest block (block 1)
+    // metadata for the latest block (block 2)
     const QUERY1: &str =
-        "query { _meta { deployment block { hash number __typename } __typename } }";
+        "query { _meta { deployment block { hash number parentHash __typename } __typename } }";
     run_query(QUERY1, |result, id_type| {
         let exp = object! {
             _meta: object! {
                 deployment: id_type.deployment_id(),
                 block: object! {
-                    hash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
-                    number: 1,
+                    hash: "0xf8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6",
+                    number: 2,
+                    parentHash: "0x8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
                     __typename: "_Block_"
                 },
                 __typename: "_Meta_"
@@ -2541,9 +2628,9 @@ fn can_query_meta() {
         assert_eq!(extract_data!(result), Some(exp));
     });
 
-    // metadata for block 2, which is beyond what the subgraph has indexed
+    // metadata for block 3, which is beyond what the subgraph has indexed
     const QUERY4: &str =
-        "query { _meta(block: { number: 2 }) { deployment block { hash number } } }";
+        "query { _meta(block: { number: 3 }) { deployment block { hash number } } }";
     run_query(QUERY4, |result, _| {
         assert!(result.has_errors());
     });
@@ -2552,7 +2639,6 @@ fn can_query_meta() {
 #[test]
 fn non_fatal_errors() {
     use serde_json::json;
-    use test_store::block_store::BLOCK_TWO;
 
     run_test_sequentially(|store| async move {
         let deployment = setup(
@@ -2571,7 +2657,7 @@ fn non_fatal_errors() {
             deterministic: true,
         };
 
-        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err], true)
+        transact_errors(&STORE, &deployment, BLOCKS[3].clone(), vec![err], true)
             .await
             .unwrap();
 
@@ -2666,7 +2752,7 @@ fn non_fatal_errors() {
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
         // Test error reverts.
-        revert_block(&STORE, &deployment, &BLOCK_ONE).await;
+        revert_block(&STORE, &deployment, &BLOCKS[1]).await;
         let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
         let result = execute_query(&deployment, query).await;
         let expected = json!({
@@ -2697,7 +2783,7 @@ fn can_query_root_typename() {
 #[test]
 fn deterministic_error() {
     use serde_json::json;
-    use test_store::block_store::BLOCK_TWO;
+    use test_store::block_store::BLOCK_THREE;
 
     run_test_sequentially(|store| async move {
         let deployment = setup(
@@ -2711,14 +2797,20 @@ fn deterministic_error() {
         let err = SubgraphError {
             subgraph_id: deployment.hash.clone(),
             message: "cow template handler could not moo event transaction".to_string(),
-            block_ptr: Some(BLOCK_TWO.block_ptr()),
+            block_ptr: Some(BLOCK_THREE.block_ptr()),
             handler: Some("handleMoo".to_string()),
             deterministic: true,
         };
 
-        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err], false)
-            .await
-            .unwrap();
+        transact_errors(
+            &STORE,
+            &deployment,
+            BLOCK_THREE.block_ptr(),
+            vec![err],
+            false,
+        )
+        .await
+        .unwrap();
 
         // `subgraphError` is implicitly `deny`, data is omitted.
         let query = "query { musician(id: \"m1\") { id } }";
@@ -2893,24 +2985,59 @@ fn can_query_with_or_implicit_and_filter() {
 
 #[test]
 fn trace_works() {
+    const QUERY1: &str = "query { musicians(first: 100) { name } }";
+
+    const QUERY2: &str = r#"
+    query {
+        m0: musicians(first: 100, block: { number: 0 }) { name }
+        m1: musicians(first: 100, block: { number: 1 }) { name }
+    }"#;
+
+    async fn run_query(deployment: &DeploymentLocator, query: &str) -> QueryResults {
+        let query = Query::new(q::parse_query(query).unwrap().into_static(), None, true);
+        execute_subgraph_query(
+            query,
+            QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
+        )
+        .await
+    }
+
     run_test_sequentially(|store| async move {
         let deployment = setup_readonly(store.as_ref()).await;
-        let query = Query::new(
-            graphql_parser::parse_query("query { musicians(first: 100) { name } }")
-                .unwrap()
-                .into_static(),
-            None,
-            true,
-        );
 
-        let result = execute_subgraph_query(
-            query,
-            QueryTarget::Deployment(deployment.hash, Default::default()),
-        )
-        .await;
+        let result = run_query(&deployment, QUERY1).await;
 
         let trace = &result.first().unwrap().trace;
-        assert!(!trace.is_none(), "result has a trace");
+        assert!(!trace.is_none(), "first result has a trace");
+        assert!(!result.trace.is_none(), "results has a trace");
+
+        // Check that with block constraints we get a trace for each block
+        let result = run_query(&deployment, QUERY2).await;
+        use Trace::*;
+        match &result.trace {
+            None => panic!("expected Root got None"),
+            Root { blocks, .. } => {
+                assert_eq!(2, blocks.len());
+                for twc in blocks {
+                    match twc.trace.as_ref() {
+                        Block {
+                            block, children, ..
+                        } => {
+                            assert!([0, 1].contains(block));
+                            assert_eq!(1, children.len());
+                            assert_eq!(format!("m{}", block), children[0].0);
+                            match &children[0].1 {
+                                Query { .. } => {}
+                                _ => panic!("expected Query got {:?}", children[0]),
+                            }
+                        }
+                        _ => panic!("expected Block got {:?}", twc.trace),
+                    }
+                }
+            }
+            Block { .. } => panic!("expected Root got Block"),
+            Query { .. } => panic!("expected Root got Query"),
+        }
     })
 }
 
@@ -2958,6 +3085,69 @@ fn empty_type_c() {
     run_query(QUERY, |result, _| {
         let exp = object! {
             single: object! { songs: Vec::<r::Value>::new() }
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn simple_aggregation() {
+    fn ts0() -> r::Value {
+        r::Value::Timestamp(Timestamp::since_epoch(0, 0).unwrap())
+    }
+
+    const SONG_QUERY: &str = "
+    query {
+        songPlays_collection(interval: hour) {
+            id
+            timestamp
+            song { id }
+            played
+        }
+    }";
+
+    const USER_QUERY1: &str = "
+    query {
+        userPlays_collection(interval: hour) {
+            id
+            timestamp
+            user { id }
+            played
+        }
+    }";
+
+    const USER_QUERY2: &str = r#"
+    query {
+        userPlays_collection(interval: hour, where: { timestamp_gt: "1000000" }) {
+            id
+        }
+    }"#;
+
+    run_query(SONG_QUERY, |result, id_type| {
+        let s = id_type.songs();
+        let exp = object! {
+            songPlays_collection: vec![
+                object! { id: "5", timestamp: ts0(), song: object! { id: s[1] }, played: 4 },
+                object! { id: "3", timestamp: ts0(), song: object! { id: s[2] }, played: 1 },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+    run_query(USER_QUERY1, |result, _| {
+        let exp = object! {
+            userPlays_collection: vec![
+                object! { id: "5", timestamp: ts0(), user: object! { id: "u1" }, played: 4 },
+                object! { id: "2", timestamp: ts0(), user: object! { id: "u2" }, played: 1 },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+    run_query(USER_QUERY2, |result, _| {
+        let exp = object! {
+            userPlays_collection: Vec::<r::Value>::new()
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);

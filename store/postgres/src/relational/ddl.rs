@@ -3,7 +3,10 @@ use std::{
     iter,
 };
 
-use graph::prelude::{BLOCK_NUMBER_MAX, ENV_VARS};
+use graph::{
+    prelude::{BLOCK_NUMBER_MAX, ENV_VARS},
+    schema::InputSchema,
+};
 
 use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
@@ -38,7 +41,7 @@ impl Layout {
         tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
         for table in tables {
-            table.as_ddl(&self.catalog, &mut out)?;
+            table.as_ddl(&self.input_schema, &self.catalog, &mut out)?;
         }
 
         Ok(out)
@@ -147,11 +150,11 @@ impl Table {
         let (int4, int8) = catalog.minmax_ops();
 
         if self.immutable {
+            // For immutable entities, a simple BTree on block$ is sufficient
             write!(
                 out,
-                "create index brin_{table_name}\n    \
-                on {qname}\n \
-                   using brin({block} {int4}, vid {int8});\n",
+                "create index {table_name}_block\n    \
+                on {qname}({block});\n",
                 table_name = self.name,
                 qname = self.qualified_name,
                 block = BLOCK_COLUMN
@@ -298,15 +301,60 @@ impl Table {
         writeln!(out)
     }
 
+    /// If `self` is an aggregation and has cumulative aggregates, create an
+    /// index on the dimensions. That supports the lookup of previous
+    /// aggregation values we do in the rollup query since that filters by
+    /// all dimensions with an `=` and by timestamp with a `<`
+    fn create_aggregate_indexes(&self, schema: &InputSchema, out: &mut String) -> fmt::Result {
+        let agg = schema
+            .agg_mappings()
+            .find(|mapping| mapping.agg_type(schema) == self.object)
+            .map(|mapping| mapping.aggregation(schema))
+            .filter(|agg| agg.aggregates.iter().any(|a| a.cumulative))
+            .filter(|agg| agg.dimensions().count() > 0);
+
+        let Some(agg) = agg else {
+            return Ok(());
+        };
+
+        let dim_cols: Vec<_> = agg
+            .dimensions()
+            .map(|dim| {
+                self.column_for_field(&dim.name)
+                    .map(|col| &col.name)
+                    // We don't have a good way to return an error
+                    // indicating that somehow the table is wrong (which
+                    // should not happen). We can only return a generic
+                    // formatting error
+                    .map_err(|_| fmt::Error)
+            })
+            .collect::<Result<_, _>>()?;
+
+        write!(
+            out,
+            "create index {table_name}_dims\n    on {qname}({dims}, timestamp);\n",
+            table_name = self.name,
+            qname = self.qualified_name,
+            dims = dim_cols.join(", ")
+        )?;
+        Ok(())
+    }
+
     /// Generate the DDL for one table, i.e. one `create table` statement
     /// and all `create index` statements for the table's columns
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    pub(crate) fn as_ddl(&self, catalog: &Catalog, out: &mut String) -> fmt::Result {
+    pub(crate) fn as_ddl(
+        &self,
+        schema: &InputSchema,
+        catalog: &Catalog,
+        out: &mut String,
+    ) -> fmt::Result {
         self.create_table(out)?;
         self.create_time_travel_indexes(catalog, out)?;
-        self.create_attribute_indexes(out)
+        self.create_attribute_indexes(out)?;
+        self.create_aggregate_indexes(schema, out)
     }
 
     pub fn exclusion_ddl(&self, out: &mut String) -> fmt::Result {

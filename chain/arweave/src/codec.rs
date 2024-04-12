@@ -2,7 +2,11 @@
 #[path = "protobuf/sf.arweave.r#type.v1.rs"]
 mod pbcodec;
 
-use graph::{blockchain::Block as BlockchainBlock, blockchain::BlockPtr, prelude::BlockNumber};
+use graph::{
+    blockchain::Block as BlockchainBlock,
+    blockchain::{BlockPtr, BlockTime},
+    prelude::BlockNumber,
+};
 
 pub use pbcodec::*;
 
@@ -27,6 +31,10 @@ impl BlockchainBlock for Block {
             hash: self.previous_block.clone().into(),
             number: self.number().saturating_sub(1),
         })
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        BlockTime::since_epoch(i64::try_from(self.timestamp).unwrap(), 0)
     }
 }
 

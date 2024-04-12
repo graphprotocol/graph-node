@@ -1,11 +1,11 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::BlockIngestor;
+use graph::blockchain::{BlockIngestor, NoopDecoderHook};
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
 use std::sync::Arc;
 
-use graph::blockchain::block_stream::{BlockStreamMapper, FirehoseCursor};
+use graph::blockchain::block_stream::{BlockStreamError, BlockStreamMapper, FirehoseCursor};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder, NoopRuntimeAdapter};
 use graph::cheap_clone::CheapClone;
@@ -82,6 +82,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn is_refetch_block_required(&self) -> bool {
         false
     }
@@ -155,8 +157,8 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
@@ -332,10 +334,15 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for FirehoseMapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<crate::Block>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&[u8]>,
+    ) -> Result<Option<crate::Block>, BlockStreamError> {
         let block = match output {
             Some(block) => crate::Block::decode(block)?,
-            None => anyhow::bail!("cosmos mapper is expected to always have a block"),
+            None => Err(anyhow::anyhow!(
+                "cosmos mapper is expected to always have a block"
+            ))?,
         };
 
         Ok(Some(block))
@@ -345,10 +352,11 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         block: crate::Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         self.adapter
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
+            .map_err(BlockStreamError::from)
     }
 
     async fn handle_substreams_block(
@@ -357,7 +365,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         _clock: Clock,
         _cursor: FirehoseCursor,
         _block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         unimplemented!()
     }
 }
@@ -393,11 +401,16 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down struct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode_block(Some(any_block.value.as_ref()))?.unwrap();
+        let block = self
+            .decode_block(Some(any_block.value.as_ref()))
+            .map_err(Error::from)?
+            .unwrap();
 
         match step {
             ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                self.block_with_triggers(logger, block).await?,
+                self.block_with_triggers(logger, block)
+                    .await
+                    .map_err(Error::from)?,
                 FirehoseCursor::from(response.cursor.clone()),
             )),
 

@@ -31,3 +31,5 @@ pub mod mem;
 pub mod monitored;
 
 pub mod intern;
+
+pub mod herd_cache;

@@ -7,17 +7,17 @@ use std::convert::TryFrom;
 /// Type that comes straight out of a SQL query
 #[derive(QueryableByName)]
 pub(crate) struct RawTransactionReceipt {
-    #[sql_type = "Binary"]
+    #[diesel(sql_type = Binary)]
     transaction_hash: Vec<u8>,
-    #[sql_type = "Binary"]
+    #[diesel(sql_type = Binary)]
     transaction_index: Vec<u8>,
-    #[sql_type = "Nullable<Binary>"]
+    #[diesel(sql_type = Nullable<Binary>)]
     block_hash: Option<Vec<u8>>,
-    #[sql_type = "Nullable<Binary>"]
+    #[diesel(sql_type = Nullable<Binary>)]
     block_number: Option<Vec<u8>>,
-    #[sql_type = "Nullable<Binary>"]
+    #[diesel(sql_type = Nullable<Binary>)]
     gas_used: Option<Vec<u8>>,
-    #[sql_type = "Nullable<Binary>"]
+    #[diesel(sql_type = Nullable<Binary>)]
     status: Option<Vec<u8>>,
 }
 
@@ -52,7 +52,7 @@ impl TryFrom<RawTransactionReceipt> for LightTransactionReceipt {
     }
 }
 
-/// Converts Vec<u8> to [u8; N], where N is the vector's expected lenght.
+/// Converts Vec<u8> to [u8; N], where N is the vector's expected length.
 /// Fails if input size is larger than output size.
 pub(crate) fn drain_vector<const N: usize>(input: Vec<u8>) -> Result<[u8; N], anyhow::Error> {
     anyhow::ensure!(input.len() <= N, "source is larger than output");

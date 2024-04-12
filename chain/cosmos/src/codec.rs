@@ -1,6 +1,6 @@
 pub(crate) use crate::protobuf::pbcodec::*;
 
-use graph::blockchain::Block as BlockchainBlock;
+use graph::blockchain::{Block as BlockchainBlock, BlockTime};
 use graph::{
     blockchain::BlockPtr,
     prelude::{anyhow::anyhow, BlockNumber, Error},
@@ -80,6 +80,11 @@ impl BlockchainBlock for Block {
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr().unwrap()
     }
+
+    fn timestamp(&self) -> BlockTime {
+        let time = self.header().unwrap().time.as_ref().unwrap();
+        BlockTime::since_epoch(time.seconds, time.nanos as u32)
+    }
 }
 
 impl HeaderOnlyBlock {
@@ -136,6 +141,11 @@ impl BlockchainBlock for HeaderOnlyBlock {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr().unwrap()
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        let time = self.header().unwrap().time.as_ref().unwrap();
+        BlockTime::since_epoch(time.seconds, time.nanos as u32)
     }
 }
 

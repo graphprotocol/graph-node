@@ -1,6 +1,12 @@
 //! Types and helpers to deal with entity IDs which support a subset of the
 //! types that more general values support
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
+use diesel::{
+    pg::Pg,
+    query_builder::AstPass,
+    sql_types::{BigInt, Binary, Text},
+    QueryResult,
+};
 use stable_hash::{StableHash, StableHasher};
 use std::convert::TryFrom;
 use std::fmt;
@@ -16,9 +22,9 @@ use crate::{
     components::store::StoreError,
     constraint_violation,
     data::value::Word,
-    prelude::{CacheWeight, QueryExecutionError},
+    derive::CacheWeight,
+    prelude::QueryExecutionError,
     runtime::gas::{Gas, GasSizeOf},
-    schema::EntityType,
 };
 
 use super::{scalar, Value, ValueType, ID};
@@ -36,8 +42,16 @@ impl IdType {
     pub fn parse(&self, s: Word) -> Result<Id, Error> {
         match self {
             IdType::String => Ok(Id::String(s)),
-            IdType::Bytes => Ok(Id::Bytes(s.parse()?)),
-            IdType::Int8 => Ok(Id::Int8(s.parse()?)),
+            IdType::Bytes => {
+                Ok(Id::Bytes(s.parse().with_context(|| {
+                    format!("can not convert `{s}` to Id::Bytes")
+                })?))
+            }
+            IdType::Int8 => {
+                Ok(Id::Int8(s.parse().with_context(|| {
+                    format!("can not convert `{s}` to Id::Int8")
+                })?))
+            }
         }
     }
 
@@ -124,7 +138,7 @@ impl std::fmt::Display for IdType {
 }
 
 /// Values for the ids of entities
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, CacheWeight, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Id {
     String(Word),
     Bytes(scalar::Bytes),
@@ -201,16 +215,6 @@ impl std::fmt::Display for Id {
             Id::String(s) => write!(f, "{}", s),
             Id::Bytes(b) => write!(f, "{}", b),
             Id::Int8(i) => write!(f, "{}", i),
-        }
-    }
-}
-
-impl CacheWeight for Id {
-    fn indirect_weight(&self) -> usize {
-        match self {
-            Id::String(s) => s.indirect_weight(),
-            Id::Bytes(b) => b.indirect_weight(),
-            Id::Int8(_) => 0,
         }
     }
 }
@@ -292,6 +296,14 @@ impl<'a> IdRef<'a> {
             IdRef::Int8(_) => IdType::Int8,
         }
     }
+
+    pub fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        match self {
+            IdRef::String(s) => out.push_bind_param::<Text, _>(*s),
+            IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(*b),
+            IdRef::Int8(i) => out.push_bind_param::<BigInt, _>(i),
+        }
+    }
 }
 
 /// A homogeneous list of entity ids, i.e., all ids in the list are of the
@@ -335,10 +347,9 @@ impl IdList {
     /// Turn a list of ids into an `IdList` and check that they are all the
     /// same type
     pub fn try_from_iter<I: Iterator<Item = Id>>(
-        entity_type: &EntityType,
+        id_type: IdType,
         mut iter: I,
     ) -> Result<Self, QueryExecutionError> {
-        let id_type = entity_type.id_type()?;
         match id_type {
             IdType::String => {
                 let ids: Vec<Word> = iter.try_fold(vec![], |mut ids, id| match id {
@@ -442,11 +453,23 @@ impl IdList {
         }
     }
 
-    pub fn index(&self, index: usize) -> IdRef<'_> {
+    pub fn index<'b>(&'b self, index: usize) -> IdRef<'b> {
         match self {
             IdList::String(ids) => IdRef::String(&ids[index]),
             IdList::Bytes(ids) => IdRef::Bytes(ids[index].as_slice()),
             IdList::Int8(ids) => IdRef::Int8(ids[index]),
+        }
+    }
+
+    pub fn bind_entry<'b>(
+        &'b self,
+        index: usize,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        match self {
+            IdList::String(ids) => out.push_bind_param::<Text, _>(&ids[index]),
+            IdList::Bytes(ids) => out.push_bind_param::<Binary, _>(ids[index].as_slice()),
+            IdList::Int8(ids) => out.push_bind_param::<BigInt, _>(&ids[index]),
         }
     }
 

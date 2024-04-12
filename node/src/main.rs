@@ -1,6 +1,9 @@
 use clap::Parser as _;
-use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
-use ethereum::{BlockIngestor, EthereumNetworks, RuntimeAdapter};
+use ethereum::chain::{
+    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumRuntimeAdapterBuilder,
+    EthereumStreamBuilder,
+};
+use ethereum::{BlockIngestor, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
 use graph_chain_ethereum::codec::HeaderOnlyBlock;
@@ -17,7 +20,7 @@ use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
-use graph::prelude::{IndexNodeServer as _, *};
+use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};
@@ -28,8 +31,8 @@ use graph_chain_starknet::{self as starknet, Block as StarknetBlock};
 use graph_chain_substreams as substreams;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
-    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
+    SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
@@ -72,7 +75,7 @@ fn read_expensive_queries(
         let reader = BufReader::new(file);
         for line in reader.lines() {
             let line = line?;
-            let query = graphql_parser::parse_query(&line)
+            let query = q::parse_query(&line)
                 .map_err(|e| {
                     let msg = format!(
                         "invalid GraphQL query in {}: {}\n{}",
@@ -237,7 +240,7 @@ async fn main() {
     let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
     let ipfs_service = ipfs_service(
         ipfs_client,
-        ENV_VARS.mappings.max_ipfs_file_bytes as u64,
+        ENV_VARS.mappings.max_ipfs_file_bytes,
         ENV_VARS.mappings.ipfs_timeout,
         ENV_VARS.mappings.ipfs_request_limit,
     );
@@ -250,7 +253,6 @@ async fn main() {
 
     let arweave_service = arweave_service(
         arweave_resolver.cheap_clone(),
-        env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
         match env_vars.mappings.max_ipfs_file_bytes {
             0 => FileSizeLimit::Unlimited,
@@ -260,9 +262,8 @@ async fn main() {
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(LinkResolver::new(ipfs_clients, env_vars.cheap_clone()));
-    let mut metrics_server =
-        PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
+    let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
+    let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
@@ -515,15 +516,13 @@ async fn main() {
             load_manager,
             graphql_metrics_registry,
         ));
-        let mut graphql_server =
-            GraphQLQueryServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
+        let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 
-        let mut index_node_server = IndexNodeServer::new(
+        let index_node_server = IndexNodeServer::new(
             &logger_factory,
             blockchain_map.clone(),
-            graphql_runner.clone(),
             network_store.clone(),
             link_resolver.clone(),
         );
@@ -672,27 +671,17 @@ async fn main() {
         }
 
         // Serve GraphQL queries over HTTP
-        graph::spawn(
-            graphql_server
-                .serve(http_port, ws_port)
-                .expect("Failed to start GraphQL query server")
-                .compat(),
-        );
+        graph::spawn(async move { graphql_server.start(http_port, ws_port).await });
 
         // Serve GraphQL subscriptions over WebSockets
         graph::spawn(subscription_server.serve(ws_port));
 
         // Run the index node server
-        graph::spawn(
-            index_node_server
-                .serve(index_node_port)
-                .expect("Failed to start index node server")
-                .compat(),
-        );
+        graph::spawn(async move { index_node_server.start(index_node_port).await });
 
         graph::spawn(async move {
             metrics_server
-                .serve(metrics_port)
+                .start(metrics_port)
                 .await
                 .expect("Failed to start metrics server")
         });
@@ -867,11 +856,7 @@ fn ethereum_networks_as_chains(
                 chain_store.clone(),
             );
 
-            let runtime_adapter = Arc::new(RuntimeAdapter {
-                eth_adapters: Arc::new(eth_adapters.clone()),
-                call_cache: chain_store.cheap_clone(),
-                chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
-            });
+            let call_cache = chain_store.cheap_clone();
 
             let chain_config = config.chains.chains.get(network_name).unwrap();
             let chain = ethereum::Chain::new(
@@ -880,13 +865,14 @@ fn ethereum_networks_as_chains(
                 node_id.clone(),
                 registry.clone(),
                 chain_store.cheap_clone(),
-                chain_store,
+                call_cache,
                 client,
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
                 Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
-                runtime_adapter,
+                Arc::new(EthereumRuntimeAdapterBuilder {}),
+                Arc::new(eth_adapters.clone()),
                 ENV_VARS.reorg_threshold,
                 chain_config.polling_interval,
                 is_ingestible,

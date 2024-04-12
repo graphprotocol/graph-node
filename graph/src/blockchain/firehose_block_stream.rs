@@ -1,5 +1,5 @@
 use super::block_stream::{
-    BlockStream, BlockStreamEvent, FirehoseMapper, FIREHOSE_BUFFER_STREAM_SIZE,
+    BlockStream, BlockStreamError, BlockStreamEvent, FirehoseMapper, FIREHOSE_BUFFER_STREAM_SIZE,
 };
 use super::client::ChainClient;
 use super::Blockchain;
@@ -100,7 +100,7 @@ impl FirehoseBlockStreamMetrics {
 }
 
 pub struct FirehoseBlockStream<C: Blockchain> {
-    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
+    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>> + Send>>,
 }
 
 impl<C> FirehoseBlockStream<C>
@@ -156,7 +156,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     subgraph_current_block: Option<BlockPtr>,
     logger: Logger,
     metrics: FirehoseBlockStreamMetrics,
-) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
+) -> impl Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>> {
     let mut subgraph_current_block = subgraph_current_block;
     let mut start_block_num = subgraph_current_block
         .as_ref()
@@ -203,6 +203,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
         debug!(&logger, "Going to check continuity of chain on first block");
     }
 
+    let headers = firehose::ConnectionHeaders::new().with_deployment(deployment.clone());
+
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
@@ -240,7 +242,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             }
 
             let mut connect_start = Instant::now();
-            let req = endpoint.clone().stream_blocks(request);
+            let req = endpoint.clone().stream_blocks(request, &headers);
             let result = tokio::time::timeout(Duration::from_secs(120), req).await.map_err(|x| x.into()).and_then(|x| x);
 
             match result {
@@ -406,7 +408,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
 }
 
 impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
-    type Item = Result<BlockStreamEvent<C>, Error>;
+    type Item = Result<BlockStreamEvent<C>, BlockStreamError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.poll_next_unpin(cx)

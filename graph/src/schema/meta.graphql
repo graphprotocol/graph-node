@@ -1,7 +1,9 @@
 # GraphQL core functionality
 scalar Boolean
 scalar ID
-""" 4 bytes signed integer """
+"""
+4 bytes signed integer
+"""
 scalar Int
 scalar Float
 scalar String
@@ -24,8 +26,14 @@ directive @derivedFrom(field: String!) on FIELD_DEFINITION
 scalar BigDecimal
 scalar Bytes
 scalar BigInt
-""" 8 bytes signed integer """
+"""
+8 bytes signed integer
+"""
 scalar Int8
+"""
+A string representation of microseconds UNIX timestamp (16 digits)
+"""
+scalar Timestamp
 
 # The type names are purposely awkward to minimize the risk of them
 # colliding with user-supplied types
@@ -59,13 +67,15 @@ type _Block_ {
   hash: Bytes
   "The block number"
   number: Int!
-  "Integer representation of the timestamp stored in blocks for the chain" 
+  "Integer representation of the timestamp stored in blocks for the chain"
   timestamp: Int
+  "The hash of the parent block"
+  parentHash: Bytes
 }
 
 enum _SubgraphErrorPolicy_ {
   "Data will be returned even if the subgraph has indexing errors"
-  allow,
+  allow
 
   "If the subgraph has indexing errors, data will be omitted. The default."
   deny
@@ -78,7 +88,7 @@ input Block_height {
   "Value containing a block number"
   number: Int
   """
-  Value containing the minimum block number. 
+  Value containing the minimum block number.
   In the case of `number_gte`, the query will be executed on the latest block only if
   the subgraph has progressed to or past the minimum block number.
   Defaults to the latest block when omitted.
@@ -90,4 +100,9 @@ input Block_height {
 enum OrderDirection {
   asc
   desc
+}
+
+enum Aggregation_interval {
+  hour
+  day
 }

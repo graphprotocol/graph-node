@@ -18,6 +18,9 @@ pub const API_VERSION_0_0_7: Version = Version::new(0, 0, 7);
 /// Enables validation for fields that doesnt exist in the schema for an entity.
 pub const API_VERSION_0_0_8: Version = Version::new(0, 0, 8);
 
+/// Enables new host function `eth_get_balance`
+pub const API_VERSION_0_0_9: Version = Version::new(0, 0, 9);
+
 /// Before this check was introduced, there were already subgraphs in the wild with spec version
 /// 0.0.3, due to confusion with the api version. To avoid breaking those, we accept 0.0.3 though it
 /// doesn't exist.
@@ -42,7 +45,17 @@ pub const SPEC_VERSION_0_0_8: Version = Version::new(0, 0, 8);
 pub const SPEC_VERSION_0_0_9: Version = Version::new(0, 0, 9);
 
 // Enables `indexerHints` feature.
-pub const SPEC_VERSION_0_1_0: Version = Version::new(0, 1, 0);
+pub const SPEC_VERSION_1_0_0: Version = Version::new(1, 0, 0);
+
+// Enables @aggregation entities
+// Enables `id: Int8`
+pub const SPEC_VERSION_1_1_0: Version = Version::new(1, 1, 0);
+
+// Enables eth call declarations
+pub const SPEC_VERSION_1_2_0: Version = Version::new(1, 2, 0);
+
+// The latest spec version available
+pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_2_0;
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 

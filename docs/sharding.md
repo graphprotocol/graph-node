@@ -49,9 +49,9 @@ connectivity by running `select count(*) from primary_public.chains;` and
 `select count(*) from shard_<name>_subgraphs.subgraph` --- the result of
 these queries doesn't matter, it only matters that they succeed.
 
-With mutliple shards, `graph-node` will periodically copy some metadata from
+With multiple shards, `graph-node` will periodically copy some metadata from
 the primary to all the other shards. The metadata that gets copied is the
-metadata that is needed to repsond to queries as each query needs the
+metadata that is needed to respond to queries as each query needs the
 primary to find the shard that stores the subgraph's data. The copies of the
 metadata are used when the primary is down to ensure that queries can still
 be answered.

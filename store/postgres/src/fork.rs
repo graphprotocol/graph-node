@@ -69,7 +69,7 @@ impl SubgraphForkTrait for SubgraphFork {
         let entity_type = self.schema.entity_type(&entity_type_name)?;
         let fields = &entity_type
             .object_type()
-            .ok_or_else(|| {
+            .map_err(|_| {
                 constraint_violation!("no object type called `{}` found", entity_type_name)
             })?
             .fields;
@@ -177,7 +177,7 @@ query Query ($id: String) {{
         let map: HashMap<Word, Value> = {
             let mut map = HashMap::new();
             for f in fields {
-                if f.is_derived {
+                if f.is_derived() {
                     // Derived fields are not resolved, so it's safe to ignore them.
                     continue;
                 }
@@ -240,7 +240,7 @@ mod tests {
     }
 
     fn test_schema() -> InputSchema {
-        InputSchema::parse(
+        InputSchema::parse_latest(
             r#"type Gravatar @entity {
   id: ID!
   owner: Bytes!
@@ -263,10 +263,10 @@ mod tests {
 
         let schema = schema.schema();
         vec![
-            Field::new(schema, "id", &non_null_type("ID"), false),
-            Field::new(schema, "owner", &non_null_type("Bytes"), false),
-            Field::new(schema, "displayName", &non_null_type("String"), false),
-            Field::new(schema, "imageUrl", &non_null_type("String"), false),
+            Field::new(schema, "id", &non_null_type("ID"), None),
+            Field::new(schema, "owner", &non_null_type("Bytes"), None),
+            Field::new(schema, "displayName", &non_null_type("String"), None),
+            Field::new(schema, "imageUrl", &non_null_type("String"), None),
         ]
     }
 

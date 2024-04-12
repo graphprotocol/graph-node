@@ -1,0 +1,12 @@
+# fail: InvalidTimestampType("Stats", "Int8")
+type Data @entity(timeseries: true) {
+  id: Int8!
+  timestamp: Timestamp!
+  price: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+  id: Int8!
+  timestamp: Int8!
+  sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
+}

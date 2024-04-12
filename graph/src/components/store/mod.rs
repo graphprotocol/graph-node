@@ -3,7 +3,7 @@ mod err;
 mod traits;
 pub mod write;
 
-pub use entity_cache::{EntityCache, GetScope, ModificationsAndCache};
+pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
 use futures03::future::{FutureExt, TryFutureExt};
 use slog::{trace, Logger};
 
@@ -33,9 +33,10 @@ use crate::data::store::scalar::Bytes;
 use crate::data::store::{Id, IdList, Value};
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
+use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
-use crate::prelude::{Attribute, DeploymentHash, SubscriptionFilter, ValueType};
-use crate::schema::{EntityKey, EntityType, InputSchema};
+use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
+use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
 use crate::util::stats::MovingStats;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -329,6 +330,16 @@ pub enum ParentLink {
 pub enum ChildMultiplicity {
     Single,
     Many,
+}
+
+impl ChildMultiplicity {
+    pub fn new(field: &s::Field) -> Self {
+        if sast::is_list_or_non_null_list_field(field) {
+            ChildMultiplicity::Many
+        } else {
+            ChildMultiplicity::Single
+        }
+    }
 }
 
 /// How to select children for their parents depending on whether the
@@ -843,7 +854,7 @@ pub struct StoredDynamicDataSource {
 /// identifier only has meaning in the context of a specific instance of
 /// graph-node. Only store code should ever construct or consume it; all
 /// other code passes it around as an opaque token.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, CheapClone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DeploymentId(pub i32);
 
 impl Display for DeploymentId {
@@ -862,13 +873,11 @@ impl DeploymentId {
 /// identifier (`hash`) and its unique internal identifier (`id`) which
 /// ensures we are talking about a unique location for the deployment's data
 /// in the store
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, CheapClone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DeploymentLocator {
     pub id: DeploymentId,
     pub hash: DeploymentHash,
 }
-
-impl CheapClone for DeploymentLocator {}
 
 impl slog::Value for DeploymentLocator {
     fn serialize(
@@ -1044,8 +1053,8 @@ impl ReadStore for EmptyStore {
 /// in a database table
 #[derive(Clone, Debug)]
 pub struct VersionStats {
-    pub entities: i32,
-    pub versions: i32,
+    pub entities: i64,
+    pub versions: i64,
     pub tablename: String,
     /// The ratio `entities / versions`
     pub ratio: f64,

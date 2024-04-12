@@ -1,8 +1,12 @@
 use std::fmt;
 use std::slice::Iter;
 
+use serde::Serialize;
+
+use crate::derive::CacheWeight;
+
 /// Used for checking if a response hit the cache.
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, CacheWeight, Debug, PartialEq, Eq, Hash)]
 pub enum CacheStatus {
     /// Hit is a hit in the generational cache.
     Hit,
@@ -25,12 +29,7 @@ impl Default for CacheStatus {
 
 impl fmt::Display for CacheStatus {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CacheStatus::Hit => f.write_str("hit"),
-            CacheStatus::Shared => f.write_str("shared"),
-            CacheStatus::Insert => f.write_str("insert"),
-            CacheStatus::Miss => f.write_str("miss"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -39,5 +38,30 @@ impl CacheStatus {
         use CacheStatus::*;
         static STATUSES: [CacheStatus; 4] = [Hit, Shared, Insert, Miss];
         STATUSES.iter()
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CacheStatus::Hit => "hit",
+            CacheStatus::Shared => "shared",
+            CacheStatus::Insert => "insert",
+            CacheStatus::Miss => "miss",
+        }
+    }
+
+    pub fn uses_database(&self) -> bool {
+        match self {
+            CacheStatus::Hit | CacheStatus::Shared => false,
+            CacheStatus::Insert | CacheStatus::Miss => true,
+        }
+    }
+}
+
+impl Serialize for CacheStatus {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        ser.serialize_str(self.as_str())
     }
 }

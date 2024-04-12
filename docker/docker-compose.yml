@@ -22,11 +22,11 @@ services:
       ethereum: 'mainnet:http://host.docker.internal:8545'
       GRAPH_LOG: info
   ipfs:
-    image: ipfs/kubo:v0.14.0
+    image: ipfs/kubo:v0.17.0
     ports:
       - '5001:5001'
     volumes:
-      - ./data/ipfs:/data/ipfs
+      - ./data/ipfs:/data/ipfs:Z
   postgres:
     image: postgres:14
     ports:
@@ -47,4 +47,4 @@ services:
       PGDATA: "/var/lib/postgresql/data"
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data:Z

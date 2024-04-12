@@ -1,5 +1,5 @@
 use super::MetricsRegistry;
-use crate::prelude::DeploymentHash;
+use crate::{cheap_clone::CheapClone, prelude::DeploymentHash};
 use prometheus::CounterVec;
 use std::sync::Arc;
 
@@ -7,6 +7,15 @@ use std::sync::Arc;
 pub struct GasMetrics {
     pub gas_counter: CounterVec,
     pub op_counter: CounterVec,
+}
+
+impl CheapClone for GasMetrics {
+    fn cheap_clone(&self) -> Self {
+        Self {
+            gas_counter: self.gas_counter.clone(),
+            op_counter: self.op_counter.clone(),
+        }
+    }
 }
 
 impl GasMetrics {

@@ -3,7 +3,8 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopRuntimeAdapter,
+    BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopDecoderHook,
+    NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::store::DeploymentCursorTracker;
@@ -40,7 +41,7 @@ use crate::{
     data_source::{DataSource, UnresolvedDataSource},
 };
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamMapper, FirehoseCursor,
+    BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
 };
 
 const NEAR_FILTER_MODULE_NAME: &str = "near_filter";
@@ -95,7 +96,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
             deployment.hash,
             chain.chain_client(),
             subgraph_current_block,
-            block_cursor.as_ref().clone(),
+            block_cursor.clone(),
             mapper,
             package.modules.clone(),
             NEAR_FILTER_MODULE_NAME.to_string(),
@@ -209,6 +210,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Chain>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,
@@ -283,8 +286,8 @@ impl Blockchain for Chain {
             .await
     }
 
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
@@ -408,10 +411,18 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for FirehoseMapper {
-    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<codec::Block>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&[u8]>,
+    ) -> Result<Option<codec::Block>, BlockStreamError> {
         let block = match output {
             Some(block) => codec::Block::decode(block)?,
-            None => anyhow::bail!("near mapper is expected to always have a block"),
+            None => {
+                return Err(anyhow::anyhow!(
+                    "near mapper is expected to always have a block"
+                ))
+                .map_err(BlockStreamError::from)
+            }
         };
 
         Ok(Some(block))
@@ -421,10 +432,11 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         &self,
         logger: &Logger,
         block: codec::Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<BlockWithTriggers<Chain>, BlockStreamError> {
         self.adapter
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
+            .map_err(BlockStreamError::from)
     }
 
     async fn handle_substreams_block(
@@ -433,7 +445,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
         _clock: Clock,
         cursor: FirehoseCursor,
         message: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, Error> {
+    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         let BlockAndReceipts {
             block,
             outcome,
@@ -556,6 +568,7 @@ mod test {
 
     use graph::{
         blockchain::{block_stream::BlockWithTriggers, DataSource as _, TriggersAdapter as _},
+        data::subgraph::LATEST_VERSION,
         prelude::{tokio, Link},
         semver::Version,
         slog::{self, o, Logger},
@@ -578,7 +591,7 @@ mod test {
     #[test]
     fn validate_empty() {
         let ds = new_data_source(None, None);
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(errs[0].to_string(), "subgraph source address is required");
     }
@@ -586,7 +599,7 @@ mod test {
     #[test]
     fn validate_empty_account_none_partial() {
         let ds = new_data_source(None, Some(PartialAccounts::default()));
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 1, "{:?}", ds);
         assert_eq!(errs[0].to_string(), "subgraph source address is required");
     }
@@ -600,7 +613,7 @@ mod test {
                 suffixes: vec!["x.near".to_string()],
             }),
         );
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 0, "{:?}", ds);
     }
 
@@ -614,7 +627,7 @@ mod test {
             }),
         );
         let errs: Vec<String> = ds
-            .validate()
+            .validate(LATEST_VERSION)
             .into_iter()
             .map(|err| err.to_string())
             .collect();
@@ -635,7 +648,7 @@ mod test {
     #[test]
     fn validate_empty_partials() {
         let ds = new_data_source(Some("x.near".to_string()), None);
-        let errs = ds.validate();
+        let errs = ds.validate(LATEST_VERSION);
         assert_eq!(errs.len(), 0, "{:?}", ds);
     }
 

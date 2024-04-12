@@ -1,25 +1,29 @@
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Block as BlockchainBlock, TriggerWithHandler},
-    components::{link_resolver::LinkResolver, store::StoredDynamicDataSource},
-    data::subgraph::DataSourceContext,
-    prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Deserialize, Link, Logger},
+    components::{
+        link_resolver::LinkResolver, store::StoredDynamicDataSource,
+        subgraph::InstanceDSTemplateInfo,
+    },
+    data::subgraph::{DataSourceContext, SubgraphManifestValidationError},
+    prelude::{async_trait, BlockNumber, Deserialize, Link, Logger},
     semver,
 };
 use sha3::{Digest, Keccak256};
-use starknet_ff::FieldElement;
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     chain::Chain,
     codec,
+    felt::Felt,
     trigger::{StarknetEventTrigger, StarknetTrigger},
 };
 
+pub const STARKNET_KIND: &str = "starknet";
 const BLOCK_HANDLER_KIND: &str = "block";
 const EVENT_HANDLER_KIND: &str = "event";
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DataSource {
     pub kind: String,
     pub network: String,
@@ -28,9 +32,9 @@ pub struct DataSource {
     pub mapping: Mapping,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Mapping {
-    pub block_handlers: Vec<MappingBlockHandler>,
+    pub block_handler: Option<MappingBlockHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
     pub runtime: Arc<Vec<u8>>,
 }
@@ -44,34 +48,34 @@ pub struct UnresolvedDataSource {
     pub mapping: UnresolvedMapping,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Source {
     pub start_block: BlockNumber,
     pub end_block: Option<BlockNumber>,
-    #[serde(default, deserialize_with = "deserialize_address")]
-    pub address: Option<FieldElement>,
+    #[serde(default)]
+    pub address: Option<Felt>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     #[serde(default)]
-    pub block_handlers: Vec<MappingBlockHandler>,
+    pub block_handler: Option<MappingBlockHandler>,
     #[serde(default)]
     pub event_handlers: Vec<UnresolvedMappingEventHandler>,
     pub file: Link,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct MappingBlockHandler {
     pub handler: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct MappingEventHandler {
     pub handler: String,
-    pub event_selector: FieldElement,
+    pub event_selector: Felt,
 }
 
 #[derive(Clone, Deserialize)]
@@ -87,12 +91,15 @@ pub struct DataSourceTemplate;
 pub struct UnresolvedDataSourceTemplate;
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!("StarkNet subgraphs do not support templates"))
     }
 
     fn address(&self) -> Option<&[u8]> {
-        None
+        self.source.address.as_ref().map(|addr| addr.as_ref())
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -107,12 +114,12 @@ impl blockchain::DataSource<Chain> for DataSource {
         let mut kinds = HashSet::new();
 
         let Mapping {
-            block_handlers,
+            block_handler,
             event_handlers,
             ..
         } = &self.mapping;
 
-        if !block_handlers.is_empty() {
+        if block_handler.is_some() {
             kinds.insert(BLOCK_HANDLER_KIND);
         }
         if !event_handlers.is_empty() {
@@ -133,7 +140,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
 
         let handler = match trigger {
-            StarknetTrigger::Block(_) => match self.mapping.block_handlers.first() {
+            StarknetTrigger::Block(_) => match &self.mapping.block_handler {
                 Some(handler) => handler.handler.clone(),
                 None => return Ok(None),
             },
@@ -147,6 +154,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             trigger.clone(),
             handler,
             block.ptr(),
+            block.timestamp(),
         )))
     }
 
@@ -184,7 +192,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             && name == &other.name
             && source == &other.source
             && mapping.event_handlers == other.mapping.event_handlers
-            && mapping.block_handlers == other.mapping.block_handlers
+            && mapping.block_handler == other.mapping.block_handler
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
@@ -200,8 +208,35 @@ impl blockchain::DataSource<Chain> for DataSource {
         todo!()
     }
 
-    fn validate(&self) -> Vec<Error> {
-        Default::default()
+    fn validate(&self, _: &semver::Version) -> Vec<Error> {
+        let mut errors = Vec::new();
+
+        if self.kind != STARKNET_KIND {
+            errors.push(anyhow!(
+                "data source has invalid `kind`, expected {} but found {}",
+                STARKNET_KIND,
+                self.kind
+            ))
+        }
+
+        // Validate that there's at least one handler of any kind
+        if self.mapping.block_handler.is_none() && self.mapping.event_handlers.is_empty() {
+            errors.push(anyhow!("data source does not define any handler"));
+        }
+
+        // Validate that `source` address must not be present if there's no event handler
+        if self.mapping.event_handlers.is_empty() && self.address().is_some() {
+            errors.push(anyhow!(
+                "data source cannot have source address without event handlers"
+            ));
+        }
+
+        // Validate that `source` address must be present when there's at least 1 event handler
+        if !self.mapping.event_handlers.is_empty() && self.address().is_none() {
+            errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
+        }
+
+        errors
     }
 
     fn api_version(&self) -> semver::Version {
@@ -218,11 +253,11 @@ impl DataSource {
     /// if event.fromAddr matches the source address. Note this only supports the default
     /// Starknet behavior of one key per event.
     fn handler_for_event(&self, event: &StarknetEventTrigger) -> Option<MappingEventHandler> {
-        let event_key = FieldElement::from_byte_slice_be(event.event.keys.first()?).ok()?;
+        let event_key: Felt = Self::pad_to_32_bytes(event.event.keys.first()?)?.into();
 
-        // Always deocding first here seems fine as we expect most sources to define an address
+        // Always padding first here seems fine as we expect most sources to define an address
         // filter anyways. Alternatively we can use lazy init here, which seems unnecessary.
-        let event_from_addr = FieldElement::from_byte_slice_be(&event.event.from_addr).ok()?;
+        let event_from_addr: Felt = Self::pad_to_32_bytes(&event.event.from_addr)?.into();
 
         return self
             .mapping
@@ -240,6 +275,18 @@ impl DataSource {
                 }
             })
             .cloned();
+    }
+
+    /// We need to pad incoming event selectors and addresses to 32 bytes as our data source uses
+    /// padded 32 bytes.
+    fn pad_to_32_bytes(slice: &[u8]) -> Option<[u8; 32]> {
+        if slice.len() > 32 {
+            None
+        } else {
+            let mut buffer = [0u8; 32];
+            buffer[(32 - slice.len())..].copy_from_slice(slice);
+            Some(buffer)
+        }
     }
 }
 
@@ -259,7 +306,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             name: self.name,
             source: self.source,
             mapping: Mapping {
-                block_handlers: self.mapping.block_handlers,
+                block_handler: self.mapping.block_handler,
                 event_handlers: self
                     .mapping
                     .event_handlers
@@ -314,16 +361,16 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
 
 // Adapted from:
 //   https://github.com/xJonathanLEI/starknet-rs/blob/f16271877c9dbf08bc7bf61e4fc72decc13ff73d/starknet-core/src/utils.rs#L110-L121
-fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<FieldElement> {
+fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<Felt> {
     const DEFAULT_ENTRY_POINT_NAME: &str = "__default__";
     const DEFAULT_L1_ENTRY_POINT_NAME: &str = "__l1_default__";
 
     if func_name == DEFAULT_ENTRY_POINT_NAME || func_name == DEFAULT_L1_ENTRY_POINT_NAME {
-        Ok(FieldElement::ZERO)
+        Ok([0u8; 32].into())
     } else {
         let name_bytes = func_name.as_bytes();
         if name_bytes.is_ascii() {
-            Ok(starknet_keccak(name_bytes))
+            Ok(starknet_keccak(name_bytes).into())
         } else {
             Err(anyhow!("the provided name contains non-ASCII characters"))
         }
@@ -332,7 +379,7 @@ fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<FieldElement
 
 // Adapted from:
 //   https://github.com/xJonathanLEI/starknet-rs/blob/f16271877c9dbf08bc7bf61e4fc72decc13ff73d/starknet-core/src/utils.rs#L98-L108
-fn starknet_keccak(data: &[u8]) -> FieldElement {
+fn starknet_keccak(data: &[u8]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(data);
     let mut hash = hasher.finalize();
@@ -340,13 +387,21 @@ fn starknet_keccak(data: &[u8]) -> FieldElement {
     // Remove the first 6 bits
     hash[0] &= 0b00000011;
 
-    // Because we know hash is always 32 bytes
-    FieldElement::from_bytes_be(unsafe { &*(hash[..].as_ptr() as *const [u8; 32]) }).unwrap()
+    hash.into()
 }
 
-fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<FieldElement>, D::Error>
-where
-    D: serde::de::Deserializer<'de>,
-{
-    Ok(Some(serde::Deserialize::deserialize(deserializer)?))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_starknet_keccak() {
+        let expected_hash: [u8; 32] =
+            hex::decode("016c11b0b5b808960df26f5bfc471d04c1995b0ffd2055925ad1be28d6baadfd")
+                .unwrap()
+                .try_into()
+                .unwrap();
+
+        assert_eq!(starknet_keccak("Hello world".as_bytes()), expected_hash);
+    }
 }

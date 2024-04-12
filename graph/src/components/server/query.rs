@@ -1,71 +1,65 @@
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::Response;
+
 use crate::data::query::QueryError;
-use futures::prelude::*;
 use std::error::Error;
 use std::fmt;
 
 use crate::components::store::StoreError;
 
+pub type ServerResponse = Response<Full<Bytes>>;
+pub type ServerResult = Result<ServerResponse, ServerError>;
+
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
-pub enum GraphQLServerError {
+pub enum ServerError {
     ClientError(String),
     QueryError(QueryError),
     InternalError(String),
 }
 
-impl From<QueryError> for GraphQLServerError {
+impl From<QueryError> for ServerError {
     fn from(e: QueryError) -> Self {
-        GraphQLServerError::QueryError(e)
+        ServerError::QueryError(e)
     }
 }
 
-impl From<StoreError> for GraphQLServerError {
+impl From<StoreError> for ServerError {
     fn from(e: StoreError) -> Self {
         match e {
-            StoreError::ConstraintViolation(s) => GraphQLServerError::InternalError(s),
-            _ => GraphQLServerError::ClientError(e.to_string()),
+            StoreError::ConstraintViolation(s) => ServerError::InternalError(s),
+            _ => ServerError::ClientError(e.to_string()),
         }
     }
 }
 
-impl fmt::Display for GraphQLServerError {
+impl fmt::Display for ServerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            GraphQLServerError::ClientError(ref s) => {
+            ServerError::ClientError(ref s) => {
                 write!(f, "GraphQL server error (client error): {}", s)
             }
-            GraphQLServerError::QueryError(ref e) => {
+            ServerError::QueryError(ref e) => {
                 write!(f, "GraphQL server error (query error): {}", e)
             }
-            GraphQLServerError::InternalError(ref s) => {
+            ServerError::InternalError(ref s) => {
                 write!(f, "GraphQL server error (internal error): {}", s)
             }
         }
     }
 }
 
-impl Error for GraphQLServerError {
+impl Error for ServerError {
     fn description(&self) -> &str {
         "Failed to process the GraphQL request"
     }
 
     fn cause(&self) -> Option<&dyn Error> {
         match *self {
-            GraphQLServerError::ClientError(_) => None,
-            GraphQLServerError::QueryError(ref e) => Some(e),
-            GraphQLServerError::InternalError(_) => None,
+            ServerError::ClientError(_) => None,
+            ServerError::QueryError(ref e) => Some(e),
+            ServerError::InternalError(_) => None,
         }
     }
-}
-
-/// Common trait for GraphQL server implementations.
-pub trait GraphQLServer {
-    type ServeError;
-
-    /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
-    fn serve(
-        &mut self,
-        port: u16,
-        ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
 }

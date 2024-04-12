@@ -1,5 +1,6 @@
 use crate::{
     components::store::DeploymentLocator,
+    derive::CacheWeight,
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
     schema::{EntityKey, EntityType},
@@ -12,11 +13,11 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash, StableHasher};
-use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::{borrow::Cow, cmp::Ordering};
 use strum_macros::IntoStaticStr;
 use thiserror::Error;
 
@@ -55,7 +56,7 @@ impl SubscriptionFilter {
                     entity_type,
                     ..
                 },
-            ) => subgraph_id == eid && entity_type == etype.as_str(),
+            ) => subgraph_id == eid && entity_type == etype.typename(),
             (Self::Assignment, EntityChange::Assignment { .. }) => true,
             _ => false,
         }
@@ -139,8 +140,9 @@ pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
 pub const BIG_DECIMAL_SCALAR: &str = "BigDecimal";
 pub const INT8_SCALAR: &str = "Int8";
+pub const TIMESTAMP_SCALAR: &str = "Timestamp";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ValueType {
     Boolean,
     BigInt,
@@ -149,6 +151,7 @@ pub enum ValueType {
     Int,
     Int8,
     String,
+    Timestamp,
 }
 
 impl FromStr for ValueType {
@@ -162,6 +165,7 @@ impl FromStr for ValueType {
             "BigDecimal" => Ok(ValueType::BigDecimal),
             "Int" => Ok(ValueType::Int),
             "Int8" => Ok(ValueType::Int8),
+            "Timestamp" => Ok(ValueType::Timestamp),
             "String" | "ID" => Ok(ValueType::String),
             s => Err(anyhow!("Type not available in this context: {}", s)),
         }
@@ -172,6 +176,73 @@ impl ValueType {
     /// Return `true` if `s` is the name of a builtin scalar type
     pub fn is_scalar(s: &str) -> bool {
         Self::from_str(s).is_ok()
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            ValueType::BigInt | ValueType::BigDecimal | ValueType::Int | ValueType::Int8 => true,
+            ValueType::Boolean | ValueType::Bytes | ValueType::String | ValueType::Timestamp => {
+                false
+            }
+        }
+    }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            ValueType::Boolean => "Boolean",
+            ValueType::BigInt => "BigInt",
+            ValueType::Bytes => "Bytes",
+            ValueType::BigDecimal => "BigDecimal",
+            ValueType::Int => "Int",
+            ValueType::Int8 => "Int8",
+            ValueType::Timestamp => "Timestamp",
+            ValueType::String => "String",
+        }
+    }
+}
+
+/// Types are ordered by how values for the types can be coerced to 'larger'
+/// types; for example, `Int < BigInt`
+impl PartialOrd for ValueType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        use Ordering::*;
+        use ValueType::*;
+
+        match (self, other) {
+            (Boolean, Boolean)
+            | (BigInt, BigInt)
+            | (Bytes, Bytes)
+            | (BigDecimal, BigDecimal)
+            | (Int, Int)
+            | (Int8, Int8)
+            | (String, String) => Some(Equal),
+            (BigInt, BigDecimal)
+            | (Int, BigInt)
+            | (Int, BigDecimal)
+            | (Int, Int8)
+            | (Int8, BigInt)
+            | (Int8, BigDecimal) => Some(Less),
+            (BigInt, Int)
+            | (BigInt, Int8)
+            | (BigDecimal, BigInt)
+            | (BigDecimal, Int)
+            | (BigDecimal, Int8)
+            | (Int8, Int) => Some(Greater),
+            (Timestamp, _)
+            | (_, Timestamp)
+            | (Boolean, _)
+            | (_, Boolean)
+            | (Bytes, _)
+            | (_, Bytes)
+            | (String, _)
+            | (_, String) => None,
+        }
+    }
+}
+
+impl From<ValueType> for s::Type {
+    fn from(value_type: ValueType) -> Self {
+        s::Type::NamedType(value_type.to_str().to_owned())
     }
 }
 
@@ -184,6 +255,7 @@ pub enum Value {
     String(String),
     Int(i32),
     Int8(i64),
+    Timestamp(scalar::Timestamp),
     BigDecimal(scalar::BigDecimal),
     Bool(bool),
     List(Vec<Value>),
@@ -239,6 +311,9 @@ impl stable_hash_legacy::StableHash for Value {
             BigInt(inner) => {
                 stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
             }
+            Timestamp(inner) => {
+                stable_hash_legacy::StableHash::stable_hash(inner, sequence_number, state)
+            }
         }
     }
 }
@@ -286,6 +361,10 @@ impl StableHash for Value {
                 inner.stable_hash(field_address.child(0), state);
                 8
             }
+            Timestamp(inner) => {
+                inner.stable_hash(field_address.child(0), state);
+                9
+            }
         };
 
         state.write(field_address, &[variant])
@@ -332,15 +411,24 @@ impl Value {
                     INT8_SCALAR => Value::Int8(s.parse::<i64>().map_err(|_| {
                         QueryExecutionError::ValueParseError("Int8".to_string(), format!("{}", s))
                     })?),
+                    TIMESTAMP_SCALAR => {
+                        Value::Timestamp(scalar::Timestamp::parse_timestamp(s).map_err(|_| {
+                            QueryExecutionError::ValueParseError(
+                                "Timestamp".to_string(),
+                                format!("xxx{}", s),
+                            )
+                        })?)
+                    }
                     _ => Value::String(s.clone()),
                 }
             }
             (r::Value::Int(i), _) => Value::Int(*i as i32),
             (r::Value::Boolean(b), _) => Value::Bool(b.to_owned()),
+            (r::Value::Timestamp(ts), _) => Value::Timestamp(*ts),
             (r::Value::Null, _) => Value::Null,
             _ => {
                 return Err(QueryExecutionError::AttributeTypeError(
-                    value.to_string(),
+                    format!("{:?}", value),
                     ty.to_string(),
                 ));
             }
@@ -369,6 +457,14 @@ impl Value {
 
     pub fn as_int(&self) -> Option<i32> {
         if let Value::Int(i) = self {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_int8(&self) -> Option<i64> {
+        if let Value::Int8(i) = self {
             Some(*i)
         } else {
             None
@@ -424,6 +520,7 @@ impl Value {
             Value::Bytes(_) => "Bytes".to_owned(),
             Value::Int(_) => "Int".to_owned(),
             Value::Int8(_) => "Int8".to_owned(),
+            Value::Timestamp(_) => "Timestamp".to_owned(),
             Value::List(values) => {
                 if let Some(v) = values.first() {
                     format!("[{}]", v.type_name())
@@ -445,6 +542,7 @@ impl Value {
             | (Value::Bytes(_), ValueType::Bytes)
             | (Value::Int(_), ValueType::Int)
             | (Value::Int8(_), ValueType::Int8)
+            | (Value::Timestamp(_), ValueType::Timestamp)
             | (Value::Null, _) => true,
             (Value::List(values), _) if is_list => values
                 .iter()
@@ -467,6 +565,7 @@ impl fmt::Display for Value {
                 Value::String(s) => s.to_string(),
                 Value::Int(i) => i.to_string(),
                 Value::Int8(i) => i.to_string(),
+                Value::Timestamp(i) => i.to_string(),
                 Value::BigDecimal(d) => d.to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Null => "null".to_string(),
@@ -485,6 +584,7 @@ impl fmt::Debug for Value {
             Self::String(s) => f.debug_tuple("String").field(s).finish(),
             Self::Int(i) => f.debug_tuple("Int").field(i).finish(),
             Self::Int8(i) => f.debug_tuple("Int8").field(i).finish(),
+            Self::Timestamp(i) => f.debug_tuple("Timestamp").field(i).finish(),
             Self::BigDecimal(d) => d.fmt(f),
             Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
             Self::List(arg0) => f.debug_tuple("List").field(arg0).finish(),
@@ -501,6 +601,7 @@ impl From<Value> for q::Value {
             Value::String(s) => q::Value::String(s),
             Value::Int(i) => q::Value::Int(q::Number::from(i)),
             Value::Int8(i) => q::Value::String(i.to_string()),
+            Value::Timestamp(ts) => q::Value::String(ts.as_microseconds_since_epoch().to_string()),
             Value::BigDecimal(d) => q::Value::String(d.to_string()),
             Value::Bool(b) => q::Value::Boolean(b),
             Value::Null => q::Value::Null,
@@ -519,6 +620,7 @@ impl From<Value> for r::Value {
             Value::String(s) => r::Value::String(s),
             Value::Int(i) => r::Value::Int(i as i64),
             Value::Int8(i) => r::Value::String(i.to_string()),
+            Value::Timestamp(i) => r::Value::Timestamp(i),
             Value::BigDecimal(d) => r::Value::String(d.to_string()),
             Value::Bool(b) => r::Value::Boolean(b),
             Value::Null => r::Value::Null,
@@ -552,6 +654,12 @@ impl<'a> From<&'a String> for Value {
 impl From<scalar::Bytes> for Value {
     fn from(value: scalar::Bytes) -> Value {
         Value::Bytes(value)
+    }
+}
+
+impl From<scalar::Timestamp> for Value {
+    fn from(value: scalar::Timestamp) -> Value {
+        Value::Timestamp(value)
     }
 }
 
@@ -630,7 +738,7 @@ lazy_static! {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, CacheWeight, PartialEq, Eq, Serialize)]
 pub struct Entity(Object<Value>);
 
 impl<'a> IntoIterator for &'a Entity {
@@ -709,10 +817,10 @@ pub enum EntityValidationError {
 /// ```
 ///   use graph::entity;
 ///   use graph::schema::InputSchema;
-///   use graph::data::subgraph::DeploymentHash;
+///   use graph::data::subgraph::{LATEST_VERSION, DeploymentHash};
 ///
 ///   let id = DeploymentHash::new("Qm123").unwrap();
-///   let schema = InputSchema::parse("type User @entity { id: String!, name: String! }", id).unwrap();
+///   let schema = InputSchema::parse(LATEST_VERSION, "type User @entity { id: String!, name: String! }", id).unwrap();
 ///
 ///   let entity = entity! { schema => id: "1", name: "John Doe" };
 /// ```
@@ -856,7 +964,7 @@ impl Entity {
             return Ok(());
         }
 
-        let object_type = key.entity_type.object_type().ok_or_else(|| {
+        let object_type = key.entity_type.object_type().map_err(|_| {
             EntityValidationError::UnknownEntityType {
                 entity: key.entity_type.to_string(),
                 id: key.entity_id.to_string(),
@@ -864,7 +972,7 @@ impl Entity {
         })?;
 
         for field in object_type.fields.iter() {
-            match (self.get(&field.name), field.is_derived) {
+            match (self.get(&field.name), field.is_derived()) {
                 (Some(value), false) => {
                     let scalar_type = &field.value_type;
                     if field.field_type.is_list() {
@@ -952,12 +1060,6 @@ impl<'a> From<&'a Entity> for Cow<'a, Entity> {
     }
 }
 
-impl CacheWeight for Entity {
-    fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
-    }
-}
-
 impl GasSizeOf for Entity {
     fn gas_size_of(&self) -> Gas {
         self.0.gas_size_of()
@@ -1040,8 +1142,8 @@ fn entity_validation() {
 
     lazy_static! {
         static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
-        static ref SCHEMA: InputSchema =
-            InputSchema::parse(DOCUMENT, SUBGRAPH.clone()).expect("Failed to parse test schema");
+        static ref SCHEMA: InputSchema = InputSchema::parse_latest(DOCUMENT, SUBGRAPH.clone())
+            .expect("Failed to parse test schema");
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
 

@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
 use graph::data::store::IdList;
@@ -67,6 +68,81 @@ impl WritableSubgraphStore {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum LastRollup {
+    /// We do not need to track the block time since the subgraph doesn't
+    /// use timeseries
+    NotNeeded,
+    /// We do not know the block time yet
+    Unknown,
+    /// The block time
+    Some(BlockTime),
+}
+
+impl LastRollup {
+    fn new(
+        store: Arc<DeploymentStore>,
+        site: Arc<Site>,
+        has_aggregations: bool,
+        block: Option<BlockNumber>,
+    ) -> Result<Self, StoreError> {
+        let kind = match (has_aggregations, block) {
+            (false, _) => LastRollup::NotNeeded,
+            (true, None) => LastRollup::Unknown,
+            (true, Some(block)) => {
+                let block_time = store.block_time(site, block)?;
+                block_time
+                    .map(|b| LastRollup::Some(b))
+                    .unwrap_or(LastRollup::Unknown)
+            }
+        };
+        Ok(kind)
+    }
+}
+
+pub struct LastRollupTracker(Mutex<LastRollup>);
+
+impl LastRollupTracker {
+    fn new(
+        store: Arc<DeploymentStore>,
+        site: Arc<Site>,
+        has_aggregations: bool,
+        block: Option<BlockNumber>,
+    ) -> Result<Self, StoreError> {
+        let rollup = LastRollup::new(
+            store.cheap_clone(),
+            site.cheap_clone(),
+            has_aggregations,
+            block,
+        )
+        .map(|kind| Mutex::new(kind))?;
+        Ok(Self(rollup))
+    }
+
+    fn set(&self, block_time: Option<BlockTime>) -> Result<(), StoreError> {
+        let mut last = self.0.lock().unwrap();
+        match (&*last, block_time) {
+            (LastRollup::NotNeeded, _) => { /* nothing to do */ }
+            (LastRollup::Some(_) | LastRollup::Unknown, Some(block_time)) => {
+                *last = LastRollup::Some(block_time);
+            }
+            (LastRollup::Some(_) | LastRollup::Unknown, None) => {
+                constraint_violation!("block time cannot be unset");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get(&self) -> Option<BlockTime> {
+        let last = self.0.lock().unwrap();
+        match &*last {
+            LastRollup::NotNeeded | LastRollup::Unknown => None,
+            LastRollup::Some(block_time) => Some(*block_time),
+        }
+    }
+}
+
 /// Write synchronously to the actual store, i.e., once a method returns,
 /// the changes have been committed to the store and are visible to anybody
 /// else connecting to that database
@@ -77,18 +153,27 @@ struct SyncStore {
     site: Arc<Site>,
     input_schema: InputSchema,
     manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+    last_rollup: LastRollupTracker,
 }
 
 impl SyncStore {
-    fn new(
+    async fn new(
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+        block: Option<BlockNumber>,
     ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
         let input_schema = subgraph_store.input_schema(&site.deployment)?;
+        let last_rollup = LastRollupTracker::new(
+            writable.cheap_clone(),
+            site.cheap_clone(),
+            input_schema.has_aggregations(),
+            block,
+        )?;
+
         Ok(Self {
             logger,
             store,
@@ -96,6 +181,7 @@ impl SyncStore {
             site,
             input_schema,
             manifest_idx_and_name,
+            last_rollup,
         })
     }
 
@@ -157,6 +243,11 @@ impl SyncStore {
                 block_ptr_to.clone(),
                 firehose_cursor,
             )?;
+
+            let block_time = self
+                .writable
+                .block_time(self.site.cheap_clone(), block_ptr_to.number)?;
+            self.last_rollup.set(block_time)?;
 
             self.try_send_store_event(event)
         })
@@ -221,9 +312,13 @@ impl SyncStore {
                 &self.logger,
                 self.site.clone(),
                 batch,
+                self.last_rollup.get(),
                 stopwatch,
                 &self.manifest_idx_and_name,
             )?;
+            // unwrap: batch.block_times is never empty
+            let last_block_time = batch.block_times.last().unwrap().1;
+            self.last_rollup.set(Some(last_block_time))?;
 
             let _section = stopwatch.start_section("send_store_event");
             self.try_send_store_event(event)?;
@@ -274,8 +369,9 @@ impl SyncStore {
 
     fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "unassign_subgraph", || {
-            let pconn = self.store.primary_conn()?;
-            pconn.transaction(|| -> Result<_, StoreError> {
+            let mut pconn = self.store.primary_conn()?;
+            pconn.transaction(|conn| -> Result<_, StoreError> {
+                let mut pconn = primary::Connection::new(conn);
                 let changes = pconn.unassign_subgraph(site)?;
                 self.store.send_store_event(&StoreEvent::new(changes))
             })
@@ -324,8 +420,9 @@ impl SyncStore {
                 // Make sure we drop `pconn` before we call into the deployment
                 // store so that we do not hold two database connections which
                 // might come from the same pool and could therefore deadlock
-                let pconn = self.store.primary_conn()?;
-                pconn.transaction(|| -> Result<_, Error> {
+                let mut pconn = self.store.primary_conn()?;
+                pconn.transaction(|conn| -> Result<_, Error> {
+                    let mut pconn = primary::Connection::new(conn);
                     let changes = pconn.promote_deployment(&self.site.deployment)?;
                     Ok(StoreEvent::new(changes))
                 })?
@@ -339,7 +436,7 @@ impl SyncStore {
                     if src.deployment == self.site.deployment {
                         let on_sync = self.writable.on_sync(&self.site)?;
                         if on_sync.activate() {
-                            let pconn = self.store.primary_conn()?;
+                            let mut pconn = self.store.primary_conn()?;
                             pconn.activate(&self.site.as_ref().into())?;
                         }
                         if on_sync.replace() {
@@ -793,7 +890,7 @@ impl Queue {
                         // batch should be processed or after some time
                         // passed. The latter is just for safety in case
                         // there is a mistake with notifications.
-                        let sleep = graph::tokio::time::sleep(Duration::from_secs(2));
+                        let sleep = graph::tokio::time::sleep(ENV_VARS.store.write_batch_duration);
                         let notify = batch_stop_notify.notified();
                         select!(
                             () = sleep => (),
@@ -1224,6 +1321,11 @@ impl Queue {
         self.batch_writes.store(false, Ordering::SeqCst);
         self.batch_ready_notify.notify_one();
     }
+
+    fn start_batching(&self) {
+        self.batch_writes.store(true, Ordering::SeqCst);
+        self.batch_ready_notify.notify_one();
+    }
 }
 
 /// A shim to allow bypassing any pipelined store handling if need be
@@ -1270,8 +1372,6 @@ impl Writer {
     }
 
     async fn write(&self, batch: Batch, stopwatch: &StopwatchMetrics) -> Result<(), StoreError> {
-        const MAX_BATCH_TIME: Duration = Duration::from_secs(30);
-
         match self {
             Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch),
             Writer::Async { queue, .. } => {
@@ -1369,6 +1469,13 @@ impl Writer {
             Writer::Async { queue, .. } => queue.deployment_synced(),
         }
     }
+
+    fn start_batching(&self) {
+        match self {
+            Writer::Sync(_) => {}
+            Writer::Async { queue, .. } => queue.start_batching(),
+        }
+    }
 }
 
 pub struct WritableStore {
@@ -1376,6 +1483,9 @@ pub struct WritableStore {
     block_ptr: Mutex<Option<BlockPtr>>,
     block_cursor: Mutex<FirehoseCursor>,
     writer: Writer,
+
+    // Cached to avoid querying the database.
+    is_deployment_synced: AtomicBool,
 }
 
 impl WritableStore {
@@ -1386,13 +1496,21 @@ impl WritableStore {
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
         registry: Arc<MetricsRegistry>,
     ) -> Result<Self, StoreError> {
-        let store = Arc::new(SyncStore::new(
-            subgraph_store,
-            logger.clone(),
-            site,
-            manifest_idx_and_name,
-        )?);
-        let block_ptr = Mutex::new(store.block_ptr().await?);
+        let block_ptr = subgraph_store
+            .for_site(&site)?
+            .block_ptr(site.cheap_clone())
+            .await?;
+        let store = Arc::new(
+            SyncStore::new(
+                subgraph_store,
+                logger.clone(),
+                site,
+                manifest_idx_and_name,
+                block_ptr.as_ref().map(|ptr| ptr.number),
+            )
+            .await?,
+        );
+        let block_ptr = Mutex::new(block_ptr);
         let block_cursor = Mutex::new(store.block_cursor().await?);
         let writer = Writer::new(
             logger,
@@ -1401,11 +1519,14 @@ impl WritableStore {
             registry,
         );
 
+        let is_deployment_synced = store.is_deployment_synced().await?;
+
         Ok(Self {
             store,
             block_ptr,
             block_cursor,
             writer,
+            is_deployment_synced: AtomicBool::new(is_deployment_synced),
         })
     }
 
@@ -1521,6 +1642,7 @@ impl WritableStoreTrait for WritableStore {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        block_time: BlockTime,
         firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
@@ -1528,9 +1650,17 @@ impl WritableStoreTrait for WritableStore {
         deterministic_errors: Vec<SubgraphError>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
         is_non_fatal_errors_active: bool,
+        is_caught_up_with_chain_head: bool,
     ) -> Result<(), StoreError> {
+        if is_caught_up_with_chain_head {
+            self.deployment_synced()?;
+        } else {
+            self.writer.start_batching();
+        }
+
         let batch = Batch::new(
             block_ptr_to.clone(),
+            block_time,
             firehose_cursor.clone(),
             mods,
             data_sources,
@@ -1546,13 +1676,21 @@ impl WritableStoreTrait for WritableStore {
         Ok(())
     }
 
+    /// If the subgraph is caught up with the chain head, we need to:
+    /// - Disable the time-to-sync metrics gathering.
+    /// - Stop batching writes.
+    /// - Promote it to 'synced' status in the DB, if that hasn't been done already.
     fn deployment_synced(&self) -> Result<(), StoreError> {
         self.writer.deployment_synced();
-        self.store.deployment_synced()
+        if !self.is_deployment_synced.load(Ordering::SeqCst) {
+            self.store.deployment_synced()?;
+            self.is_deployment_synced.store(true, Ordering::SeqCst);
+        }
+        Ok(())
     }
 
-    async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
-        self.store.is_deployment_synced().await
+    fn is_deployment_synced(&self) -> bool {
+        self.is_deployment_synced.load(Ordering::SeqCst)
     }
 
     fn unassign_subgraph(&self) -> Result<(), StoreError> {

@@ -1,3 +1,5 @@
+use std::fs::File;
+use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,7 +7,7 @@ use graph::components::store::QueryPermit;
 use graph::data::graphql::{object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
-    async_trait, o, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
+    async_trait, o, q, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult,
 };
 use graph::schema::{ApiSchema, InputSchema};
@@ -65,7 +67,10 @@ impl Resolver for MockResolver {
 
 fn api_schema(raw: &str, id: &str) -> Arc<ApiSchema> {
     let id = DeploymentHash::new(id).unwrap();
-    let schema = InputSchema::parse(raw, id).unwrap().api_schema().unwrap();
+    let schema = InputSchema::parse_latest(raw, id)
+        .unwrap()
+        .api_schema()
+        .unwrap();
     Arc::new(schema)
 }
 
@@ -109,11 +114,7 @@ fn expected_mock_schema_introspection() -> r::Value {
 /// Execute an introspection query.
 async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult {
     // Create the query
-    let query = Query::new(
-        graphql_parser::parse_query(query).unwrap().into_static(),
-        None,
-        false,
-    );
+    let query = Query::new(q::parse_query(query).unwrap().into_static(), None, false);
 
     // Execute it
     let logger = Logger::root(slog::Discard, o!());
@@ -128,11 +129,88 @@ async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult
     let result =
         match PreparedQuery::new(&logger, schema, None, query, None, 100, graphql_metrics()) {
             Ok(query) => {
-                Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap())
+                let (res, _) = execute_query(query, None, None, options).await;
+                Ok(Arc::try_unwrap(res).unwrap())
             }
             Err(e) => Err(e),
         };
     QueryResult::from(result)
+}
+
+fn compare(a: &r::Value, b: &r::Value, path: &mut Vec<String>) -> Option<(r::Value, r::Value)> {
+    fn different(a: &r::Value, b: &r::Value) -> Option<(r::Value, r::Value)> {
+        Some((a.clone(), b.clone()))
+    }
+
+    match a {
+        r::Value::Int(_)
+        | r::Value::Float(_)
+        | r::Value::Boolean(_)
+        | r::Value::Null
+        | r::Value::Timestamp(_) => {
+            if a != b {
+                different(a, b)
+            } else {
+                None
+            }
+        }
+        r::Value::List(la) => match b {
+            r::Value::List(lb) => {
+                for (i, (va, vb)) in la.iter().zip(lb.iter()).enumerate() {
+                    path.push(i.to_string());
+                    let res = compare(va, vb, path);
+                    if res.is_some() {
+                        return res;
+                    }
+                    path.pop();
+                }
+                if la.len() > lb.len() {
+                    path.push(lb.len().to_string());
+                    return different(&la[lb.len()], &r::Value::Null);
+                }
+                if lb.len() > la.len() {
+                    path.push(la.len().to_string());
+                    return different(&r::Value::Null, &lb[la.len()]);
+                }
+                return None;
+            }
+            _ => different(a, b),
+        },
+        r::Value::String(sa) | r::Value::Enum(sa) => match b {
+            r::Value::String(sb) | r::Value::Enum(sb) => {
+                if sa != sb {
+                    different(a, b)
+                } else {
+                    None
+                }
+            }
+            _ => different(a, b),
+        },
+        r::Value::Object(oa) => match b {
+            r::Value::Object(ob) => {
+                if oa.len() != ob.len() {
+                    return different(a, b);
+                }
+                for (ka, va) in oa.iter() {
+                    match ob.get(ka) {
+                        Some(vb) => {
+                            path.push(ka.to_string());
+                            let res = compare(va, vb, path);
+                            if res.is_some() {
+                                return res;
+                            }
+                            path.pop();
+                        }
+                        None => {
+                            return different(va, &r::Value::Null);
+                        }
+                    }
+                }
+                return None;
+            }
+            _ => different(a, b),
+        },
+    }
 }
 
 /// Compare two values and consider them the same if they are identical with
@@ -146,50 +224,35 @@ async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult
 /// (2) Enums and Strings are the same if they have the same string value
 #[track_caller]
 fn same_value(a: &r::Value, b: &r::Value) -> bool {
-    match a {
-        r::Value::Int(_) | r::Value::Float(_) | r::Value::Boolean(_) | r::Value::Null => a == b,
-        r::Value::List(la) => match b {
-            r::Value::List(lb) => {
-                if la.len() != lb.len() {
-                    return false;
-                }
-                for i in 0..la.len() {
-                    if !same_value(&la[i], &lb[i]) {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            _ => false,
-        },
-        r::Value::String(sa) | r::Value::Enum(sa) => match b {
-            r::Value::String(sb) | r::Value::Enum(sb) => sa == sb,
-            _ => {
-                println!("STRING/ENUM: {} != {}", sa, b);
-                false
-            }
-        },
-        r::Value::Object(oa) => match b {
-            r::Value::Object(ob) => {
-                if oa.len() != ob.len() {
-                    return false;
-                }
-                for (ka, va) in oa.iter() {
-                    match ob.get(ka) {
-                        Some(vb) => {
-                            if !same_value(va, vb) {
-                                return false;
-                            }
-                        }
-                        None => {
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            }
-            _ => false,
-        },
+    let mut path = Vec::new();
+    if let Some((da, db)) = compare(a, b, &mut path) {
+        println!("Query results differ at path {}", path.join("."));
+        println!("Value A: {da}");
+        println!("Value B: {db}");
+        maybe_save(a);
+        false
+    } else {
+        true
+    }
+}
+
+/// Save `data` into `/tmp/introspection.json` if the environment variable
+/// `INTROSPECTION_SAVE` is set. When one of the tests in this file fails,
+/// use this to save the test output.
+///
+/// It's useful to reformat both that file and the expected value with `jq
+/// .` and then run `diff -u` on the formatted files to see where the
+/// discrepancies are, something like
+///
+/// ```bash
+/// diff -u <(jq . < store/test-store/tests/graphql/mock_introspection.json) \
+///         <(jq . /tmp/introspection.json)
+/// ```
+fn maybe_save(data: &r::Value) {
+    if std::env::var("INTROSPECTION_SAVE").is_ok() {
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let mut fp = File::create("/tmp/introspection.json").unwrap();
+        writeln!(fp, "{json}").unwrap();
     }
 }
 
@@ -554,7 +617,6 @@ async fn satisfies_graphiql_introspection_query_with_fragments() {
     // needs to be regenerated, uncomment this line, and save the output in
     // mock_introspection.json
     //
-    // println!("{}", graph::prelude::serde_json::to_string(&data).unwrap());
     assert!(same_value(&data, &expected_mock_schema_introspection()));
 }
 

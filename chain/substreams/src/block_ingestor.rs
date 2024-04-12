@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::mapper::Mapper;
 use anyhow::{Context, Error};
+use graph::blockchain::block_stream::{BlockStreamError, FirehoseCursor};
 use graph::blockchain::{
     client::ChainClient, substreams_block_stream::SubstreamsBlockStream, BlockIngestor,
 };
@@ -65,16 +66,23 @@ impl SubstreamsBlockIngestor {
     /// Consumes the incoming stream of blocks infinitely until it hits an error. In which case
     /// the error is logged right away and the latest available cursor is returned
     /// upstream for future consumption.
+    /// If an error is returned it indicates a fatal/deterministic error which should not be retried.
     async fn process_blocks(
         &self,
-        cursor: String,
+        cursor: FirehoseCursor,
         mut stream: SubstreamsBlockStream<super::Chain>,
-    ) -> String {
+    ) -> Result<FirehoseCursor, BlockStreamError> {
         let mut latest_cursor = cursor;
 
         while let Some(message) = stream.next().await {
             let (block, cursor) = match message {
-                Ok(BlockStreamEvent::ProcessWasmBlock(_block_ptr, _data, _handler, _cursor)) => {
+                Ok(BlockStreamEvent::ProcessWasmBlock(
+                    _block_ptr,
+                    _block_time,
+                    _data,
+                    _handler,
+                    _cursor,
+                )) => {
                     unreachable!("Block ingestor should never receive raw blocks");
                 }
                 Ok(BlockStreamEvent::ProcessBlock(triggers, cursor)) => {
@@ -83,6 +91,9 @@ impl SubstreamsBlockIngestor {
                 Ok(BlockStreamEvent::Revert(_ptr, _cursor)) => {
                     trace!(self.logger, "Received undo block to ingest, skipping");
                     continue;
+                }
+                Err(e) if e.is_deterministic() => {
+                    return Err(e);
                 }
                 Err(e) => {
                     info!(
@@ -99,14 +110,15 @@ impl SubstreamsBlockIngestor {
                 break;
             }
 
-            latest_cursor = cursor.to_string()
+            latest_cursor = cursor
         }
 
         error!(
             self.logger,
             "Stream blocks complete unexpectedly, expecting stream to always stream blocks"
         );
-        latest_cursor
+
+        Ok(latest_cursor)
     }
 
     async fn process_new_block(
@@ -133,7 +145,7 @@ impl BlockIngestor for SubstreamsBlockIngestor {
             schema: None,
             skip_empty_blocks: false,
         });
-        let mut latest_cursor = self.fetch_head_cursor().await;
+        let mut latest_cursor = FirehoseCursor::from(self.fetch_head_cursor().await);
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
         let package = Package::decode(SUBSTREAMS_HEAD_TRACKER_BYTES.to_vec().as_ref()).unwrap();
@@ -143,7 +155,7 @@ impl BlockIngestor for SubstreamsBlockIngestor {
                 DeploymentHash::default(),
                 self.client.cheap_clone(),
                 None,
-                Some(latest_cursor.clone()),
+                latest_cursor.clone(),
                 mapper.cheap_clone(),
                 package.modules.clone(),
                 "map_blocks".to_string(),
@@ -154,7 +166,26 @@ impl BlockIngestor for SubstreamsBlockIngestor {
             );
 
             // Consume the stream of blocks until an error is hit
-            latest_cursor = self.process_blocks(latest_cursor, stream).await;
+            // If the error is retryable it will print the error and return the cursor
+            // therefore if we get an error here it has to be a fatal error.
+            // This is a bit brittle and should probably be improved at some point.
+            let res = self.process_blocks(latest_cursor.clone(), stream).await;
+            match res {
+                Ok(cursor) => {
+                    if cursor.as_ref() != latest_cursor.as_ref() {
+                        backoff.reset();
+                        latest_cursor = cursor;
+                    }
+                }
+                Err(BlockStreamError::Fatal(e)) => {
+                    error!(
+                        self.logger,
+                        "fatal error while ingesting substream blocks: {}", e
+                    );
+                    return;
+                }
+                _ => unreachable!("Nobody should ever see this error message, something is wrong"),
+            }
 
             // If we reach this point, we must wait a bit before retrying
             backoff.sleep_async().await;

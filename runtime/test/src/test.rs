@@ -1,3 +1,4 @@
+use graph::blockchain::BlockTime;
 use graph::components::metrics::gas::GasMetrics;
 use graph::data::store::{scalar, Id, IdType};
 use graph::data::subgraph::*;
@@ -9,17 +10,17 @@ use graph::runtime::{AscPtr, ToAscObj};
 use graph::schema::{EntityType, InputSchema};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph::{entity, prelude::*};
-use graph_chain_ethereum::{Chain, DataSource};
+use graph_chain_ethereum::DataSource;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{
     host_exports, ExperimentalFeatures, MappingContext, ValidModule, WasmInstance,
 };
 
 use semver::Version;
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use test_store::{LOGGER, STORE};
+use wasmtime::{AsContext, AsContextMut};
 use web3::types::H160;
 
 use crate::common::{mock_context, mock_data_source};
@@ -47,11 +48,7 @@ async fn test_valid_module_and_store(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
-) -> (
-    WasmInstance<Chain>,
-    Arc<impl SubgraphStore>,
-    DeploymentLocator,
-) {
+) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
     test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None).await
 }
 
@@ -60,11 +57,7 @@ async fn test_valid_module_and_store_with_timeout(
     data_source: DataSource,
     api_version: Version,
     timeout: Option<Duration>,
-) -> (
-    WasmInstance<Chain>,
-    Arc<impl SubgraphStore>,
-    DeploymentLocator,
-) {
+) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
     let logger = Logger::root(slog::Discard, o!());
     let subgraph_id_with_api_version =
         subgraph_id_with_api_version(subgraph_id, api_version.clone());
@@ -109,7 +102,7 @@ async fn test_valid_module_and_store_with_timeout(
     };
 
     let module = WasmInstance::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref()).unwrap()),
+        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref(), timeout).unwrap()),
         mock_context(
             deployment.clone(),
             data_source,
@@ -117,7 +110,6 @@ async fn test_valid_module_and_store_with_timeout(
             api_version,
         ),
         host_metrics,
-        timeout,
         experimental_features,
     )
     .unwrap();
@@ -129,14 +121,14 @@ pub async fn test_module(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
-) -> WasmInstance<Chain> {
+) -> WasmInstance {
     test_valid_module_and_store(subgraph_id, data_source, api_version)
         .await
         .0
 }
 
 // A test module using the latest API version
-pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
+pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance {
     let version = ENV_VARS.mappings.max_api_version.clone();
     let ds = mock_data_source(
         &wasm_file_path(wasm_file, API_VERSION_0_0_5),
@@ -148,13 +140,9 @@ pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInsta
 }
 
 pub trait WasmInstanceExt {
-    fn invoke_export0_void(&self, f: &str) -> Result<(), wasmtime::Trap>;
-    fn invoke_export1_val_void<V: wasmtime::WasmTy>(
-        &self,
-        f: &str,
-        v: V,
-    ) -> Result<(), wasmtime::Trap>;
-    fn invoke_export0<R>(&self, f: &str) -> AscPtr<R>;
+    fn invoke_export0_void(&mut self, f: &str) -> Result<(), Error>;
+    fn invoke_export1_val_void<V: wasmtime::WasmTy>(&mut self, f: &str, v: V) -> Result<(), Error>;
+    fn invoke_export0<R>(&mut self, f: &str) -> AscPtr<R>;
     fn invoke_export1<C, T, R>(&mut self, f: &str, arg: &T) -> AscPtr<R>
     where
         C: AscType + AscIndexId,
@@ -170,7 +158,7 @@ pub trait WasmInstanceExt {
         f: &str,
         arg0: &T1,
         arg1: &T2,
-    ) -> Result<(), wasmtime::Trap>
+    ) -> Result<(), Error>
     where
         C1: AscType + AscIndexId,
         C2: AscType + AscIndexId,
@@ -181,25 +169,39 @@ pub trait WasmInstanceExt {
     where
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized;
-    fn takes_ptr_returns_ptr<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
+    fn takes_ptr_returns_ptr<C, R>(&mut self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P>;
 }
 
-impl WasmInstanceExt for WasmInstance<Chain> {
-    fn invoke_export0_void(&self, f: &str) -> Result<(), wasmtime::Trap> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        func.call(())
+impl WasmInstanceExt for WasmInstance {
+    fn invoke_export0_void(&mut self, f: &str) -> Result<(), Error> {
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
+        func.call(&mut self.store.as_context_mut(), ())
     }
 
-    fn invoke_export0<R>(&self, f: &str) -> AscPtr<R> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        let ptr: u32 = func.call(()).unwrap();
+    fn invoke_export0<R>(&mut self, f: &str) -> AscPtr<R> {
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
+        let ptr: u32 = func.call(&mut self.store.as_context_mut(), ()).unwrap();
         ptr.into()
     }
 
-    fn takes_ptr_returns_ptr<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
+    fn takes_ptr_returns_ptr<C, R>(&mut self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
+        let ptr: u32 = func
+            .call(&mut self.store.as_context_mut(), arg.wasm_ptr())
+            .unwrap();
         ptr.into()
     }
 
@@ -208,19 +210,25 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized,
     {
-        let func = self.get_func(f).typed().unwrap().clone();
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
         let ptr = self.asc_new(arg).unwrap();
-        let ptr: u32 = func.call(ptr.wasm_ptr()).unwrap();
+        let ptr: u32 = func
+            .call(&mut self.store.as_context_mut(), ptr.wasm_ptr())
+            .unwrap();
         ptr.into()
     }
 
-    fn invoke_export1_val_void<V: wasmtime::WasmTy>(
-        &self,
-        f: &str,
-        v: V,
-    ) -> Result<(), wasmtime::Trap> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        func.call(v)?;
+    fn invoke_export1_val_void<V: wasmtime::WasmTy>(&mut self, f: &str, v: V) -> Result<(), Error> {
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
+        func.call(&mut self.store.as_context_mut(), v)?;
         Ok(())
     }
 
@@ -231,10 +239,19 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized,
     {
-        let func = self.get_func(f).typed().unwrap().clone();
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
         let arg0 = self.asc_new(arg0).unwrap();
         let arg1 = self.asc_new(arg1).unwrap();
-        let ptr: u32 = func.call((arg0.wasm_ptr(), arg1.wasm_ptr())).unwrap();
+        let ptr: u32 = func
+            .call(
+                &mut self.store.as_context_mut(),
+                (arg0.wasm_ptr(), arg1.wasm_ptr()),
+            )
+            .unwrap();
         ptr.into()
     }
 
@@ -243,22 +260,33 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         f: &str,
         arg0: &T1,
         arg1: &T2,
-    ) -> Result<(), wasmtime::Trap>
+    ) -> Result<(), Error>
     where
         C1: AscType + AscIndexId,
         C2: AscType + AscIndexId,
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized,
     {
-        let func = self.get_func(f).typed().unwrap().clone();
+        let func = self
+            .get_func(f)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
         let arg0 = self.asc_new(arg0).unwrap();
         let arg1 = self.asc_new(arg1).unwrap();
-        func.call((arg0.wasm_ptr(), arg1.wasm_ptr()))
+        func.call(
+            &mut self.store.as_context_mut(),
+            (arg0.wasm_ptr(), arg1.wasm_ptr()),
+        )
     }
 
     fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V {
-        let func = self.get_func(func).typed().unwrap().clone();
-        func.call(()).unwrap()
+        let func = self
+            .get_func(func)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
+        func.call(&mut self.store.as_context_mut(), ()).unwrap()
     }
 
     fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
@@ -266,14 +294,23 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized,
     {
-        let func = self.get_func(func).typed().unwrap().clone();
+        let func = self
+            .get_func(func)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
         let ptr = self.asc_new(v).unwrap();
-        func.call(ptr.wasm_ptr()).unwrap()
+        func.call(&mut self.store.as_context_mut(), ptr.wasm_ptr())
+            .unwrap()
     }
 
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P> {
-        let func = self.get_func(fn_name).typed().unwrap().clone();
-        let ptr: u32 = func.call(val).unwrap();
+        let func = self
+            .get_func(fn_name)
+            .typed(&self.store.as_context())
+            .unwrap()
+            .clone();
+        let ptr: u32 = func.call(&mut self.store.as_context_mut(), val).unwrap();
         ptr.into()
     }
 }
@@ -472,7 +509,7 @@ async fn run_ipfs_map(
     std::thread::spawn(move || {
         let _runtime_guard = runtime.enter();
 
-        let (mut module, _, _) = graph::block_on(test_valid_module_and_store(
+        let (mut instance, _, _) = graph::block_on(test_valid_module_and_store(
             subgraph_id,
             mock_data_source(
                 &wasm_file_path("ipfs_map.wasm", api_version.clone()),
@@ -481,16 +518,22 @@ async fn run_ipfs_map(
             api_version,
         ));
 
-        let value = module.asc_new(&hash).unwrap();
-        let user_data = module.asc_new(USER_DATA).unwrap();
+        let value = instance.asc_new(&hash).unwrap();
+        let user_data = instance.asc_new(USER_DATA).unwrap();
 
         // Invoke the callback
-        let func = module.get_func("ipfsMap").typed().unwrap().clone();
-        func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
-        let mut mods = module
+        let func = instance
+            .get_func("ipfsMap")
+            .typed(&instance.store.as_context())
+            .unwrap()
+            .clone();
+        func.call(
+            &mut instance.store.as_context_mut(),
+            (value.wasm_ptr(), user_data.wasm_ptr()),
+        )?;
+        let mut mods = instance
             .take_ctx()
-            .ctx
-            .state
+            .take_state()
             .entity_cache
             .as_modifications(0)?
             .modifications;
@@ -538,16 +581,15 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     );
 
     // Malformed JSON
-    let errmsg = run_ipfs_map(
+    let err = run_ipfs_map(
         ipfs.clone(),
         subgraph_id,
         format!("{}\n[", str1),
         api_version.clone(),
     )
     .await
-    .unwrap_err()
-    .to_string();
-    assert!(errmsg.contains("EOF while parsing a list"));
+    .unwrap_err();
+    assert!(format!("{err:?}").contains("EOF while parsing a list"));
 
     // Empty input
     let ops = run_ipfs_map(
@@ -575,16 +617,15 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     assert!(errmsg.contains(json_error_msg));
 
     // Bad IPFS hash.
-    let errmsg = run_ipfs_map(
+    let err = run_ipfs_map(
         ipfs.clone(),
         subgraph_id,
         BAD_IPFS_HASH.to_string(),
         api_version.clone(),
     )
     .await
-    .unwrap_err()
-    .to_string();
-    assert!(errmsg.contains("500 Internal Server Error"));
+    .unwrap_err();
+    assert!(format!("{err:?}").contains("500 Internal Server Error"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -663,7 +704,7 @@ async fn crypto_keccak256_v0_0_5() {
 }
 
 async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
-    let mut module = test_module(
+    let mut instance = test_module(
         "BigIntToHex",
         mock_data_source(
             &wasm_file_path("big_int_to_hex.wasm", api_version.clone()),
@@ -675,31 +716,31 @@ async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
 
     // Convert zero to hex
     let zero = BigInt::from_unsigned_u256(&U256::zero());
-    let zero_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", &zero);
-    let zero_hex_str: String = module.asc_get(zero_hex_ptr).unwrap();
+    let zero_hex_ptr: AscPtr<AscString> = instance.invoke_export1("big_int_to_hex", &zero);
+    let zero_hex_str: String = instance.asc_get(zero_hex_ptr).unwrap();
     assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
     let one = BigInt::from_unsigned_u256(&U256::one());
-    let one_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", &one);
-    let one_hex_str: String = module.asc_get(one_hex_ptr).unwrap();
+    let one_hex_ptr: AscPtr<AscString> = instance.invoke_export1("big_int_to_hex", &one);
+    let one_hex_str: String = instance.asc_get(one_hex_ptr).unwrap();
     assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
     let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
-    let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", &u256_max);
-    let u256_max_hex_str: String = module.asc_get(u256_max_hex_ptr).unwrap();
+    let u256_max_hex_ptr: AscPtr<AscString> = instance.invoke_export1("big_int_to_hex", &u256_max);
+    let u256_max_hex_str: String = instance.asc_get(u256_max_hex_ptr).unwrap();
     assert_eq!(
         u256_max_hex_str,
         "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     );
 
-    assert_eq!(module.gas_used(), gas_used);
+    assert_eq!(instance.gas_used(), gas_used);
 }
 
 #[tokio::test]
 async fn test_big_int_size_limit() {
-    let module = test_module(
+    let mut module = test_module(
         "BigIntSizeLimit",
         mock_data_source(
             &wasm_file_path("big_int_size_limit.wasm", API_VERSION_0_0_5),
@@ -715,11 +756,14 @@ async fn test_big_int_size_limit() {
         .unwrap();
 
     let len = BigInt::MAX_BITS / 8 + 1;
-    assert!(module
+    let err = module
         .invoke_export1_val_void("bigIntWithLength", len)
-        .unwrap_err()
-        .to_string()
-        .contains("BigInt is too big, total bits 435416 (max 435412)"));
+        .unwrap_err();
+    assert!(
+        format!("{err:?}").contains("BigInt is too big, total bits 435416 (max 435412)"),
+        "{}",
+        err
+    );
 }
 
 #[tokio::test]
@@ -799,7 +843,7 @@ async fn big_int_arithmetic_v0_0_5() {
 }
 
 async fn test_abort(api_version: Version, error_msg: &str) {
-    let module = test_module(
+    let mut instance = test_module(
         "abort",
         mock_data_source(
             &wasm_file_path("abort.wasm", api_version.clone()),
@@ -808,8 +852,13 @@ async fn test_abort(api_version: Version, error_msg: &str) {
         api_version,
     )
     .await;
-    let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
-    assert!(res.unwrap_err().to_string().contains(error_msg));
+    let res: Result<(), _> = instance
+        .get_func("abort")
+        .typed(&instance.store.as_context())
+        .unwrap()
+        .call(&mut instance.store.as_context_mut(), ());
+    let err = res.unwrap_err();
+    assert!(format!("{err:?}").contains(error_msg));
 }
 
 #[tokio::test]
@@ -879,7 +928,7 @@ async fn test_data_source_create(api_version: Version, gas_used: u64) {
     let params = vec![String::from("0xc000000000000000000000000000000000000000")];
     match run_data_source_create(template.clone(), params.clone(), api_version, gas_used).await {
         Ok(_) => panic!("expected an error because the template does not exist"),
-        Err(e) => assert!(e.to_string().contains(
+        Err(e) => assert!(format!("{e:?}").contains(
             "Failed to create data source from name `nonexistent template`: \
              No template with this name in parent data source `example data source`. \
              Available names: example template."
@@ -892,8 +941,8 @@ async fn run_data_source_create(
     params: Vec<String>,
     api_version: Version,
     gas_used: u64,
-) -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
-    let mut module = test_module(
+) -> Result<Vec<InstanceDSTemplateInfo>, Error> {
+    let mut instance = test_module(
         "DataSourceCreate",
         mock_data_source(
             &wasm_file_path("data_source_create.wasm", api_version.clone()),
@@ -903,13 +952,17 @@ async fn run_data_source_create(
     )
     .await;
 
-    module.instance_ctx_mut().ctx.state.enter_handler();
-    module.invoke_export2_void("dataSourceCreate", &name, &params)?;
-    module.instance_ctx_mut().ctx.state.exit_handler();
+    instance.store.data_mut().ctx.state.enter_handler();
+    instance.invoke_export2_void("dataSourceCreate", &name, &params)?;
+    instance.store.data_mut().ctx.state.exit_handler();
 
-    assert_eq!(module.gas_used(), gas_used);
+    assert_eq!(instance.gas_used(), gas_used);
 
-    Ok(module.take_ctx().ctx.state.drain_created_data_sources())
+    Ok(instance
+        .store
+        .into_data()
+        .take_state()
+        .drain_created_data_sources())
 }
 
 #[tokio::test]
@@ -956,7 +1009,7 @@ async fn ens_name_by_hash_v0_0_5() {
 }
 
 async fn test_entity_store(api_version: Version) {
-    let (mut module, store, deployment) = test_valid_module_and_store(
+    let (mut instance, store, deployment) = test_valid_module_and_store(
         "entityStore",
         mock_data_source(
             &wasm_file_path("store.wasm", api_version.clone()),
@@ -978,7 +1031,7 @@ async fn test_entity_store(api_version: Version) {
     .await
     .unwrap();
 
-    let get_user = move |module: &mut WasmInstance<Chain>, id: &str| -> Option<Entity> {
+    let get_user = move |module: &mut WasmInstance, id: &str| -> Option<Entity> {
         let entity_ptr: AscPtr<AscEntity> = module.invoke_export1("getUser", id);
         if entity_ptr.is_null() {
             None
@@ -995,28 +1048,29 @@ async fn test_entity_store(api_version: Version) {
         }
     };
 
-    let load_and_set_user_name = |module: &mut WasmInstance<Chain>, id: &str, name: &str| {
+    let load_and_set_user_name = |module: &mut WasmInstance, id: &str, name: &str| {
         module
             .invoke_export2_void("loadAndSetUserName", id, name)
             .unwrap();
     };
 
     // store.get of a nonexistent user
-    assert_eq!(None, get_user(&mut module, "herobrine"));
+    assert_eq!(None, get_user(&mut instance, "herobrine"));
     // store.get of an existing user
-    let steve = get_user(&mut module, "steve").unwrap();
+    let steve = get_user(&mut instance, "steve").unwrap();
     assert_eq!(Some(&Value::from("Steve")), steve.get("name"));
 
     // Load, set, save cycle for an existing entity
-    load_and_set_user_name(&mut module, "steve", "Steve-O");
+    load_and_set_user_name(&mut instance, "steve", "Steve-O");
 
     // We need to empty the cache for the next test
     let writable = store
         .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await
         .unwrap();
+    let ctx = instance.store.data_mut();
     let cache = std::mem::replace(
-        &mut module.instance_ctx_mut().ctx.state.entity_cache,
+        &mut ctx.ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),
     );
     let mut mods = cache.as_modifications(0).unwrap().modifications;
@@ -1030,15 +1084,14 @@ async fn test_entity_store(api_version: Version) {
     }
 
     // Load, set, save cycle for a new entity with fulltext API
-    load_and_set_user_name(&mut module, "herobrine", "Brine-O");
+    load_and_set_user_name(&mut instance, "herobrine", "Brine-O");
     let mut fulltext_entities = BTreeMap::new();
     let mut fulltext_fields = BTreeMap::new();
     fulltext_fields.insert("name".to_string(), vec!["search".to_string()]);
     fulltext_entities.insert("User".to_string(), fulltext_fields);
-    let mut mods = module
+    let mut mods = instance
         .take_ctx()
-        .ctx
-        .state
+        .take_state()
         .entity_cache
         .as_modifications(0)
         .unwrap()
@@ -1097,7 +1150,7 @@ async fn detect_contract_calls_v0_0_5() {
 }
 
 async fn test_allocate_global(api_version: Version) {
-    let module = test_module(
+    let mut instance = test_module(
         "AllocateGlobal",
         mock_data_source(
             &wasm_file_path("allocate_global.wasm", api_version.clone()),
@@ -1108,7 +1161,7 @@ async fn test_allocate_global(api_version: Version) {
     .await;
 
     // Assert globals can be allocated and don't break the heap
-    module.invoke_export0_void("assert_global_works").unwrap();
+    instance.invoke_export0_void("assert_global_works").unwrap();
 }
 
 #[tokio::test]
@@ -1121,8 +1174,8 @@ async fn allocate_global_v0_0_5() {
     test_allocate_global(API_VERSION_0_0_5).await;
 }
 
-async fn test_null_ptr_read(api_version: Version) {
-    let module = test_module(
+async fn test_null_ptr_read(api_version: Version) -> Result<(), Error> {
+    let mut module = test_module(
         "NullPtrRead",
         mock_data_source(
             &wasm_file_path("null_ptr_read.wasm", api_version.clone()),
@@ -1132,17 +1185,21 @@ async fn test_null_ptr_read(api_version: Version) {
     )
     .await;
 
-    module.invoke_export0_void("nullPtrRead").unwrap();
+    module.invoke_export0_void("nullPtrRead")
 }
 
 #[tokio::test]
-#[should_panic(expected = "Tried to read AssemblyScript value that is 'null'")]
 async fn null_ptr_read_0_0_5() {
-    test_null_ptr_read(API_VERSION_0_0_5).await;
+    let err = test_null_ptr_read(API_VERSION_0_0_5).await.unwrap_err();
+    assert!(
+        format!("{err:?}").contains("Tried to read AssemblyScript value that is 'null'"),
+        "{}",
+        err.to_string()
+    );
 }
 
-async fn test_safe_null_ptr_read(api_version: Version) {
-    let module = test_module(
+async fn test_safe_null_ptr_read(api_version: Version) -> Result<(), Error> {
+    let mut module = test_module(
         "SafeNullPtrRead",
         mock_data_source(
             &wasm_file_path("null_ptr_read.wasm", api_version.clone()),
@@ -1152,25 +1209,27 @@ async fn test_safe_null_ptr_read(api_version: Version) {
     )
     .await;
 
-    module.invoke_export0_void("safeNullPtrRead").unwrap();
+    module.invoke_export0_void("safeNullPtrRead")
 }
 
 #[tokio::test]
-#[should_panic(expected = "Failed to sum BigInts because left hand side is 'null'")]
 async fn safe_null_ptr_read_0_0_5() {
-    test_safe_null_ptr_read(API_VERSION_0_0_5).await;
+    let err = test_safe_null_ptr_read(API_VERSION_0_0_5)
+        .await
+        .unwrap_err();
+    assert!(
+        format!("{err:?}").contains("Failed to sum BigInts because left hand side is 'null'"),
+        "{}",
+        err.to_string()
+    );
 }
 
 #[ignore] // Ignored because of long run time in debug build.
 #[tokio::test]
 async fn test_array_blowup() {
-    let module = test_module_latest("ArrayBlowup", "array_blowup.wasm").await;
-
-    assert!(module
-        .invoke_export0_void("arrayBlowup")
-        .unwrap_err()
-        .to_string()
-        .contains("Gas limit exceeded. Used: 11286295575421"));
+    let mut module = test_module_latest("ArrayBlowup", "array_blowup.wasm").await;
+    let err = module.invoke_export0_void("arrayBlowup").unwrap_err();
+    assert!(format!("{err:?}").contains("Gas limit exceeded. Used: 11286295575421"));
 }
 
 #[tokio::test]
@@ -1208,7 +1267,7 @@ async fn test_boolean() {
 
 #[tokio::test]
 async fn recursion_limit() {
-    let module = test_module_latest("RecursionLimit", "recursion_limit.wasm").await;
+    let mut module = test_module_latest("RecursionLimit", "recursion_limit.wasm").await;
 
     // An error about 'unknown key' means the entity was fully read with no stack overflow.
     module
@@ -1217,16 +1276,19 @@ async fn recursion_limit() {
         .to_string()
         .contains("Unknown key `foobar`");
 
-    assert!(module
+    let err = module
         .invoke_export1_val_void("recursionLimit", 129)
-        .unwrap_err()
-        .to_string()
-        .contains("recursion limit reached"));
+        .unwrap_err();
+    assert!(
+        format!("{err:?}").contains("recursion limit reached"),
+        "{}",
+        err.to_string()
+    );
 }
 
 struct Host {
-    ctx: MappingContext<Chain>,
-    host_exports: host_exports::test_support::HostExports<Chain>,
+    ctx: MappingContext,
+    host_exports: host_exports::test_support::HostExports,
     stopwatch: StopwatchMetrics,
     gas: GasCounter,
 }
@@ -1289,8 +1351,8 @@ impl Host {
         let data = HashMap::from_iter(data.into_iter().map(|(k, v)| (Word::from(k), v)));
         self.host_exports.store_set(
             &self.ctx.logger,
-            &mut self.ctx.state,
             12, // Arbitrary block number
+            &mut self.ctx.state,
             &self.ctx.proof_of_indexing,
             entity_type.to_string(),
             id,
@@ -1304,7 +1366,7 @@ impl Host {
         &mut self,
         entity_type: &str,
         id: &str,
-    ) -> Result<Option<Cow<Entity>>, anyhow::Error> {
+    ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
         let user_id = String::from(id);
         self.host_exports.store_get(
             &mut self.ctx.state,
@@ -1315,16 +1377,16 @@ impl Host {
     }
 }
 
+#[track_caller]
+fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
+    let err = err.to_string();
+    assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
+}
+
 /// Test the various ways in which `store_set` sets the `id` of entities and
 /// errors when there are issues
 #[tokio::test]
 async fn test_store_set_id() {
-    #[track_caller]
-    fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
-        let err = err.to_string();
-        assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
-    }
-
     const UID: &str = "u1";
     const USER: &str = "User";
     const BID: &str = "0xdeadbeef";
@@ -1421,16 +1483,10 @@ async fn test_store_set_id() {
 /// This should return an error
 #[tokio::test]
 async fn test_store_set_invalid_fields() {
-    #[track_caller]
-    fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
-        let err = err.to_string();
-        assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
-    }
-
     const UID: &str = "u1";
     const USER: &str = "User";
-    const BID: &str = "0xdeadbeef";
-    const BINARY: &str = "Binary";
+    // const BID: &str = "0xdeadbeef";
+    // const BINARY: &str = "Binary";
     let schema = "
     type User @entity {
         id: ID!,
@@ -1471,7 +1527,6 @@ async fn test_store_set_invalid_fields() {
     // The order of `test` and `test2` is not guranteed
     // So we just check the string contains them
     let err_string = err.to_string();
-    dbg!(err_string.as_str());
     assert!(err_string.contains("Attempted to set undefined fields [test, test2] for the entity type `User`. Make sure those fields are defined in the schema."));
 
     let err = host
@@ -1572,4 +1627,96 @@ async fn generate_id() {
             _ => panic!("expected Insert modification"),
         }
     }
+}
+
+#[tokio::test]
+async fn test_store_intf() {
+    const UID: &str = "u1";
+    const USER: &str = "User";
+    const PERSON: &str = "Person";
+
+    let schema = "type User implements Person @entity {
+        id: String!,
+        name: String,
+    }
+
+    interface Person {
+        id: String!,
+        name: String,
+    }";
+
+    let mut host = Host::new(schema, "hostStoreSetIntf", "boolean.wasm", None).await;
+
+    host.store_set(PERSON, UID, vec![("id", "u1"), ("name", "user1")])
+        .expect_err("can not use store_set with an interface");
+
+    host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
+        .expect("storing user works");
+
+    host.store_get(PERSON, UID)
+        .expect_err("store_get with interface does not work");
+}
+
+#[tokio::test]
+async fn test_store_ts() {
+    const DATA: &str = "Data";
+    const STATS: &str = "Stats";
+    const SID: &str = "1";
+    const DID: &str = "fe";
+
+    let schema = r#"
+    type Data @entity(timeseries: true) {
+        id: Int8!
+        timestamp: Timestamp!
+        amount: BigDecimal!
+    }
+
+    type Stats @aggregation(intervals: ["hour"], source: "Data") {
+        id: Int8!
+        timestamp: Timestamp!
+        max: BigDecimal! @aggregate(fn: "max", arg:"amount")
+    }"#;
+
+    let mut host = Host::new(schema, "hostStoreTs", "boolean.wasm", None).await;
+
+    let block_time = host.ctx.timestamp;
+    let other_time = BlockTime::since_epoch(7000, 0);
+    // If this fails, something is wrong with the test setup
+    assert_ne!(block_time, other_time);
+
+    let b20 = Value::BigDecimal(20.into());
+
+    host.store_setv(
+        DATA,
+        DID,
+        vec![
+            ("timestamp", Value::from(other_time)),
+            ("amount", b20.clone()),
+        ],
+    )
+    .expect("Setting 'Data' is allowed");
+
+    // This is very backhanded: we generate an id the same way that
+    // `store_setv` should have.
+    let did = IdType::Int8.generate_id(12, 0).unwrap();
+
+    // Set overrides the user-supplied timestamp for timeseries
+    let data = host.store_get(DATA, &did.to_string()).unwrap().unwrap();
+    assert_eq!(Some(&Value::from(block_time)), data.get("timestamp"));
+
+    let err = host
+        .store_setv(STATS, SID, vec![("amount", b20)])
+        .expect_err("store_set must fail for aggregations");
+    err_says(
+        err,
+        "Cannot set entity of type `Stats`. The type must be an @entity type",
+    );
+
+    let err = host
+        .store_get(STATS, SID)
+        .expect_err("store_get must fail for timeseries");
+    err_says(
+        err,
+        "Cannot get entity of type `Stats`. The type must be an @entity type",
+    );
 }

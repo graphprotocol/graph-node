@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
@@ -66,7 +67,7 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
-        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: BlockPtr = (
         H256::from(hex!(
@@ -1249,8 +1250,8 @@ fn revert_block_with_dynamic_data_source_operations() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store, _, _| async move {
         let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
-        let schema =
-            InputSchema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
+        let schema = InputSchema::parse_latest(USER_GQL, subgraph_id.clone())
+            .expect("Failed to parse user schema");
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
             spec_version: Version::new(1, 0, 0),
@@ -1532,6 +1533,7 @@ fn handle_large_string_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_text, &schema, block),
@@ -1541,6 +1543,7 @@ fn handle_large_string_with_index() {
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
+                false,
                 false,
             )
             .await
@@ -1634,6 +1637,7 @@ fn handle_large_bytea_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_bytea, &schema, block),
@@ -1643,6 +1647,7 @@ fn handle_large_bytea_with_index() {
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
+                false,
                 false,
             )
             .await
@@ -1985,7 +1990,7 @@ fn parse_timestamp() {
             .chain_store(NETWORK_NAME)
             .expect("fake chain store");
 
-        let (_network, number, timestamp) = chain_store
+        let (_network, number, timestamp, _) = chain_store
             .block_number(&BLOCK_THREE_TIMESTAMP.block_hash())
             .await
             .expect("block_number to return correct number and timestamp")
@@ -2019,7 +2024,7 @@ fn parse_timestamp_firehose() {
             .chain_store(NETWORK_NAME)
             .expect("fake chain store");
 
-        let (_network, number, timestamp) = chain_store
+        let (_network, number, timestamp, _) = chain_store
             .block_number(&BLOCK_THREE_TIMESTAMP_FIREHOSE.block_hash())
             .await
             .expect("block_number to return correct number and timestamp")
@@ -2053,7 +2058,7 @@ fn parse_null_timestamp() {
             .chain_store(NETWORK_NAME)
             .expect("fake chain store");
 
-        let (_network, number, timestamp) = chain_store
+        let (_network, number, timestamp, _) = chain_store
             .block_number(&BLOCK_THREE_NO_TIMESTAMP.block_hash())
             .await
             .expect("block_number to return correct number and timestamp")

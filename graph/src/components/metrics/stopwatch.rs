@@ -1,6 +1,8 @@
-use crate::prelude::*;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Mutex};
 use std::time::Instant;
+
+use crate::derive::CheapClone;
+use crate::prelude::*;
 
 /// This is a "section guard", that closes the section on drop.
 pub struct Section {
@@ -32,13 +34,11 @@ impl Drop for Section {
 /// // do stuff...
 /// // At the end of the scope `_main_section` is dropped, which is equivalent to calling
 /// // `_main_section.end()`.
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct StopwatchMetrics {
     disabled: Arc<AtomicBool>,
     inner: Arc<Mutex<StopwatchInner>>,
 }
-
-impl CheapClone for StopwatchMetrics {}
 
 impl StopwatchMetrics {
     pub fn new(
@@ -101,6 +101,10 @@ impl StopwatchMetrics {
         if !self.disabled.load(Ordering::SeqCst) {
             self.inner.lock().unwrap().end_section(id)
         }
+    }
+
+    pub fn shard(&self) -> String {
+        self.inner.lock().unwrap().shard.to_string()
     }
 }
 

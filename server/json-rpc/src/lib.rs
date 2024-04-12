@@ -68,6 +68,16 @@ impl JsonRpcServer {
                 state.reassign_handler(params.parse()?).await
             })
             .unwrap();
+        rpc_module
+            .register_async_method("subgraph_pause", |params, state| async move {
+                state.pause_handler(params.parse()?).await
+            })
+            .unwrap();
+        rpc_module
+            .register_async_method("subgraph_resume", |params, state| async move {
+                state.resume_handler(params.parse()?).await
+            })
+            .unwrap();
 
         let _handle = http_server.start(rpc_module)?;
         Ok(Self { _handle })
@@ -87,6 +97,8 @@ impl<R: SubgraphRegistrar> ServerState<R> {
     const REMOVE_ERROR: i64 = 1;
     const CREATE_ERROR: i64 = 2;
     const REASSIGN_ERROR: i64 = 3;
+    const PAUSE_ERROR: i64 = 4;
+    const RESUME_ERROR: i64 = 5;
 
     /// Handler for the `subgraph_create` endpoint.
     async fn create_handler(&self, params: SubgraphCreateParams) -> JsonRpcResult<JsonValue> {
@@ -173,6 +185,38 @@ impl<R: SubgraphRegistrar> ServerState<R> {
             )),
         }
     }
+
+    /// Handler for the `subgraph_pause` endpoint.
+    async fn pause_handler(&self, params: SubgraphPauseParams) -> JsonRpcResult<GraphValue> {
+        info!(&self.logger, "Received subgraph_pause request"; "params" => format!("{:?}", params));
+
+        match self.registrar.pause_subgraph(&params.deployment).await {
+            Ok(_) => Ok(Value::Null),
+            Err(e) => Err(json_rpc_error(
+                &self.logger,
+                "subgraph_pause",
+                e,
+                Self::PAUSE_ERROR,
+                params,
+            )),
+        }
+    }
+
+    /// Handler for the `subgraph_resume` endpoint.
+    async fn resume_handler(&self, params: SubgraphPauseParams) -> JsonRpcResult<GraphValue> {
+        info!(&self.logger, "Received subgraph_pause request"; "params" => format!("{:?}", params));
+
+        match self.registrar.resume_subgraph(&params.deployment).await {
+            Ok(_) => Ok(Value::Null),
+            Err(e) => Err(json_rpc_error(
+                &self.logger,
+                "subgraph_resume",
+                e,
+                Self::RESUME_ERROR,
+                params,
+            )),
+        }
+    }
 }
 
 fn json_rpc_error(
@@ -249,4 +293,9 @@ struct SubgraphRemoveParams {
 struct SubgraphReassignParams {
     ipfs_hash: DeploymentHash,
     node_id: NodeId,
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphPauseParams {
+    deployment: DeploymentHash,
 }

@@ -9,7 +9,7 @@ mod settings;
 pub use crate::prelude::Entity;
 
 pub use self::host::{HostMetrics, MappingError, RuntimeHost, RuntimeHostBuilder};
-pub use self::instance::{BlockState, DataSourceTemplateInfo};
+pub use self::instance::{BlockState, InstanceDSTemplate, InstanceDSTemplateInfo};
 pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::proof_of_indexing::{
     PoICausalityRegion, ProofOfIndexing, ProofOfIndexingEvent, ProofOfIndexingFinisher,

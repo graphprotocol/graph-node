@@ -5,6 +5,7 @@ on:
     branches: [master]
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,7 +15,7 @@ env:
 jobs:
   unit-tests:
     name: Run unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
     timeout-minutes: 60
     services:
       ipfs:
@@ -42,8 +43,8 @@ jobs:
         run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2
-
+      # Don't use the rust-cache as it leads to 'no space left on device' errors
+      # - uses: Swatinem/rust-cache@v2
       - name: Install lld
         run: sudo apt-get install -y lld protobuf-compiler
 
@@ -51,7 +52,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose --workspace --exclude graph-tests -- --nocapture
+          args: --workspace --exclude graph-tests -- --nocapture
 
   runner-tests:
     name: Subgraph Runner integration tests

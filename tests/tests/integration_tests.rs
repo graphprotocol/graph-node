@@ -248,6 +248,38 @@ async fn test_int8(subgraph: Subgraph) -> anyhow::Result<()> {
     Ok(())
 }
 
+/*
+* Actual tests. For a new test, add a new function here and add an entry to
+* the `cases` variable in `integration_tests`.
+*/
+
+async fn test_timestamp(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let resp = subgraph
+        .query(
+            "{
+        foos_0: foos(orderBy: id, block: { number: 0 }) { id }
+        foos(orderBy: id) { id value }
+      }",
+        )
+        .await?;
+
+    let exp = json!({
+        "foos_0": [],
+        "foos": [
+          {
+            "id": "0",
+            "value": "1710837304040956",
+          },
+        ],
+    });
+    assert_eq!(None, resp.get("errors"));
+    assert_eq!(exp, resp["data"]);
+
+    Ok(())
+}
+
 async fn test_block_handlers(subgraph: Subgraph) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
@@ -381,6 +413,27 @@ async fn test_block_handlers(subgraph: Subgraph) -> anyhow::Result<()> {
             handler
         );
     }
+
+    Ok(())
+}
+
+async fn test_eth_get_balance(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let expected_response = json!({
+        "foo": {
+            "id": "1",
+            "value": "10000000000000000000000",
+        }
+    });
+
+    query_succeeds(
+        "Balance should be right",
+        &subgraph,
+        "{ foo(id: \"1\") { id value } }",
+        expected_response,
+    )
+    .await?;
 
     Ok(())
 }
@@ -634,6 +687,8 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("value-roundtrip", test_value_roundtrip),
         TestCase::new("int8", test_int8),
         TestCase::new("block-handlers", test_block_handlers),
+        TestCase::new("eth-get-balance", test_eth_get_balance),
+        TestCase::new("timestamp", test_timestamp),
     ];
 
     let contracts = Contract::deploy_all().await?;

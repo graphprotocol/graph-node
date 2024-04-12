@@ -186,7 +186,7 @@ impl<S: Store> IndexNodeResolver<S> {
         Ok(entity_changes_to_graphql(entity_changes))
     }
 
-    fn resolve_block_data(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+    async fn resolve_block_data(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
         let network = field
             .get_required::<String>("network")
             .expect("Valid network required");
@@ -207,7 +207,7 @@ impl<S: Store> IndexNodeResolver<S> {
             return Ok(r::Value::Null);
         };
 
-        let blocks_res = chain_store.blocks(&[block_hash.cheap_clone()]);
+        let blocks_res = chain_store.blocks(vec![block_hash.cheap_clone()]).await;
         Ok(match blocks_res {
             Ok(blocks) if blocks.is_empty() => {
                 error!(
@@ -282,7 +282,7 @@ impl<S: Store> IndexNodeResolver<S> {
         let call_cache = chain.call_cache();
 
         let (block_number, timestamp) = match chain_store.block_number(&block_hash).await {
-            Ok(Some((_, n, timestamp))) => (n, timestamp),
+            Ok(Some((_, n, timestamp, _))) => (n, timestamp),
             Ok(None) => {
                 error!(
                     self.logger,
@@ -823,7 +823,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
             scalar_type.name.as_str(),
         ) {
             ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field),
-            ("Query", "blockData", "JSONObject") => self.resolve_block_data(field),
+            ("Query", "blockData", "JSONObject") => self.resolve_block_data(field).await,
             ("Query", "blockHashFromNumber", "Bytes") => {
                 self.resolve_block_hash_from_number(field).await
             }

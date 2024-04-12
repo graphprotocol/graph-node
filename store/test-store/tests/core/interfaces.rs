@@ -17,7 +17,7 @@ async fn insert_and_query(
 ) -> Result<QueryResult, StoreError> {
     let subgraph_id = DeploymentHash::new(subgraph_id).unwrap();
     let deployment = create_test_subgraph(&subgraph_id, schema).await;
-    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
     let entities = entities
         .into_iter()
         .map(|(entity_type, data)| (schema.entity_type(entity_type).unwrap(), data))
@@ -25,7 +25,7 @@ async fn insert_and_query(
 
     insert_entities(&deployment, entities).await?;
 
-    let document = graphql_parser::parse_query(query).unwrap().into_static();
+    let document = q::parse_query(query).unwrap().into_static();
     let target = QueryTarget::Deployment(subgraph_id, Default::default());
     let query = Query::new(document, None, false);
     Ok(execute_subgraph_query(query, target)

@@ -54,6 +54,7 @@ fn print_diesel_tables(layout: &Layout) {
             ColumnType::Bytes => "Binary",
             ColumnType::Int => "Integer",
             ColumnType::Int8 => "Int8",
+            ColumnType::Timestamp => "Timestamp",
             ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => "Text",
         }
         .to_owned();
@@ -75,6 +76,7 @@ fn print_diesel_tables(layout: &Layout) {
             ColumnType::Int => "i32",
             ColumnType::Int8 => "i64",
             ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => "String",
+            ColumnType::Timestamp => "Timestamp",
         }
         .to_owned();
 
@@ -140,7 +142,7 @@ pub fn main() {
     let subgraph = DeploymentHash::new("Qmasubgraph").unwrap();
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let schema = ensure(
-        InputSchema::parse(&schema, subgraph.clone()),
+        InputSchema::parse_latest(&schema, subgraph.clone()),
         "Failed to parse schema",
     );
     let namespace = ensure(

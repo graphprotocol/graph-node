@@ -78,7 +78,7 @@ const USER: &str = "User";
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("testsubgraph").unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
-        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref BLOCKS: Vec<BlockPtr> = vec![
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
@@ -482,7 +482,7 @@ fn on_sync() {
                 writable.start_subgraph_deployment(&LOGGER).await?;
                 writable.deployment_synced()?;
 
-                let primary = primary_connection();
+                let mut primary = primary_connection();
                 let src_site = primary.locate_site(src)?.unwrap();
                 let src_node = primary.assigned_node(&src_site)?;
                 let dst_site = primary.locate_site(dst)?.unwrap();
@@ -531,7 +531,7 @@ fn on_sync() {
             // Perform the copy
             writable.start_subgraph_deployment(&LOGGER).await?;
 
-            let primary = primary_connection();
+            let mut primary = primary_connection();
             let src_site = primary.locate_site(src.clone())?.unwrap();
             primary.unassign_subgraph(&src_site)?;
             store.activate(&dst)?;

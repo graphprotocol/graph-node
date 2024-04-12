@@ -1,14 +1,14 @@
 use diesel::{
+    deserialize::FromSql,
     pg::Pg,
-    serialize::Output,
-    sql_types::Text,
-    types::{FromSql, ToSql},
+    serialize::{Output, ToSql},
+    sql_types::{self, Text},
 };
+use std::fmt;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{atomic::AtomicU8, Arc, Mutex},
 };
-use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
 use graph::{
@@ -53,6 +53,7 @@ use crate::{fork, relational::index::CreateIndex, relational::SqlName};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
+#[diesel(sql_type = sql_types::Text)]
 pub struct Shard(String);
 
 lazy_static! {
@@ -100,14 +101,14 @@ impl fmt::Display for Shard {
 }
 
 impl FromSql<Text, Pg> for Shard {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         Shard::new(s).map_err(Into::into)
     }
 }
 
 impl ToSql<Text, Pg> for Shard {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
@@ -127,6 +128,7 @@ pub trait DeploymentPlacer {
 pub mod unused {
     use graph::prelude::chrono::Duration;
 
+    #[derive(Debug)]
     pub enum Filter {
         /// List all unused deployments
         All,
@@ -135,6 +137,12 @@ pub mod unused {
         /// List only deployments that were recorded as unused at least this
         /// long ago but have not been removed at
         UnusedLongerThan(Duration),
+        /// Lists deployments with a specific name
+        Name(String),
+        /// Lists deployments with a specific hash
+        Hash(String),
+        /// Lists deployments with a specific deployment id
+        Deployment(String),
     }
 }
 
@@ -437,7 +445,7 @@ impl SubgraphStoreInner {
             }
             1 => Ok(nodes.pop().unwrap()),
             _ => {
-                let conn = self.primary_conn()?;
+                let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since nodes is not empty
                 let node = conn.least_assigned_node(&nodes)?.unwrap();
@@ -451,7 +459,7 @@ impl SubgraphStoreInner {
             0 => Ok(PRIMARY_SHARD.clone()),
             1 => Ok(shards.pop().unwrap()),
             _ => {
-                let conn = self.primary_conn()?;
+                let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since shards is not empty
                 let shard = conn.least_used_shard(&shards)?.unwrap();
@@ -529,7 +537,7 @@ impl SubgraphStoreInner {
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
-            let conn = self.primary_conn()?;
+            let mut conn = self.primary_conn()?;
             let (site, site_was_created) =
                 conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
@@ -577,8 +585,9 @@ impl SubgraphStoreInner {
 
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
@@ -630,8 +639,6 @@ impl SubgraphStoreInner {
             )));
         }
 
-        let history_blocks = deployment.manifest.history_blocks;
-
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
@@ -639,7 +646,7 @@ impl SubgraphStoreInner {
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
-            history_blocks: Some(history_blocks),
+            history_blocks_override: None,
         };
 
         let graft_base = self.layout(&src.deployment)?;
@@ -662,8 +669,9 @@ impl SubgraphStoreInner {
             on_sync,
         )?;
 
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
             // Create subgraph, subgraph version, and assignment. We use the
             // existence of an assignment as a signal that we already set up
             // the copy
@@ -702,7 +710,7 @@ impl SubgraphStoreInner {
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        let conn = self.primary_conn()?;
+        let mut conn = self.primary_conn()?;
         conn.send_store_event(&self.sender, event)
     }
 
@@ -719,12 +727,14 @@ impl SubgraphStoreInner {
 
     pub(crate) async fn with_primary_conn<T: Send + 'static>(
         &self,
-        f: impl 'static + Send + FnOnce(primary::Connection) -> Result<T, CancelableError<StoreError>>,
+        f: impl 'static
+            + Send
+            + FnOnce(&mut primary::Connection) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let pool = self.mirror.primary();
         pool.with_conn(move |pg_conn, _| {
-            let conn = primary::Connection::new(pg_conn);
-            f(conn)
+            let mut conn = primary::Connection::new(pg_conn);
+            f(&mut conn)
         })
         .await
     }
@@ -750,7 +760,7 @@ impl SubgraphStoreInner {
     /// it very hard to export items just for testing
     #[cfg(debug_assertions)]
     pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn()?;
         let schemas = pconn.sites()?;
 
         // Delete all subgraph schemas
@@ -1286,18 +1296,25 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| pconn.create_subgraph(&name))
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| {
+            let mut pconn = primary::Connection::new(conn);
+            pconn.create_subgraph(&name)
+        })
     }
 
     fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| pconn.create_subgraph_features(features))
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| {
+            let mut pconn = primary::Connection::new(conn);
+            pconn.create_subgraph_features(features)
+        })
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1309,9 +1326,30 @@ impl SubgraphStoreTrait for SubgraphStore {
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+        })
+    }
+
+    fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
+            let changes = pconn.pause_subgraph(site.as_ref())?;
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+        })
+    }
+
+    fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
+            let changes = pconn.resume_subgraph(site.as_ref())?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
     }
@@ -1355,7 +1393,12 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
         let deployment = deployment.to_string();
         self.with_primary_conn(|conn| {
-            conn.transaction(|| conn.get_subgraph_features(deployment).map_err(|e| e.into()))
+            conn.transaction(|conn| {
+                let mut pconn = primary::Connection::new(conn);
+                pconn
+                    .get_subgraph_features(deployment)
+                    .map_err(|e| e.into())
+            })
         })
         .await
     }

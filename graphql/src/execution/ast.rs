@@ -1,11 +1,13 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use graph::{
+    components::store::{AttributeNames, ChildMultiplicity},
+    constraint_violation,
     data::graphql::ObjectOrInterface,
+    env::ENV_VARS,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
-    schema::{ast::ObjectType, ApiSchema},
+    schema::{ast::ObjectType, kw, AggregationInterval, ApiSchema, EntityType},
 };
-use graphql_parser::Pos;
 
 /// A selection set is a table that maps object types to the fields that
 /// should be selected for objects of that type. The types are always
@@ -101,17 +103,24 @@ impl SelectionSet {
         &self,
         obj_type: &ObjectType,
     ) -> Result<impl Iterator<Item = &Field>, QueryExecutionError> {
+        self.fields_for_name(&obj_type.name)
+    }
+
+    fn fields_for_name(
+        &self,
+        name: &str,
+    ) -> Result<impl Iterator<Item = &Field>, QueryExecutionError> {
         let item = self
             .items
             .iter()
-            .find(|(our_type, _)| our_type == obj_type)
+            .find(|(our_type, _)| our_type.name == name)
             .ok_or_else(|| {
                 // see: graphql-bug-compat
                 // Once queries are validated, this can become a panic since
                 // users won't be able to trigger this any more
                 QueryExecutionError::ValidationError(
                     None,
-                    format!("invalid query: no fields for type `{}`", obj_type.name),
+                    format!("invalid query: no fields for type `{}`", name),
                 )
             })?;
         Ok(item.1.iter())
@@ -182,11 +191,35 @@ impl SelectionSet {
         }
         Ok(())
     }
+
+    /// Dump the selection set as a string for debugging
+    #[cfg(debug_assertions)]
+    pub fn dump(&self) -> String {
+        fn dump_selection_set(selection_set: &SelectionSet, indent: usize, out: &mut String) {
+            for (object_type, fields) in selection_set.interior_fields() {
+                for field in fields {
+                    for _ in 0..indent {
+                        out.push(' ');
+                    }
+                    let intv = field
+                        .aggregation_interval()
+                        .unwrap()
+                        .map(|intv| format!("[{intv}]"))
+                        .unwrap_or_default();
+                    out.push_str(&format!("{}: {}{intv}\n", object_type.name, field.name));
+                    dump_selection_set(&field.selection_set, indent + 2, out);
+                }
+            }
+        }
+        let mut out = String::new();
+        dump_selection_set(self, 0, &mut out);
+        out
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Directive {
-    pub position: Pos,
+    pub position: q::Pos,
     pub name: String,
     pub arguments: Vec<(String, r::Value)>,
 }
@@ -226,12 +259,13 @@ impl Directive {
 /// already been coerced to the appropriate types for the field argument
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
-    pub position: Pos,
+    pub position: q::Pos,
     pub alias: Option<String>,
     pub name: String,
     pub arguments: Vec<(String, r::Value)>,
     pub directives: Vec<Directive>,
     pub selection_set: SelectionSet,
+    pub multiplicity: ChildMultiplicity,
 }
 
 impl Field {
@@ -258,6 +292,80 @@ impl Field {
 
     fn is_leaf(&self) -> bool {
         self.selection_set.is_empty()
+    }
+
+    /// Return the set of attributes that should be selected for this field.
+    /// If `ENV_VARS.enable_select_by_specific_attributes` is `false`,
+    /// return `AttributeNames::All
+    pub fn selected_attrs(
+        &self,
+        entity_type: &EntityType,
+    ) -> Result<AttributeNames, QueryExecutionError> {
+        if !ENV_VARS.enable_select_by_specific_attributes {
+            return Ok(AttributeNames::All);
+        }
+
+        let fields = self.selection_set.fields_for_name(entity_type.typename())?;
+
+        // Extract the attributes we should select from `selection_set`. In
+        // particular, disregard derived fields since they are not stored
+        let mut column_names: BTreeSet<String> = fields
+            .filter(|field| {
+                // Keep fields that are not derived and for which we
+                // can find the field type
+                entity_type
+                    .field(&field.name)
+                    .map_or(false, |field| !field.is_derived())
+            })
+            .filter_map(|field| {
+                if field.name.starts_with("__") {
+                    None
+                } else {
+                    Some(field.name.clone())
+                }
+            })
+            .collect();
+
+        // We need to also select the `orderBy` field if there is one.
+        // Because of how the API Schema is set up, `orderBy` can only have
+        // an enum value
+        match self.argument_value("orderBy") {
+            None => { /* nothing to do */ }
+            Some(r::Value::Enum(e)) => {
+                column_names.insert(e.clone());
+            }
+            Some(v) => {
+                return Err(constraint_violation!(
+                    "'orderBy' attribute must be an enum but is {:?}",
+                    v
+                )
+                .into());
+            }
+        }
+
+        Ok(AttributeNames::Select(column_names))
+    }
+
+    /// Return the value of the `interval` argument if there is one. Return
+    /// `None` if the argument is not present, and an error if the argument
+    /// is present but can not be parsed as an `AggregationInterval`
+    pub fn aggregation_interval(&self) -> Result<Option<AggregationInterval>, QueryExecutionError> {
+        self.argument_value(kw::INTERVAL)
+            .map(|value| match value {
+                r::Value::Enum(interval) => interval.parse::<AggregationInterval>().map_err(|_| {
+                    QueryExecutionError::InvalidArgumentError(
+                        self.position.clone(),
+                        kw::INTERVAL.to_string(),
+                        q::Value::from(value.clone()),
+                    )
+                }),
+                _ => Err(QueryExecutionError::InvalidArgumentError(
+                    self.position.clone(),
+                    kw::INTERVAL.to_string(),
+                    q::Value::from(value.clone()),
+                )),
+            })
+            .transpose()
     }
 }
 

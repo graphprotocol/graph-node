@@ -12,10 +12,9 @@ use diesel::{insert_into, pg::PgConnection};
 use graph::{
     components::store::{write, StoredDynamicDataSource},
     constraint_violation,
+    data::store::scalar::ToPrimitive,
     data_source::CausalityRegion,
-    prelude::{
-        bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError,
-    },
+    prelude::{serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError},
 };
 
 use crate::connection_pool::ForeignServer;
@@ -37,7 +36,7 @@ table! {
 }
 
 pub(super) fn load(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &str,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,
@@ -100,7 +99,7 @@ pub(super) fn load(
 }
 
 pub(super) fn insert(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     deployment: &DeploymentHash,
     data_sources: &write::DataSources,
     manifest_idx_and_name: &[(u32, String)],
@@ -136,7 +135,7 @@ pub(super) fn insert(
                     Some(param) => param,
                     None => {
                         return Err(constraint_violation!(
-                            "dynamic data sources must have an addres",
+                            "dynamic data sources must have an address",
                         ));
                     }
                 };
@@ -174,7 +173,7 @@ pub(super) fn insert(
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
 pub(crate) fn copy(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     src: &Site,
     dst: &Site,
     target_block: BlockNumber,
@@ -221,7 +220,7 @@ pub(crate) fn copy(
 }
 
 pub(super) fn revert(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -232,7 +231,7 @@ pub(super) fn revert(
     Ok(())
 }
 
-pub(crate) fn drop(conn: &PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
+pub(crate) fn drop(conn: &mut PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
     delete(decds::table.filter(decds::deployment.eq(id.as_str())))

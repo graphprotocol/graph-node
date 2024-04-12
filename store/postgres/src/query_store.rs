@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
@@ -43,13 +44,13 @@ impl QueryStoreTrait for QueryStore {
     ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let start = Instant::now();
-        let conn = self
+        let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let wait = start.elapsed();
         self.store
-            .execute_query(&conn, self.site.clone(), query)
+            .execute_query(&mut conn, self.site.clone(), query)
             .map(|(entities, mut trace)| {
                 trace.conn_wait(wait);
                 (entities, trace)
@@ -68,10 +69,10 @@ impl QueryStoreTrait for QueryStore {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.store.block_ptr(self.site.cheap_clone()).await
     }
-    async fn block_number_with_timestamp(
+    async fn block_number_with_timestamp_and_parent_hash(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
+    ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
         // very expensive though with the data structures we have currently
@@ -82,9 +83,9 @@ impl QueryStoreTrait for QueryStore {
         self.chain_store
             .block_number(block_hash)
             .await?
-            .map(|(network_name, number, timestamp)| {
+            .map(|(network_name, number, timestamp, parent_hash)| {
                 if network_name == subgraph_network {
-                    Ok((number, timestamp))
+                    Ok((number, timestamp, parent_hash))
                 } else {
                     Err(StoreError::QueryExecutionError(format!(
                         "subgraph {} belongs to network {} but block {:x} belongs to network {}",
@@ -99,22 +100,20 @@ impl QueryStoreTrait for QueryStore {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockNumber>, StoreError> {
-        self.block_number_with_timestamp(block_hash)
+        self.block_number_with_timestamp_and_parent_hash(block_hash)
             .await
-            .map(|opt| opt.map(|(number, _)| number))
+            .map(|opt| opt.map(|(number, _, _)| number))
+    }
+
+    async fn block_numbers(
+        &self,
+        block_hashes: Vec<BlockHash>,
+    ) -> Result<HashMap<BlockHash, BlockNumber>, StoreError> {
+        self.chain_store.block_numbers(block_hashes).await
     }
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
         self.store.wait_stats(self.replica_id)
-    }
-
-    async fn has_deterministic_errors(&self, block: BlockNumber) -> Result<bool, StoreError> {
-        let id = self.site.deployment.clone();
-        self.store
-            .with_conn(move |conn, _| {
-                crate::deployment::has_deterministic_errors(conn, &id, block).map_err(|e| e.into())
-            })
-            .await
     }
 
     async fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError> {

@@ -1,16 +1,18 @@
+use anyhow::Error;
+use inflector::Inflector;
+
 use super::ObjectOrInterface;
 use crate::prelude::s::{
-    Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
+    self, Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
-use crate::prelude::ENV_VARS;
+use crate::prelude::{ValueType, ENV_VARS};
 use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &str) -> Option<&Field>;
     fn is_meta(&self) -> bool;
-    fn is_immutable(&self) -> bool;
 }
 
 impl ObjectTypeExt for ObjectType {
@@ -21,16 +23,6 @@ impl ObjectTypeExt for ObjectType {
     fn is_meta(&self) -> bool {
         self.name == META_FIELD_TYPE
     }
-
-    fn is_immutable(&self) -> bool {
-        self.find_directive("entity")
-            .and_then(|dir| dir.argument("immutable"))
-            .map(|value| match value {
-                Value::Boolean(b) => *b,
-                _ => false,
-            })
-            .unwrap_or(false)
-    }
 }
 
 impl ObjectTypeExt for InterfaceType {
@@ -39,10 +31,6 @@ impl ObjectTypeExt for InterfaceType {
     }
 
     fn is_meta(&self) -> bool {
-        false
-    }
-
-    fn is_immutable(&self) -> bool {
         false
     }
 }
@@ -242,6 +230,9 @@ pub trait TypeExt {
     fn get_base_type(&self) -> &str;
     fn is_list(&self) -> bool;
     fn is_non_null(&self) -> bool;
+    fn value_type(&self) -> Result<ValueType, Error> {
+        self.get_base_type().parse()
+    }
 }
 
 impl TypeExt for Type {
@@ -322,7 +313,16 @@ impl ValueExt for Value {
 
 pub trait DirectiveFinder {
     fn find_directive(&self, name: &str) -> Option<&Directive>;
-    fn is_derived(&self) -> bool;
+
+    fn is_derived(&self) -> bool {
+        self.find_directive("derivedFrom").is_some()
+    }
+
+    fn derived_from(&self) -> Option<&str> {
+        self.find_directive("derivedFrom")
+            .and_then(|directive| directive.argument("field"))
+            .and_then(|value| value.as_str())
+    }
 }
 
 impl DirectiveFinder for ObjectType {
@@ -331,12 +331,6 @@ impl DirectiveFinder for ObjectType {
             .iter()
             .find(|directive| directive.name.eq(&name))
     }
-
-    fn is_derived(&self) -> bool {
-        let is_derived = |directive: &Directive| directive.name.eq("derivedFrom");
-
-        self.directives.iter().any(is_derived)
-    }
 }
 
 impl DirectiveFinder for Field {
@@ -344,12 +338,6 @@ impl DirectiveFinder for Field {
         self.directives
             .iter()
             .find(|directive| directive.name.eq(name))
-    }
-
-    fn is_derived(&self) -> bool {
-        let is_derived = |directive: &Directive| directive.name.eq("derivedFrom");
-
-        self.directives.iter().any(is_derived)
     }
 }
 
@@ -388,15 +376,39 @@ impl TypeDefinitionExt for TypeDefinition {
     }
 }
 
+/// Return the singular and plural names for `name` for use in queries
+pub fn camel_cased_names(name: &str) -> (String, String) {
+    let singular = name.to_camel_case();
+    let mut plural = name.to_plural().to_camel_case();
+    if plural == singular {
+        plural.push_str("_collection");
+    }
+    (singular, plural)
+}
+
 pub trait FieldExt {
     // Return `true` if this is the name of one of the query fields from the
     // introspection schema
     fn is_introspection(&self) -> bool;
+
+    /// Return the singular and plural names for this field for use in
+    /// queries
+    fn camel_cased_names(&self) -> (String, String);
+
+    fn argument(&self, name: &str) -> Option<&s::InputValue>;
 }
 
 impl FieldExt for Field {
     fn is_introspection(&self) -> bool {
         &self.name == "__schema" || &self.name == "__type"
+    }
+
+    fn camel_cased_names(&self) -> (String, String) {
+        camel_cased_names(&self.name)
+    }
+
+    fn argument(&self, name: &str) -> Option<&s::InputValue> {
+        self.arguments.iter().find(|iv| &iv.name == name)
     }
 }
 

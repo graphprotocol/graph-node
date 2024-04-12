@@ -13,6 +13,7 @@ use graph::{
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::unused;
 
 use crate::manager::display::List;
 
@@ -70,12 +71,30 @@ impl FromStr for DeploymentSearch {
 }
 
 impl DeploymentSearch {
-    pub fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
-        let conn = primary.get()?;
-        self.lookup_with_conn(&conn)
+    pub fn to_unused_filter(self, existing: bool) -> unused::Filter {
+        match self {
+            DeploymentSearch::Name { name } => unused::Filter::Name(name),
+            DeploymentSearch::Hash { hash, shard: _ } => unused::Filter::Hash(hash),
+            DeploymentSearch::All => {
+                if existing {
+                    unused::Filter::New
+                } else {
+                    unused::Filter::All
+                }
+            }
+            DeploymentSearch::Deployment { namespace } => unused::Filter::Deployment(namespace),
+        }
     }
 
-    pub fn lookup_with_conn(&self, conn: &PgConnection) -> Result<Vec<Deployment>, anyhow::Error> {
+    pub fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
+        let mut conn = primary.get()?;
+        self.lookup_with_conn(&mut conn)
+    }
+
+    pub fn lookup_with_conn(
+        &self,
+        conn: &mut PgConnection,
+    ) -> Result<Vec<Deployment>, anyhow::Error> {
         use store_catalog::deployment_schemas as ds;
         use store_catalog::subgraph as s;
         use store_catalog::subgraph_deployment_assignment as a;

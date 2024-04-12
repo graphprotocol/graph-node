@@ -1,18 +1,19 @@
 //! Functionality to support the explorer in the hosted service. Everything
 //! in this file is private API and experimental and subject to change at
 //! any time
-use graph::prelude::r;
-use http::{Response, StatusCode};
-use hyper::header::{
+use graph::components::server::query::{ServerResponse, ServerResult};
+use graph::http_body_util::Full;
+use graph::hyper::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
 };
-use hyper::Body;
+use graph::hyper::{Response, StatusCode};
+use graph::prelude::r;
 use std::{sync::Arc, time::Instant};
 
 use graph::{
     components::{
-        server::{index_node::VersionInfo, query::GraphQLServerError},
+        server::{index_node::VersionInfo, query::ServerError},
         store::StatusStore,
     },
     data::subgraph::status,
@@ -47,11 +48,7 @@ where
         }
     }
 
-    pub fn handle(
-        &self,
-        logger: &Logger,
-        req: &[&str],
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    pub fn handle(&self, logger: &Logger, req: &[&str]) -> ServerResult {
         match req {
             ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id),
             ["subgraph-version", version] => self.handle_subgraph_version(version),
@@ -64,10 +61,7 @@ where
         }
     }
 
-    fn handle_subgraph_versions(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_subgraph_versions(&self, subgraph_id: &str) -> ServerResult {
         if let Some(value) = self.versions.get(subgraph_id) {
             return Ok(as_http_response(value.as_ref()));
         }
@@ -84,7 +78,7 @@ where
         Ok(resp)
     }
 
-    fn handle_subgraph_version(&self, version: &str) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_subgraph_version(&self, version: &str) -> ServerResult {
         let vi = self.version_info(version)?;
 
         let latest_ethereum_block_number = vi.latest_ethereum_block_number;
@@ -104,7 +98,7 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_subgraph_repo(&self, version: &str) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_subgraph_repo(&self, version: &str) -> ServerResult {
         let vi = self.version_info(version)?;
 
         let value = object! {
@@ -115,11 +109,7 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_entity_count(
-        &self,
-        logger: &Logger,
-        deployment: &str,
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_entity_count(&self, logger: &Logger, deployment: &str) -> ServerResult {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
         if start.elapsed() > ENV_VARS.explorer_lock_threshold {
@@ -177,7 +167,7 @@ where
         Ok(resp)
     }
 
-    fn version_info(&self, version: &str) -> Result<Arc<VersionInfo>, GraphQLServerError> {
+    fn version_info(&self, version: &str) -> Result<Arc<VersionInfo>, ServerError> {
         match self.version_infos.get(version) {
             Some(vi) => Ok(vi),
             None => {
@@ -188,10 +178,7 @@ where
         }
     }
 
-    fn handle_subgraphs_for_deployment(
-        &self,
-        deployment_hash: &str,
-    ) -> Result<Response<Body>, GraphQLServerError> {
+    fn handle_subgraphs_for_deployment(&self, deployment_hash: &str) -> ServerResult {
         let name_version_pairs: Vec<r::Value> = self
             .store
             .subgraphs_for_deployment_hash(deployment_hash)?
@@ -208,24 +195,24 @@ where
     }
 }
 
-fn handle_not_found() -> Result<Response<Body>, GraphQLServerError> {
+fn handle_not_found() -> ServerResult {
     Ok(Response::builder()
         .status(StatusCode::NOT_FOUND)
         .header(CONTENT_TYPE, "text/plain")
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .body(Body::from("Not found\n"))
+        .body(Full::from("Not found\n"))
         .unwrap())
 }
 
-fn as_http_response(value: &r::Value) -> http::Response<Body> {
-    let status_code = http::StatusCode::OK;
+fn as_http_response(value: &r::Value) -> ServerResponse {
+    let status_code = StatusCode::OK;
     let json = serde_json::to_string(&value).expect("Failed to serialize response to JSON");
-    http::Response::builder()
+    Response::builder()
         .status(status_code)
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
         .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(json))
+        .body(Full::from(json))
         .unwrap()
 }

@@ -4,19 +4,29 @@ use std::{
     time::Duration,
 };
 
+use anyhow::anyhow;
+use diesel::{
+    r2d2::{ConnectionManager, PooledConnection},
+    sql_query, PgConnection, RunQueryDsl,
+};
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
     prelude::{error, info, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
+    slog::o,
 };
 use graph::{constraint_violation, prelude::CheapClone};
 use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 
 use crate::{
-    chain_head_listener::ChainHeadUpdateSender, chain_store::ChainStoreMetrics,
-    connection_pool::ConnectionPool, primary::Mirror as PrimaryMirror, ChainStore,
-    NotificationSender, Shard, PRIMARY_SHARD,
+    chain_head_listener::ChainHeadUpdateSender,
+    chain_store::{ChainStoreMetrics, Storage},
+    connection_pool::ConnectionPool,
+    primary::Mirror as PrimaryMirror,
+    ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
+
+use self::primary::Chain;
 
 #[cfg(debug_assertions)]
 pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
@@ -33,8 +43,9 @@ pub mod primary {
     use std::convert::TryFrom;
 
     use diesel::{
-        delete, insert_into, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
-        RunQueryDsl,
+        delete, insert_into,
+        r2d2::{ConnectionManager, PooledConnection},
+        update, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
     };
     use graph::{
         blockchain::{BlockHash, ChainIdentifier},
@@ -87,11 +98,11 @@ pub mod primary {
         }
     }
 
-    pub fn load_chains(conn: &PgConnection) -> Result<Vec<Chain>, StoreError> {
+    pub fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
         Ok(chains::table.load(conn)?)
     }
 
-    pub fn find_chain(conn: &PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
+    pub fn find_chain(conn: &mut PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
         Ok(chains::table
             .filter(chains::name.eq(name))
             .first(conn)
@@ -99,13 +110,11 @@ pub mod primary {
     }
 
     pub fn add_chain(
-        pool: &ConnectionPool,
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
         name: &str,
         ident: &ChainIdentifier,
         shard: &Shard,
     ) -> Result<Chain, StoreError> {
-        let conn = pool.get()?;
-
         // For tests, we want to have a chain that still uses the
         // shared `ethereum_blocks` table
         #[cfg(debug_assertions)]
@@ -119,9 +128,9 @@ pub mod primary {
                     chains::shard.eq(shard.as_str()),
                 ))
                 .returning(chains::namespace)
-                .get_result::<Storage>(&conn)
+                .get_result::<Storage>(conn)
                 .map_err(StoreError::from)?;
-            return Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?);
+            return Ok(chains::table.filter(chains::name.eq(name)).first(conn)?);
         }
 
         insert_into(chains::table)
@@ -132,15 +141,27 @@ pub mod primary {
                 chains::shard.eq(shard.as_str()),
             ))
             .returning(chains::namespace)
-            .get_result::<Storage>(&conn)
+            .get_result::<Storage>(conn)
             .map_err(StoreError::from)?;
-        Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?)
+        Ok(chains::table.filter(chains::name.eq(name)).first(conn)?)
     }
 
     pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
-        delete(chains::table.filter(chains::name.eq(name))).execute(&conn)?;
+        delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
+        Ok(())
+    }
+
+    // update chain name where chain name is 'name'
+    pub fn update_chain_name(
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        name: &str,
+        new_name: &str,
+    ) -> Result<(), StoreError> {
+        update(chains::table.filter(chains::name.eq(name)))
+            .set(chains::name.eq(new_name))
+            .execute(conn)?;
         Ok(())
     }
 }
@@ -281,12 +302,8 @@ impl BlockStore {
                     block_store.add_chain_store(chain, status, false)?;
                 }
                 None => {
-                    let chain = primary::add_chain(
-                        block_store.mirror.primary(),
-                        &chain_name,
-                        &ident,
-                        &shard,
-                    )?;
+                    let mut conn = block_store.mirror.primary().get()?;
+                    let chain = primary::add_chain(&mut conn, &chain_name, &ident, &shard)?;
                     block_store.add_chain_store(&chain, ChainStatus::Ingestible, true)?;
                 }
             };
@@ -318,7 +335,42 @@ impl BlockStore {
             .expect("the primary is never disabled")
     }
 
-    fn add_chain_store(
+    pub fn allocate_chain(
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        name: &String,
+        shard: &Shard,
+        ident: &ChainIdentifier,
+    ) -> Result<Chain, StoreError> {
+        #[derive(QueryableByName, Debug)]
+        struct ChainIdSeq {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            last_value: i64,
+        }
+
+        // Fetch the current last_value from the sequence
+        let result =
+            sql_query("SELECT last_value FROM chains_id_seq").get_result::<ChainIdSeq>(conn)?;
+
+        let last_val = result.last_value;
+
+        let next_val = last_val + 1;
+        let namespace = format!("chain{}", next_val);
+        let storage =
+            Storage::new(namespace.to_string()).map_err(|e| StoreError::Unknown(anyhow!(e)))?;
+
+        let chain = Chain {
+            id: next_val as i32,
+            name: name.clone(),
+            shard: shard.clone(),
+            net_version: ident.net_version.clone(),
+            genesis_block: ident.genesis_block_hash.hash_hex(),
+            storage: storage.clone(),
+        };
+
+        Ok(chain)
+    }
+
+    pub fn add_chain_store(
         &self,
         chain: &primary::Chain,
         status: ChainStatus,
@@ -335,7 +387,9 @@ impl BlockStore {
             self.sender.clone(),
         );
         let ident = chain.network_identifier()?;
+        let logger = self.logger.new(o!("network" => chain.name.clone()));
         let store = ChainStore::new(
+            logger,
             chain.name.clone(),
             chain.storage.clone(),
             &ident,
@@ -365,12 +419,12 @@ impl BlockStore {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
                 Some(cached) => cached,
                 None => {
-                    let conn = match pool.get() {
+                    let mut conn = match pool.get() {
                         Ok(conn) => conn,
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
                     };
-                    let heads = Arc::new(ChainStore::chain_head_pointers(&conn)?);
+                    let heads = Arc::new(ChainStore::chain_head_pointers(&mut conn)?);
                     self.chain_head_cache.set(shard.to_string(), heads.clone());
                     heads
                 }
@@ -489,13 +543,13 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let connection = primary_pool.get()?;
-        let version: i64 = dbv::table.select(dbv::version).get_result(&connection)?;
+        let mut conn = primary_pool.get()?;
+        let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
         if version < 3 {
             self.truncate_block_caches()?;
             diesel::update(dbv::table)
                 .set(dbv::version.eq(3))
-                .execute(&connection)?;
+                .execute(&mut conn)?;
         };
         Ok(())
     }

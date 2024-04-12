@@ -1,11 +1,15 @@
+use chrono::{DateTime, TimeZone};
+
 use crate::{
     data::value::Word,
     prelude::{q, BigDecimal, BigInt, Value},
-    schema::{EntityKey, EntityType},
+    schema::EntityType,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     mem,
+    sync::Arc,
+    time::Duration,
 };
 
 /// Estimate of how much memory a value consumes.
@@ -21,6 +25,54 @@ pub trait CacheWeight {
     fn indirect_weight(&self) -> usize;
 }
 
+impl CacheWeight for () {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for u8 {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for i32 {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for i64 {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for f64 {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for bool {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for Duration {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl<T1: CacheWeight, T2: CacheWeight> CacheWeight for (T1, T2) {
+    fn indirect_weight(&self) -> usize {
+        self.0.indirect_weight() + self.1.indirect_weight()
+    }
+}
+
 impl<T: CacheWeight> CacheWeight for Option<T> {
     fn indirect_weight(&self) -> usize {
         match self {
@@ -30,10 +82,23 @@ impl<T: CacheWeight> CacheWeight for Option<T> {
     }
 }
 
+impl<T: CacheWeight> CacheWeight for Arc<T> {
+    fn indirect_weight(&self) -> usize {
+        (**self).indirect_weight()
+    }
+}
+
 impl<T: CacheWeight> CacheWeight for Vec<T> {
     fn indirect_weight(&self) -> usize {
         self.iter().map(CacheWeight::indirect_weight).sum::<usize>()
             + self.capacity() * mem::size_of::<T>()
+    }
+}
+
+impl<T: CacheWeight> CacheWeight for Box<[T]> {
+    fn indirect_weight(&self) -> usize {
+        self.iter().map(CacheWeight::indirect_weight).sum::<usize>()
+            + self.len() * mem::size_of::<T>()
     }
 }
 
@@ -79,9 +144,9 @@ impl CacheWeight for BigInt {
     }
 }
 
-impl CacheWeight for crate::data::store::scalar::Bytes {
+impl<TZ: TimeZone> CacheWeight for DateTime<TZ> {
     fn indirect_weight(&self) -> usize {
-        self.as_slice().len()
+        0
     }
 }
 
@@ -93,7 +158,9 @@ impl CacheWeight for Value {
             Value::List(values) => values.indirect_weight(),
             Value::Bytes(bytes) => bytes.indirect_weight(),
             Value::BigInt(n) => n.indirect_weight(),
-            Value::Int8(_) | Value::Int(_) | Value::Bool(_) | Value::Null => 0,
+            Value::Timestamp(_) | Value::Int8(_) | Value::Int(_) | Value::Bool(_) | Value::Null => {
+                0
+            }
         }
     }
 }
@@ -121,12 +188,6 @@ impl CacheWeight for EntityType {
     }
 }
 
-impl CacheWeight for EntityKey {
-    fn indirect_weight(&self) -> usize {
-        self.entity_id.indirect_weight() + self.entity_type.indirect_weight()
-    }
-}
-
 impl CacheWeight for [u8; 32] {
     fn indirect_weight(&self) -> usize {
         0
@@ -147,6 +208,48 @@ fn big_decimal_cache_weight() {
     // 22.4548 has 18 bits as binary, so 3 bytes.
     let n = BigDecimal::from_str("22.454800000000").unwrap();
     assert_eq!(n.indirect_weight(), 3);
+}
+
+#[test]
+fn derive_cache_weight() {
+    use crate::derive::CacheWeight;
+
+    #[derive(CacheWeight)]
+    struct Struct {
+        a: i32,
+        b: String,
+        c: Option<i32>,
+    }
+
+    #[derive(CacheWeight)]
+    enum Enum {
+        A(i32),
+        B(String),
+        C,
+        D(Vec<String>),
+    }
+
+    let s = Struct {
+        a: 42,
+        b: "hello".to_string(),
+        c: Some(42),
+    };
+    assert_eq!(s.weight(), 40 + 5);
+    let s = Struct {
+        a: 42,
+        b: String::new(),
+        c: None,
+    };
+    assert_eq!(s.weight(), 40);
+
+    let e = Enum::A(42);
+    assert_eq!(e.weight(), 32);
+    let e = Enum::B("hello".to_string());
+    assert_eq!(e.weight(), 32 + 5);
+    let e = Enum::C;
+    assert_eq!(e.weight(), 32);
+    let e = Enum::D(vec!["hello".to_string(), "world".to_string()]);
+    assert_eq!(e.weight(), 32 + 2 * (24 + 5));
 }
 
 /// Helpers to estimate the size of a `BTreeMap`. Everything in this module,

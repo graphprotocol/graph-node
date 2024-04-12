@@ -1,7 +1,10 @@
-use super::block_stream::{BlockStreamMapper, SUBSTREAMS_BUFFER_STREAM_SIZE};
+use super::block_stream::{
+    BlockStreamError, BlockStreamMapper, FirehoseCursor, SUBSTREAMS_BUFFER_STREAM_SIZE,
+};
 use super::client::ChainClient;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
+use crate::firehose::ConnectionHeaders;
 use crate::prelude::*;
 use crate::substreams::Modules;
 use crate::substreams_rpc::{ModulesProgress, Request, Response};
@@ -12,7 +15,7 @@ use humantime::format_duration;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tonic::Status;
+use tonic::{Code, Status};
 
 struct SubstreamsBlockStreamMetrics {
     deployment: DeploymentHash,
@@ -100,7 +103,7 @@ impl SubstreamsBlockStreamMetrics {
 pub struct SubstreamsBlockStream<C: Blockchain> {
     //fixme: not sure if this is ok to be set as public, maybe
     // we do not want to expose the stream to the caller
-    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
+    stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>> + Send>>,
 }
 
 impl<C> SubstreamsBlockStream<C>
@@ -111,7 +114,7 @@ where
         deployment: DeploymentHash,
         client: Arc<ChainClient<C>>,
         subgraph_current_block: Option<BlockPtr>,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
         mapper: Arc<F>,
         modules: Option<Modules>,
         module_name: String,
@@ -149,7 +152,7 @@ where
 
 fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
     client: Arc<ChainClient<C>>,
-    cursor: Option<String>,
+    cursor: FirehoseCursor,
     deployment: DeploymentHash,
     mapper: Arc<F>,
     modules: Option<Modules>,
@@ -159,8 +162,8 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
     subgraph_current_block: Option<BlockPtr>,
     logger: Logger,
     metrics: SubstreamsBlockStreamMetrics,
-) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
-    let mut latest_cursor = cursor.unwrap_or_default();
+) -> impl Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>> {
+    let mut latest_cursor = cursor.to_string();
 
     let start_block_num = subgraph_current_block
         .as_ref()
@@ -171,6 +174,8 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
         .unwrap_or(manifest_start_block_num as i64);
 
     let stop_block_num = manifest_end_block_num as u64;
+
+    let headers = ConnectionHeaders::new().with_deployment(deployment.clone());
 
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
@@ -186,23 +191,13 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
             let mut logger = logger.new(o!("deployment" => deployment.clone(), "provider" => endpoint.provider.to_string()));
 
         loop {
-            info!(
-                &logger,
-                "Blockstreams disconnected, connecting";
-                "endpoint_uri" => format_args!("{}", endpoint),
-                "subgraph" => &deployment,
-                "start_block" => start_block_num,
-                "cursor" => &latest_cursor,
-                "provider_err_count" => endpoint.current_error_count(),
-            );
-
             // We just reconnected, assume that we want to back off on errors
             skip_backoff = false;
 
             let mut connect_start = Instant::now();
             let request = Request {
                 start_block_num,
-                start_cursor: latest_cursor.clone(),
+                start_cursor: latest_cursor.to_string(),
                 stop_block_num,
                 modules: modules.clone(),
                 output_module: module_name.clone(),
@@ -211,7 +206,7 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
             };
 
 
-            let result = endpoint.clone().substreams(request).await;
+            let result = endpoint.clone().substreams(request, &headers).await;
 
             match result {
                 Ok(stream) => {
@@ -245,7 +240,14 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
                                     }
                                 }
                             },
+                            Err(BlockStreamError::SubstreamsError(e)) if e.is_deterministic()  =>
+                                Err(BlockStreamError::Fatal(e.to_string()))?,
+
+                            Err(BlockStreamError::Fatal(msg)) =>
+                                Err(BlockStreamError::Fatal(msg))?,
+
                             Err(err) => {
+
                                 info!(&logger, "received err");
                                 // We have an open connection but there was an error processing the Firehose
                                 // response. We will reconnect the stream after this; this is the case where
@@ -294,22 +296,31 @@ async fn process_substreams_response<C: Blockchain, F: BlockStreamMapper<C>>(
     mapper: &F,
     logger: &mut Logger,
     log_data: &mut SubstreamsLogData,
-) -> Result<Option<BlockResponse<C>>, Error> {
+) -> Result<Option<BlockResponse<C>>, BlockStreamError> {
     let response = match result {
         Ok(v) => v,
-        Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:#}", e)),
+        Err(e) => {
+            if e.code() == Code::InvalidArgument {
+                return Err(BlockStreamError::Fatal(e.message().to_string()));
+            }
+
+            return Err(BlockStreamError::from(anyhow!(
+                "An error occurred while streaming blocks: {:#}",
+                e
+            )));
+        }
     };
 
     match mapper
         .to_block_stream_event(logger, response.message, log_data)
         .await
-        .context("Mapping message to BlockStreamEvent failed")?
+        .map_err(BlockStreamError::from)?
     {
         Some(event) => {
             let cursor = match &event {
                 BlockStreamEvent::Revert(_, cursor) => cursor,
                 BlockStreamEvent::ProcessBlock(_, cursor) => cursor,
-                BlockStreamEvent::ProcessWasmBlock(_, _, _, cursor) => cursor,
+                BlockStreamEvent::ProcessWasmBlock(_, _, _, _, cursor) => cursor,
             }
             .to_string();
 
@@ -320,7 +331,7 @@ async fn process_substreams_response<C: Blockchain, F: BlockStreamMapper<C>>(
 }
 
 impl<C: Blockchain> Stream for SubstreamsBlockStream<C> {
-    type Item = Result<BlockStreamEvent<C>, Error>;
+    type Item = Result<BlockStreamEvent<C>, BlockStreamError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.stream.poll_next_unpin(cx)

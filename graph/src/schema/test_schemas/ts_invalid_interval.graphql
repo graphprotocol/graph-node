@@ -1,0 +1,20 @@
+# fail: AggregationInvalidInterval
+type Token @entity {
+  id: Bytes!
+  stats: Stats!
+}
+
+type Data @entity(timeseries: true) {
+  id: Int8!
+  timestamp: Timestamp!
+  token: Token!
+  price: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["fortnight"], source: "Data") {
+  id: Int8!
+  timestamp: Timestamp!
+  token: Token!
+  max: BigDecimal! @aggregate(fn: "max", arg: "price")
+  sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
+}

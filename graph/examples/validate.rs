@@ -32,6 +32,7 @@ use clap::Parser;
 use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::graphql::DirectiveExt;
 use graph::data::graphql::DocumentExt;
+use graph::data::subgraph::SPEC_VERSION_1_1_0;
 use graph::prelude::s;
 use graph::prelude::DeploymentHash;
 use graph::schema::InputSchema;
@@ -105,7 +106,7 @@ fn parse(raw: &str, name: &str, api: bool) {
         &format!("Failed to parse schema sgd{}", name),
     );
     let id = subgraph_id(&schema);
-    let input_schema = match InputSchema::parse(raw, id.clone()) {
+    let input_schema = match InputSchema::parse(&SPEC_VERSION_1_1_0, raw, id.clone()) {
         Ok(schema) => schema,
         Err(e) => {
             println!("InputSchema: {}[{}]: {}", name, id, e);

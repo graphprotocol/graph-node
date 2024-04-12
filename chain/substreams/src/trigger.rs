@@ -8,8 +8,8 @@ use graph::{
     components::{
         store::{DeploymentLocator, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
+        trigger_processor::HostedTrigger,
     },
-    data_source,
     prelude::{
         anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
@@ -194,19 +194,18 @@ impl<T> graph::prelude::TriggerProcessor<Chain, T> for TriggerProcessor
 where
     T: RuntimeHostBuilder<Chain>,
 {
-    async fn process_trigger(
-        &self,
+    async fn process_trigger<'a>(
+        &'a self,
         logger: &Logger,
-        _: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
+        _: Vec<HostedTrigger<'a, Chain>>,
         block: &Arc<Block>,
-        _trigger: &data_source::TriggerData<Chain>,
-        mut state: BlockState<Chain>,
+        mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         _debug_fork: &Option<Arc<dyn SubgraphFork>>,
         _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
         _instrument: bool,
-    ) -> Result<BlockState<Chain>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         for parsed_change in block.parsed_changes.clone().into_iter() {
             match parsed_change {
                 ParsedChanges::Unset => {
@@ -218,7 +217,7 @@ where
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::SetEntity {
-                            entity_type: key.entity_type.as_str(),
+                            entity_type: key.entity_type.typename(),
                             id: &key.entity_id.to_string(),
                             data: &entity,
                         },
@@ -236,7 +235,7 @@ where
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::RemoveEntity {
-                            entity_type: entity_type.as_str(),
+                            entity_type: entity_type.typename(),
                             id: &id.to_string(),
                         },
                         causality_region,

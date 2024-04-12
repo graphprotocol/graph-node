@@ -6,4 +6,4 @@ edition.workspace = true
 [dependencies]
 graph = { path = "../../graph" }
 jsonrpsee = { version = "0.15.1", features = ["http-server"] }
-serde = "1.0"
+serde = { workspace = true }

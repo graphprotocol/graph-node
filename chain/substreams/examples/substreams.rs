@@ -1,5 +1,5 @@
 use anyhow::{format_err, Context, Error};
-use graph::blockchain::block_stream::BlockStreamEvent;
+use graph::blockchain::block_stream::{BlockStreamEvent, FirehoseCursor};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::endpoint::EndpointMetrics;
@@ -52,6 +52,7 @@ async fn main() -> Result<(), Error> {
         "substreams",
         &endpoint,
         token,
+        None,
         false,
         false,
         SubgraphLimit::Unlimited,
@@ -67,7 +68,7 @@ async fn main() -> Result<(), Error> {
             DeploymentHash::new("substreams".to_string()).unwrap(),
             client,
             None,
-            None,
+            FirehoseCursor::None,
             Arc::new(Mapper {
                 schema: None,
                 skip_empty_blocks: false,
@@ -88,7 +89,7 @@ async fn main() -> Result<(), Error> {
             Some(event) => match event {
                 Err(_) => {}
                 Ok(block_stream_event) => match block_stream_event {
-                    BlockStreamEvent::ProcessWasmBlock(_, _, _, _) => {
+                    BlockStreamEvent::ProcessWasmBlock(_, _, _, _, _) => {
                         unreachable!("Cannot happen with this mapper")
                     }
                     BlockStreamEvent::Revert(_, _) => {}

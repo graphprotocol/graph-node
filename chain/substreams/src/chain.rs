@@ -3,7 +3,8 @@ use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersA
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter,
+    BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopDecoderHook,
+    NoopRuntimeAdapter,
 };
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
@@ -56,6 +57,10 @@ impl blockchain::Block for Block {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         None
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        BlockTime::NONE
     }
 }
 
@@ -116,6 +121,8 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    type DecoderHook = NoopDecoderHook;
+
     fn triggers_adapter(
         &self,
         _log: &DeploymentLocator,
@@ -174,8 +181,8 @@ impl Blockchain for Chain {
             number,
         })
     }
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(NoopRuntimeAdapter::default())
+    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
+        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {

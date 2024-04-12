@@ -1,0 +1,12 @@
+# fail @ 0.0.9: AggregationsNotSupported
+type Data @entity(timeseries: true) {
+  id: Bytes!
+  timestamp: Timestamp!
+  price: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+  id: Bytes!
+  timestamp: Timestamp!
+  sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
+}
