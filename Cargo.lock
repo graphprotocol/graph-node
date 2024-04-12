@@ -1690,6 +1690,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-fuel"
+version = "0.34.0"
+dependencies = [
+ "anyhow",
+ "graph",
+ "graph-chain-common",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "hex",
+ "prost",
+ "prost-types",
+ "semver",
+ "serde",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-chain-near"
 version = "0.34.0"
 dependencies = [
@@ -1753,6 +1770,7 @@ dependencies = [
  "graph-chain-arweave",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
+ "graph-chain-fuel",
  "graph-chain-near",
  "graph-chain-starknet",
  "graph-chain-substreams",
@@ -1793,6 +1811,7 @@ dependencies = [
  "graph-chain-arweave",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
+ "graph-chain-fuel",
  "graph-chain-near",
  "graph-chain-starknet",
  "graph-chain-substreams",
@@ -1879,6 +1898,7 @@ dependencies = [
  "graph-chain-arweave",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
+ "graph-chain-fuel",
  "graph-chain-near",
  "graph-chain-starknet",
  "graph-chain-substreams",

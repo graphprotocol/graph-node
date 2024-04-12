@@ -18,6 +18,7 @@ graph-chain-near = { path = "../chain/near" }
 graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-chain-substreams = { path = "../chain/substreams" }
 graph-chain-starknet = { path = "../chain/starknet" }
+graph-chain-fuel = { path = "../chain/fuel" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 serde_yaml = { workspace = true }
 # Switch to crates.io once tower 0.5 is released

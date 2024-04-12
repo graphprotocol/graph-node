@@ -26,6 +26,7 @@ use graph::url::Url;
 use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};
 use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
 use graph_chain_ethereum as ethereum;
+use graph_chain_fuel::{self as fuel, Block as FuelBlock};
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_starknet::{self as starknet, Block as StarknetBlock};
 use graph_chain_substreams as substreams;
@@ -384,6 +385,15 @@ async fn main() {
         .await
         .unwrap();
 
+        let (fuel_networks, fuel_idents) = connect_firehose_networks::<FuelBlock>(
+            &logger,
+            firehose_networks_by_kind
+                .remove(&BlockchainKind::Fuel)
+                .unwrap_or_else(FirehoseNetworks::new),
+        )
+        .await
+        .unwrap();
+
         let substream_idents = substreams_networks
             .networks
             .keys()
@@ -409,6 +419,7 @@ async fn main() {
         network_identifiers.extend(cosmos_idents);
         network_identifiers.extend(substream_idents);
         network_identifiers.extend(starknet_idents);
+        network_identifiers.extend(fuel_idents);
 
         let network_store = store_builder.network_store(network_identifiers);
 
@@ -500,6 +511,17 @@ async fn main() {
             metrics_registry.clone(),
         );
 
+        let fuel_chains = networks_as_chains::<fuel::Chain>(
+            &env_vars,
+            &mut blockchain_map,
+            &logger,
+            &fuel_networks,
+            substreams_networks_by_kind.get(&BlockchainKind::Fuel),
+            network_store.as_ref(),
+            &logger_factory,
+            metrics_registry.clone(),
+        );
+
         let blockchain_map = Arc::new(blockchain_map);
 
         let shards: Vec<_> = config.stores.keys().cloned().collect();
@@ -538,7 +560,8 @@ async fn main() {
                 near_chains,
                 cosmos_chains,
                 substreams_chains,
-                starknet_chains
+                starknet_chains,
+                fuel_chains
             );
 
             ingestors.into_iter().for_each(|ingestor| {

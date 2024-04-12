@@ -1,0 +1,289 @@
+syntax = "proto3";
+
+package sf.fuel.type.v1;
+
+option go_package = "github.com/FuelLabs/firehose-fuel/pb/sf/fuel/type/v1;pbfuel";
+
+message Block {
+  bytes id = 1;
+  uint32 height = 2;
+  uint64 da_height = 3;
+  uint64 msg_receipt_count = 4;
+  bytes tx_root = 5;
+  bytes msg_receipt_root = 6;
+  bytes prev_id = 7;
+  bytes prev_root = 8;
+  fixed64 timestamp = 9;
+  bytes application_hash = 10;
+  repeated Transaction transactions = 11;
+}
+
+message Transaction {
+  bytes id = 1;
+  repeated Receipt receipts = 2;
+  oneof kind {
+    Script script = 3;
+    Create create = 4;
+    Mint mint = 5;
+  }
+}
+
+message Script {
+  uint64 script_gas_limit = 1;
+  bytes script = 2;
+  bytes script_data = 3;
+  Policies policies = 4;
+  repeated Input inputs = 5;
+  repeated Output outputs = 6;
+  repeated bytes witnesses = 7;
+  bytes receipts_root = 8;
+}
+
+message Create {
+  uint64 bytecode_length = 1;
+  uint32 bytecode_witness_index = 2;
+  Policies policies = 3;
+  repeated StorageSlot storage_slots = 4;
+  repeated Input inputs = 5;
+  repeated Output outputs = 6;
+  repeated bytes witnesses = 7;
+  bytes salt = 8;
+}
+
+message Mint {
+  TxPointer tx_pointer = 1;
+  InputContract input_contract = 2;
+  OutputContract output_contract = 3;
+  uint64 mint_amount = 4;
+  bytes mint_asset_id = 5;
+}
+
+message Input {
+  oneof kind {
+    Coin coin_signed = 1;
+    Coin coin_predicate = 2;
+    InputContract contract = 3;
+    Message message_coin_signed = 4;
+    Message message_coin_predicate = 5;
+    Message message_data_signed = 6;
+    Message message_data_predicate = 7;
+  }
+}
+
+message Coin {
+  UtxoId utxo_id = 1;
+  bytes owner = 2;
+  uint64 amount = 3;
+  bytes asset_id = 4;
+  TxPointer tx_pointer = 5;
+  uint32 witness_index = 6;
+  uint32 maturity = 7;
+  uint64 predicate_gas_used = 8;
+  bytes predicate = 9;
+  bytes predicate_data = 10;
+}
+
+message Message {
+  bytes sender = 1;
+  bytes recipient = 2;
+  uint64 amount = 3;
+  bytes nonce = 4;
+  uint32 witness_index = 5;
+  uint64 predicate_gas_used = 6;
+  bytes data = 7;
+  bytes predicate = 8;
+  bytes predicate_data = 9;
+}
+
+message Output {
+  oneof kind {
+    OutputCoin coin = 1;
+    OutputContract contract = 2;
+    OutputCoin change = 3;
+    OutputCoin variable = 4;
+    OutputContractCreated contract_created = 5;
+  }
+}
+
+message OutputCoin {
+  bytes to = 1;
+  uint64 amount = 2;
+  bytes asset_id = 3;
+}
+
+message OutputContractCreated {
+  bytes contract_id = 1;
+  bytes state_root = 2;
+}
+
+message InputContract {
+  UtxoId utxo_id = 1;
+  bytes balance_root = 2;
+  bytes state_root = 3;
+  TxPointer tx_pointer = 4;
+  bytes contract_id = 5;
+}
+
+message OutputContract {
+  uint32 input_index = 1;
+  bytes balance_root = 2;
+  bytes state_root = 3;
+}
+
+message StorageSlot {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message UtxoId {
+  bytes tx_id = 1;
+  uint32 output_index = 2;
+}
+
+message TxPointer {
+  uint32 block_height = 1;
+  uint32 tx_index = 2;
+}
+
+message Policies {
+  repeated uint64 values = 1;
+}
+
+message PanicInstruction {
+  uint32 reason = 1;
+  uint32 raw_instruction = 2;
+}
+
+message Receipt {
+  oneof kind {
+    CallReceipt call = 1;
+    ReturnReceipt return_value = 2;
+    ReturnDataReceipt return_data = 3;
+    PanicReceipt  panic  = 4;
+    RevertReceipt revert = 5;
+    LogReceipt log = 6;
+    LogDataReceipt log_data = 7;
+    TransferReceipt transfer = 8;
+    TransferOutReceipt transfer_out = 9;
+    ScriptResultReceipt script_result = 10;
+    MessageOutReceipt message_out = 11;
+    MintReceipt mint = 12;
+    BurnReceipt burn = 13;
+  }
+}
+
+message CallReceipt {
+  bytes id = 1;
+  bytes to = 2;
+  uint64 amount = 3;
+  bytes asset_id = 4;
+  uint64 gas = 5;
+  uint64 param1 = 6;
+  uint64 param2 = 7;
+  uint64 pc = 8;
+  uint64 is = 9;
+}
+
+message ReturnReceipt {
+  bytes id = 1;
+  uint64 val = 2;
+  uint64 pc = 3;
+  uint64 is = 4;
+}
+
+message ReturnDataReceipt {
+  bytes id = 1;
+  uint64 ptr = 2;
+  uint64 len = 3;
+  bytes digest = 4;
+  uint64 pc = 5;
+  uint64 is = 6;
+  bytes data = 7;
+}
+
+message PanicReceipt {
+  bytes id = 1;
+  PanicInstruction reason = 2;
+  uint64 pc = 3;
+  uint64 is = 4;
+  bytes contract_id = 5;
+}
+
+message RevertReceipt {
+  bytes id = 1;
+  uint64 ra = 2;
+  uint64 pc = 3;
+  uint64 is = 4;
+}
+
+message LogReceipt {
+  bytes id = 1;
+  uint64 ra = 2;
+  uint64 rb = 3;
+  uint64 rc = 4;
+  uint64 rd = 5;
+  uint64 pc = 6;
+  uint64 is = 7;
+}
+
+message LogDataReceipt {
+  bytes id = 1;
+  uint64 ra = 2;
+  uint64 rb = 3;
+  uint64 ptr = 4;
+  uint64 len = 5;
+  bytes digest = 6;
+  uint64 pc = 7;
+  uint64 is = 8;
+  bytes data = 9;
+}
+
+message TransferReceipt {
+  bytes id = 1;
+  bytes to = 2;
+  uint64 amount = 3;
+  bytes asset_id = 4;
+  uint64 pc = 5;
+  uint64 is = 6;
+}
+
+message TransferOutReceipt {
+  bytes id = 1;
+  bytes to = 2;
+  uint64 amount = 3;
+  bytes asset_id = 4;
+  uint64 pc = 5;
+  uint64 is = 6;
+}
+
+message ScriptResultReceipt {
+  // Values: Success = 0, Revert = 1, Panic = 2, others allowed
+  uint64 result = 1;
+  uint64 gas_used = 2;
+}
+
+message MessageOutReceipt {
+  bytes sender = 1;
+  bytes recipient = 2;
+  uint64 amount = 3;
+  bytes nonce = 4;
+  uint64 len = 5;
+  bytes digest = 6;
+  bytes data = 7;
+}
+
+message MintReceipt {
+  bytes sub_id = 1;
+  bytes contract_id = 2;
+  uint64 val = 3;
+  uint64 pc = 4;
+  uint64 is = 5;
+}
+
+message BurnReceipt {
+  bytes sub_id = 1;
+  bytes contract_id = 2;
+  uint64 val = 3;
+  uint64 pc = 4;
+  uint64 is = 5;
+}
