@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::quote;
-use syn::{self, parse_macro_input, AttributeArgs, ItemStruct, Meta, NestedMeta, Path};
+use syn::{self, parse_macro_input, ItemStruct};
 
 pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(input as ItemStruct);
@@ -19,19 +19,17 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         name.to_string()
     };
 
-    let args = parse_macro_input!(metadata as AttributeArgs);
-
-    let args = args
-        .iter()
-        .filter_map(|a| {
-            if let NestedMeta::Meta(Meta::Path(Path { segments, .. })) = a {
-                if let Some(p) = segments.last() {
-                    return Some(p.ident.to_string());
-                }
+    let args = {
+        let mut args = Vec::new();
+        let parser = syn::meta::parser(|meta| {
+            if let Some(ident) = meta.path.get_ident() {
+                args.push(ident.to_string());
             }
-            None
-        })
-        .collect::<Vec<String>>();
+            Ok(())
+        });
+        parse_macro_input!(metadata with parser);
+        args
+    };
 
     assert!(
         !args.is_empty(),
