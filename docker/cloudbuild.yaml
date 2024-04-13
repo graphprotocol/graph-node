@@ -4,8 +4,6 @@ timeout: 1800s
 steps:
 - name: 'docker'
   args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
-- name: 'docker'
-  args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64', '-t', 'REGISTRY/IMAGE:TAG', '--push', '.']
 - name: 'gcr.io/cloud-builders/docker'
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node-build',
