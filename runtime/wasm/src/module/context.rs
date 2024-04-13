@@ -512,7 +512,7 @@ impl WasmInstanceContext<'_> {
         asc_new(self, &result, gas)
     }
 
-    fn download_url(&mut self, gas: &GasCounter, url: String) -> Result<Vec<u8>, HostExportError> {
+    fn download_url(&mut self, _gas: &GasCounter, url: String) -> Result<Vec<u8>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let logger = self.as_ref().ctx.logger.cheap_clone();
         host_exports.download_url(&logger, url).map_err(Into::into)
@@ -522,7 +522,7 @@ impl WasmInstanceContext<'_> {
         &mut self,
         gas: &GasCounter,
         key_ptr: AscPtr<Uint8Array>,
-        value_ptr: AscPtr<Uint8Array>,
+        _value_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
         if let Some(data) = erc725::decode_key(key) {
