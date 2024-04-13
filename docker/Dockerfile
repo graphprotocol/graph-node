@@ -25,7 +25,7 @@ ADD . /graph-node
 RUN apt-get update \
     && apt-get install -y cmake protobuf-compiler && \
     cd /graph-node && \
-    RUSTFLAGS="-g" cargo build --release --package graph-node \
+    RUSTFLAGS="-g" cargo build -j1 --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
     # Reduce the size of the layer by removing unnecessary files.

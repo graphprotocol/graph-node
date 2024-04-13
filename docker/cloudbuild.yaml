@@ -4,7 +4,7 @@ timeout: 3600s
 steps:
 - name: 'docker'
   args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
-- name: 'gcr.io/cloud-builders/docker'
+- name: 'docker'
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node-build',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
@@ -14,7 +14,7 @@ steps:
          '-t', 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA',
          '--push',
          '-f', 'docker/Dockerfile', '.']
-- name: 'gcr.io/cloud-builders/docker'
+- name: 'docker'
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
@@ -24,7 +24,7 @@ steps:
          '-t', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
          '--push',
          '-f', 'docker/Dockerfile', '.']
-- name: 'gcr.io/cloud-builders/docker'
+- name: 'docker'
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node-debug',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
