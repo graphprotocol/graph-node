@@ -1,0 +1,9 @@
+[
+  {
+    "name": "SupportedStandards:LSP4DigitalCertificate",
+    "key": "0xeafec4d89fa9619884b6b89135626455000000000000000000000000abf0613c",
+    "keyType": "Mapping",
+    "valueContent": "0xabf0613c",
+    "valueType": "bytes"
+  }
+]

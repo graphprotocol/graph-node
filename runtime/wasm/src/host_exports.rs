@@ -490,7 +490,10 @@ impl HostExports {
         logger: &Logger,
         url: String,
     ) -> Result<Vec<u8>, anyhow::Error> {
-        self.ipfs_cat(&logger, url)
+        if url.starts_with("ipfs://") {
+            return self.ipfs_cat(&logger, url.replace("ipfs://", ""));
+        }
+        Err(anyhow!("Unable to download {:?}", url))
     }
 
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {

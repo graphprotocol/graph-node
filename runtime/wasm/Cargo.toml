@@ -21,3 +21,4 @@ wasm-instrument = { version = "0.2.0", features = ["std", "sign_ext"] }
 # AssemblyScript uses sign extensions
 parity-wasm = { version = "0.45", features = ["std", "sign_ext"] }
 byteorder = "1.5.0"
+json = "0.12.4"

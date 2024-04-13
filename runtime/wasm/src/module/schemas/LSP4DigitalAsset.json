@@ -1,0 +1,51 @@
+[
+  {
+    "name": "SupportedStandards:LSP4DigitalAsset",
+    "key": "0xeafec4d89fa9619884b60000a4d96624a38f7ac2d8d9a604ecf07c12c77e480c",
+    "keyType": "Mapping",
+    "valueType": "bytes4",
+    "valueContent": "0xa4d96624"
+  },
+  {
+    "name": "LSP4TokenName",
+    "key": "0xdeba1e292f8ba88238e10ab3c7f88bd4be4fac56cad5194b6ecceaf653468af1",
+    "keyType": "Singleton",
+    "valueType": "string",
+    "valueContent": "String"
+  },
+  {
+    "name": "LSP4TokenSymbol",
+    "key": "0x2f0a68ab07768e01943a599e73362a0e17a63a72e94dd2e384d2c1d4db932756",
+    "keyType": "Singleton",
+    "valueType": "string",
+    "valueContent": "String"
+  },
+  {
+    "name": "LSP4TokenType",
+    "key": "0xe0261fa95db2eb3b5439bd033cda66d56b96f92f243a8228fd87550ed7bdfdb3",
+    "keyType": "Singleton",
+    "valueType": "uint256",
+    "valueContent": "Number"
+  },
+  {
+    "name": "LSP4Metadata",
+    "key": "0x9afb95cacc9f95858ec44aa8c3b685511002e30ae54415823f406128b85b238e",
+    "keyType": "Singleton",
+    "valueType": "bytes",
+    "valueContent": "VerifiableURI"
+  },
+  {
+    "name": "LSP4Creators[]",
+    "key": "0x114bd03b3a46d48759680d81ebb2b414fda7d030a7105a851867accf1c2352e7",
+    "keyType": "Array",
+    "valueType": "address",
+    "valueContent": "Address"
+  },
+  {
+    "name": "LSP4CreatorsMap:<address>",
+    "key": "0x6de85eaf5d982b4e5da00000<address>",
+    "keyType": "Mapping",
+    "valueType": "(bytes4,uint128)",
+    "valueContent": "(Bytes4,Number)"
+  }
+]

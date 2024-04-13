@@ -1,0 +1,16 @@
+[
+  {
+    "name": "LSP12IssuedAssets[]",
+    "key": "0x7c8c3416d6cda87cd42c71ea1843df28ac4850354f988d55ee2eaa47b6dc05cd",
+    "keyType": "Array",
+    "valueType": "address",
+    "valueContent": "Address"
+  },
+  {
+    "name": "LSP12IssuedAssetsMap:<address>",
+    "key": "0x74ac2555c10b9349e78f0000<address>",
+    "keyType": "Mapping",
+    "valueType": "(bytes4,uint128)",
+    "valueContent": "(Bytes4,Number)"
+  }
+]

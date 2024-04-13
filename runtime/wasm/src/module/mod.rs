@@ -28,6 +28,7 @@ pub use crate::host_exports;
 pub use context::*;
 pub use instance::*;
 mod context;
+mod erc725;
 mod instance;
 mod into_wasm_ret;
 

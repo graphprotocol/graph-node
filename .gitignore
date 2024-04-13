@@ -29,6 +29,7 @@ lcov.info
 # Built solidity contracts.
 /tests/**/bin
 /tests/**/truffle_output
+/data
 
 # Docker volumes and debug logs
 .postgres

@@ -30,6 +30,7 @@ use graph::runtime::AscPtr;
 use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
 
 use super::asc_get;
+use super::erc725;
 use super::AscHeapCtx;
 
 pub(crate) struct WasmInstanceContext<'a> {
@@ -517,6 +518,20 @@ impl WasmInstanceContext<'_> {
         host_exports.download_url(&logger, url).map_err(Into::into)
     }
 
+    pub fn decode_key_value(
+        &mut self,
+        gas: &GasCounter,
+        key_ptr: AscPtr<Uint8Array>,
+        value_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
+        if let Some(data) = erc725::decode_key(key) {
+            let serde_value: serde_json::Value = serde_json::from_str(&data.dump()).unwrap();
+            return asc_new(self, &serde_value, gas);
+        }
+        Ok(AscPtr::null())
+    }
+
     pub fn decode_verifiable_uri(
         &mut self,
         gas: &GasCounter,
@@ -533,8 +548,8 @@ impl WasmInstanceContext<'_> {
             return Ok((url, method.to_vec(), desired_hash.to_vec()));
         }
         let method = &bytes[0..4]; // 0..3
-        let desired_hash = &bytes[4..8];
-        let url = String::from_utf8(bytes[8..].to_vec().clone()).unwrap();
+        let desired_hash = &bytes[4..36];
+        let url = String::from_utf8(bytes[36..].to_vec().clone())?;
         Ok((url, method.to_vec(), desired_hash.to_vec()))
     }
 
@@ -559,8 +574,8 @@ impl WasmInstanceContext<'_> {
             return asc_new(self, &value, gas);
         }
         let method = &bytes[0..4]; // 0..3
-        let desired_hash = &bytes[4..8];
-        let url = String::from_utf8(bytes[8..].to_vec().clone()).unwrap();
+        let desired_hash = &bytes[4..36];
+        let url = String::from_utf8(bytes[36..].to_vec().clone()).unwrap();
 
         let value = serde_json::json!({
             "url": url,
@@ -576,8 +591,7 @@ impl WasmInstanceContext<'_> {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let (url, method, desired_hash) = self.decode_verifiable_uri(gas, bytes_ptr)?;
-        let src = url.replace("ipfs://", "https://api.universalprofile.cloud/ipfs/");
-        let bytes = self.download_url(gas, src)?;
+        let bytes = self.download_url(gas, url.clone())?;
         let raw_hash = keccak256(&bytes).to_vec();
         let str =
             String::from_utf8(bytes.clone()).map_err(|e| HostExportError::from(Error::from(e)))?;
@@ -598,7 +612,7 @@ impl WasmInstanceContext<'_> {
         let data = match data {
             serde_json::Value::Object(mut map) => {
                 let mut inner_map = serde_json::Map::new();
-                inner_map.insert("url".to_string(), serde_json::Value::String(url));
+                inner_map.insert("url".to_string(), serde_json::Value::String(url.clone()));
                 inner_map.insert(
                     "method".to_string(),
                     serde_json::Value::String(hex::encode(method)),
