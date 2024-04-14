@@ -3,8 +3,11 @@ options:
 timeout: 9600s
 steps:
 - name: 'docker'
+  id: 'prepare'
   args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
 - name: 'docker'
+  id: 'graph-node-build'
+  waitFor: ['prepare']
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node-build',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
@@ -15,6 +18,8 @@ steps:
          '--push',
          '-f', 'docker/Dockerfile', '.']
 - name: 'docker'
+  id: 'graph-node'
+  waitFor: ['prepare', 'graph-node-build']
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
@@ -25,6 +30,8 @@ steps:
          '--push',
          '-f', 'docker/Dockerfile', '.']
 - name: 'docker'
+  id: 'graph-node-debug'
+  waitFor: ['prepare', 'graph-node-build', 'graph-node']
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
          '--target', 'graph-node-debug',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
