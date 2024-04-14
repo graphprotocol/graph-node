@@ -1,6 +1,6 @@
 options:
   machineType: "E2_HIGHCPU_32"
-timeout: 3600s
+timeout: 9600s
 steps:
 - name: 'docker'
   args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
