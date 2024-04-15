@@ -12,6 +12,8 @@ use graph_store_postgres::{
 use std::io::Write as _;
 use std::{collections::HashSet, sync::Arc};
 
+pub const BLOCK_RANGE_COLUMN: &str = "block_range";
+
 fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
     // Must be non-empty. Double checking, since [`StructOpt`] already checks this.
     if fields.is_empty() {
@@ -34,12 +36,23 @@ pub async fn create(
     search: DeploymentSearch,
     entity_name: &str,
     field_names: Vec<String>,
-    index_method: String,
+    index_method: Option<String>,
     after: Option<i32>,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
     let deployment_locator = search.locate_unique(&pool)?;
     println!("Index creation started. Please wait.");
+
+    // If the fields contain the block range column, we use GIN
+    // indexes. Otherwise we default to B-tree indexes.
+    let index_method = index_method.unwrap_or_else(|| {
+        if field_names.contains(&BLOCK_RANGE_COLUMN.to_string()) {
+            "gist".to_string()
+        } else {
+            "btree".to_string()
+        }
+    });
+
     let index_method = index_method
         .parse::<Method>()
         .map_err(|()| anyhow!("unknown index method `{}`", index_method))?;

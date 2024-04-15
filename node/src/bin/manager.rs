@@ -690,10 +690,10 @@ pub enum IndexCommand {
         fields: Vec<String>,
         /// The index method. Defaults to `btree`.
         #[clap(
-            short, long, default_value = "btree",
+            short, long,
             possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
         )]
-        method: String,
+        method: Option<String>,
 
         #[clap(long)]
         /// Specifies a starting block number for creating a partial index.
