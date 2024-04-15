@@ -13,7 +13,7 @@ use crate::relational::{SqlName, Table};
 
 /// The name of the column in which we store the block range for mutable
 /// entities
-pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
+pub const BLOCK_RANGE_COLUMN: &str = "block_range";
 
 /// The name of the column that stores the causality region of an entity.
 pub(crate) const CAUSALITY_REGION_COLUMN: &str = "causality_region";
