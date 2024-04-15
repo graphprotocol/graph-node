@@ -51,7 +51,6 @@ use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
-// use back_to_the_future::futures_await;
 
 use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
@@ -843,7 +842,7 @@ impl EthereumAdapter {
         // TODO: This considers null blocks, but we could instead bail if we encounter one as a
         // small optimization.
         let canonical_block = self
-            .nearest_block_ptr_to_number(logger, block_ptr.number)
+            .next_existing_ptr_to_number(logger, block_ptr.number)
             .await?;
         Ok(canonical_block == block_ptr)
     }
@@ -1447,7 +1446,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Box::new(self.code(logger, address, block_ptr))
     }
 
-    async fn nearest_block_ptr_to_number(
+    async fn next_existing_ptr_to_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
@@ -1736,7 +1735,7 @@ pub(crate) async fn blocks_with_triggers(
     // Resolve the nearest non-null "to" block
     debug!(logger, "Finding nearest valid `to` block to {}", to);
 
-    let to_ptr = eth.nearest_block_ptr_to_number(&logger, to).await?;
+    let to_ptr = eth.next_existing_ptr_to_number(&logger, to).await?;
     let to_hash = to_ptr.hash_as_h256();
     let to = to_ptr.block_number();
 

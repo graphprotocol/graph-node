@@ -974,6 +974,9 @@ mod data {
             )
         }
 
+        /// Returns an ancestor of a specified block at a given offset, with an option to specify a `root` hash
+        /// for a targeted search. If a `root` hash is provided, the search stops at the block whose parent hash
+        /// matches the `root`.
         pub(super) fn ancestor_block(
             &self,
             conn: &mut PgConnection,

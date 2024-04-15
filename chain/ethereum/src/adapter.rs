@@ -1160,7 +1160,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ///
     /// Note that the same caveats on reorgs apply as for `block_hash_by_block_number`, and must
     /// also be considered for the resolved block, in case it is higher than the requested number.
-    async fn nearest_block_ptr_to_number(
+    async fn next_existing_ptr_to_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
