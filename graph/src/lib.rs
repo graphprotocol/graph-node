@@ -20,6 +20,8 @@ pub mod ipfs_client;
 
 pub mod http_client;
 
+pub mod erc725;
+
 pub mod data_source;
 
 pub mod blockchain;
@@ -33,6 +35,8 @@ pub mod substreams;
 pub mod substreams_rpc;
 
 pub mod endpoint;
+
+pub mod packed_decode;
 
 pub mod schema;
 

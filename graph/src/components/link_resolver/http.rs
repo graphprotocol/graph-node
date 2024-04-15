@@ -197,11 +197,9 @@ impl HttpResolverTrait for HttpResolver {
 
 #[cfg(test)]
 mod test {
-    use serde_derive::Deserialize;
     use serde_json::{Map, Value};
-    use slog::debug;
 
-    use crate::{data_source::offchain::Base64, http_client::HttpClient, prelude::Link};
+    use crate::{http_client::HttpClient, prelude::Link};
 
     // This test ensures that passing txid/filename works when the txid refers to manifest.
     // the actual data seems to have some binary header and footer so these ranges were found

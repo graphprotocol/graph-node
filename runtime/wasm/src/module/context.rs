@@ -1,9 +1,13 @@
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use ethabi::decode;
+use ethabi::ParamType;
+use ethabi::Token;
 use graph::data::value::Word;
 use graph::prelude::tiny_keccak::keccak256;
 use graph::runtime::gas;
 use graph::util::lfu_cache::LfuCache;
+use json::JsonValue;
 use std::collections::HashMap;
 use wasmtime::AsContext;
 use wasmtime::AsContextMut;
@@ -522,12 +526,13 @@ impl WasmInstanceContext<'_> {
         &mut self,
         gas: &GasCounter,
         key_ptr: AscPtr<Uint8Array>,
-        _value_ptr: AscPtr<Uint8Array>,
+        value_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
-        if let Some(data) = erc725::decode_key(key) {
-            let serde_value: serde_json::Value = serde_json::from_str(&data.dump()).unwrap();
-            return asc_new(self, &serde_value, gas);
+        let value: Vec<u8> = asc_get(self, value_ptr, gas)?;
+        if let Some(keyItem) = erc725::decode_key(key) {
+            self.decode_value(self, gas, keyItem, value)
+                .map_err(|e| HostExportError::from)?
         }
         Ok(AscPtr::null())
     }
