@@ -1973,7 +1973,7 @@ dependencies = [
 
 [[package]]
 name = "graph_derive"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "heck",
  "proc-macro-utils",
