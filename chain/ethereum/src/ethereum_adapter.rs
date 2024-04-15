@@ -75,6 +75,7 @@ pub struct EthereumAdapter {
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
+    supports_block_reciepts: bool,
 }
 
 impl CheapClone for EthereumAdapter {
@@ -86,6 +87,7 @@ impl CheapClone for EthereumAdapter {
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
+            supports_block_reciepts: self.supports_block_reciepts,
         }
     }
 }
@@ -121,6 +123,7 @@ impl EthereumAdapter {
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
             call_only,
+            supports_block_reciepts: true, // TODO: Make this a param
         }
     }
 
@@ -1277,25 +1280,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })));
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
-        let receipts_future = if ENV_VARS.fetch_receipts_in_batches {
-            // Deprecated batching retrieval of transaction receipts.
-            fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).boxed()
-        } else {
-            let hash_stream = graph::tokio_stream::iter(hashes);
-            let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
-                fetch_transaction_receipt_with_retry(
-                    web3.cheap_clone(),
-                    tx_hash,
-                    block_hash,
-                    logger.cheap_clone(),
-                )
-            })
-            .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
-            graph::tokio_stream::StreamExt::collect::<
-                Result<Vec<Arc<TransactionReceipt>>, IngestorError>,
-            >(receipt_stream)
-            .boxed()
-        };
+        let receipts_future =
+            fetch_receipts_with_retry(web3, hashes, block_hash, logger, true).boxed();
 
         let block_future =
             futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
@@ -2154,6 +2140,73 @@ async fn fetch_transaction_receipts_in_batch(
         collected.push(Arc::new(receipt.await?))
     }
     Ok(collected)
+}
+
+async fn fetch_receipts_with_retry(
+    web3: Arc<Web3<Transport>>,
+    hashes: Vec<H256>,
+    block_hash: H256,
+    logger: Logger,
+    supports_block_receipts: bool,
+) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+    let receipts_future = if supports_block_receipts {
+        fetch_block_receipts_with_retry(web3, block_hash, logger).await
+    } else {
+        let receipts_future = if ENV_VARS.fetch_receipts_in_batches {
+            // Deprecated batching retrieval of transaction receipts.
+            fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger).await
+        } else {
+            let hash_stream = graph::tokio_stream::iter(hashes);
+            let receipt_stream = graph::tokio_stream::StreamExt::map(hash_stream, move |tx_hash| {
+                fetch_transaction_receipt_with_retry(
+                    web3.cheap_clone(),
+                    tx_hash,
+                    block_hash,
+                    logger.cheap_clone(),
+                )
+            })
+            .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
+            graph::tokio_stream::StreamExt::collect::<
+                Result<Vec<Arc<TransactionReceipt>>, IngestorError>,
+            >(receipt_stream)
+            .await
+        };
+
+        receipts_future
+    };
+
+    receipts_future
+}
+
+/// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
+async fn fetch_block_receipts_with_retry(
+    web3: Arc<Web3<Transport>>,
+    block_hash: H256,
+    logger: Logger,
+) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+    let logger = logger.cheap_clone();
+    let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
+
+    // Perform the retry operation
+    let receipts_option = retry(retry_log_message, &logger)
+        .limit(ENV_VARS.request_retries)
+        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+        .run(move || web3.eth().block_receipts(block_hash.into()).boxed())
+        .await
+        .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
+
+    // Check if receipts are available, and transform them if they are
+    match receipts_option {
+        Some(receipts) => {
+            // If receipts are found, transform them into Arc and return Ok
+            let transformed_receipts = receipts.into_iter().map(Arc::new).collect();
+            Ok(transformed_receipts)
+        }
+        None => {
+            // If no receipts are found, return an error
+            Err(IngestorError::BlockReceiptsUnavailable(block_hash))
+        }
+    }
 }
 
 /// Retries fetching a single transaction receipt.
