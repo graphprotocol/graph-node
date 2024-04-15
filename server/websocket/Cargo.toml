@@ -8,5 +8,5 @@ futures = "0.1.23"
 graph = { path = "../../graph" }
 serde = { workspace = true }
 serde_derive = { workspace = true }
-tokio-tungstenite = "0.17"
+tokio-tungstenite = "0.21"
 uuid = { version = "1.8.0", features = ["v4"] }
