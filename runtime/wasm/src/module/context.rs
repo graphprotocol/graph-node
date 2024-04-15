@@ -1,13 +1,11 @@
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
-use ethabi::decode;
-use ethabi::ParamType;
-use ethabi::Token;
 use graph::data::value::Word;
+use graph::erc725::decode_key_value;
+use graph::erc725::ERC725DecodedValue;
 use graph::prelude::tiny_keccak::keccak256;
 use graph::runtime::gas;
 use graph::util::lfu_cache::LfuCache;
-use json::JsonValue;
 use std::collections::HashMap;
 use wasmtime::AsContext;
 use wasmtime::AsContextMut;
@@ -34,7 +32,6 @@ use graph::runtime::AscPtr;
 use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
 
 use super::asc_get;
-use super::erc725;
 use super::AscHeapCtx;
 
 pub(crate) struct WasmInstanceContext<'a> {
@@ -530,11 +527,41 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
         let value: Vec<u8> = asc_get(self, value_ptr, gas)?;
-        if let Some(keyItem) = erc725::decode_key(key) {
-            self.decode_value(self, gas, keyItem, value)
-                .map_err(|e| HostExportError::from)?
+        let results =
+            decode_key_value(key, value).map_err(|e| HostExportError::from(Error::from(e)))?;
+        match results {
+            ERC725DecodedValue::Null() => Ok(AscPtr::null()),
+            ERC725DecodedValue::ArrayItem { name, index, value } => {
+                let value = serde_json::json!({
+                    "type": "ArrayItem",
+                    "name": name.to_string(),
+                    "index": index,
+                    "value": value
+                });
+                asc_new(self, &value, gas)
+            }
+            ERC725DecodedValue::ArrayLength { name, length } => {
+                let value = serde_json::json!({
+                    "type": "ArrayLength",
+                    "name": name.to_string(),
+                    "length": length
+                });
+                asc_new(self, &value, gas)
+            }
+            ERC725DecodedValue::Value {
+                name,
+                dynamic,
+                value,
+            } => {
+                let value = serde_json::json!({
+                    "type": "ArrayLength",
+                    "name": name.to_string(),
+                    "dynamic": dynamic,
+                    "value": value,
+                });
+                asc_new(self, &value, gas)
+            }
         }
-        Ok(AscPtr::null())
     }
 
     pub fn decode_verifiable_uri(
