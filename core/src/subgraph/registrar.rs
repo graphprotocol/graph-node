@@ -9,6 +9,11 @@ use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionMana
 use graph::components::subgraph::Settings;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::Graft;
+use graph::futures01;
+use graph::futures01::future;
+use graph::futures01::stream;
+use graph::futures01::Future;
+use graph::futures01::Stream;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,

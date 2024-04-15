@@ -763,7 +763,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        use futures::stream::Stream;
+        use graph::futures01::stream::Stream;
         use graph::prelude::LightEthereumBlockExt;
 
         let block = match self.chain_client.as_ref() {

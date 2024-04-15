@@ -1,4 +1,5 @@
 use futures03::TryStreamExt;
+use graph::futures01::Stream;
 use graph::parking_lot::Mutex;
 use graph::tokio_stream::wrappers::ReceiverStream;
 use std::collections::BTreeSet;

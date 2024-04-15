@@ -439,7 +439,7 @@ where
 mod tests {
     use super::*;
 
-    use futures::future;
+    use futures01::future;
     use futures03::compat::Future01CompatExt;
     use slog::o;
     use std::sync::Mutex;

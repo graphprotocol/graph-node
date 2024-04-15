@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-futures = "0.1.21"
 serde = { workspace = true }
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }

@@ -1,12 +1,12 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
-use futures::Future;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
+use graph::futures01::Future;
 use graph::prelude::web3::types::Bytes;
 use graph::prelude::web3::types::H160;
 use graph::prelude::web3::types::U256;
@@ -25,6 +25,7 @@ use graph::prelude::*;
 use graph::{
     blockchain as bc,
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
+    futures01::Stream,
     petgraph::{self, graphmap::GraphMap},
 };
 

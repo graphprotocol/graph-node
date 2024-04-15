@@ -45,6 +45,7 @@ pub use task_spawn::{
 
 pub use anyhow;
 pub use bytes;
+pub use futures01;
 pub use graph_derive as derive;
 pub use http;
 pub use http_body_util;
@@ -79,9 +80,6 @@ pub mod prelude {
     pub use diesel;
     pub use envconfig;
     pub use ethabi;
-    pub use futures::future;
-    pub use futures::prelude::*;
-    pub use futures::stream;
     pub use futures03;
     pub use futures03::compat::{Future01CompatExt, Sink01CompatExt, Stream01CompatExt};
     pub use futures03::future::{FutureExt as _, TryFutureExt};

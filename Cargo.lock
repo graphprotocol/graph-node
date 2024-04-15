@@ -1673,7 +1673,6 @@ dependencies = [
  "anyhow",
  "base64 0.20.0",
  "envconfig",
- "futures 0.1.31",
  "graph",
  "graph-runtime-derive",
  "graph-runtime-wasm",
@@ -1747,7 +1746,6 @@ dependencies = [
  "atomic_refcell",
  "bytes",
  "cid",
- "futures 0.1.31",
  "futures 0.3.16",
  "graph",
  "graph-chain-arweave",
@@ -1845,7 +1843,6 @@ dependencies = [
  "async-trait",
  "bs58",
  "ethabi",
- "futures 0.1.31",
  "graph",
  "graph-runtime-derive",
  "hex",
@@ -1861,7 +1858,6 @@ dependencies = [
 name = "graph-server-http"
 version = "0.35.0"
 dependencies = [
- "futures 0.1.31",
  "graph",
  "graph-core",
  "graph-graphql",
@@ -1905,7 +1901,6 @@ dependencies = [
 name = "graph-server-websocket"
 version = "0.35.0"
 dependencies = [
- "futures 0.1.31",
  "graph",
  "serde",
  "serde_derive",

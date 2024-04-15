@@ -1,5 +1,6 @@
-use futures::sync::mpsc;
 use futures03::stream::SplitStream;
+use graph::futures01::sync::mpsc;
+use graph::futures01::{Future, IntoFuture, Sink as _, Stream as _};
 use std::collections::HashMap;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::{

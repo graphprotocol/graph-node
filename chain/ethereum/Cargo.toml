@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 envconfig = "0.10.0"
-futures = "0.1.21"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 serde = { workspace = true }

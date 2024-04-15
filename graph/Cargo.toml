@@ -28,7 +28,7 @@ http = "0.2.3"
 hyper = { version = "1", features = ["full"] }
 http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["full"] }
-futures = { package = "futures", version = "0.1.31" }
+futures01 = { package = "futures", version = "0.1.31" }
 lru_time_cache = "0.11"
 graphql-parser = "0.4.0"
 humantime = "2.1.0"

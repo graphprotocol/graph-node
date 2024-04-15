@@ -2,17 +2,17 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 use std::{collections::BTreeSet, io::Write};
 
+use crate::manager::deployment::DeploymentSearch;
 use futures::compat::Future01CompatExt;
+use graph::futures01::Stream as _;
 use graph::prelude::DeploymentHash;
 use graph::schema::{EntityType, InputSchema};
 use graph::{
     components::store::SubscriptionManager as _,
-    prelude::{serde_json, Error, Stream, SubscriptionFilter},
+    prelude::{serde_json, Error, SubscriptionFilter},
 };
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::SubscriptionManager;
-
-use crate::manager::deployment::DeploymentSearch;
 
 async fn listen(
     mgr: Arc<SubscriptionManager>,

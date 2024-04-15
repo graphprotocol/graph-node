@@ -33,7 +33,7 @@
 //! that define common operations on event streams, facilitating the
 //! configuration of component graphs.
 
-use futures::prelude::*;
+use futures01::{Sink, Stream};
 
 /// Components dealing with subgraphs.
 pub mod subgraph;

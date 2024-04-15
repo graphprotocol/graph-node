@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use anyhow::Error;
 use async_trait::async_trait;
-use futures::sync::mpsc;
+use futures01::sync::mpsc;
 
 use crate::blockchain::BlockTime;
 use crate::components::metrics::gas::GasMetrics;

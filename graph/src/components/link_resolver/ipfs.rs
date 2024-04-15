@@ -2,13 +2,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::env::EnvVars;
+use crate::futures01::{stream::poll_fn, try_ready};
+use crate::futures01::{Async, Poll};
 use crate::ipfs_client::IpfsError;
 use crate::util::futures::RetryConfigNoTimeout;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use futures::{stream::poll_fn, try_ready};
-use futures::{Async, Poll};
 use futures03::stream::FuturesUnordered;
 use lru_time_cache::LruCache;
 use serde_json::Value;
@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::{
     cheap_clone::CheapClone,
     derive::CheapClone,
+    futures01::stream::Stream,
     ipfs_client::IpfsClient,
     prelude::{LinkResolver as LinkResolverTrait, *},
 };

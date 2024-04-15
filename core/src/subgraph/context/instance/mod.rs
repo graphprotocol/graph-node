@@ -1,7 +1,7 @@
 mod hosts;
 
 use anyhow::ensure;
-use futures01::sync::mpsc::Sender;
+use graph::futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::{Blockchain, TriggerData as _},
     data_source::{

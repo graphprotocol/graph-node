@@ -1,4 +1,5 @@
 use crate::connection::GraphQlConnection;
+use graph::futures01::IntoFuture as _;
 use graph::{
     data::query::QueryTarget,
     prelude::{SubscriptionServer as SubscriptionServerTrait, *},

@@ -1,4 +1,3 @@
-extern crate futures;
 extern crate graph;
 extern crate graph_graphql;
 extern crate serde;

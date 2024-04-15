@@ -6,6 +6,7 @@ use ethereum::chain::{
 use ethereum::{BlockIngestor, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
+use graph::futures01::Future as _;
 use graph_chain_ethereum::codec::HeaderOnlyBlock;
 
 use graph::blockchain::{

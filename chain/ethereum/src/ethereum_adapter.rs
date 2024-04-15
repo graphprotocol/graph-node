@@ -1,4 +1,3 @@
-use futures::prelude::*;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
@@ -8,6 +7,9 @@ use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
+use graph::futures01::stream;
+use graph::futures01::Future;
+use graph::futures01::Stream;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::futures03::future::try_join_all;
@@ -20,7 +22,7 @@ use graph::{
         anyhow::{self, anyhow, bail, ensure, Context},
         async_trait, debug, error, ethabi,
         futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-        hex, info, retry, serde_json as json, stream, tiny_keccak, trace, warn,
+        hex, info, retry, serde_json as json, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
@@ -302,7 +304,7 @@ impl EthereumAdapter {
             } else {
                 debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
             }
-            Some(futures::future::ok((
+            Some(graph::futures01::future::ok((
                 eth.clone()
                     .traces(
                         logger.cheap_clone(),
