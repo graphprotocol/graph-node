@@ -226,6 +226,10 @@ pub enum IngestorError {
     #[error("Receipt for tx {1:?} unavailable, block was likely uncled (block hash = {0:?})")]
     ReceiptUnavailable(H256, H256),
 
+    /// The Ethereum node does not know about this block for some reason
+    #[error("Transaction receipts for block (block hash = {0:?}) is unavailable")]
+    BlockReceiptsUnavailable(H256),
+
     /// An unexpected error occurred.
     #[error("Ingestor error: {0:#}")]
     Unknown(#[from] Error),
