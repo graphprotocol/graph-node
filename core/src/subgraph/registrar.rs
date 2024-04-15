@@ -14,6 +14,11 @@ use graph::futures01::future;
 use graph::futures01::stream;
 use graph::futures01::Future;
 use graph::futures01::Stream;
+use graph::futures03::compat::Future01CompatExt;
+use graph::futures03::compat::Stream01CompatExt;
+use graph::futures03::future::FutureExt;
+use graph::futures03::future::TryFutureExt;
+use graph::futures03::stream::TryStreamExt;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,

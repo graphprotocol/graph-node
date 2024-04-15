@@ -9,7 +9,9 @@ use crate::util::futures::RetryConfigNoTimeout;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use futures03::stream::FuturesUnordered;
+use futures03::compat::Stream01CompatExt;
+use futures03::future::TryFutureExt;
+use futures03::stream::{FuturesUnordered, StreamExt, TryStreamExt};
 use lru_time_cache::LruCache;
 use serde_json::Value;
 

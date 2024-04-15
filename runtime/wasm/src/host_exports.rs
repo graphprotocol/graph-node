@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
+use graph::futures03::stream::StreamExt;
 use graph::schema::EntityType;
 use never::Never;
 use semver::Version;

@@ -1,6 +1,6 @@
 use anyhow::Error;
 use bytes::Bytes;
-use futures::future::BoxFuture;
+use graph::futures03::future::BoxFuture;
 use graph::{
     components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit},
     data_source::offchain::Base64,

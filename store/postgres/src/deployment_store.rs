@@ -17,7 +17,7 @@ use graph::data::store::{Id, IdList};
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
-use graph::prelude::futures03::FutureExt;
+use graph::futures03::FutureExt;
 use graph::prelude::{
     ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,

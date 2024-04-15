@@ -9,10 +9,10 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
-use futures::future::BoxFuture;
-use futures::stream::StreamExt;
-use futures::{stream, Future, FutureExt, TryFutureExt};
 use graph::cheap_clone::CheapClone;
+use graph::futures03::future::BoxFuture;
+use graph::futures03::stream::StreamExt;
+use graph::futures03::{stream, Future, FutureExt, TryFutureExt};
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
 use graph::prometheus::{Counter, Gauge};
@@ -132,7 +132,7 @@ where
 
                         // Nothing on the queue, wait for a queue wake up or cancellation.
                         None => {
-                            futures::future::select(
+                            graph::futures03::future::select(
                                 // Unwrap: `queue` holds a sender.
                                 queue_woken.changed().map(|r| r.unwrap()).boxed(),
                                 cancel_check.closed().boxed(),

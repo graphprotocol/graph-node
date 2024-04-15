@@ -14,7 +14,7 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context};
-use futures::StreamExt;
+use graph::futures03::StreamExt;
 use graph::prelude::serde_json::{json, Value};
 use graph_tests::contract::Contract;
 use graph_tests::helpers::{run_checked, TestFile};

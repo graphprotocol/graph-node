@@ -5,7 +5,7 @@ use graph::blockchain::{BlockHash, BlockPtr};
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
 use graph::env::ENV_VARS;
-use graph::prelude::futures03::executor;
+use graph::futures03::executor;
 use std::future::Future;
 use std::sync::Arc;
 

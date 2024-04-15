@@ -1,5 +1,7 @@
-use futures03::TryStreamExt;
 use graph::futures01::Stream;
+use graph::futures03::compat::Stream01CompatExt;
+use graph::futures03::stream::StreamExt;
+use graph::futures03::TryStreamExt;
 use graph::parking_lot::Mutex;
 use graph::tokio_stream::wrappers::ReceiverStream;
 use std::collections::BTreeSet;
@@ -106,7 +108,7 @@ impl<T: Clone + Debug + Send + Sync + 'static> Watcher<T> {
         self.sender.send(v).unwrap()
     }
 
-    fn stream(&self) -> Box<dyn futures03::Stream<Item = T> + Unpin + Send + Sync> {
+    fn stream(&self) -> Box<dyn graph::futures03::Stream<Item = T> + Unpin + Send + Sync> {
         Box::new(tokio_stream::wrappers::WatchStream::new(
             self.receiver.clone(),
         ))

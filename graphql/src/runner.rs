@@ -5,7 +5,8 @@ use crate::metrics::GraphQLMetrics;
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::prelude::{futures03::future, MetricsRegistry};
+use graph::futures03::future;
+use graph::prelude::MetricsRegistry;
 use graph::{
     components::store::SubscriptionManager,
     prelude::{

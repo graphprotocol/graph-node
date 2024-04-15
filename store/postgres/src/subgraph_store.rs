@@ -11,6 +11,7 @@ use std::{
 };
 use std::{iter::FromIterator, time::Duration};
 
+use graph::futures03::future::join_all;
 use graph::{
     cheap_clone::CheapClone,
     components::{
@@ -24,10 +25,10 @@ use graph::{
     data::query::QueryTarget,
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
     prelude::{
-        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
-        BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        MetricsRegistry, NodeId, PartialBlockPtr, StoreError, SubgraphDeploymentEntity,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        anyhow, lazy_static, o, web3::types::Address, ApiVersion, BlockNumber, BlockPtr,
+        ChainStore, DeploymentHash, EntityOperation, Logger, MetricsRegistry, NodeId,
+        PartialBlockPtr, StoreError, SubgraphDeploymentEntity, SubgraphName,
+        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     prelude::{CancelableError, StoreEvent},
     schema::{ApiSchema, InputSchema},

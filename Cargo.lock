@@ -1746,7 +1746,6 @@ dependencies = [
  "atomic_refcell",
  "bytes",
  "cid",
- "futures 0.3.16",
  "graph",
  "graph-chain-arweave",
  "graph-chain-cosmos",
@@ -1785,7 +1784,6 @@ dependencies = [
  "clap",
  "diesel",
  "env_logger",
- "futures 0.3.16",
  "git-testament",
  "graph",
  "graph-chain-arweave",
@@ -1869,7 +1867,6 @@ name = "graph-server-index-node"
 version = "0.35.0"
 dependencies = [
  "blake3 1.5.0",
- "futures 0.3.16",
  "git-testament",
  "graph",
  "graph-chain-arweave",
@@ -1948,7 +1945,6 @@ dependencies = [
  "anyhow",
  "assert-json-diff",
  "async-stream",
- "futures 0.3.16",
  "graph",
  "graph-chain-ethereum",
  "graph-chain-substreams",

@@ -1,9 +1,7 @@
+use graph::futures03::{self, FutureExt};
 use graph::{
     blockchain::ChainHeadUpdateStream,
-    prelude::{
-        futures03::{self, FutureExt},
-        tokio, MetricsRegistry, StoreError,
-    },
+    prelude::{tokio, MetricsRegistry, StoreError},
     prometheus::{CounterVec, GaugeVec},
     util::timed_rw_lock::TimedRwLock,
 };

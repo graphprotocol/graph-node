@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, io::Write};
 
 use crate::manager::deployment::DeploymentSearch;
-use futures::compat::Future01CompatExt;
 use graph::futures01::Stream as _;
+use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::DeploymentHash;
 use graph::schema::{EntityType, InputSchema};
 use graph::{

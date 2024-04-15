@@ -1,6 +1,8 @@
-use futures03::stream::SplitStream;
 use graph::futures01::sync::mpsc;
 use graph::futures01::{Future, IntoFuture, Sink as _, Stream as _};
+use graph::futures03::future::TryFutureExt;
+use graph::futures03::sink::SinkExt;
+use graph::futures03::stream::{SplitStream, StreamExt, TryStreamExt};
 use std::collections::HashMap;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::{
@@ -9,6 +11,7 @@ use tokio_tungstenite::tungstenite::{
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
 
+use graph::futures03::compat::Future01CompatExt;
 use graph::{data::query::QueryTarget, prelude::*};
 
 #[derive(Debug, Deserialize, Serialize)]

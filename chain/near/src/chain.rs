@@ -11,7 +11,8 @@ use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
-use graph::prelude::{MetricsRegistry, TryFutureExt};
+use graph::futures03::TryFutureExt;
+use graph::prelude::MetricsRegistry;
 use graph::schema::InputSchema;
 use graph::substreams::{Clock, Package};
 use graph::{

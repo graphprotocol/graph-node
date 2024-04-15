@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
-use futures::future::join_all;
 use graph::blockchain::ChainIdentifier;
+use graph::futures03::future::join_all;
 use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::url::Url;
 use graph::{

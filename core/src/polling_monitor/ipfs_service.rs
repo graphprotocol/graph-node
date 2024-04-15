@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Error};
 use bytes::Bytes;
-use futures::future::BoxFuture;
+use graph::futures03::future::BoxFuture;
 use graph::{
     derive::CheapClone,
     ipfs_client::{CidFile, IpfsClient},

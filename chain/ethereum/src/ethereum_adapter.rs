@@ -10,9 +10,12 @@ use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::futures01::stream;
 use graph::futures01::Future;
 use graph::futures01::Stream;
+use graph::futures03::future::try_join_all;
+use graph::futures03::{
+    self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
+};
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
-use graph::prelude::futures03::future::try_join_all;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
@@ -20,9 +23,8 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi,
-        futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-        hex, info, retry, serde_json as json, tiny_keccak, trace, warn,
+        async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak,
+        trace, warn,
         web3::{
             self,
             types::{
@@ -31,7 +33,7 @@ use graph::{
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
-        TimeoutError, TryFutureExt,
+        TimeoutError,
     },
 };
 use graph::{

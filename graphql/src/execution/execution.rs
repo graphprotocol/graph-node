@@ -6,6 +6,7 @@ use graph::{
         query::Trace,
         value::{Object, Word},
     },
+    futures03::future::TryFutureExt,
     prelude::{s, CheapClone},
     schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME},
     util::{herd_cache::HerdCache, lfu_cache::EvictStats, timed_rw_lock::TimedMutex},

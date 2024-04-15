@@ -153,7 +153,7 @@ async fn handle_multiple_block_hashes(
 mod steps {
     use super::*;
 
-    use futures::compat::Future01CompatExt;
+    use graph::futures03::compat::Future01CompatExt;
     use graph::{
         anyhow::bail,
         prelude::serde_json::{self, Value},

@@ -17,6 +17,7 @@ use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
+use crate::futures03::stream::StreamExt as _;
 use crate::schema::InputSchema;
 use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};

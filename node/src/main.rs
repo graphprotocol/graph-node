@@ -7,6 +7,8 @@ use ethereum::{BlockIngestor, EthereumNetworks};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
 use graph::futures01::Future as _;
+use graph::futures03::compat::Future01CompatExt;
+use graph::futures03::future::TryFutureExt;
 use graph_chain_ethereum::codec::HeaderOnlyBlock;
 
 use graph::blockchain::{
@@ -703,7 +705,7 @@ async fn main() {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));
         let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
-        if futures::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
+        if graph::futures03::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
             debug!(contention_logger, "Shutting down contention checker thread");
             break;
         }
@@ -723,7 +725,7 @@ async fn main() {
         }
     });
 
-    futures::future::pending::<()>().await;
+    graph::futures03::future::pending::<()>().await;
 }
 
 /// Return the hashmap of chains and also add them to `blockchain_map`.

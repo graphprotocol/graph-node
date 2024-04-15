@@ -350,7 +350,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     ops: Vec<EntityOperation>,
     manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<(), StoreError> {
-    let store = futures03::executor::block_on(store.cheap_clone().writable(
+    let store = graph::futures03::executor::block_on(store.cheap_clone().writable(
         LOGGER.clone(),
         deployment.id,
         Arc::new(manifest_idx_and_name),

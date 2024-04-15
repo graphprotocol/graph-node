@@ -2,8 +2,8 @@ use std::cmp::PartialEq;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use futures03::channel::oneshot::channel;
 use graph::futures01::sync::mpsc::Sender;
+use graph::futures03::channel::oneshot::channel;
 
 use graph::blockchain::{BlockTime, Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
@@ -12,6 +12,7 @@ use graph::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
 use graph::futures01::Sink as _;
+use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };

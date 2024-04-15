@@ -18,6 +18,7 @@ use test_store::block_store::{
     FakeBlock, BLOCK_FOUR, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
 };
 
+use graph::futures03::stream::StreamExt;
 use graph::{
     components::store::DeploymentLocator,
     data::graphql::{object, object_value},
@@ -27,11 +28,10 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        futures03::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
-        DeploymentHash, Entity, EntityOperation, FutureExtension, GraphQlRunner as _, Logger,
-        NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
-        QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,
-        SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
+        lazy_static, o, q, r, serde_json, slog, BlockPtr, DeploymentHash, Entity, EntityOperation,
+        FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
+        QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, SubgraphManifest,
+        SubgraphName, SubgraphStore, SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
     },
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};

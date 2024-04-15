@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Error;
 use async_stream::stream;
-use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -28,6 +27,7 @@ use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
+use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;

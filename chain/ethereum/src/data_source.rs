@@ -8,10 +8,11 @@ use graph::components::trigger_processor::RunnableTriggers;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::env::ENV_VARS;
+use graph::futures03::future::try_join;
+use graph::futures03::stream::FuturesOrdered;
+use graph::futures03::TryStreamExt;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::{StateMutability, Token};
-use graph::prelude::futures03::future::try_join;
-use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::lazy_static;
 use graph::prelude::regex::Regex;
 use graph::prelude::{Link, SubgraphManifestValidationError};
@@ -34,7 +35,7 @@ use graph::{
         serde_json, warn,
         web3::types::{Log, Transaction, H256},
         BlockNumber, CheapClone, Deserialize, EthereumCall, LightEthereumBlock,
-        LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
+        LightEthereumBlockExt, LinkResolver, Logger,
     },
 };
 

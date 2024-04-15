@@ -18,9 +18,10 @@ use graph::{
     data::subgraph::UnifiedMappingApiVersion,
     env::EnvVars,
     firehose::{self, FirehoseEndpoint, ForkStep},
+    futures03::future::TryFutureExt,
     prelude::{
         async_trait, BlockHash, BlockNumber, ChainStore, Error, Logger, LoggerFactory,
-        MetricsRegistry, TryFutureExt,
+        MetricsRegistry,
     },
     schema::InputSchema,
     slog::o,

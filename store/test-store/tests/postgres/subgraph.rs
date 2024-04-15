@@ -1,3 +1,4 @@
+use graph::futures03;
 use graph::{
     components::{
         server::index_node::VersionInfo,
@@ -13,11 +14,11 @@ use graph::{
     prelude::EntityChange,
     prelude::EntityChangeOperation,
     prelude::QueryStoreManager,
+    prelude::StoreEvent,
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
     prelude::UnfailOutcome,
-    prelude::{futures03, StoreEvent},
     prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
     schema::InputSchema,
     semver::Version,

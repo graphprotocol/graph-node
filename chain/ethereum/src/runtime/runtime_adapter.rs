@@ -13,6 +13,7 @@ use graph::components::subgraph::HostMetrics;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
+use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
@@ -22,7 +23,7 @@ use graph::{
     cheap_clone::CheapClone,
     prelude::{
         ethabi::{self, Address, Token},
-        EthereumCallCache, Future01CompatExt,
+        EthereumCallCache,
     },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
