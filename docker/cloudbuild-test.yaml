@@ -1,5 +1,4 @@
 options:
-  pool_name: "large-pool"
   pool:
     name: 'projects/$PROJECT_ID/locations/europe-west1/workerPools/large-pool'
 timeout: 9600s
