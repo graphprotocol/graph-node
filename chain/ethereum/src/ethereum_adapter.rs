@@ -75,7 +75,7 @@ pub struct EthereumAdapter {
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
-    supports_block_reciepts: bool,
+    supports_block_receipts: bool,
 }
 
 impl CheapClone for EthereumAdapter {
@@ -87,7 +87,7 @@ impl CheapClone for EthereumAdapter {
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
-            supports_block_reciepts: self.supports_block_reciepts,
+            supports_block_receipts: self.supports_block_receipts,
         }
     }
 }
@@ -107,6 +107,14 @@ impl EthereumAdapter {
     ) -> Self {
         let web3 = Arc::new(Web3::new(transport));
 
+
+        // Check if the chain supports `getBlockReceipts` method.
+        let supports_block_receipts = web3
+            .eth()
+            .block_receipts(BlockId::Number(Web3BlockNumber::Latest))
+            .await
+            .is_ok();
+
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
         let is_ganache = web3
@@ -123,7 +131,7 @@ impl EthereumAdapter {
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
             call_only,
-            supports_block_reciepts: true, // TODO: Make this a param
+            supports_block_receipts,
         }
     }
 
