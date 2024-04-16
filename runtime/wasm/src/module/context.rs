@@ -3,6 +3,9 @@ use byteorder::ByteOrder;
 use graph::data::value::Word;
 use graph::erc725::decode_key_value;
 use graph::erc725::ERC725DecodedValue;
+use graph::erc725::ERC725Value;
+use graph::erc725::HASHBYTES_KECCAK256_BYTES;
+use graph::erc725::HASHBYTES_KECCAK256_UTF8;
 use graph::prelude::tiny_keccak::keccak256;
 use graph::runtime::gas;
 use graph::util::lfu_cache::LfuCache;
@@ -28,8 +31,9 @@ use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 use crate::ExperimentalFeatures;
 use graph::prelude::*;
-use graph::runtime::AscPtr;
-use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
+use graph::runtime::{
+    asc_new, gas::GasCounter, AscPtr, AscType, DeterministicHostError, HostExportError,
+};
 
 use super::asc_get;
 use super::AscHeapCtx;
@@ -553,15 +557,45 @@ impl WasmInstanceContext<'_> {
                 dynamic,
                 value,
             } => {
+                if name == "lsp3Profile" || name == "lsp4Metadata" {
+                    if let ERC725Value::VerifiableURI { url, method, data } = value {
+                        let desired_hash = data.clone();
+                        let bytes = self.download_url(gas, url)?;
+                        let raw_hash = keccak256(&bytes).to_vec();
+                        let str = String::from_utf8(bytes.clone())
+                            .map_err(|e| HostExportError::from(Error::from(e)))?;
+                        serde_json::from_str(&str)
+                            .map_err(|e| HostExportError::from(Error::from(e)))?;
+                        if method == HASHBYTES_KECCAK256_BYTES || method == HASHBYTES_KECCAK256_UTF8
+                        {
+                            let str = serde_json::to_string(&data)
+                                .map_err(|e| HostExportError::from(Error::from(e)))?;
+                            let bytes = str.as_bytes();
+                            let hash = keccak256(bytes).to_vec();
+                            if desired_hash == hash || desired_hash == raw_hash {
+                                let value = serde_json::json!({
+                                    "type": "Value",
+                                    "name": name.to_string(),
+                                    "value": data,
+                                });
+                                return asc_new(self, &value, gas);
+                            } else {
+                                return Ok(AscPtr::null());
+                            }
+                        } else {
+                            return Ok(AscPtr::null());
+                        };
+                    }
+                }
                 let value = if let serde_json::Value::Null = dynamic {
                     serde_json::json!({
-                        "type": "ArrayLength",
+                        "type": "Value",
                         "name": name.to_string(),
                         "value": value,
                     })
                 } else {
                     serde_json::json!({
-                        "type": "ArrayLength",
+                        "type": "Value",
                         "name": name.to_string(),
                         "dynamic": dynamic.clone(),
                         "value": value,

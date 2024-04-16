@@ -119,9 +119,11 @@ pub const KECCAK256_UTF8: &str = "keccak256(utf8)";
 pub const KECCAK256_BYTES: &str = "keccak256(bytes)";
 pub const HASH_KECCAK256_UTF8: &str = "6f357c6a";
 pub const HASH_KECCAK256_BYTES: &str = "8019f9b1";
+pub const HASHBYTES_KECCAK256_UTF8: &[u8] = &[0x6f, 0x35, 0x7c, 0x6a];
+pub const HASHBYTES_KECCAK256_BYTES: &[u8] = &[0x80, 0x19, 0xf9, 0xb1];
 
 lazy_static! {
-    // Declare a global constant array using json::array!
+  // Declare a global constant array using json::array!
     static ref SCHEMAS: JsonValue = array![
   {
     "name": "LSP1UniversalReceiverDelegate",
