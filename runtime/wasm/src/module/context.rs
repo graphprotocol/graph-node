@@ -31,9 +31,7 @@ use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 use crate::ExperimentalFeatures;
 use graph::prelude::*;
-use graph::runtime::{
-    asc_new, gas::GasCounter, AscPtr, AscType, DeterministicHostError, HostExportError,
-};
+use graph::runtime::{asc_new, gas::GasCounter, AscPtr, DeterministicHostError, HostExportError};
 
 use super::asc_get;
 use super::AscHeapCtx;
