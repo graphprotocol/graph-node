@@ -1,5 +1,4 @@
-use graph::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
-use graph::http::{HeaderValue, Response, StatusCode};
+use crate::connection::GraphQlConnection;
 use graph::{
     data::query::QueryTarget,
     prelude::{SubscriptionServer as SubscriptionServerTrait, *},
@@ -9,8 +8,9 @@ use std::sync::Mutex;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::Request;
-
-use crate::connection::GraphQlConnection;
+use tokio_tungstenite::tungstenite::http::{
+    header::ACCESS_CONTROL_ALLOW_ORIGIN, header::CONTENT_TYPE, HeaderValue, Response, StatusCode,
+};
 
 /// A GraphQL subscription server based on Hyper / Websockets.
 pub struct SubscriptionServer<Q, S> {
