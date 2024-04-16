@@ -189,6 +189,8 @@ impl<'a> VisitExpr<'a> {
             MatchAgainst { .. } => self.nope("MatchAgainst"),
             Wildcard => self.nope("Wildcard"),
             QualifiedWildcard(_) => self.nope("QualifiedWildcard"),
+            Dictionary(_) => self.nope("Dictionary"),
+            OuterJoin(_) => self.nope("OuterJoin"),
         }
     }
 
