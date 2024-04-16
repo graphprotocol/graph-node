@@ -1,5 +1,5 @@
 use byteorder::{BigEndian, ByteOrder};
-use ethabi::{decode, ParamType, Token};
+use ethabi::{ParamType, Token};
 use inflector::Inflector;
 use itertools::Itertools;
 use json::{array, JsonValue};
@@ -37,6 +37,7 @@ pub enum ERC725Value {
     Array(Vec<ERC725Value>),
     Address(H160),
     Bytes(Vec<u8>),
+    Boolean(bool),
     Number(U256),
     String(String),
     VerifiableURI {
@@ -75,7 +76,7 @@ pub enum ERC725Error {
     FileTooLarge(String, usize),
     #[error("JSON format error")]
     Json(#[from] serde_json::Error),
-    #[error("abi error")]
+    #[error("ethabi error")]
     Abi(#[from] ethabi::Error),
     #[error("character encoding")]
     Encoding(#[from] std::string::FromUtf8Error),
@@ -90,6 +91,7 @@ impl Serialize for ERC725Value {
     {
         match self {
             ERC725Value::Null() => ser.serialize_none(),
+            ERC725Value::Boolean(value) => ser.serialize_bool(*value),
             ERC725Value::Address(address) => ser.serialize_bytes(address.as_bytes()),
             ERC725Value::Bytes(bytes) => ser.serialize_bytes(bytes),
             ERC725Value::Number(number) => ser.serialize_str(&number.to_string()),
@@ -427,7 +429,12 @@ pub fn decode_token(token: Token, value_content: &str) -> Result<ERC725Value, ER
             return Ok(ERC725Value::BitArray(token));
         }
     }
-    Err(ERC725Error::Error("Invalid Data".to_string()))
+    let result = Err(ERC725Error::Error(format!(
+        "Invalid Data: {}",
+        value_content
+    )));
+    print!("{:?}", result);
+    result
 }
 
 pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValue, ERC725Error> {
@@ -446,7 +453,7 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
             .unwrap()
             .replace(':', "")
             .to_camel_case();
-        let dynamic = map.get("dynamic").unwrap();
+        let dynamic = map.get("dynamic").unwrap_or(&Value::Null);
         if value_type.starts_with('(') && value_type.ends_with(')') {
             let types = value_type.strip_prefix('(').unwrap();
             let types = types.strip_suffix(')').unwrap();
@@ -540,8 +547,19 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
                     }
                 }
             }
-            let types: Vec<ParamType> = serde_json::from_str(value_type)?;
-            let tokens = decode(&types, &value)?;
+            let types: Vec<ParamType> = serde_json::from_str(&format!("[\"{}\"]", value_type))?;
+            let tokens = decode_packed(&types, &value)?;
+            let token_value = tokens[0].clone();
+            if let Token::FixedBytes(token_value) = token_value {
+                if value_content[0].starts_with("0x") {
+                    let value = hex::decode(&value_content[0][2..]).unwrap();
+                    return Ok(ERC725DecodedValue::Value {
+                        name: short_name.to_string(),
+                        dynamic: dynamic.clone(),
+                        value: ERC725Value::Boolean(&value == &token_value),
+                    });
+                }
+            }
             let value = decode_token(tokens[0].clone(), value_content[0])?;
             return Ok(ERC725DecodedValue::Value {
                 name: short_name.to_string(),

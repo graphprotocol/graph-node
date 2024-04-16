@@ -553,12 +553,20 @@ impl WasmInstanceContext<'_> {
                 dynamic,
                 value,
             } => {
-                let value = serde_json::json!({
-                    "type": "ArrayLength",
-                    "name": name.to_string(),
-                    "dynamic": dynamic,
-                    "value": value,
-                });
+                let value = if let serde_json::Value::Null = dynamic {
+                    serde_json::json!({
+                        "type": "ArrayLength",
+                        "name": name.to_string(),
+                        "value": value,
+                    })
+                } else {
+                    serde_json::json!({
+                        "type": "ArrayLength",
+                        "name": name.to_string(),
+                        "dynamic": dynamic.clone(),
+                        "value": value,
+                    })
+                };
                 asc_new(self, &value, gas)
             }
         }
