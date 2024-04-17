@@ -2160,7 +2160,7 @@ async fn fetch_receipts_with_retry(
     supports_block_receipts: bool,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
     if supports_block_receipts {
-        return fetch_block_receipts_with_retry(web3, block_hash, logger).await;
+        return fetch_block_receipts_with_retry(web3, hashes, block_hash, logger).await;
     }
     fetch_individual_receipts_with_retry(web3, hashes, block_hash, logger).await
 }
@@ -2199,6 +2199,7 @@ async fn fetch_individual_receipts_with_retry(
 /// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
 async fn fetch_block_receipts_with_retry(
     web3: Arc<Web3<Transport>>,
+    hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
@@ -2216,9 +2217,20 @@ async fn fetch_block_receipts_with_retry(
     // Check if receipts are available, and transform them if they are
     match receipts_option {
         Some(receipts) => {
-            // If receipts are found, transform them into Arc and return Ok
-            let transformed_receipts = receipts.into_iter().map(Arc::new).collect();
-            Ok(transformed_receipts)
+            // Create a HashSet from the transaction hashes of the receipts
+            let receipt_hashes_set: HashSet<_> =
+                receipts.iter().map(|r| r.transaction_hash).collect();
+
+            // Check if the set contains all the hashes and has the same length as the hashes vec
+            if hashes.len() == receipt_hashes_set.len()
+                && hashes.iter().all(|hash| receipt_hashes_set.contains(hash))
+            {
+                let transformed_receipts = receipts.into_iter().map(Arc::new).collect();
+                Ok(transformed_receipts)
+            } else {
+                // If there's a mismatch in numbers or a missing hash, return an error
+                Err(IngestorError::BlockReceiptsMismatched(block_hash))
+            }
         }
         None => {
             // If no receipts are found, return an error
