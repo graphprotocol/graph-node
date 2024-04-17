@@ -480,34 +480,61 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
                         }
                         Value::Number(index) => {
                             let index = index.as_u64().unwrap() as u32;
-                            Ok(ERC725DecodedValue::ArrayItem {
-                                name: short_name.to_string(),
-                                index,
-                                value: decode_token(tokens[0].clone(), value_content[0])?,
-                            })
+                            if let Some(tokens) = tokens {
+                                Ok(ERC725DecodedValue::ArrayItem {
+                                    name: short_name.to_string(),
+                                    index,
+                                    value: decode_token(tokens[0].clone(), value_content[0])?,
+                                })
+                            } else {
+                                // Clear entry
+                                Ok(ERC725DecodedValue::ArrayItem {
+                                    name: short_name.to_string(),
+                                    index,
+                                    value: ERC725Value::Null(),
+                                })
+                            }
                         }
                         _ => Err(ERC725Error::Error("Invalid Array Index".to_string())),
                     };
                 }
                 let value_content = value_content[0];
-                let token = tokens[0].clone();
-                let value = decode_token(token, value_content)?;
+                if let Some(tokens) = tokens {
+                    let token = tokens[0].clone();
+                    let value = decode_token(token, value_content)?;
+                    return Ok(ERC725DecodedValue::Value {
+                        name: short_name.to_string(),
+                        dynamic: dynamic.clone(),
+                        value,
+                    });
+                } else {
+                    // Clear value
+                    return Ok(ERC725DecodedValue::Value {
+                        name: short_name.to_string(),
+                        dynamic: dynamic.clone(),
+                        value: ERC725Value::Null(),
+                    });
+                }
+            }
+            if let Some(tokens) = tokens {
+                let output = value_content
+                    .iter()
+                    .zip(tokens.iter())
+                    .map(|(value_content, token)| decode_token(token.clone(), value_content))
+                    .collect::<Result<Vec<ERC725Value>, ERC725Error>>()?;
                 return Ok(ERC725DecodedValue::Value {
                     name: short_name.to_string(),
+                    value: ERC725Value::Array(output),
                     dynamic: dynamic.clone(),
-                    value,
+                });
+            } else {
+                // Clear value
+                return Ok(ERC725DecodedValue::Value {
+                    name: short_name.to_string(),
+                    value: ERC725Value::Null(),
+                    dynamic: dynamic.clone(),
                 });
             }
-            let output = value_content
-                .iter()
-                .zip(tokens.iter())
-                .map(|(value_content, token)| decode_token(token.clone(), value_content))
-                .collect::<Result<Vec<ERC725Value>, ERC725Error>>()?;
-            return Ok(ERC725DecodedValue::Value {
-                name: short_name.to_string(),
-                value: ERC725Value::Array(output),
-                dynamic: dynamic.clone(),
-            });
         } else if value_type == "bytes" {
             let value_content = value_content[0];
             let value = decode_token(Token::Bytes(value), value_content)?;
@@ -536,13 +563,22 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
                         let as_array = format!("[\"{}\"]", value_type);
                         let types: Vec<ParamType> = serde_json::from_str(&as_array)?;
                         let tokens = decode_packed(&types, &value)?;
-                        let token = tokens[0].clone();
-                        let value = decode_token(token, value_content[0])?;
-                        return Ok(ERC725DecodedValue::ArrayItem {
-                            name: short_name.to_string(),
-                            index,
-                            value,
-                        });
+                        if let Some(tokens) = tokens {
+                            let token = tokens[0].clone();
+                            let value = decode_token(token, value_content[0])?;
+                            return Ok(ERC725DecodedValue::ArrayItem {
+                                name: short_name.to_string(),
+                                index,
+                                value,
+                            });
+                        } else {
+                            // Clear value
+                            return Ok(ERC725DecodedValue::ArrayItem {
+                                name: short_name.to_string(),
+                                index,
+                                value: ERC725Value::Null(),
+                            });
+                        }
                     }
                     _ => {
                         return Err(ERC725Error::Error("Invalid Array Index".to_string()));
@@ -551,23 +587,32 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
             }
             let types: Vec<ParamType> = serde_json::from_str(&format!("[\"{}\"]", value_type))?;
             let tokens = decode_packed(&types, &value)?;
-            let token_value = tokens[0].clone();
-            if let Token::FixedBytes(token_value) = token_value {
-                if value_content[0].starts_with("0x") {
-                    let value = hex::decode(&value_content[0][2..]).unwrap();
-                    return Ok(ERC725DecodedValue::Value {
-                        name: short_name.to_string(),
-                        dynamic: dynamic.clone(),
-                        value: ERC725Value::Boolean(&value == &token_value),
-                    });
+            if let Some(tokens) = tokens {
+                let token_value = tokens[0].clone();
+                if let Token::FixedBytes(token_value) = token_value {
+                    if value_content[0].starts_with("0x") {
+                        let value = hex::decode(&value_content[0][2..]).unwrap();
+                        return Ok(ERC725DecodedValue::Value {
+                            name: short_name.to_string(),
+                            dynamic: dynamic.clone(),
+                            value: ERC725Value::Boolean(&value == &token_value),
+                        });
+                    }
                 }
+                let value = decode_token(tokens[0].clone(), value_content[0])?;
+                return Ok(ERC725DecodedValue::Value {
+                    name: short_name.to_string(),
+                    dynamic: dynamic.clone(),
+                    value,
+                });
+            } else {
+                // Clear value
+                return Ok(ERC725DecodedValue::Value {
+                    name: short_name.to_string(),
+                    dynamic: dynamic.clone(),
+                    value: ERC725Value::Null(),
+                });
             }
-            let value = decode_token(tokens[0].clone(), value_content[0])?;
-            return Ok(ERC725DecodedValue::Value {
-                name: short_name.to_string(),
-                dynamic: dynamic.clone(),
-                value,
-            });
         }
     }
     Ok(ERC725DecodedValue::Null())

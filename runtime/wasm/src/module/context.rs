@@ -529,11 +529,11 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
         let value: Vec<u8> = asc_get(self, value_ptr, gas)?;
-        let results =
-            decode_key_value(key, value).map_err(|e| HostExportError::from(Error::from(e)))?;
+        let results = decode_key_value(key.clone(), value.clone())
+            .map_err(|e| HostExportError::from(Error::from(e)));
         match results {
-            ERC725DecodedValue::Null() => Ok(AscPtr::null()),
-            ERC725DecodedValue::ArrayItem { name, index, value } => {
+            Ok(ERC725DecodedValue::Null()) => Ok(AscPtr::null()),
+            Ok(ERC725DecodedValue::ArrayItem { name, index, value }) => {
                 let value = serde_json::json!({
                     "type": "ArrayItem",
                     "name": name.to_string(),
@@ -542,7 +542,7 @@ impl WasmInstanceContext<'_> {
                 });
                 asc_new(self, &value, gas)
             }
-            ERC725DecodedValue::ArrayLength { name, length } => {
+            Ok(ERC725DecodedValue::ArrayLength { name, length }) => {
                 let value = serde_json::json!({
                     "type": "ArrayLength",
                     "name": name.to_string(),
@@ -550,11 +550,11 @@ impl WasmInstanceContext<'_> {
                 });
                 asc_new(self, &value, gas)
             }
-            ERC725DecodedValue::Value {
+            Ok(ERC725DecodedValue::Value {
                 name,
                 dynamic,
                 value,
-            } => {
+            }) => {
                 if name == "lsp3Profile" || name == "lsp4Metadata" {
                     if let ERC725Value::VerifiableURI { url, method, data } = value {
                         let desired_hash = data.clone();
@@ -600,6 +600,14 @@ impl WasmInstanceContext<'_> {
                     })
                 };
                 asc_new(self, &value, gas)
+            }
+            Err(e) => {
+                let logger = self.as_ref().ctx.logger.cheap_clone();
+                info!(&logger, "Failed to erc725.decode_key_value, returning `null`";
+                  "error" => e.to_string(),
+                  "key" => hex::encode(&key),
+                  "value" => hex::encode(&value));
+                Ok(AscPtr::null())
             }
         }
     }

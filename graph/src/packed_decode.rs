@@ -28,16 +28,10 @@ fn as_bool(slice: &[u8]) -> Result<bool, Error> {
 }
 
 /// Decodes ABI compliant vector of bytes into vector of tokens described by types param.
-pub fn decode_packed(types: &[ParamType], data: &[u8]) -> Result<Vec<Token>, Error> {
+pub fn decode_packed(types: &[ParamType], data: &[u8]) -> Result<Option<Vec<Token>>, Error> {
     let is_empty_bytes_valid_encoding = types.iter().all(|t| t.is_empty_bytes_valid_encoding());
     if !is_empty_bytes_valid_encoding && data.is_empty() {
-        return Err(Error::InvalidName(
-            "please ensure the contract and method you're calling exist! \
-			 failed to decode empty bytes. if you're using jsonrpc this is \
-			 likely due to jsonrpc returning `0x` in case contract or method \
-			 don't exist"
-                .into(),
-        ));
+        return Ok(None);
     }
 
     let mut tokens = vec![];
@@ -49,7 +43,7 @@ pub fn decode_packed(types: &[ParamType], data: &[u8]) -> Result<Vec<Token>, Err
         tokens.push(res.token);
     }
 
-    Ok(tokens)
+    Ok(Some(tokens))
 }
 
 fn peek(data: &[u8], offset: usize, len: usize) -> Result<&[u8], Error> {
