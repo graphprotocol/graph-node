@@ -688,7 +688,7 @@ pub enum IndexCommand {
         /// case (as its SQL colmun name).
         #[clap(min_values = 1, required = true)]
         fields: Vec<String>,
-        /// The index method. Defaults to `btree`.
+        /// The index method. Defaults to `btree` in general, and to `gist` when the index includes the `block_range` column
         #[clap(
             short, long,
             possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
