@@ -1879,18 +1879,18 @@ pub fn generate_index_creation_sql(
          ({index_exprs_joined}) ",
     );
 
-    // If 'after' is provided and the table is not immutable, add a WHERE clause for partial indexing
+    // If 'after' is provided and the table is immutable, throw an error because partial indexing is not allowed
     if let Some(after) = after {
-        if !table.immutable {
-            sql.push_str(&format!(
-                " where coalesce(upper({}), 2147483647) > {}",
-                BLOCK_RANGE_COLUMN, after
-            ));
-        } else {
+        if table.immutable {
             return Err(StoreError::Unknown(anyhow!(
                 "Partial index not allowed on immutable table `{}`",
                 table_name
             )));
+        } else {
+            sql.push_str(&format!(
+                " where coalesce(upper({}), 2147483647) > {}",
+                BLOCK_RANGE_COLUMN, after
+            ));
         }
     }
 

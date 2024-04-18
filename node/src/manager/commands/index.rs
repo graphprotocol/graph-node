@@ -45,17 +45,18 @@ pub async fn create(
 
     // If the fields contain the block range column, we use GIN
     // indexes. Otherwise we default to B-tree indexes.
-    let index_method = index_method.unwrap_or_else(|| {
+    let index_method_str = index_method.as_deref().unwrap_or_else(|| {
         if field_names.contains(&BLOCK_RANGE_COLUMN.to_string()) {
-            "gist".to_string()
+            "gist"
         } else {
-            "btree".to_string()
+            "btree"
         }
     });
 
-    let index_method = index_method
+    let index_method = index_method_str
         .parse::<Method>()
-        .map_err(|()| anyhow!("unknown index method `{}`", index_method))?;
+        .map_err(|_| anyhow!("unknown index method `{}`", index_method_str))?;
+
     match store
         .create_manual_index(
             &deployment_locator,

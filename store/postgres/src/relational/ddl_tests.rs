@@ -61,12 +61,14 @@ fn check_eqv(left: &str, right: &str) {
 fn test_manual_index_creation_ddl() {
     let layout = Arc::new(test_layout(BOOKS_GQL));
 
+    #[track_caller]
     fn assert_generated_sql(
         layout: Arc<Layout>,
         entity_name: &str,
         field_names: Vec<String>,
         index_method: &str,
         expected_format: &str,
+        after: Option<BlockNumber>,
     ) {
         let namespace = layout.site.namespace.clone();
         let expected = expected_format.replace("{namespace}", namespace.as_str());
@@ -76,7 +78,7 @@ fn test_manual_index_creation_ddl() {
             entity_name,
             field_names,
             index::Method::from_str(index_method).unwrap(),
-            None,
+            after,
         )
         .unwrap();
 
@@ -84,6 +86,7 @@ fn test_manual_index_creation_ddl() {
     }
 
     const BTREE: &str = "btree"; // Assuming index::Method is the enum containing the BTree variant
+    const GIST: &str = "gist";
 
     assert_generated_sql(
         layout.clone(),
@@ -91,6 +94,7 @@ fn test_manual_index_creation_ddl() {
         vec!["id".to_string()],
         BTREE,
         "create index concurrently if not exists manual_book_id on {namespace}.book using btree (\"id\")",
+        None
     );
 
     assert_generated_sql(
@@ -99,6 +103,7 @@ fn test_manual_index_creation_ddl() {
         vec!["content".to_string()],
         BTREE,
         "create index concurrently if not exists manual_book_content on {namespace}.book using btree (substring(\"content\", 1, 64))",
+        None
     );
 
     assert_generated_sql(
@@ -107,6 +112,7 @@ fn test_manual_index_creation_ddl() {
         vec!["title".to_string()],
         BTREE,
         "create index concurrently if not exists manual_book_title on {namespace}.book using btree (left(\"title\", 256))",
+        None
     );
 
     assert_generated_sql(
@@ -115,6 +121,7 @@ fn test_manual_index_creation_ddl() {
         vec!["page_count".to_string()],
         BTREE,
         "create index concurrently if not exists manual_book_page_count on {namespace}.book using btree (\"page_count\")",
+        None
     );
 
     assert_generated_sql(
@@ -123,6 +130,25 @@ fn test_manual_index_creation_ddl() {
         vec!["page_count".to_string(), "title".to_string()],
         BTREE,
         "create index concurrently if not exists manual_book_page_count_title on {namespace}.book using btree (\"page_count\", left(\"title\", 256))",
+        None
+    );
+
+    assert_generated_sql(
+        layout.clone(),
+        "Book",
+        vec!["content".to_string(), "block_range".to_string()], // Explicitly including 'block_range'
+        GIST,
+        "create index concurrently if not exists manual_book_content_block_range on {namespace}.book using gist (substring(\"content\", 1, 64), block_range)",
+        None
+    );
+
+    assert_generated_sql(
+        layout.clone(),
+        "Book",
+        vec!["page_count".to_string()],
+        BTREE,
+        "create index concurrently if not exists manual_book_page_count_12345 on sgd0815.book using btree (\"page_count\")  where coalesce(upper(block_range), 2147483647) > 12345",
+        Some(12345)
     );
 }
 
@@ -375,7 +401,7 @@ create index attr_2_0_file_thing_id
 const BOOKS_GQL: &str = r#"type Author @entity {
     id: ID!
     name: String!
-    books: [Book!]! @derivedFrom(field: "writtenBy")
+    books: [Book!]! @derivedFrom(field: "author")
 }
 
 type Book @entity {
@@ -383,7 +409,7 @@ type Book @entity {
     title: String!
     content: Bytes!
     pageCount: BigInt!
-    writtenBy: Author!
+    author: Author!
 }"#;
 
 const MUSIC_GQL: &str = r#"type Musician @entity {
