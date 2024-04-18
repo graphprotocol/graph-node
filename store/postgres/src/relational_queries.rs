@@ -4443,7 +4443,7 @@ impl<'a> FilterQuery<'a> {
     ///
     /// Generate a query
     ///   select '..' as entity, to_jsonb(e.*) as data
-    ///     from (select c.*, p.id as g$parent_id from {window.children(...)}) c
+    ///     from (select {column_names}, p.id as g$parent_id from {window.children(...)}) c
     ///     order by c.g$parent_id, {sort_key}
     ///     limit {first} offset {skip}
     fn query_window_one_entity<'b>(
@@ -4452,8 +4452,9 @@ impl<'a> FilterQuery<'a> {
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
-        out.push_sql(" from (\n");
-        out.push_sql("select c.*, p.id::text as ");
+        out.push_sql(" from (select ");
+        write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+        out.push_sql(", p.id::text as ");
         out.push_sql(&*PARENT_ID);
         window.children(false, &self.limit, &mut out)?;
         out.push_sql(") c");
