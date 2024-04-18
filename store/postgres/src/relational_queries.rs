@@ -22,7 +22,7 @@ use graph::prelude::{
     EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
     ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
+use graph::schema::{EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
@@ -56,7 +56,7 @@ const SORT_KEY_COLUMN: &str = "sort_key$";
 /// The name of the parent_id attribute that we inject into queries. Users
 /// outside of this module should access the parent id through the
 /// `QueryObject` struct
-const PARENT_ID: &str = "g$parent_id";
+pub(crate) const PARENT_ID: &str = "g$parent_id";
 
 /// Describes at what level a `SELECT` statement is used.
 enum SelectStatementLevel {
@@ -111,14 +111,6 @@ macro_rules! constraint_violation {
 trait ForeignKeyClauses {
     /// The name of the column
     fn name(&self) -> &str;
-
-    /// Generate a clause `{name()} = $id` using the right types to bind `$id`
-    /// into `out`
-    fn eq<'b>(&self, id: &'b Id, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        out.push_sql(self.name());
-        out.push_sql(" = ");
-        id.push_bind_param(out)
-    }
 
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
@@ -1914,62 +1906,6 @@ impl<'a> QueryFragment<Pg> for Filter<'a> {
         Ok(())
     }
 }
-
-/// A query that finds an entity by key. Used during indexing.
-/// See also `FindManyQuery`.
-#[derive(Debug, Clone)]
-pub struct FindQuery<'a> {
-    table: &'a Table,
-    key: &'a EntityKey,
-    br_column: BlockRangeColumn<'a>,
-}
-
-impl<'a> FindQuery<'a> {
-    pub fn new(table: &'a Table, key: &'a EntityKey, block: BlockNumber) -> Self {
-        let br_column = BlockRangeColumn::new(table, "e.", block);
-        Self {
-            table,
-            key,
-            br_column,
-        }
-    }
-}
-
-impl<'a> QueryFragment<Pg> for FindQuery<'a> {
-    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-
-        // Generate
-        //    select '..' as entity, to_jsonb(e.*) as data
-        //      from schema.table e where id = $1
-        out.push_sql("select ");
-        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
-        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
-        out.push_sql("  from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" e\n where ");
-        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
-        out.push_sql(" and ");
-        if self.table.has_causality_region {
-            out.push_sql("causality_region = ");
-            out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
-            out.push_sql(" and ");
-        }
-        self.br_column.contains(&mut out, true)
-    }
-}
-
-impl<'a> QueryId for FindQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> Query for FindQuery<'a> {
-    type SqlType = Untyped;
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 /// Builds a query over a given set of [`Table`]s in an attempt to find updated
 /// and/or newly inserted entities at a given block number; i.e. such that the
