@@ -6,6 +6,7 @@ use graph::erc725::ERC725DecodedValue;
 use graph::erc725::ERC725Value;
 use graph::erc725::HASHBYTES_KECCAK256_BYTES;
 use graph::erc725::HASHBYTES_KECCAK256_UTF8;
+use graph::prelude::serde_json::Number;
 use graph::prelude::tiny_keccak::keccak256;
 use graph::runtime::gas;
 use graph::util::lfu_cache::LfuCache;
@@ -537,16 +538,18 @@ impl WasmInstanceContext<'_> {
                 let value = serde_json::json!({
                     "type": "ArrayItem",
                     "name": name.to_string(),
-                    "index": index,
+                    "dynamic": serde_json::Value::Number(Number::from(index)),
                     "value": value
                 });
+                let text = serde_json::to_string(&value).unwrap();
+                print!("ArrayItem: {:?}", &text);
                 asc_new(self, &value, gas)
             }
             Ok(ERC725DecodedValue::ArrayLength { name, length }) => {
                 let value = serde_json::json!({
                     "type": "ArrayLength",
                     "name": name.to_string(),
-                    "length": length
+                    "value": serde_json::Value::Number(Number::from(length)),
                 });
                 asc_new(self, &value, gas)
             }
@@ -562,7 +565,7 @@ impl WasmInstanceContext<'_> {
                         let raw_hash = keccak256(&bytes).to_vec();
                         let str = String::from_utf8(bytes.clone())
                             .map_err(|e| HostExportError::from(Error::from(e)))?;
-                        serde_json::from_str(&str)
+                        let mut data: serde_json::Value = serde_json::from_str(&str)
                             .map_err(|e| HostExportError::from(Error::from(e)))?;
                         if method == HASHBYTES_KECCAK256_BYTES || method == HASHBYTES_KECCAK256_UTF8
                         {
@@ -571,6 +574,19 @@ impl WasmInstanceContext<'_> {
                             let bytes = str.as_bytes();
                             let hash = keccak256(bytes).to_vec();
                             if desired_hash == hash || desired_hash == raw_hash {
+                                if name == "lsp3Profile" {
+                                    data = if let serde_json::Value::Object(obj) = data {
+                                        obj.get("LSP3Profile").unwrap().clone()
+                                    } else {
+                                        data
+                                    }
+                                } else if name == "lsp4Metadata" {
+                                    data = if let serde_json::Value::Object(obj) = data {
+                                        obj.get("LSP4Metadata").unwrap().clone()
+                                    } else {
+                                        data
+                                    }
+                                }
                                 let value = serde_json::json!({
                                     "type": "Value",
                                     "name": name.to_string(),
@@ -585,7 +601,9 @@ impl WasmInstanceContext<'_> {
                         };
                     }
                 }
-                let value = if let serde_json::Value::Null = dynamic {
+                let value = serde_json::to_string(&value).unwrap();
+                let value: serde_json::Value = serde_json::from_str(&value).unwrap();
+                let value: serde_json::Value = if let serde_json::Value::Null = dynamic {
                     serde_json::json!({
                         "type": "Value",
                         "name": name.to_string(),

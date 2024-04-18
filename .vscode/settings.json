@@ -1,0 +1,6 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "./graph/Cargo.toml",
+    "./runtime/wasm/Cargo.toml"
+  ]
+}

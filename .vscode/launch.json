@@ -1,0 +1,778 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-core'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-core"],
+        "filter": {
+          "name": "graph-core",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph"],
+        "filter": {
+          "name": "graph",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug example 'validate'",
+      "cargo": {
+        "args": ["build", "--example=validate", "--package=graph"],
+        "filter": {
+          "name": "validate",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in example 'validate'",
+      "cargo": {
+        "args": ["test", "--no-run", "--example=validate", "--package=graph"],
+        "filter": {
+          "name": "validate",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug example 'stress'",
+      "cargo": {
+        "args": ["build", "--example=stress", "--package=graph"],
+        "filter": {
+          "name": "stress",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in example 'stress'",
+      "cargo": {
+        "args": ["test", "--no-run", "--example=stress", "--package=graph"],
+        "filter": {
+          "name": "stress",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-arweave'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-chain-arweave"],
+        "filter": {
+          "name": "graph-chain-arweave",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-runtime-wasm'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-runtime-wasm"],
+        "filter": {
+          "name": "graph-runtime-wasm",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-cosmos'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-chain-cosmos"],
+        "filter": {
+          "name": "graph-chain-cosmos",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-common'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-chain-common"],
+        "filter": {
+          "name": "graph-chain-common",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'test-acme'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test=test-acme",
+          "--package=graph-chain-common"
+        ],
+        "filter": {
+          "name": "test-acme",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-ethereum'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-chain-ethereum"],
+        "filter": {
+          "name": "graph-chain-ethereum",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug example 'firehose'",
+      "cargo": {
+        "args": [
+          "build",
+          "--example=firehose",
+          "--package=graph-chain-ethereum"
+        ],
+        "filter": {
+          "name": "firehose",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in example 'firehose'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--example=firehose",
+          "--package=graph-chain-ethereum"
+        ],
+        "filter": {
+          "name": "firehose",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-near'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-chain-near"],
+        "filter": {
+          "name": "graph-chain-near",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'trigger-filters'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=trigger-filters"],
+        "filter": {
+          "name": "trigger-filters",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-starknet'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-chain-starknet"],
+        "filter": {
+          "name": "graph-chain-starknet",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-chain-substreams'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=graph-chain-substreams"
+        ],
+        "filter": {
+          "name": "graph-chain-substreams",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug example 'substreams'",
+      "cargo": {
+        "args": [
+          "build",
+          "--example=substreams",
+          "--package=graph-chain-substreams"
+        ],
+        "filter": {
+          "name": "substreams",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in example 'substreams'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--example=substreams",
+          "--package=graph-chain-substreams"
+        ],
+        "filter": {
+          "name": "substreams",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-graphql'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-graphql"],
+        "filter": {
+          "name": "graph-graphql",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug example 'schema'",
+      "cargo": {
+        "args": ["build", "--example=schema", "--package=graph-graphql"],
+        "filter": {
+          "name": "schema",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in example 'schema'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--example=schema",
+          "--package=graph-graphql"
+        ],
+        "filter": {
+          "name": "schema",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-node'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-node"],
+        "filter": {
+          "name": "graph-node",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'graph-node'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=graph-node",
+          "--package=graph-node",
+          "--profile=dev"
+        ],
+        "filter": {
+          "name": "graph-node",
+          "kind": "bin"
+        }
+      },
+      "args": [
+        "--node-id",
+        "default",
+        "--postgres-url",
+        "postgresql://graph-node:let-me-in@127.0.0.1:5432/graph-node",
+        "--ethereum-rpc",
+        "mainnet:http://34.141.208.199:8545",
+        "--ipfs",
+        "localhost:5001"
+      ],
+      "console": "integratedTerminal",
+      "env": {
+        "GRAPH_LOG": "info",
+        "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS": "true",
+        "GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH": "true"
+      },
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'graph-node'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--bin=graph-node",
+          "--package=graph-node"
+        ],
+        "filter": {
+          "name": "graph-node",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'graphman'",
+      "cargo": {
+        "args": ["build", "--bin=graphman", "--package=graph-node"],
+        "filter": {
+          "name": "graphman",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'graphman'",
+      "cargo": {
+        "args": ["test", "--no-run", "--bin=graphman", "--package=graph-node"],
+        "filter": {
+          "name": "graphman",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-server-http'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-server-http"],
+        "filter": {
+          "name": "graph-server-http",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'response'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test=response",
+          "--package=graph-server-http"
+        ],
+        "filter": {
+          "name": "response",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'server'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test=server",
+          "--package=graph-server-http"
+        ],
+        "filter": {
+          "name": "server",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-server-index-node'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=graph-server-index-node"
+        ],
+        "filter": {
+          "name": "graph-server-index-node",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-server-json-rpc'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=graph-server-json-rpc"
+        ],
+        "filter": {
+          "name": "graph-server-json-rpc",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-server-metrics'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-server-metrics"],
+        "filter": {
+          "name": "graph-server-metrics",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-server-websocket'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=graph-server-websocket"
+        ],
+        "filter": {
+          "name": "graph-server-websocket",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-store-postgres'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-store-postgres"],
+        "filter": {
+          "name": "graph-store-postgres",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug example 'layout'",
+      "cargo": {
+        "args": ["build", "--example=layout", "--package=graph-store-postgres"],
+        "filter": {
+          "name": "layout",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in example 'layout'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--example=layout",
+          "--package=graph-store-postgres"
+        ],
+        "filter": {
+          "name": "layout",
+          "kind": "example"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-runtime-test'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-runtime-test"],
+        "filter": {
+          "name": "graph-runtime-test",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'test-store'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=test-store"],
+        "filter": {
+          "name": "test-store",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'core'",
+      "cargo": {
+        "args": ["test", "--no-run", "--test=core", "--package=test-store"],
+        "filter": {
+          "name": "core",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'chain'",
+      "cargo": {
+        "args": ["test", "--no-run", "--test=chain", "--package=test-store"],
+        "filter": {
+          "name": "chain",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'graph'",
+      "cargo": {
+        "args": ["test", "--no-run", "--test=graph", "--package=test-store"],
+        "filter": {
+          "name": "graph",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'graphql'",
+      "cargo": {
+        "args": ["test", "--no-run", "--test=graphql", "--package=test-store"],
+        "filter": {
+          "name": "graphql",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'postgres'",
+      "cargo": {
+        "args": ["test", "--no-run", "--test=postgres", "--package=test-store"],
+        "filter": {
+          "name": "postgres",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'graph-tests'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=graph-tests"],
+        "filter": {
+          "name": "graph-tests",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'runner_tests'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test=runner_tests",
+          "--package=graph-tests"
+        ],
+        "filter": {
+          "name": "runner_tests",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug integration test 'integration_tests'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--test=integration_tests",
+          "--package=graph-tests"
+        ],
+        "filter": {
+          "name": "integration_tests",
+          "kind": "test"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

@@ -490,6 +490,9 @@ impl HostExports {
         logger: &Logger,
         url: String,
     ) -> Result<Vec<u8>, anyhow::Error> {
+        if url.starts_with("https://2eff.lukso.dev/ipfs/") {
+            return self.ipfs_cat(&logger, url.replace("https://2eff.lukso.dev/ipfs/", ""));
+        }
         if url.starts_with("ipfs://") {
             return self.ipfs_cat(&logger, url.replace("ipfs://", ""));
         }

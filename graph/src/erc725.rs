@@ -92,8 +92,16 @@ impl Serialize for ERC725Value {
         match self {
             ERC725Value::Null() => ser.serialize_none(),
             ERC725Value::Boolean(value) => ser.serialize_bool(*value),
-            ERC725Value::Address(address) => ser.serialize_bytes(address.as_bytes()),
-            ERC725Value::Bytes(bytes) => ser.serialize_bytes(bytes),
+            ERC725Value::Address(address) => {
+                let data = hex::encode(address.as_bytes());
+                let data = format!("0x{}", &data);
+                ser.serialize_str(&data)
+            }
+            ERC725Value::Bytes(bytes) => {
+                let data = hex::encode(bytes);
+                let data = format!("0x{}", &data);
+                ser.serialize_str(&data)
+            }
             ERC725Value::Number(number) => ser.serialize_str(&number.to_string()),
             ERC725Value::String(string) => ser.serialize_str(string),
             ERC725Value::VerifiableURI { url, method, data } => {
@@ -110,7 +118,11 @@ impl Serialize for ERC725Value {
                 }
                 seq.end()
             }
-            ERC725Value::BitArray(array) => ser.serialize_bytes(array),
+            ERC725Value::BitArray(array) => {
+                let data = hex::encode(array);
+                let data = format!("0x{}", &data);
+                ser.serialize_str(&data)
+            }
         }
     }
 }
@@ -431,12 +443,10 @@ pub fn decode_token(token: Token, value_content: &str) -> Result<ERC725Value, ER
             return Ok(ERC725Value::BitArray(token));
         }
     }
-    let result = Err(ERC725Error::Error(format!(
+    Err(ERC725Error::Error(format!(
         "Invalid Data: {}",
         value_content
-    )));
-    print!("{:?}", result);
-    result
+    )))
 }
 
 pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValue, ERC725Error> {
@@ -495,7 +505,7 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
                                 })
                             }
                         }
-                        _ => Err(ERC725Error::Error("Invalid Array Index".to_string())),
+                        _ => return Err(ERC725Error::Error("Invalid Array Index".to_string())),
                     };
                 }
                 let value_content = value_content[0];
@@ -546,9 +556,9 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
         } else {
             let is_array = map.get("keyType").unwrap().as_str().unwrap() == "Array";
             if is_array {
-                match map.get("arg") {
+                match map.get("dynamic") {
                     Some(Value::String(name)) => {
-                        if name == "length" {
+                        if name == "length" && value.len() >= 4 {
                             let value = value[(value.len() - 4)..].to_vec();
                             let length = BigEndian::read_u32(&value);
                             return Ok(ERC725DecodedValue::ArrayLength {
@@ -595,7 +605,7 @@ pub fn decode_value(key_item: Value, value: Vec<u8>) -> Result<ERC725DecodedValu
                         return Ok(ERC725DecodedValue::Value {
                             name: short_name.to_string(),
                             dynamic: dynamic.clone(),
-                            value: ERC725Value::Boolean(&value == &token_value),
+                            value: ERC725Value::Boolean(value == token_value),
                         });
                     }
                 }
@@ -626,6 +636,9 @@ pub fn decode_key_value(key: Vec<u8>, value: Vec<u8>) -> Result<ERC725DecodedVal
 }
 
 pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error> {
+    if bytes.len() < 2 {
+        return Err(ERC725Error::Error("Invalid VerifiableURI".to_string()));
+    }
     let code: u16 = BigEndian::read_u16(&bytes);
     if code == 0 {
         // VerifiableURI
