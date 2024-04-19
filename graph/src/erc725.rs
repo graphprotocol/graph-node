@@ -635,6 +635,10 @@ pub fn decode_key_value(key: Vec<u8>, value: Vec<u8>) -> Result<ERC725DecodedVal
     Ok(ERC725DecodedValue::Null())
 }
 
+const IPFS_PREFIX: &[u8] = "ipfs://".as_bytes();
+const HTTPS_PREFIX: &[u8] = "https://".as_bytes();
+const DATA_PREFIX: &[u8] = "data:".as_bytes();
+
 pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error> {
     if bytes.len() < 2 {
         return Err(ERC725Error::Error("Invalid VerifiableURI".to_string()));
@@ -653,6 +657,19 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
         });
     }
     let method = &bytes[0..4]; // 0..3
+    let out = &bytes[4..];
+    if bytes.len() < 36
+        || (out.starts_with(IPFS_PREFIX)
+            || out.starts_with(HTTPS_PREFIX)
+            || out.starts_with(DATA_PREFIX))
+    {
+        let url = String::from_utf8(bytes[4..].to_vec().clone())?;
+        return Ok(ERC725Value::VerifiableURI {
+            url,
+            method: vec![0u8; 4],
+            data: vec![],
+        });
+    }
     let data = &bytes[4..36];
     let url = String::from_utf8(bytes[36..].to_vec().clone())?;
     Ok(ERC725Value::VerifiableURI {

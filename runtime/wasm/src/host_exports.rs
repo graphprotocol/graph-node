@@ -20,13 +20,13 @@ use graph::components::subgraph::{
 };
 use graph::data::store::{self};
 use graph::data_source::{CausalityRegion, DataSource, EntityTypeAccess};
-use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
+use graph::{data, ensure};
 
 use crate::module::WasmInstance;
 use crate::{error::DeterminismLevel, module::IntoTrap};
@@ -490,13 +490,22 @@ impl HostExports {
         logger: &Logger,
         url: String,
     ) -> Result<Vec<u8>, anyhow::Error> {
+        let mut result: Option<Result<Vec<u8>, anyhow::Error>> = None;
         if url.starts_with("https://2eff.lukso.dev/ipfs/") {
-            return self.ipfs_cat(&logger, url.replace("https://2eff.lukso.dev/ipfs/", ""));
+            result = Some(self.ipfs_cat(&logger, url.replace("https://2eff.lukso.dev/ipfs/", "")));
+        } else if url.starts_with("ipfs://") {
+            result = Some(self.ipfs_cat(&logger, url.replace("ipfs://", "")));
         }
-        if url.starts_with("ipfs://") {
-            return self.ipfs_cat(&logger, url.replace("ipfs://", ""));
+        if result.is_none() {
+            error!(logger, "Failed to download (not supported)"; "url" => url);
+            return Err(anyhow!("Unable to download {:?}", url));
         }
-        Err(anyhow!("Unable to download {:?}", url))
+        if let Some(Ok(data)) = result {
+            Ok(data)
+        } else {
+            error!(logger, "Failed to download (returning empty data)"; "url" => url);
+            Ok(vec![])
+        }
     }
 
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {

@@ -541,14 +541,12 @@ impl WasmInstanceContext<'_> {
                     "dynamic": serde_json::Value::Number(Number::from(index)),
                     "value": value
                 });
-                let text = serde_json::to_string(&value).unwrap();
-                print!("ArrayItem: {:?}", &text);
                 asc_new(self, &value, gas)
             }
             Ok(ERC725DecodedValue::ArrayLength { name, length }) => {
                 let value = serde_json::json!({
                     "type": "ArrayLength",
-                    "name": name.to_string(),
+                    "name":name.to_string(),
                     "value": serde_json::Value::Number(Number::from(length)),
                 });
                 asc_new(self, &value, gas)
@@ -561,44 +559,56 @@ impl WasmInstanceContext<'_> {
                 if name == "lsp3Profile" || name == "lsp4Metadata" {
                     if let ERC725Value::VerifiableURI { url, method, data } = value {
                         let desired_hash = data.clone();
-                        let bytes = self.download_url(gas, url)?;
-                        let raw_hash = keccak256(&bytes).to_vec();
-                        let str = String::from_utf8(bytes.clone())
-                            .map_err(|e| HostExportError::from(Error::from(e)))?;
-                        let mut data: serde_json::Value = serde_json::from_str(&str)
-                            .map_err(|e| HostExportError::from(Error::from(e)))?;
-                        if method == HASHBYTES_KECCAK256_BYTES || method == HASHBYTES_KECCAK256_UTF8
-                        {
-                            let str = serde_json::to_string(&data)
-                                .map_err(|e| HostExportError::from(Error::from(e)))?;
-                            let bytes = str.as_bytes();
-                            let hash = keccak256(bytes).to_vec();
-                            if desired_hash == hash || desired_hash == raw_hash {
-                                if name == "lsp3Profile" {
-                                    data = if let serde_json::Value::Object(obj) = data {
-                                        obj.get("LSP3Profile").unwrap().clone()
-                                    } else {
-                                        data
-                                    }
-                                } else if name == "lsp4Metadata" {
-                                    data = if let serde_json::Value::Object(obj) = data {
-                                        obj.get("LSP4Metadata").unwrap().clone()
-                                    } else {
-                                        data
-                                    }
-                                }
-                                let value = serde_json::json!({
-                                    "type": "Value",
-                                    "name": name.to_string(),
-                                    "value": data,
-                                });
-                                return asc_new(self, &value, gas);
-                            } else {
+                        let bytes = self.download_url(gas, url.clone());
+                        match bytes {
+                            Err(err) => {
+                                let logger = self.as_ref().ctx.logger.cheap_clone();
+                                info!(&logger, "Failed to download URL, returning `null`";
+                              "error" => err.to_string(),
+                              "url" => url);
                                 return Ok(AscPtr::null());
                             }
-                        } else {
-                            return Ok(AscPtr::null());
-                        };
+                            Ok(bytes) => {
+                                let raw_hash = keccak256(&bytes).to_vec();
+                                let str = String::from_utf8(bytes.clone())
+                                    .map_err(|e| HostExportError::from(Error::from(e)))?;
+                                let mut data: serde_json::Value = serde_json::from_str(&str)
+                                    .map_err(|e| HostExportError::from(Error::from(e)))?;
+                                if method == HASHBYTES_KECCAK256_BYTES
+                                    || method == HASHBYTES_KECCAK256_UTF8
+                                {
+                                    let str = serde_json::to_string(&data)
+                                        .map_err(|e| HostExportError::from(Error::from(e)))?;
+                                    let bytes = str.as_bytes();
+                                    let hash = keccak256(bytes).to_vec();
+                                    if desired_hash == hash || desired_hash == raw_hash {
+                                        if name == "lsp3Profile" {
+                                            data = if let serde_json::Value::Object(obj) = data {
+                                                obj.get("LSP3Profile").unwrap().clone()
+                                            } else {
+                                                data
+                                            }
+                                        } else if name == "lsp4Metadata" {
+                                            data = if let serde_json::Value::Object(obj) = data {
+                                                obj.get("LSP4Metadata").unwrap().clone()
+                                            } else {
+                                                data
+                                            }
+                                        }
+                                        let value = serde_json::json!({
+                                            "type": "Value",
+                                            "name": name.to_string(),
+                                            "value": data,
+                                        });
+                                        return asc_new(self, &value, gas);
+                                    } else {
+                                        return Ok(AscPtr::null());
+                                    }
+                                } else {
+                                    return Ok(AscPtr::null());
+                                };
+                            }
+                        }
                     }
                 }
                 let value = serde_json::to_string(&value).unwrap();
