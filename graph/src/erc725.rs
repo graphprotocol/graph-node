@@ -102,7 +102,7 @@ impl Serialize for ERC725Value {
                 let data = format!("0x{}", &data);
                 ser.serialize_str(&data)
             }
-            ERC725Value::Number(number) => ser.serialize_str(&number.to_string()),
+            ERC725Value::Number(number) => ser.serialize_i64(number.as_u64() as i64),
             ERC725Value::String(string) => ser.serialize_str(string),
             ERC725Value::VerifiableURI { url, method, data } => {
                 let mut map = ser.serialize_map(Some(3))?;
