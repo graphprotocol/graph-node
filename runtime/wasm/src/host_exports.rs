@@ -491,19 +491,20 @@ impl HostExports {
         url: String,
     ) -> Result<Vec<u8>, anyhow::Error> {
         let mut result: Option<Result<Vec<u8>, anyhow::Error>> = None;
+        let log_url = url.clone();
         if url.starts_with("https://2eff.lukso.dev/ipfs/") {
             result = Some(self.ipfs_cat(&logger, url.replace("https://2eff.lukso.dev/ipfs/", "")));
         } else if url.starts_with("ipfs://") {
             result = Some(self.ipfs_cat(&logger, url.replace("ipfs://", "")));
         }
         if result.is_none() {
-            error!(logger, "Failed to download (not supported)"; "url" => url);
-            return Err(anyhow!("Unable to download {:?}", url));
+            error!(logger, "Failed to download (not supported)"; "url" => &log_url);
+            return Err(anyhow!("Unable to download {:?}", &log_url));
         }
         if let Some(Ok(data)) = result {
             Ok(data)
         } else {
-            error!(logger, "Failed to download (returning empty data)"; "url" => url);
+            error!(logger, "Failed to download (returning empty data)"; "url" => &log_url);
             Ok(vec![])
         }
     }
