@@ -516,7 +516,11 @@ impl WasmInstanceContext<'_> {
         asc_new(self, &result, gas)
     }
 
-    fn download_url(&mut self, _gas: &GasCounter, url: String) -> Result<Vec<u8>, HostExportError> {
+    fn download_url(
+        &mut self,
+        _gas: &GasCounter,
+        url: String,
+    ) -> Result<Option<Vec<u8>>, HostExportError> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let logger = self.as_ref().ctx.logger.cheap_clone();
         host_exports.download_url(&logger, url).map_err(Into::into)
@@ -568,7 +572,13 @@ impl WasmInstanceContext<'_> {
                               "url" => url);
                                 return Ok(AscPtr::null());
                             }
-                            Ok(bytes) => {
+                            Ok(None) => {
+                                let logger = self.as_ref().ctx.logger.cheap_clone();
+                                info!(&logger, "Failed to download URL, returning `null`";
+                              "url" => url);
+                                return Ok(AscPtr::null());
+                            }
+                            Ok(Some(bytes)) => {
                                 let raw_hash = keccak256(&bytes).to_vec();
                                 let str = String::from_utf8(bytes.clone())
                                     .map_err(|e| HostExportError::from(Error::from(e)))?;
@@ -700,47 +710,51 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let (url, method, desired_hash) = self.decode_verifiable_uri(gas, bytes_ptr)?;
         let bytes = self.download_url(gas, url.clone())?;
-        let raw_hash = keccak256(&bytes).to_vec();
-        let str =
-            String::from_utf8(bytes.clone()).map_err(|e| HostExportError::from(Error::from(e)))?;
-        let data = serde_json::from_str(&str).map_err(|e| HostExportError::from(Error::from(e)))?;
-        let verified = if method == METHOD_BYTES || method == METHOD_UTF8 {
-            let str =
-                serde_json::to_string(&data).map_err(|e| HostExportError::from(Error::from(e)))?;
-            let bytes = str.as_bytes();
-            let hash = keccak256(bytes).to_vec();
-            if desired_hash == hash || desired_hash == raw_hash {
-                Some(true)
-            } else {
-                Some(false)
-            }
-        } else {
-            None
-        };
-        let data = match data {
-            serde_json::Value::Object(mut map) => {
-                let mut inner_map = serde_json::Map::new();
-                inner_map.insert("url".to_string(), serde_json::Value::String(url.clone()));
-                inner_map.insert(
-                    "method".to_string(),
-                    serde_json::Value::String(hex::encode(method)),
-                );
-                inner_map.insert(
-                    "data".to_string(),
-                    serde_json::Value::String(hex::encode(desired_hash)),
-                );
-                if let Some(verified) = verified {
-                    inner_map.insert("verified".to_string(), serde_json::Value::Bool(verified));
+        let (data, verified) = if let Some(bytes) = bytes {
+            let raw_hash = keccak256(&bytes).to_vec();
+            let str = String::from_utf8(bytes.clone())
+                .map_err(|e| HostExportError::from(Error::from(e)))?;
+            let data =
+                serde_json::from_str(&str).map_err(|e| HostExportError::from(Error::from(e)))?;
+            let verified = if method == METHOD_BYTES || method == METHOD_UTF8 {
+                let str = serde_json::to_string(&data)
+                    .map_err(|e| HostExportError::from(Error::from(e)))?;
+                let bytes = str.as_bytes();
+                let hash = keccak256(bytes).to_vec();
+                if desired_hash == hash || desired_hash == raw_hash {
+                    Some(true)
+                } else {
+                    Some(false)
                 }
-                map.insert(
-                    "_verification".to_string(),
-                    serde_json::Value::Object(inner_map),
-                );
-                serde_json::Value::Object(map)
-            }
-            _ => data,
+            } else {
+                None
+            };
+            (Some(data), verified)
+        } else {
+            (None, None)
         };
-        asc_new(self, &data, gas)
+        if let Some(serde_json::Value::Object(mut map)) = data {
+            let mut inner_map = serde_json::Map::new();
+            inner_map.insert("url".to_string(), serde_json::Value::String(url.clone()));
+            inner_map.insert(
+                "method".to_string(),
+                serde_json::Value::String(hex::encode(method)),
+            );
+            inner_map.insert(
+                "data".to_string(),
+                serde_json::Value::String(hex::encode(desired_hash)),
+            );
+            if let Some(verified) = verified {
+                inner_map.insert("verified".to_string(), serde_json::Value::Bool(verified));
+            }
+            map.insert(
+                "_verification".to_string(),
+                serde_json::Value::Object(inner_map),
+            );
+            let data = serde_json::Value::Object(map);
+            return asc_new(self, &data, gas);
+        }
+        return Ok(AscPtr::null());
     }
 
     /// function ipfs.cat(link: String): Bytes
