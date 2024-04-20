@@ -7,7 +7,7 @@ steps:
   id: 'prepare'
   args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
 - name: rust:bullseye
-  run: |
+  script: |
     apt-get update \
     && apt-get install -y cmake protobuf-compiler && \
     cd /graph-node && \
