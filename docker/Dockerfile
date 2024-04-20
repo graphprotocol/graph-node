@@ -25,7 +25,8 @@ ADD . /graph-node
 RUN apt-get update \
     && apt-get install -y cmake protobuf-compiler && \
     cd /graph-node && \
-    RUSTFLAGS="-g" cargo build -j 2 --release \
+    rustup toolchain install nightly && \ 
+    RUSTFLAGS="-g" cargo +nightly build -j 2 --release \
        -Z sparse-registry --bins --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
