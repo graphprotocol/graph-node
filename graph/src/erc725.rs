@@ -103,13 +103,41 @@ impl Serialize for ERC725Value {
                 ser.serialize_str(&data)
             }
             ERC725Value::Number(number) => {
-                let num = number.as_u64();
-                if num <= i64::MAX as u64 / 2 {
-                    ser.serialize_i64(num as i64)
-                } else {
-                    let num = -(num.wrapping_neg() as i64);
-                    ser.serialize_i64(num)
+                if number.0[1..] == [0xffffffffffffffffu64; 3] {
+                    let mut bytes = [0u8; 32];
+                    number.to_little_endian(&mut bytes);
+                    let mut number = [0u8; 8];
+                    number.copy_from_slice(&bytes[(32 - 8)..]);
+                    let val = i64::from_le_bytes(number);
+                    return ser.serialize_i64(val);
                 }
+                if number.0[2..] == [0xffffffffffffffffu64; 2] {
+                    let mut bytes = [0u8; 32];
+                    number.to_little_endian(&mut bytes);
+                    let mut number = [0u8; 16];
+                    number.copy_from_slice(&bytes[16..]);
+                    let val = i128::from_le_bytes(number);
+                    return ser.serialize_i128(val);
+                }
+                if number.0[1..] == [0u64; 3] {
+                    let mut bytes = [0u8; 32];
+                    number.to_little_endian(&mut bytes);
+                    let mut number = [0u8; 8];
+                    number.copy_from_slice(&bytes[(32 - 8)..]);
+                    let val = u64::from_le_bytes(number);
+                    return ser.serialize_u64(val);
+                }
+                if number.0[2..] == [0u64; 2] {
+                    let mut bytes = [0u8; 32];
+                    number.to_little_endian(&mut bytes);
+                    let mut number = [0u8; 16];
+                    number.copy_from_slice(&bytes[16..]);
+                    let val = u128::from_le_bytes(number);
+                    return ser.serialize_u128(val);
+                }
+                let mut bytes = [0u8; 32];
+                number.to_big_endian(&mut bytes);
+                ser.serialize_str(format!("0x{}", hex::encode(bytes)).as_str())
             }
             ERC725Value::String(string) => ser.serialize_str(string),
             ERC725Value::VerifiableURI { url, method, data } => {
@@ -431,8 +459,14 @@ pub fn decode_token(token: Token, value_content: &str) -> Result<ERC725Value, ER
             }
         }
     } else if value_content == "Number" {
-        if let Token::Uint(token) = token {
-            return Ok(ERC725Value::Number(token));
+        match token {
+            Token::Uint(token) => {
+                return Ok(ERC725Value::Number(token));
+            }
+            Token::Int(token) => {
+                return Ok(ERC725Value::Number(token));
+            }
+            _ => return Err(ERC725Error::Error("Invalid Number".to_string())),
         }
     } else if value_content == "String" {
         if let Token::String(token) = token {

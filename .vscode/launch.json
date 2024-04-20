@@ -403,7 +403,8 @@
       "env": {
         "GRAPH_LOG": "info",
         "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS": "true",
-        "GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH": "true"
+        "GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH": "true",
+        "RUST_BACKTRACE": "1"
       },
       "cwd": "${workspaceFolder}"
     },

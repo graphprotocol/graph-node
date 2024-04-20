@@ -1,6 +1,8 @@
 options:
-  pool:
-    name: 'projects/$PROJECT_ID/locations/europe-west1/workerPools/large-pool'
+  machineType: "E2_HIGHCPU_32"
+# options:
+#   pool:
+#     name: 'projects/$PROJECT_ID/locations/europe-west1/workerPools/large-pool'
 timeout: 16600s
 steps:
 - name: rust:bullseye
