@@ -3,9 +3,6 @@ options:
     name: 'projects/$PROJECT_ID/locations/europe-west1/workerPools/large-pool'
 timeout: 16600s
 steps:
-- name: 'docker'
-  id: 'prepare'
-  args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
 - name: rust:bullseye
   script: |
     apt-get update \
