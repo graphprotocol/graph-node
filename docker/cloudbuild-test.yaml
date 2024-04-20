@@ -10,8 +10,7 @@ steps:
   script: |
     apt-get update \
     && apt-get install -y cmake protobuf-compiler && \
-    cd /graph-node && \
-    RUSTFLAGS="-g" cargo build -j 2 --release --bins --package graph-node
+    RUSTFLAGS="-g" cargo build --release --bins --package graph-node
 - name: 'docker'
   id: 'graph-node'
   args: ['build',
