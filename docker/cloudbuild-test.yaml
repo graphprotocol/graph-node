@@ -19,6 +19,9 @@ steps:
         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
         '--build-arg', 'TAG_NAME=$TAG_NAME',
         '-t', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
+        '-t', 'gcr.io/$PROJECT_ID/graph-node:dev',
         '-f', 'docker/Dockerfile', '.']
 - name: 'docker'
   args: ['push', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA']
+- name: 'docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/graph-node:dev']
