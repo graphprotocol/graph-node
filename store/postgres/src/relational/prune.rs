@@ -94,7 +94,7 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            dst.as_ddl(schema, catalog, &mut query)?;
+            dst.as_ddl(schema, catalog, false, &mut query)?; // TODO: is it a copy?
         }
         conn.batch_execute(&query)?;
 

@@ -577,6 +577,7 @@ impl SubgraphStoreInner {
             graft_base,
             replace,
             OnSync::None,
+            false,
         )?;
 
         let exists_and_synced = |id: &DeploymentHash| {
@@ -667,6 +668,7 @@ impl SubgraphStoreInner {
             Some(graft_base),
             false,
             on_sync,
+            true,
         )?;
 
         let mut pconn = self.primary_conn()?;
