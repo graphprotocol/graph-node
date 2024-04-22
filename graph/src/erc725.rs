@@ -38,7 +38,8 @@ pub enum ERC725Value {
     Address(H160),
     Bytes(Vec<u8>),
     Boolean(bool),
-    Number(U256),
+    Int(U256),
+    UInt(U256),
     String(String),
     VerifiableURI {
         url: String,
@@ -102,7 +103,28 @@ impl Serialize for ERC725Value {
                 let data = format!("0x{}", &data);
                 ser.serialize_str(&data)
             }
-            ERC725Value::Number(number) => {
+            ERC725Value::UInt(number) => {
+                if number.0[1..] == [0u64; 3] {
+                    let mut bytes = [0u8; 32];
+                    number.to_little_endian(&mut bytes);
+                    let mut number = [0u8; 8];
+                    number.copy_from_slice(&bytes[(32 - 8)..]);
+                    let val = u64::from_le_bytes(number);
+                    return ser.serialize_u64(val);
+                }
+                if number.0[2..] == [0u64; 2] {
+                    let mut bytes = [0u8; 32];
+                    number.to_little_endian(&mut bytes);
+                    let mut number = [0u8; 16];
+                    number.copy_from_slice(&bytes[16..]);
+                    let val = u128::from_le_bytes(number);
+                    return ser.serialize_u128(val);
+                }
+                let mut bytes = [0u8; 32];
+                number.to_big_endian(&mut bytes);
+                ser.serialize_str(format!("0x{}", hex::encode(bytes)).as_str())
+            }
+            ERC725Value::Int(number) => {
                 if number.0[1..] == [0xffffffffffffffffu64; 3] {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
@@ -461,10 +483,10 @@ pub fn decode_token(token: Token, value_content: &str) -> Result<ERC725Value, ER
     } else if value_content == "Number" {
         match token {
             Token::Uint(token) => {
-                return Ok(ERC725Value::Number(token));
+                return Ok(ERC725Value::UInt(token));
             }
             Token::Int(token) => {
-                return Ok(ERC725Value::Number(token));
+                return Ok(ERC725Value::Int(token));
             }
             _ => return Err(ERC725Error::Error("Invalid Number".to_string())),
         }
@@ -785,7 +807,7 @@ mod test {
                     name: "lsp4CreatorsMap".to_string(),
                     value: ERC725Value::Array(vec![
                         ERC725Value::Bytes(hex::decode("01234567").unwrap()),
-                        ERC725Value::Number(5.into()),
+                        ERC725Value::Int(5.into()),
                     ]),
                     dynamic: Value::Null,
                 }),

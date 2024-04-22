@@ -43,6 +43,10 @@ pub fn decode_packed(types: &[ParamType], data: &[u8]) -> Result<Option<Vec<Toke
         tokens.push(res.token);
     }
 
+    if offset != data.len() {
+        return Err(Error::InvalidData);
+    }
+
     Ok(Some(tokens))
 }
 
