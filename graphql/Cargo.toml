@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 crossbeam = "0.8"
 graph = { path = "../graph" }
-graphql-tools = "0.2.1"
+graphql-tools = "0.2.5"
 lazy_static = "1.2.0"
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main"}
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
