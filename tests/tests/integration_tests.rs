@@ -441,14 +441,15 @@ async fn test_eth_api(ctx: TestContext) -> anyhow::Result<()> {
         "foo": {
             "id": "1",
             "balance": "10000000000000000000000",
-            "hasCode": true,
+            "hasCode1": false,
+            "hasCode2": true,
         }
     });
 
     query_succeeds(
         "Balance should be right",
         &subgraph,
-        "{ foo(id: \"1\") { id balance hasCode } }",
+        "{ foo(id: \"1\") { id balance hasCode1 hasCode2 } }",
         expected_response,
     )
     .await?;
