@@ -67,7 +67,7 @@ tokio = { version = "1.35.1", features = [
     "rt-multi-thread",
     "parking_lot",
 ] }
-tokio-stream = { version = "0.1.14", features = ["sync"] }
+tokio-stream = { version = "0.1.15", features = ["sync"] }
 tokio-retry = "0.3.0"
 toml = "0.8.8"
 url = "2.5.0"
