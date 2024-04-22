@@ -32,7 +32,14 @@ pub enum FileSizeLimit {
     MaxBytes(u64),
 }
 
-impl CheapClone for FileSizeLimit {}
+impl CheapClone for FileSizeLimit {
+    fn cheap_clone(&self) -> Self {
+        match self {
+            Self::Unlimited => Self::Unlimited,
+            Self::MaxBytes(max) => Self::MaxBytes(*max),
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum HttpClientError {

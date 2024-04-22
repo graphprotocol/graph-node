@@ -1,6 +1,5 @@
 use anyhow::Error;
 use bytes::Bytes;
-use futures::future::BoxFuture;
 use graph::{
     data::{subgraph::Link, value::Word},
     http_client::{FileSizeLimit, HttpClient},
@@ -8,6 +7,7 @@ use graph::{
 };
 use std::{sync::Arc, time::Duration};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
+use crate::polling_monitor::BoxFuture;
 
 const CLOUDFLARE_TIMEOUT: u16 = 524;
 const GATEWAY_TIMEOUT: u16 = 504;
