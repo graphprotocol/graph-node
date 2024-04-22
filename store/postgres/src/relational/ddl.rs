@@ -29,7 +29,7 @@ impl Layout {
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    pub fn as_ddl(&self) -> Result<String, fmt::Error> {
+    pub fn as_ddl(&self, is_copy_op: bool) -> Result<String, fmt::Error> {
         let mut out = String::new();
 
         // Output enums first so table definitions can reference them
@@ -41,7 +41,7 @@ impl Layout {
         tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
         for table in tables {
-            table.as_ddl(&self.input_schema, &self.catalog, &mut out)?;
+            table.as_ddl(&self.input_schema, &self.catalog, is_copy_op, &mut out)?;
         }
 
         Ok(out)
@@ -256,7 +256,7 @@ impl Table {
         (method, index_expr)
     }
 
-    fn create_attribute_indexes(&self, out: &mut String) -> fmt::Result {
+    fn create_attribute_indexes(&self, is_copy_op: bool, out: &mut String) -> fmt::Result {
         // Create indexes.
 
         // Skip columns whose type is an array of enum, since there is no
@@ -286,12 +286,14 @@ impl Table {
         for (column_index, column) in columns.enumerate() {
             let (method, index_expr) =
                 Self::calculate_attr_index_method_and_expression(self.immutable, column);
+            let delay_index = !column.is_list() && is_copy_op && method == "btree"; // TODO: add disabling it with an env. variable
+
             // If `create_gin_indexes` is set to false, we don't create
             // indexes on array attributes. Experience has shown that these
             // indexes are very expensive to update and can have a very bad
             // impact on the write performance of the database, but are
             // hardly ever used or needed by queries.
-            if !column.is_list() || ENV_VARS.store.create_gin_indexes {
+            if !delay_index && (!column.is_list() || ENV_VARS.store.create_gin_indexes) {
                 write!(
                     out,
                     "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
@@ -353,11 +355,12 @@ impl Table {
         &self,
         schema: &InputSchema,
         catalog: &Catalog,
+        is_copy_op: bool,
         out: &mut String,
     ) -> fmt::Result {
         self.create_table(out)?;
         self.create_time_travel_indexes(catalog, out)?;
-        self.create_attribute_indexes(out)?;
+        self.create_attribute_indexes(is_copy_op, out)?;
         self.create_aggregate_indexes(schema, out)
     }
 

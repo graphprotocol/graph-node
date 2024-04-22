@@ -477,7 +477,7 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).unwrap();
 
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), false)
         .expect("Failed to create relational schema")
 }
 
