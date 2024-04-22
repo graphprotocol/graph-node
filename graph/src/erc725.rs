@@ -739,6 +739,7 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
         }
         let data = &bytes[8..(8 + length as usize)];
         let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone())?;
+        let url = url.trim_end().to_string(); // Not sure why, but there are some URLs with a space at the end.
         return Ok(ERC725Value::VerifiableURI {
             url,
             method: method.to_vec(),
@@ -753,6 +754,7 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
             || out.starts_with(DATA_PREFIX))
     {
         let url = String::from_utf8(bytes[4..].to_vec().clone())?;
+        let url = url.trim_end().to_string(); // Not sure why, but there are some URLs with a space at the end.
         return Ok(ERC725Value::VerifiableURI {
             url,
             method: vec![0u8; 4],
@@ -761,6 +763,7 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
     }
     let data = &bytes[4..36];
     let url = String::from_utf8(bytes[36..].to_vec().clone())?;
+    let url = url.trim_end().to_string(); // Not sure why, but there are some URLs with a space at the end.
     Ok(ERC725Value::VerifiableURI {
         url,
         method: method.to_vec(),

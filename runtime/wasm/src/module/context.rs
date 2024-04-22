@@ -534,6 +534,7 @@ impl WasmInstanceContext<'_> {
     ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
         let value: Vec<u8> = asc_get(self, value_ptr, gas)?;
+        let original_value = value.clone();
         let results = decode_key_value(key.clone(), value.clone())
             .map_err(|e| HostExportError::from(Error::from(e)));
         match results {
@@ -568,65 +569,69 @@ impl WasmInstanceContext<'_> {
                             Err(err) => {
                                 let logger = self.as_ref().ctx.logger.cheap_clone();
                                 info!(&logger, "Failed to download URL, returning `null`";
-                              "error" => err.to_string(),
-                              "url" => url);
+                                  "error" => err.to_string(),
+                                  "url" => url);
                                 return Ok(AscPtr::null());
                             }
                             Ok(None) => {
                                 let logger = self.as_ref().ctx.logger.cheap_clone();
                                 info!(&logger, "Failed to download URL, returning `null`";
-                              "url" => url);
+                                  "error" => "empty response",
+                                  "url" => url);
                                 return Ok(AscPtr::null());
                             }
                             Ok(Some(bytes)) => {
                                 let raw_hash = keccak256(&bytes).to_vec();
-                                let str = String::from_utf8(bytes.clone())
-                                    .map_err(|e| HostExportError::from(Error::from(e)))?;
-                                let mut data: serde_json::Value = serde_json::from_str(&str)
-                                    .map_err(|e| HostExportError::from(Error::from(e)))?;
-                                if method == HASHBYTES_KECCAK256_BYTES
-                                    || method == HASHBYTES_KECCAK256_UTF8
-                                {
-                                    let str = serde_json::to_string(&data)
+                                if let Ok(str) = String::from_utf8(bytes.clone()) {
+                                    let mut data: serde_json::Value = serde_json::from_str(&str)
                                         .map_err(|e| HostExportError::from(Error::from(e)))?;
-                                    let bytes = str.as_bytes();
-                                    let hash = keccak256(bytes).to_vec();
-                                    if desired_hash == hash || desired_hash == raw_hash {
-                                        if name == "lsp3Profile" {
-                                            data = if let serde_json::Value::Object(obj) = data {
-                                                match obj.get("LSP3Profile") {
-                                                    Some(value) => value.clone(),
-                                                    None => {
-                                                        return Ok(AscPtr::null());
+                                    if method == HASHBYTES_KECCAK256_BYTES
+                                        || method == HASHBYTES_KECCAK256_UTF8
+                                    {
+                                        let str = serde_json::to_string(&data)
+                                            .map_err(|e| HostExportError::from(Error::from(e)))?;
+                                        let bytes = str.as_bytes();
+                                        let hash = keccak256(bytes).to_vec();
+                                        if desired_hash == hash || desired_hash == raw_hash {
+                                            if name == "lsp3Profile" {
+                                                data = if let serde_json::Value::Object(obj) = data
+                                                {
+                                                    match obj.get("LSP3Profile") {
+                                                        Some(value) => value.clone(),
+                                                        None => {
+                                                            return Ok(AscPtr::null());
+                                                        }
                                                     }
+                                                } else {
+                                                    data
                                                 }
-                                            } else {
-                                                data
-                                            }
-                                        } else if name == "lsp4Metadata" {
-                                            data = if let serde_json::Value::Object(obj) = data {
-                                                match obj.get("LSP4Metadata") {
-                                                    Some(value) => value.clone(),
-                                                    None => {
-                                                        return Ok(AscPtr::null());
+                                            } else if name == "lsp4Metadata" {
+                                                data = if let serde_json::Value::Object(obj) = data
+                                                {
+                                                    match obj.get("LSP4Metadata") {
+                                                        Some(value) => value.clone(),
+                                                        None => {
+                                                            return Ok(AscPtr::null());
+                                                        }
                                                     }
+                                                } else {
+                                                    data
                                                 }
-                                            } else {
-                                                data
                                             }
+                                            let value = serde_json::json!({
+                                                "type": "Value",
+                                                "name": name.to_string(),
+                                                "value": data,
+                                            });
+                                            return asc_new(self, &value, gas);
                                         }
-                                        let value = serde_json::json!({
-                                            "type": "Value",
-                                            "name": name.to_string(),
-                                            "value": data,
-                                        });
-                                        return asc_new(self, &value, gas);
-                                    } else {
-                                        return Ok(AscPtr::null());
-                                    }
+                                    };
                                 } else {
-                                    return Ok(AscPtr::null());
-                                };
+                                    let logger = self.as_ref().ctx.logger.cheap_clone();
+                                    info!(&logger, "Failed to convert file bytes to json string (invalid file content), returning `null`";
+                                      "bytes" => hex::encode(&bytes));
+                                }
+                                return Ok(AscPtr::null());
                             }
                         }
                     }
@@ -654,7 +659,7 @@ impl WasmInstanceContext<'_> {
                 info!(&logger, "Failed to erc725.decode_key_value, returning `null`";
                   "error" => e.to_string(),
                   "key" => hex::encode(&key),
-                  "value" => hex::encode(&value));
+                  "value" => hex::encode(original_value));
                 Ok(AscPtr::null())
             }
         }
