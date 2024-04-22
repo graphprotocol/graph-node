@@ -1,3 +1,4 @@
+use crate::polling_monitor::BoxFuture;
 use anyhow::Error;
 use bytes::Bytes;
 use graph::{
@@ -7,7 +8,6 @@ use graph::{
 };
 use std::{sync::Arc, time::Duration};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
-use crate::polling_monitor::BoxFuture;
 
 const CLOUDFLARE_TIMEOUT: u16 = 524;
 const GATEWAY_TIMEOUT: u16 = 504;
@@ -96,7 +96,7 @@ mod test {
 
         let content: String = content.to_vec().into_iter().map(|b| b as char).collect();
 
-        let comp = r#"#{"LSP4Metadata":{"name":"HexGenzo (Gen0)","description":"HexGenzo marks the migration to a new era, where the iconic hexagon flows to a new sphere without any but liquid boarders.\nAfter the iconic HexJerzo in 2020, this piece is closing a circle and removing any boundaries for a liquefied future.\nDesigned by Schirin Negahbani for The Dematerialised","totalSupply":1214,"images":[[{"width":1080,"height":1080,"url":"ipfs://QmX8v3JTtkmNDwaLZt1Hfav2FPYJpQxFiMzvp6gmDYqQao","verification":{"method":"keccak256(bytes)","data":"0x3b37b6c24d6a4db20b0d6fa5a9c16c4bef7e369e527e21467dd1debf5e20f3e5"}}]],"assets":[{"url":"ipfs://QmaezFf7ZtD1RCkYj2KABEHFmUgMQM6LrVnAu2vZokxHdF","fileType":"video/mp4","verification":{"method":"keccak256(bytes)","data":"0xe9dd95cc67e9cac623d86e5803c67bd78dd39896ff76ad25d5094d1ac4ec3dee"}}],"attributes":[{"value":"Wearable","type":"string","key":"Standard type"}"#;
+        let comp = "{\"LSP4Metadata\":{\"name\":\"HexGenzo (Gen0)\",\"description\":\"HexGenzo marks the migration to a new era, where the iconic hexagon flows to a new sphere without any but liquid boarders.\\nAfter the iconic HexJerzo in 2020, this piece is closing a circle and removing any boundaries for a liquefied future.\\nDesigned by Schirin Negahbani for The Dematerialised\",\"totalSupply\":1214,\"images\":[[{\"width\":1080,\"height\":1080,\"url\":\"ipfs://QmX8v3JTtkmNDwaLZt1Hfav2FPYJpQxFiMzvp6gmDYqQao\",\"verification\":{\"method\":\"keccak256(bytes)\",\"data\":\"0x3b37b6c24d6a4db20b0d6fa5a9c16c4bef7e369e527e21467dd1debf5e20f3e5\"}}]],\"assets\":[{\"url\":\"ipfs://QmaezFf7ZtD1RCkYj2KABEHFmUgMQM6LrVnAu2vZokxHdF\",\"fileType\":\"video/mp4\",\"verification\":{\"method\":\"keccak256(bytes)\",\"data\":\"0xe9dd95cc67e9cac623d86e5803c67bd78dd39896ff76ad25d5094d1ac4ec3dee\"}}],\"attributes\":[{\"value\":\"Wearable\",\"type\":\"string\",\"key\":\"Standard type\"}]}}";
         assert_eq!(content, comp);
     }
 }

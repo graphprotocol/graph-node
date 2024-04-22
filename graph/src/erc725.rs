@@ -718,7 +718,7 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
             return Err(ERC725Error::Error("Invalid VerifiableURI".to_string()));
         }
         let data = &bytes[8..(8 + length as usize)];
-        let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone()).unwrap();
+        let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone())?;
         return Ok(ERC725Value::VerifiableURI {
             url,
             method: method.to_vec(),
