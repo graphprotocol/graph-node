@@ -594,13 +594,23 @@ impl WasmInstanceContext<'_> {
                                     if desired_hash == hash || desired_hash == raw_hash {
                                         if name == "lsp3Profile" {
                                             data = if let serde_json::Value::Object(obj) = data {
-                                                obj.get("LSP3Profile").unwrap().clone()
+                                                match obj.get("LSP3Profile") {
+                                                    Some(value) => value.clone(),
+                                                    None => {
+                                                        return Ok(AscPtr::null());
+                                                    }
+                                                }
                                             } else {
                                                 data
                                             }
                                         } else if name == "lsp4Metadata" {
                                             data = if let serde_json::Value::Object(obj) = data {
-                                                obj.get("LSP4Metadata").unwrap().clone()
+                                                match obj.get("LSP4Metadata") {
+                                                    Some(value) => value.clone(),
+                                                    None => {
+                                                        return Ok(AscPtr::null());
+                                                    }
+                                                }
                                             } else {
                                                 data
                                             }
@@ -662,7 +672,7 @@ impl WasmInstanceContext<'_> {
             let method = &bytes[2..6];
             let length: u16 = BigEndian::read_u16(&bytes[6..]);
             let desired_hash = &bytes[8..(8 + length as usize)];
-            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone()).unwrap();
+            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone())?;
             return Ok((url, method.to_vec(), desired_hash.to_vec()));
         }
         let method = &bytes[0..4]; // 0..3
@@ -683,7 +693,9 @@ impl WasmInstanceContext<'_> {
             let method = &bytes[2..6];
             let length: u16 = BigEndian::read_u16(&bytes[6..]);
             let desired_hash = &bytes[8..(8 + length as usize)];
-            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone()).unwrap();
+            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone())
+                .map_err(|e| HostExportError::from(Error::from(e)))?;
+
             let value = serde_json::json!({
                 "url": url,
                 "method": hex::encode(method),
@@ -693,7 +705,8 @@ impl WasmInstanceContext<'_> {
         }
         let method = &bytes[0..4]; // 0..3
         let desired_hash = &bytes[4..36];
-        let url = String::from_utf8(bytes[36..].to_vec().clone()).unwrap();
+        let url = String::from_utf8(bytes[36..].to_vec().clone())
+            .map_err(|e| HostExportError::from(Error::from(e)))?;
 
         let value = serde_json::json!({
             "url": url,

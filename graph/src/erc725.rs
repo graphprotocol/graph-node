@@ -471,6 +471,8 @@ pub fn decode_token(token: Token, value_content: &str) -> Result<ERC725Value, ER
     } else if value_content == "String" {
         if let Token::String(token) = token {
             return Ok(ERC725Value::String(token));
+        } else {
+            return Err(ERC725Error::Error("Invalid String".to_string()));
         }
     } else if value_content == "VerifiableURI" {
         if let Token::Bytes(bytes) = token {
@@ -690,6 +692,9 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
         // VerifiableURI
         let method = &bytes[2..6];
         let length: u16 = BigEndian::read_u16(&bytes[6..]);
+        if length > bytes.len() as u16 - 8 {
+            return Err(ERC725Error::Error("Invalid VerifiableURI".to_string()));
+        }
         let data = &bytes[8..(8 + length as usize)];
         let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone()).unwrap();
         return Ok(ERC725Value::VerifiableURI {
