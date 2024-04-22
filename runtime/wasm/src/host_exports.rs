@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
+use graph::erc725::resolve_data_url;
 use graph::futures03::stream::StreamExt;
 use graph::schema::EntityType;
 use never::Never;
@@ -492,7 +493,9 @@ impl HostExports {
     ) -> Result<Option<Vec<u8>>, anyhow::Error> {
         let mut result: Option<Result<Vec<u8>, anyhow::Error>> = None;
         let log_url = url.clone();
-        if url.starts_with("https://2eff.lukso.dev/ipfs/") {
+        if url.starts_with("data:") {
+            result = Some(resolve_data_url(&url));
+        } else if url.starts_with("https://2eff.lukso.dev/ipfs/") {
             result = Some(self.ipfs_cat(&logger, url.replace("https://2eff.lukso.dev/ipfs/", "")));
         } else if url.starts_with("ipfs://") {
             result = Some(self.ipfs_cat(&logger, url.replace("ipfs://", "")));

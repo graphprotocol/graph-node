@@ -1,9 +1,12 @@
+use anyhow::{anyhow, Error};
+use base64::{engine::general_purpose, Engine as _};
 use byteorder::{BigEndian, ByteOrder};
 use ethabi::{ParamType, Token};
 use inflector::Inflector;
 use itertools::Itertools;
 use json::{array, JsonValue};
 use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{ser::SerializeMap, ser::SerializeSeq, Deserialize, Serialize};
 use serde_json::Value;
 use web3::types::{H160, U256};
@@ -420,6 +423,23 @@ lazy_static! {
     "valueContent": "Address"
   }
 ];
+}
+
+const DATA_REGEX: &str = r"^data:(.*?);(.*?),(.*)$";
+
+pub fn resolve_data_url(url: &str) -> Result<Vec<u8>, Error> {
+    // data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAABjElEQVRIS+2VwQ3CMAxFc
+    let regex = Regex::new(DATA_REGEX).unwrap();
+    if let Some(parts) = regex.captures(url) {
+        let encoding = parts.get(2).unwrap().as_str();
+        if encoding.ends_with("base64") {
+            return Ok(general_purpose::STANDARD
+                .decode(parts.get(3).unwrap().as_str())
+                .unwrap());
+        }
+        return Ok(Vec::from(parts.get(3).unwrap().as_str()));
+    }
+    Err(anyhow!("Invalid data URL"))
 }
 
 pub fn decode_key(key: Vec<u8>) -> Option<Value> {

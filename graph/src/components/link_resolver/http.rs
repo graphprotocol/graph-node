@@ -1,9 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose, Engine as _};
 use lru_time_cache::LruCache;
-use regex::Regex;
 use slog::{debug, Logger};
 
 use crate::cheap_clone::CheapClone;
@@ -95,8 +93,6 @@ pub trait HttpResolverTrait: Send + Sync + 'static + Debug {
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
 }
 
-const DATA_REGEX: &str = r"^data:(.*?);(.*?),(.*)$";
-
 #[async_trait]
 impl HttpResolverTrait for HttpResolver {
     fn with_timeout(&self, timeout: Duration) -> Box<dyn HttpResolverTrait> {
@@ -114,20 +110,6 @@ impl HttpResolverTrait for HttpResolver {
     /// Supports links of the form `https?://`
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         let path = link.link.to_owned();
-
-        if path.starts_with("data:") {
-            // data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAABjElEQVRIS+2VwQ3CMAxFc
-            let regex = Regex::new(DATA_REGEX).unwrap();
-            let parts = regex.captures(&path.as_str()).unwrap();
-            let encoding = parts.get(2).unwrap().as_str();
-            if encoding.ends_with("base64") {
-                return Ok(general_purpose::STANDARD
-                    .decode(parts.get(3).unwrap().as_str())
-                    .unwrap());
-            }
-            return Ok(Vec::from(parts.get(3).unwrap().as_str()));
-        }
-
         if let Some(data) = self.cache.lock().unwrap().get(&path) {
             trace!(logger, "URL cache hit"; "hash" => &path);
             return Ok(data.clone());
