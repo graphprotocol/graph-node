@@ -304,6 +304,11 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             trigger_every_block,
         } = self.block.clone();
 
+        // If polling_intervals is empty this will return true, else it will be true only if all intervals are 0
+        // ie: All triggers are initialization handlers. We do not need firehose to send all block headers for
+        // initialization handlers
+        let has_initilization_triggers_only = polling_intervals.iter().all(|(_, i)| *i == 0);
+
         let log_filters: Vec<LogFilter> = self.log.into();
         let mut call_filters: Vec<CallToFilter> = self.call.into();
         call_filters.extend(Into::<Vec<CallToFilter>>::into(self.block));
@@ -315,7 +320,9 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         let combined_filter = CombinedFilter {
             log_filters,
             call_filters,
-            send_all_block_headers: trigger_every_block || !polling_intervals.is_empty(),
+            // We need firehose to send all block headers when `trigger_every_block` is true and when
+            // We have polling triggers which are not from initiallization handlers
+            send_all_block_headers: trigger_every_block || !has_initilization_triggers_only,
         };
 
         vec![Any {
