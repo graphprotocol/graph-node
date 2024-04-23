@@ -526,6 +526,42 @@ impl WasmInstanceContext<'_> {
         host_exports.download_url(&logger, url).map_err(Into::into)
     }
 
+    pub fn download_lsp4_metadata(
+        &mut self,
+        _gas: &GasCounter,
+        url_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let url: String = asc_get(self, url_ptr, _gas)?;
+        let bytes = self.download_url(_gas, url.clone())?;
+        match bytes {
+            Some(bytes) => {
+                let data = serde_json::from_slice(&bytes).map_err(|e| {
+                    HostExportError::from(anyhow!(
+                        "Failed to parse JSON from downloaded bytes: {}",
+                        e
+                    ))
+                })?;
+                let data = if let serde_json::Value::Object(obj) = data {
+                    match obj.get("LSP4Metadata") {
+                        Some(value) => value.clone(),
+                        None => {
+                            return Ok(AscPtr::null());
+                        }
+                    }
+                } else {
+                    data
+                };
+                let value = serde_json::json!({
+                    "type": "Value",
+                    "name": "lsp4Metadata".to_string(),
+                    "value": data,
+                });
+                asc_new(self, &value, _gas)
+            }
+            None => Ok(AscPtr::null()),
+        }
+    }
+
     pub fn decode_key_value(
         &mut self,
         gas: &GasCounter,

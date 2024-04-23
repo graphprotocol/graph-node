@@ -459,6 +459,11 @@ impl WasmInstance {
             key_ptr,
             value_ptr
         );
+        link!(
+            "erc725.download_lsp4_metadata",
+            download_lsp4_metadata,
+            url_ptr
+        );
 
         // The previous ipfs-related functions are unconditionally linked for backward compatibility
         if experimental_features.allow_non_deterministic_ipfs {
