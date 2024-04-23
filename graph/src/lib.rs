@@ -22,6 +22,8 @@ pub mod http_client;
 
 pub mod erc725;
 
+pub mod pinata;
+
 pub mod data_source;
 
 pub mod blockchain;

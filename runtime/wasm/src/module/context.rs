@@ -2,6 +2,7 @@ use byteorder::BigEndian;
 use byteorder::ByteOrder;
 use graph::data::value::Word;
 use graph::erc725::decode_key_value;
+use graph::erc725::rewrite_json;
 use graph::erc725::ERC725DecodedValue;
 use graph::erc725::ERC725Value;
 use graph::erc725::HASHBYTES_KECCAK256_BYTES;
@@ -516,6 +517,27 @@ impl WasmInstanceContext<'_> {
         asc_new(self, &result, gas)
     }
 
+    fn rewrite_json(
+        &mut self,
+        data: serde_json::Value,
+    ) -> Result<serde_json::Value, HostExportError> {
+        let api_key = ENV_VARS.pinata_api_key.clone();
+        let api_key_secret = ENV_VARS.pinata_api_key_secret.clone();
+        if let (Some(api_key), Some(api_key_secret)) = (api_key, api_key_secret) {
+            return graph::block_on({
+                let data = data.clone();
+                let api_key = api_key.clone();
+                let api_key_secret = api_key_secret.clone();
+                async move {
+                    rewrite_json(&api_key, &api_key_secret, &data)
+                        .await
+                        .map_err(HostExportError::from)
+                }
+            });
+        }
+        Ok(data)
+    }
+
     fn download_url(
         &mut self,
         _gas: &GasCounter,
@@ -541,6 +563,7 @@ impl WasmInstanceContext<'_> {
                         e
                     ))
                 })?;
+                let data = self.rewrite_json(data)?;
                 let data = if let serde_json::Value::Object(obj) = data {
                     match obj.get("LSP4Metadata") {
                         Some(value) => value.clone(),
@@ -664,6 +687,7 @@ impl WasmInstanceContext<'_> {
                                                                 data
                                                             }
                                                     }
+                                                    let data = self.rewrite_json(data)?;
                                                     let value = serde_json::json!({
                                                         "type": "Value",
                                                         "name": name.to_string(),

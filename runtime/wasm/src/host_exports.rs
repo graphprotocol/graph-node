@@ -514,11 +514,15 @@ impl HostExports {
         }
     }
 
-    pub(crate) fn http_get(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
+    pub(crate) fn http_get(
+        &self,
+        _logger: &Logger,
+        link: String,
+    ) -> Result<Vec<u8>, anyhow::Error> {
         graph::block_on({
             let link = link.clone();
             async move {
-                let mut response = reqwest::get(&link).await?;
+                let response = reqwest::get(&link).await?;
                 let status = response.status();
                 if !status.is_success() {
                     return Err(anyhow!("HTTP request failed with status: {}", status));

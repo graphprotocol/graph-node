@@ -96,6 +96,9 @@ object_store = { version = "0.9.1", features = ["gcp"] }
 base64 = "0.22.0"
 byteorder = "1.5.0"
 json = "0.12.4"
+serde_json_path = "0.6.7"
+failure = "0.1.8"
+derive_builder = "0.20.0"
 
 [dev-dependencies]
 clap.workspace = true

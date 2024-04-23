@@ -1,3 +1,4 @@
+use crate::pinata::PinataApi;
 use anyhow::{anyhow, Error};
 use base64::{engine::general_purpose, Engine as _};
 use byteorder::{BigEndian, ByteOrder};
@@ -9,6 +10,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{ser::SerializeMap, ser::SerializeSeq, Deserialize, Serialize};
 use serde_json::Value;
+use serde_json_path::JsonPath;
+
+use tiny_keccak::keccak256;
 use web3::types::{H160, U256};
 
 use crate::packed_decode::decode_packed;
@@ -769,6 +773,147 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
         method: method.to_vec(),
         data: data.to_vec(),
     })
+}
+
+async fn upload_data(api_key: &str, api_key_secret: &str, data: Vec<u8>, mime: String) -> String {
+    let api = PinataApi::new(api_key, api_key_secret).expect("failed to create pinata api");
+
+    // /Users/andy/Development/rust-web3/target/debug/rust-web3
+    let result = api.pin_file_content(data, mime).await;
+
+    match result {
+        Ok(pinned_object) => pinned_object.ipfs_hash,
+        Err(e) => e.to_string(),
+    }
+}
+
+async fn translate_url(
+    api_key: &str,
+    api_key_secret: &str,
+    url: String,
+    desired_hash: Option<Vec<u8>>,
+) -> (String, Option<bool>) {
+    if url.starts_with("data:") {
+        // data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAABjElEQVRIS+2VwQ3CMAxFc
+        let regex = Regex::new(DATA_REGEX).unwrap();
+        let parts = regex.captures(url.as_str()).unwrap();
+        let mime = parts.get(3).unwrap().as_str();
+        let encoding = parts.get(2).unwrap().as_str();
+        let value: Vec<u8>;
+        let hash: Option<Vec<u8>>;
+        if encoding.ends_with("base64") {
+            value = general_purpose::STANDARD
+                .decode(parts.get(3).unwrap().as_str())
+                .unwrap();
+            hash = Some(keccak256(&value).to_vec());
+        } else {
+            value = Vec::from(parts.get(3).unwrap().as_str());
+            hash = Some(keccak256(&value).to_vec());
+        }
+        let verified = match desired_hash {
+            Some(desired_hash) => match hash {
+                Some(hash) => {
+                    if hash == desired_hash {
+                        Some(true)
+                    } else if mime.ends_with("json") {
+                        let value = String::from_utf8(value.clone()).unwrap();
+                        let value: Value = serde_json::from_str(&value).unwrap();
+                        let value = serde_json::to_string(&value).unwrap();
+                        let hash = keccak256(value.as_bytes()).to_vec();
+                        if hash == desired_hash {
+                            Some(true)
+                        } else {
+                            Some(false)
+                        }
+                    } else {
+                        Some(false)
+                    }
+                }
+                None => None,
+            },
+            None => None,
+        };
+
+        let cid = upload_data(api_key, api_key_secret, value, mime.to_owned()).await;
+        (format!("ipfs://{}", cid), verified)
+    } else if url.starts_with("ipfs://") || url.starts_with("https://") {
+        let src = url.replace("ipfs://", "https://api.universalprofile.cloud/ipfs/");
+        let res = match reqwest::get(&src).await {
+            Ok(res) => res,
+            Err(_e) => {
+                return (url.clone(), None);
+            }
+        };
+        let data = match res.bytes().await {
+            Ok(data) => data,
+            Err(_e) => {
+                return (url.clone(), None);
+            }
+        };
+        let hash = keccak256(&data);
+        let verified = match desired_hash {
+            Some(desired_hash) => {
+                if hash.to_vec() == desired_hash {
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            }
+            None => None,
+        };
+        (url, verified)
+    } else {
+        (url, None)
+    }
+}
+
+pub async fn rewrite_json(
+    api_key: &str,
+    api_key_secret: &str,
+    data: &serde_json::Value,
+) -> Result<serde_json::Value, anyhow::Error> {
+    let path = JsonPath::parse("$..url").unwrap();
+    let list = path.query_located(&data);
+    let mut output = data.clone();
+    for location in list {
+        let loc = location.location().to_json_pointer();
+        let val = data.pointer(&loc).unwrap();
+        if let Value::String(url) = val.clone() {
+            let _parent: Vec<&str> = loc.split('/').collect();
+            let parent = _parent[0.._parent.len() - 1].join("/");
+            let hash = if let Value::Object(root) = data.pointer(&parent).unwrap() {
+                if let Some(Value::Object(verification)) = root.get("verification") {
+                    if let Some(Value::String(hash)) = verification.get("data") {
+                        Some(hex::decode(&hash[2..]).unwrap())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let (new_url, verified) =
+                translate_url(&api_key, &api_key_secret, url.clone(), hash).await;
+            if new_url != url || verified.is_some() {
+                let mut data = data.clone();
+                let parent_value = data.pointer_mut(&parent).unwrap();
+                if let Value::Object(parent_value) = parent_value {
+                    parent_value.insert("url".to_string(), Value::String(new_url.clone()));
+                    if let Some(verified) = verified {
+                        if let Some(serde_json::Value::Object(verification)) =
+                            parent_value.get_mut("verification")
+                        {
+                            verification.insert("verified".to_string(), Value::Bool(verified));
+                        }
+                    }
+                }
+                output = data.clone();
+            }
+        }
+    }
+    Ok(output)
 }
 
 #[cfg(test)]

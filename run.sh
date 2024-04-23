@@ -8,6 +8,8 @@ export NODE="34.141.208.199"
 # export NODE="34.147.84.221"
 export NODE=34.32.175.76
 
+eval $(sed < .env -n -e 's/^\(.*\)$/export \1/p')
+
 exec cargo run \
   --bin=graph-node \
   --package=graph-node \
