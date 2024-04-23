@@ -9,4 +9,4 @@ edition.workspace = true
 protobuf = "3.0.2"
 protobuf-parse = "3.3.0"
 anyhow = "1"
-heck = "0.4"
+heck = "0.5"
