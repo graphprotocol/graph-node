@@ -496,9 +496,11 @@ impl HostExports {
         if url.starts_with("data:") {
             result = Some(resolve_data_url(&url));
         } else if url.starts_with("https://2eff.lukso.dev/ipfs/") {
-            result = Some(self.ipfs_cat(&logger, url.replace("https://2eff.lukso.dev/ipfs/", "")));
+            result = Some(self.ipfs_cat(logger, url.replace("https://2eff.lukso.dev/ipfs/", "")));
         } else if url.starts_with("ipfs://") {
-            result = Some(self.ipfs_cat(&logger, url.replace("ipfs://", "")));
+            result = Some(self.ipfs_cat(logger, url.replace("ipfs://", "")));
+        } else if url.starts_with("https://") || url.starts_with("http://") {
+            result = Some(self.http_get(logger, url));
         }
         if result.is_none() {
             error!(logger, "Failed to download (not supported)"; "url" => &log_url);
@@ -510,6 +512,21 @@ impl HostExports {
             error!(logger, "Failed to download (returning empty data)"; "url" => &log_url);
             Ok(None)
         }
+    }
+
+    pub(crate) fn http_get(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
+        graph::block_on({
+            let link = link.clone();
+            async move {
+                let mut response = reqwest::get(&link).await?;
+                let status = response.status();
+                if !status.is_success() {
+                    return Err(anyhow!("HTTP request failed with status: {}", status));
+                }
+                let bytes = response.bytes().await?;
+                Ok(bytes.to_vec())
+            }
+        })
     }
 
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
