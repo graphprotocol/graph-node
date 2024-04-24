@@ -3,7 +3,9 @@ use std::{
     iter,
 };
 
+use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::{
+    components::store::StoreError,
     prelude::{BLOCK_NUMBER_MAX, ENV_VARS},
     schema::InputSchema,
 };
@@ -256,9 +258,60 @@ impl Table {
         (method, index_expr)
     }
 
-    fn create_attribute_indexes(&self, is_copy_op: bool, out: &mut String) -> fmt::Result {
-        // Create indexes.
+    pub(crate) fn create_postponed_indexes(
+        &self,
+        conn: &mut PgConnection,
+    ) -> Result<(), StoreError> {
+        let columns = self.colums_to_index();
 
+        for (column_index, column) in columns.enumerate() {
+            let (method, index_expr) =
+                Self::calculate_attr_index_method_and_expression(self.immutable, column);
+            if !column.is_list() && method == "btree" {
+                let sql = format!(
+                    "create index concurrently if not exists attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
+                    table_index = self.position,
+                    table_name = self.name,
+                    column_name = column.name,
+                    qname = self.qualified_name,
+                );
+                let query = sql_query(sql);
+                query.execute(conn)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn create_attribute_indexes(&self, is_copy_op: bool, out: &mut String) -> fmt::Result {
+        let columns = self.colums_to_index();
+
+        for (column_index, column) in columns.enumerate() {
+            let (method, index_expr) =
+                Self::calculate_attr_index_method_and_expression(self.immutable, column);
+            let delay_index = !column.is_list() && is_copy_op && method == "btree";
+            // TODO: add disabling it with an env. variable
+            // TODO: check if skipping should be done for POI table!
+
+            // If `create_gin_indexes` is set to false, we don't create
+            // indexes on array attributes. Experience has shown that these
+            // indexes are very expensive to update and can have a very bad
+            // impact on the write performance of the database, but are
+            // hardly ever used or needed by queries.
+            if !delay_index && (!column.is_list() || ENV_VARS.store.create_gin_indexes) {
+                write!(
+                    out,
+                    "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
+                    table_index = self.position,
+                    table_name = self.name,
+                    column_name = column.name,
+                    qname = self.qualified_name,
+                )?;
+            }
+        }
+        writeln!(out)
+    }
+
+    fn colums_to_index(&self) -> impl Iterator<Item = &Column> {
         // Skip columns whose type is an array of enum, since there is no
         // good way to index them with Postgres 9.6. Once we move to
         // Postgres 11, we can enable that (tracked in graph-node issue
@@ -282,29 +335,7 @@ impl Table {
             .filter(not_enum_list)
             .filter(not_immutable_pk)
             .filter(not_numeric_list);
-
-        for (column_index, column) in columns.enumerate() {
-            let (method, index_expr) =
-                Self::calculate_attr_index_method_and_expression(self.immutable, column);
-            let delay_index = !column.is_list() && is_copy_op && method == "btree"; // TODO: add disabling it with an env. variable
-
-            // If `create_gin_indexes` is set to false, we don't create
-            // indexes on array attributes. Experience has shown that these
-            // indexes are very expensive to update and can have a very bad
-            // impact on the write performance of the database, but are
-            // hardly ever used or needed by queries.
-            if !delay_index && (!column.is_list() || ENV_VARS.store.create_gin_indexes) {
-                write!(
-                    out,
-                    "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
-                    table_index = self.position,
-                    table_name = self.name,
-                    column_name = column.name,
-                    qname = self.qualified_name,
-                )?;
-            }
-        }
-        writeln!(out)
+        columns
     }
 
     /// If `self` is an aggregation and has cumulative aggregates, create an
