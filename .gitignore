@@ -34,3 +34,4 @@ lcov.info
 # Docker volumes and debug logs
 .postgres
 logfile
+/.env*
