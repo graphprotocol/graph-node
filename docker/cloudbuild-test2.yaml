@@ -1,0 +1,19 @@
+options:
+  pool:
+    name: 'projects/$PROJECT_ID/locations/europe-west1/workerPools/large-pool'
+timeout: 9600s
+steps:
+- name: 'docker'
+  id: 'prepare'
+  args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
+- name: 'docker'
+  id: 'graph-node'
+  args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
+      '--ulimit', 'nofile=1024000:1024000',
+      '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+      '--build-arg', 'REPO_NAME=$REPO_NAME',
+      '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+      '--build-arg', 'TAG_NAME=$TAG_NAME',
+      '-t', 'gcr.io/$PROJECT_ID/graph-node-universal:$SHORT_SHA',
+      '--push',
+      '-f', 'docker/Dockerfile', '.']
