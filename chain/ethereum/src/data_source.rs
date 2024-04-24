@@ -770,14 +770,9 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 // There is another special case in zkSync-era, where the transaction hash in this case would be zero
                 // See https://docs.zksync.io/zk-stack/concepts/blocks.html#fictive-l2-block-finalizing-the-batch
-                let transaction = if log.transaction_hash != block.hash
+                let transaction = if log.transaction_hash == block.hash
                     || log.transaction_hash == Some(H256::zero())
                 {
-                    block
-                        .transaction_for_log(&log)
-                        .context("Found no transaction for event")?
-                } else {
-                    // Infer some fields from the log and fill the rest with zeros.
                     Transaction {
                         hash: log.transaction_hash.unwrap(),
                         block_hash: block.hash,
@@ -786,6 +781,12 @@ impl DataSource {
                         from: Some(H160::zero()),
                         ..Transaction::default()
                     }
+                } else {
+                    // This is the general case where the log's transaction hash does not match the block's hash
+                    // and is not a special zero hash, implying a real transaction associated with this log.
+                    block
+                        .transaction_for_log(&log)
+                        .context("Found no transaction for event")?
                 };
 
                 let logging_extras = Arc::new(o! {
