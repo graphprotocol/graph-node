@@ -7,8 +7,7 @@ timeout: 9600s
 steps:
 - name: 'docker'
   id: 'prepare'
-  args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use',
-    '--ulimit', 'nofile=1024000:1024000']
+  args: ['buildx', 'create', '--driver', 'docker-container', '--name', 'container', '--use']
 - name: 'docker'
   id: 'graph-node'
   args: ['buildx', 'build', '--platform', 'linux/amd64,linux/arm64',
