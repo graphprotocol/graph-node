@@ -13,6 +13,7 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
+    ops::DerefMut,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -24,8 +25,7 @@ use diesel::{
     pg::Pg,
     r2d2::{ConnectionManager, PooledConnection},
     select,
-    serialize::Output,
-    serialize::ToSql,
+    serialize::{Output, ToSql},
     sql_query,
     sql_types::{BigInt, Integer},
     update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
@@ -804,6 +804,11 @@ impl Connection {
                 progress.update(&table.batch);
             }
             progress.table_finished(&table.batch);
+        }
+
+        let conn = self.conn.deref_mut();
+        for table in state.tables.iter() {
+            table.batch.dst.create_postponed_indexes(conn)?;
         }
 
         self.copy_private_data_sources(&state)?;
