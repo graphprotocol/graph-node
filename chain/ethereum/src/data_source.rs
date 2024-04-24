@@ -771,7 +771,7 @@ impl DataSource {
                 // There is another special case in zkSync-era, where the transaction hash in this case would be zero
                 // See https://docs.zksync.io/zk-stack/concepts/blocks.html#fictive-l2-block-finalizing-the-batch
                 let transaction = if log.transaction_hash != block.hash
-                    || log.transaction_hash == Some(H256::zero())
+                    && log.transaction_hash != Some(H256::zero())
                 {
                     block
                         .transaction_for_log(&log)
