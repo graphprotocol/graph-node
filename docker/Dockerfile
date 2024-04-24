@@ -23,11 +23,13 @@ ARG TAG_NAME=unknown
 ADD . /graph-node
 
 RUN apt-get update \
-    && apt-get install -y cmake protobuf-compiler \
-    && cd /graph-node \
+    && apt-get install -y cmake protobuf-compiler && \
+    cd /graph-node && \
+    RUSTFLAGS="-g" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
     # Reduce the size of the layer by removing unnecessary files.
+    && cargo clean \
     && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
     && strip -g /usr/local/bin/graph-node \
     && strip -g /usr/local/bin/graphman \

@@ -20,7 +20,7 @@ steps:
         '--build-arg', 'TAG_NAME=$TAG_NAME',
         '-t', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
         '-t', 'gcr.io/$PROJECT_ID/graph-node:dev',
-        '-f', 'docker/Dockerfile', '.']
+        '-f', 'docker/Dockerfile-external', '.']
 - name: 'docker'
   args: ['push', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA']
 - name: 'docker'
