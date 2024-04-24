@@ -17,3 +17,4 @@ steps:
       '-t', 'gcr.io/$PROJECT_ID/graph-node-universal:$SHORT_SHA',
       '--push',
       '-f', 'docker/Dockerfile', '.']
+images: ['gcr.io/$PROJECT_ID/graph-node-universal:$SHORT_SHA']

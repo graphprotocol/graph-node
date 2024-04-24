@@ -25,3 +25,5 @@ steps:
   args: ['push', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA']
 - name: 'docker'
   args: ['push', 'gcr.io/$PROJECT_ID/graph-node:dev']
+images: ['gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
+  'gcr.io/$PROJECT_ID/graph-node:dev']
