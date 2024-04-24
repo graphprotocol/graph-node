@@ -18,12 +18,12 @@ steps:
         '--build-arg', 'REPO_NAME=$REPO_NAME',
         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
         '--build-arg', 'TAG_NAME=$TAG_NAME',
-        '-t', 'europe-docker.pkg.dev/docker-graph-node/graph-node:$SHORT_SHA',
-        '-t', 'europe-docker.pkg.dev/docker-graph-node/graph-node:dev',
+        '-t', 'europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node:$SHORT_SHA',
+        '-t', 'europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node:dev',
         '-f', 'docker/Dockerfile-external', '.']
 - name: 'docker'
   args: ['push', 'europe-docker.pkg.dev/docker-graph-node/graph-node:$SHORT_SHA']
 - name: 'docker'
   args: ['push', 'europe-docker.pkg.dev/docker-graph-node/graph-node:dev']
-images: ['europe-docker.pkg.dev/docker-graph-node/graph-node:$SHORT_SHA',
-  'europe-docker.pkg.dev/docker-graph-node/graph-node:dev']
+images: ['europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node:$SHORT_SHA',
+  'europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node:dev']

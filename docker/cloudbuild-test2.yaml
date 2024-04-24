@@ -16,9 +16,9 @@ steps:
       '--build-arg', 'REPO_NAME=$REPO_NAME',
       '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
       '--build-arg', 'TAG_NAME=$TAG_NAME',
-      '--cache-from', 'type=registry,ref=europe-docker.pkg.dev/docker-graph-node/graph-node-universal:cache',
-      '--cache-to', 'type=registry,ref=europe-docker.pkg.dev/docker-graph-node/graph-node-universal:cache,mode=max',
-      '-t', 'europe-docker.pkg.dev/docker-graph-node/graph-node-universal:$SHORT_SHA',
+      '--cache-from', 'type=registry,ref=europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node-universal:cache',
+      '--cache-to', 'type=registry,ref=europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node-universal:cache,mode=max',
+      '-t', 'europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node-universal:$SHORT_SHA',
       '--push',
       '-f', 'docker/Dockerfile', '.']
-images: ['europe-docker.pkg.dev/docker-graph-node/graph-node-universal:$SHORT_SHA']
+images: ['europe-docker.pkg.dev/$PROJECT_ID/docker-graph-node/graph-node-universal:$SHORT_SHA']
