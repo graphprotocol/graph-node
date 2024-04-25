@@ -288,8 +288,10 @@ impl Table {
         for (column_index, column) in columns.enumerate() {
             let (method, index_expr) =
                 Self::calculate_attr_index_method_and_expression(self.immutable, column);
-            let delay_index = !column.is_list() && is_copy_op && method == "btree";
-            // TODO: add disabling it with an env. variable
+            let delay_index = ENV_VARS.postpone_attribute_index_creation
+                && !column.is_list()
+                && is_copy_op
+                && method == "btree";
             // TODO: check if skipping should be done for POI table!
 
             // If `create_gin_indexes` is set to false, we don't create
