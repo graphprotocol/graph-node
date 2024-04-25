@@ -3111,8 +3111,7 @@ pub enum ChildKey<'a> {
     Single(ChildKeyDetails<'a>),
     /// First column is the primary key of the parent
     Many(dsl::Column<'a>, Vec<ChildKeyDetails<'a>>),
-    IdAsc(ChildIdDetails<'a>, UseBlockColumn),
-    IdDesc(ChildIdDetails<'a>, UseBlockColumn),
+    Id(SortDirection, ChildIdDetails<'a>, UseBlockColumn),
     ManyIdAsc(Vec<ChildIdDetails<'a>>, UseBlockColumn),
     ManyIdDesc(Vec<ChildIdDetails<'a>>, UseBlockColumn),
 }
@@ -3204,24 +3203,13 @@ impl<'a> fmt::Display for SortKey<'a> {
                     })
                 }
 
-                ChildKey::IdAsc(details, UseBlockColumn::No) => {
-                    write!(f, "{}", details.child_table.primary_key())
+                ChildKey::Id(direction, details, UseBlockColumn::No) => {
+                    write!(f, "{}{}", details.child_table.primary_key(), direction)
                 }
-                ChildKey::IdAsc(details, UseBlockColumn::Yes) => {
+                ChildKey::Id(direction, details, UseBlockColumn::Yes) => {
                     write!(
                         f,
-                        "{}, {}",
-                        details.child_table.primary_key(),
-                        details.child_br
-                    )
-                }
-                ChildKey::IdDesc(details, UseBlockColumn::No) => {
-                    write!(f, "{} desc", details.child_table.primary_key(),)
-                }
-                ChildKey::IdDesc(details, UseBlockColumn::Yes) => {
-                    write!(
-                        f,
-                        "{} desc, {} desc",
+                        "{}{direction}, {}{direction}",
                         details.child_table.primary_key(),
                         details.child_br
                     )
@@ -3357,33 +3345,20 @@ impl<'a> SortKey<'a> {
                     let child_pk = child_table.primary_key();
                     let child_br = child_table.block_column();
                     let child_at_block = child_table.at_block(block);
-                    use SortDirection::*;
-                    return match direction {
-                        Asc => Ok(SortKey::ChildKey(ChildKey::IdAsc(
-                            ChildIdDetails {
-                                child_table,
-                                child_from,
-                                parent_join_column: parent_column,
-                                child_join_column: child_column,
-                                child_pk,
-                                child_br,
-                                child_at_block,
-                            },
-                            use_block_column,
-                        ))),
-                        Desc => Ok(SortKey::ChildKey(ChildKey::IdDesc(
-                            ChildIdDetails {
-                                child_table,
-                                child_from,
-                                parent_join_column: parent_column,
-                                child_join_column: child_column,
-                                child_pk,
-                                child_br,
-                                child_at_block,
-                            },
-                            use_block_column,
-                        ))),
-                    };
+
+                    return Ok(SortKey::ChildKey(ChildKey::Id(
+                        direction,
+                        ChildIdDetails {
+                            child_table,
+                            child_from,
+                            parent_join_column: parent_column,
+                            child_join_column: child_column,
+                            child_pk,
+                            child_br,
+                            child_at_block,
+                        },
+                        use_block_column,
+                    )));
                 }
 
                 let child_table = child_table.child(1);
@@ -3716,13 +3691,11 @@ impl<'a> SortKey<'a> {
                     }
                     ChildKey::ManyIdAsc(_, UseBlockColumn::No)
                     | ChildKey::ManyIdDesc(_, UseBlockColumn::No) => { /* nothing to do */ }
-                    ChildKey::IdAsc(child, UseBlockColumn::Yes)
-                    | ChildKey::IdDesc(child, UseBlockColumn::Yes) => {
+                    ChildKey::Id(_, child, UseBlockColumn::Yes) => {
                         out.push_sql(", ");
                         child.child_br.walk_ast(out.reborrow())?;
                     }
-                    ChildKey::IdAsc(_, UseBlockColumn::No)
-                    | ChildKey::IdDesc(_, UseBlockColumn::No) => { /* nothing to do  */ }
+                    ChildKey::Id(_, _, UseBlockColumn::No) => { /* nothing to do  */ }
                 }
 
                 if let SelectStatementLevel::InnerStatement = select_statement_level {
@@ -3793,21 +3766,13 @@ impl<'a> SortKey<'a> {
                         SortKey::multi_sort_id_expr(children, Desc, *use_block_column, out)
                     }
 
-                    ChildKey::IdAsc(child, use_block_column) => {
+                    ChildKey::Id(direction, child, use_block_column) => {
                         child.child_pk.walk_ast(out.reborrow())?;
+                        out.push_sql(direction.as_sql());
                         if UseBlockColumn::Yes == *use_block_column {
                             out.push_sql(", ");
                             child.child_br.walk_ast(out.reborrow())?;
-                        }
-                        Ok(())
-                    }
-                    ChildKey::IdDesc(child, use_block_column) => {
-                        child.child_pk.walk_ast(out.reborrow())?;
-                        out.push_sql(" desc");
-                        if UseBlockColumn::Yes == *use_block_column {
-                            out.push_sql(", ");
-                            child.child_br.walk_ast(out.reborrow())?;
-                            out.push_sql(" desc");
+                            out.push_sql(direction.as_sql());
                         }
                         Ok(())
                     }
@@ -4075,7 +4040,7 @@ impl<'a> SortKey<'a> {
                         )?;
                     }
                 }
-                ChildKey::IdAsc(child, _) | ChildKey::IdDesc(child, _) => {
+                ChildKey::Id(_, child, _) => {
                     add(
                         &child.child_from,
                         &child.child_join_column,
