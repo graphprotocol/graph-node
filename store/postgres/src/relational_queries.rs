@@ -11,6 +11,7 @@ use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::Untyped;
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Timestamptz};
+use diesel::QuerySource as _;
 use graph::components::store::write::{EntityWrite, RowGroup, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{Id, IdType, NULL};
@@ -33,8 +34,9 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use std::string::ToString;
 
+use crate::relational::dsl::AtBlock;
 use crate::relational::{
-    Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
+    dsl, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
 use crate::{
@@ -101,26 +103,14 @@ macro_rules! constraint_violation {
     }}
 }
 
-/// Conveniences for handling foreign keys depending on whether we are using
-/// `IdType::Bytes` or `IdType::String` as the primary key
-///
-/// This trait adds some capabilities to `Column` that are very specific to
-/// how we generate SQL queries. Using a method like `bind_ids` from this
-/// trait on a given column means "send these values to the database in a form
-/// that can later be used for comparisons with that column"
-trait ForeignKeyClauses {
-    /// The name of the column
-    fn name(&self) -> &str;
-
-    /// Generate a clause
-    ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
-    /// using the right types to bind `$ids` into `out`
-    fn is_in<'b>(&self, ids: &'b IdList, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        out.push_sql("exists (select 1 from unnest(");
-        ids.push_bind_param(out)?;
-        out.push_sql(") as p(g$id) where id = p.g$id)");
-        Ok(())
-    }
+/// Generate a clause
+///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
+/// using the right types to bind `$ids` into `out`
+fn id_is_in<'b>(ids: &'b IdList, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+    out.push_sql("exists (select 1 from unnest(");
+    ids.push_bind_param(out)?;
+    out.push_sql(") as p(g$id) where id = p.g$id)");
+    Ok(())
 }
 
 /// This trait is here to deal with the fact that we can't implement `ToSql`
@@ -152,12 +142,6 @@ impl PushBindParam for IdList {
             IdList::Bytes(ids) => out.push_bind_param::<Array<Binary>, _>(ids),
             IdList::Int8(ids) => out.push_bind_param::<Array<Int8>, _>(ids),
         }
-    }
-}
-
-impl ForeignKeyClauses for Column {
-    fn name(&self) -> &str {
-        self.name.as_str()
     }
 }
 
@@ -898,7 +882,7 @@ enum PrefixType {
 }
 
 impl PrefixType {
-    fn new(column: &QualColumn<'_>) -> QueryResult<Self> {
+    fn new(column: &dsl::Column<'_>) -> QueryResult<Self> {
         match column.column_type() {
             ColumnType::String => Ok(PrefixType::String),
             ColumnType::Bytes => Ok(PrefixType::Bytes),
@@ -915,7 +899,7 @@ impl PrefixType {
     /// for the column
     fn push_column_prefix<'b>(
         self,
-        column: &'b QualColumn<'_>,
+        column: &'b dsl::Column<'b>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         match self {
@@ -971,14 +955,14 @@ fn is_large_string(s: &String) -> Result<bool, ()> {
 pub struct PrefixComparison<'a> {
     op: Comparison,
     kind: PrefixType,
-    column: QualColumn<'a>,
+    column: dsl::Column<'a>,
     value: QueryValue<'a>,
 }
 
 impl<'a> PrefixComparison<'a> {
     fn new(
         op: Comparison,
-        column: QualColumn<'a>,
+        column: dsl::Column<'a>,
         column_type: &'a ColumnType,
         text: &'a Value,
     ) -> Result<Self, StoreError> {
@@ -1134,23 +1118,21 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 /// filtered with `child_filter``
 #[derive(Debug)]
 pub struct QueryChild<'a> {
-    parent_column: &'a Column,
-    child_table: &'a Table,
-    child_column: &'a Column,
+    parent_column: dsl::Column<'a>,
+    child_from: dsl::FromTable<'a>,
+    child_column: dsl::Column<'a>,
     child_filter: Filter<'a>,
     derived: bool,
-    br_column: BlockRangeColumn<'a>,
+    at_block: dsl::AtBlock<'a>,
 }
 
 impl<'a> QueryChild<'a> {
     fn new(
         layout: &'a Layout,
-        parent_table: &'a Table,
+        parent_table: dsl::Table<'a>,
         child: &'a StoreChild,
         block: BlockNumber,
     ) -> Result<Self, StoreError> {
-        const CHILD_PREFIX: &str = "i.";
-
         let StoreChild {
             attr,
             entity_type,
@@ -1158,7 +1140,7 @@ impl<'a> QueryChild<'a> {
             derived,
         } = child;
         let derived = *derived;
-        let child_table = layout.table_for_entity(entity_type)?;
+        let child_table = layout.table_for_entity(entity_type)?.dsl_table().child(0);
         let (parent_column, child_column) = if derived {
             // If the parent is derived, the child column is picked based on
             // the provided attribute and the parent column is the primary
@@ -1176,16 +1158,16 @@ impl<'a> QueryChild<'a> {
                 child_table.primary_key(),
             )
         };
-        let br_column = BlockRangeColumn::new(child_table, CHILD_PREFIX, block);
+        let at_block = child_table.at_block(block).filters_by_id(!derived);
         let child_filter = Filter::new(layout, child_table, filter, block, ColumnQual::Child)?;
-
+        let child_from = child_table.from_clause();
         Ok(Self {
             parent_column,
-            child_table,
+            child_from,
             child_column,
             child_filter,
             derived,
-            br_column,
+            at_block,
         })
     }
 }
@@ -1196,68 +1178,52 @@ impl<'a> QueryFragment<Pg> for QueryChild<'a> {
 
         let QueryChild {
             parent_column,
-            child_table,
+            child_from,
             child_column,
             child_filter,
             derived,
-            br_column,
+            at_block,
         } = self;
         let derived = *derived;
 
-        let child_prefix = "i.";
-        let parent_prefix = "c.";
-
         out.push_sql("exists (select 1 from ");
-        out.push_sql(child_table.qualified_name.as_str());
-        out.push_sql(" as i");
+        child_from.walk_ast(out.reborrow())?;
 
         out.push_sql(" where ");
-
-        let mut is_type_c_or_d = false;
 
         // Join tables
         if derived {
             if child_column.is_list() {
                 // Type A: c.id = any(i.{parent_field})
-                out.push_sql(parent_prefix);
-                out.push_identifier(parent_column.name.as_str())?;
+                parent_column.walk_ast(out.reborrow())?;
                 out.push_sql(" = any(");
-                out.push_sql(child_prefix);
-                out.push_identifier(child_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
                 out.push_sql(")");
             } else {
                 // Type B: c.id = i.{parent_field}
-                out.push_sql(parent_prefix);
-                out.push_identifier(parent_column.name.as_str())?;
+                parent_column.walk_ast(out.reborrow())?;
                 out.push_sql(" = ");
-                out.push_sql(child_prefix);
-                out.push_identifier(child_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
             }
         } else {
-            is_type_c_or_d = true;
-
             if parent_column.is_list() {
                 // Type C: i.id = any(c.child_ids)
-                out.push_sql(child_prefix);
-                out.push_identifier(child_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
                 out.push_sql(" = any(");
-                out.push_sql(parent_prefix);
-                out.push_identifier(parent_column.name.as_str())?;
+                parent_column.walk_ast(out.reborrow())?;
                 out.push_sql(")");
             } else {
                 // Type D: i.id = c.child_id
-                out.push_sql(child_prefix);
-                out.push_identifier(child_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
                 out.push_sql(" = ");
-                out.push_sql(parent_prefix);
-                out.push_identifier(parent_column.name.as_str())?;
+                parent_column.walk_ast(out.reborrow())?;
             }
         }
 
         out.push_sql(" and ");
 
         // Match by block
-        br_column.contains(&mut out, is_type_c_or_d)?;
+        at_block.walk_ast(out.reborrow())?;
 
         out.push_sql(" and ");
 
@@ -1278,13 +1244,6 @@ enum ColumnQual {
 }
 
 impl ColumnQual {
-    fn with<'a>(&self, column: &'a Column) -> QualColumn<'a> {
-        match self {
-            ColumnQual::Main => QualColumn::Main(column),
-            ColumnQual::Child => QualColumn::Child(column),
-        }
-    }
-
     /// Return `true` if we allow a nested child filter. That's allowed as
     /// long as we are filtering the main table
     fn allow_child(&self) -> bool {
@@ -1292,55 +1251,6 @@ impl ColumnQual {
             ColumnQual::Main => true,
             ColumnQual::Child => false,
         }
-    }
-
-    fn prefix(&self) -> &'static str {
-        match self {
-            ColumnQual::Main => "c.",
-            ColumnQual::Child => "i.",
-        }
-    }
-}
-
-/// A qualified column name. This is either `c.{column}` or `i.{column}`
-#[derive(Debug)]
-pub enum QualColumn<'a> {
-    Main(&'a Column),
-    Child(&'a Column),
-}
-impl QualColumn<'_> {
-    fn column_type(&self) -> &ColumnType {
-        &self.column().column_type
-    }
-
-    fn prefix(&self) -> &str {
-        match self {
-            QualColumn::Main(_) => "c.",
-            QualColumn::Child(_) => "i.",
-        }
-    }
-
-    fn column(&self) -> &Column {
-        match self {
-            QualColumn::Main(column) => column,
-            QualColumn::Child(column) => column,
-        }
-    }
-}
-
-impl std::fmt::Display for QualColumn<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            QualColumn::Main(column) => write!(f, "{}", column.name),
-            QualColumn::Child(column) => write!(f, "{}", column.name),
-        }
-    }
-}
-
-impl QueryFragment<Pg> for QualColumn<'_> {
-    fn walk_ast<'a>(&self, mut out: AstPass<'_, 'a, Pg>) -> QueryResult<()> {
-        out.push_sql(self.prefix());
-        out.push_identifier(self.column().name.as_str())
     }
 }
 
@@ -1354,29 +1264,29 @@ pub enum Filter<'a> {
     And(Vec<Filter<'a>>),
     Or(Vec<Filter<'a>>),
     PrefixCmp(PrefixComparison<'a>),
-    Cmp(QualColumn<'a>, Comparison, QueryValue<'a>),
-    In(QualColumn<'a>, Vec<QueryValue<'a>>),
-    NotIn(QualColumn<'a>, Vec<QueryValue<'a>>),
+    Cmp(dsl::Column<'a>, Comparison, QueryValue<'a>),
+    In(dsl::Column<'a>, Vec<QueryValue<'a>>),
+    NotIn(dsl::Column<'a>, Vec<QueryValue<'a>>),
     Contains {
-        column: QualColumn<'a>,
+        column: dsl::Column<'a>,
         op: ContainsOp,
         pattern: QueryValue<'a>,
     },
     StartsOrEndsWith {
-        column: QualColumn<'a>,
+        column: dsl::Column<'a>,
         op: &'static str,
         pattern: String,
     },
-    ChangeBlockGte(BlockRangeColumn<'a>),
+    ChangeBlockGte(dsl::ChangedSince<'a>),
     Child(Box<QueryChild<'a>>),
     /// The value is never null for fulltext queries
-    Fulltext(QualColumn<'a>, QueryValue<'a>),
+    Fulltext(dsl::Column<'a>, QueryValue<'a>),
 }
 
 impl<'a> Filter<'a> {
     pub fn main(
         layout: &'a Layout,
-        table: &'a Table,
+        table: dsl::Table<'a>,
         filter: &'a EntityFilter,
         block: BlockNumber,
     ) -> Result<Self, StoreError> {
@@ -1385,32 +1295,30 @@ impl<'a> Filter<'a> {
 
     fn new(
         layout: &'a Layout,
-        table: &'a Table,
+        table: dsl::Table<'a>,
         filter: &'a EntityFilter,
         block: BlockNumber,
         qual: ColumnQual,
     ) -> Result<Self, StoreError> {
         fn column_and_value<'v>(
-            prefix: ColumnQual,
-            table: &'v Table,
+            table: dsl::Table<'v>,
             attr: &String,
             value: &'v Value,
-        ) -> Result<(QualColumn<'v>, QueryValue<'v>), StoreError> {
+        ) -> Result<(dsl::Column<'v>, QueryValue<'v>), StoreError> {
             let column = table.column_for_field(attr)?;
-            let value = QueryValue::new(value, &column.column_type)?;
-            let column = prefix.with(table.column_for_field(attr)?);
+            let value = QueryValue::new(value, column.column_type())?;
+            let column = table.column_for_field(attr)?;
             Ok((column, value))
         }
 
         fn starts_or_ends_with<'s>(
-            qual: ColumnQual,
-            table: &'s Table,
+            table: dsl::Table<'s>,
             attr: &String,
             value: &Value,
             op: &'static str,
             starts_with: bool,
         ) -> Result<Filter<'s>, StoreError> {
-            let column = qual.with(table.column_for_field(attr)?);
+            let column = table.column_for_field(attr)?;
 
             match value {
                 Value::String(s) => {
@@ -1443,8 +1351,7 @@ impl<'a> Filter<'a> {
         }
 
         fn cmp<'s>(
-            qual: ColumnQual,
-            table: &'s Table,
+            table: dsl::Table<'s>,
             attr: &String,
             op: Comparison,
             value: &'s Value,
@@ -1453,27 +1360,24 @@ impl<'a> Filter<'a> {
 
             op.suitable(value)?;
 
-            if column.use_prefix_comparison && !value.is_null() {
-                let column_type = &column.column_type;
-                let column = qual.with(column);
+            if column.use_prefix_comparison() && !value.is_null() {
+                let column_type = column.column_type();
                 PrefixComparison::new(op, column, column_type, value)
                     .map(|pc| Filter::PrefixCmp(pc))
             } else {
-                let value = QueryValue::new(value, &column.column_type)?;
-                let column = qual.with(column);
+                let value = QueryValue::new(value, column.column_type())?;
                 Ok(Filter::Cmp(column, op, value))
             }
         }
 
         fn contains<'s>(
-            qual: ColumnQual,
-            table: &'s Table,
+            table: dsl::Table<'s>,
             attr: &String,
             op: ContainsOp,
             value: &'s Value,
         ) -> Result<Filter<'s>, StoreError> {
             let column = table.column_for_field(attr)?;
-            let pattern = QueryValue::new(value, &column.column_type)?;
+            let pattern = QueryValue::new(value, column.column_type())?;
             let pattern = match &pattern.value {
                 SqlValue::String(s) => {
                     if s.starts_with('%') || s.ends_with('%') {
@@ -1508,7 +1412,6 @@ impl<'a> Filter<'a> {
                 | SqlValue::Bytes(_)
                 | SqlValue::Binary(_) => pattern,
             };
-            let column = qual.with(column);
             Ok(Filter::Contains {
                 column,
                 op,
@@ -1533,57 +1436,49 @@ impl<'a> Filter<'a> {
                     .map(|f| F::new(layout, table, f, block, qual))
                     .collect::<Result<_, _>>()?,
             )),
-            Equal(attr, value) => cmp(qual, table, attr, C::Equal, value),
-            Not(attr, value) => cmp(qual, table, attr, C::NotEqual, value),
-            GreaterThan(attr, value) => cmp(qual, table, attr, C::Greater, value),
-            LessThan(attr, value) => cmp(qual, table, attr, C::Less, value),
-            GreaterOrEqual(attr, value) => cmp(qual, table, attr, C::GreaterOrEqual, value),
-            LessOrEqual(attr, value) => cmp(qual, table, attr, C::LessOrEqual, value),
+            Equal(attr, value) => cmp(table, attr, C::Equal, value),
+            Not(attr, value) => cmp(table, attr, C::NotEqual, value),
+            GreaterThan(attr, value) => cmp(table, attr, C::Greater, value),
+            LessThan(attr, value) => cmp(table, attr, C::Less, value),
+            GreaterOrEqual(attr, value) => cmp(table, attr, C::GreaterOrEqual, value),
+            LessOrEqual(attr, value) => cmp(table, attr, C::LessOrEqual, value),
             In(attr, values) => {
                 let column = table.column_for_field(attr.as_str())?;
-                let values = QueryValue::many(values, &column.column_type)?;
-                let column = qual.with(column);
+                let values = QueryValue::many(values, column.column_type())?;
                 Ok(F::In(column, values))
             }
             NotIn(attr, values) => {
                 let column = table.column_for_field(attr.as_str())?;
-                let values = QueryValue::many(values, &column.column_type)?;
-                let column = qual.with(column);
+                let values = QueryValue::many(values, &column.column_type())?;
                 Ok(F::NotIn(column, values))
             }
-            Contains(attr, value) => contains(qual, table, attr, K::Like, value),
-            ContainsNoCase(attr, value) => contains(qual, table, attr, K::ILike, value),
-            NotContains(attr, value) => contains(qual, table, attr, K::NotLike, value),
-            NotContainsNoCase(attr, value) => contains(qual, table, attr, K::NotILike, value),
+            Contains(attr, value) => contains(table, attr, K::Like, value),
+            ContainsNoCase(attr, value) => contains(table, attr, K::ILike, value),
+            NotContains(attr, value) => contains(table, attr, K::NotLike, value),
+            NotContainsNoCase(attr, value) => contains(table, attr, K::NotILike, value),
 
-            StartsWith(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " like ", true)
-            }
+            StartsWith(attr, value) => starts_or_ends_with(table, attr, value, " like ", true),
             StartsWithNoCase(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " ilike ", true)
+                starts_or_ends_with(table, attr, value, " ilike ", true)
             }
             NotStartsWith(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " not like ", true)
+                starts_or_ends_with(table, attr, value, " not like ", true)
             }
             NotStartsWithNoCase(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " not ilike ", true)
+                starts_or_ends_with(table, attr, value, " not ilike ", true)
             }
-            EndsWith(attr, value) => starts_or_ends_with(qual, table, attr, value, " like ", false),
+            EndsWith(attr, value) => starts_or_ends_with(table, attr, value, " like ", false),
             EndsWithNoCase(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " ilike ", false)
+                starts_or_ends_with(table, attr, value, " ilike ", false)
             }
             NotEndsWith(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " not like ", false)
+                starts_or_ends_with(table, attr, value, " not like ", false)
             }
             NotEndsWithNoCase(attr, value) => {
-                starts_or_ends_with(qual, table, attr, value, " not ilike ", false)
+                starts_or_ends_with(table, attr, value, " not ilike ", false)
             }
 
-            ChangeBlockGte(num) => Ok(F::ChangeBlockGte(BlockRangeColumn::new(
-                table,
-                qual.prefix(),
-                *num,
-            ))),
+            ChangeBlockGte(num) => Ok(F::ChangeBlockGte(table.changed_since(*num))),
             Child(child) => {
                 if !qual.allow_child() {
                     return Err(StoreError::ChildFilterNestingNotSupportedError(
@@ -1595,7 +1490,7 @@ impl<'a> Filter<'a> {
                 Ok(F::Child(Box::new(child)))
             }
             Fulltext(attr, value) => {
-                let (column, value) = column_and_value(qual, table, attr, value)?;
+                let (column, value) = column_and_value(table, attr, value)?;
                 if value.is_null() {
                     return Err(StoreError::UnsupportedFilter(
                         "fulltext".to_owned(),
@@ -1629,7 +1524,7 @@ impl<'a> Filter<'a> {
     }
 
     fn cmp<'b>(
-        column: &'b QualColumn<'b>,
+        column: &'b dsl::Column<'b>,
         qv: &'b QueryValue<'b>,
         op: Comparison,
         mut out: AstPass<'_, 'b, Pg>,
@@ -1652,7 +1547,7 @@ impl<'a> Filter<'a> {
     }
 
     fn fulltext<'b>(
-        column: &'b QualColumn,
+        column: &'b dsl::Column<'b>,
         qv: &'b QueryValue,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -1663,7 +1558,7 @@ impl<'a> Filter<'a> {
     }
 
     fn contains<'b>(
-        column: &'b QualColumn,
+        column: &'b dsl::Column<'b>,
         op: &'b ContainsOp,
         qv: &'b QueryValue,
         mut out: AstPass<'_, 'b, Pg>,
@@ -1728,7 +1623,7 @@ impl<'a> Filter<'a> {
     }
 
     fn in_array<'b>(
-        column: &'b QualColumn,
+        column: &'b dsl::Column<'b>,
         values: &'b [QueryValue],
         negated: bool,
         mut out: AstPass<'_, 'b, Pg>,
@@ -1772,8 +1667,8 @@ impl<'a> Filter<'a> {
         }
 
         if have_non_nulls {
-            if column.column().use_prefix_comparison
-                && PrefixType::new(column).is_ok()
+            if column.use_prefix_comparison()
+                && PrefixType::new(&column).is_ok()
                 && values.iter().all(|v| match &v.value {
                     SqlValue::Text(s) => s.len() < STRING_PREFIX_SIZE,
                     SqlValue::String(s) => s.len() < STRING_PREFIX_SIZE,
@@ -1788,7 +1683,7 @@ impl<'a> Filter<'a> {
                 // query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
-                PrefixType::new(column)?.push_column_prefix(column, &mut out.reborrow())?;
+                PrefixType::new(&column)?.push_column_prefix(&column, &mut out.reborrow())?;
             } else {
                 column.walk_ast(out.reborrow())?;
             }
@@ -1860,12 +1755,12 @@ impl<'a> fmt::Display for Filter<'a> {
             } => {
                 write!(f, "{column} {op} '{pattern}'")
             }
-            ChangeBlockGte(b) => write!(f, "block >= {}", b.block()),
+            ChangeBlockGte(b) => write!(f, "{}", b),
             Child(child /* a, et, cf, _ */) => write!(
                 f,
                 "join on {} with {}({})",
                 child.child_column.name(),
-                child.child_table.name,
+                child.child_from,
                 child.child_filter
             ),
         }
@@ -1900,7 +1795,7 @@ impl<'a> QueryFragment<Pg> for Filter<'a> {
                 out.push_sql(op);
                 out.push_bind_param::<Text, _>(pattern)?;
             }
-            ChangeBlockGte(br_column) => br_column.changed_since(&mut out)?,
+            ChangeBlockGte(changed_since) => changed_since.walk_ast(out.reborrow())?,
             Child(child) => child.walk_ast(out)?,
         }
         Ok(())
@@ -2067,9 +1962,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            table
-                .primary_key()
-                .is_in(&self.ids_for_type[&(table.object.clone(), *cr)], &mut out)?;
+            id_is_in(&self.ids_for_type[&(table.object.clone(), *cr)], &mut out)?;
             out.push_sql(" and ");
             if table.has_causality_region {
                 out.push_sql("causality_region = ");
@@ -2470,7 +2363,7 @@ impl ParentIds {
 /// corresponding table and column
 #[derive(Debug, Clone)]
 enum TableLink<'a> {
-    Direct(&'a Column, ChildMultiplicity),
+    Direct(dsl::Column<'a>, ChildMultiplicity),
     /// The `Table` is the parent table
     Parent(&'a Table, ParentIds),
 }
@@ -2478,7 +2371,7 @@ enum TableLink<'a> {
 impl<'a> TableLink<'a> {
     fn new(
         layout: &'a Layout,
-        child_table: &'a Table,
+        child_table: dsl::Table<'a>,
         link: EntityLink,
     ) -> Result<Self, QueryExecutionError> {
         match link {
@@ -2542,7 +2435,8 @@ impl<'a> ParentLimit<'a> {
 #[derive(Debug)]
 pub struct FilterWindow<'a> {
     /// The table from which we take entities
-    table: &'a Table,
+    table: dsl::Table<'a>,
+    from_table: dsl::FromTable<'a>,
     /// The overall filter for the entire query
     query_filter: Option<Filter<'a>>,
     /// The parent ids we are interested in. The type in the database
@@ -2554,7 +2448,7 @@ pub struct FilterWindow<'a> {
     /// How to filter by a set of parents
     link: TableLink<'a>,
     column_names: AttributeNames,
-    br_column: BlockRangeColumn<'a>,
+    at_block: AtBlock<'a>,
 }
 
 impl<'a> FilterWindow<'a> {
@@ -2570,7 +2464,7 @@ impl<'a> FilterWindow<'a> {
             link,
             column_names,
         } = window;
-        let table = layout.table_for_entity(&child_type)?.as_ref();
+        let table = layout.table_for_entity(&child_type)?.as_ref().dsl_table();
 
         // Confidence check: ensure that all selected column names exist in the table
         if let AttributeNames::Select(ref selected_field_names) = column_names {
@@ -2583,20 +2477,23 @@ impl<'a> FilterWindow<'a> {
             .map(|filter| Filter::main(layout, table, filter, block))
             .transpose()?;
         let link = TableLink::new(layout, table, link)?;
-        let br_column = BlockRangeColumn::new(table, "c.", block);
+        let at_block = table
+            .at_block(block)
+            .filters_by_id(matches!(link, TableLink::Parent(_, _)));
         Ok(FilterWindow {
             table,
+            from_table: table.from_clause(),
             query_filter,
             ids,
             link,
             column_names,
-            br_column,
+            at_block,
         })
     }
 
     fn parent_type(&self) -> QueryResult<IdType> {
         match &self.link {
-            TableLink::Direct(column, _) => column.column_type.id_type(),
+            TableLink::Direct(column, _) => column.column_type().id_type(),
             TableLink::Parent(parent_table, _) => parent_table.primary_key().column_type.id_type(),
         }
     }
@@ -2611,7 +2508,7 @@ impl<'a> FilterWindow<'a> {
 
     fn children_type_a<'b>(
         &'b self,
-        column: &Column,
+        column: &'b dsl::Column<'b>,
         is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
@@ -2634,12 +2531,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id) cross join lateral (select ");
         write_column_names(&self.column_names, self.table, None, out)?;
         out.push_sql(" from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        self.br_column.contains(out, false)?;
+        self.from_table.walk_ast(out.reborrow())?;
+        out.push_sql(" where ");
+        self.at_block.walk_ast(out.reborrow())?;
         limit.filter(is_outer, out);
-        out.push_sql(" and p.id = any(c.");
-        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" and p.id = any(");
+        column.walk_ast(out.reborrow())?;
         out.push_sql(")");
         self.and_filter(out)?;
         limit.restrict(is_outer, out)?;
@@ -2649,7 +2546,7 @@ impl<'a> FilterWindow<'a> {
 
     fn child_type_a<'b>(
         &'b self,
-        column: &Column,
+        column: &'b dsl::Column<'b>,
         is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
@@ -2670,16 +2567,16 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* child_type_a */ from unnest(");
         self.ids.push_bind_param(out)?;
         out.push_sql(") as p(id), ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        self.br_column.contains(out, false)?;
+        self.from_table.walk_ast(out.reborrow())?;
+        out.push_sql(" where ");
+        self.at_block.walk_ast(out.reborrow())?;
         limit.filter(is_outer, out);
-        out.push_sql(" and c.");
-        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" and ");
+        column.walk_ast(out.reborrow())?;
         out.push_sql(" @> array[p.id]");
         if self.ids.len() < ENV_VARS.store.typea_batch_size {
-            out.push_sql(" and c.");
-            out.push_identifier(column.name.as_str())?;
+            out.push_sql(" and ");
+            column.walk_ast(out.reborrow())?;
             out.push_sql(" && ");
             self.ids.push_bind_param(out)?;
         }
@@ -2690,7 +2587,7 @@ impl<'a> FilterWindow<'a> {
 
     fn children_type_b<'b>(
         &'b self,
-        column: &Column,
+        column: &'b dsl::Column<'b>,
         is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
@@ -2713,12 +2610,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id) cross join lateral (select ");
         write_column_names(&self.column_names, self.table, None, out)?;
         out.push_sql(" from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        self.br_column.contains(out, false)?;
+        self.from_table.walk_ast(out.reborrow())?;
+        out.push_sql(" where ");
+        self.at_block.walk_ast(out.reborrow())?;
         limit.filter(is_outer, out);
-        out.push_sql(" and p.id = c.");
-        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" and p.id = ");
+        column.walk_ast(out.reborrow())?;
         self.and_filter(out)?;
         limit.restrict(is_outer, out)?;
         out.push_sql(") c");
@@ -2727,7 +2624,7 @@ impl<'a> FilterWindow<'a> {
 
     fn child_type_b<'b>(
         &'b self,
-        column: &Column,
+        column: &'b dsl::Column<'b>,
         is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
@@ -2743,12 +2640,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* child_type_b */  from unnest(");
         self.ids.push_bind_param(out)?;
         out.push_sql(") as p(id), ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        self.br_column.contains(out, false)?;
+        self.from_table.walk_ast(out.reborrow())?;
+        out.push_sql(" where ");
+        self.at_block.walk_ast(out.reborrow())?;
         limit.filter(is_outer, out);
-        out.push_sql(" and p.id = c.");
-        out.push_identifier(column.name.as_str())?;
+        out.push_sql(" and p.id = ");
+        column.walk_ast(out.reborrow())?;
         self.and_filter(out)?;
         limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
@@ -2797,9 +2694,9 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" cross join lateral (select ");
             write_column_names(&self.column_names, self.table, None, out)?;
             out.push_sql(" from ");
-            out.push_sql(self.table.qualified_name.as_str());
-            out.push_sql(" c where ");
-            self.br_column.contains(out, true)?;
+            self.from_table.walk_ast(out.reborrow())?;
+            out.push_sql(" where ");
+            self.at_block.walk_ast(out.reborrow())?;
             limit.filter(is_outer, out);
             out.push_sql(" and c.id = any(p.child_ids)");
             self.and_filter(out)?;
@@ -2815,8 +2712,8 @@ impl<'a> FilterWindow<'a> {
             out.push_sql("from unnest(array[]::text[]) as p(id) cross join (select ");
             write_column_names(&self.column_names, self.table, None, out)?;
             out.push_sql("  from ");
-            out.push_sql(self.table.qualified_name.as_str());
-            out.push_sql(" c where false) c");
+            self.from_table.walk_ast(out.reborrow())?;
+            out.push_sql(" where false) c");
         }
         Ok(())
     }
@@ -2839,9 +2736,9 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("), unnest(");
         child_ids.push_bind_param(out)?;
         out.push_sql(")) as p(id, child_id), ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        self.br_column.contains(out, true)?;
+        self.from_table.walk_ast(out.reborrow())?;
+        out.push_sql(" where ");
+        self.at_block.walk_ast(out.reborrow())?;
         limit.filter(is_outer, out);
 
         // Include a constraint on the child IDs as a set if the size of the set
@@ -2902,7 +2799,7 @@ impl<'a> FilterWindow<'a> {
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("select '");
-        out.push_sql(self.table.object.as_str());
+        out.push_sql(self.table.meta.object.as_str());
         out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
         out.push_sql(&*PARENT_ID);
         limit
@@ -2921,10 +2818,11 @@ impl<'a> FilterWindow<'a> {
 
 #[derive(Debug)]
 pub struct WholeTable<'a> {
-    table: &'a Table,
+    table: dsl::Table<'a>,
+    from_table: dsl::FromTable<'a>,
     filter: Option<Filter<'a>>,
     column_names: AttributeNames,
-    br_column: BlockRangeColumn<'a>,
+    at_block: AtBlock<'a>,
 }
 
 impl<'a> WholeTable<'a> {
@@ -2935,16 +2833,25 @@ impl<'a> WholeTable<'a> {
         column_names: AttributeNames,
         block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
-        let table = layout.table_for_entity(entity_type).map(|rc| rc.as_ref())?;
+        let table = layout
+            .table_for_entity(entity_type)
+            .map(|rc| rc.as_ref())?
+            .dsl_table();
         let filter = entity_filter
             .map(|filter| Filter::main(layout, table, filter, block))
             .transpose()?;
-        let br_column = BlockRangeColumn::new(table, "c.", block);
+
+        let filters_by_id = {
+            matches!(filter.as_ref(), Some(Filter::Cmp(column, Comparison::Equal, _)) if column.is_primary_key())
+        };
+
+        let at_block = table.at_block(block).filters_by_id(filters_by_id);
         Ok(WholeTable {
             table,
+            from_table: table.from_clause(),
             filter,
             column_names,
-            br_column,
+            at_block,
         })
     }
 }
@@ -2966,11 +2873,15 @@ impl<'a> fmt::Display for FilterCollection<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), std::fmt::Error> {
         fn fmt_table(
             f: &mut fmt::Formatter,
-            table: &Table,
+            table: dsl::Table<'_>,
             attrs: &AttributeNames,
             filter: &Option<Filter>,
         ) -> Result<(), std::fmt::Error> {
-            write!(f, "{}[", table.qualified_name.as_str().replace("\\\"", ""))?;
+            write!(
+                f,
+                "{}[",
+                table.meta.qualified_name.as_str().replace("\\\"", "")
+            )?;
             match attrs {
                 AttributeNames::All => write!(f, "*")?,
                 AttributeNames::Select(cols) => write!(f, "{}", cols.iter().join(","))?,
@@ -2985,13 +2896,14 @@ impl<'a> fmt::Display for FilterCollection<'a> {
         fn fmt_window(f: &mut fmt::Formatter, w: &FilterWindow) -> Result<(), std::fmt::Error> {
             let FilterWindow {
                 table,
+                from_table: _,
                 query_filter,
                 ids,
                 link,
                 column_names,
-                br_column: _,
+                at_block: _,
             } = w;
-            fmt_table(f, table, column_names, query_filter)?;
+            fmt_table(f, *table, column_names, query_filter)?;
             if !ids.is_empty() {
                 use ChildMultiplicity::*;
 
@@ -3085,7 +2997,7 @@ impl<'a> FilterCollection<'a> {
         }
     }
 
-    fn first_table(&self) -> Option<&Table> {
+    fn first_table(&self) -> Option<dsl::Table<'a>> {
         match self {
             FilterCollection::All(entities) => entities.first().map(|wh| wh.table),
             FilterCollection::SingleWindow(window) => Some(window.table),
@@ -3103,10 +3015,10 @@ impl<'a> FilterCollection<'a> {
 
     fn all_mutable(&self) -> bool {
         match self {
-            FilterCollection::All(entities) => entities.iter().all(|wh| !wh.table.immutable),
-            FilterCollection::SingleWindow(window) => !window.table.immutable,
+            FilterCollection::All(entities) => entities.iter().all(|wh| !wh.table.meta.immutable),
+            FilterCollection::SingleWindow(window) => !window.table.meta.immutable,
             FilterCollection::MultiWindow(windows, _) => {
-                windows.iter().all(|window| !window.table.immutable)
+                windows.iter().all(|window| !window.table.meta.immutable)
             }
         }
     }
@@ -3134,33 +3046,33 @@ impl<'a> FilterCollection<'a> {
 #[derive(Debug, Clone)]
 pub struct ChildKeyDetails<'a> {
     /// Column in the parent table that stores the connection between the parent and the child
-    pub parent_join_column: &'a Column,
+    pub parent_join_column: dsl::Column<'a>,
     /// Table representing the child entity
-    pub child_table: &'a Table,
+    pub child_table: dsl::Table<'a>,
+    pub child_from: dsl::FromTable<'a>,
     /// Column in the child table that stores the connection between the child and the parent
-    pub child_join_column: &'a Column,
+    pub child_join_column: dsl::Column<'a>,
+    pub child_at_block: dsl::AtBlock<'a>,
     /// Column of the child table that sorting is done on
-    pub sort_by_column: &'a Column,
-    /// Prefix for the child table
-    pub prefix: String,
+    pub sort_by_column: dsl::Column<'a>,
     /// Either `asc` or `desc`
     pub direction: &'static str,
 }
 
 #[derive(Debug, Clone)]
 pub struct ChildKeyAndIdSharedDetails<'a> {
-    /// Table representing the parent entity
-    pub parent_table: &'a Table,
     /// Column in the parent table that stores the connection between the parent and the child
-    pub parent_join_column: &'a Column,
+    pub parent_join_column: dsl::Column<'a>,
     /// Table representing the child entity
-    pub child_table: &'a Table,
+    pub child_table: dsl::Table<'a>,
+    pub child_from: dsl::FromTable<'a>,
     /// Column in the child table that stores the connection between the child and the parent
-    pub child_join_column: &'a Column,
+    pub child_join_column: dsl::Column<'a>,
+    pub child_pk: dsl::Column<'a>,
+    pub child_br: dsl::BlockColumn<'a>,
+    pub child_at_block: dsl::AtBlock<'a>,
     /// Column of the child table that sorting is done on
-    pub sort_by_column: &'a Column,
-    /// Prefix for the child table
-    pub prefix: String,
+    pub sort_by_column: dsl::Column<'a>,
     /// Either `asc` or `desc`
     pub direction: &'static str,
 }
@@ -3168,26 +3080,41 @@ pub struct ChildKeyAndIdSharedDetails<'a> {
 #[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct ChildIdDetails<'a> {
-    /// Table representing the parent entity
-    pub parent_table: &'a Table,
     /// Column in the parent table that stores the connection between the parent and the child
-    pub parent_join_column: &'a Column,
+    pub parent_join_column: dsl::Column<'a>,
     /// Table representing the child entity
-    pub child_table: &'a Table,
+    pub child_table: dsl::Table<'a>,
+    pub child_from: dsl::FromTable<'a>,
     /// Column in the child table that stores the connection between the child and the parent
-    pub child_join_column: &'a Column,
-    /// Prefix for the child table
-    pub prefix: String,
+    pub child_join_column: dsl::Column<'a>,
+    pub child_pk: dsl::Column<'a>,
+    pub child_br: dsl::BlockColumn<'a>,
+    pub child_at_block: dsl::AtBlock<'a>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UseBlockColumn {
+    Yes,
+    No,
+}
+impl UseBlockColumn {
+    fn block_column<'a>(&self, table: dsl::Table<'a>) -> Option<dsl::BlockColumn<'a>> {
+        match self {
+            UseBlockColumn::Yes => Some(table.block_column()),
+            UseBlockColumn::No => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum ChildKey<'a> {
     Single(ChildKeyDetails<'a>),
-    Many(Vec<ChildKeyDetails<'a>>),
-    IdAsc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
-    IdDesc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
-    ManyIdAsc(Vec<ChildIdDetails<'a>>, Option<BlockRangeColumn<'a>>),
-    ManyIdDesc(Vec<ChildIdDetails<'a>>, Option<BlockRangeColumn<'a>>),
+    /// First column is the primary key of the parent
+    Many(dsl::Column<'a>, Vec<ChildKeyDetails<'a>>),
+    IdAsc(ChildIdDetails<'a>, UseBlockColumn),
+    IdDesc(ChildIdDetails<'a>, UseBlockColumn),
+    ManyIdAsc(Vec<ChildIdDetails<'a>>, UseBlockColumn),
+    ManyIdDesc(Vec<ChildIdDetails<'a>>, UseBlockColumn),
 }
 
 /// Convenience to pass the name of the column to order by around. If `name`
@@ -3196,12 +3123,12 @@ pub enum ChildKey<'a> {
 pub enum SortKey<'a> {
     None,
     /// Order by `id asc`
-    IdAsc(Option<BlockRangeColumn<'a>>),
+    IdAsc(Option<dsl::BlockColumn<'a>>),
     /// Order by `id desc`
-    IdDesc(Option<BlockRangeColumn<'a>>),
+    IdDesc(Option<dsl::BlockColumn<'a>>),
     /// Order by some other column; `column` will never be `id`
     Key {
-        column: &'a Column,
+        column: dsl::Column<'a>,
         value: Option<&'a str>,
         direction: &'static str,
     },
@@ -3215,10 +3142,10 @@ impl<'a> fmt::Display for SortKey<'a> {
         match self {
             SortKey::None => write!(f, "none"),
             SortKey::IdAsc(Option::None) => write!(f, "{}", PRIMARY_KEY_COLUMN),
-            SortKey::IdAsc(Some(br)) => write!(f, "{}, {}", PRIMARY_KEY_COLUMN, br.column_name()),
+            SortKey::IdAsc(Some(br)) => write!(f, "{}, {}", PRIMARY_KEY_COLUMN, br),
             SortKey::IdDesc(Option::None) => write!(f, "{} desc", PRIMARY_KEY_COLUMN),
             SortKey::IdDesc(Some(br)) => {
-                write!(f, "{} desc, {} desc", PRIMARY_KEY_COLUMN, br.column_name())
+                write!(f, "{} desc, {} desc", PRIMARY_KEY_COLUMN, br)
             }
             SortKey::Key {
                 column,
@@ -3227,104 +3154,77 @@ impl<'a> fmt::Display for SortKey<'a> {
             } => write!(
                 f,
                 "{} {}, {} {}",
-                column.name.as_str(),
-                direction,
-                PRIMARY_KEY_COLUMN,
-                direction
+                column, direction, PRIMARY_KEY_COLUMN, direction
             ),
             SortKey::ChildKey(child) => match child {
                 ChildKey::Single(details) => write!(
                     f,
-                    "{}.{} {}, {}.{} {}",
-                    details.child_table.name.as_str(),
-                    details.sort_by_column.name.as_str(),
+                    "{} {}, {} {}",
+                    details.sort_by_column,
                     details.direction,
-                    details.child_table.name.as_str(),
-                    PRIMARY_KEY_COLUMN,
+                    details.child_table.primary_key(),
                     details.direction
                 ),
-                ChildKey::Many(details) => details.iter().try_for_each(|details| {
+                ChildKey::Many(_, details) => details.iter().try_for_each(|details| {
                     write!(
                         f,
-                        "{}.{} {}, {}.{} {}",
-                        details.child_table.name.as_str(),
-                        details.sort_by_column.name.as_str(),
+                        "{} {}, {} {}",
+                        details.sort_by_column,
                         details.direction,
-                        details.child_table.name.as_str(),
-                        PRIMARY_KEY_COLUMN,
+                        details.child_table.primary_key(),
                         details.direction
                     )
                 }),
 
-                ChildKey::ManyIdAsc(details, Option::None) => {
+                ChildKey::ManyIdAsc(details, UseBlockColumn::No) => details
+                    .iter()
+                    .try_for_each(|details| write!(f, "{}", details.child_table.primary_key())),
+                ChildKey::ManyIdAsc(details, UseBlockColumn::Yes) => {
                     details.iter().try_for_each(|details| {
                         write!(
                             f,
-                            "{}.{}",
-                            details.child_table.name.as_str(),
-                            PRIMARY_KEY_COLUMN
+                            "{}, {}",
+                            details.child_table.primary_key(),
+                            details.child_table.block_column()
                         )
                     })
                 }
-                ChildKey::ManyIdAsc(details, Some(br)) => details.iter().try_for_each(|details| {
-                    write!(
-                        f,
-                        "{}.{}, {}.{}",
-                        details.child_table.name.as_str(),
-                        PRIMARY_KEY_COLUMN,
-                        details.child_table.name.as_str(),
-                        br.column_name()
-                    )
-                }),
-                ChildKey::ManyIdDesc(details, Option::None) => {
+                ChildKey::ManyIdDesc(details, UseBlockColumn::No) => {
+                    details.iter().try_for_each(|details| {
+                        write!(f, "{} desc", details.child_table.primary_key(),)
+                    })
+                }
+                ChildKey::ManyIdDesc(details, UseBlockColumn::Yes) => {
                     details.iter().try_for_each(|details| {
                         write!(
                             f,
-                            "{}.{} desc",
-                            details.child_table.name.as_str(),
-                            PRIMARY_KEY_COLUMN
+                            "{} desc, {} desc",
+                            details.child_table.primary_key(),
+                            details.child_br
                         )
                     })
                 }
-                ChildKey::ManyIdDesc(details, Some(br)) => details.iter().try_for_each(|details| {
-                    write!(
-                        f,
-                        "{}.{} desc, {}.{} desc",
-                        details.child_table.name.as_str(),
-                        PRIMARY_KEY_COLUMN,
-                        details.child_table.name.as_str(),
-                        br.column_name()
-                    )
-                }),
 
-                ChildKey::IdAsc(details, Option::None) => write!(
-                    f,
-                    "{}.{}",
-                    details.child_table.name.as_str(),
-                    PRIMARY_KEY_COLUMN
-                ),
-                ChildKey::IdAsc(details, Some(br)) => write!(
-                    f,
-                    "{}.{}, {}.{}",
-                    details.child_table.name.as_str(),
-                    PRIMARY_KEY_COLUMN,
-                    details.child_table.name.as_str(),
-                    br.column_name()
-                ),
-                ChildKey::IdDesc(details, Option::None) => write!(
-                    f,
-                    "{}.{} desc",
-                    details.child_table.name.as_str(),
-                    PRIMARY_KEY_COLUMN
-                ),
-                ChildKey::IdDesc(details, Some(br)) => {
+                ChildKey::IdAsc(details, UseBlockColumn::No) => {
+                    write!(f, "{}", details.child_table.primary_key())
+                }
+                ChildKey::IdAsc(details, UseBlockColumn::Yes) => {
                     write!(
                         f,
-                        "{}.{} desc, {}.{} desc",
-                        details.child_table.name.as_str(),
-                        PRIMARY_KEY_COLUMN,
-                        details.child_table.name.as_str(),
-                        br.column_name()
+                        "{}, {}",
+                        details.child_table.primary_key(),
+                        details.child_br
+                    )
+                }
+                ChildKey::IdDesc(details, UseBlockColumn::No) => {
+                    write!(f, "{} desc", details.child_table.primary_key(),)
+                }
+                ChildKey::IdDesc(details, UseBlockColumn::Yes) => {
+                    write!(
+                        f,
+                        "{} desc, {} desc",
+                        details.child_table.primary_key(),
+                        details.child_br
                     )
                 }
             },
@@ -3340,11 +3240,11 @@ impl<'a> SortKey<'a> {
         order: EntityOrder,
         collection: &'a FilterCollection,
         filter: Option<&'a EntityFilter>,
-        block: BlockNumber,
         layout: &'a Layout,
+        block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
         fn sort_key_from_value<'a>(
-            column: &'a Column,
+            column: dsl::Column<'a>,
             value: &'a Value,
             direction: &'static str,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
@@ -3358,11 +3258,11 @@ impl<'a> SortKey<'a> {
         }
 
         fn with_key<'a>(
-            table: &'a Table,
+            table: dsl::Table<'a>,
             attribute: String,
             filter: Option<&'a EntityFilter>,
             direction: &'static str,
-            br_column: Option<BlockRangeColumn<'a>>,
+            use_block_column: UseBlockColumn,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
             let column = table.column_for_field(&attribute)?;
             if column.is_fulltext() {
@@ -3379,9 +3279,10 @@ impl<'a> SortKey<'a> {
                     _ => unreachable!(),
                 }
             } else if column.is_primary_key() {
+                let block_column = use_block_column.block_column(table);
                 match direction {
-                    ASC => Ok(SortKey::IdAsc(br_column)),
-                    DESC => Ok(SortKey::IdDesc(br_column)),
+                    ASC => Ok(SortKey::IdAsc(block_column)),
+                    DESC => Ok(SortKey::IdDesc(block_column)),
                     _ => unreachable!("direction is 'asc' or 'desc'"),
                 }
             } else {
@@ -3394,14 +3295,16 @@ impl<'a> SortKey<'a> {
         }
 
         fn with_child_object_key<'a>(
-            parent_table: &'a Table,
-            child_table: &'a Table,
+            block: BlockNumber,
+            parent_table: dsl::Table<'a>,
+            child_table: dsl::Table<'a>,
             join_attribute: String,
             derived: bool,
             attribute: String,
-            br_column: Option<BlockRangeColumn<'a>>,
+            use_block_column: UseBlockColumn,
             direction: &'static str,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
+            let child_table = child_table.child(1);
             let sort_by_column = child_table.column_for_field(&attribute)?;
             if sort_by_column.is_fulltext() {
                 Err(QueryExecutionError::NotSupported(
@@ -3415,7 +3318,7 @@ impl<'a> SortKey<'a> {
                             graph::constraint_violation!(
                                 "Column for a join attribute `{}` of `{}` table not found",
                                 join_attribute,
-                                child_table.name.as_str()
+                                child_table.name()
                             )
                         })?,
                     ),
@@ -3426,7 +3329,7 @@ impl<'a> SortKey<'a> {
                                 graph::constraint_violation!(
                                     "Column for a join attribute `{}` of `{}` table not found",
                                     join_attribute,
-                                    parent_table.name.as_str()
+                                    parent_table.name()
                                 )
                             })?,
                         child_table.primary_key(),
@@ -3434,38 +3337,50 @@ impl<'a> SortKey<'a> {
                 };
 
                 if sort_by_column.is_primary_key() {
+                    let child_from = child_table.from_clause();
+                    let child_pk = child_table.primary_key();
+                    let child_br = child_table.block_column();
+                    let child_at_block = child_table.at_block(block);
                     return match direction {
                         ASC => Ok(SortKey::ChildKey(ChildKey::IdAsc(
                             ChildIdDetails {
-                                parent_table,
                                 child_table,
+                                child_from,
                                 parent_join_column: parent_column,
                                 child_join_column: child_column,
-                                prefix: "cc".to_string(),
+                                child_pk,
+                                child_br,
+                                child_at_block,
                             },
-                            br_column,
+                            use_block_column,
                         ))),
                         DESC => Ok(SortKey::ChildKey(ChildKey::IdDesc(
                             ChildIdDetails {
-                                parent_table,
                                 child_table,
+                                child_from,
                                 parent_join_column: parent_column,
                                 child_join_column: child_column,
-                                prefix: "cc".to_string(),
+                                child_pk,
+                                child_br,
+                                child_at_block,
                             },
-                            br_column,
+                            use_block_column,
                         ))),
                         _ => unreachable!("direction is 'asc' or 'desc'"),
                     };
                 }
 
+                let child_table = child_table.child(1);
+                let child_at_block = child_table.at_block(block);
+                let child_from = child_table.from_clause();
                 Ok(SortKey::ChildKey(ChildKey::Single(ChildKeyDetails {
-                    child_table,
+                    child_table: child_table.child(1),
+                    child_from,
                     parent_join_column: parent_column,
                     child_join_column: child_column,
+                    child_at_block,
                     // Sort by this column
                     sort_by_column,
-                    prefix: "cc".to_string(),
                     direction,
                 })))
             }
@@ -3473,16 +3388,21 @@ impl<'a> SortKey<'a> {
 
         fn build_children_vec<'a>(
             layout: &'a Layout,
-            parent_table: &'a Table,
+            block: BlockNumber,
+            parent_table: dsl::Table<'a>,
             entity_types: Vec<EntityType>,
             child: EntityOrderByChildInfo,
             direction: &'static str,
         ) -> Result<Vec<ChildKeyAndIdSharedDetails<'a>>, QueryExecutionError> {
+            assert!(entity_types.len() < 255);
             return entity_types
                 .iter()
                 .enumerate()
                 .map(|(i, entity_type)| {
-                    let child_table = layout.table_for_entity(entity_type)?;
+                    let child_table = layout
+                        .table_for_entity(entity_type)?
+                        .dsl_table()
+                        .child((i + 1) as u8);
                     let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
                     if sort_by_column.is_fulltext() {
                         Err(QueryExecutionError::NotSupported(
@@ -3498,7 +3418,7 @@ impl<'a> SortKey<'a> {
                                         graph::constraint_violation!(
                                     "Column for a join attribute `{}` of `{}` table not found",
                                     child.join_attribute,
-                                    child_table.name.as_str()
+                                    child_table.name()
                                 )
                                     })?,
                             ),
@@ -3509,19 +3429,25 @@ impl<'a> SortKey<'a> {
                                         graph::constraint_violation!(
                                     "Column for a join attribute `{}` of `{}` table not found",
                                     child.join_attribute,
-                                    parent_table.name.as_str()
+                                    parent_table.name()
                                 )
                                     })?,
                                 child_table.primary_key(),
                             ),
                         };
 
+                        let child_pk = child_table.primary_key();
+                        let child_br = child_table.block_column();
+                        let child_at_block = child_table.at_block(block);
+                        let child_from = child_table.from_clause();
                         Ok(ChildKeyAndIdSharedDetails {
-                            parent_table,
                             child_table,
+                            child_from,
                             parent_join_column: parent_column,
                             child_join_column: child_column,
-                            prefix: format!("cc{}", i),
+                            child_pk,
+                            child_br,
+                            child_at_block,
                             sort_by_column,
                             direction,
                         })
@@ -3532,79 +3458,98 @@ impl<'a> SortKey<'a> {
 
         fn with_child_interface_key<'a>(
             layout: &'a Layout,
-            parent_table: &'a Table,
+            block: BlockNumber,
+            parent_table: dsl::Table<'a>,
             child: EntityOrderByChildInfo,
             entity_types: Vec<EntityType>,
-            br_column: Option<BlockRangeColumn<'a>>,
+            use_block_column: UseBlockColumn,
             direction: &'static str,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
-            if let Some(first_entity) = entity_types.first() {
-                let child_table = layout.table_for_entity(first_entity)?;
-                let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
+            if entity_types.is_empty() {
+                return Err(QueryExecutionError::ConstraintViolation(
+                    "Cannot order by child interface with no implementing entity types".to_string(),
+                ));
+            }
 
-                if sort_by_column.is_fulltext() {
-                    Err(QueryExecutionError::NotSupported(
-                        "Sorting by fulltext fields".to_string(),
-                    ))
-                } else if sort_by_column.is_primary_key() {
-                    if direction == ASC {
-                        Ok(SortKey::ChildKey(ChildKey::ManyIdAsc(
-                            build_children_vec(
-                                layout,
-                                parent_table,
-                                entity_types,
-                                child,
-                                direction,
-                            )?
-                            .iter()
-                            .map(|details| ChildIdDetails {
-                                parent_table: details.parent_table,
-                                child_table: details.child_table,
-                                parent_join_column: details.parent_join_column,
-                                child_join_column: details.child_join_column,
-                                prefix: details.prefix.clone(),
-                            })
-                            .collect(),
-                            br_column,
-                        )))
-                    } else {
-                        Ok(SortKey::ChildKey(ChildKey::ManyIdDesc(
-                            build_children_vec(
-                                layout,
-                                parent_table,
-                                entity_types,
-                                child,
-                                direction,
-                            )?
-                            .iter()
-                            .map(|details| ChildIdDetails {
-                                parent_table: details.parent_table,
-                                child_table: details.child_table,
-                                parent_join_column: details.parent_join_column,
-                                child_join_column: details.child_join_column,
-                                prefix: details.prefix.clone(),
-                            })
-                            .collect(),
-                            br_column,
-                        )))
-                    }
+            let first_entity = entity_types.first().unwrap();
+            let child_table = layout.table_for_entity(first_entity)?;
+            let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
+
+            if sort_by_column.is_fulltext() {
+                Err(QueryExecutionError::NotSupported(
+                    "Sorting by fulltext fields".to_string(),
+                ))
+            } else if sort_by_column.is_primary_key() {
+                if direction == ASC {
+                    Ok(SortKey::ChildKey(ChildKey::ManyIdAsc(
+                        build_children_vec(
+                            layout,
+                            block,
+                            parent_table,
+                            entity_types,
+                            child,
+                            direction,
+                        )?
+                        .iter()
+                        .map(|details| ChildIdDetails {
+                            child_table: details.child_table,
+                            child_from: details.child_from,
+                            parent_join_column: details.parent_join_column,
+                            child_join_column: details.child_join_column,
+                            child_pk: details.child_pk,
+                            child_br: details.child_br,
+                            child_at_block: details.child_at_block,
+                        })
+                        .collect(),
+                        use_block_column,
+                    )))
                 } else {
-                    Ok(SortKey::ChildKey(ChildKey::Many(
-                        build_children_vec(layout, parent_table, entity_types, child, direction)?
-                            .iter()
-                            .map(|details| ChildKeyDetails {
-                                parent_join_column: details.parent_join_column,
-                                child_table: details.child_table,
-                                child_join_column: details.child_join_column,
-                                sort_by_column: details.sort_by_column,
-                                prefix: details.prefix.clone(),
-                                direction: details.direction,
-                            })
-                            .collect(),
+                    Ok(SortKey::ChildKey(ChildKey::ManyIdDesc(
+                        build_children_vec(
+                            layout,
+                            block,
+                            parent_table,
+                            entity_types,
+                            child,
+                            direction,
+                        )?
+                        .iter()
+                        .map(|details| ChildIdDetails {
+                            child_table: details.child_table,
+                            child_from: details.child_from,
+                            parent_join_column: details.parent_join_column,
+                            child_join_column: details.child_join_column,
+                            child_pk: details.child_pk,
+                            child_br: details.child_br,
+                            child_at_block: details.child_at_block,
+                        })
+                        .collect(),
+                        use_block_column,
                     )))
                 }
             } else {
-                Ok(SortKey::ChildKey(ChildKey::Many(vec![])))
+                Ok(SortKey::ChildKey(ChildKey::Many(
+                    parent_table.primary_key(),
+                    build_children_vec(
+                        layout,
+                        block,
+                        parent_table,
+                        entity_types,
+                        child,
+                        direction,
+                    )?
+                    .iter()
+                    .map(|details| ChildKeyDetails {
+                        parent_join_column: details.parent_join_column,
+                        child_table: details.child_table,
+                        child_from: details.child_from,
+                        child_join_column: details.child_join_column,
+                        child_at_block: details.child_at_block,
+                        sort_by_column: details.sort_by_column,
+                        direction: details.direction,
+                    })
+                    .collect(),
+                )))
             }
         }
 
@@ -3616,52 +3561,68 @@ impl<'a> SortKey<'a> {
             .first_table()
             .expect("an entity query always contains at least one entity type/table");
 
-        let br_column = if collection.all_mutable() && ENV_VARS.store.order_by_block_range {
-            Some(BlockRangeColumn::new(table, "c.", block))
+        let use_block_column = if collection.all_mutable() && ENV_VARS.store.order_by_block_range {
+            UseBlockColumn::Yes
         } else {
-            None
+            UseBlockColumn::No
         };
 
         match order {
-            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC, br_column),
-            EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC, br_column),
-            EntityOrder::Default => Ok(SortKey::IdAsc(br_column)),
+            EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC, use_block_column),
+            EntityOrder::Descending(attr, _) => {
+                with_key(table, attr, filter, DESC, use_block_column)
+            }
+            EntityOrder::Default => Ok(SortKey::IdAsc(use_block_column.block_column(table))),
             EntityOrder::Unordered => Ok(SortKey::None),
             EntityOrder::ChildAscending(kind) => match kind {
                 EntityOrderByChild::Object(child, entity_type) => with_child_object_key(
+                    block,
                     table,
-                    layout.table_for_entity(&entity_type)?,
+                    layout.table_for_entity(&entity_type)?.dsl_table(),
                     child.join_attribute,
                     child.derived,
                     child.sort_by_attribute,
-                    br_column,
+                    use_block_column,
                     ASC,
                 ),
-                EntityOrderByChild::Interface(child, entity_types) => {
-                    with_child_interface_key(layout, table, child, entity_types, br_column, ASC)
-                }
+                EntityOrderByChild::Interface(child, entity_types) => with_child_interface_key(
+                    layout,
+                    block,
+                    table,
+                    child,
+                    entity_types,
+                    use_block_column,
+                    ASC,
+                ),
             },
             EntityOrder::ChildDescending(kind) => match kind {
                 EntityOrderByChild::Object(child, entity_type) => with_child_object_key(
+                    block,
                     table,
-                    layout.table_for_entity(&entity_type)?,
+                    layout.table_for_entity(&entity_type)?.dsl_table(),
                     child.join_attribute,
                     child.derived,
                     child.sort_by_attribute,
-                    br_column,
+                    use_block_column,
                     DESC,
                 ),
-                EntityOrderByChild::Interface(child, entity_types) => {
-                    with_child_interface_key(layout, table, child, entity_types, br_column, DESC)
-                }
+                EntityOrderByChild::Interface(child, entity_types) => with_child_interface_key(
+                    layout,
+                    block,
+                    table,
+                    child,
+                    entity_types,
+                    use_block_column,
+                    DESC,
+                ),
             },
         }
     }
 
     /// Generate selecting the sort key if it is needed
-    fn select(
-        &self,
-        out: &mut AstPass<Pg>,
+    fn select<'b>(
+        &'b self,
+        out: &mut AstPass<'_, 'b, Pg>,
         select_statement_level: SelectStatementLevel,
     ) -> QueryResult<()> {
         match self {
@@ -3672,7 +3633,7 @@ impl<'a> SortKey<'a> {
 
                     match select_statement_level {
                         SelectStatementLevel::InnerStatement => {
-                            br_column.name(out);
+                            br_column.walk_ast(out.reborrow())?;
                             out.push_sql(" as ");
                             out.push_sql(SORT_KEY_COLUMN);
                         }
@@ -3691,8 +3652,8 @@ impl<'a> SortKey<'a> {
 
                 match select_statement_level {
                     SelectStatementLevel::InnerStatement => {
-                        out.push_sql(", c.");
-                        out.push_identifier(column.name.as_str())?;
+                        out.push_sql(", ");
+                        column.walk_ast(out.reborrow())?;
                         out.push_sql(" as ");
                         out.push_sql(SORT_KEY_COLUMN);
                     }
@@ -3712,9 +3673,7 @@ impl<'a> SortKey<'a> {
                         match select_statement_level {
                             SelectStatementLevel::InnerStatement => {
                                 out.push_sql(", ");
-                                out.push_sql(child.prefix.as_str());
-                                out.push_sql(".");
-                                out.push_identifier(child.sort_by_column.name.as_str())?;
+                                child.sort_by_column.walk_ast(out.reborrow())?;
                             }
                             SelectStatementLevel::OuterStatement => {
                                 out.push_sql(", ");
@@ -3722,36 +3681,31 @@ impl<'a> SortKey<'a> {
                             }
                         }
                     }
-                    ChildKey::Many(children) => {
+                    ChildKey::Many(_, children) => {
                         for child in children.iter() {
                             if child.sort_by_column.is_primary_key() {
                                 return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                             }
                             out.push_sql(", ");
-                            out.push_sql(child.prefix.as_str());
-                            out.push_sql(".");
-                            out.push_identifier(child.sort_by_column.name.as_str())?;
+                            child.sort_by_column.walk_ast(out.reborrow())?;
                         }
                     }
-                    ChildKey::ManyIdAsc(children, br_column)
-                    | ChildKey::ManyIdDesc(children, br_column) => {
+                    ChildKey::ManyIdAsc(children, UseBlockColumn::Yes)
+                    | ChildKey::ManyIdDesc(children, UseBlockColumn::Yes) => {
                         for child in children.iter() {
-                            if let Some(br_column) = br_column {
-                                out.push_sql(", ");
-                                out.push_sql(child.prefix.as_str());
-                                out.push_sql(".");
-                                br_column.name(out);
-                            }
-                        }
-                    }
-                    ChildKey::IdAsc(child, br_column) | ChildKey::IdDesc(child, br_column) => {
-                        if let Some(br_column) = br_column {
                             out.push_sql(", ");
-                            out.push_sql(child.prefix.as_str());
-                            out.push_sql(".");
-                            br_column.name(out);
+                            child.child_br.walk_ast(out.reborrow())?;
                         }
                     }
+                    ChildKey::ManyIdAsc(_, UseBlockColumn::No)
+                    | ChildKey::ManyIdDesc(_, UseBlockColumn::No) => { /* nothing to do */ }
+                    ChildKey::IdAsc(child, UseBlockColumn::Yes)
+                    | ChildKey::IdDesc(child, UseBlockColumn::Yes) => {
+                        out.push_sql(", ");
+                        child.child_br.walk_ast(out.reborrow())?;
+                    }
+                    ChildKey::IdAsc(_, UseBlockColumn::No)
+                    | ChildKey::IdDesc(_, UseBlockColumn::No) => { /* nothing to do  */ }
                 }
 
                 if let SelectStatementLevel::InnerStatement = select_statement_level {
@@ -3781,7 +3735,7 @@ impl<'a> SortKey<'a> {
                         out.push_sql(SORT_KEY_COLUMN);
                     } else {
                         out.push_sql(", ");
-                        br_column.bare_name(out);
+                        out.push_sql(br_column.name());
                     }
                 }
                 Ok(())
@@ -3796,7 +3750,7 @@ impl<'a> SortKey<'a> {
                         out.push_sql(SORT_KEY_COLUMN);
                     } else {
                         out.push_sql(", ");
-                        br_column.bare_name(out);
+                        out.push_sql(br_column.name());
                     }
                     out.push_sql(" desc");
                 }
@@ -3808,74 +3762,47 @@ impl<'a> SortKey<'a> {
                 direction,
             } => {
                 out.push_sql("order by ");
-                SortKey::sort_expr(
-                    column,
-                    value,
-                    direction,
-                    None,
-                    None,
-                    use_sort_key_alias,
-                    out,
-                )
+                SortKey::sort_expr(column, value, direction, None, use_sort_key_alias, out)
             }
             SortKey::ChildKey(child) => {
                 out.push_sql("order by ");
                 match child {
                     ChildKey::Single(child) => SortKey::sort_expr(
-                        child.sort_by_column,
+                        &child.sort_by_column,
                         &None,
                         child.direction,
-                        Some(&child.prefix),
                         Some("c"),
                         use_sort_key_alias,
                         out,
                     ),
-                    ChildKey::Many(children) => {
-                        let columns: Vec<(&Column, &str)> = children
-                            .iter()
-                            .map(|child| (child.sort_by_column, child.prefix.as_str()))
-                            .collect();
-                        SortKey::multi_sort_expr(
-                            columns,
-                            children.first().unwrap().direction,
-                            Some("c"),
-                            out,
-                        )
+                    ChildKey::Many(parent_pk, children) => SortKey::multi_sort_expr(
+                        parent_pk,
+                        children,
+                        children.first().unwrap().direction,
+                        out,
+                    ),
+
+                    ChildKey::ManyIdAsc(children, use_block_column) => {
+                        SortKey::multi_sort_id_expr(children, ASC, *use_block_column, out)
+                    }
+                    ChildKey::ManyIdDesc(children, use_block_column) => {
+                        SortKey::multi_sort_id_expr(children, DESC, *use_block_column, out)
                     }
 
-                    ChildKey::ManyIdAsc(children, br_column) => {
-                        let prefixes: Vec<&str> =
-                            children.iter().map(|child| child.prefix.as_str()).collect();
-                        SortKey::multi_sort_id_expr(prefixes, ASC, br_column, out)
-                    }
-                    ChildKey::ManyIdDesc(children, br_column) => {
-                        let prefixes: Vec<&str> =
-                            children.iter().map(|child| child.prefix.as_str()).collect();
-                        SortKey::multi_sort_id_expr(prefixes, DESC, br_column, out)
-                    }
-
-                    ChildKey::IdAsc(child, br_column) => {
-                        out.push_sql(child.prefix.as_str());
-                        out.push_sql(".");
-                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
-                        if let Some(br_column) = br_column {
+                    ChildKey::IdAsc(child, use_block_column) => {
+                        child.child_pk.walk_ast(out.reborrow())?;
+                        if UseBlockColumn::Yes == *use_block_column {
                             out.push_sql(", ");
-                            out.push_sql(child.prefix.as_str());
-                            out.push_sql(".");
-                            br_column.bare_name(out);
+                            child.child_br.walk_ast(out.reborrow())?;
                         }
                         Ok(())
                     }
-                    ChildKey::IdDesc(child, br_column) => {
-                        out.push_sql(child.prefix.as_str());
-                        out.push_sql(".");
-                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                    ChildKey::IdDesc(child, use_block_column) => {
+                        child.child_pk.walk_ast(out.reborrow())?;
                         out.push_sql(" desc");
-                        if let Some(br_column) = br_column {
+                        if UseBlockColumn::Yes == *use_block_column {
                             out.push_sql(", ");
-                            out.push_sql(child.prefix.as_str());
-                            out.push_sql(".");
-                            br_column.bare_name(out);
+                            child.child_br.walk_ast(out.reborrow())?;
                             out.push_sql(" desc");
                         }
                         Ok(())
@@ -3919,15 +3846,7 @@ impl<'a> SortKey<'a> {
                 direction,
             } => {
                 order_by_parent_id(out);
-                SortKey::sort_expr(
-                    column,
-                    value,
-                    direction,
-                    None,
-                    None,
-                    use_sort_key_alias,
-                    out,
-                )
+                SortKey::sort_expr(column, value, direction, None, use_sort_key_alias, out)
             }
             SortKey::ChildKey(_) => Err(diesel::result::Error::QueryBuilderError(
                 "SortKey::ChildKey cannot be used for parent ordering (yet)".into(),
@@ -3938,10 +3857,9 @@ impl<'a> SortKey<'a> {
     /// Generate
     ///   [name direction,] id
     fn sort_expr<'b>(
-        column: &Column,
+        column: &'b dsl::Column<'b>,
         value: &'b Option<&str>,
         direction: &str,
-        column_prefix: Option<&str>,
         rest_prefix: Option<&str>,
         use_sort_key_alias: bool,
         out: &mut AstPass<'_, 'b, Pg>,
@@ -3960,7 +3878,7 @@ impl<'a> SortKey<'a> {
             }
         }
 
-        match &column.column_type {
+        match column.column_type() {
             ColumnType::TSVector(config) => {
                 let algorithm = match config.algorithm {
                     FulltextAlgorithm::Rank => "ts_rank(",
@@ -3970,9 +3888,7 @@ impl<'a> SortKey<'a> {
                 if use_sort_key_alias {
                     out.push_sql(SORT_KEY_COLUMN);
                 } else {
-                    let name = column.name.as_str();
-                    push_prefix(column_prefix, out);
-                    out.push_identifier(name)?;
+                    column.walk_ast(out.reborrow())?;
                 }
 
                 out.push_sql(", to_tsquery(");
@@ -3984,9 +3900,7 @@ impl<'a> SortKey<'a> {
                 if use_sort_key_alias {
                     out.push_sql(SORT_KEY_COLUMN);
                 } else {
-                    let name = column.name.as_str();
-                    push_prefix(column_prefix, out);
-                    out.push_identifier(name)?;
+                    column.walk_ast(out.reborrow())?;
                 }
             }
         }
@@ -4004,21 +3918,22 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   [COALESCE(name1, name2) direction,] id1, id2
-    fn multi_sort_expr(
-        columns: Vec<(&Column, &str)>,
+    fn multi_sort_expr<'b>(
+        parent_pk: &'b dsl::Column<'b>,
+        children: &'b [ChildKeyDetails<'b>],
         direction: &str,
-        rest_prefix: Option<&str>,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        for (column, _) in columns.iter() {
-            if column.is_primary_key() {
+        for child in children {
+            let sort_by = &child.sort_by_column;
+            if sort_by.is_primary_key() {
                 // This shouldn't happen since we'd use SortKey::ManyIdAsc/ManyDesc
                 return Err(constraint_violation!(
                     "multi_sort_expr called with primary key column"
                 ));
             }
 
-            match column.column_type {
+            match sort_by.column_type() {
                 ColumnType::TSVector(_) => {
                     return Err(constraint_violation!("TSVector is not supported"));
                 }
@@ -4026,31 +3941,25 @@ impl<'a> SortKey<'a> {
             }
         }
 
-        fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
-            if let Some(prefix) = prefix {
-                out.push_sql(prefix);
-                out.push_sql(".");
-            }
-        }
-
         out.push_sql("coalesce(");
 
-        for (i, (column, prefix)) in columns.iter().enumerate() {
-            if i != 0 {
+        let mut first = true;
+        for child in children {
+            if first {
+                first = false;
+            } else {
                 out.push_sql(", ");
             }
 
-            let name = column.name.as_str();
-            push_prefix(Some(prefix), out);
-            out.push_identifier(name)?;
+            child.sort_by_column.walk_ast(out.reborrow())?;
         }
 
         out.push_sql(") ");
 
         out.push_sql(direction);
         out.push_sql(", ");
-        push_prefix(rest_prefix, out);
-        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+
+        parent_pk.walk_ast(out.reborrow())?;
         out.push_sql(" ");
         out.push_sql(direction);
         Ok(())
@@ -4058,41 +3967,38 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   COALESCE(id1, id2) direction, [COALESCE(br_column1, br_column2) direction]
-    fn multi_sort_id_expr(
-        prefixes: Vec<&str>,
+    fn multi_sort_id_expr<'b>(
+        children: &'b [ChildIdDetails<'b>],
         direction: &str,
-        br_column: &Option<BlockRangeColumn>,
-        out: &mut AstPass<Pg>,
+        use_block_column: UseBlockColumn,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
-            if let Some(prefix) = prefix {
-                out.push_sql(prefix);
-                out.push_sql(".");
-            }
-        }
-
         out.push_sql("coalesce(");
-        for (i, prefix) in prefixes.iter().enumerate() {
-            if i != 0 {
+        let mut first = true;
+        for child in children {
+            if first {
+                first = false;
+            } else {
                 out.push_sql(", ");
             }
 
-            push_prefix(Some(prefix), out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            child.child_join_column.walk_ast(out.reborrow())?;
         }
         out.push_sql(") ");
 
         out.push_sql(direction);
 
-        if let Some(br_column) = br_column {
+        if UseBlockColumn::Yes == use_block_column {
             out.push_sql(", coalesce(");
-            for (i, prefix) in prefixes.iter().enumerate() {
-                if i != 0 {
+            let mut first = true;
+            for child in children {
+                if first {
+                    first = false;
+                } else {
                     out.push_sql(", ");
                 }
 
-                push_prefix(Some(prefix), out);
-                br_column.bare_name(out);
+                child.child_br.walk_ast(out.reborrow())?;
             }
             out.push_sql(") ");
             out.push_sql(direction);
@@ -4101,58 +4007,39 @@ impl<'a> SortKey<'a> {
         Ok(())
     }
 
-    fn add_child<'b>(
-        &self,
-        block: &'b BlockNumber,
-        out: &mut AstPass<'_, 'b, Pg>,
-    ) -> QueryResult<()> {
+    fn add_child<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         fn add<'b>(
-            block: &'b BlockNumber,
-            child_table: &Table,
-            child_column: &Column,
-            parent_column: &Column,
-            prefix: &str,
+            child_from: &'b dsl::FromTable<'b>,
+            child_column: &'b dsl::Column<'b>,
+            child_at_block: &'b dsl::AtBlock<'b>,
+            parent_column: &'b dsl::Column<'b>,
             out: &mut AstPass<'_, 'b, Pg>,
         ) -> QueryResult<()> {
             out.push_sql(" left join ");
-            out.push_sql(child_table.qualified_name.as_str());
-            out.push_sql(" as ");
-            out.push_sql(prefix);
+            child_from.walk_ast(out.reborrow())?;
             out.push_sql(" on (");
 
             if child_column.is_list() {
                 // Type C: p.id = any(c.child_ids)
-                out.push_sql("c.");
-                out.push_identifier(parent_column.name.as_str())?;
+                parent_column.walk_ast(out.reborrow())?;
                 out.push_sql(" = any(");
-                out.push_sql(prefix);
-                out.push_sql(".");
-                out.push_identifier(child_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
                 out.push_sql(")");
             } else if parent_column.is_list() {
                 // Type A: c.id = any(p.{parent_field})
-                out.push_sql(prefix);
-                out.push_sql(".");
-                out.push_identifier(child_column.name.as_str())?;
-                out.push_sql(" = any(c.");
-                out.push_identifier(parent_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
+                out.push_sql(" = any(");
+                parent_column.walk_ast(out.reborrow())?;
                 out.push_sql(")");
             } else {
                 // Type B: c.id = p.{parent_field}
-                out.push_sql(prefix);
-                out.push_sql(".");
-                out.push_identifier(child_column.name.as_str())?;
+                child_column.walk_ast(out.reborrow())?;
                 out.push_sql(" = ");
-                out.push_sql("c.");
-                out.push_identifier(parent_column.name.as_str())?;
+                parent_column.walk_ast(out.reborrow())?;
             }
 
             out.push_sql(" and ");
-            out.push_sql(prefix);
-            out.push_sql(".");
-            out.push_identifier(BLOCK_RANGE_COLUMN)?;
-            out.push_sql(" @> ");
-            out.push_bind_param::<Integer, _>(block)?;
+            child_at_block.walk_ast(out.reborrow())?;
             out.push_sql(") ");
 
             Ok(())
@@ -4162,22 +4049,20 @@ impl<'a> SortKey<'a> {
             SortKey::ChildKey(nested) => match nested {
                 ChildKey::Single(child) => {
                     add(
-                        block,
-                        child.child_table,
-                        child.child_join_column,
-                        child.parent_join_column,
-                        &child.prefix,
+                        &child.child_from,
+                        &child.child_join_column,
+                        &child.child_at_block,
+                        &child.parent_join_column,
                         out,
                     )?;
                 }
-                ChildKey::Many(children) => {
+                ChildKey::Many(_, children) => {
                     for child in children.iter() {
                         add(
-                            block,
-                            child.child_table,
-                            child.child_join_column,
-                            child.parent_join_column,
-                            &child.prefix,
+                            &child.child_from,
+                            &child.child_join_column,
+                            &child.child_at_block,
+                            &child.parent_join_column,
                             out,
                         )?;
                     }
@@ -4185,22 +4070,20 @@ impl<'a> SortKey<'a> {
                 ChildKey::ManyIdAsc(children, _) | ChildKey::ManyIdDesc(children, _) => {
                     for child in children.iter() {
                         add(
-                            block,
-                            child.child_table,
-                            child.child_join_column,
-                            child.parent_join_column,
-                            &child.prefix,
+                            &child.child_from,
+                            &child.child_join_column,
+                            &child.child_at_block,
+                            &child.parent_join_column,
                             out,
                         )?;
                     }
                 }
                 ChildKey::IdAsc(child, _) | ChildKey::IdDesc(child, _) => {
                     add(
-                        block,
-                        child.child_table,
-                        child.child_join_column,
-                        child.parent_join_column,
-                        &child.prefix,
+                        &child.child_from,
+                        &child.child_join_column,
+                        &child.child_at_block,
+                        &child.parent_join_column,
                         out,
                     )?;
                 }
@@ -4285,7 +4168,7 @@ impl<'a> FilterQuery<'a> {
         query_id: Option<String>,
         site: &'a Site,
     ) -> Result<Self, QueryExecutionError> {
-        let sort_key = SortKey::new(order, collection, filter, block, layout)?;
+        let sort_key = SortKey::new(order, collection, filter, layout, block)?;
         let range = FilterRange(range);
         let limit = ParentLimit { sort_key, range };
 
@@ -4310,18 +4193,13 @@ impl<'a> FilterQuery<'a> {
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n  from ");
-        out.push_sql(wh.table.qualified_name.as_str());
-        out.push_sql(" c");
+        wh.from_table.walk_ast(out.reborrow())?;
 
-        self.limit.sort_key.add_child(&self.block, out)?;
+        self.limit.sort_key.add_child(out)?;
 
         out.push_sql("\n where ");
 
-        let filters_by_id = {
-            matches!(wh.filter.as_ref(), Some(Filter::Cmp(column, Comparison::Equal, _)) if column.column().is_primary_key())
-        };
-
-        wh.br_column.contains(out, filters_by_id)?;
+        wh.at_block.walk_ast(out.reborrow())?;
         if let Some(filter) = &wh.filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
@@ -4330,9 +4208,9 @@ impl<'a> FilterQuery<'a> {
         Ok(())
     }
 
-    fn select_entity_and_data(table: &Table, out: &mut AstPass<Pg>) {
+    fn select_entity_and_data(table: dsl::Table<'_>, out: &mut AstPass<Pg>) {
         out.push_sql("select '");
-        out.push_sql(table.object.as_str());
+        out.push_sql(table.meta.object.as_str());
         out.push_sql("' as entity, to_jsonb(c.*) as data");
     }
 
@@ -4429,7 +4307,7 @@ impl<'a> FilterQuery<'a> {
             //        c.vid,
             //        c.${sort_key}
             out.push_sql("select '");
-            out.push_sql(wh.table.object.as_str());
+            out.push_sql(wh.table.meta.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
             self.limit
                 .sort_key
@@ -4454,11 +4332,11 @@ impl<'a> FilterQuery<'a> {
                 .sort_key
                 .select(out, SelectStatementLevel::OuterStatement)?;
             out.push_sql("\n  from ");
-            out.push_sql(wh.table.qualified_name.as_str());
-            out.push_sql(" c,");
+            wh.from_table.walk_ast(out.reborrow())?;
+            out.push_sql(" ,");
             out.push_sql(" matches m");
             out.push_sql("\n where c.vid = m.vid and m.entity = ");
-            out.push_bind_param::<Text, _>(wh.table.object.as_str())?;
+            out.push_bind_param::<Text, _>(wh.table.meta.object.as_str())?;
         }
         out.push_sql("\n ");
         self.limit.sort_key.order_by(out, true)?;
@@ -4527,8 +4405,8 @@ impl<'a> FilterQuery<'a> {
             .iter()
             .unique_by(|window| {
                 (
-                    &window.table.qualified_name,
-                    &window.table.object,
+                    &window.table.meta.qualified_name,
+                    &window.table.meta.object,
                     &window.column_names,
                 )
             })
@@ -4542,9 +4420,9 @@ impl<'a> FilterQuery<'a> {
             jsonb_build_object(&window.column_names, "c", window.table, out)?;
             out.push_sql("|| jsonb_build_object('g$parent_id', m.g$parent_id) as data");
             out.push_sql("\n  from ");
-            out.push_sql(window.table.qualified_name.as_str());
-            out.push_sql(" c, matches m\n where c.vid = m.vid and m.entity = '");
-            out.push_sql(window.table.object.as_str());
+            window.from_table.walk_ast(out.reborrow())?;
+            out.push_sql(", matches m\n where c.vid = m.vid and m.entity = '");
+            out.push_sql(window.table.meta.object.as_str());
             out.push_sql("'");
         }
         out.push_sql("\n ");
@@ -4654,7 +4532,7 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         self.br_column.clamp(&mut out)?;
         out.push_sql("\n where ");
 
-        self.table.primary_key().is_in(&self.entity_ids, &mut out)?;
+        id_is_in(&self.entity_ids, &mut out)?;
         out.push_sql(" and (");
         self.br_column.latest(&mut out);
         out.push_sql(")");
@@ -4979,7 +4857,7 @@ pub struct CopyVid {
 
 fn write_column_names(
     column_names: &AttributeNames,
-    table: &Table,
+    table: dsl::Table<'_>,
     prefix: Option<&str>,
     out: &mut AstPass<Pg>,
 ) -> QueryResult<()> {
@@ -5008,7 +4886,7 @@ fn write_column_names(
 fn jsonb_build_object(
     column_names: &AttributeNames,
     table_identifier: &str,
-    table: &Table,
+    table: dsl::Table<'_>,
     out: &mut AstPass<Pg>,
 ) -> QueryResult<()> {
     match column_names {
@@ -5043,11 +4921,11 @@ fn jsonb_build_object(
 /// names, yielding valid SQL names for the given table.
 fn iter_column_names<'a, 'b>(
     attribute_names: &'a BTreeSet<String>,
-    table: &'b Table,
+    table: dsl::Table<'b>,
     include_block_range_column: bool,
 ) -> impl Iterator<Item = &'b str> {
     let extra = if include_block_range_column {
-        if table.immutable {
+        if table.meta.immutable {
             [BLOCK_COLUMN].iter()
         } else {
             [BLOCK_RANGE_COLUMN].iter()
@@ -5063,7 +4941,7 @@ fn iter_column_names<'a, 'b>(
             // Unwrapping: We have already checked that all attribute names exist in table
             table.column_for_field(attribute_name).unwrap()
         })
-        .map(|column| column.name.as_str())
+        .map(|column| column.name())
         .chain(BASE_SQL_COLUMNS.iter().copied())
         .chain(extra)
         .sorted()

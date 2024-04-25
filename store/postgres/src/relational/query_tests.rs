@@ -49,8 +49,9 @@ fn filter_contains(filter: EntityFilter, sql: &str) {
     let layout = test_layout(SCHEMA);
     let table = layout
         .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
-        .unwrap();
-    let filter = Filter::main(&layout, table.as_ref(), &filter, Default::default()).unwrap();
+        .unwrap()
+        .dsl_table();
+    let filter = Filter::main(&layout, table, &filter, Default::default()).unwrap();
     let query = debug_query::<Pg, _>(&filter);
     assert!(
         query.to_string().contains(sql),

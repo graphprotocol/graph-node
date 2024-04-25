@@ -280,14 +280,6 @@ impl<'a> BlockRangeColumn<'a> {
         }
     }
 
-    /// Output the name of the block range column without the table prefix
-    pub(crate) fn bare_name(&self, out: &mut AstPass<Pg>) {
-        match self {
-            BlockRangeColumn::Mutable { .. } => out.push_sql(BLOCK_RANGE_COLUMN),
-            BlockRangeColumn::Immutable { .. } => out.push_sql(BLOCK_COLUMN),
-        }
-    }
-
     /// Output an expression that matches all rows that have been changed
     /// after `block` (inclusive)
     pub(crate) fn changed_since<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {

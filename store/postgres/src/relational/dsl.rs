@@ -693,6 +693,26 @@ impl<'a> Column<'a> {
     pub fn name(&self) -> &'a str {
         &self.column.name
     }
+
+    pub(crate) fn is_list(&self) -> bool {
+        self.column.is_list()
+    }
+
+    pub(crate) fn is_primary_key(&self) -> bool {
+        self.column.is_primary_key()
+    }
+
+    pub(crate) fn is_fulltext(&self) -> bool {
+        self.column.is_fulltext()
+    }
+
+    pub(crate) fn column_type(&self) -> &'a ColumnType {
+        &self.column.column_type
+    }
+
+    pub(crate) fn use_prefix_comparison(&self) -> bool {
+        self.column.use_prefix_comparison
+    }
 }
 
 impl std::fmt::Display for Column<'_> {
