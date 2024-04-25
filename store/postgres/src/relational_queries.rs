@@ -3112,8 +3112,7 @@ pub enum ChildKey<'a> {
     /// First column is the primary key of the parent
     Many(dsl::Column<'a>, Vec<ChildKeyDetails<'a>>),
     Id(SortDirection, ChildIdDetails<'a>, UseBlockColumn),
-    ManyIdAsc(Vec<ChildIdDetails<'a>>, UseBlockColumn),
-    ManyIdDesc(Vec<ChildIdDetails<'a>>, UseBlockColumn),
+    ManyId(SortDirection, Vec<ChildIdDetails<'a>>, UseBlockColumn),
 }
 
 /// Convenience to pass the name of the column to order by around. If `name`
@@ -3174,35 +3173,21 @@ impl<'a> fmt::Display for SortKey<'a> {
                     )
                 }),
 
-                ChildKey::ManyIdAsc(details, UseBlockColumn::No) => details
-                    .iter()
-                    .try_for_each(|details| write!(f, "{}", details.child_table.primary_key())),
-                ChildKey::ManyIdAsc(details, UseBlockColumn::Yes) => {
+                ChildKey::ManyId(direction, details, UseBlockColumn::No) => {
+                    details.iter().try_for_each(|details| {
+                        write!(f, "{}{direction}", details.child_table.primary_key())
+                    })
+                }
+                ChildKey::ManyId(direction, details, UseBlockColumn::Yes) => {
                     details.iter().try_for_each(|details| {
                         write!(
                             f,
-                            "{}, {}",
+                            "{}{direction}, {}{direction}",
                             details.child_table.primary_key(),
                             details.child_table.block_column()
                         )
                     })
                 }
-                ChildKey::ManyIdDesc(details, UseBlockColumn::No) => {
-                    details.iter().try_for_each(|details| {
-                        write!(f, "{} desc", details.child_table.primary_key(),)
-                    })
-                }
-                ChildKey::ManyIdDesc(details, UseBlockColumn::Yes) => {
-                    details.iter().try_for_each(|details| {
-                        write!(
-                            f,
-                            "{} desc, {} desc",
-                            details.child_table.primary_key(),
-                            details.child_br
-                        )
-                    })
-                }
-
                 ChildKey::Id(direction, details, UseBlockColumn::No) => {
                     write!(f, "{}{}", details.child_table.primary_key(), direction)
                 }
@@ -3471,53 +3456,29 @@ impl<'a> SortKey<'a> {
                     "Sorting by fulltext fields".to_string(),
                 ))
             } else if sort_by_column.is_primary_key() {
-                use SortDirection::*;
-                match direction {
-                    Asc => Ok(SortKey::ChildKey(ChildKey::ManyIdAsc(
-                        build_children_vec(
-                            layout,
-                            block,
-                            parent_table,
-                            entity_types,
-                            child,
-                            direction,
-                        )?
-                        .iter()
-                        .map(|details| ChildIdDetails {
-                            child_table: details.child_table,
-                            child_from: details.child_from,
-                            parent_join_column: details.parent_join_column,
-                            child_join_column: details.child_join_column,
-                            child_pk: details.child_pk,
-                            child_br: details.child_br,
-                            child_at_block: details.child_at_block,
-                        })
-                        .collect(),
-                        use_block_column,
-                    ))),
-                    Desc => Ok(SortKey::ChildKey(ChildKey::ManyIdDesc(
-                        build_children_vec(
-                            layout,
-                            block,
-                            parent_table,
-                            entity_types,
-                            child,
-                            direction,
-                        )?
-                        .iter()
-                        .map(|details| ChildIdDetails {
-                            child_table: details.child_table,
-                            child_from: details.child_from,
-                            parent_join_column: details.parent_join_column,
-                            child_join_column: details.child_join_column,
-                            child_pk: details.child_pk,
-                            child_br: details.child_br,
-                            child_at_block: details.child_at_block,
-                        })
-                        .collect(),
-                        use_block_column,
-                    ))),
-                }
+                Ok(SortKey::ChildKey(ChildKey::ManyId(
+                    direction,
+                    build_children_vec(
+                        layout,
+                        block,
+                        parent_table,
+                        entity_types,
+                        child,
+                        direction,
+                    )?
+                    .iter()
+                    .map(|details| ChildIdDetails {
+                        child_table: details.child_table,
+                        child_from: details.child_from,
+                        parent_join_column: details.parent_join_column,
+                        child_join_column: details.child_join_column,
+                        child_pk: details.child_pk,
+                        child_br: details.child_br,
+                        child_at_block: details.child_at_block,
+                    })
+                    .collect(),
+                    use_block_column,
+                )))
             } else {
                 Ok(SortKey::ChildKey(ChildKey::Many(
                     parent_table.primary_key(),
@@ -3682,15 +3643,13 @@ impl<'a> SortKey<'a> {
                             child.sort_by_column.walk_ast(out.reborrow())?;
                         }
                     }
-                    ChildKey::ManyIdAsc(children, UseBlockColumn::Yes)
-                    | ChildKey::ManyIdDesc(children, UseBlockColumn::Yes) => {
+                    ChildKey::ManyId(_, children, UseBlockColumn::Yes) => {
                         for child in children.iter() {
                             out.push_sql(", ");
                             child.child_br.walk_ast(out.reborrow())?;
                         }
                     }
-                    ChildKey::ManyIdAsc(_, UseBlockColumn::No)
-                    | ChildKey::ManyIdDesc(_, UseBlockColumn::No) => { /* nothing to do */ }
+                    ChildKey::ManyId(_, _, UseBlockColumn::No) => { /* nothing to do */ }
                     ChildKey::Id(_, child, UseBlockColumn::Yes) => {
                         out.push_sql(", ");
                         child.child_br.walk_ast(out.reborrow())?;
@@ -3714,7 +3673,6 @@ impl<'a> SortKey<'a> {
         out: &mut AstPass<'_, 'b, Pg>,
         use_sort_key_alias: bool,
     ) -> QueryResult<()> {
-        use SortDirection::*;
         match self {
             SortKey::None => Ok(()),
             SortKey::Id(direction, br_column) => {
@@ -3759,11 +3717,8 @@ impl<'a> SortKey<'a> {
                         out,
                     ),
 
-                    ChildKey::ManyIdAsc(children, use_block_column) => {
-                        SortKey::multi_sort_id_expr(children, Asc, *use_block_column, out)
-                    }
-                    ChildKey::ManyIdDesc(children, use_block_column) => {
-                        SortKey::multi_sort_id_expr(children, Desc, *use_block_column, out)
+                    ChildKey::ManyId(direction, children, use_block_column) => {
+                        SortKey::multi_sort_id_expr(children, *direction, *use_block_column, out)
                     }
 
                     ChildKey::Id(direction, child, use_block_column) => {
@@ -4029,7 +3984,7 @@ impl<'a> SortKey<'a> {
                         )?;
                     }
                 }
-                ChildKey::ManyIdAsc(children, _) | ChildKey::ManyIdDesc(children, _) => {
+                ChildKey::ManyId(_, children, _) => {
                     for child in children.iter() {
                         add(
                             &child.child_from,
