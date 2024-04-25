@@ -152,6 +152,10 @@ pub struct EnvVars {
     /// Set by the flag `GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES`. On by
     /// default.
     pub enable_select_by_specific_attributes: bool,
+    /// Experimental feature.
+    ///
+    /// Set the flag `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`. Off by default.
+    pub postpone_attribute_index_creation: bool,
     /// Verbose logging of mapping inputs.
     ///
     /// Set by the flag `GRAPH_LOG_TRIGGER_DATA`. Off by
@@ -255,6 +259,7 @@ impl EnvVars {
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
             subgraph_error_retry_jitter: inner.subgraph_error_retry_jitter,
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
+            postpone_attribute_index_creation: inner.postpone_attribute_index_creation.0,
             log_trigger_data: inner.log_trigger_data.0,
             explorer_ttl: Duration::from_secs(inner.explorer_ttl_in_secs),
             explorer_lock_threshold: Duration::from_millis(inner.explorer_lock_threshold_in_msec),
@@ -377,6 +382,8 @@ struct Inner {
     subgraph_error_retry_jitter: f64,
     #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "true")]
     enable_select_by_specific_attributes: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION", default = "false")]
+    postpone_attribute_index_creation: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
     #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
