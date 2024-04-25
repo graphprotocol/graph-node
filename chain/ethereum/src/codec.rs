@@ -193,7 +193,10 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
                     .try_decode_proto("transaction from address")?,
             ),
             to: match self.trace.calls.len() {
-                0 => Some(self.trace.to.try_decode_proto("transaction to address")?),
+                0 => match self.trace.to.len() {
+                    0 => None, // without a 'to' address, this is a 'Create' transaction
+                    _ => Some(self.trace.to.try_decode_proto("transaction 'to' address")?),
+                },
                 _ => {
                     match CallType::from_i32(self.trace.calls[0].call_type).ok_or_else(|| {
                         format_err!("invalid call type: {}", self.trace.calls[0].call_type,)
