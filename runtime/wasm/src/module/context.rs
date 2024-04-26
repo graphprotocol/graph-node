@@ -1,5 +1,6 @@
 use byteorder::BigEndian;
 use byteorder::ByteOrder;
+use ethabi::ethereum_types::U256;
 use graph::data::value::Word;
 use graph::erc725::decode_key_value;
 use graph::erc725::rewrite_json;
@@ -583,6 +584,20 @@ impl WasmInstanceContext<'_> {
             }
             None => Ok(AscPtr::null()),
         }
+    }
+
+    pub fn decode_number(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let out: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| HostExportError::from(anyhow!("Invalid number bytes")))?;
+        let number = U256::from_big_endian(&out);
+        let number = BigInt::from_signed_u256(&number);
+        asc_new(self, &number, gas)
     }
 
     pub fn decode_key_value(

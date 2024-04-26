@@ -446,6 +446,12 @@ pub fn resolve_data_url(url: &str) -> Result<Vec<u8>, Error> {
     Err(anyhow!("Invalid data URL"))
 }
 
+pub fn decode_number(key: Vec<u8>) -> U256 {
+    let mut data = [0u8; 32];
+    data[0..key.len()].copy_from_slice(&key);
+    U256::from_big_endian(&data)
+}
+
 pub fn decode_key(key: Vec<u8>) -> Option<Value> {
     let input_key = &key;
     let key = format!("0x{}", hex::encode(input_key));

@@ -443,6 +443,7 @@ impl WasmInstance {
             flags
         );
 
+        link!("erc725.decode_number", decode_number, bytes_ptr);
         link!(
             "erc725.decode_verifiable_uri",
             decode_verifiable_uri_public,
