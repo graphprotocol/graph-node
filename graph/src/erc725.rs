@@ -115,7 +115,7 @@ impl Serialize for ERC725Value {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
                     let mut number = [0u8; 8];
-                    number.copy_from_slice(&bytes[(32 - 8)..]);
+                    number.copy_from_slice(&bytes[0..8]);
                     let val = u64::from_le_bytes(number);
                     return ser.serialize_u64(val);
                 }
@@ -123,7 +123,7 @@ impl Serialize for ERC725Value {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
                     let mut number = [0u8; 16];
-                    number.copy_from_slice(&bytes[16..]);
+                    number.copy_from_slice(&bytes[0..16]);
                     let val = u128::from_le_bytes(number);
                     return ser.serialize_u128(val);
                 }
@@ -136,7 +136,7 @@ impl Serialize for ERC725Value {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
                     let mut number = [0u8; 8];
-                    number.copy_from_slice(&bytes[(32 - 8)..]);
+                    number.copy_from_slice(&bytes[0..8]);
                     let val = i64::from_le_bytes(number);
                     return ser.serialize_i64(val);
                 }
@@ -144,7 +144,7 @@ impl Serialize for ERC725Value {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
                     let mut number = [0u8; 16];
-                    number.copy_from_slice(&bytes[16..]);
+                    number.copy_from_slice(&bytes[0..16]);
                     let val = i128::from_le_bytes(number);
                     return ser.serialize_i128(val);
                 }
@@ -152,7 +152,7 @@ impl Serialize for ERC725Value {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
                     let mut number = [0u8; 8];
-                    number.copy_from_slice(&bytes[(32 - 8)..]);
+                    number.copy_from_slice(&bytes[0..8]);
                     let val = u64::from_le_bytes(number);
                     return ser.serialize_u64(val);
                 }
@@ -160,7 +160,7 @@ impl Serialize for ERC725Value {
                     let mut bytes = [0u8; 32];
                     number.to_little_endian(&mut bytes);
                     let mut number = [0u8; 16];
-                    number.copy_from_slice(&bytes[16..]);
+                    number.copy_from_slice(&bytes[0..16]);
                     let val = u128::from_le_bytes(number);
                     return ser.serialize_u128(val);
                 }

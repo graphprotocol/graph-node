@@ -395,7 +395,7 @@
         "--postgres-url",
         "postgresql://graph-node:let-me-in@127.0.0.1:5432/graph-node",
         "--ethereum-rpc",
-        "mainnet:http://34.141.208.199:8545",
+        "mainnet:http://34.32.175.76:8545",
         "--ipfs",
         "localhost:5001"
       ],
