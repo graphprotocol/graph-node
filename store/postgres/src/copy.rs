@@ -806,9 +806,15 @@ impl Connection {
             progress.table_finished(&table.batch);
         }
 
+        // Create indexes for all the btree attributes that were postponed at the start of
+        // the copy/graft operations. If they weren't postponed it's still fine to run it
+        // as the creation query checks if they alreadey exist.
         let conn = self.conn.deref_mut();
         for table in state.tables.iter() {
-            table.batch.dst.create_postponed_indexes(conn)?;
+            for sql in table.batch.dst.create_postponed_indexes().into_iter() {
+                let query = sql_query(sql);
+                query.execute(conn)?;
+            }
         }
 
         self.copy_private_data_sources(&state)?;
