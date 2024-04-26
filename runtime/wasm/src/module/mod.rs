@@ -216,7 +216,7 @@ impl AscHeap for WasmInstanceContext<'_> {
 
         static MIN_ARENA_SIZE: i32 = 10_000;
 
-        let size = i32::try_from(bytes.len()).unwrap();
+        let size = i32::try_from(bytes.len()).unwrap() * 2;
         if size > self.asc_heap_ref().arena_free_size {
             // Allocate a new arena. Any free space left in the previous arena is left unused. This
             // causes at most half of memory to be wasted, which is acceptable.
