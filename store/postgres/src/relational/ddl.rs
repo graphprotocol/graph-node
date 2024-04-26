@@ -3,9 +3,7 @@ use std::{
     iter,
 };
 
-use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::{
-    components::store::StoreError,
     prelude::{BLOCK_NUMBER_MAX, ENV_VARS},
     schema::InputSchema,
 };
@@ -258,16 +256,14 @@ impl Table {
         (method, index_expr)
     }
 
-    pub(crate) fn create_postponed_indexes(
-        &self,
-        conn: &mut PgConnection,
-    ) -> Result<(), StoreError> {
+    pub(crate) fn create_postponed_indexes(&self) -> Vec<String> {
+        let mut indexing_queries = vec![];
         let columns = self.colums_to_index();
 
         for (column_index, column) in columns.enumerate() {
             let (method, index_expr) =
                 Self::calculate_attr_index_method_and_expression(self.immutable, column);
-            if !column.is_list() && method == "btree" {
+            if !column.is_list() && method == "btree" && column.name.as_str() != "id" {
                 let sql = format!(
                     "create index concurrently if not exists attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
                     table_index = self.position,
@@ -275,11 +271,10 @@ impl Table {
                     column_name = column.name,
                     qname = self.qualified_name,
                 );
-                let query = sql_query(sql);
-                query.execute(conn)?;
+                indexing_queries.push(sql);
             }
         }
-        Ok(())
+        indexing_queries
     }
 
     fn create_attribute_indexes(&self, is_copy_op: bool, out: &mut String) -> fmt::Result {
@@ -289,10 +284,10 @@ impl Table {
             let (method, index_expr) =
                 Self::calculate_attr_index_method_and_expression(self.immutable, column);
             let delay_index = ENV_VARS.postpone_attribute_index_creation
-                && !column.is_list()
                 && is_copy_op
-                && method == "btree";
-            // TODO: check if skipping should be done for POI table!
+                && !column.is_list()
+                && method == "btree"
+                && column.name.as_str() != "id";
 
             // If `create_gin_indexes` is set to false, we don't create
             // indexes on array attributes. Experience has shown that these
