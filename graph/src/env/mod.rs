@@ -259,7 +259,8 @@ impl EnvVars {
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
             subgraph_error_retry_jitter: inner.subgraph_error_retry_jitter,
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
-            postpone_attribute_index_creation: inner.postpone_attribute_index_creation.0,
+            postpone_attribute_index_creation: inner.postpone_attribute_index_creation.0
+                || cfg!(debug_assertions),
             log_trigger_data: inner.log_trigger_data.0,
             explorer_ttl: Duration::from_secs(inner.explorer_ttl_in_secs),
             explorer_lock_threshold: Duration::from_millis(inner.explorer_lock_threshold_in_msec),
