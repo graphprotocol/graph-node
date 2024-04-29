@@ -153,10 +153,40 @@ fn test_manual_index_creation_ddl() {
 }
 
 #[test]
+fn generate_postponed_indexes() {
+    let layout = test_layout(THING_GQL);
+    let table = layout.table(&SqlName::from("Scalar")).unwrap();
+    let query_vec = table.create_postponed_indexes();
+    assert!(query_vec.len() == 7);
+    let queries = query_vec.join(" ");
+    check_eqv(THING_POSTPONED_INDEXES, &queries)
+}
+const THING_POSTPONED_INDEXES: &str = r#"
+create index concurrently if not exists attr_1_1_scalar_bool
+    on "sgd0815"."scalar" using btree("bool");
+ create index concurrently if not exists attr_1_2_scalar_int
+    on "sgd0815"."scalar" using btree("int");
+ create index concurrently if not exists attr_1_3_scalar_big_decimal
+    on "sgd0815"."scalar" using btree("big_decimal");
+ create index concurrently if not exists attr_1_4_scalar_string
+    on "sgd0815"."scalar" using btree(left("string", 256));
+ create index concurrently if not exists attr_1_5_scalar_bytes
+    on "sgd0815"."scalar" using btree(substring("bytes", 1, 64));
+ create index concurrently if not exists attr_1_6_scalar_big_int
+    on "sgd0815"."scalar" using btree("big_int");
+ create index concurrently if not exists attr_1_7_scalar_color
+    on "sgd0815"."scalar" using btree("color");
+"#;
+
+#[test]
 fn generate_ddl() {
     let layout = test_layout(THING_GQL);
     let sql = layout.as_ddl(false).expect("Failed to generate DDL");
     assert_eq!(THING_DDL, &sql); // Use `assert_eq!` to also test the formatting.
+
+    let layout = test_layout(THING_GQL);
+    let sql = layout.as_ddl(true).expect("Failed to generate DDL");
+    check_eqv(THING_DDL_ON_COPY, &sql);
 
     let layout = test_layout(MUSIC_GQL);
     let sql = layout.as_ddl(false).expect("Failed to generate DDL");
@@ -376,6 +406,77 @@ create index attr_1_6_scalar_big_int
     on "sgd0815"."scalar" using btree("big_int");
 create index attr_1_7_scalar_color
     on "sgd0815"."scalar" using btree("color");
+
+
+    create table "sgd0815"."file_thing" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        causality_region     int not null,
+        "id"                 text not null
+    );
+
+    alter table "sgd0815"."file_thing"
+        add constraint file_thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_file_thing
+    on "sgd0815"."file_thing"
+ using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
+create index file_thing_block_range_closed
+    on "sgd0815"."file_thing"(coalesce(upper(block_range), 2147483647))
+ where coalesce(upper(block_range), 2147483647) < 2147483647;
+create index attr_2_0_file_thing_id
+    on "sgd0815"."file_thing" using btree("id");
+
+"#;
+
+const THING_DDL_ON_COPY: &str = r#"create type sgd0815."color"
+    as enum ('BLUE', 'red', 'yellow');
+create type sgd0815."size"
+    as enum ('large', 'medium', 'small');
+
+    create table "sgd0815"."thing" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        "id"                 text not null,
+        "big_thing"          text not null
+    );
+
+    alter table "sgd0815"."thing"
+        add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_thing
+    on "sgd0815"."thing"
+ using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
+create index thing_block_range_closed
+    on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
+ where coalesce(upper(block_range), 2147483647) < 2147483647;
+create index attr_0_0_thing_id
+    on "sgd0815"."thing" using btree("id");
+create index attr_0_1_thing_big_thing
+    on "sgd0815"."thing" using gist("big_thing", block_range);
+
+
+    create table "sgd0815"."scalar" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        "id"                 text not null,
+        "bool"               boolean,
+        "int"                int4,
+        "big_decimal"        numeric,
+        "string"             text,
+        "bytes"              bytea,
+        "big_int"            numeric,
+        "color"              "sgd0815"."color"
+    );
+
+    alter table "sgd0815"."scalar"
+        add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_scalar
+    on "sgd0815"."scalar"
+ using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
+create index scalar_block_range_closed
+    on "sgd0815"."scalar"(coalesce(upper(block_range), 2147483647))
+ where coalesce(upper(block_range), 2147483647) < 2147483647;
+create index attr_1_0_scalar_id
+    on "sgd0815"."scalar" using btree("id");
 
 
     create table "sgd0815"."file_thing" (
