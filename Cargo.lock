@@ -1614,7 +1614,7 @@ dependencies = [
  "hyper 1.3.0",
  "hyper-util",
  "isatty",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "lazy_static",
  "lru_time_cache",
  "maplit",
@@ -1712,7 +1712,7 @@ dependencies = [
  "graph-runtime-derive",
  "graph-runtime-wasm",
  "hex",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "jsonrpc-core",
  "prost",
  "prost-types",
@@ -1959,7 +1959,7 @@ dependencies = [
  "git-testament",
  "graph",
  "hex",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "lazy_static",
  "lru_time_cache",
  "maybe-owned",
@@ -2608,9 +2608,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -3127,7 +3127,7 @@ dependencies = [
  "futures 0.3.16",
  "humantime",
  "hyper 0.14.28",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "parking_lot 0.12.1",
  "percent-encoding",
  "quick-xml",
