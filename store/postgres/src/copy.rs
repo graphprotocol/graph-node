@@ -811,7 +811,7 @@ impl Connection {
         // as the creation query checks if they alreadey exist.
         let conn = self.conn.deref_mut();
         for table in state.tables.iter() {
-            for sql in table.batch.dst.create_postponed_indexes().into_iter() {
+            for (_, sql) in table.batch.dst.create_postponed_indexes().into_iter() {
                 let query = sql_query(sql);
                 query.execute(conn)?;
             }
