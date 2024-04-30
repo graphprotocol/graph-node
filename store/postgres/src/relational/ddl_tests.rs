@@ -158,7 +158,7 @@ fn generate_postponed_indexes() {
     let table = layout.table(&SqlName::from("Scalar")).unwrap();
     let query_vec = table.create_postponed_indexes();
     assert!(query_vec.len() == 7);
-    let queries = query_vec.join(" ");
+    let queries = query_vec.iter().map(|e| e.1.clone()).join(" ");
     check_eqv(THING_POSTPONED_INDEXES, &queries)
 }
 const THING_POSTPONED_INDEXES: &str = r#"

@@ -2,6 +2,7 @@ use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel::sql_types::{Bool, Text};
 use diesel::{prelude::*, sql_query};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
@@ -48,6 +49,7 @@ use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
 use web3::types::Address;
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::catalog::{pg_class, pg_index, pg_namespace};
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
@@ -119,6 +121,14 @@ pub struct StoreInner {
 /// corresponds to one of the database shards that `SubgraphStore` manages.
 #[derive(Clone, CheapClone)]
 pub struct DeploymentStore(Arc<StoreInner>);
+
+#[derive(QueryableByName, Debug)]
+struct IndexInfo {
+    #[diesel(sql_type = Bool)]
+    isvalid: bool,
+    #[diesel(sql_type = Bool)]
+    isready: bool,
+}
 
 impl Deref for DeploymentStore {
     type Target = StoreInner;
@@ -1579,10 +1589,74 @@ impl DeploymentStore {
                 Ok(())
             })?;
         }
+
+        //check if all indexes are valid and recreate them
+        let mut conn = self.get_conn()?;
+        if ENV_VARS.postpone_attribute_index_creation {
+            let namespace = site.namespace.as_str();
+            for table in dst.tables.values() {
+                for (index_name, create_query) in table.create_postponed_indexes() {
+                    let table_name = table.name.clone();
+                    // Version 1 - SQL generated with diesel
+                    use pg_class as c;
+                    use pg_index as x;
+                    use pg_namespace as n;
+                    let ns = diesel::alias!(pg_namespace as ns);
+                    let (ca, ia) = diesel::alias!(pg_class as ca, pg_class as ia);
+                    let q = x::table
+                        .inner_join(ca.on(ca.field(c::oid).eq(x::tabid)))
+                        .inner_join(ia.on(ia.field(c::oid).eq(x::indid)))
+                        .left_join(ns.on(ns.field(n::oid).eq(ca.field(c::namespace))))
+                        .filter(ns.field(n::name).eq(namespace))
+                        .filter(ca.field(c::name).eq(table_name.as_str()))
+                        .filter(ia.field(c::name).eq(index_name.as_str()))
+                        .filter(ca.field(c::kind).eq_any(vec!["r", "m", "p"]))
+                        .filter(ia.field(c::kind).eq_any(vec!["i", "I"]))
+                        .select((x::isvalid, x::isready))
+                        .get_results::<(bool, bool)>(&mut conn)?
+                        .into_iter()
+                        .collect::<Vec<(bool, bool)>>();
+                    println!("SQL: {:?}", q);
+                    // Version 2 - A string SQL:
+                    let query = r#"
+                        SELECT  x.indisvalid           AS isvalid,
+                                x.indisready           AS isready
+                        FROM pg_index x
+                                JOIN pg_class c ON c.oid = x.indrelid
+                                JOIN pg_class i ON i.oid = x.indexrelid
+                                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE (c.relkind = ANY (ARRAY ['r'::"char", 'm'::"char", 'p'::"char"]))
+                        AND (i.relkind = ANY (ARRAY ['i'::"char", 'I'::"char"]))
+                        AND (n.nspname = $1)
+                        AND (c.relname = $2)
+                        AND (i.relname = $3);"#;
+                    let ii_vec = sql_query(query)
+                        .bind::<Text, _>(namespace)
+                        .bind::<Text, _>(table_name)
+                        .bind::<Text, _>(index_name.clone())
+                        .get_results::<IndexInfo>(&mut conn)?
+                        .into_iter()
+                        .map(|ii| ii.into())
+                        .collect::<Vec<IndexInfo>>();
+                    // TODO: pick one of the above two
+                    assert!(ii_vec.len() <= 1);
+                    // Check if the index is valid. If either isvalid or isready flag of pg_index table
+                    // isn't true, drop it and recreate it.
+                    if ii_vec.len() == 0 || !ii_vec[0].isvalid || !ii_vec[0].isready || true {
+                        if ii_vec.len() > 0 {
+                            let drop_query =
+                                sql_query(format!("DROP INDEX {}.{};", namespace, index_name));
+                            conn.transaction(|conn| drop_query.execute(conn))?;
+                        }
+                        sql_query(create_query).execute(&mut conn)?;
+                    }
+                }
+            }
+        }
+
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
-        let mut conn = self.get_conn()?;
         conn.transaction(|conn| crate::deployment::initialize_block_ptr(conn, &dst.site))?;
         Ok(())
     }
