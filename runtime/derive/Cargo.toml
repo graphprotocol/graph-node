@@ -10,4 +10,4 @@ proc-macro = true
 syn = { workspace = true }
 quote = "1.0"
 proc-macro2 = "1.0.73"
-heck = "0.4"
+heck = "0.5"
