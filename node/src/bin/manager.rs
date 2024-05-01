@@ -1204,9 +1204,8 @@ async fn main() -> anyhow::Result<()> {
             deployments,
             start_block,
         } => {
-            let ct = ctx;
-            let notification_sender = ct.notification_sender();
-            let (store, primary) = ct.store_and_primary();
+            let notification_sender = ctx.notification_sender();
+            let (store, primary) = ctx.store_and_primary();
 
             commands::rewind::run(
                 primary,
