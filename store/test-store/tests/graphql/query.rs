@@ -2635,6 +2635,20 @@ fn can_query_meta() {
     run_query(QUERY4, |result, _| {
         assert!(result.has_errors());
     });
+
+    // metadata for number_gte 1. Returns subgraph head and a valid hash
+    const QUERY5: &str = "query { _meta(block: { number_gte: 1 }) { block { hash number } } }";
+    run_query(QUERY5, |result, _| {
+        let exp = object! {
+            _meta: object! {
+                block: object! {
+                    hash: BLOCKS[2].hash.to_string(),
+                    number: 2
+                },
+            },
+        };
+        assert_eq!(extract_data!(result), Some(exp));
+    });
 }
 
 #[test]
