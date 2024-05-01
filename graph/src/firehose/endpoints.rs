@@ -314,7 +314,8 @@ impl FirehoseEndpoint {
     {
         debug!(
             logger,
-            "Connecting to firehose to retrieve block for cursor {}", cursor
+            "Connecting to firehose to retrieve block for cursor {}", cursor;
+            "provider" => self.provider.as_str(),
         );
 
         let req = firehose::SingleBlockRequest {
@@ -339,7 +340,8 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        info!(logger, "Requesting genesis block from firehose");
+        info!(logger, "Requesting genesis block from firehose";
+            "provider" => self.provider.as_str());
 
         // We use 0 here to mean the genesis block of the chain. Firehose
         // when seeing start block number 0 will always return the genesis
@@ -358,7 +360,8 @@ impl FirehoseEndpoint {
     {
         debug!(
             logger,
-            "Connecting to firehose to retrieve block for number {}", number
+            "Connecting to firehose to retrieve block for number {}", number;
+            "provider" => self.provider.as_str(),
         );
 
         let mut client = self.new_stream_client();
@@ -386,7 +389,8 @@ impl FirehoseEndpoint {
 
         let mut block_stream = response_stream.into_inner();
 
-        debug!(logger, "Retrieving block(s) from firehose");
+        debug!(logger, "Retrieving block(s) from firehose";
+               "provider" => self.provider.as_str());
 
         let mut latest_received_block: Option<BlockPtr> = None;
         while let Some(message) = block_stream.next().await {
