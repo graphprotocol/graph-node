@@ -343,8 +343,11 @@ impl<'a> RollupSql<'a> {
         let secs = self.interval.as_duration().as_secs();
         write!(
             w,
-            " from (select id, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp, "
+            " from (select id, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp"
         )?;
+        if !self.dimensions.is_empty() {
+            write!(w, ", ")?;
+        }
         write_dims(self.dimensions, w)?;
         let agg_srcs: Vec<&str> = {
             let mut agg_srcs: Vec<_> = self

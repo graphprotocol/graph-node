@@ -22,3 +22,35 @@ services:
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+  graphql-engine:
+    image: hasura/graphql-engine:v2.23.0
+    ports:
+      - "8081:8080"
+    user: 1001:1001
+    profiles: ["hasura"] # only runs with dev profile
+    depends_on:
+      - "postgres"
+    restart: always
+    environment:
+      # TODO: refine migrations. For now we will run migrations externally.
+      # See details of this image here: https://hasura.io/docs/latest/graphql/core/migrations/advanced/auto-apply-migrations.html
+      # HASURA_GRAPHQL_MIGRATIONS_DIR: /hasura-migrations
+      # HASURA_GRAPHQL_METADATA_DIR: /hasura-metadata
+      HASURA_GRAPHQL_DATABASE_URL: postgres://graph-node:let-me-in@postgres:5432/graph-node?sslmode=disable
+      HASURA_GRAPHQL_ENABLE_CONSOLE: ${HASURA_GRAPHQL_ENABLE_CONSOLE:-true} # can make this default to false once we are further in our development.
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES:
+        startup, http-log, webhook-log, websocket-log,
+        query-log
+      HASURA_GRAPHQL_NO_OF_RETRIES: 10
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:-testing}
+      HASURA_GRAPHQL_STRINGIFY_NUMERIC_TYPES: "true"
+      PORT: 8080
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: public
+    healthcheck:
+      # CMD from a GH issue thread, no curl or wget installed with image
+      # but hasura comes with a /healthz public endpoint for checking server health
+      test: timeout 1s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      interval: 5s
+      timeout: 2s
+      retries: 50
+      start_period: 5s
