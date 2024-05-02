@@ -107,12 +107,9 @@ impl EthereumAdapter {
     ) -> Self {
         let web3 = Arc::new(Web3::new(transport));
 
-        // Check if the chain supports `getBlockReceipts` method.
-        let supports_block_receipts = web3
-            .eth()
-            .block_receipts(BlockId::Number(Web3BlockNumber::Latest))
-            .await
-            .is_ok();
+        // Check if the provider supports `getBlockReceipts` method.
+        let supports_block_receipts =
+            Self::check_block_receipt_support(web3.clone(), &provider, &logger).await;
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
@@ -130,8 +127,34 @@ impl EthereumAdapter {
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
             call_only,
-            supports_block_receipts,
+            supports_block_receipts: supports_block_receipts,
         }
+    }
+
+    async fn check_block_receipt_support(
+        web3: Arc<Web3<Transport>>,
+        provider: &str,
+        logger: &Logger,
+    ) -> bool {
+        info!(logger, "Checking if provider supports getBlockReceipts"; "provider" => provider);
+
+        // Fetch block receipts from the provider for the latest block.
+        let block_receipts_result = web3
+            .eth()
+            .block_receipts(BlockId::Number(Web3BlockNumber::Latest))
+            .await;
+
+        // Determine if the provider supports block receipts based on the fetched result.
+        let supports_block_receipts = block_receipts_result
+            .map(|receipts_option| {
+                // Ensure the result contains non-empty receipts
+                receipts_option.map_or(false, |receipts| !receipts.is_empty())
+            })
+            .unwrap_or(false); // Default to false if there's an error in fetching receipts.
+
+        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => provider, "supports_block_receipts" => supports_block_receipts);
+
+        supports_block_receipts
     }
 
     async fn traces(
@@ -1287,8 +1310,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })));
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
-        let receipts_future =
-            fetch_receipts_with_retry(web3, hashes, block_hash, logger, true).boxed();
+        let receipts_future = fetch_receipts_with_retry(
+            web3,
+            hashes,
+            block_hash,
+            logger,
+            self.supports_block_receipts,
+        )
+        .boxed();
 
         let block_future =
             futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
