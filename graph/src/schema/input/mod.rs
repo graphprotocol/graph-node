@@ -2496,9 +2496,6 @@ mod validations {
                             // setting up that struct a bit awkward, so we
                             // use a closure instead
                             let check_ident = |ident: &str| -> Result<(), SchemaValidationError> {
-                                if ident.starts_with("case when") {
-                                    return Ok(());
-                                }
                                 let arg_type = match source.field(ident) {
                                     Some(arg_field) => match arg_field.field_type.value_type() {
                                         Ok(arg_type) if arg_type.is_numeric() => arg_type,
@@ -2530,8 +2527,10 @@ mod validations {
                                 }
                                 Ok(())
                             };
-                            if let Err(mut errs) = sqlexpr::parse(arg, check_ident) {
-                                errors.append(&mut errs);
+                            if !arg.to_ascii_lowercase().starts_with("case when") {
+                                if let Err(mut errs) = sqlexpr::parse(arg, check_ident) {
+                                    errors.append(&mut errs);
+                                }
                             }
                         }
                         None => {

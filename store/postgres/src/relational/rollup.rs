@@ -345,7 +345,7 @@ impl<'a> RollupSql<'a> {
             w,
             " from (select id, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp"
         )?;
-        if !self.dimensions.is_empty() {
+        if !self.dimensions.is_empty() || !self.aggregates.is_empty() {
             write!(w, ", ")?;
         }
         write_dims(self.dimensions, w)?;
