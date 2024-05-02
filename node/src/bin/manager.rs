@@ -187,7 +187,7 @@ pub enum Command {
             long,
             short,
             default_value = "20",
-            parse(try_from_str = parse_duration_in_secs)
+            value_parser = parse_duration_in_secs
         )]
         sleep: Duration,
     },
@@ -205,7 +205,7 @@ pub enum Command {
             long,
             short,
             default_value = "20",
-            parse(try_from_str = parse_duration_in_secs)
+            value_parser = parse_duration_in_secs
         )]
         sleep: Duration,
         /// The block hash of the target block
@@ -225,7 +225,7 @@ pub enum Command {
         )]
         block_number: Option<i32>,
         /// The deployments to rewind (see `help info`)
-        #[clap(required = true, min_values = 1)]
+        #[clap(required = true)]
         deployments: Vec<DeploymentSearch>,
     },
     /// Deploy and run an arbitrary subgraph up to a certain block
@@ -534,13 +534,13 @@ pub enum ChainCommand {
         #[clap(subcommand)] // Note that we mark a field as a subcommand
         method: CheckBlockMethod,
         /// Chain name (must be an existing chain, see 'chain list')
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
     },
     /// Truncates the whole block cache for the given chain.
     Truncate {
         /// Chain name (must be an existing chain, see 'chain list')
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
         /// Skips confirmation prompt
         #[clap(long, short)]
@@ -550,10 +550,10 @@ pub enum ChainCommand {
     /// Change the block cache shard for a chain
     ChangeShard {
         /// Chain name (must be an existing chain, see 'chain list')
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
         /// Shard name
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         shard: String,
     },
 
@@ -562,7 +562,7 @@ pub enum ChainCommand {
         #[clap(subcommand)]
         method: CallCacheCommand,
         /// Chain name (must be an existing chain, see 'chain list')
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
     },
 }
@@ -674,24 +674,24 @@ pub enum IndexCommand {
     /// This command may be time-consuming.
     Create {
         /// The deployment (see `help info`).
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         deployment: DeploymentSearch,
         /// The Entity name.
         ///
         /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
         /// (as its SQL table name).
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         entity: String,
         /// The Field names.
         ///
         /// Each field can be expressed either in camel case (as its GraphQL definition) or in snake
         /// case (as its SQL colmun name).
-        #[clap(min_values = 1, required = true)]
+        #[clap(required = true)]
         fields: Vec<String>,
         /// The index method. Defaults to `btree` in general, and to `gist` when the index includes the `block_range` column
         #[clap(
-            short, long,
-            possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
+            short, long, default_value = "btree",
+            value_parser = clap::builder::PossibleValuesParser::new(&["btree", "hash", "gist", "spgist", "gin", "brin"])
         )]
         method: Option<String>,
 
@@ -718,23 +718,23 @@ pub enum IndexCommand {
         #[clap(long, requires = "sql")]
         if_not_exists: bool,
         ///  The deployment (see `help info`).
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         deployment: DeploymentSearch,
         /// The Entity name.
         ///
         /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
         /// (as its SQL table name).
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         entity: String,
     },
 
     /// Drops an index for a given deployment, concurrently
     Drop {
         /// The deployment (see `help info`).
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         deployment: DeploymentSearch,
         /// The name of the index to be dropped
-        #[clap(empty_values = false)]
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         index_name: String,
     },
 }

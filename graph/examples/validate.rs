@@ -114,6 +114,7 @@ struct Entry {
     schema: String,
 }
 
+#[derive(Clone)]
 enum RunMode {
     Validate,
     Size,
@@ -145,7 +146,10 @@ struct Opts {
     batch: bool,
     #[clap(long)]
     api: bool,
-    #[clap(short, long, default_value = "validate", possible_values = &["validate", "size"])]
+    #[clap(
+        short, long, default_value = "validate", 
+        value_parser = clap::builder::PossibleValuesParser::new(&["validate", "size"])
+    )]
     mode: RunMode,
     /// Subgraph schemas to validate
     #[clap(required = true)]
