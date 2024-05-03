@@ -262,17 +262,27 @@ async fn main() {
             n => FileSizeLimit::MaxBytes(n as u64),
         },
     );
-
-    // Convert the clients into a link resolver. Since we want to get past
-    // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
-    let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
+    let providers: Vec<_> = config
+        .chains
+        .providers()
+        .into_iter()
+        .chain(ipfs_clients.iter().map(|c| c.base.to_string()))
+        .collect();
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
-        &config.chains.providers(),
+        &providers,
         metrics_registry.cheap_clone(),
     ));
+
+    // Convert the clients into a link resolver. Since we want to get past
+    // possible temporary DNS failures, make the resolver retry
+    let link_resolver = Arc::new(IpfsResolver::new(
+        ipfs_clients,
+        env_vars.cheap_clone(),
+        endpoint_metrics.cheap_clone(),
+    ));
+    let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     // Ethereum clients; query nodes ignore all ethereum clients and never
     // connect to them directly

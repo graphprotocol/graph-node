@@ -3,6 +3,7 @@ use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
+use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
@@ -71,6 +72,7 @@ fn mock_host_exports(
         Arc::new(graph::prelude::IpfsResolver::new(
             vec![IpfsClient::localhost()],
             Arc::new(EnvVars::default()),
+            Arc::new(EndpointMetrics::mock()),
         )),
         ens_lookup,
     )

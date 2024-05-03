@@ -35,6 +35,7 @@ pub enum ConnectionType {
     Firehose,
     Substreams,
     Rpc,
+    Ipfs,
 }
 
 impl Into<&str> for &ConnectionType {
@@ -43,6 +44,7 @@ impl Into<&str> for &ConnectionType {
             ConnectionType::Firehose => "firehose",
             ConnectionType::Substreams => "substreams",
             ConnectionType::Rpc => "rpc",
+            ConnectionType::Ipfs => "ipfs",
         }
     }
 }
