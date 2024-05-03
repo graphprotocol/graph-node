@@ -7,6 +7,7 @@ use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::{CacheStatus, QueryResults, Trace};
+use graph::data::store::ID;
 use graph::data::value::{Object, Word};
 use graph::derive::CheapClone;
 use graph::prelude::*;
@@ -326,21 +327,46 @@ impl Resolver for StoreResolver {
         field_definition: &s::Field,
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
+        fn child_id(child: &r::Value) -> String {
+            match child {
+                r::Value::Object(child) => child
+                    .get(&*ID)
+                    .map(|id| id.to_string())
+                    .unwrap_or("(no id)".to_string()),
+                _ => "(no child object)".to_string(),
+            }
+        }
+
         if object_type.is_meta() {
             return self.lookup_meta(field).await;
         }
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
-                let derived_from_field =
-                    sast::get_derived_from_field(object_type, field_definition)
-                        .expect("only derived fields can lead to multiple children here");
-
-                return Err(QueryExecutionError::AmbiguousDerivedFromResult(
-                    field.position,
-                    field.name.clone(),
-                    object_type.name().to_owned(),
-                    derived_from_field.name.clone(),
-                ));
+                // We expected only one child. For derived fields, this can
+                // happen if there are two entities on the derived field
+                // that have the parent's ID as their derivedFrom field. For
+                // non-derived fields, it means that there are two parents
+                // with the same ID. That can happen if the parent is
+                // mutable when we don't enforce the exclusion constraint on
+                // (id, block_range) for performance reasons
+                let error = match sast::get_derived_from_field(object_type, field_definition) {
+                    Some(derived_from_field) => QueryExecutionError::AmbiguousDerivedFromResult(
+                        field.position,
+                        field.name.clone(),
+                        object_type.name().to_owned(),
+                        derived_from_field.name.clone(),
+                    ),
+                    None => {
+                        let child0_id = child_id(&children[0]);
+                        let child1_id = child_id(&children[1]);
+                        QueryExecutionError::ConstraintViolation(format!(
+                            "expected only one child for {}.{} but got {}. One child has id {}, another has id {}",
+                            object_type.name(), field.name,
+                            children.len(), child0_id, child1_id
+                        ))
+                    }
+                };
+                return Err(error);
             } else {
                 Ok(children.into_iter().next().unwrap_or(r::Value::Null))
             }
