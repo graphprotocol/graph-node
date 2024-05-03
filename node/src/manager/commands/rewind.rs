@@ -75,15 +75,20 @@ pub async fn run(
     let subgraph_store = store.subgraph_store();
     let block_store = store.block_store();
 
-    let deployments = searches
-        .iter()
-        .map(|search| search.lookup(&primary))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let mut deployments = Vec::new();
+    for search in &searches {
+        let results = search.lookup(&primary)?;
+        if results.len() > 1 {
+            bail!(
+                "Multiple deployments found for the search : {}. Try using the id of the deployment (eg: sgd143) to uniquely identify the deployment.",
+                search
+            );
+        }
+        deployments.extend(results);
+    }
+
     if deployments.is_empty() {
-        println!("nothing to do");
+        println!("No deployments found");
         return Ok(());
     }
 

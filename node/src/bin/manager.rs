@@ -811,7 +811,6 @@ impl From<Opt> for config::Opt {
 
 /// Utilities to interact mostly with the store and build the parts of the
 /// store we need for specific commands
-#[derive(Clone)]
 struct Context {
     logger: Logger,
     node_id: NodeId,
