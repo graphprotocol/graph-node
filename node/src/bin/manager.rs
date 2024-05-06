@@ -1176,15 +1176,24 @@ async fn main() -> anyhow::Result<()> {
         }
         Pause { deployment } => {
             let sender = ctx.notification_sender();
-            commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, true)
+            let pool = ctx.primary_pool();
+            let locator = &deployment.locate_unique(&pool)?;
+            commands::assign::pause_or_resume(pool, &sender, locator, true)
         }
+
         Resume { deployment } => {
             let sender = ctx.notification_sender();
-            commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, false)
+            let pool = ctx.primary_pool();
+            let locator = &deployment.locate_unique(&pool).unwrap();
+
+            commands::assign::pause_or_resume(pool, &sender, locator, false)
         }
         Restart { deployment, sleep } => {
             let sender = ctx.notification_sender();
-            commands::assign::restart(ctx.primary_pool(), &sender, &deployment, sleep)
+            let pool = ctx.primary_pool();
+            let locator = &deployment.locate_unique(&pool).unwrap();
+
+            commands::assign::restart(pool, &sender, locator, sleep)
         }
         Rewind {
             force,
@@ -1194,13 +1203,16 @@ async fn main() -> anyhow::Result<()> {
             deployments,
             start_block,
         } => {
+            let notification_sender = ctx.notification_sender();
             let (store, primary) = ctx.store_and_primary();
+
             commands::rewind::run(
                 primary,
                 store,
                 deployments,
                 block_hash,
                 block_number,
+                &notification_sender,
                 force,
                 sleep,
                 start_block,
