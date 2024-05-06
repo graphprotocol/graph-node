@@ -718,7 +718,6 @@ pub enum IndexCommand {
         #[clap(long, requires = "sql")]
         if_not_exists: bool,
         ///  The deployment (see `help info`).
-        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         deployment: DeploymentSearch,
         /// The Entity name.
         ///
@@ -731,7 +730,6 @@ pub enum IndexCommand {
     /// Drops an index for a given deployment, concurrently
     Drop {
         /// The deployment (see `help info`).
-        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         deployment: DeploymentSearch,
         /// The name of the index to be dropped
         #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
