@@ -38,7 +38,7 @@ num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.17"
 rand = "0.8.4"
 regex = "1.5.4"
-semver = { version = "1.0.21", features = ["serde"] }
+semver = { version = "1.0.22", features = ["serde"] }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
