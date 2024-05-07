@@ -145,14 +145,20 @@ impl EthereumAdapter {
             .await;
 
         // Determine if the provider supports block receipts based on the fetched result.
-        let supports_block_receipts = block_receipts_result
+        let (supports_block_receipts, error_message) = block_receipts_result
             .map(|receipts_option| {
                 // Ensure the result contains non-empty receipts
-                receipts_option.map_or(false, |receipts| !receipts.is_empty())
+                (
+                    receipts_option.map_or(false, |receipts| !receipts.is_empty()),
+                    None,
+                )
             })
-            .unwrap_or(false); // Default to false if there's an error in fetching receipts.
+            .unwrap_or_else(|err| {
+                // Store the error message and default to false
+                (false, Some(err.to_string()))
+            });
 
-        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => provider, "supports_block_receipts" => supports_block_receipts);
+        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => provider, "supports_block_receipts" => supports_block_receipts, "error" => error_message.unwrap_or_else(|| "none".to_string()));
 
         supports_block_receipts
     }
@@ -2239,7 +2245,7 @@ async fn fetch_block_receipts_with_retry(
     let receipts_option = retry(retry_log_message, &logger)
         .limit(ENV_VARS.request_retries)
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-        .run(move || web3.eth().block_receipts(block_hash.into()).boxed())
+        .run(move || web3.eth().block_receipts(BlockId::Hash(block_hash)).boxed())
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
 
