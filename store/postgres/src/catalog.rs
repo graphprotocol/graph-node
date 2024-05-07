@@ -91,23 +91,9 @@ table! {
     }
 }
 
-// Readonly; not all columns are mapped
-table! {
-    pg_index(indid) {
-        #[sql_name = "indrelid"]
-        tabid -> Oid,
-        #[sql_name = "indexrelid"]
-        indid -> Oid,
-        #[sql_name = "indisvalid"]
-        isvalid -> Bool,
-        #[sql_name = "indisready"]
-        isready -> Bool,
-    }
-}
-
 joinable!(pg_class -> pg_namespace(namespace));
 joinable!(pg_attribute -> pg_class(relid));
-allow_tables_to_appear_in_same_query!(pg_class, pg_namespace, pg_attribute, pg_index);
+allow_tables_to_appear_in_same_query!(pg_class, pg_namespace, pg_attribute);
 
 table! {
     subgraphs.table_stats {
