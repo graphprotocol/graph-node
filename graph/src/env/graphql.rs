@@ -92,6 +92,9 @@ pub struct EnvVarsGraphQl {
     /// Set by the flag `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`. Off by default.
     /// Disables AND/OR filters
     pub disable_bool_filters: bool,
+    /// Set by the flag `GRAPH_GRAPHQL_ENABLE_SQL_SERVICE`. Off by default.
+    /// Enables queries on the `sql()` field of the root query
+    pub enable_sql_service: bool,
     /// Set by the flag `GRAPH_GRAPHQL_DISABLE_CHILD_SORTING`. Off by default.
     /// Disables child-based sorting
     pub disable_child_sorting: bool,
@@ -146,6 +149,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             error_result_size: x.error_result_size.0 .0,
             max_operations_per_connection: x.max_operations_per_connection,
             disable_bool_filters: x.disable_bool_filters.0,
+            enable_sql_service: x.enable_sql_service.0,
             disable_child_sorting: x.disable_child_sorting.0,
             query_trace_token: x.query_trace_token,
             parallel_block_constraints: x.parallel_block_constraints.0,
@@ -198,6 +202,8 @@ pub struct InnerGraphQl {
     pub disable_bool_filters: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_CHILD_SORTING", default = "false")]
     pub disable_child_sorting: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_GRAPHQL_ENABLE_SQL_SERVICE", default = "false")]
+    pub enable_sql_service: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GRAPHQL_TRACE_TOKEN", default = "")]
     query_trace_token: String,
     #[envconfig(from = "GRAPH_PARALLEL_BLOCK_CONSTRAINTS", default = "false")]
