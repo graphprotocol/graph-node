@@ -135,6 +135,7 @@ those.
   `X-GraphTraceQuery` set to this value will include a trace of the SQL
   queries that were run. Defaults to the empty string which disables
   tracing.
+- `GRAPH_GRAPHQL_ENABLE_SQL_SERVICE`: enables the sql service integration. This allows clients to execute `sql()` operations on subgraphs.
 
 ### GraphQL caching
 
