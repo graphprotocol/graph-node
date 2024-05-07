@@ -5,17 +5,24 @@ use std::sync::Arc;
 use anyhow::Context;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
-use thiserror::Error;
 
-use crate::cheap_clone::CheapClone;
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt, TypeExt};
 use crate::data::store::IdType;
-use crate::env::ENV_VARS;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME};
+use crate::schema::{
+    ast, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME, SQL_FIELD_NAME, SQL_FIELD_TYPE,
+    SQL_INPUT_TYPE,
+};
 
 use crate::data::graphql::ext::{
     camel_cased_names, DefinitionExt, DirectiveExt, DocumentExt, ValueExt,
 };
+use crate::prelude::s::*;
+use crate::prelude::*;
+use thiserror::Error;
+
+use crate::cheap_clone::CheapClone;
+use crate::env::ENV_VARS;
+
 use crate::derive::CheapClone;
 use crate::prelude::{q, r, s, DeploymentHash};
 
@@ -356,6 +363,7 @@ pub(in crate::schema) fn api_schema(
     // Refactor: Don't clone the schema.
     let mut api = init_api_schema(input_schema)?;
     add_meta_field_type(&mut api.document);
+    add_sql_field_type(&mut api.document);
     add_types_for_object_types(&mut api, input_schema)?;
     add_types_for_interface_types(&mut api, input_schema)?;
     add_types_for_aggregation_types(&mut api, input_schema)?;
@@ -463,6 +471,21 @@ fn add_meta_field_type(api: &mut s::Document) {
 
     api.definitions
         .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
+}
+
+// Adds a global `SqlOutput` type to the schema. The `sql` field
+// accepts values of this type
+fn add_sql_field_type(schema: &mut Document) {
+    lazy_static! {
+        static ref SQL_FIELD_SCHEMA: Document = {
+            let schema = include_str!("sql.graphql");
+            parse_schema(schema).expect("the schema `sql.graphql` is invalid")
+        };
+    }
+
+    schema
+        .definitions
+        .extend(SQL_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
 fn add_types_for_object_types(
@@ -1061,6 +1084,7 @@ fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(
     fields.append(&mut agg_fields);
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
+    fields.push(sql_field());
 
     let typedef = s::TypeDefinition::Object(s::ObjectType {
         position: Pos::default(),
@@ -1159,6 +1183,7 @@ fn add_subscription_type(
         .collect::<Vec<s::Field>>();
     fields.append(&mut agg_fields);
     fields.push(meta_field());
+    fields.push(sql_field());
 
     let typedef = s::TypeDefinition::Object(s::ObjectType {
         position: Pos::default(),
@@ -1302,6 +1327,31 @@ fn meta_field() -> s::Field {
         };
     }
     META_FIELD.clone()
+}
+
+fn sql_field() -> s::Field {
+    lazy_static! {
+        static ref SQL_FIELD: s::Field = s::Field {
+            position: Pos::default(),
+            description: Some("Access to SQL queries".to_string()),
+            name: SQL_FIELD_NAME.to_string(),
+            arguments: vec![
+                InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: String::from("input"),
+                    value_type: Type::NonNullType(Box::new(Type::NamedType(SQL_INPUT_TYPE.to_string()))),
+                    default_value: None,
+                    directives: vec![],
+
+                }
+            ],
+            field_type: Type::NamedType(SQL_FIELD_TYPE.to_string()),
+            directives: vec![],
+        };
+    }
+
+    SQL_FIELD.clone()
 }
 
 #[cfg(test)]

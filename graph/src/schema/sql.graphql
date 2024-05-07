@@ -1,0 +1,67 @@
+scalar String
+scalar JSONObject
+scalar SqlVariable
+
+
+enum SqlFormat {
+  JSON
+  CSV
+}
+
+input SqlInput {
+  """
+  The SQL query to execute. The query may contain positional parameters
+  that are passed in the `parameters` field.
+  """
+  query: String!
+  """
+  The SQL query parameters. The parameters are passed to the SQL query
+  as positional parameters. The parameters are converted to the SQL
+  types based on the GraphQL types of the parameters.
+  """
+  parameters: [SqlVariable]
+  
+  """
+  The format of the SQL query result. The default format is JSON.
+  """
+  format: SqlFormat = JSON
+}
+
+
+# The type names are purposely awkward to minimize the risk of them
+# colliding with user-supplied types
+"The type for the top-level sql field"
+type SqlJSONOutput {
+  "The columns returned by the query"
+  columns: [String!]!
+
+  """
+  The SQL query result row count.
+  """
+  rowCount: Int!
+
+  """
+  The SQL query result rows. Each row is represented as a list of values.
+  The values are represented as JSON values.
+  """
+  rows: [JSONObject!]!
+}
+
+
+type SqlCSVOutput {
+
+  "The columns returned by the query"
+  columns: [String!]!
+
+  """
+  The SQL query result rows. Represented as a CSV string
+  """
+  result: String
+  """
+  Number of SQL rows being returned
+  """
+  rowCount: Int!
+}
+
+union SqlOutput = SqlJSONOutput | SqlCSVOutput
+
