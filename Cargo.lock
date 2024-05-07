@@ -1643,7 +1643,7 @@ dependencies = [
  "slog-async",
  "slog-envlogger",
  "slog-term",
- "sqlparser",
+ "sqlparser 0.45.0",
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
  "strum_macros",
@@ -1971,7 +1971,9 @@ dependencies = [
  "pretty_assertions",
  "rand",
  "serde",
+ "sqlparser 0.40.0",
  "stable-hash 0.3.4",
+ "thiserror",
  "uuid",
 ]
 
@@ -4471,11 +4473,32 @@ checksum = "3b9b39299b249ad65f3b7e96443bad61c02ca5cd3589f46cb6d610a0fd6c0d6a"
 
 [[package]]
 name = "sqlparser"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c80afe31cdb649e56c0d9bb5503be9166600d68a852c38dd445636d126858e5"
+dependencies = [
+ "log",
+ "sqlparser_derive",
+]
+
+[[package]]
+name = "sqlparser"
 version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7bbffee862a796d67959a89859d6b1046bb5016d63e23835ad0da182777bbe0"
 dependencies = [
  "log",
+]
+
+[[package]]
+name = "sqlparser_derive"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01b2e185515564f15375f593fb966b5718bc624ba77fe49fa4616ad619690554"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.58",
 ]
 
 [[package]]

@@ -30,6 +30,8 @@ git-testament = "0.2.5"
 itertools = "0.12.1"
 hex = "0.4.3"
 pretty_assertions = "1.4.0"
+sqlparser = { version = "0.40.0", features = ["visitor"] }
+thiserror = "1.0.25"
 
 [dev-dependencies]
 clap.workspace = true 
