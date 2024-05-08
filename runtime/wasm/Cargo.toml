@@ -10,7 +10,7 @@ hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
-semver = "1.0.20"
+semver = "1.0.22"
 uuid = { version = "1.8.0", features = ["v4"] }
 anyhow = "1.0"
 never = "0.1"
