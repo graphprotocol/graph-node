@@ -73,6 +73,7 @@ pub enum QueryExecutionError {
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
     DeploymentNotFound(String),
+    SqlError(String),
     IdMissing,
     IdNotString,
     InternalError(String),
@@ -135,6 +136,7 @@ impl QueryExecutionError {
             | IdMissing
             | IdNotString
             | InternalError(_) => false,
+            SqlError(_) => false,
         }
     }
 }
@@ -213,7 +215,7 @@ impl fmt::Display for QueryExecutionError {
             }
             InvalidFilterError => write!(f, "Filter must by an object"),
             InvalidOrFilterStructure(fields, example) => {
-                write!(f, "Cannot mix column filters with 'or' operator at the same level. Found column filter(s) {} alongside 'or' operator.\n\n{}", 
+                write!(f, "Cannot mix column filters with 'or' operator at the same level. Found column filter(s) {} alongside 'or' operator.\n\n{}",
                     fields.join(", "), example)
             }
             EntityFieldError(e, a) => {
@@ -281,6 +283,7 @@ impl fmt::Display for QueryExecutionError {
             IdMissing => write!(f, "entity is missing an `id` attribute"),
             IdNotString => write!(f, "entity `id` attribute is not a string"),
             InternalError(msg) => write!(f, "internal error: {}", msg),
+            SqlError(e) => write!(f, "sql error: {}", e),
         }
     }
 }

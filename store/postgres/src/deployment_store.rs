@@ -12,8 +12,9 @@ use graph::components::store::{
     PruningStrategy, QueryPermit, StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
+use graph::data::graphql::IntoValue;
 use graph::data::query::Trace;
-use graph::data::store::IdList;
+use graph::data::store::{IdList, SqlQueryObject};
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
@@ -54,7 +55,7 @@ use crate::dynds::DataSourcesTable;
 use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table};
-use crate::relational_queries::FromEntityData;
+use crate::relational_queries::{FromEntityData, JSONData};
 use crate::{advisory_lock, catalog, retry};
 use crate::{detail, ConnectionPool};
 use crate::{dynds, primary::Site};
@@ -288,6 +289,24 @@ impl DeploymentStore {
             .cheap_clone()
             .unwrap_or_else(|| self.logger.cheap_clone());
         layout.query(&logger, conn, query)
+    }
+
+    pub(crate) fn execute_sql(
+        &self,
+        conn: &mut PgConnection,
+        query: &str,
+    ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
+        let query = diesel::sql_query(query);
+
+        // Execute the provided SQL query
+        let results = query
+            .load::<JSONData>(conn)
+            .map_err(|e| QueryExecutionError::SqlError(e.to_string()))?;
+
+        Ok(results
+            .into_iter()
+            .map(|e| SqlQueryObject(e.into_value()))
+            .collect::<Vec<_>>())
     }
 
     fn check_intf_uniqueness(

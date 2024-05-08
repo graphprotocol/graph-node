@@ -32,6 +32,8 @@ git-testament = "0.2.6"
 itertools = "0.14.0"
 hex = "0.4.3"
 pretty_assertions = "1.4.1"
+sqlparser = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 clap.workspace = true
