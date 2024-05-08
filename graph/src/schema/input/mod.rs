@@ -164,7 +164,7 @@ impl TypeInfo {
             Some(intfs) => {
                 let mut shared_interfaces: Vec<_> = intfs
                     .iter()
-                    .flat_map(|intf| &schema.types_for_interface[&intf.name])
+                    .flat_map(|intf| &schema.types_for_interface_or_union[&intf.name])
                     .filter(|other| other.name != obj_type.name)
                     .map(|obj_type| pool.lookup(&obj_type.name).unwrap())
                     .collect();
@@ -182,7 +182,7 @@ impl TypeInfo {
     fn for_interface(schema: &Schema, pool: &AtomPool, intf_type: &s::InterfaceType) -> Self {
         static EMPTY_VEC: [s::ObjectType; 0] = [];
         let implementers = schema
-            .types_for_interface
+            .types_for_interface_or_union
             .get(&intf_type.name)
             .map(|impls| impls.as_slice())
             .unwrap_or_else(|| EMPTY_VEC.as_slice());
@@ -252,7 +252,7 @@ impl Field {
                         // therefore enough to use the id type of one of
                         // the implementors
                         match schema
-                            .types_for_interface
+                            .types_for_interface_or_union
                             .get(&intf.name)
                             .expect("interface type names are known")
                             .first()
@@ -2276,7 +2276,7 @@ mod validations {
         }
 
         fn validate_interface_id_type(&self) -> Result<(), SchemaValidationError> {
-            for (intf, obj_types) in &self.schema.types_for_interface {
+            for (intf, obj_types) in &self.schema.types_for_interface_or_union {
                 let id_types: HashSet<&str> = HashSet::from_iter(
                     obj_types
                         .iter()

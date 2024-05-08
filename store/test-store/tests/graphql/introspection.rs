@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use graph::components::store::QueryPermit;
-use graph::data::graphql::{object_value, ObjectOrInterface};
+use graph::data::graphql::{object_value, QueryableType};
 use graph::data::query::Trace;
 use graph::prelude::{
     async_trait, o, q, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
@@ -38,7 +38,7 @@ impl Resolver for MockResolver {
         _: Option<r::Value>,
         _field: &a::Field,
         _field_definition: &s::Field,
-        _object_type: ObjectOrInterface<'_>,
+        _object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         Ok(r::Value::Null)
     }
@@ -48,7 +48,7 @@ impl Resolver for MockResolver {
         __: Option<r::Value>,
         _field: &a::Field,
         _field_definition: &s::Field,
-        _object_type: ObjectOrInterface<'_>,
+        _object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         Ok(r::Value::Null)
     }

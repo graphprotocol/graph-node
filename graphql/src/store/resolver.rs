@@ -5,7 +5,7 @@ use std::sync::Arc;
 use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
-use graph::data::graphql::{object, ObjectOrInterface};
+use graph::data::graphql::{object, QueryableType};
 use graph::data::query::{CacheStatus, QueryResults, Trace};
 use graph::data::value::{Object, Word};
 use graph::derive::CheapClone;
@@ -389,7 +389,7 @@ impl Resolver for StoreResolver {
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
         _field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         if let Some(child) = prefetched_objects {
             Ok(child)
@@ -408,7 +408,7 @@ impl Resolver for StoreResolver {
         prefetched_object: Option<r::Value>,
         field: &a::Field,
         field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         if object_type.is_meta() {
             return self.lookup_meta(field).await;

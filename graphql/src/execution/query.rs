@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
-use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
+use graph::data::graphql::{ext::TypeExt, QueryableType};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::query::{QueryExecutionError, Trace};
 use graph::prelude::{
@@ -655,7 +655,7 @@ impl<'s> RawQuery<'s> {
     fn validate_fields_inner(
         &self,
         type_name: &str,
-        ty: ObjectOrInterface<'_>,
+        ty: QueryableType<'_>,
         selection_set: &q::SelectionSet,
     ) -> Vec<QueryExecutionError> {
         selection_set
@@ -833,7 +833,7 @@ impl Transform {
     pub fn coerce_argument_values<'a>(
         &self,
         arguments: &mut Vec<(String, r::Value)>,
-        ty: ObjectOrInterface<'a>,
+        ty: QueryableType<'a>,
         field_name: &str,
     ) -> Result<(), Vec<QueryExecutionError>> {
         let mut errors = vec![];
@@ -897,7 +897,7 @@ impl Transform {
     fn expand_field(
         &self,
         field: q::Field,
-        parent_type: ObjectOrInterface<'_>,
+        parent_type: QueryableType<'_>,
     ) -> Result<Option<a::Field>, Vec<QueryExecutionError>> {
         let q::Field {
             position,
@@ -973,7 +973,7 @@ impl Transform {
         &self,
         set: q::SelectionSet,
         type_set: &a::ObjectTypeSet,
-        ty: ObjectOrInterface<'_>,
+        ty: QueryableType<'_>,
     ) -> Result<a::SelectionSet, Vec<QueryExecutionError>> {
         let q::SelectionSet { span: _, items } = set;
         // check_complexity already checked for cycles in fragment
@@ -1047,7 +1047,7 @@ impl Transform {
         frag_cond: Option<&q::TypeCondition>,
         type_set: &a::ObjectTypeSet,
         selection_set: q::SelectionSet,
-        ty: ObjectOrInterface,
+        ty: QueryableType,
         newset: &mut a::SelectionSet,
     ) -> Result<(), Vec<QueryExecutionError>> {
         let (directives, skip) = self.interpolate_directives(directives)?;

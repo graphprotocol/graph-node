@@ -5,7 +5,7 @@ use anyhow::{Context, Error};
 use crate::{
     cheap_clone::CheapClone,
     data::store::{Id, IdList},
-    data::{graphql::ObjectOrInterface, store::IdType, value::Word},
+    data::{graphql::QueryableType, store::IdType, value::Word},
     data_source::causality_region::CausalityRegion,
     prelude::s,
     util::intern::Atom,
@@ -235,11 +235,12 @@ impl AsEntityTypeName for &s::InterfaceType {
     }
 }
 
-impl AsEntityTypeName for ObjectOrInterface<'_> {
+impl AsEntityTypeName for QueryableType<'_> {
     fn name(&self) -> &str {
         match self {
-            ObjectOrInterface::Object(object) => &object.name,
-            ObjectOrInterface::Interface(interface) => &interface.name,
+            QueryableType::Object(object) => &object.name,
+            QueryableType::Interface(interface) => &interface.name,
+            QueryableType::Union(union) => &union.name,
         }
     }
 }

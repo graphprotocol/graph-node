@@ -6,7 +6,7 @@ use anyhow::Context;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 
-use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt, TypeExt};
+use crate::data::graphql::{ObjectTypeExt, QueryableType, TypeExt};
 use crate::data::store::IdType;
 use crate::schema::{
     ast, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME, SQL_FIELD_NAME, SQL_FIELD_TYPE,
@@ -170,8 +170,8 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
-        &self.schema.types_for_interface
+    pub fn types_for_interface_or_union(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
+        &self.schema.types_for_interface_or_union()
     }
 
     /// Returns `None` if the type implements no interfaces.
@@ -228,7 +228,7 @@ impl ApiSchema {
             })
     }
 
-    pub fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
+    pub fn object_or_interface(&self, name: &str) -> Option<QueryableType<'_>> {
         if name.starts_with("__") {
             INTROSPECTION_SCHEMA.object_or_interface(name)
         } else {
@@ -845,7 +845,7 @@ fn id_type_as_scalar(
             .map_err(|_| APISchemaError::IllegalIdType(obj_type.name.to_owned())),
         s::TypeDefinition::Interface(intf_type) => {
             match schema
-                .types_for_interface
+                .types_for_interface_or_union
                 .get(&intf_type.name)
                 .and_then(|obj_types| obj_types.first())
             {

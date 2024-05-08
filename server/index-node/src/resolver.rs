@@ -10,7 +10,7 @@ use git_testament::{git_testament, CommitKind};
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
-use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
+use graph::data::graphql::{object, IntoValue, QueryableType, ValueMap};
 use graph::data::subgraph::{status, DeploymentFeatures};
 use graph::data::value::Object;
 use graph::futures03::TryFutureExt;
@@ -842,7 +842,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
         _field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         // Resolves the `field.name` top-level field.
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
@@ -871,7 +871,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         prefetched_object: Option<r::Value>,
         field: &a::Field,
         _field_definition: &s::Field,
-        _object_type: ObjectOrInterface<'_>,
+        _object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         // Resolves the `field.name` top-level field.
         match (prefetched_object, field.name.as_str()) {

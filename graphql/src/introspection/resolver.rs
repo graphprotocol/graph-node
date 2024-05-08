@@ -3,7 +3,7 @@ use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graph::data::query::Trace;
 use std::collections::BTreeMap;
 
-use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
+use graph::data::graphql::{object, DocumentExt, QueryableType};
 use graph::prelude::*;
 
 use crate::execution::ast as a;
@@ -135,7 +135,7 @@ fn interface_type_object(
         description: interface_type.description.clone(),
         fields:
             field_objects(schema, type_objects, &interface_type.fields),
-        possibleTypes: schema.types_for_interface()[interface_type.name.as_str()]
+        possibleTypes: schema.types_for_interface_or_union()[interface_type.name.as_str()]
             .iter()
             .map(|object_type| r::Value::String(object_type.name.clone()))
             .collect::<Vec<_>>(),
@@ -223,10 +223,7 @@ fn union_type_object(schema: &Schema, union_type: &s::UnionType) -> r::Value {
             schema.document.get_object_type_definitions()
                 .iter()
                 .filter(|object_type| {
-                    object_type
-                        .implements_interfaces
-                        .iter()
-                        .any(|implemented_name| implemented_name == &union_type.name)
+                    union_type.types.contains(&object_type.name)
                 })
                 .map(|object_type| r::Value::String(object_type.name.clone()))
                 .collect::<Vec<_>>(),
@@ -376,7 +373,7 @@ impl Resolver for IntrospectionResolver {
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
         _field_definition: &s::Field,
-        _object_type: ObjectOrInterface<'_>,
+        _object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         match field.name.as_str() {
             "possibleTypes" => {
@@ -417,7 +414,7 @@ impl Resolver for IntrospectionResolver {
         prefetched_object: Option<r::Value>,
         field: &a::Field,
         _field_definition: &s::Field,
-        _object_type: ObjectOrInterface<'_>,
+        _object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError> {
         let object = match field.name.as_str() {
             "__schema" => self.schema_object(),

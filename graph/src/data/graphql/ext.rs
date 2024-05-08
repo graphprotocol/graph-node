@@ -1,10 +1,10 @@
 use anyhow::Error;
 use inflector::Inflector;
 
-use super::ObjectOrInterface;
+use super::QueryableType;
 use crate::prelude::s::{
     self, Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
-    TypeDefinition, Value,
+    TypeDefinition, UnionType, Value,
 };
 use crate::prelude::{ValueType, ENV_VARS};
 use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME, SQL_FIELD_TYPE};
@@ -44,10 +44,28 @@ impl ObjectTypeExt for InterfaceType {
     }
 }
 
+impl ObjectTypeExt for UnionType {
+    fn field(&self, _name: &str) -> Option<&Field> {
+        None
+    }
+
+    fn is_meta(&self) -> bool {
+        false
+    }
+
+    fn is_sql(&self) -> bool {
+        self.name == SQL_FIELD_TYPE
+    }
+}
+
 pub trait DocumentExt {
     fn get_object_type_definitions(&self) -> Vec<&ObjectType>;
 
     fn get_interface_type_definitions(&self) -> Vec<&InterfaceType>;
+
+    fn get_union_definitions(&self) -> Vec<&UnionType>;
+
+    fn get_union_definition(&self, name: &str) -> Option<&UnionType>;
 
     fn get_object_type_definition(&self, name: &str) -> Option<&ObjectType>;
 
@@ -63,7 +81,7 @@ pub trait DocumentExt {
 
     fn get_root_subscription_type(&self) -> Option<&ObjectType>;
 
-    fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>>;
+    fn object_or_interface(&self, name: &str) -> Option<QueryableType<'_>>;
 
     fn get_named_type(&self, name: &str) -> Option<&TypeDefinition>;
 
@@ -129,6 +147,22 @@ impl DocumentExt for Document {
             .collect()
     }
 
+    fn get_union_definitions(&self) -> Vec<&UnionType> {
+        self.definitions
+            .iter()
+            .filter_map(|d| match d {
+                Definition::TypeDefinition(TypeDefinition::Union(t)) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn get_union_definition(&self, name: &str) -> Option<&UnionType> {
+        self.get_union_definitions()
+            .into_iter()
+            .find(|object_type| object_type.name.eq(name))
+    }
+
     fn find_interface(&self, name: &str) -> Option<&InterfaceType> {
         self.definitions.iter().find_map(|d| match d {
             Definition::TypeDefinition(TypeDefinition::Interface(t)) if t.name == name => Some(t),
@@ -183,10 +217,11 @@ impl DocumentExt for Document {
             .next()
     }
 
-    fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
+    fn object_or_interface(&self, name: &str) -> Option<QueryableType<'_>> {
         match self.get_named_type(name) {
             Some(TypeDefinition::Object(t)) => Some(t.into()),
             Some(TypeDefinition::Interface(t)) => Some(t.into()),
+            Some(TypeDefinition::Union(u)) => Some(u.into()),
             _ => None,
         }
     }

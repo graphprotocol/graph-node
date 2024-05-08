@@ -5,7 +5,7 @@ use graph::data::query::{CacheStatus, Trace};
 use graph::prelude::{async_trait, s, Error, QueryExecutionError};
 use graph::schema::ApiSchema;
 use graph::{
-    data::graphql::ObjectOrInterface,
+    data::graphql::QueryableType,
     prelude::{r, QueryResult},
 };
 
@@ -33,7 +33,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
         field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError>;
 
     /// Resolves an object, `prefetched_object` is `Some` if the parent already calculated the value.
@@ -42,7 +42,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         prefetched_object: Option<r::Value>,
         field: &a::Field,
         field_definition: &s::Field,
-        object_type: ObjectOrInterface<'_>,
+        object_type: QueryableType<'_>,
     ) -> Result<r::Value, QueryExecutionError>;
 
     /// Resolves an enum value for a given enum type.

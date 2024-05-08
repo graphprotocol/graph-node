@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::data::graphql::ext::DirectiveFinder;
-use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectOrInterface};
+use crate::data::graphql::{DirectiveExt, DocumentExt, QueryableType};
 use crate::derive::CheapClone;
 use crate::prelude::anyhow::anyhow;
 use crate::prelude::{s, Error, ValueType};
@@ -118,9 +118,9 @@ impl From<Arc<s::ObjectType>> for ObjectType {
     }
 }
 
-impl<'a> From<&'a ObjectType> for ObjectOrInterface<'a> {
+impl<'a> From<&'a ObjectType> for QueryableType<'a> {
     fn from(cond: &'a ObjectType) -> Self {
-        ObjectOrInterface::Object(cond.0.as_ref())
+        QueryableType::Object(cond.0.as_ref())
     }
 }
 
@@ -184,7 +184,7 @@ pub fn get_interface_type_mut<'a>(
 
 /// Returns the type of a field of an object type.
 pub fn get_field<'a>(
-    object_type: impl Into<ObjectOrInterface<'a>>,
+    object_type: impl Into<QueryableType<'a>>,
     name: &str,
 ) -> Option<&'a s::Field> {
     lazy_static! {
@@ -256,7 +256,7 @@ pub fn get_type_name(t: &s::TypeDefinition) -> &str {
 
 /// Returns the argument definitions for a field of an object type.
 pub fn get_argument_definitions<'a>(
-    object_type: impl Into<ObjectOrInterface<'a>>,
+    object_type: impl Into<QueryableType<'a>>,
     name: &str,
 ) -> Option<&'a Vec<s::InputValue>> {
     lazy_static! {
@@ -389,7 +389,7 @@ pub fn get_derived_from_directive(field_definition: &s::Field) -> Option<&s::Dir
 }
 
 pub fn get_derived_from_field<'a>(
-    object_type: impl Into<ObjectOrInterface<'a>>,
+    object_type: impl Into<QueryableType<'a>>,
     field_definition: &'a s::Field,
 ) -> Option<&'a s::Field> {
     get_derived_from_directive(field_definition)
