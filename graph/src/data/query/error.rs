@@ -75,6 +75,7 @@ pub enum QueryExecutionError {
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
     DeploymentNotFound(String),
+    SqlError(String),
     IdMissing,
     IdNotString,
     ConstraintViolation(String),
@@ -139,6 +140,7 @@ impl QueryExecutionError {
             | IdMissing
             | IdNotString
             | ConstraintViolation(_) => false,
+            SqlError(_) => false,
         }
     }
 }
@@ -289,6 +291,7 @@ impl fmt::Display for QueryExecutionError {
             IdMissing => write!(f, "entity is missing an `id` attribute"),
             IdNotString => write!(f, "entity `id` attribute is not a string"),
             ConstraintViolation(msg) => write!(f, "internal constraint violated: {}", msg),
+            SqlError(e) => write!(f, "sql error: {}", e),
         }
     }
 }
