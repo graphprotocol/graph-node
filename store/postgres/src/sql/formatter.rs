@@ -1,19 +1,29 @@
 use sqlparser::ast::{ObjectName, Statement, TableFactor, VisitMut, VisitorMut};
 use std::ops::ControlFlow;
 
+use super::Schema;
+
 pub struct Formatter<'a> {
     prelude: &'a str,
+    schema: &'a Schema,
 }
 
 impl<'a> Formatter<'a> {
-    pub fn new(prelude: &'a str) -> Self {
-        Self { prelude }
+    pub fn new(prelude: &'a str, schema: &'a Schema) -> Self {
+        Self { prelude, schema }
     }
 
     fn prepend_prefix_to_object_name_mut(&self, name: &mut ObjectName) {
-        let table_identifier: &mut Vec<_> = &mut name.0;
+        let table_identifier = &mut name.0;
         // remove all but the last identifier
         table_identifier.drain(0..table_identifier.len() - 1);
+
+        // Ensure schema tables has quotation to match up with prelude generated cte.
+        if let Some(table_name) = table_identifier.last_mut() {
+            if self.schema.contains_key(&table_name.value) {
+                table_name.quote_style = Some('"');
+            }
+        }
     }
 
     pub fn format(&mut self, statement: &mut Statement) -> String {
@@ -42,9 +52,11 @@ impl VisitorMut for Formatter<'_> {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::sql::constants::SQL_DIALECT;
-    const CTE_PREFIX: &str = "WITH swap AS (
+    const CTE_PREFIX: &str = "WITH \"swap\" AS (
             SELECT 
             id,
             amount_in,
@@ -57,7 +69,17 @@ mod test {
 
     #[test]
     fn format_sql() {
-        let mut formatter = Formatter::new(CTE_PREFIX);
+        let mut schema = Schema::new();
+        schema.insert(
+            "swap".to_string(),
+            HashSet::from_iter(
+                ["id", "amount_in", "amount_out", "token_in", "token_out"]
+                    .into_iter()
+                    .map(|s| s.to_string()),
+            ),
+        );
+
+        let mut formatter = Formatter::new(CTE_PREFIX, &schema);
 
         let sql = "SELECT token_in, SUM(amount_in) AS amount FROM unknown.swap GROUP BY token_in";
 
@@ -71,7 +93,8 @@ mod test {
             result,
             format!(
                 "{} SELECT to_jsonb(sub.*) AS data FROM ( {} ) AS sub",
-                CTE_PREFIX, "SELECT token_in, SUM(amount_in) AS amount FROM swap GROUP BY token_in"
+                CTE_PREFIX,
+                "SELECT token_in, SUM(amount_in) AS amount FROM \"swap\" GROUP BY token_in"
             )
         );
     }
