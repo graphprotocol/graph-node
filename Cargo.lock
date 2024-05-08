@@ -1240,9 +1240,9 @@ dependencies = [
 
 [[package]]
 name = "equivalent"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88bffebc5d80432c9b140ee17875ff173a8ab62faad5b257da912bd2f6c1c0a1"
+checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "errno"
@@ -3474,11 +3474,12 @@ dependencies = [
 
 [[package]]
 name = "priority-queue"
-version = "2.0.0"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "579f7fe8bba3444da43d150f61f9a2845d56aeda8f8426be9a6aa701193de29a"
+checksum = "509354d8a769e8d0b567d6821b84495c60213162761a732d68ce87c964bd347f"
 dependencies = [
  "autocfg",
+ "equivalent",
  "indexmap 2.1.0",
 ]
 
