@@ -12,7 +12,7 @@ use graph::derive::CheapClone;
 use graph::prelude::*;
 use graph::schema::{
     ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
-    META_FIELD_NAME, META_FIELD_TYPE,
+    META_FIELD_NAME, META_FIELD_TYPE, SQL_CSV_FIELD_TYPE, SQL_JSON_FIELD_TYPE,
 };
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
@@ -256,7 +256,6 @@ impl StoreResolver {
         let parent_hash = parent_hash
             .map(|hash| r::Value::String(format!("{}", hash)))
             .unwrap_or(r::Value::Null);
-
         let mut map = BTreeMap::new();
         let block = object! {
             hash: hash,
@@ -280,6 +279,90 @@ impl StoreResolver {
             r::Value::String(META_FIELD_TYPE.to_string()),
         );
         return Ok(r::Value::object(map));
+    }
+
+    fn handle_sql(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+
+        let input = field
+            .argument_value("input")
+            .ok_or_else(|| QueryExecutionError::EmptyQuery)?;
+
+        let input = match input {
+            graph::data::value::Value::Object(s) => s,
+            _ => {
+                return Err(QueryExecutionError::SqlError(
+                    "Input is not an object".into(),
+                ))
+            }
+        };
+
+        enum Format {
+            Json,
+            Csv,
+        }
+
+        let format = match input.get("format") {
+            Some(graph::data::value::Value::Enum(s)) => match s.as_str() {
+                "JSON" => Format::Json,
+                "CSV" => Format::Csv,
+                _ => {
+                    return Err(QueryExecutionError::SqlError(
+                        "Format must be json or csv".into(),
+                    ))
+                }
+            },
+            _ => Format::Json,
+        };
+
+        let query = match input.get("query") {
+            Some(graph::data::value::Value::String(s)) => s,
+            _ => {
+                return Err(QueryExecutionError::SqlError(
+                    "Query must be a string".into(),
+                ))
+            }
+        };
+
+        let result = self.store.execute_sql(&query)?;
+        let result = result.into_iter().map(|q| q.0).collect::<Vec<_>>();
+        let row_count = result.len();
+        // columns should be available even if there's no data
+        // diesel doesn't support "dynamic query" so it doesn't return column names
+        // we are using this hacky way to get column names
+        // from the first row of the result
+        let columns = match result.first() {
+            Some(r::Value::Object(obj)) => obj
+                .iter()
+                .map(|(key, _)| r::Value::String(key.into()))
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        };
+        let sql_result = match format {
+            Format::Json => object! {
+                __typename: SQL_JSON_FIELD_TYPE,
+                columns: r::Value::List(columns),
+                rows: result,
+                rowCount: r::Value::Int(row_count as i64),
+            },
+            Format::Csv => object! {
+                __typename: SQL_CSV_FIELD_TYPE,
+                columns: r::Value::List(columns),
+                result: r::Value::String(result.into_iter().filter_map(|v| {
+                    match v {
+                        r::Value::Object(obj) => Some(
+                            obj
+                                .iter()
+                                .map(|(_, v)| v.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",")),
+                        _ => None,
+                    }
+                }).collect::<Vec<_>>().join("\n")),
+                rowCount: r::Value::Int(row_count as i64),
+            },
+        };
+
+        Ok(sql_result)
     }
 }
 
@@ -329,6 +412,11 @@ impl Resolver for StoreResolver {
         if object_type.is_meta() {
             return self.lookup_meta(field).await;
         }
+
+        if object_type.is_sql() {
+            return self.handle_sql(field);
+        }
+
         if let Some(r::Value::List(children)) = prefetched_object {
             if children.len() > 1 {
                 let derived_from_field =

@@ -7,12 +7,13 @@ use crate::prelude::s::{
     TypeDefinition, Value,
 };
 use crate::prelude::{ValueType, ENV_VARS};
-use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
+use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME, SQL_FIELD_TYPE};
 use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &str) -> Option<&Field>;
     fn is_meta(&self) -> bool;
+    fn is_sql(&self) -> bool;
 }
 
 impl ObjectTypeExt for ObjectType {
@@ -23,6 +24,10 @@ impl ObjectTypeExt for ObjectType {
     fn is_meta(&self) -> bool {
         self.name == META_FIELD_TYPE
     }
+
+    fn is_sql(&self) -> bool {
+        self.name == SQL_FIELD_TYPE
+    }
 }
 
 impl ObjectTypeExt for InterfaceType {
@@ -31,6 +36,10 @@ impl ObjectTypeExt for InterfaceType {
     }
 
     fn is_meta(&self) -> bool {
+        false
+    }
+
+    fn is_sql(&self) -> bool {
         false
     }
 }
