@@ -25,7 +25,7 @@ rand = "0.8.4"
 serde = { workspace = true }
 uuid = { version = "1.8.0", features = ["v4"] }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
-anyhow = "1.0.75"
+anyhow = "1.0.83"
 git-testament = "0.2.5"
 itertools = "0.12.1"
 hex = "0.4.3"
