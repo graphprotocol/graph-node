@@ -25,4 +25,7 @@ tag_and_push "$SHORT_SHA"
 # Builds for tags vN.N.N become the 'latest'
 [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && tag_and_push latest
 
+# If the build is from the master branch, tag it as 'nightly'
+[ "$BRANCH_NAME" = "master" ] && tag_and_push nightly
+
 exit 0
