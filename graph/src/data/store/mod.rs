@@ -1085,6 +1085,9 @@ pub struct QueryObject {
     pub entity: r::Object,
 }
 
+/// An object that is returned from a SQL query. It wraps an `r::Value`
+pub struct SqlQueryObject(pub r::Value);
+
 impl CacheWeight for QueryObject {
     fn indirect_weight(&self) -> usize {
         self.parent.indirect_weight() + self.entity.indirect_weight()

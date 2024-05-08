@@ -14,7 +14,7 @@ use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
 use crate::data::store::ethereum::call;
-use crate::data::store::QueryObject;
+use crate::data::store::{QueryObject, SqlQueryObject};
 use crate::data::subgraph::{status, DeploymentFeatures};
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 use crate::prelude::{DeploymentState, NodeId, QueryExecutionError, SubgraphName};
@@ -574,6 +574,8 @@ pub trait QueryStore: Send + Sync {
         &self,
         query: EntityQuery,
     ) -> Result<(Vec<QueryObject>, Trace), QueryExecutionError>;
+
+    fn execute_sql(&self, sql: &str) -> Result<Vec<SqlQueryObject>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
