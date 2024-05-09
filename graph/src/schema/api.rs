@@ -1343,17 +1343,16 @@ fn sql_field() -> s::Field {
             position: Pos::default(),
             description: Some("Access to SQL queries".to_string()),
             name: SQL_FIELD_NAME.to_string(),
-            arguments: vec![
-                InputValue {
-                    position: Pos::default(),
-                    description: None,
-                    name: String::from("input"),
-                    value_type: Type::NonNullType(Box::new(Type::NamedType(SQL_INPUT_TYPE.to_string()))),
-                    default_value: None,
-                    directives: vec![],
-
-                }
-            ],
+            arguments: vec![InputValue {
+                position: Pos::default(),
+                description: None,
+                name: String::from("input"),
+                value_type: Type::NonNullType(Box::new(Type::NamedType(
+                    SQL_INPUT_TYPE.to_string()
+                ))),
+                default_value: None,
+                directives: vec![],
+            }],
             field_type: Type::NamedType(SQL_FIELD_TYPE.to_string()),
             directives: vec![],
         };
