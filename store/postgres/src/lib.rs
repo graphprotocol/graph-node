@@ -26,7 +26,6 @@ mod dynds;
 mod fork;
 mod functions;
 mod jobs;
-mod jsonb;
 mod notification_listener;
 mod primary;
 pub mod query_store;

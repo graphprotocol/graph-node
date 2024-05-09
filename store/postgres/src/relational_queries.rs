@@ -109,9 +109,6 @@ macro_rules! constraint_violation {
 /// trait on a given column means "send these values to the database in a form
 /// that can later be used for comparisons with that column"
 trait ForeignKeyClauses {
-    /// The type of the column
-    fn column_type(&self) -> &ColumnType;
-
     /// The name of the column
     fn name(&self) -> &str;
 
@@ -167,10 +164,6 @@ impl PushBindParam for IdList {
 }
 
 impl ForeignKeyClauses for Column {
-    fn column_type(&self) -> &ColumnType {
-        &self.column_type
-    }
-
     fn name(&self) -> &str {
         self.name.as_str()
     }

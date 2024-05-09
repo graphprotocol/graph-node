@@ -176,24 +176,6 @@ impl TestCase {
     }
 }
 
-#[derive(Debug)]
-struct Output {
-    stdout: Option<String>,
-    stderr: Option<String>,
-}
-
-impl std::fmt::Display for Output {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(ref stdout) = self.stdout {
-            write!(f, "{}", stdout)?;
-        }
-        if let Some(ref stderr) = self.stderr {
-            write!(f, "{}", stderr)?
-        }
-        Ok(())
-    }
-}
-
 /// Run the given `query` against the `subgraph` and check that the result
 /// has no errors and that the `data` portion of the response matches the
 /// `exp` value.
