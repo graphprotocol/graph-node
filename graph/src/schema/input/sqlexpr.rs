@@ -132,8 +132,17 @@ impl<'a> VisitExpr<'a> {
             Cast {
                 expr,
                 data_type: _,
+                kind,
                 format: _,
-            } => self.visit_expr(expr),
+            } => match kind {
+                // Cast: `CAST(<expr> as <datatype>)`
+                // DoubleColon: `<expr>::<datatype>`
+                p::CastKind::Cast | p::CastKind::DoubleColon => self.visit_expr(expr),
+                // These two are not Postgres syntax
+                p::CastKind::TryCast | p::CastKind::SafeCast => {
+                    self.nope(&format!("non-standard cast '{:?}'", kind))
+                }
+            },
             Nested(expr) | IsFalse(expr) | IsNotFalse(expr) | IsTrue(expr) | IsNotTrue(expr)
             | IsNull(expr) | IsNotNull(expr) => self.visit_expr(expr),
             IsDistinctFrom(expr1, expr2) | IsNotDistinctFrom(expr1, expr2) => {
@@ -157,8 +166,6 @@ impl<'a> VisitExpr<'a> {
             AnyOp { .. } => self.nope("AnyOp"),
             AllOp { .. } => self.nope("AllOp"),
             Convert { .. } => self.nope("Convert"),
-            TryCast { .. } => self.nope("TryCast"),
-            SafeCast { .. } => self.nope("SafeCast"),
             AtTimeZone { .. } => self.nope("AtTimeZone"),
             Extract { .. } => self.nope("Extract"),
             Ceil { .. } => self.nope("Ceil"),
@@ -171,12 +178,8 @@ impl<'a> VisitExpr<'a> {
             IntroducedString { .. } => self.nope("IntroducedString"),
             TypedString { .. } => self.nope("TypedString"),
             MapAccess { .. } => self.nope("MapAccess"),
-            AggregateExpressionWithFilter { .. } => self.nope("AggregateExpressionWithFilter"),
             Exists { .. } => self.nope("Exists"),
             Subquery(_) => self.nope("Subquery"),
-            ArraySubquery(_) => self.nope("ArraySubquery"),
-            ListAgg(_) => self.nope("ListAgg"),
-            ArrayAgg(_) => self.nope("ArrayAgg"),
             GroupingSets(_) => self.nope("GroupingSets"),
             Cube(_) => self.nope("Cube"),
             Rollup(_) => self.nope("Rollup"),
@@ -191,6 +194,7 @@ impl<'a> VisitExpr<'a> {
             QualifiedWildcard(_) => self.nope("QualifiedWildcard"),
             Dictionary(_) => self.nope("Dictionary"),
             OuterJoin(_) => self.nope("OuterJoin"),
+            Prior(_) => self.nope("Prior"),
         }
     }
 
@@ -201,12 +205,14 @@ impl<'a> VisitExpr<'a> {
             filter,
             null_treatment,
             over,
-            distinct: _,
-            special: _,
-            order_by,
+            within_group,
         } = func;
 
-        if filter.is_some() || null_treatment.is_some() || over.is_some() || !order_by.is_empty() {
+        if filter.is_some()
+            || null_treatment.is_some()
+            || over.is_some()
+            || !within_group.is_empty()
+        {
             return self.illegal_function(format!("call to {name} uses an illegal feature"));
         }
 
@@ -217,22 +223,45 @@ impl<'a> VisitExpr<'a> {
             ));
         }
         self.visitor.visit_func_name(&mut idents[0])?;
-        for arg in pargs {
-            use p::FunctionArg::*;
-            match arg {
-                Named { .. } => {
-                    return self.illegal_function(format!("call to {name} uses a named argument"));
+        match pargs {
+            p::FunctionArguments::None => { /* nothing to do */ }
+            p::FunctionArguments::Subquery(_) => {
+                return self.illegal_function(format!("call to {name} uses a subquery argument"))
+            }
+            p::FunctionArguments::List(pargs) => {
+                let p::FunctionArgumentList {
+                    duplicate_treatment,
+                    args,
+                    clauses,
+                } = pargs;
+                if duplicate_treatment.is_some() {
+                    return self
+                        .illegal_function(format!("call to {name} uses a duplicate treatment"));
                 }
-                Unnamed(arg) => match arg {
-                    p::FunctionArgExpr::Expr(expr) => {
-                        self.visit_expr(expr)?;
-                    }
-                    p::FunctionArgExpr::QualifiedWildcard(_) | p::FunctionArgExpr::Wildcard => {
-                        return self
-                            .illegal_function(format!("call to {name} uses a wildcard argument"));
-                    }
-                },
-            };
+                if !clauses.is_empty() {
+                    return self.illegal_function(format!("call to {name} uses a clause"));
+                }
+                for arg in args {
+                    use p::FunctionArg::*;
+                    match arg {
+                        Named { .. } => {
+                            return self
+                                .illegal_function(format!("call to {name} uses a named argument"));
+                        }
+                        Unnamed(arg) => match arg {
+                            p::FunctionArgExpr::Expr(expr) => {
+                                self.visit_expr(expr)?;
+                            }
+                            p::FunctionArgExpr::QualifiedWildcard(_)
+                            | p::FunctionArgExpr::Wildcard => {
+                                return self.illegal_function(format!(
+                                    "call to {name} uses a wildcard argument"
+                                ));
+                            }
+                        },
+                    };
+                }
+            }
         }
         Ok(())
     }
@@ -263,9 +292,19 @@ impl<'a> VisitExpr<'a> {
             | PGNotLikeMatch
             | PGNotILikeMatch
             | PGStartsWith
-            | PGCustomBinaryOperator(_) => {
-                self.not_supported(format!("binary operator {op} is not supported"))
-            }
+            | PGCustomBinaryOperator(_)
+            | Arrow
+            | LongArrow
+            | HashArrow
+            | HashLongArrow
+            | AtAt
+            | AtArrow
+            | ArrowAt
+            | HashMinus
+            | AtQuestion
+            | Question
+            | QuestionAnd
+            | QuestionPipe => self.not_supported(format!("binary operator {op} is not supported")),
         }
     }
 
