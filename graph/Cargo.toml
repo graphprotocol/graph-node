@@ -57,7 +57,7 @@ strum_macros = "0.26.2"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
-petgraph = "0.6.4"
+petgraph = "0.6.5"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.37.0", features = [
     "time",
