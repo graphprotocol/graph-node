@@ -109,7 +109,8 @@ impl EthereumAdapter {
 
         // Check if the provider supports `getBlockReceipts` method.
         let supports_block_receipts =
-            Self::check_block_receipt_support(web3.clone(), &provider, &logger).await;
+            Self::check_block_receipt_support(web3.clone(), &provider, supports_eip_1898, &logger)
+                .await;
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
@@ -134,9 +135,15 @@ impl EthereumAdapter {
     async fn check_block_receipt_support(
         web3: Arc<Web3<Transport>>,
         provider: &str,
+        supports_eip_1898: bool,
         logger: &Logger,
     ) -> bool {
         info!(logger, "Checking if provider supports getBlockReceipts"; "provider" => provider);
+
+        if !supports_eip_1898 {
+            warn!(logger, "EIP-1898 not supported"; "provider" => provider);
+            return false;
+        }
 
         // Fetch block receipts from the provider for the latest block.
         let block_receipts_result = web3
@@ -145,20 +152,19 @@ impl EthereumAdapter {
             .await;
 
         // Determine if the provider supports block receipts based on the fetched result.
-        let (supports_block_receipts, error_message) = block_receipts_result
-            .map(|receipts_option| {
-                // Ensure the result contains non-empty receipts
-                (
-                    receipts_option.map_or(false, |receipts| !receipts.is_empty()),
-                    None,
-                )
-            })
-            .unwrap_or_else(|err| {
-                // Store the error message and default to false
-                (false, Some(err.to_string()))
-            });
+        let supports_block_receipts = match block_receipts_result {
+            Ok(Some(receipts)) if !receipts.is_empty() => true,
+            Ok(_) => {
+                warn!(logger, "Block receipts are empty"; "provider" => provider);
+                false
+            }
+            Err(err) => {
+                warn!(logger, "Failed to fetch block receipts"; "provider" => provider, "error" => err.to_string());
+                false
+            }
+        };
 
-        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => provider, "supports_block_receipts" => supports_block_receipts, "error" => error_message.unwrap_or_else(|| "none".to_string()));
+        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => provider, "supports_block_receipts" => supports_block_receipts);
 
         supports_block_receipts
     }
