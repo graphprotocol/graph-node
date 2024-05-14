@@ -1658,6 +1658,16 @@ impl WritableStoreTrait for WritableStore {
             self.writer.start_batching();
         }
 
+        if let Some(block_ptr) = self.block_ptr.lock().unwrap().as_ref() {
+            if block_ptr_to.number <= block_ptr.number {
+                return Err(constraint_violation!(
+                    "transact_block_operations called for block {} but its head is already at {}",
+                    block_ptr_to,
+                    block_ptr
+                ));
+            }
+        }
+
         let batch = Batch::new(
             block_ptr_to.clone(),
             block_time,
