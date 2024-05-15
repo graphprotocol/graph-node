@@ -26,7 +26,7 @@ use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
-use graph::components::store::write::RowGroup;
+use graph::components::store::write::{RowGroup, WriteChunk};
 use graph::components::subgraph::PoICausalityRegion;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
@@ -591,6 +591,26 @@ impl Layout {
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
+        fn chunk_details(chunk: &WriteChunk) -> (BlockNumber, String) {
+            let count = chunk.len();
+            let first = chunk.iter().map(|row| row.block).min().unwrap_or(0);
+            let last = chunk.iter().map(|row| row.block).max().unwrap_or(0);
+            let ids = if chunk.len() < 20 {
+                format!(
+                    " with ids [{}]",
+                    chunk.iter().map(|row| row.to_string()).join(", ")
+                )
+            } else {
+                "".to_string()
+            };
+            let details = if first == last {
+                format!("insert {count} rows{ids}")
+            } else {
+                format!("insert {count} rows at blocks [{first}, {last}]{ids}")
+            };
+            (last, details)
+        }
+
         let table = self.table_for_entity(&group.entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
 
@@ -600,7 +620,12 @@ impl Layout {
         for chunk in group.write_chunks(chunk_size) {
             // Empty chunks would lead to invalid SQL
             if !chunk.is_empty() {
-                InsertQuery::new(table, &chunk)?.execute(conn)?;
+                InsertQuery::new(table, &chunk)?
+                    .execute(conn)
+                    .map_err(|e| {
+                        let (block, msg) = chunk_details(&chunk);
+                        StoreError::write_failure(e, table.object.as_str(), block, msg)
+                    })?;
             }
         }
         Ok(())
@@ -782,6 +807,19 @@ impl Layout {
         group: &RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
+        fn chunk_details(chunk: &IdList) -> String {
+            if chunk.len() < 20 {
+                let ids = chunk
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("clamp ids [{ids}]")
+            } else {
+                format!("clamp {} ids", chunk.len())
+            }
+        }
+
         if !group.has_clamps() {
             // Nothing to do
             return Ok(0);
@@ -805,7 +843,16 @@ impl Layout {
                     group.entity_type.id_type()?,
                     chunk.into_iter().map(|id| (*id).to_owned()),
                 )?;
-                count += ClampRangeQuery::new(table, &chunk, block)?.execute(conn)?
+                count += ClampRangeQuery::new(table, &chunk, block)?
+                    .execute(conn)
+                    .map_err(|e| {
+                        StoreError::write_failure(
+                            e,
+                            group.entity_type.as_str(),
+                            block,
+                            chunk_details(&chunk),
+                        )
+                    })?
             }
         }
         Ok(count)

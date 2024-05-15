@@ -69,6 +69,16 @@ pub struct EntityWrite<'a> {
     pub end: Option<BlockNumber>,
 }
 
+impl std::fmt::Display for EntityWrite<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let range = match self.end {
+            Some(end) => format!("[{}, {}]", self.block, end - 1),
+            None => format!("[{}, ∞)", self.block),
+        };
+        write!(f, "{}@{}", self.id, range)
+    }
+}
+
 impl<'a> TryFrom<&'a EntityModification> for EntityWrite<'a> {
     type Error = ();
 
@@ -849,6 +859,10 @@ pub struct WriteChunk<'a> {
 impl<'a> WriteChunk<'a> {
     pub fn is_empty(&'a self) -> bool {
         self.iter().next().is_none()
+    }
+
+    pub fn len(&self) -> usize {
+        (self.group.row_count() - self.position).min(self.chunk_size)
     }
 
     pub fn iter(&self) -> WriteChunkIter<'a> {

@@ -72,6 +72,8 @@ pub enum StoreError {
     PruneFailure(String),
     #[error("unsupported filter `{0}` for value `{1}`")]
     UnsupportedFilter(String, String),
+    #[error("writing {0} entities at block {1} failed: {2} Query: {3}")]
+    WriteFailure(String, BlockNumber, String, String),
 }
 
 // Convenience to report a constraint violation
@@ -128,25 +130,49 @@ impl Clone for StoreError {
             Self::UnsupportedFilter(arg0, arg1) => {
                 Self::UnsupportedFilter(arg0.clone(), arg1.clone())
             }
+            Self::WriteFailure(arg0, arg1, arg2, arg3) => {
+                Self::WriteFailure(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
+            }
+        }
+    }
+}
+
+impl StoreError {
+    fn database_unavailable(e: &DieselError) -> Option<Self> {
+        // When the error is caused by a closed connection, treat the error
+        // as 'database unavailable'. When this happens during indexing, the
+        // indexing machinery will retry in that case rather than fail the
+        // subgraph
+        if let DieselError::DatabaseError(_, info) = e {
+            if info
+                .message()
+                .contains("server closed the connection unexpectedly")
+            {
+                return Some(Self::DatabaseUnavailable);
+            }
+        }
+        None
+    }
+
+    pub fn write_failure(
+        error: DieselError,
+        entity: &str,
+        block: BlockNumber,
+        query: String,
+    ) -> Self {
+        match Self::database_unavailable(&error) {
+            Some(e) => return e,
+            None => StoreError::WriteFailure(entity.to_string(), block, error.to_string(), query),
         }
     }
 }
 
 impl From<DieselError> for StoreError {
     fn from(e: DieselError) -> Self {
-        // When the error is caused by a closed connection, treat the error
-        // as 'database unavailable'. When this happens during indexing, the
-        // indexing machinery will retry in that case rather than fail the
-        // subgraph
-        if let DieselError::DatabaseError(_, info) = &e {
-            if info
-                .message()
-                .contains("server closed the connection unexpectedly")
-            {
-                return StoreError::DatabaseUnavailable;
-            }
+        match Self::database_unavailable(&e) {
+            Some(e) => return e,
+            None => StoreError::Unknown(e.into()),
         }
-        StoreError::Unknown(e.into())
     }
 }
 

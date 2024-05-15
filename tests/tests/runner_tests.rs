@@ -601,10 +601,10 @@ async fn end_block() -> anyhow::Result<()> {
         // Verify that after the reorg, the last Block entity still reflects block number 8, but with a different hash.
         let query_res = ctx
             .query(
-                r#"{ 
-                blocks(first: 1, orderBy: number, orderDirection: desc) { 
-                    number 
-                    hash 
+                r#"{
+                blocks(first: 1, orderBy: number, orderDirection: desc) {
+                    number
+                    hash
                 }
             }"#,
             )
@@ -786,9 +786,11 @@ async fn file_data_sources() {
             .err()
             .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
 
-        let message =
-            "store error: conflicting key value violates exclusion constraint \"ipfs_file_id_block_range_excl\""
-                .to_string();
+        let message = "writing IpfsFile entities at block 7 failed: \
+            conflicting key value violates exclusion constraint \"ipfs_file_id_block_range_excl\" \
+            Query: insert 1 rows \
+            with ids [QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq@[7, ∞)]"
+            .to_string();
         assert_eq!(err.to_string(), message);
     }
 
@@ -813,9 +815,11 @@ async fn file_data_sources() {
             .err()
             .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
 
-        let message =
-            "store error: conflicting key value violates exclusion constraint \"ipfs_file_1_id_block_range_excl\""
-                .to_string();
+        let message = "writing IpfsFile1 entities at block 7 failed: \
+            conflicting key value violates exclusion constraint \"ipfs_file_1_id_block_range_excl\" \
+            Query: insert 1 rows \
+            with ids [QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq@[7, ∞)]"
+            .to_string();
         assert_eq!(err.to_string(), message);
     }
 
