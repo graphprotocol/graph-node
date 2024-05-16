@@ -262,6 +262,10 @@ impl SubgraphStore {
     pub fn notification_sender(&self) -> Arc<NotificationSender> {
         self.sender.clone()
     }
+
+    pub fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
+        self.inner.for_site(site)
+    }
 }
 
 impl std::ops::Deref for SubgraphStore {
