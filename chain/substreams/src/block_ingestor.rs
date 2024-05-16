@@ -157,7 +157,7 @@ impl BlockIngestor for SubstreamsBlockIngestor {
                 None,
                 latest_cursor.clone(),
                 mapper.cheap_clone(),
-                package.modules.clone(),
+                package.modules.clone().unwrap_or_default(),
                 "map_blocks".to_string(),
                 vec![-1],
                 vec![],
