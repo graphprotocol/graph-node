@@ -107,10 +107,15 @@ impl EthereumAdapter {
     ) -> Self {
         let web3 = Arc::new(Web3::new(transport));
 
+        info!(logger, "Checking if provider supports getBlockReceipts"; "provider" => &provider);
+
         // Check if the provider supports `getBlockReceipts` method.
         let supports_block_receipts =
             Self::check_block_receipt_support(web3.clone(), &provider, supports_eip_1898, &logger)
-                .await;
+                .await
+                .is_ok();
+
+        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => &provider, "supports_block_receipts" => supports_block_receipts);
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
@@ -132,17 +137,15 @@ impl EthereumAdapter {
         }
     }
 
-    async fn check_block_receipt_support(
-        web3: Arc<Web3<Transport>>,
+    pub async fn check_block_receipt_support(
+        web3: Arc<Web3<impl web3::Transport>>,
         provider: &str,
         supports_eip_1898: bool,
         logger: &Logger,
-    ) -> bool {
-        info!(logger, "Checking if provider supports getBlockReceipts"; "provider" => provider);
-
+    ) -> Result<(), Error> {
         if !supports_eip_1898 {
             warn!(logger, "EIP-1898 not supported"; "provider" => provider);
-            return false;
+            return Err(anyhow!("EIP-1898 not supported"));
         }
 
         // Fetch block receipts from the provider for the latest block.
@@ -152,21 +155,17 @@ impl EthereumAdapter {
             .await;
 
         // Determine if the provider supports block receipts based on the fetched result.
-        let supports_block_receipts = match block_receipts_result {
-            Ok(Some(receipts)) if !receipts.is_empty() => true,
+        match block_receipts_result {
+            Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
             Ok(_) => {
                 warn!(logger, "Block receipts are empty"; "provider" => provider);
-                false
+                Err(anyhow!("Block receipts are empty"))
             }
             Err(err) => {
                 warn!(logger, "Failed to fetch block receipts"; "provider" => provider, "error" => err.to_string());
-                false
+                Err(anyhow!("Failed to fetch block receipts: {}", err))
             }
-        };
-
-        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => provider, "supports_block_receipts" => supports_block_receipts);
-
-        supports_block_receipts
+        }
     }
 
     async fn traces(
@@ -2515,12 +2514,18 @@ async fn get_transaction_receipts_for_transaction_hashes(
 mod tests {
 
     use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
+    use crate::EthereumAdapter;
 
     use super::{parse_block_triggers, EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls};
     use graph::blockchain::BlockPtr;
     use graph::prelude::ethabi::ethereum_types::U64;
+    use graph::prelude::tokio::{self};
+    use graph::prelude::web3::transports::test::TestTransport;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
+    use graph::prelude::web3::Web3;
     use graph::prelude::EthereumCall;
+    use graph::slog::{o, Discard, Logger};
+    use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
     use std::iter::FromIterator;
     use std::sync::Arc;
@@ -2561,6 +2566,99 @@ mod tests {
             ),
             "every block should generate a trigger even when address don't match"
         );
+    }
+
+    #[tokio::test]
+    async fn test_check_block_receipts_support() {
+        let mut transport = TestTransport::default();
+
+        let json_receipts = r#"[{
+            "blockHash": "0x23f785604642e91613881fc3c9d16740ee416e340fd36f3fa2239f203d68fd33",
+            "blockNumber": "0x12f7f81",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0x26f66",
+            "effectiveGasPrice": "0x140a1bd03",
+            "from": "0x56fc0708725a65ebb633efdaec931c0600a9face",
+            "gasUsed": "0x26f66",
+            "logs": [],
+            "logsBloom": "0x00000000010000000000000000000000000000000000000000000000040000000000000000000000000008000000000002000000080020000000040000000000000000000000000808000008000000000000000000040000000000000000000000000000000000000000000000000000000000000000000000000010000800000000000000000000000000000000000000000000010000000000000000000000000000000000200000000000000000000000000000000000002000000008000000000002000000000000000000000000000000000400000000000000000000000000200000000000000010000000000000000000000000000000000000000000",
+            "status": "0x1",
+            "to": "0x51c72848c68a965f66fa7a88855f9f7784502a7f",
+            "transactionHash": "0xabfe9e82d71c843a91251fd1272b0dd80bc0b8d94661e3a42c7bb9e7f55789cf",
+            "transactionIndex": "0x0",
+            "type": "0x2"
+        }]"#;
+
+        let json_empty = r#"[]"#;
+
+        // Helper function to run a single test case
+        async fn run_test_case(
+            transport: &mut TestTransport,
+            json_response: &str,
+            expected_err: Option<&str>,
+            logger: &Logger,
+        ) -> Result<(), anyhow::Error> {
+            let json_value: Value = serde_json::from_str(json_response).unwrap();
+            transport.set_response(json_value);
+
+            let web3 = Arc::new(Web3::new(transport.clone()));
+            let result = EthereumAdapter::check_block_receipt_support(
+                web3.clone(),
+                "https://imnotatestandiwannafail/",
+                true,
+                logger,
+            )
+            .await;
+
+            match expected_err {
+                Some(err_msg) => {
+                    assert!(result.is_err());
+                    assert!(result.unwrap_err().to_string().contains(err_msg));
+                }
+                None => assert!(result.is_ok()),
+            }
+            Ok(())
+        }
+
+        let logger = Logger::root(Discard, o!());
+
+        // Test case 1: Valid block receipts
+        run_test_case(&mut transport, json_receipts, None, &logger)
+            .await
+            .unwrap();
+
+        // Test case 2: Empty block receipts
+        run_test_case(
+            &mut transport,
+            json_empty,
+            Some("Block receipts are empty"),
+            &logger,
+        )
+        .await
+        .unwrap();
+
+        // Test case 3: Null response
+        run_test_case(
+            &mut transport,
+            "null",
+            Some("Block receipts are empty"),
+            &logger,
+        )
+        .await
+        .unwrap();
+
+        // Test case 3: Simulating an RPC error
+        // Note: In the context of this test, we cannot directly simulate an RPC error.
+        // Instead, we simulate a response that would cause a decoding error, such as an unexpected key("error").
+        // The function should handle this as an error case.
+        run_test_case(
+            &mut transport,
+            r#"{"error":"RPC Error"}"#,
+            Some("Failed to fetch block receipts:"),
+            &logger,
+        )
+        .await
+        .unwrap();
     }
 
     #[test]

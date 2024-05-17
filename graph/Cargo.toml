@@ -86,8 +86,8 @@ defer = "0.2"
 
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "krishna/fix-receipts", features = [
-    "arbitrary_precision",
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = [
+    "arbitrary_precision","test"
 ] }
 serde_plain = "1.0.2"
 sqlparser = "0.45.0"
