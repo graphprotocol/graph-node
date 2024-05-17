@@ -110,10 +110,15 @@ impl EthereumAdapter {
         info!(logger, "Checking if provider supports getBlockReceipts"; "provider" => &provider);
 
         // Check if the provider supports `getBlockReceipts` method.
-        let supports_block_receipts =
-            Self::check_block_receipt_support(web3.clone(), &provider, supports_eip_1898, &logger)
-                .await
-                .is_ok();
+        let supports_block_receipts = Self::check_block_receipt_support(
+            web3.clone(),
+            &provider,
+            supports_eip_1898,
+            call_only,
+            &logger,
+        )
+        .await
+        .is_ok();
 
         info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => &provider, "supports_block_receipts" => supports_block_receipts);
 
@@ -141,8 +146,14 @@ impl EthereumAdapter {
         web3: Arc<Web3<impl web3::Transport>>,
         provider: &str,
         supports_eip_1898: bool,
+        call_only: bool,
         logger: &Logger,
     ) -> Result<(), Error> {
+        if call_only {
+            warn!(logger, "Call only providers not supported"; "provider" => provider);
+            return Err(anyhow!("Call only providers not supported"));
+        }
+
         if !supports_eip_1898 {
             warn!(logger, "EIP-1898 not supported"; "provider" => provider);
             return Err(anyhow!("EIP-1898 not supported"));
@@ -2596,6 +2607,8 @@ mod tests {
             transport: &mut TestTransport,
             json_response: &str,
             expected_err: Option<&str>,
+            supports_eip_1898: bool,
+            call_only: bool,
             logger: &Logger,
         ) -> Result<(), anyhow::Error> {
             let json_value: Value = serde_json::from_str(json_response).unwrap();
@@ -2605,7 +2618,8 @@ mod tests {
             let result = EthereumAdapter::check_block_receipt_support(
                 web3.clone(),
                 "https://imnotatestandiwannafail/",
-                true,
+                supports_eip_1898,
+                call_only,
                 logger,
             )
             .await;
@@ -2623,7 +2637,7 @@ mod tests {
         let logger = Logger::root(Discard, o!());
 
         // Test case 1: Valid block receipts
-        run_test_case(&mut transport, json_receipts, None, &logger)
+        run_test_case(&mut transport, json_receipts, None, true, false, &logger)
             .await
             .unwrap();
 
@@ -2632,6 +2646,8 @@ mod tests {
             &mut transport,
             json_empty,
             Some("Block receipts are empty"),
+            true,
+            false,
             &logger,
         )
         .await
@@ -2642,6 +2658,8 @@ mod tests {
             &mut transport,
             "null",
             Some("Block receipts are empty"),
+            true,
+            false,
             &logger,
         )
         .await
@@ -2655,6 +2673,32 @@ mod tests {
             &mut transport,
             r#"{"error":"RPC Error"}"#,
             Some("Failed to fetch block receipts:"),
+            true,
+            false,
+            &logger,
+        )
+        .await
+        .unwrap();
+
+        // Test case 5: Does not support EIP-1898
+        run_test_case(
+            &mut transport,
+            json_receipts,
+            Some("EIP-1898 not supported"),
+            false,
+            false,
+            &logger,
+        )
+        .await
+        .unwrap();
+
+        // Test case 5: Does not support Call only adapters
+        run_test_case(
+            &mut transport,
+            json_receipts,
+            Some("Call only providers not supported"),
+            true,
+            true,
             &logger,
         )
         .await
