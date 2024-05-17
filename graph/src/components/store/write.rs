@@ -501,6 +501,22 @@ impl RowGroup {
     }
 }
 
+pub struct RowGroupForPerfTest(RowGroup);
+
+impl RowGroupForPerfTest {
+    pub fn new(entity_type: EntityType, immutable: bool) -> Self {
+        Self(RowGroup::new(entity_type, immutable))
+    }
+
+    pub fn push(&mut self, emod: EntityModification, block: BlockNumber) -> Result<(), StoreError> {
+        self.0.push(emod, block)
+    }
+
+    pub fn append_row(&mut self, row: EntityModification) -> Result<(), StoreError> {
+        self.0.append_row(row)
+    }
+}
+
 struct ClampsByBlockIterator<'a> {
     position: usize,
     rows: &'a [EntityModification],
