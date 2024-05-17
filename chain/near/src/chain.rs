@@ -99,7 +99,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
             subgraph_current_block,
             block_cursor.clone(),
             mapper,
-            package.modules.clone(),
+            package.modules.unwrap_or_default(),
             NEAR_FILTER_MODULE_NAME.to_string(),
             vec![start_block],
             vec![],

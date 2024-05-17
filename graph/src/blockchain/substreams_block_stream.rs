@@ -116,7 +116,7 @@ where
         subgraph_current_block: Option<BlockPtr>,
         cursor: FirehoseCursor,
         mapper: Arc<F>,
-        modules: Option<Modules>,
+        modules: Modules,
         module_name: String,
         start_blocks: Vec<BlockNumber>,
         end_blocks: Vec<BlockNumber>,
@@ -155,7 +155,7 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
     cursor: FirehoseCursor,
     deployment: DeploymentHash,
     mapper: Arc<F>,
-    modules: Option<Modules>,
+    modules: Modules,
     module_name: String,
     manifest_start_block_num: BlockNumber,
     manifest_end_block_num: BlockNumber,
@@ -187,6 +187,13 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
     let mut log_data = SubstreamsLogData::new();
 
     try_stream! {
+            if !modules.modules.iter().any(|m| module_name.eq(&m.name)) {
+                Err(BlockStreamError::Fatal(format!(
+                    "module `{}` not found",
+                    module_name
+                )))?;
+            }
+
             let endpoint = client.firehose_endpoint()?;
             let mut logger = logger.new(o!("deployment" => deployment.clone(), "provider" => endpoint.provider.to_string()));
 
@@ -199,7 +206,7 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
                 start_block_num,
                 start_cursor: latest_cursor.to_string(),
                 stop_block_num,
-                modules: modules.clone(),
+                modules: Some(modules.clone()),
                 output_module: module_name.clone(),
                 production_mode: true,
                 ..Default::default()

@@ -73,7 +73,7 @@ async fn main() -> Result<(), Error> {
                 schema: None,
                 skip_empty_blocks: false,
             }),
-            package.modules.clone(),
+            package.modules.clone().unwrap_or_default(),
             module_name.to_string(),
             vec![12369621],
             vec![],

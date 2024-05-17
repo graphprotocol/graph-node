@@ -57,7 +57,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
                 Arc::new(WasmBlockMapper {
                     handler: handler.clone(),
                 }),
-                filter.modules.clone(),
+                filter.modules.clone().unwrap_or_default(),
                 filter.module_name.clone(),
                 filter.start_block.map(|x| vec![x]).unwrap_or_default(),
                 vec![],
@@ -74,7 +74,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
                     schema: Some(schema),
                     skip_empty_blocks: true,
                 }),
-                filter.modules.clone(),
+                filter.modules.clone().unwrap_or_default(),
                 filter.module_name.clone(),
                 filter.start_block.map(|x| vec![x]).unwrap_or_default(),
                 vec![],
