@@ -8,11 +8,11 @@ use graph::{
     schema::InputSchema,
 };
 
-use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
     ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
     VID_COLUMN,
 };
+use crate::{block_range::CAUSALITY_REGION_COLUMN, deployment_store::IndexList};
 
 use super::{Catalog, Column, Layout, SqlName, Table};
 
@@ -29,7 +29,11 @@ impl Layout {
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    pub fn as_ddl(&self, is_copy_op: bool) -> Result<String, fmt::Error> {
+    pub fn as_ddl(
+        &self,
+        is_copy_op: bool,
+        index_def: Option<IndexList>,
+    ) -> Result<String, fmt::Error> {
         let mut out = String::new();
 
         // Output enums first so table definitions can reference them
@@ -41,7 +45,13 @@ impl Layout {
         tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
         for table in tables {
-            table.as_ddl(&self.input_schema, &self.catalog, is_copy_op, &mut out)?;
+            table.as_ddl(
+                &self.input_schema,
+                &self.catalog,
+                is_copy_op,
+                index_def.as_ref(),
+                &mut out,
+            )?;
         }
 
         Ok(out)
@@ -256,48 +266,19 @@ impl Table {
         (method, index_expr)
     }
 
-    pub(crate) fn create_postponed_indexes(&self) -> Vec<(String, String)> {
-        let mut indexing_queries = vec![];
+    fn create_attribute_indexes(&self, out: &mut String) -> fmt::Result {
         let columns = self.colums_to_index();
 
         for (column_index, column) in columns.enumerate() {
             let (method, index_expr) =
                 Self::calculate_attr_index_method_and_expression(self.immutable, column);
-            if !column.is_list() && method == "btree" && column.name.as_str() != "id" {
-                let index_name = format!(
-                    "attr_{table_index}_{column_index}_{table_name}_{column_name}",
-                    table_index = self.position,
-                    table_name = self.name,
-                    column_name = column.name,
-                );
-                let sql = format!(
-                    "create index concurrently if not exists {index_name}\n    on {qname} using {method}({index_expr});\n",
-                    qname = self.qualified_name,
-                );
-                indexing_queries.push((index_name, sql));
-            }
-        }
-        indexing_queries
-    }
-
-    fn create_attribute_indexes(&self, is_copy_op: bool, out: &mut String) -> fmt::Result {
-        let columns = self.colums_to_index();
-
-        for (column_index, column) in columns.enumerate() {
-            let (method, index_expr) =
-                Self::calculate_attr_index_method_and_expression(self.immutable, column);
-            let delay_index = ENV_VARS.postpone_attribute_index_creation
-                && is_copy_op
-                && !column.is_list()
-                && method == "btree"
-                && column.name.as_str() != "id";
 
             // If `create_gin_indexes` is set to false, we don't create
             // indexes on array attributes. Experience has shown that these
             // indexes are very expensive to update and can have a very bad
             // impact on the write performance of the database, but are
             // hardly ever used or needed by queries.
-            if !delay_index && (!column.is_list() || ENV_VARS.store.create_gin_indexes) {
+            if !column.is_list() || ENV_VARS.store.create_gin_indexes {
                 write!(
                     out,
                     "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
@@ -387,12 +368,30 @@ impl Table {
         schema: &InputSchema,
         catalog: &Catalog,
         is_copy_op: bool,
+        index_def: Option<&IndexList>,
         out: &mut String,
     ) -> fmt::Result {
         self.create_table(out)?;
-        self.create_time_travel_indexes(catalog, out)?;
-        self.create_attribute_indexes(is_copy_op, out)?;
-        self.create_aggregate_indexes(schema, out)
+        if is_copy_op && ENV_VARS.postpone_attribute_index_creation {
+            if let Some(ind_def) = index_def {
+                let arr = ind_def.indexes_for_table(
+                    &self.namespace.to_string(),
+                    &self.name.to_string(),
+                    false,
+                    false,
+                );
+                for sql in arr {
+                    writeln!(out, "{};", sql).expect("properly formated index statements")
+                }
+                Ok(())
+            } else {
+                panic!("Missinge index list for copy operation");
+            }
+        } else {
+            self.create_time_travel_indexes(catalog, out)?;
+            self.create_attribute_indexes(out)?;
+            self.create_aggregate_indexes(schema, out)
+        }
     }
 
     pub fn exclusion_ddl(&self, out: &mut String) -> fmt::Result {

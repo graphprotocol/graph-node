@@ -49,6 +49,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::deployment_store::IndexList;
 use crate::relational_queries::{
     ConflictingEntitiesData, ConflictingEntitiesQuery, FindChangesQuery, FindDerivedQuery,
     FindPossibleDeletionsQuery, ReturnedEntityData,
@@ -362,6 +363,7 @@ impl Layout {
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: poi_type.to_owned(),
+            namespace: SqlName(catalog.site.namespace.to_string()),
             qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
             columns,
@@ -385,12 +387,13 @@ impl Layout {
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
         is_copy_op: bool,
+        index_def: Option<IndexList>,
     ) -> Result<Layout, StoreError> {
         let catalog =
             Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region)?;
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
-            .as_ddl(is_copy_op)
+            .as_ddl(is_copy_op, index_def)
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql)?;
         Ok(layout)
@@ -1437,6 +1440,11 @@ pub struct Table {
     /// aggregations, this is the object type for a specific interval, like
     /// `Stats_hour`, not the overall aggregation type `Stats`.
     pub object: EntityType,
+
+    /// The name of the database table for this type ('thing'), snakecased
+    /// version of `object`
+    pub namespace: SqlName,
+
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`
     pub name: SqlName,
@@ -1494,6 +1502,7 @@ impl Table {
 
         let table = Table {
             object: defn.cheap_clone(),
+            namespace: SqlName::verbatim(catalog.site.namespace.to_string()),
             name: table_name,
             qualified_name,
             // Default `is_account_like` to `false`; the caller should call
@@ -1513,6 +1522,7 @@ impl Table {
     pub fn new_like(&self, namespace: &Namespace, name: &SqlName) -> Arc<Table> {
         let other = Table {
             object: self.object.clone(),
+            namespace: SqlName(namespace.to_string()),
             name: name.clone(),
             qualified_name: SqlName::qualified_name(namespace, name),
             columns: self.columns.clone(),

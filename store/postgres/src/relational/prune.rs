@@ -96,7 +96,7 @@ impl TablePair {
         } else {
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
-            dst.as_ddl(schema, catalog, false, &mut query)?;
+            dst.as_ddl(schema, catalog, false, None, &mut query)?;
         }
         conn.batch_execute(&query)?;
 

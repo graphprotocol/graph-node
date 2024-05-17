@@ -687,6 +687,7 @@ pub(crate) fn indexes_for_table(
 
     Ok(results.into_iter().map(|i| i.def).collect())
 }
+
 pub(crate) fn drop_index(
     conn: &mut PgConnection,
     schema_name: &str,

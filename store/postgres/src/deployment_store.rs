@@ -2,7 +2,6 @@ use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::sql_types::{Bool, Text};
 use diesel::{prelude::*, sql_query};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
@@ -30,8 +29,8 @@ use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
-use std::ops::Bound;
 use std::ops::Deref;
+use std::ops::{Bound, DerefMut};
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -121,14 +120,6 @@ pub struct StoreInner {
 #[derive(Clone, CheapClone)]
 pub struct DeploymentStore(Arc<StoreInner>);
 
-#[derive(QueryableByName, Debug)]
-struct IndexInfo {
-    #[diesel(sql_type = Bool)]
-    isvalid: bool,
-    #[diesel(sql_type = Bool)]
-    isready: bool,
-}
-
 impl Deref for DeploymentStore {
     type Target = StoreInner;
     fn deref(&self) -> &Self::Target {
@@ -190,6 +181,7 @@ impl DeploymentStore {
         replace: bool,
         on_sync: OnSync,
         is_copy_op: bool,
+        index_def: Option<IndexList>,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|conn| -> Result<_, StoreError> {
@@ -223,6 +215,7 @@ impl DeploymentStore {
                     schema,
                     entities_with_causality_region.into_iter().collect(),
                     is_copy_op,
+                    index_def,
                 )?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {
@@ -744,6 +737,25 @@ impl DeploymentStore {
             Ok(indexes.into_iter().map(CreateIndex::parse).collect())
         })
         .await
+    }
+
+    pub(crate) fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+        let store = self.clone();
+        let mut binding = self.get_conn()?;
+        let conn = binding.deref_mut();
+        let mut list = IndexList {
+            indexes: HashMap::new(),
+        };
+        let schema_name = site.namespace.clone();
+        let layout = store.layout(conn, site)?;
+        for (_, table) in &layout.tables {
+            let table_name = table.name.as_str();
+            let indexes = catalog::indexes_for_table(conn, schema_name.as_str(), table_name)
+                .map_err(StoreError::from)?;
+            let collect: Vec<CreateIndex> = indexes.into_iter().map(CreateIndex::parse).collect();
+            list.indexes.insert(table_name.to_string(), collect);
+        }
+        Ok(list)
     }
 
     /// Drops an index for a given deployment, concurrently.
@@ -1483,12 +1495,20 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity, IndexList)>,
     ) -> Result<(), StoreError> {
+        // #[derive(QueryableByName, Debug)]
+        // struct IndexInfo {
+        //     #[diesel(sql_type = Bool)]
+        //     isvalid: bool,
+        //     #[diesel(sql_type = Bool)]
+        //     isready: bool,
+        // }
+
         let dst = self.find_layout(site.cheap_clone())?;
 
         // If `graft_src` is `Some`, then there is a pending graft.
-        if let Some((src, block, src_deployment)) = graft_src {
+        if let Some((src, block, src_deployment, index_list)) = graft_src {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
@@ -1516,7 +1536,7 @@ impl DeploymentStore {
                 src_manifest_idx_and_name,
                 dst_manifest_idx_and_name,
             )?;
-            let status = copy_conn.copy_data()?;
+            let status = copy_conn.copy_data(index_list)?;
             if status == crate::copy::Status::Cancelled {
                 return Err(StoreError::Canceled);
             }
@@ -1589,8 +1609,10 @@ impl DeploymentStore {
             })?;
         }
 
-        //check if all indexes are valid and recreate them
+        // check if all indexes are valid and recreate them if they aren't
         let mut conn = self.get_conn()?;
+        // TODO: fix it
+        /*
         if ENV_VARS.postpone_attribute_index_creation {
             let namespace = site.namespace.as_str();
             for table in dst.tables.values() {
@@ -1629,7 +1651,7 @@ impl DeploymentStore {
                     }
                 }
             }
-        }
+        } */
 
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
@@ -2055,5 +2077,39 @@ impl PruneReporter for OngoingPruneReporter {
             "time_s" => self.start.elapsed().as_secs(),
             "analyze_time_s" => self.analyze_duration.as_secs()
         )
+    }
+}
+
+#[derive(Debug)]
+pub struct IndexList {
+    indexes: HashMap<String, Vec<CreateIndex>>,
+}
+
+impl IndexList {
+    pub fn can_postpone(ci: &CreateIndex) -> bool {
+        let res = ci.is_attribute_index() && ci.is_default_index();
+        res
+    }
+    pub fn indexes_for_table(
+        &self,
+        namespace: &String,
+        table_name: &String,
+        postponed: bool,
+        concurent_if_not_exist: bool,
+    ) -> Vec<String> {
+        let mut arr = vec![];
+        if let Some(vec) = self.indexes.get(table_name) {
+            for ci in vec {
+                if !ci.is_constraint() && !ci.is_pkey() && postponed == ci.to_postpone() {
+                    if let Ok(sql) = ci
+                        .with_nsp(namespace.clone())
+                        .to_sql(concurent_if_not_exist, concurent_if_not_exist)
+                    {
+                        arr.push(sql)
+                    }
+                }
+            }
+        }
+        arr
     }
 }

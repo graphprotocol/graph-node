@@ -151,7 +151,7 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
         NAMESPACE.clone(),
         NETWORK_NAME.to_string(),
     );
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), false)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), false, None)
         .expect("Failed to create relational schema")
 }
 

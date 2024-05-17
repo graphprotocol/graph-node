@@ -13,7 +13,7 @@ use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
 
 use super::VID_COLUMN;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Method {
     Brin,
     BTree,
@@ -196,7 +196,7 @@ impl Expr {
 
 /// The condition for a partial index, i.e., the statement after `where ..`
 /// in a `create index` statement
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Cond {
     /// The expression `coalesce(upper(block_range), 2147483647) > $number`
     Partial(BlockNumber),
@@ -248,7 +248,7 @@ impl Cond {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CreateIndex {
     /// The literal index definition passed to `parse`. This is used when we
     /// can't parse a `create index` statement, e.g. because it uses
@@ -354,8 +354,8 @@ impl CreateIndex {
 
         fn new_parsed(defn: &str) -> Option<CreateIndex> {
             let rx = Regex::new(
-                "create (?P<unique>unique )?index (?P<name>[a-z0-9$_]+) \
-            on (?P<nsp>sgd[0-9]+)\\.(?P<table>[a-z$_]+) \
+                "create (?P<unique>unique )?index (?P<name>\"?[a-z0-9$_]+\"?) \
+            on (?P<nsp>sgd[0-9]+)\\.(?P<table>\"?[a-z0-9$_]+\"?) \
             using (?P<method>[a-z]+) \\((?P<columns>.*?)\\)\
             ( where \\((?P<cond>.*)\\))?\
             ( with \\((?P<with>.*)\\))?$",
@@ -408,6 +408,32 @@ impl CreateIndex {
             columns: columns.into(),
             cond,
             with,
+        }
+    }
+
+    pub fn with_nsp(&self, nsp2: String) -> Self {
+        let s = self.clone();
+        match s {
+            CreateIndex::Unknown { defn } => CreateIndex::Unknown { defn },
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp: _,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            } => CreateIndex::Parsed {
+                unique,
+                name,
+                nsp: nsp2,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            },
         }
     }
 
@@ -524,6 +550,49 @@ impl CreateIndex {
         }
     }
 
+    pub fn is_pkey(&self) -> bool {
+        let suffix = "_pkey";
+        match self {
+            CreateIndex::Unknown { defn: _ } => false,
+            CreateIndex::Parsed {
+                unique,
+                name,
+                columns,
+                ..
+            } => {
+                *unique && has_suffix(name, suffix) && columns.len() == 1 && columns[0] == Expr::Vid
+            }
+        }
+    }
+
+    pub fn is_constraint(&self) -> bool {
+        let suffix = format!("{}_excl", BLOCK_RANGE_COLUMN);
+        match self {
+            CreateIndex::Unknown { defn: _ } => false,
+            CreateIndex::Parsed { name, .. } => has_suffix(name, &suffix),
+        }
+    }
+
+    pub fn to_postpone(&self) -> bool {
+        match self {
+            CreateIndex::Unknown { defn: _ } => false,
+            CreateIndex::Parsed {
+                name,
+                columns,
+                method,
+                ..
+            } => {
+                if *method != Method::BTree && *method != Method::Brin {
+                    return false;
+                }
+                if columns.len() == 1 && columns[0].is_id() {
+                    return false;
+                }
+                has_prefix(name, "attr_") && self.is_attribute_index()
+            }
+        }
+    }
+
     /// Generate a SQL statement that creates this index. If `concurrent` is
     /// `true`, make it a concurrent index creation. If `if_not_exists` is
     /// `true` add a `if not exists` clause to the index creation.
@@ -556,6 +625,14 @@ impl CreateIndex {
             }
         }
     }
+}
+
+fn has_suffix(s: &str, suffix: &str) -> bool {
+    s.ends_with(suffix) || s.starts_with("\"") && s.ends_with(format!("{}\"", suffix).as_str())
+}
+
+fn has_prefix(s: &str, prefix: &str) -> bool {
+    s.starts_with(prefix) || s.ends_with("\"") && s.starts_with(format!("\"{}", prefix).as_str())
 }
 
 #[test]

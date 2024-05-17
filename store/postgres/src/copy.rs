@@ -39,6 +39,7 @@ use graph::{
 
 use crate::{
     advisory_lock, catalog,
+    deployment_store::IndexList,
     dynds::DataSourcesTable,
     primary::{DeploymentId, Site},
 };
@@ -761,7 +762,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
+    pub fn copy_data_internal(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
         let src = self.src.clone();
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
@@ -810,9 +811,17 @@ impl Connection {
         // the copy/graft operations. If they weren't postponed it's still fine to run it
         // as the creation query checks if they alreadey exist.
         let conn = self.conn.deref_mut();
+        let namespace = self.dst.site.namespace.as_str().to_string();
         for table in state.tables.iter() {
-            for (_, sql) in table.batch.dst.create_postponed_indexes().into_iter() {
-                let query = sql_query(sql);
+            let arr = index_list.indexes_for_table(
+                &namespace,
+                &table.batch.src.name.to_string(),
+                true,
+                true,
+            );
+
+            for sql in arr {
+                let query = sql_query(format!("{};", sql));
                 query.execute(conn)?;
             }
         }
@@ -839,7 +848,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&mut self) -> Result<Status, StoreError> {
+    pub fn copy_data(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
@@ -853,7 +862,7 @@ impl Connection {
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
         advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
-        let res = self.copy_data_internal();
+        let res = self.copy_data_internal(index_list);
         advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");

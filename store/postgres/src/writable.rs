@@ -34,7 +34,7 @@ use graph::{
 };
 use store::StoredDynamicDataSource;
 
-use crate::deployment_store::DeploymentStore;
+use crate::deployment_store::{DeploymentStore, IndexList};
 use crate::primary::DeploymentId;
 use crate::retry;
 use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
@@ -65,6 +65,10 @@ impl WritableSubgraphStore {
 
     fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         self.0.find_site(id)
+    }
+
+    fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+        self.0.load_indexes(site)
     }
 }
 
@@ -222,7 +226,8 @@ impl SyncStore {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
                     let deployment_entity = self.store.load_deployment(src.site.clone())?;
-                    Some((src, base_ptr, deployment_entity))
+                    let indexes = self.store.load_indexes(src.site.clone())?;
+                    Some((src, base_ptr, deployment_entity, indexes))
                 }
                 None => None,
             };

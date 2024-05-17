@@ -39,8 +39,8 @@ use graph::{
 use crate::{
     connection_pool::ConnectionPool,
     deployment::{OnSync, SubgraphHealth},
-    primary,
-    primary::{DeploymentId, Mirror as PrimaryMirror, Site},
+    deployment_store::IndexList,
+    primary::{self, DeploymentId, Mirror as PrimaryMirror, Site},
     relational::{index::Method, Layout},
     writable::WritableStore,
     NotificationSender,
@@ -549,7 +549,7 @@ impl SubgraphStoreInner {
         // if the deployment already exists, we don't need to perform any copying
         // so we can set graft_base to None
         // if it doesn't exist, we need to copy the graft base to the new deployment
-        let graft_base = if !exists {
+        let graft_base_layout = if !exists {
             let graft_base = deployment
                 .graft_base
                 .as_ref()
@@ -570,14 +570,22 @@ impl SubgraphStoreInner {
             .stores
             .get(&site.shard)
             .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
+
+        let index_def = if let Some(graft) = &graft_base.clone() {
+            Some(deployment_store.load_indexes(self.sites.get(graft).unwrap())?)
+        } else {
+            None
+        };
+
         deployment_store.create_deployment(
             schema,
             deployment,
             site.clone(),
-            graft_base,
+            graft_base_layout,
             replace,
             OnSync::None,
-            false,
+            index_def.is_some(),
+            index_def,
         )?;
 
         let exists_and_synced = |id: &DeploymentHash| {
@@ -639,6 +647,7 @@ impl SubgraphStoreInner {
                 src_loc
             )));
         }
+        let index_def = src_store.load_indexes(src.clone())?;
 
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
@@ -669,6 +678,7 @@ impl SubgraphStoreInner {
             false,
             on_sync,
             true,
+            Some(index_def),
         )?;
 
         let mut pconn = self.primary_conn()?;
@@ -1211,6 +1221,11 @@ impl SubgraphStoreInner {
         let site = self.find_site(id)?;
         let src_store = self.for_site(&site)?;
         src_store.load_deployment(site)
+    }
+
+    pub fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+        let src_store = self.for_site(&site)?;
+        src_store.load_indexes(site)
     }
 }
 
