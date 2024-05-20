@@ -159,10 +159,22 @@ impl EthereumAdapter {
             return Err(anyhow!("EIP-1898 not supported"));
         }
 
+        // Fetch the latest block hash from the provider.Just to get the block hash to test the
+        // `getBlockReceipts` method. We need to test with block hash as the provider may not
+        // some providers have issues with `getBlockReceipts` with block hashes and we need to
+        // set supports_block_receipts to false in that case.
+        let latest_block_hash = web3
+            .eth()
+            .block(BlockId::Number(Web3BlockNumber::Latest))
+            .await?
+            .ok_or_else(|| anyhow!("No latest block found"))?
+            .hash
+            .ok_or_else(|| anyhow!("No hash found for latest block"))?;
+
         // Fetch block receipts from the provider for the latest block.
         let block_receipts_result = web3
             .eth()
-            .block_receipts(BlockId::Number(Web3BlockNumber::Latest))
+            .block_receipts(BlockId::Hash(latest_block_hash))
             .await;
 
         // Determine if the provider supports block receipts based on the fetched result.
