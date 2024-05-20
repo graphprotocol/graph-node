@@ -14,7 +14,7 @@ use diesel::{
     sql_types::{Nullable, Text},
 };
 use graph::{
-    blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError,
+    blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError, env::ENV_VARS,
     schema::EntityType,
 };
 use graph::{
@@ -539,18 +539,31 @@ pub fn revert_block_ptr(
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
-    update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set((
-            d::latest_ethereum_block_number.eq(sql(&number)),
-            d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
-            d::firehose_cursor.eq(firehose_cursor.as_ref()),
-            d::reorg_count.eq(d::reorg_count + 1),
-            d::current_reorg_depth.eq(d::current_reorg_depth + 1),
-            d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
-        ))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| e.into())
+    let affected_rows = update(
+        d::table
+            .filter(d::deployment.eq(id.as_str()))
+            .filter(d::earliest_block_number.le(ptr.number - ENV_VARS.reorg_threshold)),
+    )
+    .set((
+        d::latest_ethereum_block_number.eq(sql(&number)),
+        d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
+        d::firehose_cursor.eq(firehose_cursor.as_ref()),
+        d::reorg_count.eq(d::reorg_count + 1),
+        d::current_reorg_depth.eq(d::current_reorg_depth + 1),
+        d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
+    ))
+    .execute(conn)?;
+
+    match affected_rows {
+        1 => Ok(()),
+        0 => Err(StoreError::Unknown(anyhow!(
+            "No rows affected. This could be due to an attempt to revert beyond earliest_block + reorg_threshold",
+        ))),
+        _ => Err(StoreError::Unknown(anyhow!(
+            "Expected to update 1 row, but {} rows were affected",
+            affected_rows
+        ))),
+    }
 }
 
 pub fn block_ptr(

@@ -123,11 +123,11 @@ pub async fn run(
 
         if block_number_to < deployment_details.earliest_block_number + ENV_VARS.reorg_threshold {
             bail!(
-                "The block number {} is not safe to rewind to for deployment {}. The earliest block number of this deployment is {}. You can only rewind to a block number that is at least {} blocks afters the earliest block number of the subgraph",
+                "The block number {} is not safe to rewind to for deployment {}. The earliest block number of this deployment is {}. You can only safely rewind to block number {}",
                 block_ptr_to.as_ref().map(|b| b.number).unwrap_or(0),
                 locator,
                 deployment_details.earliest_block_number,
-                ENV_VARS.reorg_threshold
+                deployment_details.earliest_block_number + ENV_VARS.reorg_threshold
             );
         }
     }
