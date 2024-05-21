@@ -164,13 +164,6 @@ impl<'a> BlockRangeColumn<'a> {
             }
         }
     }
-
-    pub fn block(&self) -> BlockNumber {
-        match self {
-            BlockRangeColumn::Mutable { block, .. } => *block,
-            BlockRangeColumn::Immutable { block, .. } => *block,
-        }
-    }
 }
 
 impl<'a> BlockRangeColumn<'a> {
@@ -226,13 +219,6 @@ impl<'a> BlockRangeColumn<'a> {
         }
     }
 
-    pub fn column_name(&self) -> &str {
-        match self {
-            BlockRangeColumn::Mutable { .. } => BLOCK_RANGE_COLUMN,
-            BlockRangeColumn::Immutable { .. } => BLOCK_COLUMN,
-        }
-    }
-
     /// Output the qualified name of the block range column
     pub fn name(&self, out: &mut AstPass<Pg>) {
         match self {
@@ -276,14 +262,6 @@ impl<'a> BlockRangeColumn<'a> {
             BlockRangeColumn::Immutable { .. } => {
                 unreachable!("immutable entities can not be updated or deleted")
             }
-        }
-    }
-
-    /// Output the name of the block range column without the table prefix
-    pub(crate) fn bare_name(&self, out: &mut AstPass<Pg>) {
-        match self {
-            BlockRangeColumn::Mutable { .. } => out.push_sql(BLOCK_RANGE_COLUMN),
-            BlockRangeColumn::Immutable { .. } => out.push_sql(BLOCK_COLUMN),
         }
     }
 
