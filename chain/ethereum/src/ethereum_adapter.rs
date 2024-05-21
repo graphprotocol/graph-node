@@ -108,11 +108,22 @@ impl EthereumAdapter {
         let web3 = Arc::new(Web3::new(transport));
 
         info!(logger, "Checking if provider supports getBlockReceipts");
+        let retry_log_message = "check_block_receipt_support call";
 
-        // Check if the provider supports `getBlockReceipts` method.
-        let block_receipts_support_result =
-            Self::check_block_receipt_support(web3.clone(), supports_eip_1898, call_only, &logger)
-                .await;
+        let web3_for_check = web3.clone();
+
+        let block_receipts_support_result = retry(retry_log_message, &logger)
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3_for_check.clone();
+
+                async move {
+                    Self::check_block_receipt_support(web3.clone(), supports_eip_1898, call_only)
+                        .await
+                }
+            })
+            .await;
 
         // Error message to log if the check fails.
         let error_message = block_receipts_support_result
@@ -152,16 +163,13 @@ impl EthereumAdapter {
         web3: Arc<Web3<impl web3::Transport>>,
         supports_eip_1898: bool,
         call_only: bool,
-        logger: &Logger,
     ) -> Result<(), Error> {
         if call_only {
-            warn!(logger, "Call only providers not supported");
             return Err(anyhow!("Call only providers not supported"));
         }
 
         if !supports_eip_1898 {
-            warn!(logger, "EIP-1898 not supported");
-            return Err(anyhow!("EIP-1898 not supported"));
+            return Err(anyhow!("EIP-1898 not supported by provider"));
         }
 
         // Fetch the latest block hash from the provider.Just to get the block hash to test the
@@ -172,15 +180,9 @@ impl EthereumAdapter {
             .eth()
             .block(BlockId::Number(Web3BlockNumber::Latest))
             .await?
-            .ok_or_else(|| {
-                warn!(logger, "No latest block found");
-                anyhow!("No latest block found")
-            })?
+            .ok_or(anyhow!("No latest block found"))?
             .hash
-            .ok_or_else(|| {
-                warn!(logger, "No hash found for latest block");
-                anyhow!("No hash found for latest block")
-            })?;
+            .ok_or(anyhow!("No hash found for latest block"))?;
 
         // Fetch block receipts from the provider for the latest block.
         let block_receipts_result = web3
@@ -191,14 +193,8 @@ impl EthereumAdapter {
         // Determine if the provider supports block receipts based on the fetched result.
         match block_receipts_result {
             Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
-            Ok(_) => {
-                warn!(logger, "Block receipts are empty");
-                Err(anyhow!("Block receipts are empty"))
-            }
-            Err(err) => {
-                warn!(logger, "Failed to fetch block receipts"; "error" => err.to_string());
-                Err(anyhow!("Failed to fetch block receipts: {}", err))
-            }
+            Ok(_) => Err(anyhow!("Block receipts are empty")),
+            Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
         }
     }
 
@@ -1355,6 +1351,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })));
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
+
         let receipts_future = fetch_receipts_with_retry(
             web3,
             hashes,
@@ -2558,7 +2555,6 @@ mod tests {
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
     use graph::prelude::web3::Web3;
     use graph::prelude::EthereumCall;
-    use graph::slog::{o, Discard, Logger};
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
     use std::iter::FromIterator;
@@ -2632,7 +2628,6 @@ mod tests {
             expected_err: Option<&str>,
             supports_eip_1898: bool,
             call_only: bool,
-            logger: &Logger,
         ) -> Result<(), anyhow::Error> {
             let block = r#"{
                 "baseFeePerGas": "0xfaf359a9",
@@ -2672,7 +2667,6 @@ mod tests {
                 web3.clone(),
                 supports_eip_1898,
                 call_only,
-                logger,
             )
             .await;
 
@@ -2692,10 +2686,8 @@ mod tests {
             Ok(())
         }
 
-        let logger = Logger::root(Discard, o!());
-
         // Test case 1: Valid block receipts
-        run_test_case(&mut transport, json_receipts, None, true, false, &logger)
+        run_test_case(&mut transport, json_receipts, None, true, false)
             .await
             .unwrap();
 
@@ -2706,7 +2698,6 @@ mod tests {
             Some("Block receipts are empty"),
             true,
             false,
-            &logger,
         )
         .await
         .unwrap();
@@ -2718,7 +2709,6 @@ mod tests {
             Some("Block receipts are empty"),
             true,
             false,
-            &logger,
         )
         .await
         .unwrap();
@@ -2733,7 +2723,6 @@ mod tests {
             Some("Failed to fetch block receipts:"),
             true,
             false,
-            &logger,
         )
         .await
         .unwrap();
@@ -2745,7 +2734,6 @@ mod tests {
             Some("EIP-1898 not supported"),
             false,
             false,
-            &logger,
         )
         .await
         .unwrap();
@@ -2757,7 +2745,6 @@ mod tests {
             Some("Call only providers not supported"),
             true,
             true,
-            &logger,
         )
         .await
         .unwrap();
