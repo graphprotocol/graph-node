@@ -2623,8 +2623,38 @@ mod tests {
             call_only: bool,
             logger: &Logger,
         ) -> Result<(), anyhow::Error> {
+            let block = r#"{
+                "baseFeePerGas": "0xfaf359a9",
+                "blobGasUsed": "0xa0000",
+                "difficulty": "0x0",
+                "excessBlobGas": "0xc0000",
+                "extraData": "0x546974616e2028746974616e6275696c6465722e78797a29",
+                "gasLimit": "0x1c9c380",
+                "gasUsed": "0xfbbf8c",
+                "hash": "0x23f785604642e91613881fc3c9d16740ee416e340fd36f3fa2239f203d68fd33",
+                "logsBloom": "0xb8bb7c576993dd7ebf30b43aaa399d25145f9962ce4a6e0266314c13d6eafe61bc511981a7c223f943fe3d4aec5e2391233b8858be327a7dd6d55c764efb7d0b0c76d4994d659a7f7b0fcbefb83df8b8d5bf102b7d4c4fc7bbd69d4f8de0fa815889e72173cfa2bb08ddd3ec301cfbd5c77b013f02d684a4d74fc59e5098e4054e2abb5a0a23aaf901c91371c7b3a626b05886a5cfcb33fecc2be2fa7af85609af4643fff5976b783bb675ecbf9526e48d5f6f46788eeda6adb42db6b57852e09f1af476781e9e680c6a6b59ff0fdbf4607abb727568a77a708f72a25b41e7ae80ffaa334386c5b16b4edff5eddab440802f741b997da5d1d2cb387377f45cac",
+                "miner": "0x4838b106fce9647bdf1e7877bf73ce8b0bad5f97",
+                "mixHash": "0xcab2a5ef5cc50dffa7311e534ea15bd1c456860a332ff7bf305ac745ea8e5317",
+                "nonce": "0x0000000000000000",
+                "number": "0x12f7f81",
+                "parentBeaconBlockRoot": "0x4b049ea8086d0a4f52cb1d3a22e930e666aca3987d6a8cb98c88582348ae2fbd",
+                "parentHash": "0xd9958d8f597702242aaece8f01754f986eda4d9b0df46f202441d2ee0581d244",
+                "receiptsRoot": "0x7bd0bba165c9635ae1ec98195f647aaa6f37510f95e2e854bb9c9002ae9e6b3b",
+                "sha3Uncles": "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347",
+                "size": "0x17298",
+                "stateRoot": "0x8b0f2bc75d0107928e9a2d91464deaa3424877668228bcb57771a88c65f86607",
+                "timestamp": "0x6648b537",
+                "totalDifficulty": "0xc70d815d562d3cfa955",
+                "transactions": [],
+                "transactionsRoot": "0xa6e565690902c0db13d456442fae29b73230affa7cb2725b5d0916f57dd2bb75",
+                "uncles": [],
+                "withdrawals": [],
+                "withdrawalsRoot": "0xff48b7ff20e5f4d70f285ba246bf7964ea8f5231453b34c814f5c473349c8033"}"#;
+
             let json_value: Value = serde_json::from_str(json_response).unwrap();
-            transport.set_response(json_value);
+            let block_json: Value = serde_json::from_str(block).unwrap();
+            transport.set_response(block_json);
+            transport.add_response(json_value);
 
             let web3 = Arc::new(Web3::new(transport.clone()));
             let result = EthereumAdapter::check_block_receipt_support(
@@ -2641,7 +2671,13 @@ mod tests {
                     assert!(result.is_err());
                     assert!(result.unwrap_err().to_string().contains(err_msg));
                 }
-                None => assert!(result.is_ok()),
+                None => match result {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        panic!("Unexpected error: {}", e);
+                    }
+                },
             }
             Ok(())
         }
