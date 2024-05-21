@@ -107,20 +107,26 @@ impl EthereumAdapter {
     ) -> Self {
         let web3 = Arc::new(Web3::new(transport));
 
-        info!(logger, "Checking if provider supports getBlockReceipts"; "provider" => &provider);
+        info!(logger, "Checking if provider supports getBlockReceipts");
 
         // Check if the provider supports `getBlockReceipts` method.
-        let supports_block_receipts = Self::check_block_receipt_support(
-            web3.clone(),
-            &provider,
-            supports_eip_1898,
-            call_only,
-            &logger,
-        )
-        .await
-        .is_ok();
+        let block_receipts_support_result =
+            Self::check_block_receipt_support(web3.clone(), supports_eip_1898, call_only, &logger)
+                .await;
 
-        info!(logger, "Checked if provider supports eth_getBlockReceipts"; "provider" => &provider, "supports_block_receipts" => supports_block_receipts);
+        // Error message to log if the check fails.
+        let error_message = block_receipts_support_result
+            .as_ref()
+            .err()
+            .map(|e| e.to_string());
+
+        let supports_block_receipts = block_receipts_support_result.is_ok();
+
+        info!(logger,
+            "Checked if provider supports eth_getBlockReceipts";
+            "supports_block_receipts" => supports_block_receipts,
+            "error" => error_message.unwrap_or_else(|| "none".to_string())
+        );
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
@@ -144,18 +150,17 @@ impl EthereumAdapter {
 
     pub async fn check_block_receipt_support(
         web3: Arc<Web3<impl web3::Transport>>,
-        provider: &str,
         supports_eip_1898: bool,
         call_only: bool,
         logger: &Logger,
     ) -> Result<(), Error> {
         if call_only {
-            warn!(logger, "Call only providers not supported"; "provider" => provider);
+            warn!(logger, "Call only providers not supported");
             return Err(anyhow!("Call only providers not supported"));
         }
 
         if !supports_eip_1898 {
-            warn!(logger, "EIP-1898 not supported"; "provider" => provider);
+            warn!(logger, "EIP-1898 not supported");
             return Err(anyhow!("EIP-1898 not supported"));
         }
 
@@ -167,9 +172,15 @@ impl EthereumAdapter {
             .eth()
             .block(BlockId::Number(Web3BlockNumber::Latest))
             .await?
-            .ok_or_else(|| anyhow!("No latest block found"))?
+            .ok_or_else(|| {
+                warn!(logger, "No latest block found");
+                anyhow!("No latest block found")
+            })?
             .hash
-            .ok_or_else(|| anyhow!("No hash found for latest block"))?;
+            .ok_or_else(|| {
+                warn!(logger, "No hash found for latest block");
+                anyhow!("No hash found for latest block")
+            })?;
 
         // Fetch block receipts from the provider for the latest block.
         let block_receipts_result = web3
@@ -181,11 +192,11 @@ impl EthereumAdapter {
         match block_receipts_result {
             Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
             Ok(_) => {
-                warn!(logger, "Block receipts are empty"; "provider" => provider);
+                warn!(logger, "Block receipts are empty");
                 Err(anyhow!("Block receipts are empty"))
             }
             Err(err) => {
-                warn!(logger, "Failed to fetch block receipts"; "provider" => provider, "error" => err.to_string());
+                warn!(logger, "Failed to fetch block receipts"; "error" => err.to_string());
                 Err(anyhow!("Failed to fetch block receipts: {}", err))
             }
         }
@@ -2659,7 +2670,6 @@ mod tests {
             let web3 = Arc::new(Web3::new(transport.clone()));
             let result = EthereumAdapter::check_block_receipt_support(
                 web3.clone(),
-                "https://imnotatestandiwannafail/",
                 supports_eip_1898,
                 call_only,
                 logger,
