@@ -99,12 +99,6 @@ impl EthereumAdapter {
         self.call_only
     }
 
-    pub async fn set_supports_block_receipts(&self, value: Option<bool>) -> Option<bool> {
-        let mut supports_block_receipts = self.supports_block_receipts.write().await;
-        *supports_block_receipts = value;
-        value
-    }
-
     pub async fn new(
         logger: Logger,
         provider: String,
@@ -230,7 +224,7 @@ impl EthereumAdapter {
 
     // This is a lazy check for block receipt support. It is only called once and then the result is
     // cached. The result is not used for anything critical, so it is fine to be lazy.
-    async fn check_block_receipt_support_with_timeout(
+    async fn check_block_receipt_support_and_update_cache(
         &self,
         web3: Arc<Web3<Transport>>,
         block_hash: H256,
@@ -240,9 +234,11 @@ impl EthereumAdapter {
     ) -> bool {
         // This is the lazy part. If the result is already in `supports_block_receipts`, we don't need
         // to check again.
-        let supports_block_receipts = self.supports_block_receipts.read().await;
-        if let Some(supports_block_receipts) = *supports_block_receipts {
-            return supports_block_receipts;
+        {
+            let supports_block_receipts = self.supports_block_receipts.read().await;
+            if let Some(supports_block_receipts) = *supports_block_receipts {
+                return supports_block_receipts;
+            }
         }
 
         info!(logger, "Checking eth_getBlockReceipts support");
@@ -252,7 +248,7 @@ impl EthereumAdapter {
         )
         .await;
 
-        match result {
+        let result = match result {
             Ok(Ok(_)) => {
                 info!(
                     logger,
@@ -275,7 +271,16 @@ impl EthereumAdapter {
                 );
                 false
             }
+        };
+
+        // We set the result in `self.supports_block_receipts` so that the next time this function is called, we don't
+        // need to check again.
+        let mut supports_block_receipts = self.supports_block_receipts.write().await;
+        if supports_block_receipts.is_none() {
+            *supports_block_receipts = Some(result);
         }
+
+        result
     }
 
     async fn logs_with_sigs(
@@ -1339,7 +1344,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
 
-        let supports_block_receipts_future = self.check_block_receipt_support_with_timeout(
+        let supports_block_receipts_future = self.check_block_receipt_support_and_update_cache(
             web3.clone(),
             block_hash,
             self.supports_eip_1898,
@@ -1348,17 +1353,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
         );
 
         let receipts_future = supports_block_receipts_future
-            .then(|supports_block_receipts| {
-                self.set_supports_block_receipts(Some(supports_block_receipts))
-            })
             .then(move |supports_block_receipts| {
-                fetch_receipts_with_retry(
-                    web3,
-                    hashes,
-                    block_hash,
-                    logger,
-                    supports_block_receipts.unwrap_or(false),
-                )
+                fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
             })
             .boxed();
 
