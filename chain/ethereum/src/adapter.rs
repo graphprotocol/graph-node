@@ -1136,7 +1136,9 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send>>;
+    ) -> Pin<
+        Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send + '_>,
+    >;
 
     /// Load block pointer for the specified `block number`.
     fn block_pointer_from_number(

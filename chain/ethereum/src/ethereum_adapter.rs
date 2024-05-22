@@ -19,6 +19,8 @@ use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
+use graph::tokio::sync::RwLock;
+use graph::tokio::time::timeout;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -75,7 +77,7 @@ pub struct EthereumAdapter {
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
-    supports_block_receipts: bool,
+    supports_block_receipts: Arc<RwLock<Option<bool>>>,
 }
 
 impl CheapClone for EthereumAdapter {
@@ -87,7 +89,7 @@ impl CheapClone for EthereumAdapter {
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
-            supports_block_receipts: self.supports_block_receipts,
+            supports_block_receipts: self.supports_block_receipts.cheap_clone(),
         }
     }
 }
@@ -95,6 +97,12 @@ impl CheapClone for EthereumAdapter {
 impl EthereumAdapter {
     pub fn is_call_only(&self) -> bool {
         self.call_only
+    }
+
+    pub async fn set_supports_block_receipts(&self, value: Option<bool>) -> Option<bool> {
+        let mut supports_block_receipts = self.supports_block_receipts.write().await;
+        *supports_block_receipts = value;
+        value
     }
 
     pub async fn new(
@@ -106,38 +114,6 @@ impl EthereumAdapter {
         call_only: bool,
     ) -> Self {
         let web3 = Arc::new(Web3::new(transport));
-
-        info!(logger, "Checking if provider supports getBlockReceipts");
-        let retry_log_message = "check_block_receipt_support call";
-
-        let web3_for_check = web3.clone();
-
-        let block_receipts_support_result = retry(retry_log_message, &logger)
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-            .run(move || {
-                let web3 = web3_for_check.clone();
-
-                async move {
-                    Self::check_block_receipt_support(web3.clone(), supports_eip_1898, call_only)
-                        .await
-                }
-            })
-            .await;
-
-        // Error message to log if the check fails.
-        let error_message = block_receipts_support_result
-            .as_ref()
-            .err()
-            .map(|e| e.to_string());
-
-        let supports_block_receipts = block_receipts_support_result.is_ok();
-
-        info!(logger,
-            "Checked if provider supports eth_getBlockReceipts";
-            "supports_block_receipts" => supports_block_receipts,
-            "error" => error_message.unwrap_or_else(|| "none".to_string())
-        );
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
@@ -155,46 +131,7 @@ impl EthereumAdapter {
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
             call_only,
-            supports_block_receipts: supports_block_receipts,
-        }
-    }
-
-    pub async fn check_block_receipt_support(
-        web3: Arc<Web3<impl web3::Transport>>,
-        supports_eip_1898: bool,
-        call_only: bool,
-    ) -> Result<(), Error> {
-        if call_only {
-            return Err(anyhow!("Call only providers not supported"));
-        }
-
-        if !supports_eip_1898 {
-            return Err(anyhow!("EIP-1898 not supported by provider"));
-        }
-
-        // Fetch the latest block hash from the provider.Just to get the block hash to test the
-        // `getBlockReceipts` method. We need to test with block hash as the provider may not
-        // some providers have issues with `getBlockReceipts` with block hashes and we need to
-        // set supports_block_receipts to false in that case.
-        let latest_block_hash = web3
-            .eth()
-            .block(BlockId::Number(Web3BlockNumber::Latest))
-            .await?
-            .ok_or(anyhow!("No latest block found"))?
-            .hash
-            .ok_or(anyhow!("No hash found for latest block"))?;
-
-        // Fetch block receipts from the provider for the latest block.
-        let block_receipts_result = web3
-            .eth()
-            .block_receipts(BlockId::Hash(latest_block_hash))
-            .await;
-
-        // Determine if the provider supports block receipts based on the fetched result.
-        match block_receipts_result {
-            Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
-            Ok(_) => Err(anyhow!("Block receipts are empty")),
-            Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
+            supports_block_receipts: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -289,6 +226,56 @@ impl EthereumAdapter {
                 })
             })
             .await
+    }
+
+    // This is a lazy check for block receipt support. It is only called once and then the result is
+    // cached. The result is not used for anything critical, so it is fine to be lazy.
+    async fn check_block_receipt_support_with_timeout(
+        &self,
+        web3: Arc<Web3<Transport>>,
+        supports_eip_1898: bool,
+        call_only: bool,
+        logger: Logger,
+    ) -> bool {
+        info!(logger, "Checking block receipt support");
+
+        // This is the lazy part. If the result is already in `supports_block_receipts`, we don't need
+        // to check again.
+        let supports_block_receipts = self.supports_block_receipts.read().await;
+        if let Some(supports_block_receipts) = *supports_block_receipts {
+            return supports_block_receipts;
+        }
+
+        let result = timeout(
+            ENV_VARS.block_receipts_timeout,
+            check_block_receipt_support(web3, supports_eip_1898, call_only),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(_)) => {
+                info!(
+                    logger,
+                    "Block receipt support check result: true, error: none"
+                );
+                true
+            }
+            Ok(Err(err)) => {
+                warn!(
+                    logger,
+                    "Block receipt support check result: false, error: {}", err
+                );
+                false
+            }
+            Err(_) => {
+                warn!(
+                    logger,
+                    "Block receipt support check result: false, error: Timeout after {} seconds",
+                    ENV_VARS.block_receipts_timeout.as_secs()
+                );
+                false
+            }
+        }
     }
 
     async fn logs_with_sigs(
@@ -1335,7 +1322,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, IngestorError>> + Send>>
+    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, IngestorError>> + Send + '_>>
     {
         let web3 = Arc::clone(&self.web3);
         let logger = logger.clone();
@@ -1352,14 +1339,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
 
-        let receipts_future = fetch_receipts_with_retry(
-            web3,
-            hashes,
-            block_hash,
-            logger,
-            self.supports_block_receipts,
-        )
-        .boxed();
+        let supports_block_receipts_future = self.check_block_receipt_support_with_timeout(
+            web3.clone(),
+            self.supports_eip_1898,
+            self.call_only,
+            logger.clone(),
+        );
+
+        let receipts_future = supports_block_receipts_future
+            .then(|supports_block_receipts| {
+                self.set_supports_block_receipts(Some(supports_block_receipts))
+            })
+            .then(move |supports_block_receipts| {
+                fetch_receipts_with_retry(
+                    web3,
+                    hashes,
+                    block_hash,
+                    logger,
+                    supports_block_receipts.unwrap_or(false),
+                )
+            })
+            .boxed();
 
         let block_future =
             futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
@@ -2220,6 +2220,45 @@ async fn fetch_transaction_receipts_in_batch(
     Ok(collected)
 }
 
+pub(crate) async fn check_block_receipt_support(
+    web3: Arc<Web3<impl web3::Transport>>,
+    supports_eip_1898: bool,
+    call_only: bool,
+) -> Result<(), Error> {
+    if call_only {
+        return Err(anyhow!("Call only providers not supported"));
+    }
+
+    if !supports_eip_1898 {
+        return Err(anyhow!("EIP-1898 not supported by provider"));
+    }
+
+    // Fetch the latest block hash from the provider.Just to get the block hash to test the
+    // `getBlockReceipts` method. We need to test with block hash as the provider may not
+    // some providers have issues with `getBlockReceipts` with block hashes and we need to
+    // set supports_block_receipts to false in that case.
+    let latest_block_hash = web3
+        .eth()
+        .block(BlockId::Number(Web3BlockNumber::Latest))
+        .await?
+        .ok_or(anyhow!("No latest block found"))?
+        .hash
+        .ok_or(anyhow!("No hash found for latest block"))?;
+
+    // Fetch block receipts from the provider for the latest block.
+    let block_receipts_result = web3
+        .eth()
+        .block_receipts(BlockId::Hash(latest_block_hash))
+        .await;
+
+    // Determine if the provider supports block receipts based on the fetched result.
+    match block_receipts_result {
+        Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
+        Ok(_) => Err(anyhow!("Block receipts are empty")),
+        Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
+    }
+}
+
 // Fetches transaction receipts with retries. This function acts as a dispatcher
 // based on whether block receipts are supported or individual transaction receipts
 // need to be fetched.
@@ -2545,9 +2584,11 @@ async fn get_transaction_receipts_for_transaction_hashes(
 mod tests {
 
     use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
-    use crate::EthereumAdapter;
 
-    use super::{parse_block_triggers, EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls};
+    use super::{
+        check_block_receipt_support, parse_block_triggers, EthereumBlock, EthereumBlockFilter,
+        EthereumBlockWithCalls,
+    };
     use graph::blockchain::BlockPtr;
     use graph::prelude::ethabi::ethereum_types::U64;
     use graph::prelude::tokio::{self};
@@ -2663,12 +2704,8 @@ mod tests {
             transport.add_response(json_value);
 
             let web3 = Arc::new(Web3::new(transport.clone()));
-            let result = EthereumAdapter::check_block_receipt_support(
-                web3.clone(),
-                supports_eip_1898,
-                call_only,
-            )
-            .await;
+            let result =
+                check_block_receipt_support(web3.clone(), supports_eip_1898, call_only).await;
 
             match expected_err {
                 Some(err_msg) => {
