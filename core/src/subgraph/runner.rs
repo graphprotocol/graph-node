@@ -175,29 +175,27 @@ where
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
         if let Some(current_ptr) = self.inputs.store.block_ptr() {
-            let adapter = &self.inputs.triggers_adapter;
-            let is_on_main_chain = adapter.is_on_main_chain(current_ptr.cheap_clone()).await?;
-
-            // If the subgraph is not on the main chain, the first thing the block stream will do is
-            // revert the deployment head, and with it any errors.
-            if is_on_main_chain {
-                if let Some(parent_ptr) = adapter.parent_ptr(&current_ptr).await? {
-                    // This reverts the deployment head to the parent_ptr if
-                    // deterministic errors happened.
-                    //
-                    // There's no point in calling it if we have no current or parent block
-                    // pointers, because there would be: no block to revert to or to search
-                    // errors from (first execution).
-                    //
-                    // We attempt to unfail deterministic errors to mitigate deterministic
-                    // errors caused by wrong data being consumed from the providers. It has
-                    // been a frequent case in the past so this helps recover on a larger scale.
-                    let _outcome = self
-                        .inputs
-                        .store
-                        .unfail_deterministic_error(&current_ptr, &parent_ptr)
-                        .await?;
-                }
+            if let Some(parent_ptr) = self
+                .inputs
+                .triggers_adapter
+                .parent_ptr(&current_ptr)
+                .await?
+            {
+                // This reverts the deployment head to the parent_ptr if
+                // deterministic errors happened.
+                //
+                // There's no point in calling it if we have no current or parent block
+                // pointers, because there would be: no block to revert to or to search
+                // errors from (first execution).
+                //
+                // We attempt to unfail deterministic errors to mitigate deterministic
+                // errors caused by wrong data being consumed from the providers. It has
+                // been a frequent case in the past so this helps recover on a larger scale.
+                let _outcome = self
+                    .inputs
+                    .store
+                    .unfail_deterministic_error(&current_ptr, &parent_ptr)
+                    .await?;
             }
         }
 
