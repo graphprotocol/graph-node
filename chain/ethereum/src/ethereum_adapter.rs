@@ -250,23 +250,17 @@ impl EthereumAdapter {
 
         let result = match result {
             Ok(Ok(_)) => {
-                info!(
-                    logger,
-                    "Block receipt support check result: true, error: none"
-                );
+                info!(logger, "Provider supports block receipts");
                 true
             }
             Ok(Err(err)) => {
-                warn!(
-                    logger,
-                    "Block receipt support check result: false, error: {}", err
-                );
+                warn!(logger, "Skipping use of block receipts, reason: {}", err);
                 false
             }
             Err(_) => {
                 warn!(
                     logger,
-                    "Block receipt support check result: false, error: Timeout after {} seconds",
+                    "Skipping use of block receipts, reason: Timeout after {} seconds",
                     ENV_VARS.block_receipts_timeout.as_secs()
                 );
                 false
@@ -2224,11 +2218,11 @@ pub(crate) async fn check_block_receipt_support(
     call_only: bool,
 ) -> Result<(), Error> {
     if call_only {
-        return Err(anyhow!("Call only providers not supported"));
+        return Err(anyhow!("Provider is call-only"));
     }
 
     if !supports_eip_1898 {
-        return Err(anyhow!("EIP-1898 not supported by provider"));
+        return Err(anyhow!("Provider does not support EIP 1898"));
     }
 
     // Fetch block receipts from the provider for the latest block.
@@ -2731,7 +2725,7 @@ mod tests {
         run_test_case(
             &mut transport,
             json_receipts,
-            Some("EIP-1898 not supported"),
+            Some("Provider does not support EIP 1898"),
             false,
             false,
         )
@@ -2742,7 +2736,7 @@ mod tests {
         run_test_case(
             &mut transport,
             json_receipts,
-            Some("Call only providers not supported"),
+            Some("Provider is call-only"),
             true,
             true,
         )
