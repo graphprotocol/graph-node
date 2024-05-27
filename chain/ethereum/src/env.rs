@@ -162,7 +162,7 @@ struct Inner {
     max_block_range_size: BlockNumber,
     #[envconfig(from = "GRAPH_ETHEREUM_JSON_RPC_TIMEOUT", default = "180")]
     json_rpc_timeout_in_secs: u64,
-    #[envconfig(from = "GRAPH_ETHEREUM_BLOCK_RECEIPTS_TIMEOUT", default = "180")]
+    #[envconfig(from = "GRAPH_ETHEREUM_BLOCK_RECEIPTS_TIMEOUT", default = "10")]
     block_receipts_timeout_in_seccs: u64,
     #[envconfig(from = "GRAPH_ETHEREUM_REQUEST_RETRIES", default = "10")]
     request_retries: usize,
