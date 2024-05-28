@@ -488,7 +488,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         logger: &Logger,
         response: &firehose::Response,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
-        let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
+        let step = ForkStep::try_from(response.step).unwrap_or_else(|_| {
             panic!(
                 "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
                 response.step

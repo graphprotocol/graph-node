@@ -35,7 +35,7 @@ impl ToAscObj<AscTransaction> for codec::Transaction {
         Ok(AscTransaction {
             r#type: asc_new(
                 heap,
-                &codec::TransactionType::from_i32(self.r#type)
+                &codec::TransactionType::try_from(self.r#type)
                     .expect("invalid TransactionType value"),
                 gas,
             )?,

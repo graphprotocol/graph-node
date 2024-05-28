@@ -104,7 +104,7 @@ where
         while let Some(message) = stream.next().await {
             match message {
                 Ok(v) => {
-                    let step = ForkStep::from_i32(v.step)
+                    let step = ForkStep::try_from(v.step)
                         .expect("Fork step should always match to known value");
 
                     let result = match step {
