@@ -269,6 +269,17 @@ mod test {
     }
 
     #[test]
+    fn test_common_table_expression_with_effect() {
+        let result = validate(
+            "
+            WITH foo AS (INSERT INTO target VALUES(1)) SELECT * FROM bar;
+            ",
+        );
+        assert_eq!(result, Err(Error::NotSelectQuery));
+    }
+
+
+    #[test]
     fn test_no_multi_statement() {
         let result = validate(
             "
