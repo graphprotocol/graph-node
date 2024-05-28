@@ -1205,6 +1205,7 @@ mod tests {
     use super::{EthereumBlockFilter, LogFilterNode};
     use super::{EthereumCallFilter, EthereumLogFilter, TriggerFilter};
 
+    use base64::prelude::*;
     use graph::blockchain::TriggerFilter as _;
     use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
@@ -1268,7 +1269,7 @@ mod tests {
             log_filters: vec![filter],
         };
 
-        let output = base64::encode(filter.encode_to_vec());
+        let output = BASE64_STANDARD.encode(filter.encode_to_vec());
         assert_eq!(expected_base64, output);
     }
 
@@ -1295,7 +1296,7 @@ mod tests {
         // addresses and signatures above.
         let expected_base64 = "ChTu0rd1bilakwDlPdBJrrB1GJm64xIEqQWcuw==";
 
-        let output = base64::encode(filter.encode_to_vec());
+        let output = BASE64_STANDARD.encode(filter.encode_to_vec());
         assert_eq!(expected_base64, output);
     }
 
