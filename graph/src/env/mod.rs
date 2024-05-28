@@ -211,6 +211,16 @@ impl EnvVars {
         let mapping_handlers = InnerMappingHandlers::init_from_env()?.into();
         let store = InnerStore::init_from_env()?.into();
 
+        // The default reorganization (reorg) threshold is set to 250.
+        // For testing purposes, we need to set this threshold to 0 because:
+        // 1. Many tests involve reverting blocks.
+        // 2. Blocks cannot be reverted below the reorg threshold.
+        // Therefore, during tests, we want to set the reorg threshold to 0.
+        let reorg_threshold =
+            inner
+                .reorg_threshold
+                .unwrap_or_else(|| if cfg!(debug_assertions) { 0 } else { 250 });
+
         Ok(Self {
             graphql,
             mappings: mapping_handlers,
@@ -262,15 +272,13 @@ impl EnvVars {
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
-            reorg_threshold: inner.reorg_threshold,
+            reorg_threshold: reorg_threshold,
             ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
             enable_dips_metrics: inner.enable_dips_metrics.0,
             history_blocks_override: inner.history_blocks_override,
-            min_history_blocks: inner
-                .min_history_blocks
-                .unwrap_or(2 * inner.reorg_threshold),
+            min_history_blocks: inner.min_history_blocks.unwrap_or(2 * reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
         })
     }
@@ -392,8 +400,8 @@ struct Inner {
     #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "10000")]
     static_filters_threshold: usize,
     // JSON-RPC specific.
-    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
-    reorg_threshold: BlockNumber,
+    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD")]
+    reorg_threshold: Option<BlockNumber>,
     #[envconfig(from = "ETHEREUM_POLLING_INTERVAL", default = "1000")]
     ingestor_polling_interval: u64,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS")]
