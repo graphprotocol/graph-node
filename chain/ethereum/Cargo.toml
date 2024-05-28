@@ -21,7 +21,7 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-base64 = "0.20.0"
+base64 = "0.22.1"
 uuid = { version = "1.8.0", features = ["v4"] }
 
 [build-dependencies]
