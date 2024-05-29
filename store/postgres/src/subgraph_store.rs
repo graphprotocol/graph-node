@@ -571,11 +571,11 @@ impl SubgraphStoreInner {
             .get(&site.shard)
             .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
 
-        let index_def = if let Some(graft) = &graft_base.clone() {
-            Some(deployment_store.load_indexes(self.sites.get(graft).unwrap())?)
-        } else {
-            None
-        };
+        // let index_def = if let Some(graft) = &graft_base.clone() {
+        //     Some(deployment_store.load_indexes(self.sites.get(graft).unwrap())?)
+        // } else {
+        //     None
+        // };
 
         deployment_store.create_deployment(
             schema,
@@ -584,8 +584,10 @@ impl SubgraphStoreInner {
             graft_base_layout,
             replace,
             OnSync::None,
-            index_def.is_some(),
-            index_def,
+            // index_def.is_some(),
+            // index_def,
+            false,
+            None,
         )?;
 
         let exists_and_synced = |id: &DeploymentHash| {
