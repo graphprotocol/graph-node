@@ -742,6 +742,9 @@ pub fn decode_verifiable_uri(bytes: Vec<u8>) -> Result<ERC725Value, ERC725Error>
     let code: u16 = BigEndian::read_u16(&bytes);
     if code == 0 {
         // VerifiableURI
+        if bytes.len() < 8 {
+            return Err(ERC725Error::Error("Invalid VerifiableURI".to_string()));
+        }
         let method = &bytes[2..6];
         let length: u16 = BigEndian::read_u16(&bytes[6..]);
         if length > bytes.len() as u16 - 8 {
