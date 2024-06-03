@@ -54,7 +54,7 @@ sqlparser = { workspace = true }
 # stable-hash = { version = "0.4.2" }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main" }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash", doc = false }
-strum_macros = "0.26.2"
+strum_macros = "0.26.3"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
