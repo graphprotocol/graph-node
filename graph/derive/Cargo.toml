@@ -18,4 +18,4 @@ proc-macro2 = "1.0.81"
 heck = "0.5"
 
 [dev-dependencies]
-proc-macro-utils = "0.9.1"
+proc-macro-utils = "0.10.0"

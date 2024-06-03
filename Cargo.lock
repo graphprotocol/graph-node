@@ -3576,9 +3576,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro-utils"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c465d89134af1993ccbe4d4c859af29e73f049775f8174beb1de4789c7639a4a"
+checksum = "eeaf08a13de400bc215877b5bdc088f241b12eb42f0a548d3390dc1c56bb7071"
 dependencies = [
  "proc-macro2",
  "quote",
