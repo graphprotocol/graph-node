@@ -71,7 +71,6 @@ message Module {
     oneof query {
       string query_string = 2;
       QueryFromParams query_from_params = 3;
-      // QueryFromStore query_from_store_keys = 3;
     };
   }
 

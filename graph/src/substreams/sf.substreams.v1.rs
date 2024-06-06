@@ -97,7 +97,6 @@ pub mod module {
         pub enum Query {
             #[prost(string, tag = "2")]
             QueryString(::prost::alloc::string::String),
-            /// QueryFromStore query_from_store_keys = 3;
             #[prost(message, tag = "3")]
             QueryFromParams(super::QueryFromParams),
         }
