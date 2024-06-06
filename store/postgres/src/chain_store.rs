@@ -997,9 +997,9 @@ mod data {
                     // type Result = (Text, i64);
                     #[derive(QueryableByName)]
                     struct BlockHashAndNumber {
-                        #[sql_type = "Text"]
+                        #[diesel(sql_type = Text)]
                         hash: String,
-                        #[sql_type = "BigInt"]
+                        #[diesel(sql_type = BigInt)]
                         number: i64,
                     }
 
@@ -1038,9 +1038,9 @@ mod data {
 
                     #[derive(QueryableByName)]
                     struct BlockHashAndNumber {
-                        #[sql_type = "Bytea"]
+                        #[diesel(sql_type = Bytea)]
                         hash: Vec<u8>,
-                        #[sql_type = "BigInt"]
+                        #[diesel(sql_type = BigInt)]
                         number: i64,
                     }
 
