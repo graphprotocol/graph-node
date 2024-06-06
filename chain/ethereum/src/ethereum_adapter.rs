@@ -243,7 +243,7 @@ impl EthereumAdapter {
 
         info!(logger, "Checking eth_getBlockReceipts support");
         let result = timeout(
-            ENV_VARS.block_receipts_timeout,
+            ENV_VARS.block_receipts_check_timeout,
             check_block_receipt_support(web3, block_hash, supports_eip_1898, call_only),
         )
         .await;
@@ -261,7 +261,7 @@ impl EthereumAdapter {
                 warn!(
                     logger,
                     "Skipping use of block receipts, reason: Timeout after {} seconds",
-                    ENV_VARS.block_receipts_timeout.as_secs()
+                    ENV_VARS.block_receipts_check_timeout.as_secs()
                 );
                 false
             }
