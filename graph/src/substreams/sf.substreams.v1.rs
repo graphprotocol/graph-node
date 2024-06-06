@@ -75,11 +75,35 @@ pub struct Module {
     pub output: ::core::option::Option<module::Output>,
     #[prost(uint64, tag = "8")]
     pub initial_block: u64,
-    #[prost(oneof = "module::Kind", tags = "2, 3")]
+    #[prost(message, optional, tag = "9")]
+    pub block_filter: ::core::option::Option<module::BlockFilter>,
+    #[prost(oneof = "module::Kind", tags = "2, 3, 10")]
     pub kind: ::core::option::Option<module::Kind>,
 }
 /// Nested message and enum types in `Module`.
 pub mod module {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct BlockFilter {
+        #[prost(string, tag = "1")]
+        pub module: ::prost::alloc::string::String,
+        #[prost(oneof = "block_filter::Query", tags = "2, 3")]
+        pub query: ::core::option::Option<block_filter::Query>,
+    }
+    /// Nested message and enum types in `BlockFilter`.
+    pub mod block_filter {
+        #[allow(clippy::derive_partial_eq_without_eq)]
+        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        pub enum Query {
+            #[prost(string, tag = "2")]
+            QueryString(::prost::alloc::string::String),
+            #[prost(message, tag = "3")]
+            QueryFromParams(super::QueryFromParams),
+        }
+    }
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct QueryFromParams {}
     #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct KindMap {
@@ -130,6 +154,8 @@ pub mod module {
             Max = 5,
             /// Provides a store where you can `append()` keys, where two stores merge by concatenating the bytes in order.
             Append = 6,
+            /// Provides a store with both `set()` and `sum()` functions.
+            SetSum = 7,
         }
         impl UpdatePolicy {
             /// String value of the enum field names used in the ProtoBuf definition.
@@ -145,6 +171,7 @@ pub mod module {
                     UpdatePolicy::Min => "UPDATE_POLICY_MIN",
                     UpdatePolicy::Max => "UPDATE_POLICY_MAX",
                     UpdatePolicy::Append => "UPDATE_POLICY_APPEND",
+                    UpdatePolicy::SetSum => "UPDATE_POLICY_SET_SUM",
                 }
             }
             /// Creates an enum from field names used in the ProtoBuf definition.
@@ -157,10 +184,17 @@ pub mod module {
                     "UPDATE_POLICY_MIN" => Some(Self::Min),
                     "UPDATE_POLICY_MAX" => Some(Self::Max),
                     "UPDATE_POLICY_APPEND" => Some(Self::Append),
+                    "UPDATE_POLICY_SET_SUM" => Some(Self::SetSum),
                     _ => None,
                 }
             }
         }
+    }
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct KindBlockIndex {
+        #[prost(string, tag = "1")]
+        pub output_type: ::prost::alloc::string::String,
     }
     #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -266,6 +300,8 @@ pub mod module {
         KindMap(KindMap),
         #[prost(message, tag = "3")]
         KindStore(KindStore),
+        #[prost(message, tag = "10")]
+        KindBlockIndex(KindBlockIndex),
     }
 }
 /// Clock is a pointer to a block with added timestamp
