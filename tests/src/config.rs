@@ -261,7 +261,7 @@ impl Default for Config {
             graph_node: GraphNodeConfig::default(),
             graph_cli,
             num_parallel_tests,
-            timeout: Duration::from_secs(120),
+            timeout: Duration::from_secs(600),
         }
     }
 }

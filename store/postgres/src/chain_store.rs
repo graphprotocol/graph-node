@@ -381,10 +381,10 @@ mod data {
                 create index blocks_number ON {nsp}.blocks using btree(number);
 
                 create table {nsp}.call_cache (
-	              id               bytea not null primary key,
-	              return_value     bytea not null,
-	              contract_address bytea not null,
-	              block_number     int4 not null
+                  id               bytea not null primary key,
+                  return_value     bytea not null,
+                  contract_address bytea not null,
+                  block_number     int4 not null
                 );
                 create index call_cache_block_number_idx ON {nsp}.call_cache(block_number);
 
@@ -948,78 +948,124 @@ mod data {
             }
         }
 
+        fn ancestor_block_query(
+            &self,
+            short_circuit_predicate: &str,
+            blocks_table_name: &str,
+        ) -> String {
+            format!(
+                "
+                with recursive ancestors(block_hash, block_offset) as (
+                    values ($1, 0)
+                    union all
+                    select b.parent_hash, a.block_offset + 1
+                    from ancestors a, {blocks_table_name} b
+                    where a.block_hash = b.hash
+                    and a.block_offset < $2
+                    {short_circuit_predicate}
+                )
+                select a.block_hash as hash, b.number as number
+                from ancestors a
+                inner join {blocks_table_name} b on a.block_hash = b.hash
+                order by a.block_offset desc limit 1
+                ",
+                blocks_table_name = blocks_table_name,
+                short_circuit_predicate = short_circuit_predicate,
+            )
+        }
+
+        /// Returns an ancestor of a specified block at a given offset, with an option to specify a `root` hash
+        /// for a targeted search. If a `root` hash is provided, the search stops at the block whose parent hash
+        /// matches the `root`.
         pub(super) fn ancestor_block(
             &self,
             conn: &mut PgConnection,
             block_ptr: BlockPtr,
             offset: BlockNumber,
+            root: Option<BlockHash>,
         ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
-            let data_and_hash = match self {
-                Storage::Shared => {
-                    const ANCESTOR_SQL: &str = "
-        with recursive ancestors(block_hash, block_offset) as (
-            values ($1, 0)
-            union all
-            select b.parent_hash, a.block_offset+1
-              from ancestors a, ethereum_blocks b
-             where a.block_hash = b.hash
-               and a.block_offset < $2
-        )
-        select a.block_hash as hash
-          from ancestors a
-         where a.block_offset = $2;";
+            let short_circuit_predicate = match root {
+                Some(_) => "and b.parent_hash <> $3",
+                None => "",
+            };
 
-                    let hash = sql_query(ANCESTOR_SQL)
-                        .bind::<Text, _>(block_ptr.hash_hex())
-                        .bind::<BigInt, _>(offset as i64)
-                        .get_result::<BlockHashText>(conn)
-                        .optional()?;
+            let data_and_ptr = match self {
+                Storage::Shared => {
+                    let query =
+                        self.ancestor_block_query(short_circuit_predicate, "ethereum_blocks");
+
+                    // type Result = (Text, i64);
+                    #[derive(QueryableByName)]
+                    struct BlockHashAndNumber {
+                        #[sql_type = "Text"]
+                        hash: String,
+                        #[sql_type = "BigInt"]
+                        number: i64,
+                    }
+
+                    let block = match root {
+                        Some(root) => sql_query(query)
+                            .bind::<Text, _>(block_ptr.hash_hex())
+                            .bind::<BigInt, _>(offset as i64)
+                            .bind::<Text, _>(root.hash_hex())
+                            .get_result::<BlockHashAndNumber>(conn),
+                        None => sql_query(query)
+                            .bind::<Text, _>(block_ptr.hash_hex())
+                            .bind::<BigInt, _>(offset as i64)
+                            .get_result::<BlockHashAndNumber>(conn),
+                    }
+                    .optional()?;
 
                     use public::ethereum_blocks as b;
 
-                    match hash {
+                    match block {
                         None => None,
-                        Some(hash) => Some((
+                        Some(block) => Some((
                             b::table
-                                .filter(b::hash.eq(&hash.hash))
+                                .filter(b::hash.eq(&block.hash))
                                 .select(b::data)
                                 .first::<json::Value>(conn)?,
-                            BlockHash::from_str(&hash.hash)?,
+                            BlockPtr::new(
+                                BlockHash::from_str(&block.hash)?,
+                                i32::try_from(block.number).unwrap(),
+                            ),
                         )),
                     }
                 }
                 Storage::Private(Schema { blocks, .. }) => {
-                    // Same as ANCESTOR_SQL except for the table name
-                    let query = format!(
-                        "
-        with recursive ancestors(block_hash, block_offset) as (
-            values ($1, 0)
-            union all
-            select b.parent_hash, a.block_offset+1
-              from ancestors a, {} b
-             where a.block_hash = b.hash
-               and a.block_offset < $2
-        )
-        select a.block_hash as hash
-          from ancestors a
-         where a.block_offset = $2;",
-                        blocks.qname
-                    );
+                    let query =
+                        self.ancestor_block_query(short_circuit_predicate, blocks.qname.as_str());
 
-                    let hash = sql_query(query)
-                        .bind::<Bytea, _>(block_ptr.hash_slice())
-                        .bind::<BigInt, _>(offset as i64)
-                        .get_result::<BlockHashBytea>(conn)
-                        .optional()?;
-                    match hash {
+                    #[derive(QueryableByName)]
+                    struct BlockHashAndNumber {
+                        #[sql_type = "Bytea"]
+                        hash: Vec<u8>,
+                        #[sql_type = "BigInt"]
+                        number: i64,
+                    }
+
+                    let block = match root {
+                        Some(root) => sql_query(query)
+                            .bind::<Bytea, _>(block_ptr.hash_slice())
+                            .bind::<BigInt, _>(offset as i64)
+                            .bind::<Bytea, _>(root.as_slice())
+                            .get_result::<BlockHashAndNumber>(conn),
+                        None => sql_query(query)
+                            .bind::<Bytea, _>(block_ptr.hash_slice())
+                            .bind::<BigInt, _>(offset as i64)
+                            .get_result::<BlockHashAndNumber>(conn),
+                    }
+                    .optional()?;
+
+                    match block {
                         None => None,
-                        Some(hash) => Some((
+                        Some(block) => Some((
                             blocks
                                 .table()
-                                .filter(blocks.hash().eq(&hash.hash))
+                                .filter(blocks.hash().eq(&block.hash))
                                 .select(blocks.data())
                                 .first::<json::Value>(conn)?,
-                            BlockHash::from(hash.hash),
+                            BlockPtr::from((block.hash, block.number)),
                         )),
                     }
                 }
@@ -1034,13 +1080,13 @@ mod data {
             let data_and_ptr = {
                 use graph::prelude::serde_json::json;
 
-                data_and_hash.map(|(data, hash)| {
+                data_and_ptr.map(|(data, ptr)| {
                     (
                         match data.get("block") {
                             Some(_) => data,
                             None => json!({ "block": data, "transaction_receipts": [] }),
                         },
-                        BlockPtr::new(hash, block_ptr.number - offset),
+                        ptr,
                     )
                 })
             };
@@ -2079,6 +2125,7 @@ impl ChainStoreTrait for ChainStore {
         self: Arc<Self>,
         block_ptr: BlockPtr,
         offset: BlockNumber,
+        root: Option<BlockHash>,
     ) -> Result<Option<json::Value>, Error> {
         ensure!(
             block_ptr.number >= offset,
@@ -2099,7 +2146,7 @@ impl ChainStoreTrait for ChainStore {
             .with_conn(move |conn, _| {
                 chain_store
                     .storage
-                    .ancestor_block(conn, block_ptr_clone, offset)
+                    .ancestor_block(conn, block_ptr_clone, offset, root)
                     .map_err(StoreError::from)
                     .map_err(CancelableError::from)
             })

@@ -363,22 +363,42 @@ where
             //   1000 triggers found, 2 per block, range_size = 1000 / 2 = 500
             let range_size_upper_limit =
                 max_block_range_size.min(ctx.previous_block_range_size * 10);
-            let range_size = if ctx.previous_triggers_per_block == 0.0 {
+            let target_range_size = if ctx.previous_triggers_per_block == 0.0 {
                 range_size_upper_limit
             } else {
                 (self.target_triggers_per_block_range as f64 / ctx.previous_triggers_per_block)
                     .max(1.0)
                     .min(range_size_upper_limit as f64) as BlockNumber
             };
-            let to = cmp::min(from + range_size - 1, to_limit);
+            let to = cmp::min(from + target_range_size - 1, to_limit);
 
             info!(
                 ctx.logger,
                 "Scanning blocks [{}, {}]", from, to;
-                "range_size" => range_size
+                "target_range_size" => target_range_size
             );
 
-            let blocks = self.adapter.scan_triggers(from, to, &self.filter).await?;
+            // Update with actually scanned range, to account for any skipped null blocks.
+            let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter).await?;
+            let range_size = to - from + 1;
+
+            // If the target block (`to`) is within the reorg threshold, indicating no non-null finalized blocks are
+            // greater than or equal to `to`, we retry later. This deferment allows the chain head to advance,
+            // ensuring the target block range becomes finalized. It effectively minimizes the risk of chain reorg
+            // affecting the processing by waiting for a more stable set of blocks.
+            if to > head_ptr.number - reorg_threshold {
+                return Ok(ReconciliationStep::Retry);
+            }
+
+            if to > head_ptr.number - reorg_threshold {
+                return Ok(ReconciliationStep::Retry);
+            }
+
+            info!(
+                ctx.logger,
+                "Scanned blocks [{}, {}]", from, to;
+                "range_size" => range_size
+            );
 
             Ok(ReconciliationStep::ProcessDescendantBlocks(
                 blocks, range_size,
@@ -415,7 +435,10 @@ where
 
             // In principle this block should be in the store, but we have seen this error for deep
             // reorgs in ropsten.
-            let head_ancestor_opt = self.adapter.ancestor_block(head_ptr, offset).await?;
+            let head_ancestor_opt = self
+                .adapter
+                .ancestor_block(head_ptr, offset, Some(subgraph_ptr.hash.clone()))
+                .await?;
 
             match head_ancestor_opt {
                 None => {
@@ -427,6 +450,15 @@ where
                     Ok(ReconciliationStep::Retry)
                 }
                 Some(head_ancestor) => {
+                    // Check if there was an interceding skipped (null) block.
+                    if head_ancestor.number() != subgraph_ptr.number + 1 {
+                        warn!(
+                            ctx.logger,
+                            "skipped block detected: {}",
+                            subgraph_ptr.number + 1
+                        );
+                    }
+
                     // We stopped one block short, so we'll compare the parent hash to the
                     // subgraph ptr.
                     if head_ancestor.parent_hash().as_ref() == Some(&subgraph_ptr.hash) {

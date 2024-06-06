@@ -260,14 +260,15 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
 #[async_trait]
 pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
-    // Return the block that is `offset` blocks before the block pointed to
-    // by `ptr` from the local cache. An offset of 0 means the block itself,
-    // an offset of 1 means the block's parent etc. If the block is not in
-    // the local cache, return `None`
+    // Return the block that is `offset` blocks before the block pointed to by `ptr` from the local
+    // cache. An offset of 0 means the block itself, an offset of 1 means the block's parent etc. If
+    // `root` is passed, short-circuit upon finding a child of `root`. If the block is not in the
+    // local cache, return `None`.
     async fn ancestor_block(
         &self,
         ptr: BlockPtr,
         offset: BlockNumber,
+        root: Option<BlockHash>,
     ) -> Result<Option<C::Block>, Error>;
 
     // Returns a sequence of blocks in increasing order of block number.
@@ -281,7 +282,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         from: BlockNumber,
         to: BlockNumber,
         filter: &C::TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<C>>, Error>;
+    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error>;
 
     // Used for reprocessing blocks when creating a data source.
     async fn triggers_in_block(

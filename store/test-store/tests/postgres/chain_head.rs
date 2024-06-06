@@ -20,9 +20,9 @@ use graph_store_postgres::Store as DieselStore;
 use graph_store_postgres::{layout_for_tests::FAKE_NETWORK_SHARED, ChainStore as DieselChainStore};
 
 use test_store::block_store::{
-    FakeBlock, FakeBlockList, BLOCK_FIVE, BLOCK_FOUR, BLOCK_ONE, BLOCK_ONE_NO_PARENT,
-    BLOCK_ONE_SIBLING, BLOCK_THREE, BLOCK_THREE_NO_PARENT, BLOCK_TWO, BLOCK_TWO_NO_PARENT,
-    GENESIS_BLOCK, NO_PARENT,
+    FakeBlock, FakeBlockList, BLOCK_FIVE, BLOCK_FIVE_AFTER_SKIP, BLOCK_FOUR,
+    BLOCK_FOUR_SKIPPED_2_AND_3, BLOCK_ONE, BLOCK_ONE_NO_PARENT, BLOCK_ONE_SIBLING, BLOCK_THREE,
+    BLOCK_THREE_NO_PARENT, BLOCK_TWO, BLOCK_TWO_NO_PARENT, GENESIS_BLOCK, NO_PARENT,
 };
 use test_store::*;
 
@@ -42,8 +42,12 @@ where
             let chain_store = store.block_store().chain_store(name).expect("chain store");
 
             // Run test
-            test(chain_store.cheap_clone(), store.cheap_clone())
-                .unwrap_or_else(|_| panic!("test finishes successfully on network {}", name));
+            test(chain_store.cheap_clone(), store.cheap_clone()).unwrap_or_else(|err| {
+                panic!(
+                    "test finishes successfully on network {} with error {}",
+                    name, err
+                )
+            });
         }
     });
 }
@@ -294,12 +298,13 @@ fn check_ancestor(
     child: &FakeBlock,
     offset: BlockNumber,
     exp: &FakeBlock,
+    root: Option<BlockHash>,
 ) -> Result<(), Error> {
-    let act = executor::block_on(
-        store
-            .cheap_clone()
-            .ancestor_block(child.block_ptr(), offset),
-    )?
+    let act = executor::block_on(store.cheap_clone().ancestor_block(
+        child.block_ptr(),
+        offset,
+        root,
+    ))?
     .map(json::from_value::<EthereumBlock>)
     .transpose()?
     .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
@@ -329,24 +334,25 @@ fn ancestor_block_simple() {
     ];
 
     run_test(chain, move |store, _| -> Result<(), Error> {
-        check_ancestor(&store, &BLOCK_FIVE, 1, &BLOCK_FOUR)?;
-        check_ancestor(&store, &BLOCK_FIVE, 2, &BLOCK_THREE)?;
-        check_ancestor(&store, &BLOCK_FIVE, 3, &BLOCK_TWO)?;
-        check_ancestor(&store, &BLOCK_FIVE, 4, &BLOCK_ONE)?;
-        check_ancestor(&store, &BLOCK_FIVE, 5, &GENESIS_BLOCK)?;
-        check_ancestor(&store, &BLOCK_THREE, 2, &BLOCK_ONE)?;
+        check_ancestor(&store, &BLOCK_FIVE, 1, &BLOCK_FOUR, None)?;
+        check_ancestor(&store, &BLOCK_FIVE, 2, &BLOCK_THREE, None)?;
+        check_ancestor(&store, &BLOCK_FIVE, 3, &BLOCK_TWO, None)?;
+        check_ancestor(&store, &BLOCK_FIVE, 4, &BLOCK_ONE, None)?;
+        check_ancestor(&store, &BLOCK_FIVE, 5, &GENESIS_BLOCK, None)?;
+        check_ancestor(&store, &BLOCK_THREE, 2, &BLOCK_ONE, None)?;
 
         for offset in [6, 7, 8, 50].iter() {
             let offset = *offset;
-            let res = executor::block_on(
-                store
-                    .cheap_clone()
-                    .ancestor_block(BLOCK_FIVE.block_ptr(), offset),
-            );
+            let res = executor::block_on(store.cheap_clone().ancestor_block(
+                BLOCK_FIVE.block_ptr(),
+                offset,
+                None,
+            ));
             assert!(res.is_err());
         }
 
-        let block = executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1))?;
+        let block =
+            executor::block_on(store.ancestor_block(BLOCK_TWO_NO_PARENT.block_ptr(), 1, None))?;
         assert!(block.is_none());
         Ok(())
     });
@@ -362,10 +368,44 @@ fn ancestor_block_ommers() {
     ];
 
     run_test(chain, move |store, _| -> Result<(), Error> {
-        check_ancestor(&store, &BLOCK_ONE, 1, &GENESIS_BLOCK)?;
-        check_ancestor(&store, &BLOCK_ONE_SIBLING, 1, &GENESIS_BLOCK)?;
-        check_ancestor(&store, &BLOCK_TWO, 1, &BLOCK_ONE)?;
-        check_ancestor(&store, &BLOCK_TWO, 2, &GENESIS_BLOCK)?;
+        check_ancestor(&store, &BLOCK_ONE, 1, &GENESIS_BLOCK, None)?;
+        check_ancestor(&store, &BLOCK_ONE_SIBLING, 1, &GENESIS_BLOCK, None)?;
+        check_ancestor(&store, &BLOCK_TWO, 1, &BLOCK_ONE, None)?;
+        check_ancestor(&store, &BLOCK_TWO, 2, &GENESIS_BLOCK, None)?;
+        Ok(())
+    });
+}
+
+#[test]
+fn ancestor_block_skipped() {
+    let chain = vec![
+        &*GENESIS_BLOCK,
+        &*BLOCK_ONE,
+        &*BLOCK_FOUR_SKIPPED_2_AND_3,
+        &BLOCK_FIVE_AFTER_SKIP,
+    ];
+
+    run_test(chain, move |store, _| -> Result<(), Error> {
+        check_ancestor(&store, &BLOCK_FIVE_AFTER_SKIP, 2, &BLOCK_ONE, None)?;
+
+        check_ancestor(
+            &store,
+            &BLOCK_FIVE_AFTER_SKIP,
+            2,
+            &BLOCK_FOUR_SKIPPED_2_AND_3,
+            Some(BLOCK_ONE.block_hash()),
+        )?;
+
+        check_ancestor(&store, &BLOCK_FIVE_AFTER_SKIP, 5, &GENESIS_BLOCK, None)?;
+
+        check_ancestor(
+            &store,
+            &BLOCK_FIVE_AFTER_SKIP,
+            5,
+            &BLOCK_ONE,
+            Some(GENESIS_BLOCK.block_hash()),
+        )?;
+
         Ok(())
     });
 }
