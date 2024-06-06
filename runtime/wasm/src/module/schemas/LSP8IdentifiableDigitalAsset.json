@@ -1,0 +1,23 @@
+[
+  {
+    "name": "LSP8TokenIdFormat",
+    "key": "0xf675e9361af1c1664c1868cfa3eb97672d6b1a513aa5b81dec34c9ee330e818d",
+    "keyType": "Singleton",
+    "valueType": "uint256",
+    "valueContent": "Number"
+  },
+  {
+    "name": "LSP8TokenMetadataBaseURI",
+    "key": "0x1a7628600c3bac7101f53697f48df381ddc36b9015e7d7c9c5633d1252aa2843",
+    "keyType": "Singleton",
+    "valueType": "bytes",
+    "valueContent": "VerifiableURI"
+  },
+  {
+    "name": "LSP8ReferenceContract",
+    "key": "0x708e7b881795f2e6b6c2752108c177ec89248458de3bf69d0d43480b3e5034e6",
+    "keyType": "Singleton",
+    "valueType": "(address,bytes32)",
+    "valueContent": "(Address,bytes32)"
+  }
+]

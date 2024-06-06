@@ -1,4 +1,5 @@
 mod arweave_service;
+mod http_service;
 mod ipfs_service;
 mod metrics;
 
@@ -25,6 +26,7 @@ use tower::{Service, ServiceExt};
 
 pub use self::metrics::PollingMonitorMetrics;
 pub use arweave_service::{arweave_service, ArweaveService};
+pub use http_service::{http_service, HttpService};
 pub use ipfs_service::{ipfs_service, IpfsService};
 
 const MIN_BACKOFF: Duration = Duration::from_secs(5);

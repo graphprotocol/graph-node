@@ -12,7 +12,7 @@ lcov.info
 **/*.DS_STORE
 
 # IDE files
-.vscode/
+# .vscode/
 
 # Ignore data files created by running the Docker Compose setup locally
 /docker/data/
@@ -29,7 +29,9 @@ lcov.info
 # Built solidity contracts.
 /tests/**/bin
 /tests/**/truffle_output
+/data
 
 # Docker volumes and debug logs
 .postgres
 logfile
+/.env*

@@ -29,6 +29,7 @@ use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
+use graph::http_client::HttpClient;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
 use graph::ipfs_client::IpfsClient;
@@ -44,7 +45,7 @@ use graph::schema::InputSchema;
 use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::Chain;
-use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use graph_core::polling_monitor::{arweave_service, http_service, ipfs_service};
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
@@ -166,6 +167,7 @@ pub struct TestContext {
     pub instance_manager: SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub arweave_resolver: Arc<dyn ArweaveResolver>,
+    pub http_client: Arc<HttpClient>,
     pub env_vars: Arc<EnvVars>,
     pub ipfs: IpfsClient,
     graphql_runner: Arc<GraphQlRunner>,
@@ -477,6 +479,19 @@ pub async fn setup<C: Blockchain>(
             n => FileSizeLimit::MaxBytes(n as u64),
         },
     );
+
+    let http_client = Arc::new(HttpClient::new(
+        logger.clone(),
+        &env_vars.mappings.ipfs_timeout,
+        true,
+    ));
+    let http_service = http_service(
+        http_client.cheap_clone(),
+        env_vars.mappings.max_ipfs_file_bytes,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
+    );
+
     let sg_count = Arc::new(SubgraphCountMetric::new(mock_registry.cheap_clone()));
 
     let blockchain_map = Arc::new(blockchain_map);
@@ -491,6 +506,7 @@ pub async fn setup<C: Blockchain>(
         ipfs_service,
         arweave_service,
         static_filters,
+        http_service,
     );
 
     // Graphql runner
@@ -568,6 +584,7 @@ pub async fn setup<C: Blockchain>(
         indexing_status_service,
         ipfs,
         arweave_resolver,
+        http_client,
     }
 }
 

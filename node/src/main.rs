@@ -9,6 +9,7 @@ use graph::blockchain::client::ChainClient;
 use graph::futures01::Future as _;
 use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
+use graph::http_client::HttpClient;
 use graph_chain_ethereum::codec::HeaderOnlyBlock;
 
 use graph::blockchain::{
@@ -32,7 +33,7 @@ use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_starknet::{self as starknet, Block as StarknetBlock};
 use graph_chain_substreams as substreams;
-use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use graph_core::polling_monitor::{arweave_service, http_service, ipfs_service};
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -263,11 +264,22 @@ async fn main() {
         },
     );
 
+    let http_client = Arc::new(HttpClient::new(
+        logger.clone(),
+        &env_vars.mappings.ipfs_timeout,
+        true,
+    ));
+    let http_service = http_service(
+        http_client,
+        env_vars.mappings.max_ipfs_file_bytes,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
+    );
+
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
     let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
     let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
-
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
         &config.chains.providers(),
@@ -576,6 +588,7 @@ async fn main() {
             ipfs_service,
             arweave_service,
             static_filters,
+            http_service,
         );
 
         // Create IPFS-based subgraph provider

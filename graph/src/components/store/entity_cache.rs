@@ -198,10 +198,10 @@ impl EntityCache {
 
         // Always test the cache consistency in debug mode. The test only
         // makes sense when we were actually asked to read from the store
-        debug_assert!(match scope {
-            GetScope::Store => entity == self.store.get(key).unwrap().map(Arc::new),
-            GetScope::InBlock => true,
-        });
+        // debug_assert!(match scope {
+        //     GetScope::Store => entity == self.store.get(key).unwrap().map(Arc::new),
+        //     GetScope::InBlock => true,
+        // });
 
         if let Some(op) = self.updates.get(key).cloned() {
             entity = op

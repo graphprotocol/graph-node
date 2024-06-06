@@ -1,7 +1,7 @@
 mod instance;
 
 use crate::polling_monitor::{
-    spawn_monitor, ArweaveService, IpfsService, PollingMonitor, PollingMonitorMetrics,
+    spawn_monitor, ArweaveService, HttpService, IpfsService, PollingMonitor, PollingMonitorMetrics,
 };
 use anyhow::{self, Error};
 use bytes::Bytes;
@@ -11,7 +11,7 @@ use graph::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
     },
-    data::subgraph::SubgraphManifest,
+    data::{subgraph::SubgraphManifest, value::Word},
     data_source::{
         causality_region::CausalityRegionSeq,
         offchain::{self, Base64},
@@ -232,6 +232,8 @@ pub struct OffchainMonitor {
     ipfs_monitor_rx: mpsc::UnboundedReceiver<(CidFile, Bytes)>,
     arweave_monitor: PollingMonitor<Base64>,
     arweave_monitor_rx: mpsc::UnboundedReceiver<(Base64, Bytes)>,
+    http_monitor: PollingMonitor<Word>,
+    http_monitor_rx: mpsc::UnboundedReceiver<(Word, Bytes)>,
 }
 
 impl OffchainMonitor {
@@ -241,16 +243,25 @@ impl OffchainMonitor {
         subgraph_hash: &DeploymentHash,
         ipfs_service: IpfsService,
         arweave_service: ArweaveService,
+        http_service: HttpService,
     ) -> Self {
         let metrics = Arc::new(PollingMonitorMetrics::new(registry, subgraph_hash));
         // The channel is unbounded, as it is expected that `fn ready_offchain_events` is called
         // frequently, or at least with the same frequency that requests are sent.
         let (ipfs_monitor_tx, ipfs_monitor_rx) = mpsc::unbounded_channel();
         let (arweave_monitor_tx, arweave_monitor_rx) = mpsc::unbounded_channel();
+        let (http_monitor_tx, http_monitor_rx) = mpsc::unbounded_channel();
 
         let ipfs_monitor = spawn_monitor(
             ipfs_service,
             ipfs_monitor_tx,
+            logger.cheap_clone(),
+            metrics.cheap_clone(),
+        );
+
+        let http_monitor = spawn_monitor(
+            http_service,
+            http_monitor_tx,
             logger.cheap_clone(),
             metrics.cheap_clone(),
         );
@@ -261,6 +272,8 @@ impl OffchainMonitor {
             ipfs_monitor_rx,
             arweave_monitor,
             arweave_monitor_rx,
+            http_monitor,
+            http_monitor_rx,
         }
     }
 
@@ -268,6 +281,7 @@ impl OffchainMonitor {
         match source {
             offchain::Source::Ipfs(cid_file) => self.ipfs_monitor.monitor(cid_file),
             offchain::Source::Arweave(base64) => self.arweave_monitor.monitor(base64),
+            offchain::Source::Http(url) => self.http_monitor.monitor(url),
         };
         Ok(())
     }
@@ -297,6 +311,19 @@ impl OffchainMonitor {
                 }),
                 Err(TryRecvError::Disconnected) => {
                     anyhow::bail!("arweave monitor unexpectedly terminated")
+                }
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+
+        loop {
+            match self.http_monitor_rx.try_recv() {
+                Ok((url, data)) => triggers.push(offchain::TriggerData {
+                    source: offchain::Source::Http(url),
+                    data: Arc::new(data),
+                }),
+                Err(TryRecvError::Disconnected) => {
+                    anyhow::bail!("http monitor unexpectedly terminated")
                 }
                 Err(TryRecvError::Empty) => break,
             }

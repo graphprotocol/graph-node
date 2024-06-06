@@ -205,6 +205,10 @@ pub struct EnvVars {
     /// which must be an absolute path. This only has an effect in debug
     /// builds. Set with `GRAPH_SECTION_MAP`. Defaults to `None`.
     pub section_map: Option<String>,
+
+    /// Pinata api key/secrets
+    pub pinata_api_key: Option<String>,
+    pub pinata_api_key_secret: Option<String>,
 }
 
 impl EnvVars {
@@ -276,6 +280,8 @@ impl EnvVars {
                 .unwrap_or(2 * inner.reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
+            pinata_api_key: inner.pinata_api_key,
+            pinata_api_key_secret: inner.pinata_api_key_secret,
         })
     }
 
@@ -417,6 +423,10 @@ struct Inner {
     dips_metrics_object_store_url: Option<String>,
     #[envconfig(from = "GRAPH_SECTION_MAP")]
     section_map: Option<String>,
+    #[envconfig(from = "PINATA_API_KEY")]
+    pinata_api_key: Option<String>,
+    #[envconfig(from = "PINATA_SECRET_API_KEY")]
+    pinata_api_key_secret: Option<String>,
 }
 
 #[derive(Clone, Debug)]

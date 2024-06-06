@@ -39,3 +39,4 @@ termcolor = "1.4.1"
 diesel = { workspace = true }
 prometheus = { version = "0.13.3", features = ["push"] }
 json-structural-diff = { version = "0.1", features = ["colorize"] }
+serde_json_path = "0.6.7"

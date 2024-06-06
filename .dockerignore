@@ -4,3 +4,5 @@ node_modules
 .dockerignore
 .git
 .gitignore
+!target/release/graph-node
+!target/release/graphman

@@ -23,6 +23,13 @@ To build and run this project you need to have the following installed on your s
 
 For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 
+### Libraries needed (aptitude example)
+
+These dependencies can also be installed using homebrew.
+
+`sudo apt-get install libpq protobuf-compiler pkg-config libssl-dev`
+
+
 **Minimum Hardware Requirements:**
 
 - To build graph-node with `cargo`, 8GB RAM are required.

@@ -1,4 +1,15 @@
+use byteorder::BigEndian;
+use byteorder::ByteOrder;
+use ethabi::ethereum_types::U256;
 use graph::data::value::Word;
+use graph::erc725::decode_key_value;
+use graph::erc725::rewrite_json;
+use graph::erc725::ERC725DecodedValue;
+use graph::erc725::ERC725Value;
+use graph::erc725::HASHBYTES_KECCAK256_BYTES;
+use graph::erc725::HASHBYTES_KECCAK256_UTF8;
+use graph::prelude::serde_json::Number;
+use graph::prelude::tiny_keccak::keccak256;
 use graph::runtime::gas;
 use graph::util::lfu_cache::LfuCache;
 use std::collections::HashMap;
@@ -23,8 +34,7 @@ use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
 use crate::ExperimentalFeatures;
 use graph::prelude::*;
-use graph::runtime::AscPtr;
-use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
+use graph::runtime::{asc_new, gas::GasCounter, AscPtr, DeterministicHostError, HostExportError};
 
 use super::asc_get;
 use super::AscHeapCtx;
@@ -137,6 +147,9 @@ impl WasmInstanceData {
         )
     }
 }
+
+const METHOD_BYTES: &[u8] = &[0x80, 0x19, 0xf9, 0xb1];
+const METHOD_UTF8: &[u8] = &[0x6f, 0x35, 0x7c, 0x6a];
 
 impl WasmInstanceContext<'_> {
     fn store_get_scoped(
@@ -503,6 +516,357 @@ impl WasmInstanceContext<'_> {
                 true
             });
         asc_new(self, &result, gas)
+    }
+
+    fn rewrite_json(
+        &mut self,
+        data: serde_json::Value,
+    ) -> Result<serde_json::Value, HostExportError> {
+        let api_key = ENV_VARS.pinata_api_key.clone();
+        let api_key_secret = ENV_VARS.pinata_api_key_secret.clone();
+        if let (Some(api_key), Some(api_key_secret)) = (api_key, api_key_secret) {
+            return graph::block_on({
+                let data = data.clone();
+                let api_key = api_key.clone();
+                let api_key_secret = api_key_secret.clone();
+                async move {
+                    rewrite_json(&api_key, &api_key_secret, &data)
+                        .await
+                        .map_err(HostExportError::from)
+                }
+            });
+        }
+        Ok(data)
+    }
+
+    fn download_url(
+        &mut self,
+        _gas: &GasCounter,
+        url: String,
+    ) -> Result<Option<Vec<u8>>, HostExportError> {
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let logger = self.as_ref().ctx.logger.cheap_clone();
+        host_exports.download_url(&logger, url).map_err(Into::into)
+    }
+
+    pub fn download_lsp4_metadata(
+        &mut self,
+        _gas: &GasCounter,
+        url_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let url: String = asc_get(self, url_ptr, _gas)?;
+        let bytes = self.download_url(_gas, url.clone())?;
+        match bytes {
+            Some(bytes) => {
+                let data = serde_json::from_slice(&bytes).map_err(|e| {
+                    HostExportError::from(anyhow!(
+                        "Failed to parse JSON from downloaded bytes: {}",
+                        e
+                    ))
+                })?;
+                let data = self.rewrite_json(data)?;
+                let data = if let serde_json::Value::Object(obj) = data {
+                    match obj.get("LSP4Metadata") {
+                        Some(value) => value.clone(),
+                        None => {
+                            return Ok(AscPtr::null());
+                        }
+                    }
+                } else {
+                    data
+                };
+                let value = serde_json::json!({
+                    "type": "Value",
+                    "name": "lsp4Metadata".to_string(),
+                    "value": data,
+                });
+                asc_new(self, &value, _gas)
+            }
+            None => Ok(AscPtr::null()),
+        }
+    }
+
+    pub fn decode_number(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let out: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| HostExportError::from(anyhow!("Invalid number bytes")))?;
+        let number = U256::from_big_endian(&out);
+        let number = BigInt::from_signed_u256(&number);
+        asc_new(self, &number, gas)
+    }
+
+    pub fn decode_key_value(
+        &mut self,
+        gas: &GasCounter,
+        key_ptr: AscPtr<Uint8Array>,
+        value_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let key: Vec<u8> = asc_get(self, key_ptr, gas)?;
+        let value: Vec<u8> = asc_get(self, value_ptr, gas)?;
+        let original_value = value.clone();
+        let results = decode_key_value(key.clone(), value.clone())
+            .map_err(|e| HostExportError::from(Error::from(e)));
+        match results {
+            Ok(ERC725DecodedValue::Null()) => Ok(AscPtr::null()),
+            Ok(ERC725DecodedValue::ArrayItem { name, index, value }) => {
+                let value = serde_json::json!({
+                    "type": "ArrayItem",
+                    "name": name.to_string(),
+                    "dynamic": serde_json::Value::Number(Number::from(index)),
+                    "value": value
+                });
+                asc_new(self, &value, gas)
+            }
+            Ok(ERC725DecodedValue::ArrayLength { name, length }) => {
+                let value = serde_json::json!({
+                    "type": "ArrayLength",
+                    "name":name.to_string(),
+                    "value": serde_json::Value::Number(Number::from(length)),
+                });
+                asc_new(self, &value, gas)
+            }
+            Ok(ERC725DecodedValue::Value {
+                name,
+                dynamic,
+                value,
+            }) => {
+                if name == "lsp3Profile" || name == "lsp4Metadata" {
+                    if let ERC725Value::VerifiableURI { url, method, data } = value {
+                        let desired_hash = data.clone();
+                        let bytes = self.download_url(gas, url.clone());
+                        match bytes {
+                            Err(err) => {
+                                let logger = self.as_ref().ctx.logger.cheap_clone();
+                                info!(&logger, "Failed to download URL, returning `null`";
+                                  "error" => err.to_string(),
+                                  "url" => url);
+                                return Ok(AscPtr::null());
+                            }
+                            Ok(None) => {
+                                let logger = self.as_ref().ctx.logger.cheap_clone();
+                                info!(&logger, "Failed to download URL, returning `null`";
+                                  "error" => "empty response",
+                                  "url" => url);
+                                return Ok(AscPtr::null());
+                            }
+                            Ok(Some(bytes)) => {
+                                let raw_hash = keccak256(&bytes).to_vec();
+                                if let Ok(str) = String::from_utf8(bytes.clone()) {
+                                    let value: Result<serde_json::Value, serde_json::Error> =
+                                        serde_json::from_str(&str);
+                                    match value {
+                                        Ok(data) => {
+                                            let mut data: serde_json::Value = data.clone();
+                                            if method == HASHBYTES_KECCAK256_BYTES
+                                                || method == HASHBYTES_KECCAK256_UTF8
+                                            {
+                                                let str =
+                                                    serde_json::to_string(&data).map_err(|e| {
+                                                        HostExportError::from(Error::from(e))
+                                                    })?;
+                                                let bytes = str.as_bytes();
+                                                let hash = keccak256(bytes).to_vec();
+                                                if desired_hash == hash || desired_hash == raw_hash
+                                                {
+                                                    if name == "lsp3Profile" {
+                                                        data =
+                                                            if let serde_json::Value::Object(obj) =
+                                                                data
+                                                            {
+                                                                match obj.get("LSP3Profile") {
+                                                                    Some(value) => value.clone(),
+                                                                    None => {
+                                                                        return Ok(AscPtr::null());
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                data
+                                                            }
+                                                    } else if name == "lsp4Metadata" {
+                                                        data =
+                                                            if let serde_json::Value::Object(obj) =
+                                                                data
+                                                            {
+                                                                match obj.get("LSP4Metadata") {
+                                                                    Some(value) => value.clone(),
+                                                                    None => {
+                                                                        return Ok(AscPtr::null());
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                data
+                                                            }
+                                                    }
+                                                    let data = self.rewrite_json(data)?;
+                                                    let value = serde_json::json!({
+                                                        "type": "Value",
+                                                        "name": name.to_string(),
+                                                        "value": data,
+                                                    });
+                                                    return asc_new(self, &value, gas);
+                                                }
+                                            }
+                                        }
+                                        _ => {
+                                            let logger = self.as_ref().ctx.logger.cheap_clone();
+                                            info!(&logger, "Failed to parse json (invalid file content), returning `null`";
+                                              "bytes" => hex::encode(&bytes),
+                                              "string" => str);
+                                            return Ok(AscPtr::null());
+                                        }
+                                    }
+                                } else {
+                                    let logger = self.as_ref().ctx.logger.cheap_clone();
+                                    info!(&logger, "Failed to convert file bytes to json string (invalid file content), returning `null`";
+                                      "bytes" => hex::encode(&bytes));
+                                }
+                                return Ok(AscPtr::null());
+                            }
+                        }
+                    }
+                }
+                let value = serde_json::to_string(&value).unwrap();
+                let value: serde_json::Value = serde_json::from_str(&value).unwrap();
+                let value: serde_json::Value = if let serde_json::Value::Null = dynamic {
+                    serde_json::json!({
+                        "type": "Value",
+                        "name": name.to_string(),
+                        "value": value,
+                    })
+                } else {
+                    serde_json::json!({
+                        "type": "Value",
+                        "name": name.to_string(),
+                        "dynamic": dynamic.clone(),
+                        "value": value,
+                    })
+                };
+                asc_new(self, &value, gas)
+            }
+            Err(e) => {
+                let logger = self.as_ref().ctx.logger.cheap_clone();
+                info!(&logger, "Failed to erc725.decode_key_value, returning `null`";
+                  "error" => e.to_string(),
+                  "key" => hex::encode(&key),
+                  "value" => hex::encode(original_value));
+                Ok(AscPtr::null())
+            }
+        }
+    }
+
+    pub fn decode_verifiable_uri(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<(String, Vec<u8>, Vec<u8>), anyhow::Error> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let code: u16 = BigEndian::read_u16(&bytes);
+        if code == 0 {
+            // VerifiableURI
+            let method = &bytes[2..6];
+            let length: u16 = BigEndian::read_u16(&bytes[6..]);
+            let desired_hash = &bytes[8..(8 + length as usize)];
+            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone())?;
+            return Ok((url, method.to_vec(), desired_hash.to_vec()));
+        }
+        let method = &bytes[0..4]; // 0..3
+        let desired_hash = &bytes[4..36];
+        let url = String::from_utf8(bytes[36..].to_vec().clone())?;
+        Ok((url, method.to_vec(), desired_hash.to_vec()))
+    }
+
+    pub fn decode_verifiable_uri_public(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let code: u16 = BigEndian::read_u16(&bytes);
+        if code == 0 {
+            // VerifiableURI
+            let method = &bytes[2..6];
+            let length: u16 = BigEndian::read_u16(&bytes[6..]);
+            let desired_hash = &bytes[8..(8 + length as usize)];
+            let url = String::from_utf8(bytes[(8 + length as usize)..].to_vec().clone())
+                .map_err(|e| HostExportError::from(Error::from(e)))?;
+
+            let value = serde_json::json!({
+                "url": url,
+                "method": hex::encode(method),
+                "data": hex::encode(desired_hash),
+            });
+            return asc_new(self, &value, gas);
+        }
+        let method = &bytes[0..4]; // 0..3
+        let desired_hash = &bytes[4..36];
+        let url = String::from_utf8(bytes[36..].to_vec().clone())
+            .map_err(|e| HostExportError::from(Error::from(e)))?;
+
+        let value = serde_json::json!({
+            "url": url,
+            "method": hex::encode(method),
+            "data": hex::encode(desired_hash),
+        });
+        asc_new(self, &value, gas)
+    }
+
+    pub fn fetch_verifiable_uri(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
+        let (url, method, desired_hash) = self.decode_verifiable_uri(gas, bytes_ptr)?;
+        let bytes = self.download_url(gas, url.clone())?;
+        let (data, verified) = if let Some(bytes) = bytes {
+            let raw_hash = keccak256(&bytes).to_vec();
+            let str = String::from_utf8(bytes.clone())
+                .map_err(|e| HostExportError::from(Error::from(e)))?;
+            let data =
+                serde_json::from_str(&str).map_err(|e| HostExportError::from(Error::from(e)))?;
+            let verified = if method == METHOD_BYTES || method == METHOD_UTF8 {
+                let str = serde_json::to_string(&data)
+                    .map_err(|e| HostExportError::from(Error::from(e)))?;
+                let bytes = str.as_bytes();
+                let hash = keccak256(bytes).to_vec();
+                if desired_hash == hash || desired_hash == raw_hash {
+                    Some(true)
+                } else {
+                    Some(false)
+                }
+            } else {
+                None
+            };
+            (Some(data), verified)
+        } else {
+            (None, None)
+        };
+        if let Some(serde_json::Value::Object(mut map)) = data {
+            let mut inner_map = serde_json::Map::new();
+            inner_map.insert("url".to_string(), serde_json::Value::String(url.clone()));
+            inner_map.insert(
+                "method".to_string(),
+                serde_json::Value::String(hex::encode(method)),
+            );
+            inner_map.insert(
+                "data".to_string(),
+                serde_json::Value::String(hex::encode(desired_hash)),
+            );
+            if let Some(verified) = verified {
+                inner_map.insert("verified".to_string(), serde_json::Value::Bool(verified));
+            }
+            map.insert(
+                "_verification".to_string(),
+                serde_json::Value::Object(inner_map),
+            );
+            let data = serde_json::Value::Object(map);
+            return asc_new(self, &data, gas);
+        }
+        return Ok(AscPtr::null());
     }
 
     /// function ipfs.cat(link: String): Bytes

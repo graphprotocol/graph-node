@@ -1,0 +1,9 @@
+[
+  {
+    "name": "LSP17Extension:<bytes4>",
+    "key": "0xcee78b4094da860110960000<bytes4>",
+    "keyType": "Mapping",
+    "valueType": "address",
+    "valueContent": "Address"
+  }
+]
