@@ -87,6 +87,7 @@ table! {
         data_sources -> Array<Text>,
         handlers -> Array<Text>,
         network -> Text,
+        has_declared_calls -> Bool,
     }
 }
 
@@ -1134,6 +1135,7 @@ impl<'a> Connection<'a> {
                 f::data_sources,
                 f::handlers,
                 f::network,
+                f::has_declared_calls,
             ))
             .first::<(
                 String,
@@ -1143,11 +1145,21 @@ impl<'a> Connection<'a> {
                 Vec<String>,
                 Vec<String>,
                 String,
+                bool,
             )>(conn)
             .optional()?;
 
         let features = features.map(
-            |(id, spec_version, api_version, features, data_sources, handlers, network)| {
+            |(
+                id,
+                spec_version,
+                api_version,
+                features,
+                data_sources,
+                handlers,
+                network,
+                has_declared_calls,
+            )| {
                 DeploymentFeatures {
                     id,
                     spec_version,
@@ -1156,6 +1168,7 @@ impl<'a> Connection<'a> {
                     data_source_kinds: data_sources,
                     handler_kinds: handlers,
                     network: network,
+                    has_declared_calls,
                 }
             },
         );
@@ -1177,6 +1190,7 @@ impl<'a> Connection<'a> {
             data_source_kinds,
             handler_kinds,
             network,
+            has_declared_calls,
         } = features;
 
         let conn = self.conn.as_mut();
@@ -1188,6 +1202,7 @@ impl<'a> Connection<'a> {
             f::data_sources.eq(data_source_kinds),
             f::handlers.eq(handler_kinds),
             f::network.eq(network),
+            f::has_declared_calls.eq(has_declared_calls),
         );
 
         insert_into(f::table)
