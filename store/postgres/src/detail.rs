@@ -50,7 +50,7 @@ pub struct DeploymentDetail {
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
     /// The earliest block for which we have history
-    earliest_block_number: i32,
+    pub earliest_block_number: i32,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,
     last_healthy_ethereum_block_hash: Option<Bytes>,
@@ -266,6 +266,18 @@ pub(crate) fn deployment_details(
             .load::<DeploymentDetail>(conn)?
     };
     Ok(details)
+}
+
+/// Return the details for `deployment`
+pub(crate) fn deployment_details_for_id(
+    conn: &mut PgConnection,
+    deployment: &DeploymentId,
+) -> Result<DeploymentDetail, StoreError> {
+    use subgraph_deployment as d;
+    d::table
+        .filter(d::id.eq(&deployment))
+        .first::<DeploymentDetail>(conn)
+        .map_err(StoreError::from)
 }
 
 pub(crate) fn deployment_statuses(

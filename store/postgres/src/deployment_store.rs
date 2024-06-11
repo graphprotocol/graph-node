@@ -8,8 +8,8 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
-    Batch, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
-    QueryPermit, StoredDynamicDataSource, VersionStats,
+    Batch, DeploymentLocator, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest,
+    PruningStrategy, QueryPermit, StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
@@ -525,6 +525,17 @@ impl DeploymentStore {
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
         let conn = &mut *self.get_conn()?;
         conn.transaction(|conn| -> Result<_, StoreError> { detail::deployment_details(conn, ids) })
+    }
+
+    pub fn deployment_details_for_id(
+        &self,
+        locator: &DeploymentLocator,
+    ) -> Result<DeploymentDetail, StoreError> {
+        let id = DeploymentId::from(locator.clone());
+        let conn = &mut *self.get_conn()?;
+        conn.transaction(|conn| -> Result<_, StoreError> {
+            detail::deployment_details_for_id(conn, &id)
+        })
     }
 
     pub(crate) fn deployment_statuses(
