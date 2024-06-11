@@ -186,6 +186,13 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn has_declared_calls(&self) -> bool {
+        match self {
+            Self::Onchain(ds) => ds.has_declared_calls(),
+            Self::Offchain(_) => false,
+        }
+    }
+
     pub fn match_and_decode(
         &self,
         trigger: &TriggerData<C>,

@@ -84,6 +84,10 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
             .collect()
     }
 
+    fn has_declared_calls(&self) -> bool {
+        true
+    }
+
     fn end_block(&self) -> Option<BlockNumber> {
         todo!()
     }

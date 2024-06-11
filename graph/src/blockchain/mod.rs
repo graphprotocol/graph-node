@@ -321,6 +321,10 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
         self.end_block()
             .map_or(false, |end_block| block > end_block)
     }
+
+    fn has_declared_calls(&self) -> bool {
+        false
+    }
 }
 
 #[async_trait]
