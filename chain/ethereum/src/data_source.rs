@@ -136,6 +136,13 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.address.as_ref().map(|x| x.as_bytes())
     }
 
+    fn has_declared_calls(&self) -> bool {
+        self.mapping
+            .event_handlers
+            .iter()
+            .any(|handler| !handler.calls.decls.is_empty())
+    }
+
     fn handler_kinds(&self) -> HashSet<&str> {
         let mut kinds = HashSet::new();
 

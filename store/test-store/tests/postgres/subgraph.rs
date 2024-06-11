@@ -512,6 +512,7 @@ fn subgraph_features() {
             data_source_kinds,
             network,
             handler_kinds,
+            has_declared_calls,
         } = get_subgraph_features(id.to_string()).unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
@@ -529,6 +530,7 @@ fn subgraph_features() {
         assert_eq!(handler_kinds.len(), 2);
         assert!(handler_kinds.contains(&"mock_handler_1".to_string()));
         assert!(handler_kinds.contains(&"mock_handler_2".to_string()));
+        assert_eq!(has_declared_calls, true);
 
         test_store::remove_subgraph(&id);
         let features = get_subgraph_features(id.to_string());
