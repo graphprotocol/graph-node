@@ -1,6 +1,13 @@
 //! Utilities for dealing with subgraph metadata that resides in the primary
 //! shard. Anything in this module can only be used with a database connection
 //! for the primary shard.
+use crate::{
+    block_range::UNVERSIONED_RANGE,
+    connection_pool::{ConnectionPool, ForeignServer},
+    detail::DeploymentDetail,
+    subgraph_store::{unused, Shard, PRIMARY_SHARD},
+    NotificationSender,
+};
 use diesel::{
     connection::SimpleConnection,
     data_types::PgTimestamp,
@@ -48,14 +55,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::{
-    block_range::UNVERSIONED_RANGE,
-    connection_pool::{ConnectionPool, ForeignServer},
-    detail::DeploymentDetail,
-    subgraph_store::{unused, Shard, PRIMARY_SHARD},
-    NotificationSender,
-};
-
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
 #[cfg(debug_assertions)]
@@ -88,6 +87,9 @@ table! {
         handlers -> Array<Text>,
         network -> Text,
         has_declared_calls -> Bool,
+        has_bytes_as_ids -> Bool,
+        has_aggregations -> Bool,
+        immutable_entities -> Array<Text>
     }
 }
 
@@ -1136,6 +1138,9 @@ impl<'a> Connection<'a> {
                 f::handlers,
                 f::network,
                 f::has_declared_calls,
+                f::has_bytes_as_ids,
+                f::has_aggregations,
+                f::immutable_entities,
             ))
             .first::<(
                 String,
@@ -1146,6 +1151,9 @@ impl<'a> Connection<'a> {
                 Vec<String>,
                 String,
                 bool,
+                bool,
+                bool,
+                Vec<String>,
             )>(conn)
             .optional()?;
 
@@ -1159,6 +1167,9 @@ impl<'a> Connection<'a> {
                 handlers,
                 network,
                 has_declared_calls,
+                has_bytes_as_ids,
+                has_aggregations,
+                immutable_entities,
             )| {
                 DeploymentFeatures {
                     id,
@@ -1169,6 +1180,9 @@ impl<'a> Connection<'a> {
                     handler_kinds: handlers,
                     network: network,
                     has_declared_calls,
+                    has_bytes_as_ids,
+                    has_aggregations,
+                    immutable_entities,
                 }
             },
         );
@@ -1191,6 +1205,9 @@ impl<'a> Connection<'a> {
             handler_kinds,
             network,
             has_declared_calls,
+            has_bytes_as_ids,
+            immutable_entities,
+            has_aggregations,
         } = features;
 
         let conn = self.conn.as_mut();
@@ -1203,6 +1220,9 @@ impl<'a> Connection<'a> {
             f::handlers.eq(handler_kinds),
             f::network.eq(network),
             f::has_declared_calls.eq(has_declared_calls),
+            f::has_bytes_as_ids.eq(has_bytes_as_ids),
+            f::immutable_entities.eq(immutable_entities),
+            f::has_aggregations.eq(has_aggregations),
         );
 
         insert_into(f::table)

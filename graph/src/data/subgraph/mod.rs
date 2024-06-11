@@ -532,8 +532,9 @@ pub struct DeploymentFeatures {
     pub network: String,
     pub handler_kinds: Vec<String>,
     pub has_declared_calls: bool,
-    // pub has_bytes_as_ids: bool,
-    // pub has_aggregations: bool,
+    pub has_bytes_as_ids: bool,
+    pub has_aggregations: bool,
+    pub immutable_entities: Vec<String>,
 }
 
 impl IntoValue for DeploymentFeatures {
@@ -547,8 +548,9 @@ impl IntoValue for DeploymentFeatures {
             handlers: self.handler_kinds,
             network: self.network,
             hasDeclaredEthCalls: self.has_declared_calls,
-            // TODO: usesBytesAsIds: self.uses_bytes_as_ids,
-            // TODO: usesAggregations: self.uses_aggregations,
+            hasBytesAsIds: self.has_bytes_as_ids,
+            hasAggregations: self.has_aggregations,
+            immutableEntities: self.immutable_entities
         }
     }
 }
@@ -802,6 +804,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
         let unified_api_version = self.unified_mapping_api_version().ok();
         let network = self.network_name();
         let has_declared_calls = self.data_sources.iter().any(|ds| ds.has_declared_calls());
+        let has_aggregations = self.schema.has_aggregations();
+        let immutable_entities = self
+            .schema
+            .immutable_entities()
+            .map(|s| s.to_string())
+            .collect_vec();
 
         let api_version = unified_api_version
             .map(|v| v.version().map(|v| v.to_string()))
@@ -847,6 +855,9 @@ impl<C: Blockchain> SubgraphManifest<C> {
                 .collect_vec(),
             network,
             has_declared_calls,
+            has_bytes_as_ids: self.schema.has_bytes_as_ids(),
+            immutable_entities,
+            has_aggregations,
         }
     }
 
