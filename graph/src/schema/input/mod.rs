@@ -1319,6 +1319,18 @@ impl InputSchema {
         self.inner.enum_map.values(name)
     }
 
+    pub fn immutable_entities<'a>(&'a self) -> impl Iterator<Item = EntityType> + 'a {
+        self.inner
+            .type_infos
+            .iter()
+            .filter_map(|ti| match ti {
+                TypeInfo::Object(obj_type) => Some(obj_type),
+                TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
+            })
+            .filter(|obj_type| obj_type.immutable)
+            .map(|obj_type| EntityType::new(self.cheap_clone(), obj_type.name))
+    }
+
     /// Return a list of the entity types defined in the schema, i.e., the
     /// types that have a `@entity` annotation. This does not include the
     /// type for the PoI
@@ -1351,6 +1363,13 @@ impl InputSchema {
     /// `interval` of the aggregations are non-decreasing
     pub fn agg_mappings(&self) -> impl Iterator<Item = &AggregationMapping> {
         self.inner.agg_mappings.iter()
+    }
+
+    pub fn has_bytes_as_ids(&self) -> bool {
+        self.inner
+            .type_infos
+            .iter()
+            .any(|ti| ti.id_type() == Some(store::IdType::Bytes))
     }
 
     pub fn has_aggregations(&self) -> bool {
