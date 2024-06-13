@@ -205,6 +205,9 @@ pub struct EnvVars {
     /// which must be an absolute path. This only has an effect in debug
     /// builds. Set with `GRAPH_SECTION_MAP`. Defaults to `None`.
     pub section_map: Option<String>,
+    /// Set the maximum grpc decode size(in MB) for firehose BlockIngestor connections.
+    /// Defaults to 25MB
+    pub firehose_grpc_max_decode_size_mb: usize,
 }
 
 impl EnvVars {
@@ -275,7 +278,7 @@ impl EnvVars {
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
-            reorg_threshold: reorg_threshold,
+            reorg_threshold,
             ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
@@ -284,6 +287,7 @@ impl EnvVars {
             min_history_blocks: inner.min_history_blocks.unwrap_or(2 * reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
+            firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
         })
     }
 
@@ -425,6 +429,8 @@ struct Inner {
     dips_metrics_object_store_url: Option<String>,
     #[envconfig(from = "GRAPH_SECTION_MAP")]
     section_map: Option<String>,
+    #[envconfig(from = "GRAPH_NODE_FIREHOSE_MAX_DECODE_SIZE", default = "25")]
+    firehose_grpc_max_decode_size_mb: usize,
 }
 
 #[derive(Clone, Debug)]
