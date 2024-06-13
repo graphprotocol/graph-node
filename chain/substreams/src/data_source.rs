@@ -99,7 +99,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn is_duplicate_of(&self, _other: &Self) -> bool {
-        todo!()
+        self == _other
     }
 
     fn as_stored_dynamic_data_source(&self) -> graph::components::store::StoredDynamicDataSource {
