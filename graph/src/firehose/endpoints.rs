@@ -6,6 +6,7 @@ use crate::{
     components::store::BlockNumber,
     data::value::Word,
     endpoint::{ConnectionType, EndpointMetrics, Provider, RequestLabels},
+    env::ENV_VARS,
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info, DeploymentHash},
     substreams_rpc,
@@ -272,6 +273,9 @@ impl FirehoseEndpoint {
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
         }
+
+        client = client
+            .max_decoding_message_size(1024 * 1024 * ENV_VARS.firehose_grpc_max_decode_size_mb);
 
         client
     }
