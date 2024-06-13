@@ -11,7 +11,10 @@ use crate::{
 
 use super::{
     store::SubgraphFork,
-    subgraph::{BlockState, MappingError, RuntimeHost, RuntimeHostBuilder, SharedProofOfIndexing},
+    subgraph::{
+        BlockState, MappingError, RuntimeHost, RuntimeHostBuilder, SharedProofOfIndexing,
+        SubgraphType,
+    },
 };
 
 /// A trigger that is almost ready to run: we have a host to run it on, and
@@ -49,6 +52,7 @@ where
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
     ) -> Result<BlockState, MappingError>;

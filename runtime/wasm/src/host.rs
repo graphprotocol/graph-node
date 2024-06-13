@@ -7,7 +7,7 @@ use graph::futures03::channel::oneshot::channel;
 
 use graph::blockchain::{BlockTime, Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
-use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing, SubgraphType};
 use graph::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
@@ -166,6 +166,7 @@ where
         trigger: TriggerWithHandler<MappingTrigger<C>>,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
         let handler = trigger.handler_name().to_string();
@@ -196,6 +197,7 @@ where
                     debug_fork: debug_fork.cheap_clone(),
                     mapping_logger: Logger::new(&logger, o!("component" => "UserMapping")),
                     instrument,
+                    force_block_local_store_gets: todo!(),
                 },
                 trigger,
                 result_sender,
@@ -236,6 +238,7 @@ where
         handler: String,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
         trace!(
@@ -263,6 +266,7 @@ where
                     debug_fork: debug_fork.cheap_clone(),
                     mapping_logger: Logger::new(&logger, o!("component" => "UserBlockMapping")),
                     instrument,
+                    force_block_local_store_gets: matches!(subgraph_type, SubgraphType::Fast),
                 },
                 handler.clone(),
                 block_data,
@@ -320,6 +324,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
         self.send_wasm_block_request(
@@ -331,6 +336,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             handler,
             proof_of_indexing,
             debug_fork,
+            subgraph_type,
             instrument,
         )
         .await
@@ -343,6 +349,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
         self.send_mapping_request(
@@ -351,6 +358,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             trigger,
             proof_of_indexing,
             debug_fork,
+            subgraph_type,
             instrument,
         )
         .await

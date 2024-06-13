@@ -7,6 +7,20 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug)]
+/// SubgraphType refers to the overall subgraph rules.
+pub enum SubgraphType {
+    /// V1 is the well known subgraph type, with all of the features available
+    V1,
+    /// Fast or pure subgraphs are limited in their features so they can be processed in parallel ranges.
+    /// Specifically:
+    /// - Only support immutable entities.
+    /// - Can only refer to entities created within the block being processed.
+    /// - Don't support dynamic data sources.
+    /// - Don't support offchain data sources.
+    Fast,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Predicate {
     #[serde(alias = "name", with = "serde_regex")]

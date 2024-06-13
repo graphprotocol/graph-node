@@ -1,3 +1,4 @@
+use graph_derive::CheapClone;
 use prometheus::Counter;
 
 use crate::blockchain::block_stream::BlockStreamMetrics;
@@ -146,6 +147,7 @@ impl SubgraphCountMetric {
     }
 }
 
+#[derive(Clone, CheapClone)]
 pub struct RunnerMetrics {
     /// Sensors to measure the execution of the subgraph instance
     pub subgraph: Arc<SubgraphInstanceMetrics>,

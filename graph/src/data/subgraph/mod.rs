@@ -10,7 +10,11 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
+use crate::{
+    cheap_clone::CheapClone,
+    components::{store::BLOCK_NUMBER_MAX, subgraph::SubgraphType},
+    object,
+};
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
@@ -790,6 +794,10 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .iter()
             .map(|template| template.api_version())
             .chain(self.data_sources.iter().map(|source| source.api_version()))
+    }
+
+    pub fn subgraph_type(&self) -> SubgraphType {
+        unimplemented!()
     }
 
     pub fn deployment_features(&self) -> DeploymentFeatures {

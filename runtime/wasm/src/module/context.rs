@@ -323,6 +323,10 @@ impl WasmInstanceContext<'_> {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        // This prevents pure subgraphs from trying to access data from outside their current block.
+        if self.as_ref().ctx.force_block_local_store_gets {
+            return self.store_get_in_block(gas, entity_ptr, id_ptr);
+        }
         self.store_get_scoped(gas, entity_ptr, id_ptr, GetScope::Store)
     }
 

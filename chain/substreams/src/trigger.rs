@@ -5,7 +5,7 @@ use graph::{
     },
     components::{
         store::{DeploymentLocator, SubgraphFork},
-        subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
+        subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing, SubgraphType},
         trigger_processor::HostedTrigger,
     },
     prelude::{
@@ -203,6 +203,7 @@ where
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         _debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        _subgraph_type: &SubgraphType,
         _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
         _instrument: bool,
     ) -> Result<BlockState, MappingError> {

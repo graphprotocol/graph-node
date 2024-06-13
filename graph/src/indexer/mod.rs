@@ -4,9 +4,11 @@ use std::{collections::HashMap, pin::Pin, sync::Arc};
 use crate::blockchain::block_stream::BlockStreamError;
 use crate::blockchain::BlockPtr;
 use crate::components::metrics::stopwatch::StopwatchMetrics;
+use crate::components::metrics::subgraph::RunnerMetrics;
 use crate::components::store::{
     DeploymentId, SegmentDetails, SubgraphSegment, SubgraphSegmentId, WritableStore,
 };
+use crate::ext::futures::CancelHandle;
 use crate::util::backoff::ExponentialBackoff;
 use crate::util::futures::retry;
 use crate::{
@@ -24,13 +26,20 @@ use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use futures03::{Stream, StreamExt};
-use slog::Logger;
+use slog::{info, Logger};
 use tokio::{sync::mpsc, time::Instant};
 
 pub mod block_stream;
 pub mod store;
 
 pub type Item = Box<[u8]>;
+
+#[derive(Debug)]
+enum Action {
+    Continue,
+    Stop,
+    Restart,
+}
 
 #[derive(Clone, BorshSerialize, BorshDeserialize)]
 pub struct StateDelta {
@@ -153,6 +162,8 @@ pub struct IndexerContext<B: Blockchain, T: BlockTransform, S: IndexerStore> {
     pub store: Arc<S>,
     pub deployment: DeploymentLocator,
     pub logger: Logger,
+    pub metrics: RunnerMetrics,
+    pub cancel_handle: CancelHandle,
 }
 
 impl<B: Blockchain, T: BlockTransform, S: IndexerStore> IndexerContext<B, T, S> {}
@@ -376,6 +387,7 @@ impl IndexWorker {
         T: BlockTransform,
         S: IndexerStore,
     {
+        let metrics = ctx.metrics.cheap_clone();
         let mut firehose_cursor = FirehoseCursor::None;
         let mut previous_state = initial_state;
         let stop_block = match segment {
@@ -384,45 +396,43 @@ impl IndexWorker {
         };
 
         loop {
-            let evt = stream.next().await;
+            let event = {
+                let _section = ctx.metrics.stream.stopwatch.start_section("scan_blocks");
 
-            let cursor = match evt {
-                Some(Ok(BlockStreamEvent::ProcessWasmBlock(
-                    block_ptr,
-                    _block_time,
-                    data,
-                    _handler,
-                    cursor,
-                ))) => {
-                    if let Some(stop_block) = stop_block {
-                        if block_ptr.number >= stop_block {
-                            break;
-                        }
+                stream.next().await
+            };
+
+            // TODO: move cancel handle to the Context
+            // This will require some code refactor in how the BlockStream is created
+            let block_start = Instant::now();
+            match Self::handle_stream_event(event, &ctx.block_stream_cancel_handle)
+                .await
+                .map(|res| {
+                    metrics
+                        .subgraph
+                        .observe_block_processed(block_start.elapsed(), res.block_finished());
+                    res
+                })? {
+                Action::Continue => continue,
+                Action::Stop => {
+                    info!(self.logger, "Stopping subgraph");
+                    // self.inputs.store.flush().await?;
+                    return Ok(self);
+                }
+                Action::Restart if break_on_restart => {
+                    info!(self.logger, "Stopping subgraph on break");
+                    self.inputs.store.flush().await?;
+                    return Ok(self);
+                }
+                Action::Restart => {
+                    // Restart the store to clear any errors that it
+                    // might have encountered and use that from now on
+                    let store = self.inputs.store.cheap_clone();
+                    if let Some(store) = store.restart().await? {
+                        let last_good_block = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
+                        self.revert_state_to(last_good_block)?;
+                        self.inputs = Arc::new(self.inputs.with_store(store));
                     }
-
-                    let (state, triggers) = ctx
-                        .transform
-                        .transform(EncodedBlock(data), std::mem::take(&mut previous_state));
-                    previous_state = state;
-                    ctx.store
-                        .set(block_ptr, &segment, &previous_state, triggers)
-                        .await?;
-
-                    cursor
-                }
-
-                Some(Ok(BlockStreamEvent::ProcessBlock(_block, _cursor))) => {
-                    unreachable!("Process block not implemented yet")
-                }
-                Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
-                    println!("Revert detected to block {}", revert_to_ptr);
-
-                    cursor
-                }
-                Some(Err(e)) => return Err(e.into()),
-
-                None => {
-                    println!("### done!");
                     break;
                 }
             };
@@ -431,6 +441,10 @@ impl IndexWorker {
         }
 
         Ok(firehose_cursor)
+    }
+
+    async fn handle_stream_event() -> Result<()> {
+        unimplemented!()
     }
 }
 

@@ -398,6 +398,7 @@ where
                             &proof_of_indexing,
                             &causality_region,
                             &self.inputs.debug_fork,
+                            &self.ctx.instance.subgraph_type,
                             &self.metrics.subgraph,
                             self.inputs.instrument,
                         )
@@ -555,6 +556,7 @@ where
                                     &proof_of_indexing,
                                     &causality_region,
                                     &self.inputs.debug_fork,
+                                    &self.ctx.instance.subgraph_type,
                                     &self.metrics.subgraph,
                                     self.inputs.instrument,
                                 )
@@ -1138,6 +1140,7 @@ where
                                 &proof_of_indexing,
                                 causality_region,
                                 &self.inputs.debug_fork,
+                                &self.ctx.instance.subgraph_type,
                                 &self.metrics.subgraph,
                                 self.inputs.instrument,
                             )

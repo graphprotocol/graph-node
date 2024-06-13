@@ -1,45 +1,6 @@
 # TODO
 
-- [] SledStore
-    - [x] snapshot store
-    - [x] state read
-    - [] tests
-- [] sequential worker
-- [] paralell worker
-    - [x] handle ack
-    - [x] update head
-    - [] error handling
-    - [x] set latest stable block
-    - [] set latest block as soon as it is ready
-    - [] handle reverts
-- [x] State 
-    - [x] Delta rebuild
-    - [x] set get
-- [] patch Blockstream
-    - [x] passthrough vec<u8>
-    - [] firehose mapper
-        - [] remove clone
-- [] Uniswap toy example
-- [] perf tests
-    - [x] consume all the blocks in parallel, empty transform
-    - [x] block stream from kv to run subgraph
-    - [x] minimal uniswap example using new architecture
-- [] binary to check data?
-- [] test different stores
-    - [] postgres? 
-    - [] rocksdb 
-    - [x] sleddb
-- [] dataset blockstream
-    - [] try to avoid cloning the handler every block
-- [] cleanup println and unwrap
-- [] Runner
-    - [] pass deployment hash
-    - [] runtime adapter needs to be added for the original chain
-- [] DataSet Blockchain
-    - [] How to get the ethereum/others network_names and configs?
-    - [] Fix datasource hack
-- [] Store
-    - [] Make it not forward only
-    - [] Introduce partitions? 
-    - [] Get all keys
-    - [] Write entity update
+- [x] Introduce SubgraphType
+- [] Re-use block-processing logic
+	- [] Introduce segments
+	- [] Move logic to index worker from runner

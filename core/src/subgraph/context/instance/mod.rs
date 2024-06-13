@@ -1,6 +1,7 @@
 mod hosts;
 
 use anyhow::ensure;
+use graph::components::subgraph::SubgraphType;
 use graph::futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::{Blockchain, TriggerData as _},
@@ -15,6 +16,7 @@ use std::collections::HashMap;
 
 pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
+    pub(crate) subgraph_type: SubgraphType,
     network: String,
     host_builder: T,
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
@@ -84,6 +86,7 @@ where
             templates,
             host_metrics,
             causality_region_seq,
+            subgraph_type: manifest.subgraph_type(),
         }
     }
 

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use graph::blockchain::{Block, Blockchain, DecoderHook as _};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
-use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing, SubgraphType};
 use graph::components::trigger_processor::{HostedTrigger, RunnableTriggers};
 use graph::data_source::TriggerData;
 use graph::prelude::tokio::time::Instant;
@@ -30,6 +30,7 @@ where
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
@@ -58,6 +59,7 @@ where
                     state,
                     proof_of_indexing.cheap_clone(),
                     debug_fork,
+                    subgraph_type,
                     instrument,
                 )
                 .await?;

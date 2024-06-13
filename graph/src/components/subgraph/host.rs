@@ -16,6 +16,8 @@ use crate::prelude::*;
 use crate::runtime::HostExportError;
 use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
 
+use super::SubgraphType;
+
 #[derive(Debug)]
 pub enum MappingError {
     /// A possible reorg was detected while running the mapping.
@@ -81,6 +83,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         instrument: bool,
     ) -> Result<BlockState, MappingError>;
 
@@ -91,6 +94,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_type: &SubgraphType,
         instrument: bool,
     ) -> Result<BlockState, MappingError>;
 

@@ -17,4 +17,4 @@ pub use self::proof_of_indexing::{
 };
 pub use self::provider::SubgraphAssignmentProvider;
 pub use self::registrar::{SubgraphRegistrar, SubgraphVersionSwitchingMode};
-pub use self::settings::{Setting, Settings};
+pub use self::settings::{Setting, Settings, SubgraphType};

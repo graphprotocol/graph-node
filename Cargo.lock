@@ -478,7 +478,7 @@ dependencies = [
  "proc-macro-crate 3.1.0",
  "proc-macro2",
  "quote",
- "syn 2.0.65",
+ "syn 2.0.66",
  "syn_derive",
 ]
 
@@ -1425,16 +1425,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fs2"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1694,7 +1684,6 @@ dependencies = [
  "serde_plain",
  "serde_regex",
  "serde_yaml",
- "sled",
  "slog",
  "slog-async",
  "slog-envlogger",
@@ -1773,7 +1762,6 @@ dependencies = [
  "prost-types 0.12.6",
  "semver",
  "serde",
- "sled",
  "tokio",
  "tonic-build",
 ]
@@ -1876,7 +1864,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sled",
  "substreams",
  "substreams-ethereum 0.8.0",
  "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
@@ -1930,7 +1917,6 @@ dependencies = [
  "prometheus",
  "serde",
  "shellexpand",
- "sled",
  "termcolor",
  "uniswap",
  "url",
@@ -3490,7 +3476,7 @@ dependencies = [
  "phf_shared 0.11.2",
  "proc-macro2",
  "quote",
- "syn 2.0.65",
+ "syn 2.0.66",
 ]
 
 [[package]]
@@ -4620,22 +4606,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c307a32c1c5c437f38c7fd45d753050587732ba8628319fbdf12a7e289ccc590"
 
 [[package]]
-name = "sled"
-version = "0.34.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f96b4737c2ce5987354855aed3797279def4ebf734436c6aa4552cf8e169935"
-dependencies = [
- "crc32fast",
- "crossbeam-epoch",
- "crossbeam-utils",
- "fs2",
- "fxhash",
- "libc",
- "log",
- "parking_lot 0.11.2",
-]
-
-[[package]]
 name = "slice-group-by"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5111,7 +5081,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "syn 2.0.65",
+ "syn 2.0.66",
 ]
 
 [[package]]

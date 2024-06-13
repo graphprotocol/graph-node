@@ -1,7 +1,7 @@
 use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use graph::blockchain::{BlockTime, Blockchain, HostFn};
-use graph::components::store::SubgraphFork;
+use graph::components::store::{GetScope, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::futures01::sync::mpsc;
@@ -205,6 +205,9 @@ pub struct MappingContext {
     pub mapping_logger: Logger,
     /// Whether to log details about host fn execution
     pub instrument: bool,
+    /// Forces all `store_get` operations to be block-local. Currently
+    /// used for pure subgraphs, in order to prevent access to data from other blocks.
+    pub force_block_local_store_gets: bool,
 }
 
 impl MappingContext {
@@ -220,6 +223,7 @@ impl MappingContext {
             debug_fork: self.debug_fork.cheap_clone(),
             mapping_logger: Logger::new(&self.logger, o!("component" => "UserMapping")),
             instrument: self.instrument,
+            force_block_local_store_gets: self.force_block_local_store_gets,
         }
     }
 }

@@ -145,6 +145,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
                 state,
                 proof_of_indexing.cheap_clone(),
                 debug_fork,
+                &self.instance.subgraph_type,
                 instrument,
             )
             .await?;

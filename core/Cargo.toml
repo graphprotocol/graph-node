@@ -35,7 +35,6 @@ substreams = "0.5.0"
 substreams-ethereum = "0.8.0"
 
 uniswap = { path = "../transforms/uniswap" }
-sled = "0.34.7"
 
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }
