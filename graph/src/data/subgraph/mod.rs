@@ -61,6 +61,8 @@ use std::sync::Arc;
 
 use super::{graphql::IntoValue, value::Word};
 
+pub const SUBSTREAMS_KIND: &str = "substreams";
+
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
 where
@@ -940,6 +942,14 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .try_collect::<Vec<_>>(),
         )
         .await?;
+
+        let is_substreams = data_sources.iter().any(|ds| ds.kind() == SUBSTREAMS_KIND);
+        if is_substreams && ds_count > 1 {
+            return Err(anyhow!(
+                "A Substreams-based subgraph can only contain a single data source."
+            )
+            .into());
+        }
 
         for ds in &data_sources {
             ensure!(
