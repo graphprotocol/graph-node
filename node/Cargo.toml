@@ -37,5 +37,5 @@ serde = { workspace = true }
 shellexpand = "3.1.0"
 termcolor = "1.4.1"
 diesel = { workspace = true }
-prometheus = { version = "0.13.3", features = ["push"] }
+prometheus = { version = "0.13.4", features = ["push"] }
 json-structural-diff = { version = "0.1", features = ["colorize"] }
