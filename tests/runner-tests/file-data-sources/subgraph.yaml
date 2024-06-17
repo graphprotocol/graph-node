@@ -13,14 +13,13 @@ dataSources:
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
-        - Gravatar
+        - FileEntity
+        - Foo
       abis:
         - name: Contract
           file: ./abis/Contract.abi
-      blockHandlers:
-        - handler: handleBlock
       eventHandlers:
-        - event: TestEvent(string)
+        - event: TestEvent(string,string)
           handler: handleTestEvent
       file: ./src/mapping.ts
 templates:
@@ -38,10 +37,8 @@ templates:
       abis:
         - name: Contract
           file: ./abis/Contract.abi
-      blockHandlers:
-        - handler: handleBlock
       eventHandlers:
-        - event: TestEvent(string)
+        - event: TestEvent(string,string)
           handler: handleTestEvent
       file: ./src/mapping.ts
   - kind: file/ipfs
@@ -51,61 +48,9 @@ templates:
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
-        - IpfsFile
+        - FileEntity
       abis:
         - name: Contract
           file: ./abis/Contract.abi
       handler: handleFile
-      file: ./src/mapping.ts
-  - kind: file/ipfs
-    name: File1
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      entities:
-        - IpfsFile1
-      abis:
-        - name: Contract
-          file: ./abis/Contract.abi
-      handler: handleFile1
-      file: ./src/mapping.ts
-  - kind: file/ipfs
-    name: File2
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      entities:
-        - IpfsFile # will trigger an error, should be IpfsFile1
-      abis:
-        - name: Contract
-          file: ./abis/Contract.abi
-      handler: handleFile1
-      file: ./src/mapping.ts
-  - kind: file/ipfs
-    name: SpawnTestHandler
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      entities:
-        - SpawnTestEntity
-      abis:
-        - name: Contract
-          file: ./abis/Contract.abi
-      handler: spawnTestHandler
-      file: ./src/mapping.ts
-  - kind: file/ipfs
-    name: OffChainDataSource
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      entities:
-        - SpawnTestEntity
-      abis:
-        - name: Contract
-          file: ./abis/Contract.abi
-      handler: handleSpawnedTest
       file: ./src/mapping.ts

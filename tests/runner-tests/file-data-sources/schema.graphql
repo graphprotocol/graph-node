@@ -1,15 +1,10 @@
-type IpfsFile @entity {
+type FileEntity @entity {
   id: ID!
   content: String!
+  foo: Foo @relation
 }
 
-type IpfsFile1 @entity {
+type Foo @entity {
   id: ID!
-  content: String!
-}
-
-type SpawnTestEntity @entity {
-  id: ID!
-  content: String!
-  context: String!
+  ipfs: FileEntity @derivedFrom(field: "foo")
 }
