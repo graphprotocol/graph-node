@@ -1,6 +1,7 @@
 use ethabi::Contract;
 use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
+use graph::components::store::SubgraphSegment;
 use graph::data::subgraph::*;
 use graph::data_source;
 use graph::env::EnvVars;
@@ -120,6 +121,7 @@ pub fn mock_context(
             graph::futures03::executor::block_on(store.writable(
                 LOGGER.clone(),
                 deployment.id,
+                SubgraphSegment::default(),
                 Arc::new(Vec::new()),
             ))
             .unwrap(),

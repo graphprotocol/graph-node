@@ -25,11 +25,14 @@ use graph::data_source::{
 use graph::env::EnvVars;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::TryStreamExt;
+use graph::indexer::store::PostgresIndexerDB;
+use graph::indexer::{IndexWorker, IndexerContext};
 use graph::prelude::*;
 use graph::schema::EntityKey;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use uniswap::UniswapTransform;
 
 const MINUTE: Duration = Duration::from_secs(60);
 
@@ -202,10 +205,20 @@ where
         loop {
             debug!(self.logger, "Starting or restarting subgraph");
 
-            let block_stream_canceler = CancelGuard::new();
-            let block_stream_cancel_handle = block_stream_canceler.handle();
             // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
             self.ctx.filter = Some(self.build_filter());
+
+            if self.inputs.deployment.hash.to_string()
+                == "QmcmBvMt1hbPTtPWaBk7HXwXx71tzAKfa2eZeyV2mpRBLQ"
+            {
+                self.populate_dataset().await;
+                // Stop for now
+                self.inputs.store.flush().await?;
+                return Ok(self);
+            }
+
+            let block_stream_canceler = CancelGuard::new();
+            let block_stream_cancel_handle = block_stream_canceler.handle();
 
             let mut block_stream = new_block_stream(
                 &self.inputs,
@@ -270,6 +283,45 @@ where
                 };
             }
         }
+    }
+
+    async fn populate_dataset(&mut self) {
+        let store = Arc::new(
+            PostgresIndexerDB::new(
+                self.inputs.subgraph_store.cheap_clone(),
+                self.inputs.deployment.cheap_clone(),
+                self.logger.cheap_clone(),
+                self.metrics.subgraph.stopwatch.cheap_clone(),
+            )
+            .await,
+        );
+
+        let ctx = Arc::new(IndexerContext {
+            chain: self.inputs.chain.clone(),
+            transform: Arc::new(UniswapTransform::new()),
+            store,
+            deployment: self.inputs.deployment.clone(),
+            logger: self.logger.cheap_clone(),
+        });
+
+        let iw = IndexWorker {};
+
+        let earlier = Instant::now();
+        iw.run_many(
+            ctx,
+            self.inputs.store.clone(),
+            *self.inputs.start_blocks.iter().min().unwrap(),
+            // Some(13369621),
+            None,
+            Arc::new(self.ctx.filter.as_ref().unwrap().clone()),
+            self.inputs.unified_api_version.clone(),
+            10,
+            self.metrics.stream.stopwatch.cheap_clone(),
+        )
+        .await
+        .unwrap();
+        let diff = Instant::now().duration_since(earlier);
+        println!("### All tasks finished: took {}s ###", diff.as_secs());
     }
 
     /// Processes a block and returns the updated context and a boolean flag indicating

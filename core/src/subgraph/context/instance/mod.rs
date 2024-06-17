@@ -64,20 +64,20 @@ where
     }
 
     pub fn new(
-        manifest: SubgraphManifest<C>,
+        manifest: &SubgraphManifest<C>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         causality_region_seq: CausalityRegionSeq,
     ) -> Self {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
-        let templates = Arc::new(manifest.templates);
+        let templates = Arc::new(manifest.templates.clone());
 
         SubgraphInstance {
             host_builder,
             subgraph_id,
             network,
-            static_data_sources: Arc::new(manifest.data_sources),
+            static_data_sources: Arc::new(manifest.data_sources.clone()),
             onchain_hosts: OnchainHosts::new(),
             offchain_hosts: OffchainHosts::new(),
             module_cache: HashMap::new(),

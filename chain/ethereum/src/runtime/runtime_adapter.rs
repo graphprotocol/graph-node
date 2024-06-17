@@ -136,7 +136,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
 }
 
 /// function ethereum.call(call: SmartContractCall): Array<Token> | null
-fn ethereum_call(
+pub fn ethereum_call(
     eth_adapter: &EthereumAdapter,
     call_cache: Arc<dyn EthereumCallCache>,
     ctx: HostFnCtx,
@@ -172,7 +172,7 @@ fn ethereum_call(
     }
 }
 
-fn eth_get_balance(
+pub fn eth_get_balance(
     eth_adapter: &EthereumAdapter,
     ctx: HostFnCtx<'_>,
     wasm_ptr: u32,

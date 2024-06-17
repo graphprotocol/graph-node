@@ -1,6 +1,7 @@
 use crate::{
     components::{
         link_resolver::LinkResolver,
+        metrics::stopwatch::StopwatchMetrics,
         store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator},
         subgraph::InstanceDSTemplateInfo,
     },
@@ -344,6 +345,7 @@ impl Blockchain for MockBlockchain {
         _start_blocks: Vec<BlockNumber>,
         _filter: Arc<Self::TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
+        _stopwatch: StopwatchMetrics,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         todo!()
     }

@@ -1,6 +1,7 @@
 use diesel::{self, PgConnection};
 use graph::blockchain::mock::MockDataSource;
 use graph::blockchain::BlockTime;
+use graph::components::store::SubgraphSegment;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
@@ -198,7 +199,12 @@ pub async fn create_subgraph_with_manifest(
 
     SUBGRAPH_STORE
         .cheap_clone()
-        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .writable(
+            LOGGER.clone(),
+            deployment.id,
+            SubgraphSegment::default(),
+            Arc::new(Vec::new()),
+        )
         .await?
         .start_subgraph_deployment(&LOGGER)
         .await?;
@@ -287,7 +293,12 @@ pub async fn transact_errors(
     let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .writable(
+            LOGGER.clone(),
+            deployment.id,
+            SubgraphSegment::default(),
+            Arc::new(Vec::new()),
+        )
         .await?
         .transact_block_operations(
             block_ptr_to,
@@ -353,6 +364,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     let store = graph::futures03::executor::block_on(store.cheap_clone().writable(
         LOGGER.clone(),
         deployment.id,
+        SubgraphSegment::default(),
         Arc::new(manifest_idx_and_name),
     ))?;
 
@@ -391,7 +403,12 @@ pub async fn transact_entities_and_dynamic_data_sources(
 pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .writable(
+            LOGGER.clone(),
+            deployment.id,
+            SubgraphSegment::default(),
+            Arc::new(Vec::new()),
+        )
         .await
         .expect("can get writable")
         .revert_block_operations(ptr.clone(), FirehoseCursor::None)
@@ -442,7 +459,12 @@ pub async fn insert_entities(
 pub async fn flush(deployment: &DeploymentLocator) -> Result<(), StoreError> {
     let writable = SUBGRAPH_STORE
         .cheap_clone()
-        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .writable(
+            LOGGER.clone(),
+            deployment.id,
+            SubgraphSegment::default(),
+            Arc::new(Vec::new()),
+        )
         .await
         .expect("we can get a writable");
     writable.flush().await

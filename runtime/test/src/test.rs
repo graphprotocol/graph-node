@@ -1066,7 +1066,12 @@ async fn test_entity_store(api_version: Version) {
 
     // We need to empty the cache for the next test
     let writable = store
-        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .writable(
+            LOGGER.clone(),
+            deployment.id,
+            SubgraphSegment::default(),
+            Arc::new(Vec::new()),
+        )
         .await
         .unwrap();
     let ctx = instance.store.data_mut();

@@ -26,6 +26,7 @@ graph-chain-near = { path = "../chain/near" }
 graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-chain-substreams = { path = "../chain/substreams" }
 graph-chain-starknet = { path = "../chain/starknet" }
+graph-chain-dataset = { path = "../chain/dataset" }
 graph-graphql = { path = "../graphql" }
 graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }
@@ -39,3 +40,7 @@ termcolor = "1.4.1"
 diesel = { workspace = true }
 prometheus = { version = "0.13.3", features = ["push"] }
 json-structural-diff = { version = "0.1", features = ["colorize"] }
+
+sled = "0.34.7"
+borsh = { version = "1.3.1", features = ["derive"] }
+uniswap = { path = "../transforms/uniswap" }

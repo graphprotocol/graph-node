@@ -208,6 +208,7 @@ pub struct EnvVars {
     /// Set the maximum grpc decode size(in MB) for firehose BlockIngestor connections.
     /// Defaults to 25MB
     pub firehose_grpc_max_decode_size_mb: usize,
+    pub dataset_subgraphs_enabled: bool,
 }
 
 impl EnvVars {
@@ -288,6 +289,7 @@ impl EnvVars {
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
             firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
+            dataset_subgraphs_enabled: inner.experimental_dataset_subgraphs_enabled.0,
         })
     }
 
@@ -372,6 +374,8 @@ struct Inner {
     log_levels: Option<String>,
     #[envconfig(from = "EXPERIMENTAL_STATIC_FILTERS", default = "false")]
     experimental_static_filters: EnvVarBoolean,
+    #[envconfig(from = "EXPERIMENTAL_DATASET_SUBGRAPHS_ENABLED", default = "true")]
+    experimental_dataset_subgraphs_enabled: EnvVarBoolean,
     #[envconfig(
         from = "EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE",
         default = "instant"

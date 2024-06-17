@@ -9,6 +9,7 @@ members = [
     "server/*",
     "store/*",
     "substreams/*",
+    "transforms/*",
     "graph",
     "tests",
     "graph/derive",
