@@ -7,6 +7,12 @@
                 "internalType": "string",
                 "name": "testCommand",
                 "type": "string"
+            },
+            {
+                "indexed": false,
+                "internalType": "string",
+                "name": "data",
+                "type": "string"
             }
         ],
         "name": "TestEvent",
