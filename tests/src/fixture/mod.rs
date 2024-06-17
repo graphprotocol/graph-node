@@ -20,7 +20,7 @@ use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
-use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache};
+use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache, SubgraphSegment};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
@@ -614,7 +614,12 @@ pub async fn wait_for_sync(
     async fn flush(logger: &Logger, store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
         store
             .clone()
-            .writable(logger.clone(), deployment.id, Arc::new(vec![]))
+            .writable(
+                logger.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(vec![]),
+            )
             .await
             .unwrap()
             .flush()

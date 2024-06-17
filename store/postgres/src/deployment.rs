@@ -6,6 +6,7 @@ use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, now, select, sql, update},
     sql_types::{Bool, Integer},
+    Connection as _, NullableExpressionMethods as _,
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
@@ -14,7 +15,10 @@ use diesel::{
     sql_types::{Nullable, Text},
 };
 use graph::{
-    blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError, env::ENV_VARS,
+    blockchain::block_stream::FirehoseCursor,
+    components::store::{SegmentDetails, SubgraphSegment},
+    data::subgraph::schema::SubgraphError,
+    env::ENV_VARS,
     schema::EntityType,
 };
 use graph::{
@@ -410,16 +414,40 @@ pub fn set_manifest_raw_yaml(
 pub fn transact_block(
     conn: &mut PgConnection,
     site: &Site,
+    segment: &SubgraphSegment,
     ptr: &BlockPtr,
     firehose_cursor: &FirehoseCursor,
     count: i32,
 ) -> Result<BlockNumber, StoreError> {
-    use subgraph_deployment as d;
+    fn update_segment(
+        conn: &mut PgConnection,
+        ptr: &BlockPtr,
+        segment: &SegmentDetails,
+    ) -> Result<Vec<i32>, StoreError> {
+        use crate::diesel::BoolExpressionMethods;
+        use crate::primary::subgraph_segments as s;
 
-    // Work around a Diesel issue with serializing BigDecimals to numeric
-    let number = format!("{}::numeric", ptr.number);
+        assert!(ptr.number >= segment.start_block);
+        assert!(ptr.number <= segment.stop_block - 1);
 
-    let count_sql = entity_count_sql(count);
+        // Work around a Diesel issue with serializing BigDecimals to numeric
+        let number = format!("{}::numeric", ptr.number);
+
+        let rows = update(
+            s::table.filter(s::id.eq(segment.id.0)).filter(
+                // Asserts that the processing direction is forward.
+                s::current_block
+                    .lt(sql(&number))
+                    .or(s::current_block.is_null()),
+            ),
+        )
+        .set((s::current_block.eq(sql(&number)),))
+        .returning(s::start_block)
+        .get_results::<BlockNumber>(conn)
+        .map_err(StoreError::from)?;
+
+        Ok(rows)
+    }
 
     // Sanity check: The processing direction is forward.
     //
@@ -435,18 +463,16 @@ pub fn transact_block(
             ));
         }
     }
-
-    let rows = update(d::table.filter(d::id.eq(site.id)))
-        .set((
-            d::latest_ethereum_block_number.eq(sql(&number)),
-            d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
-            d::firehose_cursor.eq(firehose_cursor.as_ref()),
-            d::entity_count.eq(sql(&count_sql)),
-            d::current_reorg_depth.eq(0),
-        ))
-        .returning(d::earliest_block_number)
-        .get_results::<BlockNumber>(conn)
-        .map_err(StoreError::from)?;
+    let rows = match segment {
+        // When full acess is used, only the subgraph_deployment table is updated since
+        // that is what the rest of the systems looks for.
+        SubgraphSegment::AllBlocks => {
+            update_subgraph_deployment(conn, &site.id, ptr, firehose_cursor, count)
+        }
+        // When a segment is used then the progress is updated on the subgraph_segments table
+        // it is up to the caller to figure out when to switch from one mode to the other.
+        SubgraphSegment::Range(details) => update_segment(conn, ptr, &details),
+    }?;
 
     match rows.len() {
         // Common case: A single row was updated.
@@ -1304,6 +1330,195 @@ pub fn set_on_sync(
             site.to_string()
         )),
     }
+}
+
+pub fn mark_subgraph_segment_complete(
+    conn: &mut PgConnection,
+    segment: &SegmentDetails,
+) -> Result<(), StoreError> {
+    use crate::diesel::BoolExpressionMethods;
+    use crate::primary::subgraph_segments as s;
+
+    // Work around a Diesel issue with serializing BigDecimals to numeric
+    let number = format!("{}::numeric", segment.stop_block - 1);
+
+    update(
+        s::table.filter(s::id.eq(segment.id.0)).filter(
+            // Asserts that the processing direction is forward.
+            s::current_block
+                .lt(sql(&number))
+                .or(s::current_block.is_null()),
+        ),
+    )
+    .set((s::current_block.eq(sql(&number)),))
+    .returning(s::start_block)
+    .get_results::<BlockNumber>(conn)
+    .map_err(StoreError::from)?;
+
+    Ok(())
+}
+
+fn update_subgraph_deployment(
+    conn: &mut PgConnection,
+    deployment_id: &DeploymentId,
+    ptr: &BlockPtr,
+    firehose_cursor: &FirehoseCursor,
+    count: i32,
+) -> Result<Vec<i32>, StoreError> {
+    use crate::diesel::BoolExpressionMethods;
+    use subgraph_deployment as d;
+
+    // Work around a Diesel issue with serializing BigDecimals to numeric
+    let number = format!("{}::numeric", ptr.number);
+
+    let count_sql = entity_count_sql(count);
+
+    // // Sanity check: The processing direction is forward.
+    // //
+    // // Performance note: This costs us an extra DB query on every update. We used to put this in the
+    // // `where` clause of the `update` statement, but that caused Postgres to use bitmap scans instead
+    // // of a simple primary key lookup. So a separate query it is.
+    // let block_ptr = block_ptr(conn, &site.deployment)?;
+    // if let Some(block_ptr_from) = block_ptr {
+    //     if block_ptr_from.number >= ptr.number {
+    //         return Err(StoreError::DuplicateBlockProcessing(
+    //             site.deployment.clone(),
+    //             ptr.number,
+    //         ));
+    //     }
+    // }
+
+    let rows = update(
+        d::table.filter(d::id.eq(deployment_id)).filter(
+            // Asserts that the processing direction is forward.
+            d::latest_ethereum_block_number
+                .lt(sql(&number))
+                .or(d::latest_ethereum_block_number.is_null()),
+        ),
+    )
+    .set((
+        d::latest_ethereum_block_number.eq(sql(&number)),
+        d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
+        d::firehose_cursor.eq(firehose_cursor.as_ref()),
+        d::entity_count.eq(sql(&count_sql)),
+        d::current_reorg_depth.eq(0),
+    ))
+    .returning(d::earliest_block_number)
+    .get_results::<BlockNumber>(conn)
+    .map_err(StoreError::from)?;
+
+    Ok(rows)
+}
+pub fn create_subgraph_segments(
+    conn: &mut PgConnection,
+    deployment: graph::components::store::DeploymentId,
+    segments: Vec<SegmentDetails>,
+) -> Result<Vec<SubgraphSegment>, StoreError> {
+    use crate::primary::subgraph_segments::dsl as s;
+    use crate::primary::SegmentDetails as StoreSegmentDetails;
+
+    let count: i64 = s::subgraph_segments
+        .filter(s::deployment.eq(&deployment.0))
+        .count()
+        .get_result(conn)?;
+
+    if count == 0 {
+        conn.transaction(|conn| {
+            segments
+                .into_iter()
+                .map(|details| {
+                    let SegmentDetails {
+                        id: _,
+                        deployment,
+                        start_block,
+                        stop_block: end_block,
+                        current_block: _,
+                    } = details;
+
+                    diesel::insert_into(s::subgraph_segments)
+                        .values((
+                            s::deployment.eq(&deployment.0),
+                            s::start_block.eq(&start_block),
+                            s::stop_block.eq(&end_block),
+                        ))
+                        .on_conflict_do_nothing()
+                        .execute(conn)
+                })
+                .collect::<Result<Vec<usize>, diesel::result::Error>>()
+        })?;
+    }
+
+    s::subgraph_segments
+        .select((
+            s::id,
+            s::deployment,
+            s::start_block,
+            s::stop_block,
+            s::current_block.nullable(),
+        ))
+        .filter(s::deployment.eq(&deployment.0))
+        .get_results::<StoreSegmentDetails>(conn)
+        .map_err(StoreError::from)
+        .map(|ds| {
+            ds.into_iter()
+                .map(SegmentDetails::from)
+                .map(SubgraphSegment::Range)
+                .collect()
+        })
+}
+
+#[allow(unused)]
+pub fn subgraph_segment_for_block_number(
+    conn: &mut PgConnection,
+    deployment: DeploymentId,
+    bn: Option<BlockNumber>,
+) -> Result<SegmentDetails, StoreError> {
+    use crate::primary::subgraph_segments::dsl as s;
+    use crate::primary::SegmentDetails as StoreSegmentDetails;
+
+    s::subgraph_segments
+        .select((
+            s::id,
+            s::deployment,
+            s::start_block,
+            s::stop_block,
+            s::current_block.nullable(),
+        ))
+        .filter(s::deployment.eq(&deployment))
+        .filter(s::start_block.ge(&bn.unwrap_or_default()))
+        .order(s::start_block.desc())
+        .limit(1)
+        .get_result::<StoreSegmentDetails>(conn)
+        .map_err(StoreError::from)
+        .map_err(Into::into)
+        .map(SegmentDetails::from)
+}
+
+pub fn subgraph_segments(
+    conn: &mut PgConnection,
+    deployment: DeploymentId,
+) -> Result<Vec<SubgraphSegment>, StoreError> {
+    use crate::primary::subgraph_segments::dsl as s;
+    use crate::primary::SegmentDetails as StoreSegmentDetails;
+
+    s::subgraph_segments
+        .select((
+            s::id,
+            s::deployment,
+            s::start_block,
+            s::stop_block,
+            s::current_block.nullable(),
+        ))
+        .filter(s::deployment.eq(&deployment))
+        .get_results::<StoreSegmentDetails>(conn)
+        .map_err(StoreError::from)
+        .map_err(Into::into)
+        .map(|ds| {
+            ds.into_iter()
+                .map(SegmentDetails::from)
+                .map(SubgraphSegment::Range)
+                .collect()
+        })
 }
 
 /// Lock the deployment `site` for writes while `f` is running. The lock can

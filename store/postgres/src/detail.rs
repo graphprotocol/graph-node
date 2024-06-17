@@ -449,7 +449,7 @@ impl StoredDeploymentEntity {
             manifest: manifest.as_manifest(schema),
             failed: detail.failed,
             health: detail.health.into(),
-            synced_at: detail.synced_at,
+            synced: detail.synced,
             fatal_error: None,
             non_fatal_errors: vec![],
             earliest_block_number: detail.earliest_block_number,

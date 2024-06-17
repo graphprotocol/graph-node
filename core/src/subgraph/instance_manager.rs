@@ -9,6 +9,7 @@ use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
+use graph::components::store::SubgraphSegment;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data::value::Word;
@@ -275,6 +276,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .writable(
                 logger.clone(),
                 deployment.id,
+                SubgraphSegment::default(),
                 Arc::new(manifest.template_idx_and_name().collect()),
             )
             .await?;

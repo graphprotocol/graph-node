@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::{future::Future, sync::Arc};
 
+use graph::components::store::SubgraphSegment;
 use graph::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     components::{
@@ -239,7 +240,12 @@ where
         let loc = create_test_subgraph(&hash, SCHEMA).await;
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), loc.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                loc.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("we can get a writable store");
         insert_test_data(writable.clone(), loc.clone()).await;

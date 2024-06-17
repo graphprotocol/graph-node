@@ -30,22 +30,21 @@ use diesel::{
     Connection as _,
 };
 use graph::{
-    components::store::DeploymentLocator,
+    components::store::{
+        DeploymentId as GraphDeploymentId, DeploymentLocator, DeploymentSchemaVersion,
+        SegmentDetails as GraphSegmentDetails, SubgraphSegmentId,
+    },
     constraint_violation,
     data::{
         store::scalar::ToPrimitive,
         subgraph::{status, DeploymentFeatures},
     },
     prelude::{
-        anyhow,
+        anyhow, chrono,
         chrono::{DateTime, Utc},
-        serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId, StoreError,
-        SubgraphName, SubgraphVersionSwitchingMode,
+        serde_json, BlockNumber, CancelHandle, CancelToken, DeploymentHash, EntityChange,
+        EntityChangeOperation, NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
     },
-};
-use graph::{
-    components::store::{DeploymentId as GraphDeploymentId, DeploymentSchemaVersion},
-    prelude::{chrono, CancelHandle, CancelToken},
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
@@ -67,6 +66,15 @@ lazy_static::lazy_static! {
     /// of each event sent in `EVENT_TAP`
     pub static ref EVENT_TAP_ENABLED: Mutex<bool> = Mutex::new(false);
     pub static ref EVENT_TAP: Mutex<Vec<StoreEvent>> = Mutex::new(Vec::new());
+}
+table! {
+    subgraphs.subgraph_segments (id) {
+        id -> Integer,
+        deployment -> Integer,
+        start_block -> Integer,
+        stop_block -> Integer,
+        current_block -> Nullable<Integer>,
+    }
 }
 
 table! {
@@ -291,6 +299,79 @@ impl ToSql<Text, Pg> for Namespace {
 impl Borrow<str> for Namespace {
     fn borrow(&self) -> &str {
         &self.0
+    }
+}
+
+/// A marker that an `i32` references a a segment. Values of this type hold
+/// the primary key from the `subgraphs.segments` table;
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
+#[diesel(sql_type = diesel::sql_types::Integer)]
+pub struct SegmentId(i32);
+
+impl FromSql<Integer, Pg> for SegmentId {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
+        let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
+        Ok(SegmentId(id))
+    }
+}
+
+impl From<SegmentId> for SubgraphSegmentId {
+    fn from(value: SegmentId) -> Self {
+        Self(value.0)
+    }
+}
+impl From<SubgraphSegmentId> for SegmentId {
+    fn from(value: SubgraphSegmentId) -> Self {
+        Self(value.0)
+    }
+}
+
+#[derive(Queryable)]
+pub struct SegmentDetails {
+    pub id: SegmentId,
+    pub deployment: DeploymentId,
+    pub start_block: BlockNumber,
+    pub end_block: BlockNumber,
+    pub current_block: Option<BlockNumber>,
+}
+
+impl From<SegmentDetails> for GraphSegmentDetails {
+    fn from(value: SegmentDetails) -> GraphSegmentDetails {
+        let SegmentDetails {
+            id,
+            deployment,
+            start_block,
+            end_block,
+            current_block,
+        } = value;
+
+        GraphSegmentDetails {
+            id: id.into(),
+            deployment: deployment.into(),
+            start_block,
+            stop_block: end_block,
+            current_block,
+        }
+    }
+}
+
+impl From<GraphSegmentDetails> for SegmentDetails {
+    fn from(value: GraphSegmentDetails) -> Self {
+        let GraphSegmentDetails {
+            id,
+            deployment,
+            start_block,
+            stop_block: end_block,
+            current_block,
+        } = value;
+
+        SegmentDetails {
+            id: id.into(),
+            deployment: deployment.into(),
+            start_block,
+            end_block,
+            current_block,
+        }
     }
 }
 

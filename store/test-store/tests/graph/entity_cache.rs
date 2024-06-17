@@ -2,7 +2,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
-    StoredDynamicDataSource, WritableStore,
+    SegmentDetails, StoredDynamicDataSource, SubgraphSegment, WritableStore,
 };
 use graph::data::store::Id;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
@@ -93,6 +93,28 @@ impl DeploymentCursorTracker for MockStore {
 
 #[async_trait]
 impl WritableStore for MockStore {
+    async fn create_segments(
+        &self,
+        _deployment: DeploymentId,
+        _segments: Vec<SegmentDetails>,
+    ) -> Result<Vec<SubgraphSegment>, StoreError> {
+        unimplemented!()
+    }
+
+    async fn get_segments(
+        &self,
+        _deployment: DeploymentId,
+    ) -> Result<Vec<SubgraphSegment>, StoreError> {
+        unimplemented!()
+    }
+
+    async fn mark_subgraph_segment_complete(
+        &self,
+        _segment: SegmentDetails,
+    ) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     async fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -380,7 +402,12 @@ where
         let deployment = insert_test_data(subgraph_store.clone()).await;
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("we can get a writable store");
 
