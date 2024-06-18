@@ -460,6 +460,7 @@ pub async fn setup<C: Blockchain>(
     let link_resolver = Arc::new(IpfsResolver::new(
         vec![ipfs.cheap_clone()],
         Default::default(),
+        Arc::new(EndpointMetrics::mock()),
     ));
     let ipfs_service = ipfs_service(
         ipfs.cheap_clone(),

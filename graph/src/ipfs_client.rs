@@ -117,7 +117,7 @@ pub struct AddResponse {
 /// Reference type, clones will share the connection pool.
 #[derive(Clone, CheapClone)]
 pub struct IpfsClient {
-    base: Arc<Uri>,
+    pub base: Arc<Uri>,
     // reqwest::Client doesn't need to be `Arc` because it has one internally
     // already.
     client: reqwest::Client,

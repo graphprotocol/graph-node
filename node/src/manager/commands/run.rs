@@ -98,7 +98,11 @@ pub async fn run(
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
+    let link_resolver = Arc::new(IpfsResolver::new(
+        ipfs_clients,
+        env_vars.cheap_clone(),
+        endpoint_metrics.cheap_clone(),
+    ));
 
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(metrics_registry.clone()));
     let eth_networks = create_ethereum_networks_for_chain(

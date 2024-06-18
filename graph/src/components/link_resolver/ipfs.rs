@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::data::value::Word;
+use crate::endpoint::{EndpointMetrics, RequestLabels};
 use crate::env::EnvVars;
 use crate::futures01::{stream::poll_fn, try_ready};
 use crate::futures01::{Async, Poll};
@@ -106,10 +108,15 @@ pub struct IpfsResolver {
     timeout: Duration,
     retry: bool,
     env_vars: Arc<EnvVars>,
+    endpoint_metrics: Arc<EndpointMetrics>,
 }
 
 impl IpfsResolver {
-    pub fn new(clients: Vec<IpfsClient>, env_vars: Arc<EnvVars>) -> Self {
+    pub fn new(
+        clients: Vec<IpfsClient>,
+        env_vars: Arc<EnvVars>,
+        endpoint_metrics: Arc<EndpointMetrics>,
+    ) -> Self {
         Self {
             clients: Arc::new(clients.into_iter().collect()),
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
@@ -118,6 +125,7 @@ impl IpfsResolver {
             timeout: env_vars.mappings.ipfs_timeout,
             retry: false,
             env_vars,
+            endpoint_metrics,
         }
     }
 }
@@ -171,15 +179,38 @@ impl LinkResolverTrait for IpfsResolver {
 
         let req_path = path.clone();
         let timeout = self.timeout;
+        let metrics = self.endpoint_metrics.cheap_clone();
         let data = retry_policy(self.retry, "ipfs.cat", logger)
             .run(move || {
                 let path = req_path.clone();
                 let client = client.clone();
+                let metrics = metrics.cheap_clone();
                 async move {
-                    Ok(client
+                    let provider = client.base.to_string().into();
+                    let req_type = Word::from("cat");
+
+                    match client
                         .cat_all(&path, Some(timeout), max_file_size)
-                        .await?
-                        .to_vec())
+                        .await
+                        .map(|b| b.to_vec())
+                    {
+                        Ok(res) => {
+                            metrics.success(&RequestLabels {
+                                provider,
+                                req_type,
+                                conn_type: crate::endpoint::ConnectionType::Ipfs,
+                            });
+                            Ok(res)
+                        }
+                        Err(err) => {
+                            metrics.failure(&RequestLabels {
+                                provider,
+                                req_type,
+                                conn_type: crate::endpoint::ConnectionType::Ipfs,
+                            });
+                            return Err(err);
+                        }
+                    }
                 }
             })
             .await?;
@@ -335,7 +366,11 @@ mod tests {
 
         let file: &[u8] = &[0u8; 201];
         let client = IpfsClient::localhost();
-        let resolver = super::IpfsResolver::new(vec![client.clone()], Arc::new(env_vars));
+        let resolver = super::IpfsResolver::new(
+            vec![client.clone()],
+            Arc::new(env_vars),
+            Arc::new(EndpointMetrics::mock()),
+        );
 
         let logger = Logger::root(slog::Discard, o!());
 
@@ -354,7 +389,11 @@ mod tests {
 
     async fn json_round_trip(text: &'static str, env_vars: EnvVars) -> Result<Vec<Value>, Error> {
         let client = IpfsClient::localhost();
-        let resolver = super::IpfsResolver::new(vec![client.clone()], Arc::new(env_vars));
+        let resolver = super::IpfsResolver::new(
+            vec![client.clone()],
+            Arc::new(env_vars),
+            Arc::new(EndpointMetrics::mock()),
+        );
 
         let logger = Logger::root(slog::Discard, o!());
         let link = client.add(text.as_bytes().into()).await.unwrap().hash;
