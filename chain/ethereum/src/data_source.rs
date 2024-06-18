@@ -1669,6 +1669,7 @@ impl CallDecl {
     fn address(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
         let address = match &self.expr.address {
             CallArg::Address => log.address,
+            CallArg::HexAddress(address) => *address,
             CallArg::Param(name) => {
                 let value = params
                     .iter()
@@ -1690,6 +1691,7 @@ impl CallDecl {
             .iter()
             .map(|arg| match arg {
                 CallArg::Address => Ok(Token::Address(log.address)),
+                CallArg::HexAddress(address) => Ok(Token::Address(*address)),
                 CallArg::Param(name) => {
                     let value = params
                         .iter()
@@ -1788,32 +1790,31 @@ impl FromStr for CallExpr {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum CallArg {
+    HexAddress(Address),
     Address,
     Param(Word),
+}
+
+lazy_static! {
+    // Matches a 40-character hexadecimal string prefixed with '0x', typical for Ethereum addresses
+    static ref ADDR_RE: Regex = Regex::new(r"^0x[0-9a-fA-F]{40}$").unwrap();
 }
 
 impl FromStr for CallArg {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        fn invalid(s: &str) -> Result<CallArg, anyhow::Error> {
-            Err(anyhow!("invalid call argument `{}`", s))
+        if ADDR_RE.is_match(s) {
+            if let Ok(parsed_address) = Address::from_str(s) {
+                return Ok(CallArg::HexAddress(parsed_address));
+            }
         }
 
-        let mut parts = s.split(".");
-        match parts.next() {
-            Some("event") => { /* ok */ }
-            Some(_) => return Err(anyhow!("call arguments must start with `event`")),
-            None => return Err(anyhow!("empty call argument")),
-        }
-        match parts.next() {
-            Some("address") => Ok(CallArg::Address),
-            Some("params") => match parts.next() {
-                Some(s) => Ok(CallArg::Param(Word::from(s))),
-                None => invalid(s),
-            },
-            Some(s) => invalid(s),
-            None => invalid(s),
+        let mut parts = s.split('.');
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some("event"), Some("address"), None) => Ok(CallArg::Address),
+            (Some("event"), Some("params"), Some(param)) => Ok(CallArg::Param(Word::from(param))),
+            _ => Err(anyhow!("invalid call argument `{}`", s)),
         }
     }
 }
@@ -1847,4 +1848,14 @@ fn test_call_expr() {
     assert_eq!(expr.address, CallArg::Address);
     assert_eq!(expr.func, "growth");
     assert_eq!(expr.args, vec![]);
+
+    let expr: CallExpr = "Pool[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].growth(0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF)"
+        .parse()
+        .unwrap();
+    let call_arg =
+        CallArg::HexAddress(H160::from_str("0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF").unwrap());
+    assert_eq!(expr.abi, "Pool");
+    assert_eq!(expr.address, call_arg);
+    assert_eq!(expr.func, "growth");
+    assert_eq!(expr.args, vec![call_arg]);
 }
