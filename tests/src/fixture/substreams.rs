@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use graph::blockchain::client::ChainClient;
+
 use super::{CommonChainConfig, Stores, TestChainSubstreams};
 
 pub async fn chain(test_name: &str, stores: &Stores) -> TestChainSubstreams {
@@ -12,10 +14,13 @@ pub async fn chain(test_name: &str, stores: &Stores) -> TestChainSubstreams {
     } = CommonChainConfig::new(test_name, stores).await;
 
     let block_stream_builder = Arc::new(graph_chain_substreams::BlockStreamBuilder::new());
+    let client = Arc::new(ChainClient::<graph_chain_substreams::Chain>::new_firehose(
+        firehose_endpoints,
+    ));
 
     let chain = Arc::new(graph_chain_substreams::Chain::new(
         logger_factory,
-        firehose_endpoints,
+        client,
         mock_registry,
         chain_store,
         block_stream_builder.clone(),

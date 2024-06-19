@@ -134,6 +134,7 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
 
 /// Helper for generating various SQL fragments for handling the block range
 /// of entity versions
+#[allow(unused)]
 #[derive(Debug, Clone, Copy)]
 pub enum BlockRangeColumn<'a> {
     Mutable {

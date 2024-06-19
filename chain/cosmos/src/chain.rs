@@ -1,5 +1,6 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{BlockIngestor, NoopDecoderHook};
+use graph::components::adapter::ChainId;
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
@@ -36,7 +37,7 @@ use crate::{codec, TriggerFilter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
-    name: String,
+    name: ChainId,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<MetricsRegistry>,
@@ -48,8 +49,9 @@ impl std::fmt::Debug for Chain {
     }
 }
 
+#[async_trait]
 impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
-    fn build(self, _config: &Arc<EnvVars>) -> Chain {
+    async fn build(self, _config: &Arc<EnvVars>) -> Chain {
         Chain {
             logger_factory: self.logger_factory,
             name: self.name,
@@ -150,7 +152,7 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        let firehose_endpoint = self.client.firehose_endpoint()?;
+        let firehose_endpoint = self.client.firehose_endpoint().await?;
 
         firehose_endpoint
             .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
@@ -158,15 +160,15 @@ impl Blockchain for Chain {
             .map_err(Into::into)
     }
 
-    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
-        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
+    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+        Ok((Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook))
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
         self.client.clone()
     }
 
-    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+    async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         let ingestor = FirehoseBlockIngestor::<crate::Block, Self>::new(
             self.chain_store.cheap_clone(),
             self.chain_client(),

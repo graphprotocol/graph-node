@@ -18,6 +18,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::{
+        adapter::ChainId,
         metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
@@ -37,7 +38,7 @@ use async_trait::async_trait;
 use graph_derive::CheapClone;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use slog::Logger;
+use slog::{error, Logger};
 use std::{
     any::Any,
     collections::{HashMap, HashSet},
@@ -61,7 +62,8 @@ use self::{
 #[async_trait]
 pub trait BlockIngestor: 'static + Send + Sync {
     async fn run(self: Box<Self>);
-    fn network_name(&self) -> String;
+    fn network_name(&self) -> ChainId;
+    fn kind(&self) -> BlockchainKind;
 }
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
@@ -147,7 +149,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     const KIND: BlockchainKind;
     const ALIASES: &'static [&'static str] = &[];
 
-    type Client: Debug + Default + Sync + Send;
+    type Client: Debug + Sync + Send;
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
     type Block: Block + Clone + Debug + Default;
@@ -207,11 +209,11 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     fn is_refetch_block_required(&self) -> bool;
 
-    fn runtime(&self) -> (Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook);
+    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook)>;
 
     fn chain_client(&self) -> Arc<ChainClient<Self>>;
 
-    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>>;
+    async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>>;
 }
 
 #[derive(Error, Debug)]
@@ -510,18 +512,42 @@ impl BlockchainKind {
 
 /// A collection of blockchains, keyed by `BlockchainKind` and network.
 #[derive(Default, Debug, Clone)]
-pub struct BlockchainMap(HashMap<(BlockchainKind, String), Arc<dyn Any + Send + Sync>>);
+pub struct BlockchainMap(HashMap<(BlockchainKind, ChainId), Arc<dyn Any + Send + Sync>>);
 
 impl BlockchainMap {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn insert<C: Blockchain>(&mut self, network: String, chain: Arc<C>) {
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (&(BlockchainKind, ChainId), &Arc<dyn Any + Sync + Send>)> {
+        self.0.iter()
+    }
+
+    pub fn insert<C: Blockchain>(&mut self, network: ChainId, chain: Arc<C>) {
         self.0.insert((C::KIND, network), chain);
     }
 
-    pub fn get<C: Blockchain>(&self, network: String) -> Result<Arc<C>, Error> {
+    pub fn get_all_by_kind<C: Blockchain>(
+        &self,
+        kind: BlockchainKind,
+    ) -> Result<Vec<Arc<C>>, Error> {
+        self.0
+            .iter()
+            .flat_map(|((k, _), chain)| {
+                if k.eq(&kind) {
+                    Some(chain.cheap_clone().downcast().map_err(|_| {
+                        anyhow!("unable to downcast, wrong type for blockchain {}", C::KIND)
+                    }))
+                } else {
+                    None
+                }
+            })
+            .collect::<Result<Vec<Arc<C>>, Error>>()
+    }
+
+    pub fn get<C: Blockchain>(&self, network: ChainId) -> Result<Arc<C>, Error> {
         self.0
             .get(&(C::KIND, network.clone()))
             .with_context(|| format!("no network {} found on chain {}", network, C::KIND))?

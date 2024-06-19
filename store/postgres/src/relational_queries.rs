@@ -3197,8 +3197,6 @@ impl<'a> FilterCollection<'a> {
 
 #[derive(Debug, Clone)]
 pub struct ChildKeyDetails<'a> {
-    /// Table representing the parent entity
-    pub parent_table: &'a Table,
     /// Column in the parent table that stores the connection between the parent and the child
     pub parent_join_column: &'a Column,
     /// Table representing the child entity
@@ -3231,6 +3229,7 @@ pub struct ChildKeyAndIdSharedDetails<'a> {
     pub direction: &'static str,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct ChildIdDetails<'a> {
     /// Table representing the parent entity
@@ -3525,7 +3524,6 @@ impl<'a> SortKey<'a> {
                 }
 
                 Ok(SortKey::ChildKey(ChildKey::Single(ChildKeyDetails {
-                    parent_table,
                     child_table,
                     parent_join_column: parent_column,
                     child_join_column: child_column,
@@ -3659,7 +3657,6 @@ impl<'a> SortKey<'a> {
                         build_children_vec(layout, parent_table, entity_types, child, direction)?
                             .iter()
                             .map(|details| ChildKeyDetails {
-                                parent_table: details.parent_table,
                                 parent_join_column: details.parent_join_column,
                                 child_table: details.child_table,
                                 child_join_column: details.child_join_column,

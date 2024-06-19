@@ -7,6 +7,7 @@ extern crate diesel;
 
 pub mod chain;
 pub mod config;
+pub mod network_setup;
 pub mod opt;
 pub mod store_builder;
 

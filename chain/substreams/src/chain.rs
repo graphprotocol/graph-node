@@ -8,7 +8,6 @@ use graph::blockchain::{
 };
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
-use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
 use graph::schema::EntityKey;
 use graph::{
@@ -76,14 +75,14 @@ pub struct Chain {
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
-        firehose_endpoints: FirehoseEndpoints,
+        chain_client: Arc<ChainClient<Self>>,
         metrics_registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     ) -> Self {
         Self {
             logger_factory,
-            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
+            client: chain_client,
             metrics_registry,
             chain_store,
             block_stream_builder,
@@ -181,27 +180,28 @@ impl Blockchain for Chain {
             number,
         })
     }
-    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
-        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
+    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+        Ok((Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook))
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
         self.client.clone()
     }
 
-    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+    async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         Ok(Box::new(SubstreamsBlockIngestor::new(
             self.chain_store.cheap_clone(),
             self.client.cheap_clone(),
             self.logger_factory.component_logger("", None),
-            "substreams".to_string(),
+            "substreams".into(),
             self.metrics_registry.cheap_clone(),
         )))
     }
 }
 
+#[async_trait]
 impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
-    fn build(self, _config: &Arc<EnvVars>) -> Chain {
+    async fn build(self, _config: &Arc<EnvVars>) -> Chain {
         let BasicBlockchainBuilder {
             logger_factory,
             name: _,

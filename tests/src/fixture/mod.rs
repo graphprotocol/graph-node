@@ -17,6 +17,7 @@ use graph::blockchain::{
     TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
+use graph::components::adapter::ChainId;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
 use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache};
@@ -26,7 +27,7 @@ use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, NoopGenesisDecoder, SubgraphLimit};
 use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
@@ -96,17 +97,18 @@ impl CommonChainConfig {
         let chain_store = stores.chain_store.cheap_clone();
         let node_id = NodeId::new(NODE_ID).unwrap();
 
-        let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
-            "",
-            "https://example.com",
-            None,
-            None,
-            true,
-            false,
-            SubgraphLimit::Unlimited,
-            Arc::new(EndpointMetrics::mock()),
-        ))]
-        .into();
+        let firehose_endpoints =
+            FirehoseEndpoints::for_testing(vec![Arc::new(FirehoseEndpoint::new(
+                "",
+                "https://example.com",
+                None,
+                None,
+                true,
+                false,
+                SubgraphLimit::Unlimited,
+                Arc::new(EndpointMetrics::mock()),
+                NoopGenesisDecoder::boxed(),
+            ))]);
 
         Self {
             logger_factory,
@@ -359,7 +361,7 @@ impl Drop for TestContext {
 }
 
 pub struct Stores {
-    network_name: String,
+    network_name: ChainId,
     chain_head_listener: Arc<ChainHeadUpdateListener>,
     pub network_store: Arc<Store>,
     chain_store: Arc<ChainStore>,
@@ -398,22 +400,26 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
 
-    let network_name: String = config.chains.chains.iter().next().unwrap().0.to_string();
+    let network_name: ChainId = config
+        .chains
+        .chains
+        .iter()
+        .next()
+        .unwrap()
+        .0
+        .as_str()
+        .into();
     let chain_head_listener = store_builder.chain_head_update_listener();
-    let network_identifiers = vec![(
-        network_name.clone(),
-        ChainIdentifier {
-            net_version: "".into(),
-            genesis_block_hash: test_ptr(0).hash,
-        },
-    )]
-    .into_iter()
-    .collect();
+    let network_identifiers: Vec<ChainId> = vec![network_name.clone()].into_iter().collect();
     let network_store = store_builder.network_store(network_identifiers);
+    let ident = ChainIdentifier {
+        net_version: "".into(),
+        genesis_block_hash: test_ptr(0).hash,
+    };
     let chain_store = network_store
         .block_store()
-        .chain_store(network_name.as_ref())
-        .unwrap_or_else(|| panic!("No chain store for {}", &network_name));
+        .create_chain_store(&network_name, ident)
+        .unwrap_or_else(|_| panic!("No chain store for {}", &network_name));
 
     Stores {
         network_name,

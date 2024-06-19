@@ -1,15 +1,14 @@
 use anyhow::{anyhow, bail};
-use graph::cheap_clone::CheapClone;
+use graph::blockchain::ChainIdentifier;
+use graph::components::adapter::{ChainId, NetIdentifiable, ProviderManager, ProviderName};
 use graph::endpoint::EndpointMetrics;
 use graph::firehose::{AvailableCapacity, SubgraphLimit};
 use graph::prelude::rand::seq::IteratorRandom;
 use graph::prelude::rand::{self, Rng};
-use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use graph::impl_slog_value;
-use graph::prelude::Error;
+use graph::prelude::{async_trait, Error};
 
 use crate::adapter::EthereumAdapter as _;
 use crate::capabilities::NodeCapabilities;
@@ -29,7 +28,32 @@ pub struct EthereumNetworkAdapter {
     limit: SubgraphLimit,
 }
 
+#[async_trait]
+impl NetIdentifiable for EthereumNetworkAdapter {
+    async fn net_identifiers(&self) -> Result<ChainIdentifier, anyhow::Error> {
+        self.adapter.net_identifiers().await
+    }
+    fn provider_name(&self) -> ProviderName {
+        self.adapter.provider().into()
+    }
+}
+
 impl EthereumNetworkAdapter {
+    pub fn new(
+        endpoint_metrics: Arc<EndpointMetrics>,
+        capabilities: NodeCapabilities,
+        adapter: Arc<EthereumAdapter>,
+        limit: SubgraphLimit,
+    ) -> Self {
+        Self {
+            endpoint_metrics,
+            capabilities,
+            adapter,
+            limit,
+        }
+    }
+
+    #[cfg(debug_assertions)]
     fn is_call_only(&self) -> bool {
         self.adapter.is_call_only()
     }
@@ -48,64 +72,132 @@ impl EthereumNetworkAdapter {
 
 #[derive(Debug, Clone)]
 pub struct EthereumNetworkAdapters {
-    pub adapters: Vec<EthereumNetworkAdapter>,
+    chain_id: ChainId,
+    manager: ProviderManager<EthereumNetworkAdapter>,
     call_only_adapters: Vec<EthereumNetworkAdapter>,
     // Percentage of request that should be used to retest errored adapters.
     retest_percent: f64,
 }
 
-impl Default for EthereumNetworkAdapters {
-    fn default() -> Self {
-        Self::new(None)
-    }
-}
-
 impl EthereumNetworkAdapters {
-    pub fn new(retest_percent: Option<f64>) -> Self {
+    pub fn empty_for_testing() -> Self {
         Self {
-            adapters: vec![],
+            chain_id: "".into(),
+            manager: ProviderManager::default(),
             call_only_adapters: vec![],
+            retest_percent: DEFAULT_ADAPTER_ERROR_RETEST_PERCENT,
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub async fn for_testing(
+        mut adapters: Vec<EthereumNetworkAdapter>,
+        call_only: Vec<EthereumNetworkAdapter>,
+    ) -> Self {
+        use std::cmp::Ordering;
+
+        use graph::slog::{o, Discard, Logger};
+
+        use graph::components::adapter::MockIdentValidator;
+        let chain_id: ChainId = "testing".into();
+        adapters.sort_by(|a, b| {
+            a.capabilities
+                .partial_cmp(&b.capabilities)
+                .unwrap_or(Ordering::Equal)
+        });
+
+        let provider = ProviderManager::new(
+            Logger::root(Discard, o!()),
+            vec![(chain_id.clone(), adapters)].into_iter(),
+            Arc::new(MockIdentValidator),
+        );
+        provider.mark_all_valid().await;
+
+        Self::new(chain_id, provider, call_only, None)
+    }
+
+    pub fn new(
+        chain_id: ChainId,
+        manager: ProviderManager<EthereumNetworkAdapter>,
+        call_only_adapters: Vec<EthereumNetworkAdapter>,
+        retest_percent: Option<f64>,
+    ) -> Self {
+        #[cfg(debug_assertions)]
+        call_only_adapters.iter().for_each(|a| {
+            a.is_call_only();
+        });
+
+        Self {
+            chain_id,
+            manager,
+            call_only_adapters,
             retest_percent: retest_percent.unwrap_or(DEFAULT_ADAPTER_ERROR_RETEST_PERCENT),
         }
     }
 
-    pub fn push_adapter(&mut self, adapter: EthereumNetworkAdapter) {
-        if adapter.is_call_only() {
-            self.call_only_adapters.push(adapter);
-        } else {
-            self.adapters.push(adapter);
-        }
-    }
-    pub fn all_cheapest_with(
-        &self,
+    fn available_with_capabilities<'a>(
+        input: Vec<&'a EthereumNetworkAdapter>,
         required_capabilities: &NodeCapabilities,
-    ) -> impl Iterator<Item = &EthereumNetworkAdapter> + '_ {
-        let cheapest_sufficient_capability = self
-            .adapters
+    ) -> impl Iterator<Item = &'a EthereumNetworkAdapter> + 'a {
+        let cheapest_sufficient_capability = input
             .iter()
             .find(|adapter| &adapter.capabilities >= required_capabilities)
             .map(|adapter| &adapter.capabilities);
 
-        self.adapters
-            .iter()
+        input
+            .into_iter()
             .filter(move |adapter| Some(&adapter.capabilities) == cheapest_sufficient_capability)
             .filter(|adapter| adapter.get_capacity() > AvailableCapacity::Unavailable)
     }
 
-    pub fn cheapest_with(
+    /// returns all the available adapters that meet the required capabilities
+    /// if no adapters are available at the time or none that meet the capabilities then
+    /// an empty iterator is returned.
+    pub async fn all_cheapest_with(
         &self,
         required_capabilities: &NodeCapabilities,
+    ) -> impl Iterator<Item = &EthereumNetworkAdapter> + '_ {
+        let all = self
+            .manager
+            .get_all(&self.chain_id)
+            .await
+            .unwrap_or_default();
+
+        Self::available_with_capabilities(all, required_capabilities)
+    }
+
+    // get all the adapters, don't trigger the ProviderManager's validations because we want
+    // this function to remain sync. If no adapters are available an empty iterator is returned.
+    pub(crate) fn all_unverified_cheapest_with(
+        &self,
+        required_capabilities: &NodeCapabilities,
+    ) -> impl Iterator<Item = &EthereumNetworkAdapter> + '_ {
+        let all = self
+            .manager
+            .get_all_unverified(&self.chain_id)
+            .unwrap_or_default();
+
+        Self::available_with_capabilities(all, required_capabilities)
+    }
+
+    // handle adapter selection from a list, implements the availability checking with an abstracted
+    // source of the adapter list.
+    fn cheapest_from(
+        input: Vec<&EthereumNetworkAdapter>,
+        required_capabilities: &NodeCapabilities,
+        retest_percent: f64,
     ) -> Result<Arc<EthereumAdapter>, Error> {
         let retest_rng: f64 = (&mut rand::thread_rng()).gen();
-        let cheapest = self
-            .all_cheapest_with(required_capabilities)
+
+        let cheapest = input
+            .into_iter()
             .choose_multiple(&mut rand::thread_rng(), 3);
         let cheapest = cheapest.iter();
 
         // If request falls below the retest threshold, use this request to try and
         // reset the failed adapter. If a request succeeds the adapter will be more
         // likely to be selected afterwards.
-        if retest_rng < self.retest_percent {
+        if retest_rng < retest_percent {
             cheapest.max_by_key(|adapter| adapter.current_error_count())
         } else {
             // The assumption here is that most RPC endpoints will not have limits
@@ -123,19 +215,45 @@ impl EthereumNetworkAdapters {
         ))
     }
 
-    pub fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
+    pub(crate) fn unverified_cheapest_with(
+        &self,
+        required_capabilities: &NodeCapabilities,
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        let cheapest = self.all_unverified_cheapest_with(required_capabilities);
+
+        Self::cheapest_from(
+            cheapest.choose_multiple(&mut rand::thread_rng(), 3),
+            required_capabilities,
+            self.retest_percent,
+        )
+    }
+
+    /// This is the public entry point and should always use verified adapters
+    pub async fn cheapest_with(
+        &self,
+        required_capabilities: &NodeCapabilities,
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        let cheapest = self
+            .all_cheapest_with(required_capabilities)
+            .await
+            .choose_multiple(&mut rand::thread_rng(), 3);
+
+        Self::cheapest_from(cheapest, required_capabilities, self.retest_percent)
+    }
+
+    pub async fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
         // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
         // struct is instantiated so they do not need to be sorted here
-        self.adapters
+        self.manager
+            .get_all(&self.chain_id)
+            .await
+            .unwrap_or_default()
             .first()
             .map(|ethereum_network_adapter| ethereum_network_adapter.adapter.clone())
     }
 
-    pub fn remove(&mut self, provider: &str) {
-        self.adapters
-            .retain(|adapter| adapter.adapter.provider() != provider);
-    }
-
+    /// call_or_cheapest will bypass ProviderManagers' validation in order to remain non async.
+    /// ideally this should only be called for already validated providers.
     pub fn call_or_cheapest(
         &self,
         capabilities: Option<&NodeCapabilities>,
@@ -145,11 +263,13 @@ impl EthereumNetworkAdapters {
         // so we will ignore this error and return whatever comes out of `cheapest_with`
         match self.call_only_adapter() {
             Ok(Some(adapter)) => Ok(adapter),
-            _ => self.cheapest_with(capabilities.unwrap_or(&NodeCapabilities {
-                // Archive is required for call_only
-                archive: true,
-                traces: false,
-            })),
+            _ => {
+                self.unverified_cheapest_with(capabilities.unwrap_or(&NodeCapabilities {
+                    // Archive is required for call_only
+                    archive: true,
+                    traces: false,
+                }))
+            }
         }
     }
 
@@ -179,99 +299,14 @@ impl EthereumNetworkAdapters {
     }
 }
 
-#[derive(Clone)]
-pub struct EthereumNetworks {
-    pub metrics: Arc<EndpointMetrics>,
-    pub networks: HashMap<String, EthereumNetworkAdapters>,
-}
-
-impl EthereumNetworks {
-    pub fn new(metrics: Arc<EndpointMetrics>) -> EthereumNetworks {
-        EthereumNetworks {
-            networks: HashMap::new(),
-            metrics,
-        }
-    }
-
-    pub fn insert_empty(&mut self, name: String) {
-        self.networks.entry(name).or_default();
-    }
-
-    pub fn insert(
-        &mut self,
-        name: String,
-        capabilities: NodeCapabilities,
-        adapter: Arc<EthereumAdapter>,
-        limit: SubgraphLimit,
-    ) {
-        let network_adapters = self.networks.entry(name).or_default();
-
-        network_adapters.push_adapter(EthereumNetworkAdapter {
-            capabilities,
-            adapter,
-            limit,
-            endpoint_metrics: self.metrics.cheap_clone(),
-        });
-    }
-
-    pub fn remove(&mut self, name: &str, provider: &str) {
-        if let Some(adapters) = self.networks.get_mut(name) {
-            adapters.remove(provider);
-        }
-    }
-
-    pub fn extend(&mut self, other_networks: EthereumNetworks) {
-        self.networks.extend(other_networks.networks);
-    }
-
-    pub fn flatten(&self) -> Vec<(String, NodeCapabilities, Arc<EthereumAdapter>)> {
-        self.networks
-            .iter()
-            .flat_map(|(network_name, network_adapters)| {
-                network_adapters
-                    .adapters
-                    .iter()
-                    .map(move |network_adapter| {
-                        (
-                            network_name.clone(),
-                            network_adapter.capabilities,
-                            network_adapter.adapter.clone(),
-                        )
-                    })
-            })
-            .collect()
-    }
-
-    pub fn sort(&mut self) {
-        for adapters in self.networks.values_mut() {
-            adapters.adapters.sort_by(|a, b| {
-                a.capabilities
-                    .partial_cmp(&b.capabilities)
-                    // We can't define a total ordering over node capabilities,
-                    // so incomparable items are considered equal and end up
-                    // near each other.
-                    .unwrap_or(Ordering::Equal)
-            })
-        }
-    }
-
-    pub fn adapter_with_capabilities(
-        &self,
-        network_name: String,
-        requirements: &NodeCapabilities,
-    ) -> Result<Arc<EthereumAdapter>, Error> {
-        self.networks
-            .get(&network_name)
-            .ok_or(anyhow!("network not supported: {}", &network_name))
-            .and_then(|adapters| adapters.cheapest_with(requirements))
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use graph::cheap_clone::CheapClone;
+    use graph::components::adapter::{MockIdentValidator, ProviderManager, ProviderName};
+    use graph::data::value::Word;
     use graph::http::HeaderMap;
     use graph::{
-        endpoint::{EndpointMetrics, Provider},
+        endpoint::EndpointMetrics,
         firehose::SubgraphLimit,
         prelude::MetricsRegistry,
         slog::{o, Discard, Logger},
@@ -281,9 +316,7 @@ mod tests {
     use std::sync::Arc;
     use uuid::Uuid;
 
-    use crate::{
-        EthereumAdapter, EthereumAdapterTrait, EthereumNetworks, ProviderEthRpcMetrics, Transport,
-    };
+    use crate::{EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport};
 
     use super::{EthereumNetworkAdapter, EthereumNetworkAdapters, NodeCapabilities};
 
@@ -345,7 +378,6 @@ mod tests {
     #[tokio::test]
     async fn adapter_selector_selects_eth_call() {
         let metrics = Arc::new(EndpointMetrics::mock());
-        let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let transport = Transport::new_rpc(
@@ -380,28 +412,27 @@ mod tests {
             .await,
         );
 
-        let mut adapters = {
-            let mut ethereum_networks = EthereumNetworks::new(metrics);
-            ethereum_networks.insert(
-                chain.clone(),
-                NodeCapabilities {
-                    archive: true,
-                    traces: false,
-                },
-                eth_call_adapter.clone(),
-                SubgraphLimit::Limit(3),
-            );
-            ethereum_networks.insert(
-                chain.clone(),
+        let mut adapters: EthereumNetworkAdapters = EthereumNetworkAdapters::for_testing(
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
                 NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
-            );
-            ethereum_networks.networks.get(&chain).unwrap().clone()
-        };
+            )],
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
+                NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                },
+                eth_call_adapter.clone(),
+                SubgraphLimit::Limit(3),
+            )],
+        )
+        .await;
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_call_adapter), 2);
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
@@ -413,6 +444,7 @@ mod tests {
                     archive: false,
                     traces: true,
                 })
+                .await
                 .is_err());
 
             // Check cheapest is not call only
@@ -421,6 +453,7 @@ mod tests {
                     archive: true,
                     traces: false,
                 })
+                .await
                 .unwrap();
             assert_eq!(adapter.is_call_only(), false);
         }
@@ -451,7 +484,6 @@ mod tests {
     #[tokio::test]
     async fn adapter_selector_unlimited() {
         let metrics = Arc::new(EndpointMetrics::mock());
-        let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let transport = Transport::new_rpc(
@@ -486,32 +518,33 @@ mod tests {
             .await,
         );
 
-        let adapters = {
-            let mut ethereum_networks = EthereumNetworks::new(metrics);
-            ethereum_networks.insert(
-                chain.clone(),
+        let adapters: EthereumNetworkAdapters = EthereumNetworkAdapters::for_testing(
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
                 NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Unlimited,
-            );
-            ethereum_networks.insert(
-                chain.clone(),
+            )],
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
                 NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 eth_adapter.clone(),
-                SubgraphLimit::Limit(3),
-            );
-            ethereum_networks.networks.get(&chain).unwrap().clone()
-        };
+                SubgraphLimit::Limit(2),
+            )],
+        )
+        .await;
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_call_adapter), 2);
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
 
+        // verify that after all call_only were exhausted, we can still
+        // get normal adapters
         let keep: Vec<Arc<EthereumAdapter>> = vec![0; 10]
             .iter()
             .map(|_| adapters.call_or_cheapest(None).unwrap())
@@ -522,7 +555,6 @@ mod tests {
     #[tokio::test]
     async fn adapter_selector_disable_call_only_fallback() {
         let metrics = Arc::new(EndpointMetrics::mock());
-        let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let transport = Transport::new_rpc(
@@ -557,28 +589,27 @@ mod tests {
             .await,
         );
 
-        let adapters = {
-            let mut ethereum_networks = EthereumNetworks::new(metrics);
-            ethereum_networks.insert(
-                chain.clone(),
+        let adapters: EthereumNetworkAdapters = EthereumNetworkAdapters::for_testing(
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
                 NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Disabled,
-            );
-            ethereum_networks.insert(
-                chain.clone(),
+            )],
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
                 NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
-            );
-            ethereum_networks.networks.get(&chain).unwrap().clone()
-        };
+            )],
+        )
+        .await;
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_call_adapter), 2);
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
@@ -591,7 +622,6 @@ mod tests {
     #[tokio::test]
     async fn adapter_selector_no_call_only_fallback() {
         let metrics = Arc::new(EndpointMetrics::mock());
-        let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let transport = Transport::new_rpc(
@@ -614,19 +644,19 @@ mod tests {
             .await,
         );
 
-        let adapters = {
-            let mut ethereum_networks = EthereumNetworks::new(metrics);
-            ethereum_networks.insert(
-                chain.clone(),
+        let adapters: EthereumNetworkAdapters = EthereumNetworkAdapters::for_testing(
+            vec![EthereumNetworkAdapter::new(
+                metrics.cheap_clone(),
                 NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
-            );
-            ethereum_networks.networks.get(&chain).unwrap().clone()
-        };
+            )],
+            vec![],
+        )
+        .await;
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
         assert_eq!(
@@ -654,6 +684,7 @@ mod tests {
         ));
         let logger = graph::log::logger(true);
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
+        let chain_id: Word = "chain_id".into();
 
         let adapters = vec![
             fake_adapter(
@@ -676,10 +707,11 @@ mod tests {
         ];
 
         // Set errors
-        metrics.report_for_test(&Provider::from(error_provider.clone()), false);
+        metrics.report_for_test(&ProviderName::from(error_provider.clone()), false);
 
-        let mut no_retest_adapters = EthereumNetworkAdapters::new(Some(0f64));
-        let mut always_retest_adapters = EthereumNetworkAdapters::new(Some(1f64));
+        let mut no_retest_adapters = vec![];
+        let mut always_retest_adapters = vec![];
+
         adapters.iter().cloned().for_each(|adapter| {
             let limit = if adapter.provider() == unavailable_provider {
                 SubgraphLimit::Disabled
@@ -687,7 +719,7 @@ mod tests {
                 SubgraphLimit::Unlimited
             };
 
-            no_retest_adapters.adapters.push(EthereumNetworkAdapter {
+            no_retest_adapters.push(EthereumNetworkAdapter {
                 endpoint_metrics: metrics.clone(),
                 capabilities: NodeCapabilities {
                     archive: true,
@@ -696,18 +728,39 @@ mod tests {
                 adapter: adapter.clone(),
                 limit: limit.clone(),
             });
-            always_retest_adapters
-                .adapters
-                .push(EthereumNetworkAdapter {
-                    endpoint_metrics: metrics.clone(),
-                    capabilities: NodeCapabilities {
-                        archive: true,
-                        traces: false,
-                    },
-                    adapter,
-                    limit,
-                });
+            always_retest_adapters.push(EthereumNetworkAdapter {
+                endpoint_metrics: metrics.clone(),
+                capabilities: NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                },
+                adapter,
+                limit,
+            });
         });
+        let manager = ProviderManager::<EthereumNetworkAdapter>::new(
+            logger,
+            vec![(
+                chain_id.clone(),
+                no_retest_adapters
+                    .iter()
+                    .cloned()
+                    .chain(always_retest_adapters.iter().cloned())
+                    .collect(),
+            )]
+            .into_iter(),
+            Arc::new(MockIdentValidator),
+        );
+        manager.mark_all_valid().await;
+
+        let no_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id.clone(),
+            manager.cheap_clone(),
+            vec![],
+            Some(0f64),
+        );
+        let always_retest_adapters =
+            EthereumNetworkAdapters::new(chain_id, manager.cheap_clone(), vec![], Some(1f64));
 
         assert_eq!(
             no_retest_adapters
@@ -715,6 +768,7 @@ mod tests {
                     archive: true,
                     traces: false,
                 })
+                .await
                 .unwrap()
                 .provider(),
             no_error_provider
@@ -725,6 +779,7 @@ mod tests {
                     archive: true,
                     traces: false,
                 })
+                .await
                 .unwrap()
                 .provider(),
             error_provider
@@ -748,14 +803,15 @@ mod tests {
             ],
             mock_registry.clone(),
         ));
+        let chain_id: Word = "chain_id".into();
         let logger = graph::log::logger(true);
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
         // Set errors
-        metrics.report_for_test(&Provider::from(error_provider.clone()), false);
+        metrics.report_for_test(&ProviderName::from(error_provider.clone()), false);
 
-        let mut no_retest_adapters = EthereumNetworkAdapters::new(Some(0f64));
-        no_retest_adapters.adapters.push(EthereumNetworkAdapter {
+        let mut no_retest_adapters = vec![];
+        no_retest_adapters.push(EthereumNetworkAdapter {
             endpoint_metrics: metrics.clone(),
             capabilities: NodeCapabilities {
                 archive: true,
@@ -765,49 +821,78 @@ mod tests {
                 .await,
             limit: SubgraphLimit::Unlimited,
         });
-        assert_eq!(
-            no_retest_adapters
-                .cheapest_with(&NodeCapabilities {
-                    archive: true,
-                    traces: false,
-                })
-                .unwrap()
-                .provider(),
-            error_provider
-        );
 
-        let mut always_retest_adapters = EthereumNetworkAdapters::new(Some(1f64));
-        always_retest_adapters
-            .adapters
-            .push(EthereumNetworkAdapter {
-                endpoint_metrics: metrics.clone(),
-                capabilities: NodeCapabilities {
-                    archive: true,
-                    traces: false,
-                },
-                adapter: fake_adapter(
-                    &logger,
-                    &no_error_provider,
-                    &provider_metrics,
-                    &metrics,
-                    false,
-                )
-                .await,
-                limit: SubgraphLimit::Unlimited,
-            });
+        let mut always_retest_adapters = vec![];
+        always_retest_adapters.push(EthereumNetworkAdapter {
+            endpoint_metrics: metrics.clone(),
+            capabilities: NodeCapabilities {
+                archive: true,
+                traces: false,
+            },
+            adapter: fake_adapter(
+                &logger,
+                &no_error_provider,
+                &provider_metrics,
+                &metrics,
+                false,
+            )
+            .await,
+            limit: SubgraphLimit::Unlimited,
+        });
+        let manager = ProviderManager::<EthereumNetworkAdapter>::new(
+            logger.clone(),
+            always_retest_adapters
+                .iter()
+                .cloned()
+                .map(|a| (chain_id.clone(), vec![a])),
+            Arc::new(MockIdentValidator),
+        );
+        manager.mark_all_valid().await;
+
+        let always_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id.clone(),
+            manager.cheap_clone(),
+            vec![],
+            Some(1f64),
+        );
         assert_eq!(
             always_retest_adapters
                 .cheapest_with(&NodeCapabilities {
                     archive: true,
                     traces: false,
                 })
+                .await
                 .unwrap()
                 .provider(),
             no_error_provider
         );
 
-        let mut no_available_adapter = EthereumNetworkAdapters::default();
-        no_available_adapter.adapters.push(EthereumNetworkAdapter {
+        let manager = ProviderManager::<EthereumNetworkAdapter>::new(
+            logger.clone(),
+            no_retest_adapters
+                .iter()
+                .cloned()
+                .map(|a| (chain_id.clone(), vec![a])),
+            Arc::new(MockIdentValidator),
+        );
+        manager.mark_all_valid().await;
+
+        let no_retest_adapters =
+            EthereumNetworkAdapters::new(chain_id.clone(), manager, vec![], Some(0f64));
+        assert_eq!(
+            no_retest_adapters
+                .cheapest_with(&NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                })
+                .await
+                .unwrap()
+                .provider(),
+            error_provider
+        );
+
+        let mut no_available_adapter = vec![];
+        no_available_adapter.push(EthereumNetworkAdapter {
             endpoint_metrics: metrics.clone(),
             capabilities: NodeCapabilities {
                 archive: true,
@@ -823,10 +908,24 @@ mod tests {
             .await,
             limit: SubgraphLimit::Disabled,
         });
-        let res = no_available_adapter.cheapest_with(&NodeCapabilities {
-            archive: true,
-            traces: false,
-        });
+        let manager = ProviderManager::new(
+            logger,
+            vec![(
+                chain_id.clone(),
+                no_available_adapter.iter().cloned().collect(),
+            )]
+            .into_iter(),
+            Arc::new(MockIdentValidator),
+        );
+        manager.mark_all_valid().await;
+
+        let no_available_adapter = EthereumNetworkAdapters::new(chain_id, manager, vec![], None);
+        let res = no_available_adapter
+            .cheapest_with(&NodeCapabilities {
+                archive: true,
+                traces: false,
+            })
+            .await;
         assert!(res.is_err(), "{:?}", res);
     }
 
