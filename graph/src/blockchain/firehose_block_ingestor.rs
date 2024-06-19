@@ -2,7 +2,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
     blockchain::Block as BlockchainBlock,
-    components::store::ChainStore,
+    components::{adapter::ChainId, store::ChainStore},
     firehose::{self, decode_firehose_block, HeaderOnly},
     prelude::{error, info, Logger},
     util::backoff::ExponentialBackoff,
@@ -15,7 +15,7 @@ use prost_types::Any;
 use slog::{o, trace};
 use tonic::Streaming;
 
-use super::{client::ChainClient, BlockIngestor, Blockchain};
+use super::{client::ChainClient, BlockIngestor, Blockchain, BlockchainKind};
 
 const TRANSFORM_ETHEREUM_HEADER_ONLY: &str =
     "type.googleapis.com/sf.ethereum.transform.v1.HeaderOnly";
@@ -43,7 +43,7 @@ where
     client: Arc<ChainClient<C>>,
     logger: Logger,
     default_transforms: Vec<Transforms>,
-    chain_name: String,
+    chain_name: ChainId,
 
     phantom: PhantomData<M>,
 }
@@ -56,7 +56,7 @@ where
         chain_store: Arc<dyn ChainStore>,
         client: Arc<ChainClient<C>>,
         logger: Logger,
-        chain_name: String,
+        chain_name: ChainId,
     ) -> FirehoseBlockIngestor<M, C> {
         FirehoseBlockIngestor {
             chain_store,
@@ -169,7 +169,7 @@ where
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
 
         loop {
-            let endpoint = match self.client.firehose_endpoint() {
+            let endpoint = match self.client.firehose_endpoint().await {
                 Ok(endpoint) => endpoint,
                 Err(err) => {
                     error!(
@@ -182,7 +182,7 @@ where
             };
 
             let logger = self.logger.new(
-                o!("provider" => endpoint.provider.to_string(), "network_name"=> self.network_name()),
+                o!("provider" => endpoint.provider.to_string(), "network_name"=> self.network_name().to_string()),
             );
 
             info!(
@@ -226,7 +226,11 @@ where
         }
     }
 
-    fn network_name(&self) -> String {
+    fn network_name(&self) -> ChainId {
         self.chain_name.clone()
+    }
+
+    fn kind(&self) -> BlockchainKind {
+        C::KIND
     }
 }

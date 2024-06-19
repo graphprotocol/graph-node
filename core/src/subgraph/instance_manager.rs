@@ -11,6 +11,7 @@ use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
+use graph::data::value::Word;
 use graph::data_source::causality_region::CausalityRegionSeq;
 use graph::env::EnvVars;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
@@ -307,7 +308,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .collect::<Vec<_>>();
 
         let required_capabilities = C::NodeCapabilities::from_data_sources(&onchain_data_sources);
-        let network = manifest.network_name();
+        let network: Word = manifest.network_name().into();
 
         let chain = self
             .chains
@@ -390,7 +391,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
-        let (runtime_adapter, decoder_hook) = chain.runtime();
+        let (runtime_adapter, decoder_hook) = chain.runtime()?;
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             runtime_adapter,
             self.link_resolver.cheap_clone(),
@@ -426,7 +427,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             unified_api_version,
             static_filters: self.static_filters,
             poi_version,
-            network,
+            network: network.to_string(),
             instrument,
         };
 

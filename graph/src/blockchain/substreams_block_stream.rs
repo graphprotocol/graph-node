@@ -194,7 +194,7 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
                 )))?;
             }
 
-            let endpoint = client.firehose_endpoint()?;
+            let endpoint = client.firehose_endpoint().await?;
             let mut logger = logger.new(o!("deployment" => deployment.clone(), "provider" => endpoint.provider.to_string()));
 
         loop {

@@ -1,6 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
+    components::adapter::ChainId,
     env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
@@ -10,15 +11,17 @@ use graph::{
         regex::Regex,
         serde::{
             de::{self, value, SeqAccess, Visitor},
-            Deserialize, Deserializer, Serialize,
+            Deserialize, Deserializer,
         },
         serde_json, serde_regex, toml, Logger, NodeId, StoreError,
     },
 };
-use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
+use graph_chain_ethereum as ethereum;
+use graph_chain_ethereum::NodeCapabilities;
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use graph::http::{HeaderMap, Uri};
+use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -101,6 +104,14 @@ fn validate_name(s: &str) -> Result<()> {
 }
 
 impl Config {
+    pub fn chain_ids(&self) -> Vec<ChainId> {
+        self.chains
+            .chains
+            .keys()
+            .map(|k| k.as_str().into())
+            .collect()
+    }
+
     /// Check that the config is valid.
     fn validate(&mut self) -> Result<()> {
         if !self.stores.contains_key(PRIMARY_SHARD.as_str()) {

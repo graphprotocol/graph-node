@@ -51,6 +51,7 @@ pub fn spawn_blocking_allow_panic<R: 'static + Send>(
 }
 
 /// Runs the future on the current thread. Panics if not within a tokio runtime.
+#[track_caller]
 pub fn block_on<T>(f: impl Future03<Output = T>) -> T {
     tokio::runtime::Handle::current().block_on(f)
 }

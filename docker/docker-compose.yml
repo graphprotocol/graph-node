@@ -28,7 +28,7 @@ services:
     volumes:
       - ./data/ipfs:/data/ipfs:Z
   postgres:
-    image: postgres:14
+    image: postgres
     ports:
       - '5432:5432'
     command:

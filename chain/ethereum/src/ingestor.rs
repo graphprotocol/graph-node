@@ -1,5 +1,11 @@
-use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait, ENV_VARS};
-use graph::futures03::compat::Future01CompatExt;
+use crate::{chain::BlockFinality, ENV_VARS};
+use crate::{EthereumAdapter, EthereumAdapterTrait as _};
+use graph::blockchain::client::ChainClient;
+use graph::blockchain::BlockchainKind;
+use graph::components::adapter::ChainId;
+use graph::futures03::compat::Future01CompatExt as _;
+use graph::slog::o;
+use graph::util::backoff::ExponentialBackoff;
 use graph::{
     blockchain::{BlockHash, BlockIngestor, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
@@ -13,25 +19,25 @@ use std::{sync::Arc, time::Duration};
 pub struct PollingBlockIngestor {
     logger: Logger,
     ancestor_count: i32,
-    eth_adapter: Arc<EthereumAdapter>,
+    chain_client: Arc<ChainClient<crate::chain::Chain>>,
     chain_store: Arc<dyn ChainStore>,
     polling_interval: Duration,
-    network_name: String,
+    network_name: ChainId,
 }
 
 impl PollingBlockIngestor {
     pub fn new(
         logger: Logger,
         ancestor_count: i32,
-        eth_adapter: Arc<EthereumAdapter>,
+        chain_client: Arc<ChainClient<crate::chain::Chain>>,
         chain_store: Arc<dyn ChainStore>,
         polling_interval: Duration,
-        network_name: String,
+        network_name: ChainId,
     ) -> Result<PollingBlockIngestor, Error> {
         Ok(PollingBlockIngestor {
             logger,
             ancestor_count,
-            eth_adapter,
+            chain_client,
             chain_store,
             polling_interval,
             network_name,
@@ -59,8 +65,12 @@ impl PollingBlockIngestor {
         }
     }
 
-    async fn do_poll(&self) -> Result<(), IngestorError> {
-        trace!(self.logger, "BlockIngestor::do_poll");
+    async fn do_poll(
+        &self,
+        logger: &Logger,
+        eth_adapter: Arc<EthereumAdapter>,
+    ) -> Result<(), IngestorError> {
+        trace!(&logger, "BlockIngestor::do_poll");
 
         // Get chain head ptr from store
         let head_block_ptr_opt = self.chain_store.cheap_clone().chain_head_ptr().await?;
@@ -68,7 +78,7 @@ impl PollingBlockIngestor {
         // To check if there is a new block or not, fetch only the block header since that's cheaper
         // than the full block. This is worthwhile because most of the time there won't be a new
         // block, as we expect the poll interval to be much shorter than the block time.
-        let latest_block = self.latest_block().await?;
+        let latest_block = self.latest_block(logger, &eth_adapter).await?;
 
         if let Some(head_block) = head_block_ptr_opt.as_ref() {
             // If latest block matches head block in store, nothing needs to be done
@@ -80,7 +90,7 @@ impl PollingBlockIngestor {
                 // An ingestor might wait or move forward, but it never
                 // wavers and goes back. More seriously, this keeps us from
                 // later trying to ingest a block with the same number again
-                warn!(self.logger,
+                warn!(&logger,
                     "Provider went backwards - ignoring this latest block";
                     "current_block_head" => head_block.number,
                     "latest_block_head" => latest_block.number);
@@ -92,7 +102,7 @@ impl PollingBlockIngestor {
         match head_block_ptr_opt {
             None => {
                 info!(
-                    self.logger,
+                    &logger,
                     "Downloading latest blocks from Ethereum, this may take a few minutes..."
                 );
             }
@@ -108,7 +118,7 @@ impl PollingBlockIngestor {
                 };
                 if distance > 0 {
                     info!(
-                        self.logger,
+                    &logger,
                         "Syncing {} blocks from Ethereum",
                         blocks_needed;
                         "current_block_head" => head_number,
@@ -125,7 +135,9 @@ impl PollingBlockIngestor {
         // Might be a no-op if latest block is one that we have seen.
         // ingest_blocks will return a (potentially incomplete) list of blocks that are
         // missing.
-        let mut missing_block_hash = self.ingest_block(&latest_block.hash).await?;
+        let mut missing_block_hash = self
+            .ingest_block(&logger, &eth_adapter, &latest_block.hash)
+            .await?;
 
         // Repeatedly fetch missing parent blocks, and ingest them.
         // ingest_blocks will continue to tell us about more missing parent
@@ -146,29 +158,27 @@ impl PollingBlockIngestor {
         //   iteration will have at most block number N-1.
         // - Therefore, the loop will iterate at most ancestor_count times.
         while let Some(hash) = missing_block_hash {
-            missing_block_hash = self.ingest_block(&hash).await?;
+            missing_block_hash = self.ingest_block(&logger, &eth_adapter, &hash).await?;
         }
         Ok(())
     }
 
     async fn ingest_block(
         &self,
+        logger: &Logger,
+        eth_adapter: &Arc<EthereumAdapter>,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHash>, IngestorError> {
         // TODO: H256::from_slice can panic
         let block_hash = H256::from_slice(block_hash.as_slice());
 
         // Get the fully populated block
-        let block = self
-            .eth_adapter
-            .block_by_hash(&self.logger, block_hash)
+        let block = eth_adapter
+            .block_by_hash(logger, block_hash)
             .compat()
             .await?
             .ok_or(IngestorError::BlockUnavailable(block_hash))?;
-        let ethereum_block = self
-            .eth_adapter
-            .load_full_block(&self.logger, block)
-            .await?;
+        let ethereum_block = eth_adapter.load_full_block(&logger, block).await?;
 
         // We need something that implements `Block` to store the block; the
         // store does not care whether the block is final or not
@@ -188,31 +198,62 @@ impl PollingBlockIngestor {
             .await
             .map(|missing| missing.map(|h256| h256.into()))
             .map_err(|e| {
-                error!(self.logger, "failed to update chain head");
+                error!(logger, "failed to update chain head");
                 IngestorError::Unknown(e)
             })
     }
 
-    async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
-        self.eth_adapter
-            .latest_block_header(&self.logger)
+    async fn latest_block(
+        &self,
+        logger: &Logger,
+        eth_adapter: &Arc<EthereumAdapter>,
+    ) -> Result<BlockPtr, IngestorError> {
+        eth_adapter
+            .latest_block_header(&logger)
             .compat()
             .await
             .map(|block| block.into())
+    }
+
+    async fn eth_adapter(&self) -> anyhow::Result<Arc<EthereumAdapter>> {
+        self.chain_client
+            .rpc()?
+            .cheapest()
+            .await
+            .ok_or_else(|| graph::anyhow::anyhow!("unable to get eth adapter"))
     }
 }
 
 #[async_trait]
 impl BlockIngestor for PollingBlockIngestor {
     async fn run(self: Box<Self>) {
+        let mut backoff =
+            ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
+
         loop {
-            match self.do_poll().await {
-                // Some polls will fail due to transient issues
+            let eth_adapter = match self.eth_adapter().await {
+                Ok(adapter) => {
+                    backoff.reset();
+                    adapter
+                }
                 Err(err) => {
                     error!(
-                        self.logger,
-                        "Trying again after block polling failed: {}", err
+                        &self.logger,
+                        "unable to get ethereum adapter, backing off... error: {}",
+                        err.to_string()
                     );
+                    backoff.sleep_async().await;
+                    continue;
+                }
+            };
+            let logger = self
+                .logger
+                .new(o!("provider" => eth_adapter.provider().to_string()));
+
+            match self.do_poll(&logger, eth_adapter).await {
+                // Some polls will fail due to transient issues
+                Err(err) => {
+                    error!(logger, "Trying again after block polling failed: {}", err);
                 }
                 Ok(()) => (),
             }
@@ -225,7 +266,11 @@ impl BlockIngestor for PollingBlockIngestor {
         }
     }
 
-    fn network_name(&self) -> String {
+    fn network_name(&self) -> ChainId {
         self.network_name.clone()
+    }
+
+    fn kind(&self) -> BlockchainKind {
+        BlockchainKind::Ethereum
     }
 }

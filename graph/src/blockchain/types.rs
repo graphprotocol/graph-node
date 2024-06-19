@@ -333,6 +333,21 @@ pub struct ChainIdentifier {
     pub genesis_block_hash: BlockHash,
 }
 
+impl ChainIdentifier {
+    pub fn is_default(&self) -> bool {
+        ChainIdentifier::default().eq(self)
+    }
+}
+
+impl Default for ChainIdentifier {
+    fn default() -> Self {
+        Self {
+            net_version: String::default(),
+            genesis_block_hash: BlockHash::from(H256::zero()),
+        }
+    }
+}
+
 impl fmt::Display for ChainIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(

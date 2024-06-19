@@ -174,9 +174,9 @@ pub fn change_block_cache_shard(
         .chain_store(&chain_name)
         .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
     let new_name = format!("{}-old", &chain_name);
+    let ident = chain_store.chain_identifier()?;
 
     conn.transaction(|conn| -> Result<(), StoreError> {
-        let ident = chain_store.chain_identifier.clone();
         let shard = Shard::new(shard.to_string())?;
 
         let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident)?;
@@ -194,7 +194,7 @@ pub fn change_block_cache_shard(
 
 
         // Create a new chain with the name in the destination shard
-        let _=  add_chain(conn, &chain_name, &ident, &shard)?;
+        let _ = add_chain(conn, &chain_name, &shard, ident)?;
 
         // Re-add the foreign key constraint
         sql_query(

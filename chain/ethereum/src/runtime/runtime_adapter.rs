@@ -111,7 +111,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         let ethereum_get_balance = HostFn {
             name: "ethereum.getBalance",
             func: Arc::new(move |ctx, wasm_ptr| {
-                let eth_adapter = eth_adapters.cheapest_with(&NodeCapabilities {
+                let eth_adapter = eth_adapters.unverified_cheapest_with(&NodeCapabilities {
                     archive,
                     traces: false,
                 })?;
@@ -123,7 +123,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         let ethereum_get_code = HostFn {
             name: "ethereum.hasCode",
             func: Arc::new(move |ctx, wasm_ptr| {
-                let eth_adapter = eth_adapters.cheapest_with(&NodeCapabilities {
+                let eth_adapter = eth_adapters.unverified_cheapest_with(&NodeCapabilities {
                     archive,
                     traces: false,
                 })?;

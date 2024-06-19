@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
+use graph::cheap_clone::CheapClone;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
@@ -14,13 +15,13 @@ use graph::{
     },
     url::Url,
 };
-use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
+use graph_chain_ethereum::EthereumAdapter;
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::color::Terminal;
 use graph_node::manager::commands;
+use graph_node::network_setup::Networks;
 use graph_node::{
-    chain::create_all_ethereum_networks,
     manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
     store_builder::StoreBuilder,
     MetricsContext,
@@ -32,7 +33,6 @@ use graph_store_postgres::{
     SubscriptionManager, PRIMARY_SHARD,
 };
 use lazy_static::lazy_static;
-use std::collections::BTreeMap;
 use std::{collections::HashMap, num::ParseIntError, sync::Arc, time::Duration};
 const VERSION_LABEL_KEY: &str = "version";
 
@@ -910,7 +910,7 @@ impl Context {
         (primary_pool, mgr)
     }
 
-    fn store(self) -> Arc<Store> {
+    fn store(&self) -> Arc<Store> {
         let (store, _) = self.store_and_pools();
         store
     }
@@ -931,12 +931,12 @@ impl Context {
         .await
     }
 
-    fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
+    fn store_and_pools(&self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
         let (subgraph_store, pools, _) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
             &self.config,
-            self.fork_base,
+            self.fork_base.clone(),
             self.registry.clone(),
         );
 
@@ -949,8 +949,8 @@ impl Context {
             pools.clone(),
             subgraph_store,
             HashMap::default(),
-            BTreeMap::new(),
-            self.registry,
+            Vec::new(),
+            self.registry.cheap_clone(),
         );
 
         (store, pools)
@@ -987,11 +987,11 @@ impl Context {
         ))
     }
 
-    async fn ethereum_networks(&self) -> anyhow::Result<EthereumNetworks> {
+    async fn networks(&self, block_store: Arc<BlockStore>) -> anyhow::Result<Networks> {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
         let metrics = Arc::new(EndpointMetrics::mock());
-        create_all_ethereum_networks(logger, registry, &self.config, metrics).await
+        Networks::from_config(logger, &self.config, registry, metrics, block_store).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
@@ -1006,12 +1006,13 @@ impl Context {
         self,
         chain_name: &str,
     ) -> anyhow::Result<(Arc<ChainStore>, Arc<EthereumAdapter>)> {
-        let ethereum_networks = self.ethereum_networks().await?;
+        let block_store = self.store().block_store();
+        let networks = self.networks(block_store).await?;
         let chain_store = self.chain_store(chain_name)?;
-        let ethereum_adapter = ethereum_networks
-            .networks
-            .get(chain_name)
-            .and_then(|adapters| adapters.cheapest())
+        let ethereum_adapter = networks
+            .ethereum_rpcs(chain_name.into())
+            .cheapest()
+            .await
             .ok_or(anyhow::anyhow!(
                 "Failed to obtain an Ethereum adapter for chain '{}'",
                 chain_name

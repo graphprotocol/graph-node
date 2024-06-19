@@ -6,6 +6,7 @@ use graph::blockchain::{
     EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
+use graph::components::adapter::ChainId;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
@@ -41,7 +42,7 @@ use graph::blockchain::block_stream::{
 
 pub struct Chain {
     logger_factory: LoggerFactory,
-    name: String,
+    name: ChainId,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<MetricsRegistry>,
@@ -53,8 +54,9 @@ impl std::fmt::Debug for Chain {
     }
 }
 
+#[async_trait]
 impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
-    fn build(self, _config: &Arc<EnvVars>) -> Chain {
+    async fn build(self, _config: &Arc<EnvVars>) -> Chain {
         Chain {
             logger_factory: self.logger_factory,
             name: self.name,
@@ -157,21 +159,22 @@ impl Blockchain for Chain {
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
         self.client
-            .firehose_endpoint()?
+            .firehose_endpoint()
+            .await?
             .block_ptr_for_number::<codec::Block>(logger, number)
             .await
             .map_err(Into::into)
     }
 
-    fn runtime(&self) -> (Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook) {
-        (Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook)
+    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+        Ok((Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook))
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
         self.client.clone()
     }
 
-    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+    async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         let ingestor = FirehoseBlockIngestor::<crate::Block, Self>::new(
             self.chain_store.cheap_clone(),
             self.chain_client(),
