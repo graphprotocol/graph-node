@@ -210,16 +210,16 @@ pub enum Command {
         sleep: Duration,
         /// The block hash of the target block
         #[clap(
-            required_unless_present = "start-block",
-            conflicts_with = "start-block",
+            required_unless_present = "start_block",
+            conflicts_with = "start_block",
             long,
             short = 'H'
         )]
         block_hash: Option<String>,
         /// The block number of the target block
         #[clap(
-            required_unless_present = "start-block",
-            conflicts_with = "start-block",
+            required_unless_present = "start_block",
+            conflicts_with = "start_block",
             long,
             short = 'n'
         )]
