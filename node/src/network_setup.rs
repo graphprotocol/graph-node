@@ -57,7 +57,7 @@ pub enum AdapterConfiguration {
 }
 
 impl AdapterConfiguration {
-    pub fn kind(&self) -> &BlockchainKind {
+    pub fn blockchain_kind(&self) -> &BlockchainKind {
         match self {
             AdapterConfiguration::Rpc(_) => &BlockchainKind::Ethereum,
             AdapterConfiguration::Firehose(fh) | AdapterConfiguration::Substreams(fh) => &fh.kind,
@@ -85,11 +85,19 @@ impl AdapterConfiguration {
         }
     }
 
+    pub fn is_firehose(&self) -> bool {
+        self.as_firehose().is_none()
+    }
+
     pub fn as_substreams(&self) -> Option<&FirehoseAdapterConfig> {
         match self {
             AdapterConfiguration::Substreams(fh) => Some(fh),
             _ => None,
         }
+    }
+
+    pub fn is_substreams(&self) -> bool {
+        self.as_substreams().is_none()
     }
 }
 
@@ -335,7 +343,8 @@ impl Networks {
                     block_ingestor::<graph_chain_cosmos::Chain>(logger, id, chain, &mut res).await?
                 }
                 BlockchainKind::Substreams => {
-                    // handle substreams later
+                    block_ingestor::<graph_chain_substreams::Chain>(logger, id, chain, &mut res)
+                        .await?
                 }
                 BlockchainKind::Starknet => {
                     block_ingestor::<graph_chain_starknet::Chain>(logger, id, chain, &mut res)

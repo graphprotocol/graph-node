@@ -6,6 +6,7 @@ use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopDecoderHook,
     NoopRuntimeAdapter,
 };
+use graph::components::adapter::ChainId;
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
 use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
@@ -66,6 +67,7 @@ impl blockchain::Block for Block {
 pub struct Chain {
     chain_store: Arc<dyn ChainStore>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+    chain_id: ChainId,
 
     pub(crate) logger_factory: LoggerFactory,
     pub(crate) client: Arc<ChainClient<Self>>,
@@ -79,6 +81,7 @@ impl Chain {
         metrics_registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+        chain_id: ChainId,
     ) -> Self {
         Self {
             logger_factory,
@@ -86,6 +89,7 @@ impl Chain {
             metrics_registry,
             chain_store,
             block_stream_builder,
+            chain_id,
         }
     }
 }
@@ -192,8 +196,9 @@ impl Blockchain for Chain {
         Ok(Box::new(SubstreamsBlockIngestor::new(
             self.chain_store.cheap_clone(),
             self.client.cheap_clone(),
-            self.logger_factory.component_logger("", None),
-            "substreams".into(),
+            self.logger_factory
+                .component_logger("SubstreamsBlockIngestor", None),
+            self.chain_id.clone(),
             self.metrics_registry.cheap_clone(),
         )))
     }
@@ -204,7 +209,7 @@ impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
     async fn build(self, _config: &Arc<EnvVars>) -> Chain {
         let BasicBlockchainBuilder {
             logger_factory,
-            name: _,
+            name,
             chain_store,
             firehose_endpoints,
             metrics_registry,
@@ -216,6 +221,7 @@ impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
             logger_factory,
             client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
             metrics_registry,
+            chain_id: name,
         }
     }
 }
