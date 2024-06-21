@@ -11,7 +11,7 @@ use ethereum::ProviderEthRpcMetrics;
 use graph::anyhow::bail;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
-    BasicBlockchainBuilder, Blockchain as _, BlockchainBuilder as _, BlockchainKind, BlockchainMap,
+    BasicBlockchainBuilder, Blockchain, BlockchainBuilder as _, BlockchainKind, BlockchainMap,
     ChainIdentifier,
 };
 use graph::cheap_clone::CheapClone;
@@ -318,7 +318,6 @@ pub async fn create_ethereum_networks_for_chain(
             ProviderDetails::Web3Call(web3) => (web3, true),
             ProviderDetails::Web3(web3) => (web3, false),
             _ => {
-                // parsed_networks.insert_empty(network_name.to_string());
                 continue;
             }
         };
@@ -391,6 +390,15 @@ pub async fn create_ethereum_networks_for_chain(
     }))
 }
 
+/// Networks as chains will create the necessary chains from the adapter information.
+/// There are two major cases that are handled currently:
+/// Deep integration chains (explicitly defined on the graph-node like Ethereum, Near, etc):
+///  - These can have adapter of any type. Adapters of firehose and rpc types are used by the Chain implementation, aka deep integration
+///  - The substreams adapters will trigger the creation of a Substreams chain, the priority for the block ingestor setup depends on the chain, if enabled at all.
+/// Substreams Chain(chains the graph-node knows nothing about and are only accessible through substreams):
+///  - This chain type is more generic and can only have adapters of substreams type.
+///  - Substreams chain are created as a "secondary" chain for deep integrations but in that case the block ingestor should be run by the main/deep integration chain.
+///  - These chains will use SubstreamsBlockIngestor by default.
 pub async fn networks_as_chains(
     config: &Arc<EnvVars>,
     blockchain_map: &mut BlockchainMap,
@@ -405,30 +413,21 @@ pub async fn networks_as_chains(
     let adapters = networks
         .adapters
         .iter()
+        .sorted_by_key(|a| a.chain_id())
         .chunk_by(|a| a.chain_id())
         .into_iter()
         .map(|(chain_id, adapters)| (chain_id, adapters.into_iter().collect_vec()))
         .collect_vec();
 
-    let substreams: Vec<&FirehoseAdapterConfig> = networks
-        .adapters
-        .iter()
-        .flat_map(|a| a.as_substreams())
-        .collect();
-
     let chains = adapters.into_iter().map(|(chain_id, adapters)| {
         let adapters: Vec<&AdapterConfiguration> = adapters.into_iter().collect();
         let kind = adapters
-            .iter()
-            .map(|a| a.kind())
-            .reduce(|a1, a2| match (a1, a2) {
-                (BlockchainKind::Substreams, k) => k,
-                (k, BlockchainKind::Substreams) => k,
-                (k, _) => k,
-            })
+            .first()
+            .map(|a| a.blockchain_kind())
             .expect("validation should have checked we have at least one provider");
         (chain_id, adapters, kind)
     });
+
     for (chain_id, adapters, kind) in chains.into_iter() {
         let chain_store = match store.chain_store(chain_id) {
             Some(c) => c,
@@ -443,6 +442,36 @@ pub async fn networks_as_chains(
             }
         };
 
+        async fn add_substreams<C: Blockchain>(
+            networks: &Networks,
+            config: &Arc<EnvVars>,
+            chain_id: ChainId,
+            blockchain_map: &mut BlockchainMap,
+            logger_factory: LoggerFactory,
+            chain_store: Arc<dyn ChainStore>,
+            metrics_registry: Arc<MetricsRegistry>,
+        ) {
+            let substreams_endpoints = networks.substreams_endpoints(chain_id.clone());
+            if substreams_endpoints.len() == 0 {
+                return;
+            }
+
+            blockchain_map.insert::<graph_chain_substreams::Chain>(
+                chain_id.clone(),
+                Arc::new(
+                    BasicBlockchainBuilder {
+                        logger_factory: logger_factory.clone(),
+                        name: chain_id.clone(),
+                        chain_store,
+                        metrics_registry: metrics_registry.clone(),
+                        firehose_endpoints: substreams_endpoints,
+                    }
+                    .build(config)
+                    .await,
+                ),
+            );
+        }
+
         match kind {
             BlockchainKind::Arweave => {
                 let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
@@ -453,7 +482,7 @@ pub async fn networks_as_chains(
                         BasicBlockchainBuilder {
                             logger_factory: logger_factory.clone(),
                             name: chain_id.clone(),
-                            chain_store,
+                            chain_store: chain_store.cheap_clone(),
                             firehose_endpoints,
                             metrics_registry: metrics_registry.clone(),
                         }
@@ -461,6 +490,17 @@ pub async fn networks_as_chains(
                         .await,
                     ),
                 );
+
+                add_substreams::<graph_chain_arweave::Chain>(
+                    networks,
+                    config,
+                    chain_id.clone(),
+                    blockchain_map,
+                    logger_factory.clone(),
+                    chain_store,
+                    metrics_registry.clone(),
+                )
+                .await;
             }
             BlockchainKind::Ethereum => {
                 // polling interval is set per chain so if set all adapter configuration will have
@@ -510,6 +550,17 @@ pub async fn networks_as_chains(
 
                 blockchain_map
                     .insert::<graph_chain_ethereum::Chain>(chain_id.clone(), Arc::new(chain));
+
+                add_substreams::<graph_chain_ethereum::Chain>(
+                    networks,
+                    config,
+                    chain_id.clone(),
+                    blockchain_map,
+                    logger_factory.clone(),
+                    chain_store,
+                    metrics_registry.clone(),
+                )
+                .await;
             }
             BlockchainKind::Near => {
                 let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
@@ -519,7 +570,7 @@ pub async fn networks_as_chains(
                         BasicBlockchainBuilder {
                             logger_factory: logger_factory.clone(),
                             name: chain_id.clone(),
-                            chain_store,
+                            chain_store: chain_store.cheap_clone(),
                             firehose_endpoints,
                             metrics_registry: metrics_registry.clone(),
                         }
@@ -527,6 +578,17 @@ pub async fn networks_as_chains(
                         .await,
                     ),
                 );
+
+                add_substreams::<graph_chain_near::Chain>(
+                    networks,
+                    config,
+                    chain_id.clone(),
+                    blockchain_map,
+                    logger_factory.clone(),
+                    chain_store,
+                    metrics_registry.clone(),
+                )
+                .await;
             }
             BlockchainKind::Cosmos => {
                 let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
@@ -536,7 +598,7 @@ pub async fn networks_as_chains(
                         BasicBlockchainBuilder {
                             logger_factory: logger_factory.clone(),
                             name: chain_id.clone(),
-                            chain_store,
+                            chain_store: chain_store.cheap_clone(),
                             firehose_endpoints,
                             metrics_registry: metrics_registry.clone(),
                         }
@@ -544,6 +606,16 @@ pub async fn networks_as_chains(
                         .await,
                     ),
                 );
+                add_substreams::<graph_chain_cosmos::Chain>(
+                    networks,
+                    config,
+                    chain_id.clone(),
+                    blockchain_map,
+                    logger_factory.clone(),
+                    chain_store,
+                    metrics_registry.clone(),
+                )
+                .await;
             }
             BlockchainKind::Starknet => {
                 let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
@@ -553,7 +625,7 @@ pub async fn networks_as_chains(
                         BasicBlockchainBuilder {
                             logger_factory: logger_factory.clone(),
                             name: chain_id.clone(),
-                            chain_store,
+                            chain_store: chain_store.cheap_clone(),
                             firehose_endpoints,
                             metrics_registry: metrics_registry.clone(),
                         }
@@ -561,66 +633,35 @@ pub async fn networks_as_chains(
                         .await,
                     ),
                 );
-            }
-            BlockchainKind::Substreams => {}
-        }
-    }
-
-    fn chain_store(
-        blockchain_map: &BlockchainMap,
-        kind: &BlockchainKind,
-        network: ChainId,
-    ) -> anyhow::Result<Arc<dyn ChainStore>> {
-        let chain_store: Arc<dyn ChainStore> = match kind {
-            BlockchainKind::Arweave => blockchain_map
-                .get::<graph_chain_arweave::Chain>(network)
-                .map(|c| c.chain_store())?,
-            BlockchainKind::Ethereum => blockchain_map
-                .get::<graph_chain_ethereum::Chain>(network)
-                .map(|c| c.chain_store())?,
-            BlockchainKind::Near => blockchain_map
-                .get::<graph_chain_near::Chain>(network)
-                .map(|c| c.chain_store())?,
-            BlockchainKind::Cosmos => blockchain_map
-                .get::<graph_chain_cosmos::Chain>(network)
-                .map(|c| c.chain_store())?,
-            BlockchainKind::Substreams => blockchain_map
-                .get::<graph_chain_substreams::Chain>(network)
-                .map(|c| c.chain_store())?,
-            BlockchainKind::Starknet => blockchain_map
-                .get::<graph_chain_starknet::Chain>(network)
-                .map(|c| c.chain_store())?,
-        };
-
-        Ok(chain_store)
-    }
-
-    for FirehoseAdapterConfig {
-        chain_id,
-        kind,
-        adapters: _,
-    } in substreams.iter()
-    {
-        let chain_store = chain_store(&blockchain_map, kind, chain_id.clone()).expect(&format!(
-            "{} requires an rpc or firehose endpoint defined",
-            chain_id
-        ));
-        let substreams_endpoints = networks.substreams_endpoints(chain_id.clone());
-
-        blockchain_map.insert::<graph_chain_substreams::Chain>(
-            chain_id.clone(),
-            Arc::new(
-                BasicBlockchainBuilder {
-                    logger_factory: logger_factory.clone(),
-                    name: chain_id.clone(),
+                add_substreams::<graph_chain_starknet::Chain>(
+                    networks,
+                    config,
+                    chain_id.clone(),
+                    blockchain_map,
+                    logger_factory.clone(),
                     chain_store,
-                    firehose_endpoints: substreams_endpoints,
-                    metrics_registry: metrics_registry.clone(),
-                }
-                .build(config)
-                .await,
-            ),
-        );
+                    metrics_registry.clone(),
+                )
+                .await;
+            }
+            BlockchainKind::Substreams => {
+                let substreams_endpoints = networks.substreams_endpoints(chain_id.clone());
+                blockchain_map.insert::<graph_chain_substreams::Chain>(
+                    chain_id.clone(),
+                    Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            metrics_registry: metrics_registry.clone(),
+                            firehose_endpoints: substreams_endpoints,
+                        }
+                        .build(config)
+                        .await,
+                    ),
+                );
+            }
+        }
     }
 }
 
