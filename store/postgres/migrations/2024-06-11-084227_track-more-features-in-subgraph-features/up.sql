@@ -1,3 +1,4 @@
+TRUNCATE TABLE subgraphs.subgraph_features;
 ALTER TABLE subgraphs.subgraph_features
   ADD COLUMN IF NOT EXISTS has_declared_calls BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS has_bytes_as_ids BOOLEAN NOT NULL DEFAULT FALSE,
