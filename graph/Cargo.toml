@@ -71,7 +71,7 @@ tokio = { version = "1.38.0", features = [
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 tokio-retry = "0.3.0"
 toml = "0.8.8"
-url = "2.5.0"
+url = "2.5.2"
 prometheus = "0.13.3"
 priority-queue = "2.0.3"
 tonic = { workspace = true }
