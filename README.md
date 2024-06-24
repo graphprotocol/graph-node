@@ -1,4 +1,13 @@
-# Graph Node
+# Graph Node (Antigravity)
+
+Deploy using following:
+1. cd docker
+2. docker-compose up -d
+
+Port informations:
+1. 8020 - used for admin functions like creating subgraph and deploying subgraphs
+2.  http://localhost:8000 - HTTPs API for the GraphQL
+3. ws://localhost:8001 - Websocket for GraphQL subscriptions
 
 [![Build Status](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml/badge.svg)](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
