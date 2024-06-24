@@ -184,6 +184,6 @@ struct Inner {
     target_triggers_per_block_range: u64,
     #[envconfig(from = "GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER", default = "0")]
     genesis_block_number: u64,
-    #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613,421614")]
+    #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613, 421614")]
     eth_call_no_gas: String,
 }
