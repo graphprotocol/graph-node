@@ -1,7 +1,7 @@
 use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use graph::blockchain::{BlockTime, Blockchain, HostFn};
-use graph::components::store::SubgraphFork;
+use graph::components::store::{GetScope, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::futures01::sync::mpsc;
@@ -205,6 +205,10 @@ pub struct MappingContext {
     pub mapping_logger: Logger,
     /// Whether to log details about host fn execution
     pub instrument: bool,
+    /// If force_scope is set it should be enforced when `store_get` is executed.
+    /// This is currently used for parallel subgraphs to prevent the WASM code from
+    /// accessing entities from outside the block being processed.
+    pub force_scope: Option<GetScope>,
 }
 
 impl MappingContext {
@@ -220,6 +224,7 @@ impl MappingContext {
             debug_fork: self.debug_fork.cheap_clone(),
             mapping_logger: Logger::new(&self.logger, o!("component" => "UserMapping")),
             instrument: self.instrument,
+            force_scope: self.force_scope.clone(),
         }
     }
 }

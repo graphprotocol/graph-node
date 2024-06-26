@@ -132,6 +132,7 @@ pub fn mock_context(
         debug_fork: None,
         mapping_logger: Logger::root(slog::Discard, o!()),
         instrument: false,
+        force_scope: None,
     }
 }
 

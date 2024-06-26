@@ -18,6 +18,7 @@ use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
 pub type EntityLfuCache = LfuCache<EntityKey, Option<Arc<Entity>>>;
 
 /// The scope in which the `EntityCache` should perform a `get` operation
+#[derive(Clone)]
 pub enum GetScope {
     /// Get from all previously stored entities in the store
     Store,

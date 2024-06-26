@@ -1,6 +1,7 @@
 mod hosts;
 
 use anyhow::ensure;
+use graph::data::subgraph::SubgraphFeature;
 use graph::futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::{Blockchain, TriggerData as _},
@@ -36,6 +37,8 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
 
     /// This manages the sequence of causality regions for the subgraph.
     causality_region_seq: CausalityRegionSeq,
+
+    parallel_subgraph: bool,
 }
 
 impl<T, C> SubgraphInstance<C, T>
@@ -84,6 +87,7 @@ where
             templates,
             host_metrics,
             causality_region_seq,
+            parallel_subgraph: manifest.features.contains(&SubgraphFeature::Parallel),
         }
     }
 
@@ -121,6 +125,7 @@ where
             self.templates.cheap_clone(),
             mapping_request_sender,
             self.host_metrics.cheap_clone(),
+            self.parallel_subgraph,
         )?;
         Ok(Some(Arc::new(host)))
     }
