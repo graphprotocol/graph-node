@@ -15,11 +15,11 @@ services:
       - host.docker.internal:host-gateway
     environment:
       postgres_host: postgres
-      postgres_user: graph-node
-      postgres_pass: let-me-in
-      postgres_db: graph-node
+      postgres_user: ag-node
+      postgres_pass: antigravity
+      postgres_db: ag-node
       ipfs: 'ipfs:5001'
-      ethereum: 'mainnet:http://host.docker.internal:8545'
+      ethereum: 'pulsechain:https://rpc-pulsechain.g4mm4.io'
       GRAPH_LOG: info
   ipfs:
     image: ipfs/kubo:v0.17.0
@@ -38,13 +38,13 @@ services:
         "-cmax_connections=200"
       ]
     environment:
-      POSTGRES_USER: graph-node
-      POSTGRES_PASSWORD: let-me-in
-      POSTGRES_DB: graph-node
+      POSTGRES_USER: ag-node
+      POSTGRES_PASSWORD: antigravity
+      POSTGRES_DB: ag-node
       # FIXME: remove this env. var. which we shouldn't need. Introduced by
       # <https://github.com/graphprotocol/graph-node/pull/3511>, maybe as a
       # workaround for https://github.com/docker/for-mac/issues/6270?
       PGDATA: "/var/lib/postgresql/data"
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data:Z
+      - ./data/postgres:/var/lib/postgres/data:Z
