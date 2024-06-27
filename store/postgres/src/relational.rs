@@ -38,6 +38,7 @@ use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };
 use graph::slog::warn;
+use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -384,12 +385,13 @@ impl Layout {
         site: Arc<Site>,
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
+        index_def: Option<IndexList>,
     ) -> Result<Layout, StoreError> {
         let catalog =
             Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region)?;
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
-            .as_ddl()
+            .as_ddl(index_def)
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql)?;
         Ok(layout)
@@ -1436,6 +1438,7 @@ pub struct Table {
     /// aggregations, this is the object type for a specific interval, like
     /// `Stats_hour`, not the overall aggregation type `Stats`.
     pub object: EntityType,
+
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`
     pub name: SqlName,

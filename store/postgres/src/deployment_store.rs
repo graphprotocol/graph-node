@@ -29,8 +29,8 @@ use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
-use std::ops::Bound;
 use std::ops::Deref;
+use std::ops::{Bound, DerefMut};
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -52,7 +52,7 @@ use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::DeploymentId;
-use crate::relational::index::{CreateIndex, Method};
+use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{advisory_lock, catalog, retry};
@@ -172,6 +172,11 @@ impl DeploymentStore {
         DeploymentStore(Arc::new(store))
     }
 
+    // Parameter index_def is used to copy over the definition of the indexes from the source subgraph
+    // to the destination one. This happens when it is set to Some. In this case also the BTree attribude
+    // indexes are created later on, when the subgraph has synced. In case this parameter is None, all
+    // indexes are created with the default creation strategy for a new subgraph, and also from the very
+    // start.
     pub(crate) fn create_deployment(
         &self,
         schema: &InputSchema,
@@ -180,6 +185,7 @@ impl DeploymentStore {
         graft_base: Option<Arc<Layout>>,
         replace: bool,
         on_sync: OnSync,
+        index_def: Option<IndexList>,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|conn| -> Result<_, StoreError> {
@@ -212,6 +218,7 @@ impl DeploymentStore {
                     site.clone(),
                     schema,
                     entities_with_causality_region.into_iter().collect(),
+                    index_def,
                 )?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {
@@ -744,6 +751,13 @@ impl DeploymentStore {
             Ok(indexes.into_iter().map(CreateIndex::parse).collect())
         })
         .await
+    }
+
+    pub(crate) fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+        let store = self.clone();
+        let mut binding = self.get_conn()?;
+        let conn = binding.deref_mut();
+        IndexList::load(conn, site, store)
     }
 
     /// Drops an index for a given deployment, concurrently.
@@ -1483,12 +1497,12 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity, IndexList)>,
     ) -> Result<(), StoreError> {
         let dst = self.find_layout(site.cheap_clone())?;
 
         // If `graft_src` is `Some`, then there is a pending graft.
-        if let Some((src, block, src_deployment)) = graft_src {
+        if let Some((src, block, src_deployment, index_list)) = graft_src {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
@@ -1516,7 +1530,7 @@ impl DeploymentStore {
                 src_manifest_idx_and_name,
                 dst_manifest_idx_and_name,
             )?;
-            let status = copy_conn.copy_data()?;
+            let status = copy_conn.copy_data(index_list)?;
             if status == crate::copy::Status::Cancelled {
                 return Err(StoreError::Canceled);
             }
@@ -1588,10 +1602,17 @@ impl DeploymentStore {
                 Ok(())
             })?;
         }
+
+        let mut conn = self.get_conn()?;
+        if ENV_VARS.postpone_attribute_index_creation {
+            // check if all indexes are valid and recreate them if they aren't
+            self.load_indexes(site.clone())?
+                .recreate_invalid_indexes(&mut conn, &dst)?;
+        }
+
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
-        let mut conn = self.get_conn()?;
         conn.transaction(|conn| crate::deployment::initialize_block_ptr(conn, &dst.site))?;
         Ok(())
     }

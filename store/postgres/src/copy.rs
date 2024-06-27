@@ -13,6 +13,7 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
+    ops::DerefMut,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -24,8 +25,7 @@ use diesel::{
     pg::Pg,
     r2d2::{ConnectionManager, PooledConnection},
     select,
-    serialize::Output,
-    serialize::ToSql,
+    serialize::{Output, ToSql},
     sql_query,
     sql_types::{BigInt, Integer},
     update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
@@ -36,11 +36,13 @@ use graph::{
     prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError, ENV_VARS},
     schema::EntityType,
 };
+use itertools::Itertools;
 
 use crate::{
     advisory_lock, catalog,
     dynds::DataSourcesTable,
     primary::{DeploymentId, Site},
+    relational::index::IndexList,
 };
 use crate::{connection_pool::ConnectionPool, relational::Layout};
 use crate::{relational::Table, relational_queries as rq};
@@ -761,7 +763,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
+    pub fn copy_data_internal(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
         let src = self.src.clone();
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
@@ -806,6 +808,46 @@ impl Connection {
             progress.table_finished(&table.batch);
         }
 
+        // Create indexes for all the attributes that were postponed at the start of
+        // the copy/graft operations.
+        // First recreate the indexes that existed in the original subgraph.
+        let conn = self.conn.deref_mut();
+        for table in state.tables.iter() {
+            let arr = index_list.indexes_for_table(
+                &self.dst.site.namespace,
+                &table.batch.src.name.to_string(),
+                &table.batch.dst,
+                true,
+                true,
+            )?;
+
+            for (_, sql) in arr {
+                let query = sql_query(format!("{};", sql));
+                query.execute(conn)?;
+            }
+        }
+
+        // Second create the indexes for the new fields.
+        // Here we need to skip those created in the first step for the old fields.
+        for table in state.tables.iter() {
+            let orig_colums = table
+                .batch
+                .src
+                .columns
+                .iter()
+                .map(|c| c.name.to_string())
+                .collect_vec();
+            for sql in table
+                .batch
+                .dst
+                .create_postponed_indexes(orig_colums)
+                .into_iter()
+            {
+                let query = sql_query(sql);
+                query.execute(conn)?;
+            }
+        }
+
         self.copy_private_data_sources(&state)?;
 
         self.transaction(|conn| state.finished(conn))?;
@@ -820,6 +862,8 @@ impl Connection {
     /// block is guaranteed to not be subject to chain reorgs. All data up
     /// to and including `target_block` will be copied.
     ///
+    /// The parameter index_list is a list of indexes that exist on the `src`.
+    ///
     /// The copy logic makes heavy use of the fact that the `vid` and
     /// `block_range` of entity versions are related since for two entity
     /// versions `v1` and `v2` such that `v1.vid <= v2.vid`, we know that
@@ -828,7 +872,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&mut self) -> Result<Status, StoreError> {
+    pub fn copy_data(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
@@ -842,7 +886,7 @@ impl Connection {
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
         advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
-        let res = self.copy_data_internal();
+        let res = self.copy_data_internal(index_list);
         advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
