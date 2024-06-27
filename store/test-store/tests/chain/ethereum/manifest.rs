@@ -1409,6 +1409,8 @@ dataSources:
           calls:
             fake1: Factory[event.address].get(event.params.address)
             fake2: Factory[event.params.address].get(event.params.address)
+            fake3: Factory[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].get(event.address)
+            fake4: Factory[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].get(0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF)
 ";
 
     test_store::run_test_sequentially(|store| async move {
@@ -1440,6 +1442,6 @@ dataSources:
         // For more detailed tests of parsing CallDecls see the data_soure
         // module in chain/ethereum
         let decls = &ds.mapping.event_handlers[0].calls.decls;
-        assert_eq!(2, decls.len());
+        assert_eq!(4, decls.len());
     });
 }
