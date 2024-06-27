@@ -42,7 +42,7 @@ fn print_delete_all(layout: &Layout) {
 }
 
 fn print_ddl(layout: &Layout) {
-    let ddl = ensure(layout.as_ddl(), "Failed to generate DDL");
+    let ddl = ensure(layout.as_ddl(None), "Failed to generate DDL");
     println!("{}", ddl);
 }
 

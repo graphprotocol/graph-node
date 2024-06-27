@@ -94,7 +94,9 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            dst.as_ddl(schema, catalog, &mut query)?;
+            // In case of pruning we don't do delayed creation of indexes,
+            // as the asumption is that there is not that much data inserted.
+            dst.as_ddl(schema, catalog, None, &mut query)?;
         }
         conn.batch_execute(&query)?;
 

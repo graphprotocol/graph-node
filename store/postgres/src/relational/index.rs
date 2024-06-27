@@ -1,6 +1,12 @@
 //! Parse Postgres index definition into a form that is meaningful for us.
+use anyhow::{anyhow, Error};
+use std::collections::HashMap;
 use std::fmt::{Display, Write};
+use std::sync::Arc;
 
+use diesel::sql_types::{Bool, Text};
+use diesel::{sql_query, Connection, PgConnection, RunQueryDsl};
+use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
     lazy_static,
@@ -9,11 +15,15 @@ use graph::prelude::{
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::catalog;
+use crate::command_support::catalog::Site;
+use crate::deployment_store::DeploymentStore;
+use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
 
-use super::VID_COLUMN;
+use super::{Layout, Table, VID_COLUMN};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Method {
     Brin,
     BTree,
@@ -180,6 +190,25 @@ impl Expr {
         }
     }
 
+    /// Here we check if all the columns expressions of the two indexes are "kind of same".
+    /// We ignore the operator class of the expression by checking if the string of the
+    /// original expression is a prexif of the string of the current one.
+    fn is_same_kind_columns(current: &Vec<Expr>, orig: &Vec<Expr>) -> bool {
+        if orig.len() != current.len() {
+            return false;
+        }
+        for i in 0..orig.len() {
+            let o = orig[i].to_sql();
+            let n = current[i].to_sql();
+
+            // check that string n starts with o
+            if n.len() < o.len() || n[0..o.len()] != o {
+                return false;
+            }
+        }
+        true
+    }
+
     fn to_sql(&self) -> String {
         match self {
             Expr::Column(name) => name.to_string(),
@@ -196,7 +225,7 @@ impl Expr {
 
 /// The condition for a partial index, i.e., the statement after `where ..`
 /// in a `create index` statement
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Cond {
     /// The expression `coalesce(upper(block_range), 2147483647) > $number`
     Partial(BlockNumber),
@@ -248,7 +277,7 @@ impl Cond {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum CreateIndex {
     /// The literal index definition passed to `parse`. This is used when we
     /// can't parse a `create index` statement, e.g. because it uses
@@ -354,8 +383,8 @@ impl CreateIndex {
 
         fn new_parsed(defn: &str) -> Option<CreateIndex> {
             let rx = Regex::new(
-                "create (?P<unique>unique )?index (?P<name>[a-z0-9$_]+) \
-            on (?P<nsp>sgd[0-9]+)\\.(?P<table>[a-z$_]+) \
+                "create (?P<unique>unique )?index (?P<name>\"?[a-z0-9$_]+\"?) \
+            on (?P<nsp>sgd[0-9]+)\\.(?P<table>\"?[a-z0-9$_]+\"?) \
             using (?P<method>[a-z]+) \\((?P<columns>.*?)\\)\
             ( where \\((?P<cond>.*)\\))?\
             ( with \\((?P<with>.*)\\))?$",
@@ -411,6 +440,32 @@ impl CreateIndex {
         }
     }
 
+    fn with_nsp(&self, nsp2: String) -> Result<Self, Error> {
+        let s = self.clone();
+        match s {
+            CreateIndex::Unknown { defn: _ } => Err(anyhow!("Failed to parse the index")),
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp: _,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            } => Ok(CreateIndex::Parsed {
+                unique,
+                name,
+                nsp: nsp2,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            }),
+        }
+    }
+
     pub fn is_attribute_index(&self) -> bool {
         use CreateIndex::*;
         match self {
@@ -445,8 +500,7 @@ impl CreateIndex {
         }
     }
 
-    /// Return `true` if `self` is one of the indexes we create by default
-    pub fn is_default_index(&self) -> bool {
+    pub fn is_default_non_attr_index(&self) -> bool {
         lazy_static! {
             static ref DEFAULT_INDEXES: Vec<CreateIndex> = {
                 fn dummy(
@@ -487,7 +541,12 @@ impl CreateIndex {
             };
         }
 
-        self.is_attribute_index() || DEFAULT_INDEXES.iter().any(|idx| self.is_same_index(idx))
+        DEFAULT_INDEXES.iter().any(|idx| self.is_same_index(idx))
+    }
+
+    /// Return `true` if `self` is one of the indexes we create by default
+    pub fn is_default_index(&self) -> bool {
+        self.is_attribute_index() || self.is_default_non_attr_index()
     }
 
     fn is_same_index(&self, other: &CreateIndex) -> bool {
@@ -517,11 +576,123 @@ impl CreateIndex {
             ) => {
                 unique == o_unique
                     && method == o_method
-                    && columns == o_columns
+                    && Expr::is_same_kind_columns(columns, o_columns)
                     && cond == o_cond
                     && with == o_with
             }
         }
+    }
+
+    pub fn is_id(&self) -> bool {
+        // on imutable tables the id constraint is specified at table creation
+        match self {
+            CreateIndex::Unknown { .. } => (),
+            CreateIndex::Parsed { columns, .. } => {
+                if columns.len() == 1 {
+                    if columns[0].is_id() {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub fn to_postpone(&self) -> bool {
+        fn has_prefix(s: &str, prefix: &str) -> bool {
+            s.starts_with(prefix)
+                || s.ends_with("\"") && s.starts_with(format!("\"{}", prefix).as_str())
+        }
+        match self {
+            CreateIndex::Unknown { .. } => false,
+            CreateIndex::Parsed {
+                name,
+                columns,
+                method,
+                ..
+            } => {
+                if *method != Method::BTree {
+                    return false;
+                }
+                if columns.len() == 1 && columns[0].is_id() {
+                    return false;
+                }
+                has_prefix(name, "attr_") && self.is_attribute_index()
+            }
+        }
+    }
+
+    pub fn name(&self) -> Option<String> {
+        match self {
+            CreateIndex::Unknown { .. } => None,
+            CreateIndex::Parsed { name, .. } => Some(name.clone()),
+        }
+    }
+
+    pub fn fields_exist_in_dest<'a>(&self, dest_table: &'a Table) -> bool {
+        fn column_exists<'a>(it: &mut impl Iterator<Item = &'a str>, column_name: &String) -> bool {
+            it.any(|c| *c == *column_name)
+        }
+
+        fn some_column_contained<'a>(
+            expr: &String,
+            it: &mut impl Iterator<Item = &'a str>,
+        ) -> bool {
+            it.any(|c| expr.contains(c))
+        }
+
+        let cols = &mut dest_table.columns.iter().map(|i| i.name.as_str());
+        match self {
+            CreateIndex::Unknown { defn: _ } => return true,
+            CreateIndex::Parsed {
+                columns: parsed_cols,
+                ..
+            } => {
+                for c in parsed_cols {
+                    match c {
+                        Expr::Column(column_name) => {
+                            if !column_exists(cols, column_name) {
+                                return false;
+                            }
+                        }
+                        Expr::Prefix(column_name, _) => {
+                            if !column_exists(cols, column_name) {
+                                return false;
+                            }
+                        }
+                        Expr::BlockRange | Expr::BlockRangeLower | Expr::BlockRangeUpper => {
+                            if dest_table.immutable {
+                                return false;
+                            }
+                        }
+                        Expr::Vid => (),
+                        Expr::Block => {
+                            if !column_exists(cols, &"block".to_string()) {
+                                return false;
+                            }
+                        }
+                        Expr::Unknown(expression) => {
+                            if some_column_contained(
+                                expression,
+                                &mut (vec!["block_range"]).into_iter(),
+                            ) && dest_table.immutable
+                            {
+                                return false;
+                            }
+                            if !some_column_contained(expression, cols)
+                                && !some_column_contained(
+                                    expression,
+                                    &mut (vec!["block_range", "vid"]).into_iter(),
+                                )
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        true
     }
 
     /// Generate a SQL statement that creates this index. If `concurrent` is
@@ -555,6 +726,125 @@ impl CreateIndex {
                 Ok(sql)
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct IndexList {
+    pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
+}
+
+impl IndexList {
+    pub fn load(
+        conn: &mut PgConnection,
+        site: Arc<Site>,
+        store: DeploymentStore,
+    ) -> Result<Self, StoreError> {
+        let mut list = IndexList {
+            indexes: HashMap::new(),
+        };
+        let schema_name = site.namespace.clone();
+        let layout = store.layout(conn, site)?;
+        for (_, table) in &layout.tables {
+            let table_name = table.name.as_str();
+            let indexes = catalog::indexes_for_table(conn, schema_name.as_str(), table_name)?;
+            let collect: Vec<CreateIndex> = indexes.into_iter().map(CreateIndex::parse).collect();
+            list.indexes.insert(table_name.to_string(), collect);
+        }
+        Ok(list)
+    }
+
+    pub fn indexes_for_table(
+        &self,
+        namespace: &Namespace,
+        table_name: &String,
+        dest_table: &Table,
+        postponed: bool,
+        concurrent_if_not_exist: bool,
+    ) -> Result<Vec<(Option<String>, String)>, Error> {
+        let mut arr = vec![];
+        if let Some(vec) = self.indexes.get(table_name) {
+            for ci in vec {
+                // First we check if the fields do exist in the destination subgraph.
+                // In case of grafting that is not given.
+                if ci.fields_exist_in_dest(dest_table)
+                    // Then we check if the index is one of the default indexes not based on 
+                    // the attributes. Those will be created anyway and we should skip them.
+                    && !ci.is_default_non_attr_index()
+                    // Then ID based indexes in the immutable tables are also created initially
+                    // and should be skipped.
+                    && !(ci.is_id() && dest_table.immutable)
+                    // Finally we filter by the criteria is the index to be postponed. The ones
+                    // that are not to be postponed we want to create during initial creation of
+                    // the copied subgraph
+                    && postponed == ci.to_postpone()
+                {
+                    if let Ok(sql) = ci
+                        .with_nsp(namespace.to_string())?
+                        .to_sql(concurrent_if_not_exist, concurrent_if_not_exist)
+                    {
+                        arr.push((ci.name(), sql))
+                    }
+                }
+            }
+        }
+        Ok(arr)
+    }
+
+    pub fn recreate_invalid_indexes(
+        &self,
+        conn: &mut PgConnection,
+        layout: &Layout,
+    ) -> Result<(), StoreError> {
+        #[derive(QueryableByName, Debug)]
+        struct IndexInfo {
+            #[diesel(sql_type = Bool)]
+            isvalid: bool,
+        }
+
+        let namespace = &layout.catalog.site.namespace;
+        for table in layout.tables.values() {
+            for (ind_name, create_query) in
+                self.indexes_for_table(namespace, &table.name.to_string(), table, true, true)?
+            {
+                if let Some(index_name) = ind_name {
+                    let table_name = table.name.clone();
+                    let query = r#"
+                        SELECT  x.indisvalid           AS isvalid
+                        FROM pg_index x
+                                JOIN pg_class c ON c.oid = x.indrelid
+                                JOIN pg_class i ON i.oid = x.indexrelid
+                                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE (c.relkind = ANY (ARRAY ['r'::"char", 'm'::"char", 'p'::"char"]))
+                        AND (i.relkind = ANY (ARRAY ['i'::"char", 'I'::"char"]))
+                        AND (n.nspname = $1)
+                        AND (c.relname = $2)
+                        AND (i.relname = $3);"#;
+                    let ii_vec = sql_query(query)
+                        .bind::<Text, _>(namespace.to_string())
+                        .bind::<Text, _>(table_name)
+                        .bind::<Text, _>(index_name.clone())
+                        .get_results::<IndexInfo>(conn)?
+                        .into_iter()
+                        .map(|ii| ii.into())
+                        .collect::<Vec<IndexInfo>>();
+                    assert!(ii_vec.len() <= 1);
+                    if ii_vec.len() == 0 || !ii_vec[0].isvalid {
+                        // if a bad index exist lets first drop it
+                        if ii_vec.len() > 0 {
+                            let drop_query = sql_query(format!(
+                                "DROP INDEX {}.{};",
+                                namespace.to_string(),
+                                index_name
+                            ));
+                            conn.transaction(|conn| drop_query.execute(conn))?;
+                        }
+                        sql_query(create_query).execute(conn)?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 
