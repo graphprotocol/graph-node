@@ -21,7 +21,7 @@ use graph::prelude::{
     hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
 };
 use graph_tests::fixture::ethereum::{
-    chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_log,
+    chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
     push_test_polling_trigger,
 };
 
@@ -630,21 +630,53 @@ async fn end_block() -> anyhow::Result<()> {
 #[tokio::test]
 async fn file_data_sources() {
     let RunnerTestRecipe { stores, test_info } =
-        RunnerTestRecipe::new("file_data_sources", "file-data-sources").await;
+        RunnerTestRecipe::new("file-data-sourcess", "file-data-sources").await;
+
+    let ipfs = IpfsClient::new("http://localhost:5001").unwrap();
+
+    async fn add_content_to_ipfs(ipfs: &IpfsClient, content: &str) -> String {
+        let bytes = content.to_string().into_bytes();
+        let resp = ipfs.add(bytes).await.unwrap();
+        resp.hash
+    }
+
+    let hash_1 = add_content_to_ipfs(&ipfs, "EXAMPLE_1").await;
+    let hash_2 = add_content_to_ipfs(&ipfs, "EXAMPLE_2").await;
+    let hash_3 = add_content_to_ipfs(&ipfs, "EXAMPLE_3").await;
+    let hash_4 = add_content_to_ipfs(&ipfs, "EXAMPLE_4").await;
+
+    //concatenate hash2 and hash3
+    let hash_2_comma_3 = format!("{},{}", hash_2, hash_3);
 
     let blocks = {
         let block_0 = genesis();
-        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
-        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
-        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_command(&mut block_1, "CREATE_FILE", &hash_1);
+        let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        push_test_command(&mut block_2, "CREATE_FILE", &hash_1);
+
+        let mut block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        push_test_command(
+            &mut block_3,
+            "SPAWN_FDS_FROM_OFFCHAIN_HANDLER",
+            &hash_2_comma_3,
+        );
+
         let block_4 = empty_block(block_3.ptr(), test_ptr(4));
+
         let mut block_5 = empty_block(block_4.ptr(), test_ptr(5));
-        push_test_log(&mut block_5, "spawnOffChainHandlerTest");
-        let block_6 = empty_block(block_5.ptr(), test_ptr(6));
-        let mut block_7 = empty_block(block_6.ptr(), test_ptr(7));
-        push_test_log(&mut block_7, "createFile2");
+        push_test_command(
+            &mut block_5,
+            "CREATE_ONCHAIN_DATASOURCE_FROM_OFFCHAIN_HANDLER",
+            &hash_3,
+        );
+
+        let mut block_6 = empty_block(block_5.ptr(), test_ptr(6));
+
+        push_test_command(&mut block_6, "CREATE_UNDEFINED_ENTITY", &hash_4);
+
         vec![
-            block_0, block_1, block_2, block_3, block_4, block_5, block_6, block_7,
+            block_0, block_1, block_2, block_3, block_4, block_5, block_6,
         ]
     };
 
@@ -665,181 +697,190 @@ async fn file_data_sources() {
     )
     .await;
     let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
-    ctx.start_and_sync_to(test_ptr(1)).await;
 
-    // CID of `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
-    let id = "QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq";
-    let content_bytes = ctx
-        .ipfs
-        .cat_all(id, Some(Duration::from_secs(10)), usize::MAX)
-        .await
-        .unwrap();
-    let content = String::from_utf8(content_bytes.into()).unwrap();
-    let query_res = ctx
-        .query(&format!(r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,))
-        .await
-        .unwrap();
+    {
+        ctx.start_and_sync_to(test_ptr(1)).await;
 
-    assert_json_eq!(
-        query_res,
-        Some(object! { ipfsFile: object!{ id: id, content: content.clone() } })
-    );
+        let content = "EXAMPLE_1";
+        let query_res = ctx
+            .query(&format!(
+                r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
+                hash_1.clone()
+            ))
+            .await
+            .unwrap();
 
-    // assert whether duplicate data sources are created.
-    ctx.start_and_sync_to(test_ptr(2)).await;
+        let store = ctx.store.cheap_clone();
+        let writable = store
+            .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
+            .await
+            .unwrap();
+        let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+        assert!(datasources.len() == 1);
 
-    let store = ctx.store.cheap_clone();
-    let writable = store
-        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
-        .await
-        .unwrap();
-    let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
-    assert!(datasources.len() == 1);
-
-    ctx.start_and_sync_to(test_ptr(3)).await;
-
-    let query_res = ctx
-        .query(&format!(r#"{{ ipfsFile1(id: "{id}") {{ id, content }} }}"#,))
-        .await
-        .unwrap();
-
-    assert_json_eq!(
-        query_res,
-        Some(object! { ipfsFile1: object!{ id: id , content: content.clone() } })
-    );
-
-    ctx.start_and_sync_to(test_ptr(4)).await;
-    let writable = ctx
-        .store
-        .clone()
-        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
-        .await
-        .unwrap();
-    let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
-    assert!(data_sources.len() == 2);
-
-    let mut causality_region = CausalityRegion::ONCHAIN;
-    for data_source in data_sources {
-        assert!(data_source.done_at.is_some());
-        assert!(data_source.causality_region == causality_region.next());
-        causality_region = causality_region.next();
+        assert_json_eq!(
+            query_res,
+            Some(object! { fileEntity: object!{ id: hash_1.clone(), content: content } })
+        );
     }
 
-    ctx.start_and_sync_to(test_ptr(5)).await;
-    let writable = ctx
-        .store
-        .clone()
-        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
-        .await
-        .unwrap();
-    let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
-    assert!(data_sources.len() == 4);
-
-    ctx.start_and_sync_to(test_ptr(6)).await;
-    let query_res = ctx
-        .query(&format!(
-            r#"{{ spawnTestEntity(id: "{id}") {{ id, content, context }} }}"#,
-        ))
-        .await
-        .unwrap();
-
-    assert_json_eq!(
-        query_res,
-        Some(
-            object! { spawnTestEntity: object!{ id: id , content: content.clone(), context: "fromSpawnTestHandler" } }
-        )
-    );
-
-    let stop_block = test_ptr(7);
-    let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
-    let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`."
-        .to_string();
-    let expected_err = SubgraphError {
-        subgraph_id: ctx.deployment.hash.clone(),
-        message,
-        block_ptr: Some(stop_block),
-        handler: None,
-        deterministic: false,
-    };
-    assert_eq_ignore_backtrace(&err, &expected_err);
-
-    // Unfail the subgraph to test a conflict between an onchain and offchain entity
+    // Should not create duplicate datasource
     {
-        ctx.rewind(test_ptr(6));
+        ctx.start_and_sync_to(test_ptr(2)).await;
 
-        // Replace block number 7 with one that contains a different event
+        let store = ctx.store.cheap_clone();
+        let writable = store
+            .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
+            .await
+            .unwrap();
+        let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+        assert!(datasources.len() == 1);
+    }
+
+    // Create a File data source from a same type of file data source handler
+    {
+        ctx.start_and_sync_to(test_ptr(4)).await;
+
+        let content = "EXAMPLE_3";
+        let query_res = ctx
+            .query(&format!(
+                r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
+                hash_3.clone()
+            ))
+            .await
+            .unwrap();
+        assert_json_eq!(
+            query_res,
+            Some(object! { fileEntity: object!{ id: hash_3.clone(), content: content } })
+        );
+    }
+
+    // Should not allow creating on-chain data source from off-chain data source handler
+    {
+        let err = ctx.start_and_sync_to_error(test_ptr(5)).await;
+        let message =
+            "Attempted to create on-chain data source in offchain data source handler.".to_string();
+        assert!(err.to_string().contains(&message));
+    }
+
+    // Should not allow creating conflicting entity. ie: Entity created in offchain handler cannot be created in onchain handler
+    {
+        ctx.rewind(test_ptr(4));
+
         let mut blocks = blocks.clone();
-        blocks.pop();
-        let block_7_1_ptr = test_ptr_reorged(7, 1);
-        let mut block_7_1 = empty_block(test_ptr(6), block_7_1_ptr.clone());
-        push_test_log(&mut block_7_1, "saveConflictingEntity");
-        blocks.push(block_7_1);
+        blocks.retain(|block| block.block.number() <= 4);
+
+        let mut block_5 = empty_block(test_ptr(4), test_ptr(5));
+        push_test_command(&mut block_5, "CREATE_CONFLICTING_ENTITY", &hash_1);
+        blocks.push(block_5.clone());
 
         chain.set_block_stream(blocks);
 
-        // Errors in the store pipeline can be observed by using the runner directly.
-        let runner = ctx.runner(block_7_1_ptr.clone()).await;
+        let message = "writing FileEntity entities at block 5 failed: conflicting key value violates exclusion constraint \"file_entity_id_block_range_excl\" Query: insert 1 rows with ids [QmYiiCtcXmSHXN3m2nyqLaTM7zi81KjVdZ9WXkcrCKrkjr@[5, ∞)]";
+
+        let runner = ctx.runner(block_5.ptr()).await;
         let err = runner
             .run()
             .await
             .err()
             .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
 
-        let message = "writing IpfsFile entities at block 7 failed: \
-            conflicting key value violates exclusion constraint \"ipfs_file_id_block_range_excl\" \
-            Query: insert 1 rows \
-            with ids [QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq@[7, ∞)]"
-            .to_string();
         assert_eq!(err.to_string(), message);
     }
 
-    // Unfail the subgraph to test a conflict between an onchain and offchain entity
+    // Should not allow accessing entities created in offchain handlers in onchain handlers
     {
-        // Replace block number 7 with one that contains a different event
+        ctx.rewind(test_ptr(4));
+
         let mut blocks = blocks.clone();
-        blocks.pop();
-        let block_7_2_ptr = test_ptr_reorged(7, 2);
-        let mut block_7_2 = empty_block(test_ptr(6), block_7_2_ptr.clone());
-        push_test_log(&mut block_7_2, "createFile1");
-        blocks.push(block_7_2);
+        blocks.retain(|block| block.block.number() <= 4);
+
+        let mut block_5 = empty_block(test_ptr(4), test_ptr(5));
+        push_test_command(
+            &mut block_5,
+            "ACCESS_AND_UPDATE_OFFCHAIN_ENTITY_IN_ONCHAIN_HANDLER",
+            &hash_1,
+        );
+        blocks.push(block_5.clone());
 
         chain.set_block_stream(blocks);
 
-        // Errors in the store pipeline can be observed by using the runner directly.
-        let err = ctx
-            .runner(block_7_2_ptr.clone())
-            .await
-            .run()
-            .await
-            .err()
-            .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
+        ctx.start_and_sync_to(block_5.ptr()).await;
 
-        let message = "writing IpfsFile1 entities at block 7 failed: \
-            conflicting key value violates exclusion constraint \"ipfs_file_1_id_block_range_excl\" \
-            Query: insert 1 rows \
-            with ids [QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq@[7, ∞)]"
-            .to_string();
-        assert_eq!(err.to_string(), message);
+        let content = "EXAMPLE_1";
+        let query_res = ctx
+            .query(&format!(
+                r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
+                hash_1.clone()
+            ))
+            .await
+            .unwrap();
+        assert_json_eq!(
+            query_res,
+            Some(object! { fileEntity: object!{ id: hash_1.clone(), content: content } })
+        );
     }
 
+    // Prevent access to entities created by offchain handlers when using derived loaders in onchain handlers.
     {
-        ctx.rewind(test_ptr(6));
-        // Replace block number 7 with one that contains a different event
+        ctx.rewind(test_ptr(4));
+
         let mut blocks = blocks.clone();
-        blocks.pop();
-        let block_7_3_ptr = test_ptr_reorged(7, 1);
-        let mut block_7_3 = empty_block(test_ptr(6), block_7_3_ptr.clone());
-        push_test_log(&mut block_7_3, "spawnOnChainHandlerTest");
-        blocks.push(block_7_3);
+        blocks.retain(|block| block.block.number() <= 4);
+
+        let hash_5 = add_content_to_ipfs(&ipfs, "EXAMPLE_5").await;
+
+        let mut block_5 = empty_block(test_ptr(4), test_ptr(5));
+        push_test_command(&mut block_5, "CREATE_FOO", &hash_5);
+        blocks.push(block_5.clone());
+
+        let mut block_6 = empty_block(block_5.ptr(), test_ptr(6));
+        push_test_command(
+            &mut block_6,
+            "ACCESS_FILE_ENTITY_THROUGH_DERIVED_FIELD",
+            &hash_5,
+        );
+        blocks.push(block_6.clone());
 
         chain.set_block_stream(blocks);
 
-        // Errors in the store pipeline can be observed by using the runner directly.
-        let err = ctx.start_and_sync_to_error(block_7_3_ptr).await;
-        let message =
-            "Attempted to create on-chain data source in offchain data source handler. This is not yet supported. at block #7 (0000000100000000000000000000000000000000000000000000000000000007)"
-                .to_string();
+        ctx.start_and_sync_to(block_5.ptr()).await;
+
+        let query_res = ctx
+            .query(&format!(
+                r#"{{ foo(id: "{}") {{ id, ipfs {{ id, content }} }} }}"#,
+                hash_5.clone(),
+            ))
+            .await
+            .unwrap();
+        let content = "EXAMPLE_5";
+        assert_json_eq!(
+            query_res,
+            Some(
+                object! { foo: object!{ id: hash_5.clone(), ipfs: object!{id: hash_5.clone(), content: content}} }
+            )
+        );
+
+        ctx.start_and_sync_to(block_6.ptr()).await;
+    }
+
+    // Should not allow creating entity that is not declared in the manifest for the offchain datasource
+    {
+        ctx.rewind(test_ptr(4));
+
+        let mut blocks = blocks.clone();
+        blocks.retain(|block| block.block.number() <= 4);
+
+        let mut block_5 = empty_block(test_ptr(4), test_ptr(5));
+        push_test_command(&mut block_5, "CREATE_UNDEFINED_ENTITY", &hash_1);
+        blocks.push(block_5.clone());
+
+        chain.set_block_stream(blocks);
+
+        let message = "error while executing at wasm backtrace:\t    0: 0x3490 - <unknown>!generated/schema/Foo#save\t    1: 0x3e1c - <unknown>!src/mapping/handleFile: entity type `Foo` is not on the 'entities' list for data source `File`. Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`. in handler `handleFile` at block #5 () at block #5 (0000000000000000000000000000000000000000000000000000000000000005)";
+
+        let err = ctx.start_and_sync_to_error(block_5.ptr()).await;
+
         assert_eq!(err.to_string(), message);
     }
 }

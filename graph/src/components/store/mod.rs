@@ -90,6 +90,7 @@ impl DerivedEntityQuery {
     /// Checks if a given key and entity match this query.
     pub fn matches(&self, key: &EntityKey, entity: &Entity) -> bool {
         key.entity_type == self.entity_type
+            && key.causality_region == self.causality_region
             && entity
                 .get(&self.entity_field)
                 .map(|v| &self.value == v)
