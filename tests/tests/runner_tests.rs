@@ -201,7 +201,7 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
     let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
     // We sync up to block 5 twice, after the first time there is a revert back to block 1.
-    // This tests reverts across more than than a single block.
+    // This tests reverts across more than a single block.
     for stop_block in [test_ptr(5), last.clone()] {
         ctx.start_and_sync_to(stop_block.clone()).await;
 
