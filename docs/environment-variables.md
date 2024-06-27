@@ -256,3 +256,6 @@ retain for subgraphs with historyBlocks set to auto. The default value is 2 time
 - `GRAPH_ETHEREUM_BLOCK_RECEIPTS_CHECK_TIMEOUT`: Timeout for checking
   `eth_getBlockReceipts` support during chain startup, if this times out
   individual transaction receipts will be fetched instead. Defaults to 10s.
+- `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`: During the coping of a subgraph
+  postponing creation of certain indexes (btree, attribute based ones), would 
+  speed up syncing. 
