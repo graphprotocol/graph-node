@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use graph::{
     anyhow::{bail, Context},
     components::{
-        adapter::{ChainId, MockIdentValidator},
+        adapter::{ChainId, IdentValidator, IdentValidatorError, MockIdentValidator},
         subgraph::{Setting, Settings},
     },
     endpoint::EndpointMetrics,
@@ -16,9 +16,34 @@ use graph::{
     slog::Logger,
 };
 use graph_chain_ethereum::NodeCapabilities;
-use graph_store_postgres::DeploymentPlacer;
+use graph_store_postgres::{BlockStore, DeploymentPlacer};
 
 use crate::{config::Config, network_setup::Networks};
+
+pub async fn providers(networks: &Networks, store: Arc<BlockStore>) -> Result<(), Error> {
+    println!("Checking providers");
+    for (chain_id, ids) in networks.all_chain_identifiers().await.into_iter() {
+        let (_oks, errs): (Vec<_>, Vec<_>) = ids
+            .into_iter()
+            .map(|(provider, id)| {
+                id.map_err(IdentValidatorError::from)
+                    .and_then(|ref id| store.check_ident(chain_id, id).map(|_| provider))
+            })
+            .partition_result();
+        let errs = errs
+            .into_iter()
+            .dedup()
+            .collect::<Vec<IdentValidatorError>>();
+
+        if errs.is_empty() {
+            println!("chain_id: {}: status: OK", chain_id);
+        } else {
+            println!("chain_id: {}: status: NOK", chain_id);
+            println!("errors: {:?}", errs)
+        }
+    }
+    Ok(())
+}
 
 pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result<(), Error> {
     match placer.place(name, network).map_err(|s| anyhow!(s))? {

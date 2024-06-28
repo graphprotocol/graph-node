@@ -7,7 +7,10 @@ use graph::{
     blockchain::{Blockchain, BlockchainKind, BlockchainMap, ChainIdentifier},
     cheap_clone::CheapClone,
     components::{
-        adapter::{ChainId, IdentValidator, MockIdentValidator, NetIdentifiable, ProviderManager},
+        adapter::{
+            ChainId, IdentValidator, MockIdentValidator, NetIdentifiable, ProviderManager,
+            ProviderName,
+        },
         metrics::MetricsRegistry,
     },
     endpoint::EndpointMetrics,
@@ -131,6 +134,48 @@ impl Networks {
         }
     }
 
+    /// Gets the chain identifier from all providers for every chain.
+    /// This function is intended for checking the status of providers and
+    /// whether they match their store counterparts more than for general
+    /// graph-node use. It may trigger verification (which would add delays on hot paths)
+    /// and it will also make calls on potentially unveried providers (this means the providers
+    /// have not been checked for correct net_version and genesis block hash)
+    pub async fn all_chain_identifiers(
+        &self,
+    ) -> Vec<(
+        &ChainId,
+        Vec<(ProviderName, Result<ChainIdentifier, anyhow::Error>)>,
+    )> {
+        let mut out = vec![];
+        for chain_id in self.adapters.iter().map(|a| a.chain_id()).sorted().dedup() {
+            // let mut adapters: Vec<dyn NetIdentifiable> =
+            //     self.rpc_provider_manager.get_all_unverified(chain_id);
+            // adapters.extend(self.firehose_provider_manager.get_all_unverified(chain_id));
+            // adapters.extend(
+            //     self.substreams_provider_manager
+            //         .get_all_unverified(chain_id),
+            // );
+
+            let mut inner = vec![];
+            for adapter in self.rpc_provider_manager.get_all_unverified(chain_id) {
+                inner.push((adapter.provider_name(), adapter.net_identifiers().await));
+            }
+            for adapter in self.firehose_provider_manager.get_all_unverified(chain_id) {
+                inner.push((adapter.provider_name(), adapter.net_identifiers().await));
+            }
+            for adapter in self
+                .substreams_provider_manager
+                .get_all_unverified(chain_id)
+            {
+                inner.push((adapter.provider_name(), adapter.net_identifiers().await));
+            }
+
+            out.push((chain_id, inner));
+        }
+
+        out
+    }
+
     pub async fn chain_identifier(
         &self,
         logger: &Logger,
@@ -142,7 +187,7 @@ impl Networks {
             chain_id: &ChainId,
             provider_type: &str,
         ) -> Result<ChainIdentifier> {
-            for adapter in pm.get_all_unverified(chain_id).unwrap_or_default() {
+            for adapter in pm.get_all_unverified(chain_id) {
                 match adapter.net_identifiers().await {
                     Ok(ident) => return Ok(ident),
                     Err(err) => {

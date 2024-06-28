@@ -435,6 +435,13 @@ pub enum ConfigCommand {
         features: String,
         network: String,
     },
+
+    /// Compare the NetIdentifier of all defined adapters with the existing
+    /// identifiers on the ChainStore. If a ChainStore doesn't exist it will be show
+    /// as an error. It's intended to be run again an environment that has already
+    /// been setup by graph-node.
+    Providers {},
+
     /// Show subgraph-specific settings
     ///
     /// GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS can add a file that contains
@@ -1149,6 +1156,11 @@ async fn main() -> anyhow::Result<()> {
             use ConfigCommand::*;
 
             match cmd {
+                Providers {} => {
+                    let store = ctx.store().block_store();
+                    let networks = ctx.networks(store.cheap_clone()).await?;
+                    commands::config::providers(&networks, store).await
+                }
                 Place { name, network } => {
                     commands::config::place(&ctx.config.deployment, &name, &network)
                 }
