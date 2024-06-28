@@ -761,6 +761,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .cheap_clone()
             .ancestor_block(ptr, offset, root)
             .await?
+            .map(|x| x.0)
             .map(json::from_value)
             .transpose()?;
         Ok(block.map(|block| {
