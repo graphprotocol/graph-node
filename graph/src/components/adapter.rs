@@ -89,6 +89,12 @@ pub enum IdentValidatorError {
 
 impl From<anyhow::Error> for IdentValidatorError {
     fn from(value: anyhow::Error) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&anyhow::Error> for IdentValidatorError {
+    fn from(value: &anyhow::Error) -> Self {
         IdentValidatorError::UnknownError(value.to_string())
     }
 }

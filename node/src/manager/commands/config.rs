@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use graph::{
     anyhow::{bail, Context},
     components::{
-        adapter::{ChainId, IdentValidator, IdentValidatorError, MockIdentValidator},
+        adapter::{ChainId, IdentValidator, IdentValidatorError, MockIdentValidator, ProviderName},
         subgraph::{Setting, Settings},
     },
     endpoint::EndpointMetrics,
@@ -20,29 +20,34 @@ use graph_store_postgres::{BlockStore, DeploymentPlacer};
 
 use crate::{config::Config, network_setup::Networks};
 
-pub async fn providers(networks: &Networks, store: Arc<BlockStore>) -> Result<(), Error> {
+/// Compare the NetIdentifier of all defined adapters with the existing
+/// identifiers on the ChainStore. If a ChainStore doesn't exist it will be show
+/// as an error. It's intended to be run again an environment that has already
+/// been setup by graph-node.
+pub async fn check_provider_genesis(networks: &Networks, store: Arc<BlockStore>) {
     println!("Checking providers");
     for (chain_id, ids) in networks.all_chain_identifiers().await.into_iter() {
         let (_oks, errs): (Vec<_>, Vec<_>) = ids
             .into_iter()
             .map(|(provider, id)| {
                 id.map_err(IdentValidatorError::from)
-                    .and_then(|ref id| store.check_ident(chain_id, id).map(|_| provider))
+                    .and_then(|id| store.check_ident(chain_id, &id))
+                    .map_err(|e| (provider, e))
             })
             .partition_result();
         let errs = errs
             .into_iter()
-            .dedup()
-            .collect::<Vec<IdentValidatorError>>();
+            .dedup_by(|e1, e2| e1.eq(e2))
+            .collect::<Vec<(ProviderName, IdentValidatorError)>>();
 
         if errs.is_empty() {
             println!("chain_id: {}: status: OK", chain_id);
-        } else {
-            println!("chain_id: {}: status: NOK", chain_id);
-            println!("errors: {:?}", errs)
+            continue;
         }
+
+        println!("chain_id: {}: status: NOK", chain_id);
+        println!("errors: {:?}", errs);
     }
-    Ok(())
 }
 
 pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result<(), Error> {

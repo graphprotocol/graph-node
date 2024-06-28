@@ -148,14 +148,6 @@ impl Networks {
     )> {
         let mut out = vec![];
         for chain_id in self.adapters.iter().map(|a| a.chain_id()).sorted().dedup() {
-            // let mut adapters: Vec<dyn NetIdentifiable> =
-            //     self.rpc_provider_manager.get_all_unverified(chain_id);
-            // adapters.extend(self.firehose_provider_manager.get_all_unverified(chain_id));
-            // adapters.extend(
-            //     self.substreams_provider_manager
-            //         .get_all_unverified(chain_id),
-            // );
-
             let mut inner = vec![];
             for adapter in self.rpc_provider_manager.get_all_unverified(chain_id) {
                 inner.push((adapter.provider_name(), adapter.net_identifiers().await));
