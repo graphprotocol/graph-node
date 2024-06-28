@@ -3,14 +3,19 @@ use std::sync::Arc;
 use diesel::sql_query;
 use diesel::Connection;
 use diesel::RunQueryDsl;
+use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
+use graph::blockchain::ChainIdentifier;
 use graph::cheap_clone::CheapClone;
+use graph::components::adapter::ChainId;
+use graph::components::adapter::IdentValidator;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
 use graph::prelude::EthereumBlock;
 use graph::prelude::LightEthereumBlockExt as _;
 use graph::prelude::{anyhow, anyhow::bail};
+use graph::slog::Logger;
 use graph::{
     components::store::BlockStore as _, prelude::anyhow::Error, prelude::serde_json as json,
 };
@@ -24,6 +29,8 @@ use graph_store_postgres::Shard;
 use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
+
+use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
@@ -152,6 +159,37 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
     store.drop_chain(&name)?;
 
     Ok(())
+}
+
+pub async fn update_chain_genesis(
+    networks: &Networks,
+    store: Arc<BlockStore>,
+    logger: &Logger,
+    chain_id: ChainId,
+    genesis_hash: BlockHash,
+    force: bool,
+) -> Result<(), Error> {
+    let ident = networks.chain_identifier(logger, &chain_id).await?;
+    if !genesis_hash.eq(&ident.genesis_block_hash) {
+        println!(
+            "Expected adapter for chain {} to return genesis hash {} but got {}",
+            chain_id, genesis_hash, ident.genesis_block_hash
+        );
+        if !force {
+            println!("Not performing update");
+            return Ok(());
+        } else {
+            println!("--force used, updating anyway");
+        }
+    }
+
+    store.update_ident(
+        &chain_id,
+        &ChainIdentifier {
+            net_version: ident.net_version,
+            genesis_block_hash: genesis_hash,
+        },
+    )
 }
 
 pub fn change_block_cache_shard(

@@ -65,7 +65,7 @@ struct Ident {
     chain_id: ChainId,
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum IdentValidatorError {
     #[error("database error: {0}")]
     UnknownError(String),
@@ -89,6 +89,12 @@ pub enum IdentValidatorError {
 
 impl From<anyhow::Error> for IdentValidatorError {
     fn from(value: anyhow::Error) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&anyhow::Error> for IdentValidatorError {
+    fn from(value: &anyhow::Error) -> Self {
         IdentValidatorError::UnknownError(value.to_string())
     }
 }
@@ -308,13 +314,12 @@ impl<T: NetIdentifiable + Clone + 'static> ProviderManager<T> {
     /// adapters that failed verification. For the most part this should be fine since ideally
     /// get_all would have been used before. Nevertheless, it is possible that a misconfigured
     /// adapter is returned from this list even after validation.
-    pub fn get_all_unverified(&self, chain_id: &ChainId) -> Result<Vec<&T>, ProviderManagerError> {
-        Ok(self
-            .inner
+    pub fn get_all_unverified(&self, chain_id: &ChainId) -> Vec<&T> {
+        self.inner
             .adapters
             .get(chain_id)
             .map(|v| v.iter().map(|v| &v.1).collect())
-            .unwrap_or_default())
+            .unwrap_or_default()
     }
 
     /// get_all will trigger the verification of the endpoints for the provided chain_id, hence the

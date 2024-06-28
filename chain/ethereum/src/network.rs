@@ -172,10 +172,7 @@ impl EthereumNetworkAdapters {
         &self,
         required_capabilities: &NodeCapabilities,
     ) -> impl Iterator<Item = &EthereumNetworkAdapter> + '_ {
-        let all = self
-            .manager
-            .get_all_unverified(&self.chain_id)
-            .unwrap_or_default();
+        let all = self.manager.get_all_unverified(&self.chain_id);
 
         Self::available_with_capabilities(all, required_capabilities)
     }

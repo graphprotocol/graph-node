@@ -31,6 +31,7 @@ use graph::prelude::{
 use graph::{constraint_violation, ensure};
 
 use self::recent_blocks_cache::RecentBlocksCache;
+use crate::block_store::primary;
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
     connection_pool::ConnectionPool,
@@ -2304,15 +2305,25 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+        use primary::chains as c;
         use public::ethereum_networks as n;
 
         let mut conn = self.pool.get()?;
-        diesel::update(n::table.filter(n::name.eq(&self.chain)))
-            .set((
-                n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
-                n::net_version.eq(&ident.net_version),
-            ))
-            .execute(&mut conn)?;
+        conn.transaction(|conn| {
+            diesel::update(n::table.filter(n::name.eq(&self.chain)))
+                .set((
+                    n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                    n::net_version.eq(&ident.net_version),
+                ))
+                .execute(conn)?;
+
+            diesel::update(c::table.filter(c::name.eq(&self.chain)))
+                .set((
+                    c::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                    c::net_version.eq(&ident.net_version),
+                ))
+                .execute(conn)
+        })?;
 
         Ok(())
     }
