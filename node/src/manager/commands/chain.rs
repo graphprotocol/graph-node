@@ -8,12 +8,8 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
-use graph::prelude::EthereumBlock;
-use graph::prelude::LightEthereumBlockExt as _;
 use graph::prelude::{anyhow, anyhow::bail};
-use graph::{
-    components::store::BlockStore as _, prelude::anyhow::Error, prelude::serde_json as json,
-};
+use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
 use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
@@ -111,9 +107,7 @@ pub async fn info(
         Some(head_block) => chain_store
             .ancestor_block(head_block.clone(), offset, None)
             .await?
-            .map(json::from_value::<EthereumBlock>)
-            .transpose()?
-            .map(|b| b.block.block_ptr()),
+            .map(|x| x.1),
     };
 
     row("name", chain.name);

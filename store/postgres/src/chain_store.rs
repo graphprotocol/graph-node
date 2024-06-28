@@ -2133,7 +2133,7 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<json::Value>, Error> {
+    ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
         ensure!(
             block_ptr.number >= offset,
             "block offset {} for block `{}` points to before genesis block",
@@ -2142,14 +2142,18 @@ impl ChainStoreTrait for ChainStore {
         );
 
         // Check the local cache first.
-        if let Some(data) = self.recent_blocks_cache.get_ancestor(&block_ptr, offset) {
-            return Ok(data.1);
+        let block_cache = self
+            .recent_blocks_cache
+            .get_ancestor(&block_ptr, offset)
+            .and_then(|x| Some(x.0).zip(x.1));
+        if let Some((ptr, data)) = block_cache {
+            return Ok(Some((data, ptr)));
         }
 
         let block_ptr_clone = block_ptr.clone();
         let chain_store = self.cheap_clone();
-        Ok(self
-            .pool
+
+        self.pool
             .with_conn(move |conn, _| {
                 chain_store
                     .storage
@@ -2157,8 +2161,8 @@ impl ChainStoreTrait for ChainStore {
                     .map_err(StoreError::from)
                     .map_err(CancelableError::from)
             })
-            .await?
-            .map(|b| b.0))
+            .await
+            .map_err(Into::into)
     }
 
     fn cleanup_cached_blocks(

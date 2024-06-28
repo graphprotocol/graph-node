@@ -497,7 +497,7 @@ pub trait ChainStore: Send + Sync + 'static {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<serde_json::Value>, Error>;
+    ) -> Result<Option<(serde_json::Value, BlockPtr)>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained
