@@ -414,6 +414,8 @@ impl FirehoseEndpoint {
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
         }
+        client = client
+            .max_decoding_message_size(1024 * 1024 * ENV_VARS.firehose_grpc_max_decode_size_mb);
 
         client
     }
@@ -469,6 +471,8 @@ impl FirehoseEndpoint {
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
         }
+        client = client
+            .max_decoding_message_size(1024 * 1024 * ENV_VARS.firehose_grpc_max_decode_size_mb);
 
         client
     }
