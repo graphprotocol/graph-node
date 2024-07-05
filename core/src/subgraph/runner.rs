@@ -1207,6 +1207,11 @@ where
 
         debug!(logger, "Start processing wasm block";);
 
+        self.metrics
+            .stream
+            .deployment_head
+            .set(block_ptr.number as f64);
+
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
