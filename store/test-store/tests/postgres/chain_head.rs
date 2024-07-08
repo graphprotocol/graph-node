@@ -305,10 +305,17 @@ fn check_ancestor(
         offset,
         root,
     ))?
-    .map(json::from_value::<EthereumBlock>)
-    .transpose()?
     .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
-    let act_hash = format!("{:x}", act.block.hash.unwrap());
+
+    let act_ptr = act.1;
+    let exp_ptr = exp.block_ptr();
+
+    if exp_ptr != act_ptr {
+        return Err(anyhow!("expected ptr `{}` but got `{}`", exp_ptr, act_ptr));
+    }
+
+    let act_block = json::from_value::<EthereumBlock>(act.0)?;
+    let act_hash = format!("{:x}", act_block.block.hash.unwrap());
     let exp_hash = &exp.hash;
 
     if &act_hash != exp_hash {
