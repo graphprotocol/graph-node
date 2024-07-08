@@ -7,9 +7,9 @@ on:
         type: choice
         description: 'Graph Node version'
         required: true
-        default: 'v0.35.1'
+        default: 'v0.35.0'
         options:
-          - v0.35.1
+          - v0.35.0
 
 env:
   VERSION: ${{ github.event.inputs.version }}
