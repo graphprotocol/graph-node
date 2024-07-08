@@ -16,7 +16,7 @@ path = "src/bin/manager.rs"
 env_logger = "0.11.3"
 clap.workspace = true
 git-testament = "0.2"
-lazy_static = "1.2.0"
+lazy_static = "1.5.0"
 url = "2.5.2"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
