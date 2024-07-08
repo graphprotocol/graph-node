@@ -22,7 +22,7 @@ use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
 use async_trait::async_trait;
 use futures03::StreamExt;
-use http::uri::{Scheme, Uri};
+use http0::uri::{Scheme, Uri};
 use itertools::Itertools;
 use prost::Message;
 use slog::Logger;

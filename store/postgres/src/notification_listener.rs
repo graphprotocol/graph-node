@@ -414,7 +414,7 @@ impl NotificationSender {
         use diesel::RunQueryDsl;
         use public::large_notifications::dsl::*;
 
-        sql_function! {
+        define_sql_function! {
             fn pg_notify(channel: Text, msg: Text)
         }
 

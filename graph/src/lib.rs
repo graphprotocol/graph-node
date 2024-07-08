@@ -49,6 +49,7 @@ pub use futures01;
 pub use futures03;
 pub use graph_derive as derive;
 pub use http;
+pub use http0;
 pub use http_body_util;
 pub use hyper;
 pub use hyper_util;
