@@ -1,0 +1,67 @@
+
+name: Release Graph Node
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        type: choice
+        description: 'Graph Node version'
+        required: true
+        default: 'v0.35.0'
+        options:
+          - v0.35.0
+
+env:
+  VERSION: ${{ github.event.inputs.version }}
+
+jobs:
+  release-graphnode:
+    runs-on: ubuntu-22.04
+    steps:
+
+      - name: Clone Graph Node repo
+        uses: actions/checkout@v4
+        with:
+          repository: 'ormi-labs/ormi-graph-node'
+          ref: ${{ env.VERSION }}
+
+      - name: Install lld
+        run: sudo apt-get install -y lld protobuf-compiler
+
+      # https://github.com/marketplace/actions/rust-toolchain
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.78.0
+          override: true
+
+      - name: Show Rust version
+        run: rustc --version
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --package graph-node
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          release_name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+
+      # https://github.com/nanoufo/action-upload-artifacts-and-release-assets
+      - name: Upload Release Assets
+        uses: nanoufo/action-upload-artifacts-and-release-assets@v2
+        with:
+          path: |
+            target/release/graph-node
+            target/release/graphman
+          if-no-files-found: error
+          upload-release-files: true
+          release-upload-url: ${{ steps.create_release.outputs.upload_url }}
