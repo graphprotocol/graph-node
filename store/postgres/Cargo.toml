@@ -15,7 +15,7 @@ diesel_migrations = { workspace = true }
 fallible-iterator = "0.3.0"
 graph = { path = "../../graph" }
 Inflector = "0.11.3"
-lazy_static = "1.1"
+lazy_static = "1.5"
 lru_time_cache = "0.11"
 maybe-owned = "0.3.4"
 postgres = "0.19.1"
