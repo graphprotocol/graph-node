@@ -8,7 +8,7 @@ async-trait = "0.1.50"
 ethabi = "17.2"
 hex = "0.4.3"
 graph = { path = "../../graph" }
-bs58 = "0.4.0"
+bs58 = "0.5.1"
 graph-runtime-derive = { path = "../derive" }
 semver = "1.0.23"
 uuid = { version = "1.9.1", features = ["v4"] }
