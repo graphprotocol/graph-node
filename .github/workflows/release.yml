@@ -4,12 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        type: choice
-        description: 'Graph Node version'
         required: true
-        default: 'v0.35.0'
-        options:
-          - v0.35.0
+        type: string
+        description: 'Branch name or version tag'
 
 env:
   VERSION: ${{ github.event.inputs.version }}
