@@ -92,7 +92,7 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-pat
 ] }
 serde_plain = "1.0.2"
 csv = "1.3.0"
-object_store = { version = "0.9.1", features = ["gcp"] }
+object_store = { version = "0.10.1", features = ["gcp"] }
 
 [dev-dependencies]
 clap.workspace = true
