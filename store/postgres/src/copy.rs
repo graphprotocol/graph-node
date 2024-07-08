@@ -750,15 +750,21 @@ impl Connection {
         self.conn.transaction(|conn| f(conn))
     }
 
+    /// Copy private data sources if the source uses a schema version that
+    /// has a private data sources table. The copying is done in its own
+    /// transaction.
     fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
         if state.src.site.schema_version.private_data_sources() {
-            DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                &mut self.conn,
-                &DataSourcesTable::new(state.dst.site.namespace.clone()),
-                state.target_block.number,
-                &self.src_manifest_idx_and_name,
-                &self.dst_manifest_idx_and_name,
-            )?;
+            let conn = &mut self.conn;
+            conn.transaction(|conn| {
+                DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
+                    conn,
+                    &DataSourcesTable::new(state.dst.site.namespace.clone()),
+                    state.target_block.number,
+                    &self.src_manifest_idx_and_name,
+                    &self.dst_manifest_idx_and_name,
+                )
+            })?;
         }
         Ok(())
     }

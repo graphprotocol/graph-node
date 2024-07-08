@@ -9,7 +9,7 @@ use diesel::{
 };
 
 use graph::{
-    anyhow::Context,
+    anyhow::{anyhow, Context},
     components::store::{write, StoredDynamicDataSource},
     constraint_violation,
     data_source::CausalityRegion,
@@ -258,12 +258,24 @@ impl DataSourcesTable {
             let name = &src_manifest_idx_and_name
                 .iter()
                 .find(|(idx, _)| idx == &src_manifest_idx)
-                .context("manifest_idx not found in src")?
+                .with_context(|| {
+                    anyhow!(
+                        "the source {} does not have a template with index {}",
+                        self.namespace,
+                        src_manifest_idx
+                    )
+                })?
                 .1;
             let dst_manifest_idx = dst_manifest_idx_and_name
                 .iter()
                 .find(|(_, n)| n == name)
-                .context("name not found in dst")?
+                .with_context(|| {
+                    anyhow!(
+                        "the destination {} is missing a template with name {}. The source {} created one at block {:?}",
+                        dst.namespace,
+                        name, self.namespace, block_range.0
+                    )
+                })?
                 .0;
 
             let query = format!(
