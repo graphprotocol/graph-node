@@ -37,7 +37,7 @@ to connect to. By default, it will use `mainnet:http://host.docker.internal:8545
 in order to connect to an Ethereum node running on your host machine.
 You can replace this with anything else in `docker-compose.yaml`.
 
-After you have set up an Ethereum node—e.g. Ganache or Parity—simply
+After you have set up an Ethereum node—e.g. Hardhat, simply
 clone this repository and run
 
 ```sh
