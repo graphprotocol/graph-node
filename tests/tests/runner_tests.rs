@@ -877,7 +877,7 @@ async fn file_data_sources() {
 
         chain.set_block_stream(blocks);
 
-        let message = "error while executing at wasm backtrace:\t    0: 0x3490 - <unknown>!generated/schema/Foo#save\t    1: 0x3e1c - <unknown>!src/mapping/handleFile: entity type `Foo` is not on the 'entities' list for data source `File`. Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`. in handler `handleFile` at block #5 () at block #5 (0000000000000000000000000000000000000000000000000000000000000005)";
+        let message = "error while executing at wasm backtrace:\t    0: 0x3490 - <unknown>!generated/schema/Foo#save\t    1: 0x3eb2 - <unknown>!src/mapping/handleFile: entity type `Foo` is not on the 'entities' list for data source `File`. Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`. in handler `handleFile` at block #5 () at block #5 (0000000000000000000000000000000000000000000000000000000000000005)";
 
         let err = ctx.start_and_sync_to_error(block_5.ptr()).await;
 

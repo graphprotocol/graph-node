@@ -107,44 +107,40 @@ export function handleTestEvent(event: TestEvent): void {
 }
 
 export function handleFile(data: Bytes): void {
-  log.info("handleFile {}", [dataSource.stringParam()]);
+  log.info('handleFile {}', [dataSource.stringParam()]);
   let context = dataSource.context();
 
-  if (context.isSet("command")) {
-    let contextCommand = context.getString("command");
-
-    if (contextCommand == SPAWN_FDS_FROM_OFFCHAIN_HANDLER) {
-      let hash = context.getString("hash");
-      log.info("Creating file data source from handleFile: {}", [hash]);
-      dataSource.createWithContext("File", [hash], new DataSourceContext());
-    }
-
-    if (contextCommand == ONCHAIN_FROM_OFFCHAIN) {
-      log.info("Creating onchain data source from offchain handler", []);
-      let address = context.getString("address");
-      dataSource.create("OnChainDataSource", [address]);
-    }
-
-    if (contextCommand == CREATE_UNDEFINED_ENTITY) {
-      log.info("Creating undefined entity", []);
-      let entity = new Foo(dataSource.stringParam());
-      entity.save();
-    }
-
-    if (contextCommand == CREATE_FOO) {
-      log.info("Creating FileEntity with relation to Foo", []);
-      let entity = new FileEntity(dataSource.stringParam());
-      entity.foo = dataSource.stringParam();
-      entity.content = data.toString();
-      entity.save();
-    }
-  } else {
-    log.info("Creating FileEntity from handleFile: {} , content : {}", [
+  if (!context.isSet('command')) {
+    log.info('Creating FileEntity from handleFile: {} , content : {}', [
       dataSource.stringParam(),
       data.toString(),
     ]);
 
     let entity = new FileEntity(dataSource.stringParam());
+    entity.content = data.toString();
+    entity.save();
+
+    return;
+  }
+
+  let contextCommand = context.getString('command');
+
+  if (contextCommand == SPAWN_FDS_FROM_OFFCHAIN_HANDLER) {
+    let hash = context.getString('hash');
+    log.info('Creating file data source from handleFile: {}', [hash]);
+    dataSource.createWithContext('File', [hash], new DataSourceContext());
+  } else if (contextCommand == ONCHAIN_FROM_OFFCHAIN) {
+    log.info('Creating onchain data source from offchain handler', []);
+    let address = context.getString('address');
+    dataSource.create('OnChainDataSource', [address]);
+  } else if (contextCommand == CREATE_UNDEFINED_ENTITY) {
+    log.info('Creating undefined entity', []);
+    let entity = new Foo(dataSource.stringParam());
+    entity.save();
+  } else if (contextCommand == CREATE_FOO) {
+    log.info('Creating FileEntity with relation to Foo', []);
+    let entity = new FileEntity(dataSource.stringParam());
+    entity.foo = dataSource.stringParam();
     entity.content = data.toString();
     entity.save();
   }
