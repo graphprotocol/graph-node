@@ -11,10 +11,10 @@ use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
     Prune, LATEST_VERSION, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8,
-    SPEC_VERSION_0_0_9, SPEC_VERSION_1_0_0, SPEC_VERSION_1_2_0,
+    SPEC_VERSION_0_0_9, SPEC_VERSION_1_0_0, SPEC_VERSION_1_2_0, SPEC_VERSION_1_3_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
-use graph::data_source::DataSourceTemplate;
+use graph::data_source::{DataSourceEnum, DataSourceTemplate};
 use graph::entity;
 use graph::env::ENV_VARS;
 use graph::prelude::web3::types::H256;
@@ -166,8 +166,50 @@ specVersion: 0.0.7
     let data_source = match &manifest.templates[0] {
         DataSourceTemplate::Offchain(ds) => ds,
         DataSourceTemplate::Onchain(_) => unreachable!(),
+        DataSourceTemplate::Subgraph(_) => unreachable!(),
     };
     assert_eq!(data_source.kind, OffchainDataSourceKind::Ipfs);
+}
+
+#[tokio::test]
+async fn subgraph_ds_manifest() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmUVaWpdKgcxBov1jHEa8dr46d2rkVzfHuZFu4fXJ4sFse'
+      startBlock: 0
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: User
+specVersion: 1.3.0
+";
+
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+
+    assert_eq!("Qmmanifest", manifest.id.as_str());
+    assert_eq!(manifest.data_sources.len(), 1);
+    let data_source = &manifest.data_sources[0];
+    match data_source {
+        DataSourceEnum::Subgraph(ds) => {
+            assert_eq!(ds.name, "SubgraphSource");
+        }
+        _ => panic!("Expected a subgraph data source"),
+    }
 }
 
 #[tokio::test]

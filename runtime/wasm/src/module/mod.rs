@@ -81,6 +81,7 @@ where
         match self {
             MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas),
             MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas),
+            MappingTrigger::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 }
