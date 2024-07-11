@@ -138,35 +138,38 @@ where
             );
         }
 
-        let is_onchain = data_source.is_onchain();
         let Some(host) = self.new_host(logger.clone(), data_source)? else {
             return Ok(None);
         };
 
         // Check for duplicates and add the host.
-        if is_onchain {
-            // `onchain_hosts` will remain ordered by the creation block.
-            // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
-            ensure!(
-                self.onchain_hosts
-                    .last()
-                    .and_then(|h| h.creation_block_number())
-                    <= host.data_source().creation_block(),
-            );
+        match host.data_source() {
+            DataSource::Onchain(_) => {
+                // `onchain_hosts` will remain ordered by the creation block.
+                // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+                ensure!(
+                    self.onchain_hosts
+                        .last()
+                        .and_then(|h| h.creation_block_number())
+                        <= host.data_source().creation_block(),
+                );
 
-            if self.onchain_hosts.contains(&host) {
-                Ok(None)
-            } else {
-                self.onchain_hosts.push(host.cheap_clone());
-                Ok(Some(host))
+                if self.onchain_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.onchain_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
             }
-        } else {
-            if self.offchain_hosts.contains(&host) {
-                Ok(None)
-            } else {
-                self.offchain_hosts.push(host.cheap_clone());
-                Ok(Some(host))
+            DataSource::Offchain(_) => {
+                if self.offchain_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.offchain_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
             }
+            DataSource::Subgraph(_) => Ok(None),
         }
     }
 
