@@ -1,0 +1,19 @@
+specVersion: 1.3.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: subgraph
+    name: Contract
+    network: test
+    source:
+      address: 'QmHash'
+      startBlock: 6082461
+    mapping:
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Gravatar
+      handlers:
+        - handler: handleBlock
+          entity: Gravatar
+      file: ./src/mapping.ts
