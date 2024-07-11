@@ -1,6 +1,8 @@
 pub mod causality_region;
 pub mod offchain;
+pub mod subgraph;
 
+pub use self::DataSource as DataSourceEnum;
 pub use causality_region::CausalityRegion;
 
 #[cfg(test)]
@@ -17,6 +19,7 @@ use crate::{
         store::{BlockNumber, StoredDynamicDataSource},
     },
     data_source::offchain::OFFCHAIN_KINDS,
+    data_source::subgraph::SUBGRAPH_DS_KIND,
     prelude::{CheapClone as _, DataSourceContext},
     schema::{EntityType, InputSchema},
 };
@@ -35,6 +38,7 @@ use thiserror::Error;
 pub enum DataSource<C: Blockchain> {
     Onchain(C::DataSource),
     Offchain(offchain::DataSource),
+    Subgraph(subgraph::DataSource),
 }
 
 #[derive(Error, Debug)]
@@ -89,6 +93,23 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
+            Self::Subgraph(_) => None,
+        }
+    }
+
+    pub fn as_subgraph(&self) -> Option<&subgraph::DataSource> {
+        match self {
+            Self::Onchain(_) => None,
+            Self::Offchain(_) => None,
+            Self::Subgraph(ds) => Some(ds),
+        }
+    }
+
+    pub fn is_chain_based(&self) -> bool {
+        match self {
+            Self::Onchain(_) => true,
+            Self::Offchain(_) => false,
+            Self::Subgraph(_) => true,
         }
     }
 
@@ -96,6 +117,23 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(_) => None,
             Self::Offchain(ds) => Some(ds),
+            Self::Subgraph(_) => None,
+        }
+    }
+
+    pub fn network(&self) -> Option<&str> {
+        match self {
+            DataSourceEnum::Onchain(ds) => ds.network(),
+            DataSourceEnum::Offchain(_) => None,
+            DataSourceEnum::Subgraph(ds) => ds.network(),
+        }
+    }
+
+    pub fn start_block(&self) -> Option<BlockNumber> {
+        match self {
+            DataSourceEnum::Onchain(ds) => Some(ds.start_block()),
+            DataSourceEnum::Offchain(_) => None,
+            DataSourceEnum::Subgraph(ds) => Some(ds.source.start_block),
         }
     }
 
@@ -111,6 +149,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.address().map(ToOwned::to_owned),
             Self::Offchain(ds) => ds.address(),
+            Self::Subgraph(ds) => ds.address(),
         }
     }
 
@@ -118,6 +157,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.name(),
             Self::Offchain(ds) => &ds.name,
+            Self::Subgraph(ds) => &ds.name,
         }
     }
 
@@ -125,6 +165,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.kind().to_owned(),
             Self::Offchain(ds) => ds.kind.to_string(),
+            Self::Subgraph(ds) => ds.kind.clone(),
         }
     }
 
@@ -132,6 +173,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.min_spec_version(),
             Self::Offchain(ds) => ds.min_spec_version(),
+            Self::Subgraph(ds) => ds.min_spec_version(),
         }
     }
 
@@ -139,6 +181,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.end_block(),
             Self::Offchain(_) => None,
+            Self::Subgraph(_) => None,
         }
     }
 
@@ -146,6 +189,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.creation_block(),
             Self::Offchain(ds) => ds.creation_block,
+            Self::Subgraph(ds) => ds.creation_block,
         }
     }
 
@@ -153,6 +197,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.context(),
             Self::Offchain(ds) => ds.context.clone(),
+            Self::Subgraph(ds) => ds.context.clone(),
         }
     }
 
@@ -160,6 +205,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.api_version(),
             Self::Offchain(ds) => ds.mapping.api_version.clone(),
+            Self::Subgraph(ds) => ds.mapping.api_version.clone(),
         }
     }
 
@@ -167,6 +213,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.runtime(),
             Self::Offchain(ds) => Some(ds.mapping.runtime.cheap_clone()),
+            Self::Subgraph(ds) => Some(ds.mapping.runtime.cheap_clone()),
         }
     }
 
@@ -176,6 +223,7 @@ impl<C: Blockchain> DataSource<C> {
             // been enforced.
             Self::Onchain(_) => EntityTypeAccess::Any,
             Self::Offchain(ds) => EntityTypeAccess::Restriced(ds.mapping.entities.clone()),
+            Self::Subgraph(_) => EntityTypeAccess::Any,
         }
     }
 
@@ -183,6 +231,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.handler_kinds(),
             Self::Offchain(ds) => vec![ds.handler_kind()].into_iter().collect(),
+            Self::Subgraph(ds) => vec![ds.handler_kind()].into_iter().collect(),
         }
     }
 
@@ -190,6 +239,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.has_declared_calls(),
             Self::Offchain(_) => false,
+            Self::Subgraph(_) => false,
         }
     }
 
@@ -209,6 +259,7 @@ impl<C: Blockchain> DataSource<C> {
             }
             (Self::Onchain(_), TriggerData::Offchain(_))
             | (Self::Offchain(_), TriggerData::Onchain(_)) => Ok(None),
+            (Self::Subgraph(_), _) => todo!(), // TODO(krishna)
         }
     }
 
@@ -224,6 +275,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.as_stored_dynamic_data_source(),
             Self::Offchain(ds) => ds.as_stored_dynamic_data_source(),
+            Self::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 
@@ -240,6 +292,7 @@ impl<C: Blockchain> DataSource<C> {
                 offchain::DataSource::from_stored_dynamic_data_source(template, stored)
                     .map(DataSource::Offchain)
             }
+            DataSourceTemplate::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 
@@ -247,6 +300,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.validate(spec_version),
             Self::Offchain(_) => vec![],
+            Self::Subgraph(_) => vec![], // TODO(krishna)
         }
     }
 
@@ -254,6 +308,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(_) => CausalityRegion::ONCHAIN,
             Self::Offchain(ds) => ds.causality_region,
+            Self::Subgraph(_) => CausalityRegion::ONCHAIN,
         }
     }
 }
@@ -262,6 +317,7 @@ impl<C: Blockchain> DataSource<C> {
 pub enum UnresolvedDataSource<C: Blockchain> {
     Onchain(C::UnresolvedDataSource),
     Offchain(offchain::UnresolvedDataSource),
+    Subgraph(subgraph::UnresolvedDataSource),
 }
 
 impl<C: Blockchain> UnresolvedDataSource<C> {
@@ -276,6 +332,10 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                 .resolve(resolver, logger, manifest_idx)
                 .await
                 .map(DataSource::Onchain),
+            Self::Subgraph(unresolved) => unresolved
+                .resolve(resolver, logger, manifest_idx)
+                .await
+                .map(DataSource::Subgraph),
             Self::Offchain(_unresolved) => {
                 anyhow::bail!(
                     "static file data sources are not yet supported, \\
@@ -299,6 +359,7 @@ pub struct DataSourceTemplateInfo {
 pub enum DataSourceTemplate<C: Blockchain> {
     Onchain(C::DataSourceTemplate),
     Offchain(offchain::DataSourceTemplate),
+    Subgraph(subgraph::DataSourceTemplate),
 }
 
 impl<C: Blockchain> DataSourceTemplate<C> {
@@ -306,6 +367,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             DataSourceTemplate::Onchain(template) => template.info(),
             DataSourceTemplate::Offchain(template) => template.clone().into(),
+            DataSourceTemplate::Subgraph(template) => template.clone().into(),
         }
     }
 
@@ -313,6 +375,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
+            Self::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 
@@ -320,6 +383,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(_) => None,
             Self::Offchain(t) => Some(t),
+            Self::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 
@@ -327,6 +391,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
+            Self::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 
@@ -334,6 +399,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => &ds.name(),
             Self::Offchain(ds) => &ds.name,
+            Self::Subgraph(ds) => &ds.name,
         }
     }
 
@@ -341,6 +407,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => ds.api_version(),
             Self::Offchain(ds) => ds.mapping.api_version.clone(),
+            Self::Subgraph(ds) => ds.mapping.api_version.clone(),
         }
     }
 
@@ -348,6 +415,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => ds.runtime(),
             Self::Offchain(ds) => Some(ds.mapping.runtime.clone()),
+            Self::Subgraph(ds) => Some(ds.mapping.runtime.clone()),
         }
     }
 
@@ -355,6 +423,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => ds.manifest_idx(),
             Self::Offchain(ds) => ds.manifest_idx,
+            Self::Subgraph(ds) => ds.manifest_idx,
         }
     }
 
@@ -362,6 +431,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => ds.kind().to_string(),
             Self::Offchain(ds) => ds.kind.to_string(),
+            Self::Subgraph(ds) => ds.kind.clone(),
         }
     }
 }
@@ -370,6 +440,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
 pub enum UnresolvedDataSourceTemplate<C: Blockchain> {
     Onchain(C::UnresolvedDataSourceTemplate),
     Offchain(offchain::UnresolvedDataSourceTemplate),
+    Subgraph(subgraph::UnresolvedDataSourceTemplate),
 }
 
 impl<C: Blockchain> Default for UnresolvedDataSourceTemplate<C> {
@@ -395,6 +466,10 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
                 .resolve(resolver, logger, manifest_idx, schema)
                 .await
                 .map(DataSourceTemplate::Offchain),
+            Self::Subgraph(ds) => ds
+                .resolve(resolver, logger, manifest_idx)
+                .await
+                .map(DataSourceTemplate::Subgraph),
         }
     }
 }
@@ -490,6 +565,7 @@ impl<C: Blockchain> TriggerData<C> {
 pub enum MappingTrigger<C: Blockchain> {
     Onchain(C::MappingTrigger),
     Offchain(offchain::TriggerData),
+    Subgraph(subgraph::TriggerData),
 }
 
 impl<C: Blockchain> MappingTrigger<C> {
@@ -497,6 +573,7 @@ impl<C: Blockchain> MappingTrigger<C> {
         match self {
             Self::Onchain(trigger) => Some(trigger.error_context()),
             Self::Offchain(_) => None, // TODO: Add error context for offchain triggers
+            Self::Subgraph(_) => None, // TODO(krishna)
         }
     }
 
@@ -504,6 +581,7 @@ impl<C: Blockchain> MappingTrigger<C> {
         match self {
             Self::Onchain(trigger) => Some(trigger),
             Self::Offchain(_) => None,
+            Self::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 }
@@ -515,6 +593,7 @@ macro_rules! clone_data_source {
                 match self {
                     Self::Onchain(ds) => Self::Onchain(ds.clone()),
                     Self::Offchain(ds) => Self::Offchain(ds.clone()),
+                    Self::Subgraph(ds) => Self::Subgraph(ds.clone()),
                 }
             }
         }
@@ -541,6 +620,10 @@ macro_rules! deserialize_data_source {
                     offchain::$t::deserialize(map.into_deserializer())
                         .map_err(serde::de::Error::custom)
                         .map($t::Offchain)
+                } else if SUBGRAPH_DS_KIND == kind {
+                    subgraph::$t::deserialize(map.into_deserializer())
+                        .map_err(serde::de::Error::custom)
+                        .map($t::Subgraph)
                 } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
                     C::$t::deserialize(map.into_deserializer())
                         .map_err(serde::de::Error::custom)
