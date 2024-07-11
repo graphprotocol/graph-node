@@ -1079,6 +1079,24 @@ async fn parse_data_source_context() {
 }
 
 #[tokio::test]
+async fn subgraph_data_sources() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("subgraph-data-sources", "subgraph-data-sources").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(stop_block).await;
+}
+
+#[tokio::test]
 async fn retry_create_ds() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("retry_create_ds", "data-source-revert2").await;
