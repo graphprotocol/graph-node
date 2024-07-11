@@ -54,6 +54,9 @@ pub const SPEC_VERSION_1_1_0: Version = Version::new(1, 1, 0);
 // Enables eth call declarations and indexed arguments(topics) filtering in manifest
 pub const SPEC_VERSION_1_2_0: Version = Version::new(1, 2, 0);
 
+// Enables subgraphs as datasource
+pub const SPEC_VERSION_1_3_0: Version = Version::new(1, 3, 0);
+
 // The latest spec version available
 pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_2_0;
 
