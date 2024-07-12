@@ -12,7 +12,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::substreams_block_stream::SubstreamsLogData;
-use super::{Block, BlockPtr, BlockTime, Blockchain};
+use super::{Block, BlockPtr, BlockTime, Blockchain, TriggerFilterWrapper};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -146,6 +146,16 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<C::TriggerFilter>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<C>>>;
+
+    async fn build_subgraph_block_stream(
+        &self,
+        chain: &C,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<&TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<C>>>;
 }

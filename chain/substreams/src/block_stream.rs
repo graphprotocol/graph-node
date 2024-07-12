@@ -7,7 +7,7 @@ use graph::{
             BlockStream, BlockStreamBuilder as BlockStreamBuilderTrait, FirehoseCursor,
         },
         substreams_block_stream::SubstreamsBlockStream,
-        Blockchain,
+        Blockchain, TriggerFilterWrapper,
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
@@ -94,6 +94,18 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilter>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        unimplemented!()
+    }
+
+    async fn build_subgraph_block_stream(
+        &self,
+        _chain: &Chain,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<&TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         unimplemented!()
