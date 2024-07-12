@@ -1,5 +1,5 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::{BlockIngestor, NoopDecoderHook};
+use graph::blockchain::{BlockIngestor, NoopDecoderHook, TriggerFilterWrapper};
 use graph::components::adapter::ChainId;
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
@@ -113,7 +113,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
@@ -129,7 +129,10 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            adapter,
+            filter: filter.filter.clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
