@@ -3,7 +3,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{
     BasicBlockchainBuilder, Block, BlockIngestor, BlockchainBuilder, BlockchainKind,
-    EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter,
+    EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
@@ -119,7 +119,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
@@ -135,7 +135,10 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            adapter,
+            filter: filter.filter.clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,

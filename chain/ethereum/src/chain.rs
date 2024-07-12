@@ -3,7 +3,8 @@ use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
-    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggersAdapterSelector,
+    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggerFilterWrapper,
+    TriggersAdapterSelector,
 };
 use graph::components::adapter::ChainId;
 use graph::components::store::DeploymentCursorTracker;
@@ -409,7 +410,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let current_ptr = store.block_ptr();
@@ -421,7 +422,7 @@ impl Blockchain for Chain {
                         deployment,
                         start_blocks,
                         current_ptr,
-                        filter,
+                        filter.filter.clone(),
                         unified_api_version,
                     )
                     .await
@@ -434,7 +435,7 @@ impl Blockchain for Chain {
                         store.firehose_cursor(),
                         start_blocks,
                         current_ptr,
-                        filter,
+                        filter.filter.clone(),
                         unified_api_version,
                     )
                     .await

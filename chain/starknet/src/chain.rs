@@ -11,7 +11,7 @@ use graph::{
         firehose_block_stream::FirehoseBlockStream,
         BasicBlockchainBuilder, Block, BlockIngestor, BlockPtr, Blockchain, BlockchainBuilder,
         BlockchainKind, EmptyNodeCapabilities, IngestorError, NoopDecoderHook, NoopRuntimeAdapter,
-        RuntimeAdapter as RuntimeAdapterTrait,
+        RuntimeAdapter as RuntimeAdapterTrait, TriggerFilterWrapper,
     },
     cheap_clone::CheapClone,
     components::{
@@ -115,7 +115,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
@@ -125,7 +125,7 @@ impl Blockchain for Chain {
                 store.firehose_cursor(),
                 start_blocks,
                 store.block_ptr(),
-                filter,
+                filter.filter.clone(),
                 unified_api_version,
             )
             .await
