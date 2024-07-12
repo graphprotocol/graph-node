@@ -26,7 +26,7 @@ use crate::{
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
     data_source::{self, DataSourceTemplateInfo},
-    prelude::DataSourceContext,
+    prelude::{DataSourceContext, DeploymentHash},
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
@@ -189,7 +189,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
@@ -244,6 +244,20 @@ pub enum IngestorError {
 impl From<web3::Error> for IngestorError {
     fn from(e: web3::Error) -> Self {
         IngestorError::Unknown(anyhow::anyhow!(e))
+    }
+}
+
+pub struct TriggerFilterWrapper<C: Blockchain> {
+    pub filter: Arc<C::TriggerFilter>,
+    _subgraph_filter: Option<DeploymentHash>,
+}
+
+impl<C: Blockchain> TriggerFilterWrapper<C> {
+    pub fn new(filter: C::TriggerFilter, subgraph_filter: Option<DeploymentHash>) -> Self {
+        Self {
+            filter: Arc::new(filter),
+            _subgraph_filter: subgraph_filter,
+        }
     }
 }
 

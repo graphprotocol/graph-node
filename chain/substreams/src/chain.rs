@@ -4,7 +4,7 @@ use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopDecoderHook,
-    NoopRuntimeAdapter,
+    NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::components::adapter::ChainId;
 use graph::components::store::DeploymentCursorTracker;
@@ -140,7 +140,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
@@ -150,7 +150,7 @@ impl Blockchain for Chain {
                 deployment,
                 store.firehose_cursor(),
                 store.block_ptr(),
-                filter,
+                filter.filter.clone(),
             )
             .await
     }
