@@ -7,7 +7,9 @@ use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
-use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
+use graph::blockchain::{
+    Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _, TriggerFilterWrapper,
+};
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::subgraph::InstanceDSTemplate;
 use graph::components::{
@@ -116,7 +118,7 @@ where
         self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold
     }
 
-    fn build_filter(&self) -> C::TriggerFilter {
+    fn build_filter(&self) -> TriggerFilterWrapper<C> {
         let current_ptr = self.inputs.store.block_ptr();
         let static_filters = self.is_static_filters_enabled();
 
@@ -130,8 +132,11 @@ where
 
         // if static_filters is not enabled we just stick to the filter based on all the data sources.
         if !static_filters {
-            return C::TriggerFilter::from_data_sources(
-                self.ctx.onchain_data_sources().filter(end_block_filter),
+            return TriggerFilterWrapper::new(
+                C::TriggerFilter::from_data_sources(
+                    self.ctx.onchain_data_sources().filter(end_block_filter),
+                ),
+                None,
             );
         }
 
@@ -158,11 +163,11 @@ where
 
         filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
 
-        filter
+        TriggerFilterWrapper::new(filter, None)
     }
 
     #[cfg(debug_assertions)]
-    pub fn build_filter_for_test(&self) -> C::TriggerFilter {
+    pub fn build_filter_for_test(&self) -> TriggerFilterWrapper<C>  {
         self.build_filter()
     }
 
