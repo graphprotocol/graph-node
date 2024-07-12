@@ -318,7 +318,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let start_blocks: Vec<BlockNumber> = data_sources
             .iter()
-            .filter_map(|d| d.as_onchain().map(|d: &C::DataSource| d.start_block()))
+            .filter_map(|d| d.start_block())
             .collect();
 
         let end_blocks: BTreeSet<BlockNumber> = manifest

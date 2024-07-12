@@ -93,7 +93,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
-            Self::Subgraph(_) => todo!(),
+            Self::Subgraph(_) => None, // TODO(krishna): Figure out how to handle this
         }
     }
 
@@ -101,7 +101,23 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(_) => None,
             Self::Offchain(ds) => Some(ds),
-            Self::Subgraph(_) => todo!(),
+            Self::Subgraph(_) => None, // TODO(krishna): Figure out how to handle this
+        }
+    }
+
+    pub fn network(&self) -> Option<&str> {
+        match self {
+            DataSourceEnum::Onchain(ds) => ds.network(),
+            DataSourceEnum::Offchain(_) => None,
+            DataSourceEnum::Subgraph(ds) => ds.network(),
+        }
+    }
+
+    pub fn start_block(&self) -> Option<BlockNumber> {
+        match self {
+            DataSourceEnum::Onchain(ds) => Some(ds.start_block()),
+            DataSourceEnum::Offchain(_) => None,
+            DataSourceEnum::Subgraph(ds) => Some(ds.source.start_block),
         }
     }
 
@@ -276,7 +292,7 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(_) => CausalityRegion::ONCHAIN,
             Self::Offchain(ds) => ds.causality_region,
-            Self::Subgraph(_) => todo!(), // TODO(krishna)
+            Self::Subgraph(_) => CausalityRegion::ONCHAIN, // TODO(krishna)
         }
     }
 }

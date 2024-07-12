@@ -20,6 +20,7 @@ const ENTITY_HANDLER_KINDS: &str = "entity";
 pub struct DataSource {
     pub kind: String,
     pub name: String,
+    pub network: String,
     pub manifest_idx: u32,
     pub source: Source,
     pub mapping: Mapping,
@@ -31,6 +32,7 @@ impl DataSource {
     pub fn new(
         kind: String,
         name: String,
+        network: String,
         manifest_idx: u32,
         source: Source,
         mapping: Mapping,
@@ -40,6 +42,7 @@ impl DataSource {
         Self {
             kind,
             name,
+            network,
             manifest_idx,
             source,
             mapping,
@@ -55,6 +58,10 @@ impl DataSource {
     pub fn handler_kind(&self) -> &str {
         ENTITY_HANDLER_KINDS
     }
+
+    pub fn network(&self) -> Option<&str> {
+        Some(&self.network)
+    }
 }
 
 impl DataSource {
@@ -65,12 +72,21 @@ impl DataSource {
         if self.source != trigger.source {
             return None;
         }
-        Some(TriggerWithHandler::new(
-            data_source::MappingTrigger::Subgraph(trigger.clone()),
-            self.mapping.handler.clone(),
-            BlockPtr::new(Default::default(), self.creation_block.unwrap_or(0)),
-            BlockTime::NONE,
-        ))
+
+        let trigger_ref = self.mapping.handlers.iter().find_map(|handler| {
+            if handler.entity == trigger.entity {
+                Some(TriggerWithHandler::new(
+                    data_source::MappingTrigger::Subgraph(trigger.clone()),
+                    handler.handler.clone(),
+                    BlockPtr::new(Default::default(), self.creation_block.unwrap_or(0)),
+                    BlockTime::NONE,
+                ))
+            } else {
+                None
+            }
+        });
+
+        return trigger_ref;
     }
 
     pub fn address(&self) -> Option<Vec<u8>> {
@@ -80,8 +96,12 @@ impl DataSource {
 
 pub type Base64 = Word;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Source(DeploymentHash);
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+pub struct Source {
+    pub address: DeploymentHash,
+    #[serde(default)]
+    pub start_block: BlockNumber,
+}
 
 impl Source {
     /// The concept of an address may or not make sense for an subgraph data source, but graph node
@@ -91,7 +111,7 @@ impl Source {
     /// 2. This is used to match with triggers with hosts in `fn hosts_for_trigger`, so make sure
     ///    the `source` of the data source is equal the `source` of the `TriggerData`.
     pub fn address(&self) -> DeploymentHash {
-        self.0.clone()
+        self.address.clone()
     }
 }
 
@@ -100,21 +120,32 @@ pub struct Mapping {
     pub language: String,
     pub api_version: semver::Version,
     pub entities: Vec<String>,
-    pub handler: String,
+    pub handlers: Vec<EntityHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct EntityHandler {
+    pub handler: String,
+    pub entity: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedDataSource {
     pub kind: String,
     pub name: String,
+    pub network: String,
     pub source: UnresolvedSource,
     pub mapping: UnresolvedMapping,
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
-pub struct UnresolvedSource(DeploymentHash);
+pub struct UnresolvedSource {
+    address: DeploymentHash,
+    #[serde(default)]
+    start_block: BlockNumber,
+}
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +153,7 @@ pub struct UnresolvedMapping {
     pub api_version: String,
     pub language: String,
     pub file: Link,
-    pub handler: String,
+    pub handlers: Vec<EntityHandler>,
     pub entities: Vec<String>,
 }
 
@@ -141,12 +172,16 @@ impl UnresolvedDataSource {
         );
 
         let kind = self.kind;
-        let source = Source(self.source.0.clone());
+        let source = Source {
+            address: self.source.address,
+            start_block: self.source.start_block,
+        };
 
         Ok(DataSource {
             manifest_idx,
             kind,
             name: self.name,
+            network: self.network,
             source,
             mapping: self.mapping.resolve(resolver, logger).await?,
             context: Arc::new(None),
@@ -167,7 +202,7 @@ impl UnresolvedMapping {
             language: self.language,
             api_version: semver::Version::parse(&self.api_version)?,
             entities: self.entities,
-            handler: self.handler,
+            handlers: self.handlers,
             runtime: Arc::new(resolver.cat(logger, &self.file).await?),
             link: self.file,
         })
@@ -239,6 +274,7 @@ impl UnresolvedDataSourceTemplate {
 #[derive(Clone)]
 pub struct TriggerData {
     pub source: Source,
+    pub entity: String,
     pub data: Arc<bytes::Bytes>,
 }
 

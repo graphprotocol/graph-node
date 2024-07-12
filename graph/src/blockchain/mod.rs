@@ -26,7 +26,7 @@ use crate::{
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
     data_source::{self, DataSourceTemplateInfo},
-    prelude::DataSourceContext,
+    prelude::{DataSourceContext, DeploymentHash},
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
@@ -245,6 +245,11 @@ impl From<web3::Error> for IngestorError {
     fn from(e: web3::Error) -> Self {
         IngestorError::Unknown(anyhow::anyhow!(e))
     }
+}
+
+pub struct TriggerFilterWrapper<C: Blockchain> {
+    filter: C::TriggerFilter,
+    subgraph_filter: Option<DeploymentHash>,
 }
 
 pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
@@ -489,6 +494,7 @@ impl FromStr for BlockchainKind {
             "cosmos" => Ok(BlockchainKind::Cosmos),
             "substreams" => Ok(BlockchainKind::Substreams),
             "starknet" => Ok(BlockchainKind::Starknet),
+            "subgraph" => Ok(BlockchainKind::Ethereum), // TODO(krishna): We should detect the blockchain kind from the source subgraph
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

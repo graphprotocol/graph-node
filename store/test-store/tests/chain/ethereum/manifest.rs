@@ -213,6 +213,8 @@ schema:
 dataSources:
   - name: SubgraphSource
     kind: subgraph
+    entities:
+        - Gravatar
     source: QmSubgraph
     mapping:
       apiVersion: 0.0.6
