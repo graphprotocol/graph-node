@@ -249,14 +249,14 @@ impl From<web3::Error> for IngestorError {
 
 pub struct TriggerFilterWrapper<C: Blockchain> {
     pub filter: Arc<C::TriggerFilter>,
-    _subgraph_filter: Option<DeploymentHash>,
+    pub subgraph_filter: Option<DeploymentHash>,
 }
 
 impl<C: Blockchain> TriggerFilterWrapper<C> {
     pub fn new(filter: C::TriggerFilter, subgraph_filter: Option<DeploymentHash>) -> Self {
         Self {
             filter: Arc::new(filter),
-            _subgraph_filter: subgraph_filter,
+            subgraph_filter,
         }
     }
 }

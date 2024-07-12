@@ -14,7 +14,7 @@ use graph::blockchain::block_stream::{
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
-    TriggersAdapter, TriggersAdapterSelector,
+    TriggerFilterWrapper, TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
@@ -716,6 +716,18 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
         unimplemented!();
     }
 
+    async fn build_subgraph_block_stream(
+        &self,
+        _chain: &C,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<&TriggerFilterWrapper<C>>,
+        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        unimplemented!()
+    }
+
     async fn build_polling(
         &self,
         _chain: &C,
@@ -751,6 +763,18 @@ where
         _block_cursor: FirehoseCursor,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<C::TriggerFilter>,
+    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        unimplemented!()
+    }
+
+    async fn build_subgraph_block_stream(
+        &self,
+        _chain: &C,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<&TriggerFilterWrapper<C>>,
+        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
         unimplemented!()
     }

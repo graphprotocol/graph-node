@@ -122,6 +122,17 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         unimplemented!()
     }
 
+    async fn build_subgraph_block_stream(
+        &self,
+        _chain: &Chain,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<&TriggerFilterWrapper<Chain>>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        unimplemented!()
+    }
     async fn build_polling(
         &self,
         chain: &Chain,
@@ -414,6 +425,21 @@ impl Blockchain for Chain {
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let current_ptr = store.block_ptr();
+
+        if filter.subgraph_filter.is_some() {
+            return self
+                .block_stream_builder
+                .build_subgraph_block_stream(
+                    self,
+                    deployment,
+                    start_blocks,
+                    current_ptr,
+                    filter,
+                    unified_api_version,
+                )
+                .await;
+        }
+
         match self.chain_client().as_ref() {
             ChainClient::Rpc(_) => {
                 self.block_stream_builder
