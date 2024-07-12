@@ -4,7 +4,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopDecoderHook,
-    NoopRuntimeAdapter,
+    NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
@@ -230,7 +230,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        filter: Arc<&TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         if self.prefer_substreams {
@@ -242,7 +242,7 @@ impl Blockchain for Chain {
                     deployment,
                     store.firehose_cursor(),
                     store.block_ptr(),
-                    filter,
+                    filter.filter.clone(),
                 )
                 .await;
         }
@@ -254,7 +254,7 @@ impl Blockchain for Chain {
                 store.firehose_cursor(),
                 start_blocks,
                 store.block_ptr(),
-                filter,
+                filter.filter.clone(),
                 unified_api_version,
             )
             .await

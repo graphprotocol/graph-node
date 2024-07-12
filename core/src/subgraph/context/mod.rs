@@ -6,7 +6,7 @@ use crate::polling_monitor::{
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{
-    blockchain::{BlockTime, Blockchain},
+    blockchain::{BlockTime, Blockchain, TriggerFilterWrapper},
     components::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
@@ -73,7 +73,7 @@ where
     pub(crate) instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
-    pub filter: Option<C::TriggerFilter>,
+    pub filter: Option<TriggerFilterWrapper<C>>,
     pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     pub(crate) decoder: Box<Decoder<C, T>>,
 }
