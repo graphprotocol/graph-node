@@ -268,6 +268,54 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     }
 }
 
+pub struct TriggersAdaterWrapper<C: Blockchain> {
+    pub adapter: Arc<dyn TriggersAdapter<C>>,
+}
+
+impl<C: Blockchain> TriggersAdaterWrapper<C> {
+    pub fn new(adapter: Arc<dyn TriggersAdapter<C>>) -> Self {
+        Self { adapter }
+    }
+}
+
+#[async_trait]
+impl<C: Blockchain> TriggersAdapter<C> for TriggersAdaterWrapper<C> {
+    async fn ancestor_block(
+        &self,
+        ptr: BlockPtr,
+        offset: BlockNumber,
+        root: Option<BlockHash>,
+    ) -> Result<Option<C::Block>, Error> {
+        self.adapter.ancestor_block(ptr, offset, root).await
+    }
+
+    async fn scan_triggers(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+        filter: &C::TriggerFilter,
+    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
+        self.adapter.scan_triggers(from, to, filter).await
+    }
+
+    async fn triggers_in_block(
+        &self,
+        logger: &Logger,
+        block: C::Block,
+        filter: &C::TriggerFilter,
+    ) -> Result<BlockWithTriggers<C>, Error> {
+        self.adapter.triggers_in_block(logger, block, filter).await
+    }
+
+    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+        self.adapter.is_on_main_chain(ptr).await
+    }
+
+    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
+        self.adapter.parent_ptr(block).await
+    }
+}
+
 #[async_trait]
 pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     // Return the block that is `offset` blocks before the block pointed to by `ptr` from the local
