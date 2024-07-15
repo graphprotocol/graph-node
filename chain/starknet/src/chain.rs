@@ -115,7 +115,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<&TriggerFilterWrapper<Self>>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
@@ -202,7 +202,7 @@ impl BlockStreamBuilder<Chain> for StarknetStreamBuilder {
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<&TriggerFilterWrapper<Chain>>,
+        _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         unimplemented!()
@@ -251,7 +251,7 @@ impl BlockStreamBuilder<Chain> for StarknetStreamBuilder {
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilter>,
+        _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         panic!("StarkNet does not support polling block stream")
