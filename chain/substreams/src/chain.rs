@@ -140,7 +140,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        filter: Arc<&TriggerFilterWrapper<Self>>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder

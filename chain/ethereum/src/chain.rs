@@ -124,25 +124,80 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
 
     async fn build_subgraph_block_stream(
         &self,
-        _chain: &Chain,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<&TriggerFilterWrapper<Chain>>,
-        _unified_api_version: UnifiedMappingApiVersion,
+        chain: &Chain,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<TriggerFilterWrapper<Chain>>,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        unimplemented!()
+        let requirements = filter.filter.node_capabilities();
+        let adapter = chain
+            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
+            .unwrap_or_else(|_| {
+                panic!(
+                    "no adapter for network {} with capabilities {}",
+                    chain.name, requirements
+                )
+            });
+
+        let logger = chain
+            .logger_factory
+            .subgraph_logger(&deployment)
+            .new(o!("component" => "BlockStream"));
+        let chain_store = chain.chain_store();
+        let chain_head_update_stream = chain
+            .chain_head_update_listener
+            .subscribe(chain.name.to_string(), logger.clone());
+
+        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
+        // This is ok because Celo blocks are always final. And we _need_ to do this because
+        // some events appear only in eth_getLogs but not in transaction receipts.
+        // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
+        let chain_id = match chain.chain_client().as_ref() {
+            ChainClient::Rpc(adapter) => {
+                adapter
+                    .cheapest()
+                    .await
+                    .ok_or(anyhow!("unable to get eth adapter for chan_id call"))?
+                    .chain_id()
+                    .await?
+            }
+            _ => panic!("expected rpc when using polling blockstream"),
+        };
+        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
+            false => chain.reorg_threshold,
+            true => 0,
+        };
+
+        Ok(Box::new(PollingBlockStream::new(
+            chain_store,
+            chain_head_update_stream,
+            adapter,
+            chain.node_id.clone(),
+            deployment.hash,
+            filter,
+            start_blocks,
+            reorg_threshold,
+            logger,
+            ENV_VARS.max_block_range_size,
+            ENV_VARS.target_triggers_per_block_range,
+            unified_api_version,
+            subgraph_current_block,
+        )))
     }
+
     async fn build_polling(
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+        filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let requirements = filter.node_capabilities();
+      
+        let requirements = filter.filter.node_capabilities();
         let adapter = chain
             .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
             .unwrap_or_else(|_| {
@@ -421,7 +476,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<&TriggerFilterWrapper<Self>>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let current_ptr = store.block_ptr();
@@ -448,7 +503,7 @@ impl Blockchain for Chain {
                         deployment,
                         start_blocks,
                         current_ptr,
-                        filter.filter.clone(),
+                        filter,
                         unified_api_version,
                     )
                     .await

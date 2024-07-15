@@ -11,7 +11,7 @@ use super::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
     FirehoseCursor, TriggersAdapter, BUFFERED_BLOCK_STREAM_SIZE,
 };
-use super::{Block, BlockPtr, Blockchain};
+use super::{Block, BlockPtr, Blockchain, TriggerFilterWrapper};
 
 use crate::components::store::BlockNumber;
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -85,7 +85,7 @@ where
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
-    filter: Arc<C::TriggerFilter>,
+    filter: Arc<TriggerFilterWrapper<C>>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
     previous_triggers_per_block: f64,
@@ -149,7 +149,7 @@ where
         adapter: Arc<dyn TriggersAdapter<C>>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
-        filter: Arc<C::TriggerFilter>,
+        filter:  Arc<TriggerFilterWrapper<C>>,
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
@@ -379,7 +379,7 @@ where
             );
 
             // Update with actually scanned range, to account for any skipped null blocks.
-            let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter).await?;
+            let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter.filter.clone()).await?;
             let range_size = to - from + 1;
 
             // If the target block (`to`) is within the reorg threshold, indicating no non-null finalized blocks are
@@ -469,7 +469,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let block = self
                             .adapter
-                            .triggers_in_block(&self.logger, head_ancestor, &self.filter)
+                            .triggers_in_block(&self.logger, head_ancestor, &self.filter.filter.clone())
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {
