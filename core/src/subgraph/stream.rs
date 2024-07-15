@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 pub async fn new_block_stream<C: Blockchain>(
     inputs: &IndexingInputs<C>,
-    filter: &TriggerFilterWrapper<C>,
+    filter: TriggerFilterWrapper<C>,
     metrics: &SubgraphInstanceMetrics,
 ) -> Result<Box<dyn BlockStream<C>>, Error> {
     let is_firehose = inputs.chain.chain_client().is_firehose();
@@ -18,7 +18,7 @@ pub async fn new_block_stream<C: Blockchain>(
             inputs.deployment.clone(),
             inputs.store.cheap_clone(),
             inputs.start_blocks.clone(),
-            Arc::new(filter),
+            Arc::new(filter.clone()),
             inputs.unified_api_version.clone(),
         )
         .await

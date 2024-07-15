@@ -167,7 +167,7 @@ where
     }
 
     #[cfg(debug_assertions)]
-    pub fn build_filter_for_test(&self) -> TriggerFilterWrapper<C>  {
+    pub fn build_filter_for_test(&self) -> TriggerFilterWrapper<C> {
         self.build_filter()
     }
 
@@ -214,7 +214,7 @@ where
 
             let mut block_stream = new_block_stream(
                 &self.inputs,
-                self.ctx.filter.as_ref().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+                self.ctx.filter.cheap_clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
                 &self.metrics.subgraph,
             )
             .await?
