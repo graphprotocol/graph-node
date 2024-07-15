@@ -2311,6 +2311,7 @@ impl ChainStoreTrait for ChainStore {
         use public::ethereum_networks as n;
 
         let mut conn = self.pool.get()?;
+
         diesel::update(n::table.filter(n::name.eq(&self.chain)))
             .set((
                 n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),

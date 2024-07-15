@@ -3,14 +3,20 @@ use std::sync::Arc;
 use diesel::sql_query;
 use diesel::Connection;
 use diesel::RunQueryDsl;
+use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
+use graph::blockchain::ChainIdentifier;
 use graph::cheap_clone::CheapClone;
+use graph::components::adapter::ChainId;
+use graph::components::adapter::IdentValidator;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
 use graph::prelude::{anyhow, anyhow::bail};
+use graph::slog::Logger;
 use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
 use graph_store_postgres::add_chain;
+use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
 use graph_store_postgres::BlockStore;
@@ -20,6 +26,8 @@ use graph_store_postgres::Shard;
 use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
+
+use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
@@ -144,6 +152,52 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
     }
 
     store.drop_chain(&name)?;
+
+    Ok(())
+}
+
+pub async fn update_chain_genesis(
+    networks: &Networks,
+    coord: Arc<PoolCoordinator>,
+    store: Arc<BlockStore>,
+    logger: &Logger,
+    chain_id: ChainId,
+    genesis_hash: BlockHash,
+    force: bool,
+) -> Result<(), Error> {
+    let ident = networks.chain_identifier(logger, &chain_id).await?;
+    if !genesis_hash.eq(&ident.genesis_block_hash) {
+        println!(
+            "Expected adapter for chain {} to return genesis hash {} but got {}",
+            chain_id, genesis_hash, ident.genesis_block_hash
+        );
+        if !force {
+            println!("Not performing update");
+            return Ok(());
+        } else {
+            println!("--force used, updating anyway");
+        }
+    }
+
+    println!("Updating shard...");
+    // Update the local shard's genesis, whether or not it is the primary.
+    // The chains table is replicated from the primary and keeps another genesis hash.
+    // To keep those in sync we need to update the primary and then refresh the shard tables.
+    store.update_ident(
+        &chain_id,
+        &ChainIdentifier {
+            net_version: ident.net_version.clone(),
+            genesis_block_hash: genesis_hash,
+        },
+    )?;
+
+    // Update the primary public.chains
+    println!("Updating primary public.chains");
+    store.set_chain_identifier(chain_id, &ident)?;
+
+    // Refresh the new values
+    println!("Refresh mappings");
+    crate::manager::commands::database::remap(&coord, None, None, false).await?;
 
     Ok(())
 }

@@ -2,7 +2,9 @@ use clap::{Parser, Subcommand};
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
+use graph::blockchain::BlockHash;
 use graph::cheap_clone::CheapClone;
+use graph::components::adapter::ChainId;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
@@ -33,6 +35,7 @@ use graph_store_postgres::{
     SubscriptionManager, PRIMARY_SHARD,
 };
 use lazy_static::lazy_static;
+use std::str::FromStr;
 use std::{collections::HashMap, num::ParseIntError, sync::Arc, time::Duration};
 const VERSION_LABEL_KEY: &str = "version";
 
@@ -435,6 +438,11 @@ pub enum ConfigCommand {
         features: String,
         network: String,
     },
+
+    /// Compare the NetIdentifier of all defined adapters with the existing
+    /// identifiers on the ChainStore.
+    CheckProviders {},
+
     /// Show subgraph-specific settings
     ///
     /// GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS can add a file that contains
@@ -545,6 +553,16 @@ pub enum ChainCommand {
         /// Skips confirmation prompt
         #[clap(long, short)]
         force: bool,
+    },
+
+    /// Update the genesis block hash for a chain
+    UpdateGenesis {
+        #[clap(long, short)]
+        force: bool,
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        block_hash: String,
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        chain_name: String,
     },
 
     /// Change the block cache shard for a chain
@@ -1149,6 +1167,11 @@ async fn main() -> anyhow::Result<()> {
             use ConfigCommand::*;
 
             match cmd {
+                CheckProviders {} => {
+                    let store = ctx.store().block_store();
+                    let networks = ctx.networks(store.cheap_clone()).await?;
+                    Ok(commands::config::check_provider_genesis(&networks, store).await)
+                }
                 Place { name, network } => {
                     commands::config::place(&ctx.config.deployment, &name, &network)
                 }
@@ -1326,6 +1349,29 @@ async fn main() -> anyhow::Result<()> {
                         shard,
                     )
                 }
+
+                UpdateGenesis {
+                    force,
+                    block_hash,
+                    chain_name,
+                } => {
+                    let store_builder = ctx.store_builder().await;
+                    let store = ctx.store().block_store();
+                    let networks = ctx.networks(store.cheap_clone()).await?;
+                    let chain_id = ChainId::from(chain_name);
+                    let block_hash = BlockHash::from_str(&block_hash)?;
+                    commands::chain::update_chain_genesis(
+                        &networks,
+                        store_builder.coord.cheap_clone(),
+                        store,
+                        &logger,
+                        chain_id,
+                        block_hash,
+                        force,
+                    )
+                    .await
+                }
+
                 CheckBlocks { method, chain_name } => {
                     use commands::check_blocks::{by_hash, by_number, by_range};
                     use CheckBlockMethod::*;

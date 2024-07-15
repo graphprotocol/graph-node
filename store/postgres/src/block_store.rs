@@ -6,12 +6,16 @@ use std::{
 
 use anyhow::anyhow;
 use diesel::{
+    query_dsl::methods::FilterDsl as _,
     r2d2::{ConnectionManager, PooledConnection},
-    sql_query, PgConnection, RunQueryDsl,
+    sql_query, ExpressionMethods as _, PgConnection, RunQueryDsl,
 };
 use graph::{
     blockchain::ChainIdentifier,
-    components::store::{BlockStore as BlockStoreTrait, QueryPermit},
+    components::{
+        adapter::ChainId,
+        store::{BlockStore as BlockStoreTrait, QueryPermit},
+    },
     prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
     slog::o,
 };
@@ -161,6 +165,17 @@ pub mod primary {
     ) -> Result<(), StoreError> {
         update(chains::table.filter(chains::name.eq(name)))
             .set(chains::name.eq(new_name))
+            .execute(conn)?;
+        Ok(())
+    }
+
+    pub fn update_chain_genesis_hash(
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        name: &str,
+        hash: BlockHash,
+    ) -> Result<(), StoreError> {
+        update(chains::table.filter(chains::name.eq(name)))
+            .set(chains::genesis_block_hash.eq(hash.hash_hex()))
             .execute(conn)?;
         Ok(())
     }
@@ -518,6 +533,28 @@ impl BlockStore {
                 .set(dbv::version.eq(3))
                 .execute(&mut conn)?;
         };
+        Ok(())
+    }
+
+    /// Updates the chains table of the primary shard. This table is replicated to other shards and
+    /// has to be refreshed afterwards for the update to be reflected.
+    pub fn set_chain_identifier(
+        &self,
+        chain_id: ChainId,
+        ident: &ChainIdentifier,
+    ) -> Result<(), StoreError> {
+        use primary::chains as c;
+
+        let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
+        let mut conn = primary_pool.get()?;
+
+        diesel::update(c::table.filter(c::name.eq(chain_id.as_str())))
+            .set((
+                c::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                c::net_version.eq(&ident.net_version),
+            ))
+            .execute(&mut conn)?;
+
         Ok(())
     }
 }
