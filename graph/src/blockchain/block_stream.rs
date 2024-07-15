@@ -145,7 +145,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<C::TriggerFilter>,
+        filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<C>>>;
 
@@ -155,7 +155,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<&TriggerFilterWrapper<C>>,
+        filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<C>>>;
 }

@@ -105,7 +105,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<&TriggerFilterWrapper<Chain>>,
+        _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         unimplemented!()
@@ -117,7 +117,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilter>,
+        _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         unimplemented!("polling block stream is not support for substreams")

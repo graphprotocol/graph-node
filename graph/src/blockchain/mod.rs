@@ -189,7 +189,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<&TriggerFilterWrapper<Self>>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
@@ -247,6 +247,7 @@ impl From<web3::Error> for IngestorError {
     }
 }
 
+#[derive(Debug)]
 pub struct TriggerFilterWrapper<C: Blockchain> {
     pub filter: Arc<C::TriggerFilter>,
     pub subgraph_filter: Option<DeploymentHash>,
@@ -258,6 +259,21 @@ impl<C: Blockchain> TriggerFilterWrapper<C> {
             filter: Arc::new(filter),
             subgraph_filter,
         }
+    }
+}
+
+impl<C: Blockchain> Clone for TriggerFilterWrapper<C> {
+    fn clone(&self) -> Self {
+        Self {
+            filter: self.filter.cheap_clone(),
+            subgraph_filter: self.subgraph_filter.cheap_clone(),
+        }
+    }
+}
+
+impl<C: Blockchain> CheapClone for TriggerFilterWrapper<C> {
+    fn cheap_clone(&self) -> Self {
+        self.clone()
     }
 }
 
