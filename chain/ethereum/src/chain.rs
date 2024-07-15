@@ -62,6 +62,7 @@ use crate::{BufferedCallCache, NodeCapabilities};
 use crate::{EthereumAdapter, RuntimeAdapter};
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
+    TriggersAdaterWrapper,
 };
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -141,6 +142,8 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
                 )
             });
 
+        let adapter = Arc::new(TriggersAdaterWrapper::new(adapter));
+
         let logger = chain
             .logger_factory
             .subgraph_logger(&deployment)
@@ -196,7 +199,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-      
         let requirements = filter.filter.node_capabilities();
         let adapter = chain
             .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
