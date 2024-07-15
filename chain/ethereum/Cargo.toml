@@ -22,7 +22,7 @@ graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
 base64 = "0"
-uuid = { version = "1.9.1", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [build-dependencies]
 tonic-build = { workspace = true }
