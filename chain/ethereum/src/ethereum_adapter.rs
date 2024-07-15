@@ -619,8 +619,10 @@ impl EthereumAdapter {
                     // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
                     const PARITY_OUT_OF_GAS: &str = "Out of gas";
 
+                    // Also covers Nethermind reverts
                     const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
-                    const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+                    const PARITY_REVERT_PREFIX: &str = "revert";
+
                     const XDAI_REVERT: &str = "revert";
 
                     // Deterministic Geth execution errors. We might need to expand this as
@@ -678,7 +680,7 @@ impl EthereumAdapter {
                         {
                             match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
                                 Some(data)
-                                    if data.starts_with(PARITY_REVERT_PREFIX)
+                                    if data.to_lowercase().starts_with(PARITY_REVERT_PREFIX)
                                         || data.starts_with(PARITY_BAD_JUMP_PREFIX)
                                         || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                         || data == PARITY_BAD_INSTRUCTION_FE
