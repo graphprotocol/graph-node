@@ -722,7 +722,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<&TriggerFilterWrapper<C>>,
+        _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
         unimplemented!()
@@ -734,7 +734,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<<C as Blockchain>::TriggerFilter>,
+        _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
         unimplemented!("only firehose mode should be used for tests")
@@ -773,7 +773,7 @@ where
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<&TriggerFilterWrapper<C>>,
+        _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
         unimplemented!()
@@ -808,7 +808,7 @@ where
         _deployment: DeploymentLocator,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
         _subgraph_current_block: Option<graph::blockchain::BlockPtr>,
-        _filter: Arc<C::TriggerFilter>,
+        _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
         unimplemented!("only firehose mode should be used for tests")
