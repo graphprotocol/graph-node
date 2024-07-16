@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use graph::{
-    blockchain::{block_stream::BlockWithTriggers, BlockPtr},
+    blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
     prelude::{
         web3::types::{Address, Bytes, Log, H160, H256, U64},
         EthereumCall, LightEthereumBlock,
@@ -107,10 +107,12 @@ fn test_trigger_ordering() {
         &logger,
     );
 
-    assert_eq!(
-        block_with_triggers.trigger_data,
-        vec![log1, log2, call1, log3, call2, call4, call3, block2, block1]
-    );
+    let expected = vec![log1, log2, call1, log3, call2, call4, call3, block2, block1]
+        .into_iter()
+        .map(|t| Trigger::Chain(t))
+        .collect::<Vec<_>>();
+
+    assert_eq!(block_with_triggers.trigger_data, expected);
 }
 
 #[test]
@@ -203,8 +205,10 @@ fn test_trigger_dedup() {
         &logger,
     );
 
-    assert_eq!(
-        block_with_triggers.trigger_data,
-        vec![log1, log2, call1, log3, call2, call3, block2, block1]
-    );
+    let expected = vec![log1, log2, call1, log3, call2, call3, block2, block1]
+        .into_iter()
+        .map(|t| Trigger::Chain(t))
+        .collect::<Vec<_>>();
+
+    assert_eq!(block_with_triggers.trigger_data, expected);
 }
