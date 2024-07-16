@@ -308,7 +308,16 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdaterWrapper<C> {
         to: BlockNumber,
         filter: &C::TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
-        self.adapter.scan_triggers(from, to, filter).await
+        // TODO(krishna): Do a proper implementation
+        self.adapter
+            .scan_triggers(from, to, filter)
+            .await
+            .map(|(mut blocks, next_block)| {
+                for _ in &mut blocks {
+                    todo!()
+                }
+                (blocks, next_block)
+            })
     }
 
     async fn triggers_in_block(
