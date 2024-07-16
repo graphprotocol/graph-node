@@ -483,7 +483,7 @@ impl Blockchain for Chain {
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let current_ptr = store.block_ptr();
 
-        if filter.subgraph_filter.is_some() {
+        if !filter.subgraph_filter.is_empty() {
             return self
                 .block_stream_builder
                 .build_subgraph_block_stream(
