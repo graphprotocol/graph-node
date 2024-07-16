@@ -470,9 +470,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
 #[cfg(test)]
 mod test {
-    use graph::prelude::{
-        slog::{o, Discard, Logger},
-        tokio,
+    use graph::{
+        blockchain::Trigger,
+        prelude::{
+            slog::{o, Discard, Logger},
+            tokio,
+        },
     };
 
     use super::*;
@@ -603,7 +606,10 @@ mod test {
             // they may not be in the same order
             for trigger in expected_triggers {
                 assert!(
-                    triggers.trigger_data.contains(&trigger),
+                    triggers.trigger_data.iter().any(|t| match t {
+                        Trigger::Chain(t) => t == &trigger,
+                        _ => false,
+                    }),
                     "Expected trigger list to contain {:?}, but it only contains: {:?}",
                     trigger,
                     triggers.trigger_data

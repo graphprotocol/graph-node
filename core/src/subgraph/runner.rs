@@ -8,7 +8,8 @@ use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
-    Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _, TriggerFilterWrapper,
+    Block, BlockTime, Blockchain, DataSource as _, Trigger, TriggerFilter as _,
+    TriggerFilterWrapper,
 };
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::subgraph::InstanceDSTemplate;
@@ -328,7 +329,10 @@ where
             .match_and_decode_many(
                 &logger,
                 &block,
-                triggers.into_iter().map(TriggerData::Onchain),
+                triggers.into_iter().map(|t| match t {
+                    Trigger::Chain(t) => TriggerData::Onchain(t),
+                    Trigger::Subgraph(_) => todo!(), //TODO(krishna),
+                }),
                 hosts_filter,
                 &self.metrics.subgraph,
             )
@@ -487,7 +491,10 @@ where
                     .match_and_decode_many(
                         &logger,
                         &block,
-                        triggers.into_iter().map(TriggerData::Onchain),
+                        triggers.into_iter().map(|t| match t {
+                            Trigger::Chain(t) => TriggerData::Onchain(t),
+                            Trigger::Subgraph(_) => todo!(), //TODO(krishna),
+                        }),
                         |_| Box::new(runtime_hosts.iter().map(Arc::as_ref)),
                         &self.metrics.subgraph,
                     )
