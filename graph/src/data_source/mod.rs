@@ -242,7 +242,9 @@ impl<C: Blockchain> DataSource<C> {
                 Ok(ds.match_and_decode(trigger))
             }
             (Self::Onchain(_), TriggerData::Offchain(_))
-            | (Self::Offchain(_), TriggerData::Onchain(_)) => Ok(None),
+            | (Self::Offchain(_), TriggerData::Onchain(_))
+            | (Self::Onchain(_), TriggerData::Subgraph(_))
+            | (Self::Offchain(_), TriggerData::Subgraph(_)) => Ok(None),
             (Self::Subgraph(_), _) => todo!(), // TODO(krishna)
         }
     }
@@ -534,6 +536,7 @@ impl<T> TriggerWithHandler<T> {
 pub enum TriggerData<C: Blockchain> {
     Onchain(C::TriggerData),
     Offchain(offchain::TriggerData),
+    Subgraph(subgraph::TriggerData),
 }
 
 impl<C: Blockchain> TriggerData<C> {
@@ -541,6 +544,7 @@ impl<C: Blockchain> TriggerData<C> {
         match self {
             Self::Onchain(trigger) => trigger.error_context(),
             Self::Offchain(trigger) => format!("{:?}", trigger.source),
+            Self::Subgraph(trigger) => format!("{:?}", trigger.source),
         }
     }
 }
