@@ -12,7 +12,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::substreams_block_stream::SubstreamsLogData;
-use super::{Block, BlockPtr, BlockTime, Blockchain, TriggerFilterWrapper};
+use super::{Block, BlockPtr, BlockTime, Blockchain, Trigger, TriggerFilterWrapper};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -208,7 +208,7 @@ impl AsRef<Option<String>> for FirehoseCursor {
 #[derive(Debug)]
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: C::Block,
-    pub trigger_data: Vec<C::TriggerData>,
+    pub trigger_data: Vec<Trigger<C>>,
 }
 
 impl<C: Blockchain> Clone for BlockWithTriggers<C>
@@ -226,7 +226,15 @@ where
 impl<C: Blockchain> BlockWithTriggers<C> {
     /// Creates a BlockWithTriggers structure, which holds
     /// the trigger data ordered and without any duplicates.
-    pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
+    pub fn new(block: C::Block, trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
+        let mut trigger_data = trigger_data
+            .into_iter()
+            .map(|trigger_data| {
+                let trigger = Trigger::Chain(trigger_data);
+                trigger
+            })
+            .collect::<Vec<_>>();
+
         // This is where triggers get sorted.
         trigger_data.sort();
 
@@ -265,6 +273,11 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         self.block.parent_ptr()
+    }
+
+    pub fn extend_triggers(&mut self, triggers: Vec<Trigger<C>>) {
+        self.trigger_data.extend(triggers);
+        self.trigger_data.sort();
     }
 }
 

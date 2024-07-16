@@ -4,7 +4,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopDecoderHook,
-    NoopRuntimeAdapter, TriggerFilterWrapper,
+    NoopRuntimeAdapter, Trigger, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
@@ -474,11 +474,13 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
             .into_iter()
             .zip(receipt.into_iter())
             .map(|(outcome, receipt)| {
-                NearTrigger::Receipt(Arc::new(trigger::ReceiptWithOutcome {
-                    outcome,
-                    receipt,
-                    block: arc_block.clone(),
-                }))
+                Trigger::Chain(NearTrigger::Receipt(Arc::new(
+                    trigger::ReceiptWithOutcome {
+                        outcome,
+                        receipt,
+                        block: arc_block.clone(),
+                    },
+                )))
             })
             .collect();
 
@@ -985,8 +987,8 @@ mod test {
             .trigger_data
             .clone()
             .into_iter()
-            .filter_map(|x| match x {
-                crate::trigger::NearTrigger::Block(b) => b.header.clone().map(|x| x.height),
+            .filter_map(|x| match x.as_chain() {
+                Some(crate::trigger::NearTrigger::Block(b)) => b.header.clone().map(|x| x.height),
                 _ => None,
             })
             .collect()
