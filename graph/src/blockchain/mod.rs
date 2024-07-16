@@ -25,7 +25,7 @@ use crate::{
         trigger_processor::RunnableTriggers,
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
-    data_source::{self, DataSourceTemplateInfo},
+    data_source::{self, subgraph, DataSourceTemplateInfo},
     prelude::{DataSourceContext, DeploymentHash},
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
@@ -398,6 +398,76 @@ pub trait UnresolvedDataSource<C: Blockchain>:
         logger: &Logger,
         manifest_idx: u32,
     ) -> Result<C::DataSource, anyhow::Error>;
+}
+
+#[derive(Debug)]
+pub enum Trigger<C: Blockchain> {
+    Chain(C::TriggerData),
+    Subgraph(subgraph::TriggerData),
+}
+
+impl<C: Blockchain> Trigger<C> {
+    pub fn as_chain(&self) -> Option<&C::TriggerData> {
+        match self {
+            Trigger::Chain(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    pub fn as_subgraph(&self) -> Option<&subgraph::TriggerData> {
+        match self {
+            Trigger::Subgraph(data) => Some(data),
+            _ => None,
+        }
+    }
+}
+
+impl<C: Blockchain> Eq for Trigger<C> where C::TriggerData: Eq {}
+
+impl<C: Blockchain> PartialEq for Trigger<C>
+where
+    C::TriggerData: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Trigger::Chain(data1), Trigger::Chain(data2)) => data1 == data2,
+            (Trigger::Subgraph(a), Trigger::Subgraph(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl<C: Blockchain> Clone for Trigger<C>
+where
+    C::TriggerData: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Trigger::Chain(data) => Trigger::Chain(data.clone()),
+            Trigger::Subgraph(data) => Trigger::Subgraph(data.clone()),
+        }
+    }
+}
+
+// TODO(krishna): Proper ordering for triggers
+impl<C: Blockchain> Ord for Trigger<C>
+where
+    C::TriggerData: Ord,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Trigger::Chain(data1), Trigger::Chain(data2)) => data1.cmp(data2),
+            (Trigger::Subgraph(_), Trigger::Chain(_)) => std::cmp::Ordering::Greater,
+            (Trigger::Chain(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Less,
+            (Trigger::Subgraph(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+impl<C: Blockchain> PartialOrd for Trigger<C> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 pub trait TriggerData {
