@@ -92,6 +92,10 @@ impl DataSource {
     pub fn address(&self) -> Option<Vec<u8>> {
         Some(self.source.address().to_string().into_bytes())
     }
+
+    pub fn source_subgraph(&self) -> DeploymentHash {
+        self.source.address()
+    }
 }
 
 pub type Base64 = Word;

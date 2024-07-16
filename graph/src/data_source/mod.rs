@@ -97,6 +97,14 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn as_subgraph(&self) -> Option<&subgraph::DataSource> {
+        match self {
+            Self::Onchain(_) => None,
+            Self::Offchain(_) => None,
+            Self::Subgraph(ds) => Some(ds),
+        }
+    }
+
     pub fn as_offchain(&self) -> Option<&offchain::DataSource> {
         match self {
             Self::Onchain(_) => None,
