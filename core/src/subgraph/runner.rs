@@ -131,13 +131,23 @@ where
             None => true,
         };
 
+
+        let data_sources = self.ctx.static_data_sources();
+
+        let subgraph_filter = data_sources
+            .iter()
+            .filter_map(|ds| ds.as_subgraph())
+            .map(|ds| (ds.source.address(), ds.source.start_block))
+            .collect::<Vec<_>>();
+
+
         // if static_filters is not enabled we just stick to the filter based on all the data sources.
         if !static_filters {
             return TriggerFilterWrapper::new(
                 C::TriggerFilter::from_data_sources(
                     self.ctx.onchain_data_sources().filter(end_block_filter),
                 ),
-                None,
+                subgraph_filter,
             );
         }
 
@@ -164,7 +174,7 @@ where
 
         filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
 
-        TriggerFilterWrapper::new(filter, None)
+        TriggerFilterWrapper::new(filter, subgraph_filter)
     }
 
     #[cfg(debug_assertions)]
@@ -215,7 +225,7 @@ where
 
             let mut block_stream = new_block_stream(
                 &self.inputs,
-                self.ctx.filter.cheap_clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+                self.ctx.filter.clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
                 &self.metrics.subgraph,
             )
             .await?
