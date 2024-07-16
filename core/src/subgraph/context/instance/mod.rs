@@ -229,6 +229,7 @@ where
             TriggerData::Offchain(trigger) => self
                 .offchain_hosts
                 .matches_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
+            TriggerData::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 

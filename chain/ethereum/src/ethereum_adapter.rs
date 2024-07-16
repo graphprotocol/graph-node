@@ -2077,8 +2077,8 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let transaction_hashes: BTreeSet<H256> = block
         .trigger_data
         .iter()
-        .filter_map(|trigger| match trigger {
-            EthereumTrigger::Call(call_trigger) => Some(call_trigger.transaction_hash),
+        .filter_map(|trigger| match trigger.as_chain() {
+            Some(EthereumTrigger::Call(call_trigger)) => Some(call_trigger.transaction_hash),
             _ => None,
         })
         .collect::<Option<BTreeSet<H256>>>()
@@ -2169,7 +2169,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
     // Filter call triggers from unsuccessful transactions
     block.trigger_data.retain(|trigger| {
-        if let EthereumTrigger::Call(call_trigger) = trigger {
+        if let Some(EthereumTrigger::Call(call_trigger)) = trigger.as_chain() {
             // Unwrap: We already checked that those values exist
             transaction_success[&call_trigger.transaction_hash.unwrap()]
         } else {
