@@ -14,7 +14,10 @@ use serde::Deserialize;
 use std::{collections::HashSet, convert::TryFrom, sync::Arc};
 
 use super::{
-    block_stream::{self, BlockStream, FirehoseCursor}, client::ChainClient, BlockIngestor, BlockTime, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait, NoopDecoderHook, TriggerFilterWrapper, TriggerWithHandler
+    block_stream::{self, BlockStream, FirehoseCursor},
+    client::ChainClient,
+    BlockIngestor, BlockTime, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
+    NoopDecoderHook, Trigger, TriggerFilterWrapper, TriggerWithHandler,
 };
 
 use super::{
@@ -272,7 +275,7 @@ async fn blocks_with_triggers(
     Ok((
         vec![BlockWithTriggers {
             block: MockBlock { number: 0 },
-            trigger_data: vec![MockTriggerData],
+            trigger_data: vec![Trigger::Chain(MockTriggerData)],
         }],
         to,
     ))
