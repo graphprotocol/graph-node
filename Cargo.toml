@@ -52,6 +52,5 @@ incremental = false
 incremental = false
 
 [profile.release]
-lto = true
 opt-level = 's'
 strip = "debuginfo"
