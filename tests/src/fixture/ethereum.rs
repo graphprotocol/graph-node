@@ -9,9 +9,10 @@ use super::{
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
+use graph::data_source::subgraph;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
+use graph::prelude::{ethabi, tiny_keccak, DeploymentHash, Entity, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
@@ -157,6 +158,21 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
         .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
             log, None,
         ))))
+}
+
+pub fn push_test_subgraph_trigger(
+    block: &mut BlockWithTriggers<Chain>,
+    source: DeploymentHash,
+    entity: Entity,
+    entity_type: &str,
+) {
+    block
+        .trigger_data
+        .push(Trigger::Subgraph(subgraph::TriggerData {
+            source,
+            entity: entity,
+            entity_type: entity_type.to_string(),
+        }));
 }
 
 pub fn push_test_command(

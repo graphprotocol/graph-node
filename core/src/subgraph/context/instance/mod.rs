@@ -29,6 +29,9 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// will return the onchain hosts in the same order as they were inserted.
     onchain_hosts: OnchainHosts<C, T>,
 
+    // TODO(krishna): Describe subgraph_hosts
+    subgraph_hosts: OnchainHosts<C, T>,
+
     offchain_hosts: OffchainHosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
@@ -79,6 +82,7 @@ where
             network,
             static_data_sources: Arc::new(manifest.data_sources),
             onchain_hosts: OnchainHosts::new(),
+            subgraph_hosts: OnchainHosts::new(),
             offchain_hosts: OffchainHosts::new(),
             module_cache: HashMap::new(),
             templates,
@@ -169,7 +173,14 @@ where
                     Ok(Some(host))
                 }
             }
-            DataSource::Subgraph(_) => Ok(None),
+            DataSource::Subgraph(_) => {
+                if self.subgraph_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.subgraph_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
+            }
         }
     }
 
@@ -229,7 +240,9 @@ where
             TriggerData::Offchain(trigger) => self
                 .offchain_hosts
                 .matches_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
-            TriggerData::Subgraph(_) => todo!(), // TODO(krishna)
+            TriggerData::Subgraph(trigger) => self
+                .subgraph_hosts
+                .matches_by_address(Some(trigger.source.to_bytes().as_slice())),
         }
     }
 

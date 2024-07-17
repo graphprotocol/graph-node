@@ -718,14 +718,25 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
 
     async fn build_subgraph_block_stream(
         &self,
-        _chain: &C,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilterWrapper<C>>,
-        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+        chain: &C,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<TriggerFilterWrapper<C>>,
+        unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!()
+        let builder = self.0.lock().unwrap().clone();
+
+        builder
+            .build_subgraph_block_stream(
+                chain,
+                deployment,
+                start_blocks,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
     }
 
     async fn build_polling(
@@ -772,11 +783,21 @@ where
         _chain: &C,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!()
+        let current_idx = subgraph_current_block.map(|current_block| {
+            self.chain
+                .iter()
+                .enumerate()
+                .find(|(_, b)| b.ptr() == current_block)
+                .unwrap()
+                .0
+        });
+        Ok(Box::new(StaticStream {
+            stream: Box::pin(stream_events(self.chain.clone(), current_idx)),
+        }))
     }
 
     async fn build_firehose(
