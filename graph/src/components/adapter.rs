@@ -1,3 +1,4 @@
+use core::time;
 use std::{
     collections::HashMap,
     ops::{Add, Deref},
@@ -42,6 +43,12 @@ pub enum ProviderManagerError {
 
 #[async_trait]
 pub trait NetIdentifiable: Sync + Send {
+    async fn net_identifiers_with_timeout(
+        &self,
+        timeout: time::Duration,
+    ) -> Result<ChainIdentifier, anyhow::Error> {
+        tokio::time::timeout(timeout, async move { self.net_identifiers().await }).await?
+    }
     async fn net_identifiers(&self) -> Result<ChainIdentifier, anyhow::Error>;
     fn provider_name(&self) -> ProviderName;
 }

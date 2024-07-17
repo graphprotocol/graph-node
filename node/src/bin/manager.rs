@@ -1057,6 +1057,10 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let mut config = Cfg::load(&logger, &opt.clone().into()).context("Configuration error")?;
+    config.stores.iter_mut().for_each(|(_, shard)| {
+        shard.pool_size = PoolSize::Fixed(5);
+        shard.fdw_pool_size = PoolSize::Fixed(5);
+    });
 
     if opt.pool_size > 0 && !opt.cmd.use_configured_pool_size() {
         // Override pool size from configuration
