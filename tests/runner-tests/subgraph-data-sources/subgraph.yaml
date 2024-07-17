@@ -6,7 +6,7 @@ dataSources:
     name: Contract
     network: test
     source:
-      address: 'QmHash'
+      address: 'QmRFXhvyvbm4z5Lo7z2mN9Ckmo623uuB2jJYbRmAXgYKXJ'
       startBlock: 6082461
     mapping:
       apiVersion: 0.0.7
