@@ -119,7 +119,7 @@ impl GenesisDecoder for SubstreamsGenesisDecoder {
                 substreams_rpc::Request {
                     start_block_num: 0,
                     start_cursor: "".to_string(),
-                    stop_block_num: 1,
+                    stop_block_num: 0,
                     final_blocks_only: true,
                     production_mode: false,
                     output_module: "map_blocks".to_string(),
