@@ -21,6 +21,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fmt::Display;
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -1035,6 +1036,14 @@ impl ReadStore for EmptyStore {
     }
 
     fn get_many(&self, _: BTreeSet<EntityKey>) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn get_range(
+        &self,
+        _key: &EntityKey,
+        _block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
         Ok(BTreeMap::new())
     }
 

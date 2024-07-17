@@ -29,8 +29,8 @@ use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
-use std::ops::Deref;
 use std::ops::{Bound, DerefMut};
+use std::ops::{Deref, Range};
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1054,6 +1054,17 @@ impl DeploymentStore {
         let layout = self.layout(&mut conn, site)?;
 
         layout.find_many(&mut conn, ids_for_type, block)
+    }
+
+    pub(crate) fn get_range(
+        &self,
+        site: Arc<Site>,
+        key: &EntityKey,
+        block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+        let mut conn = self.get_conn()?;
+        let layout = self.layout(&mut conn, site)?;
+        layout.find_range(&mut conn, key, block_range)
     }
 
     pub(crate) fn get_derived(
