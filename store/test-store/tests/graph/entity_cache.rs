@@ -20,6 +20,7 @@ use lazy_static::lazy_static;
 use slog::Logger;
 use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
+use std::ops::Range;
 use std::sync::Arc;
 use web3::types::H256;
 
@@ -64,6 +65,14 @@ impl ReadStore for MockStore {
         _keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(self.get_many_res.clone())
+    }
+
+    fn get_range(
+        &self,
+        _key: &EntityKey,
+        _block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+        todo!()
     }
 
     fn get_derived(
