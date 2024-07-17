@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::Instant;
@@ -349,6 +349,17 @@ impl SyncStore {
         retry::forever(&self.logger, "get_many", || {
             self.writable
                 .get_many(self.site.cheap_clone(), &by_type, block)
+        })
+    }
+
+    fn get_range(
+        &self,
+        key: &EntityKey,
+        block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+        retry::forever(&self.logger, "get_range", || {
+            self.writable
+                .get_range(self.site.cheap_clone(), key, block_range.clone())
         })
     }
 
@@ -1217,6 +1228,15 @@ impl Queue {
         Ok(map)
     }
 
+    fn get_range(
+        &self,
+        key: &EntityKey,
+        block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+        // TODO: implemet read from the queue
+        self.store.get_range(key, block_range)
+    }
+
     fn get_derived(
         &self,
         derived_query: &DerivedEntityQuery,
@@ -1429,6 +1449,17 @@ impl Writer {
         }
     }
 
+    fn get_range(
+        &self,
+        key: &EntityKey,
+        block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+        match self {
+            Writer::Sync(store) => store.get_range(key, block_range),
+            Writer::Async { queue, .. } => queue.get_range(key, block_range),
+        }
+    }
+
     fn get_derived(
         &self,
         key: &DerivedEntityQuery,
@@ -1555,6 +1586,14 @@ impl ReadStore for WritableStore {
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         self.writer.get_many(keys)
+    }
+
+    fn get_range(
+        &self,
+        key: &EntityKey,
+        block_range: Range<u32>,
+    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+        self.writer.get_range(key, block_range)
     }
 
     fn get_derived(
