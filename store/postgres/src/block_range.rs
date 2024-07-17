@@ -50,7 +50,7 @@ lazy_static! {
 
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct BlockRange(Bound<BlockNumber>, Bound<BlockNumber>);
 
 pub(crate) fn first_block_in_range(
@@ -147,6 +147,16 @@ pub enum BlockRangeColumn<'a> {
         table_prefix: &'a str,
         block: BlockNumber,
     },
+    MutableRange {
+        table: &'a Table,
+        table_prefix: &'a str,
+        block_range: BlockRange, // TODO: check if this is a proper type here (maybe Range<BlockNumber>?)
+    },
+    ImmutableRange {
+        table: &'a Table,
+        table_prefix: &'a str,
+        block_range: BlockRange,
+    },
 }
 
 impl<'a> BlockRangeColumn<'a> {
@@ -166,10 +176,35 @@ impl<'a> BlockRangeColumn<'a> {
         }
     }
 
+    // TODO: refactor new and new2 into one. use enum of both BlockNumber and range
+    pub fn new2(
+        table: &'a Table,
+        table_prefix: &'a str,
+        block_range: std::ops::Range<u32>,
+    ) -> Self {
+        let st: Bound<BlockNumber> = Bound::Included(block_range.start.try_into().unwrap());
+        let en: Bound<BlockNumber> = Bound::Excluded(block_range.end.try_into().unwrap());
+        let block_range: BlockRange = BlockRange(st, en);
+        if table.immutable {
+            Self::ImmutableRange {
+                table,
+                table_prefix,
+                block_range,
+            }
+        } else {
+            Self::MutableRange {
+                table,
+                table_prefix,
+                block_range,
+            }
+        }
+    }
+
     pub fn block(&self) -> BlockNumber {
         match self {
             BlockRangeColumn::Mutable { block, .. } => *block,
             BlockRangeColumn::Immutable { block, .. } => *block,
+            _ => todo!(),
         }
     }
 }
@@ -224,6 +259,40 @@ impl<'a> BlockRangeColumn<'a> {
                     out.push_bind_param::<Integer, _>(block)
                 }
             }
+            BlockRangeColumn::MutableRange {
+                table: _,
+                table_prefix: _,
+                block_range: BlockRange(start, finish),
+            } => {
+                out.push_sql("block_range && int4range(");
+                match start {
+                    Bound::Included(block) => out.push_bind_param::<Integer, _>(block)?,
+                    Bound::Excluded(block) => {
+                        out.push_bind_param::<Integer, _>(block)?;
+                        out.push_sql("+1");
+                    }
+                    Bound::Unbounded => todo!(),
+                };
+                out.push_sql(",");
+                match finish {
+                    Bound::Included(block) => {
+                        out.push_bind_param::<Integer, _>(block)?;
+                        out.push_sql("+1");
+                    }
+                    Bound::Excluded(block) => out.push_bind_param::<Integer, _>(block)?,
+                    Bound::Unbounded => todo!(),
+                };
+                out.push_sql(")");
+                Ok(())
+            }
+            BlockRangeColumn::ImmutableRange {
+                table: _,
+                table_prefix: _,
+                block_range: _,
+            } => {
+                println!("ImmutableRange conatins()");
+                todo!()
+            }
         }
     }
 
@@ -231,6 +300,7 @@ impl<'a> BlockRangeColumn<'a> {
         match self {
             BlockRangeColumn::Mutable { .. } => BLOCK_RANGE_COLUMN,
             BlockRangeColumn::Immutable { .. } => BLOCK_COLUMN,
+            _ => todo!(),
         }
     }
 
@@ -245,6 +315,7 @@ impl<'a> BlockRangeColumn<'a> {
                 out.push_sql(table_prefix);
                 out.push_sql(BLOCK_COLUMN);
             }
+            _ => todo!(),
         }
     }
 
@@ -254,6 +325,7 @@ impl<'a> BlockRangeColumn<'a> {
         match self {
             BlockRangeColumn::Mutable { .. } => out.push_sql(BLOCK_RANGE_CURRENT),
             BlockRangeColumn::Immutable { .. } => out.push_sql("true"),
+            _ => todo!(),
         }
     }
 
@@ -277,6 +349,7 @@ impl<'a> BlockRangeColumn<'a> {
             BlockRangeColumn::Immutable { .. } => {
                 unreachable!("immutable entities can not be updated or deleted")
             }
+            _ => todo!(),
         }
     }
 
@@ -285,6 +358,7 @@ impl<'a> BlockRangeColumn<'a> {
         match self {
             BlockRangeColumn::Mutable { .. } => out.push_sql(BLOCK_RANGE_COLUMN),
             BlockRangeColumn::Immutable { .. } => out.push_sql(BLOCK_COLUMN),
+            _ => todo!(),
         }
     }
 
@@ -303,6 +377,7 @@ impl<'a> BlockRangeColumn<'a> {
                 out.push_sql(" >= ");
                 out.push_bind_param::<Integer, _>(block)
             }
+            _ => todo!(),
         }
     }
 }
