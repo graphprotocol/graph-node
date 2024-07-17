@@ -131,7 +131,6 @@ where
             None => true,
         };
 
-
         let data_sources = self.ctx.static_data_sources();
 
         let subgraph_filter = data_sources
@@ -139,7 +138,6 @@ where
             .filter_map(|ds| ds.as_subgraph())
             .map(|ds| (ds.source.address(), ds.source.start_block))
             .collect::<Vec<_>>();
-
 
         // if static_filters is not enabled we just stick to the filter based on all the data sources.
         if !static_filters {
@@ -341,7 +339,7 @@ where
                 &block,
                 triggers.into_iter().map(|t| match t {
                     Trigger::Chain(t) => TriggerData::Onchain(t),
-                    Trigger::Subgraph(_) => todo!(), //TODO(krishna),
+                    Trigger::Subgraph(t) => TriggerData::Subgraph(t),
                 }),
                 hosts_filter,
                 &self.metrics.subgraph,
@@ -503,7 +501,7 @@ where
                         &block,
                         triggers.into_iter().map(|t| match t {
                             Trigger::Chain(t) => TriggerData::Onchain(t),
-                            Trigger::Subgraph(_) => todo!(), //TODO(krishna),
+                            Trigger::Subgraph(_) => unreachable!(), // TODO(krishna): Re-evaulate this
                         }),
                         |_| Box::new(runtime_hosts.iter().map(Arc::as_ref)),
                         &self.metrics.subgraph,
