@@ -8,10 +8,12 @@ use super::{
 };
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
+use graph::bytes::Bytes;
 use graph::cheap_clone::CheapClone;
+use graph::data_source::subgraph;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
+use graph::prelude::{ethabi, tiny_keccak, DeploymentHash, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
@@ -157,6 +159,22 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
         .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
             log, None,
         ))))
+}
+
+pub fn push_test_subgraph_trigger(
+    block: &mut BlockWithTriggers<Chain>,
+    source: DeploymentHash,
+    entity: &str,
+    data: &str,
+) {
+    let bytes = Bytes::copy_from_slice(data.as_bytes());
+    block
+        .trigger_data
+        .push(Trigger::Subgraph(subgraph::TriggerData {
+            source,
+            entity: entity.to_string(),
+            data: Arc::new(bytes),
+        }));
 }
 
 pub fn push_test_command(

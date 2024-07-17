@@ -22,7 +22,7 @@ use graph::prelude::{
 };
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
-    push_test_polling_trigger,
+    push_test_polling_trigger, push_test_subgraph_trigger,
 };
 
 use graph_tests::fixture::substreams::chain as substreams_chain;
@@ -1084,7 +1084,13 @@ async fn subgraph_data_sources() {
 
     let blocks = {
         let block_0 = genesis();
-        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_subgraph_trigger(
+            &mut block_1,
+            DeploymentHash::new("QmRFXhvyvbm4z5Lo7z2mN9Ckmo623uuB2jJYbRmAXgYKXJ").unwrap(),
+            "test",
+            "payload",
+        );
         let block_2 = empty_block(block_1.ptr(), test_ptr(2));
         vec![block_0, block_1, block_2]
     };

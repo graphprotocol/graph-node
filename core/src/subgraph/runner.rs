@@ -341,7 +341,7 @@ where
                 &block,
                 triggers.into_iter().map(|t| match t {
                     Trigger::Chain(t) => TriggerData::Onchain(t),
-                    Trigger::Subgraph(_) => todo!(), //TODO(krishna),
+                    Trigger::Subgraph(t) => TriggerData::Subgraph(t),
                 }),
                 hosts_filter,
                 &self.metrics.subgraph,
@@ -503,7 +503,7 @@ where
                         &block,
                         triggers.into_iter().map(|t| match t {
                             Trigger::Chain(t) => TriggerData::Onchain(t),
-                            Trigger::Subgraph(_) => todo!(), //TODO(krishna),
+                            Trigger::Subgraph(_) => unreachable!(), // TODO(krishna): Re-evaulate this
                         }),
                         |_| Box::new(runtime_hosts.iter().map(Arc::as_ref)),
                         &self.metrics.subgraph,

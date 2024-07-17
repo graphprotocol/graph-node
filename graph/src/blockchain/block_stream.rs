@@ -1,8 +1,10 @@
+use crate::data_source::subgraph;
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
+use bytes::Bytes;
 use futures03::Stream;
 use prost_types::Any;
 use std::fmt;
@@ -314,8 +316,10 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdaterWrapper<C> {
             .await
             .map(|(mut blocks, next_block)| {
                 for block in &mut blocks {
-                    block.extend_triggers(vec![Trigger::<C>::Subgraph(super::SubgraphTrigger {
-                        data: "Hello World".as_bytes().to_vec(),
+                    block.extend_triggers(vec![Trigger::<C>::Subgraph(subgraph::TriggerData {
+                        source: DeploymentHash::new("test").unwrap(),
+                        entity: "test".to_string(),
+                        data: Arc::new(Bytes::from("test")),
                     })]);
                 }
                 (blocks, next_block)

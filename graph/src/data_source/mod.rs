@@ -105,6 +105,14 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn is_chain_based(&self) -> bool {
+        match self {
+            Self::Onchain(_) => true,
+            Self::Offchain(_) => false,
+            Self::Subgraph(_) => true,
+        }
+    }
+
     pub fn as_offchain(&self) -> Option<&offchain::DataSource> {
         match self {
             Self::Onchain(_) => None,
@@ -249,11 +257,15 @@ impl<C: Blockchain> DataSource<C> {
             (Self::Offchain(ds), TriggerData::Offchain(trigger)) => {
                 Ok(ds.match_and_decode(trigger))
             }
+            (Self::Subgraph(ds), TriggerData::Subgraph(trigger)) => {
+                Ok(ds.match_and_decode(block, trigger))
+            }
             (Self::Onchain(_), TriggerData::Offchain(_))
             | (Self::Offchain(_), TriggerData::Onchain(_))
             | (Self::Onchain(_), TriggerData::Subgraph(_))
-            | (Self::Offchain(_), TriggerData::Subgraph(_)) => Ok(None),
-            (Self::Subgraph(_), _) => todo!(), // TODO(krishna)
+            | (Self::Offchain(_), TriggerData::Subgraph(_))
+            | (Self::Subgraph(_), TriggerData::Onchain(_))
+            | (Self::Subgraph(_), TriggerData::Offchain(_)) => Ok(None),
         }
     }
 
@@ -577,7 +589,7 @@ impl<C: Blockchain> MappingTrigger<C> {
         match self {
             Self::Onchain(trigger) => Some(trigger),
             Self::Offchain(_) => None,
-            Self::Subgraph(_) => todo!(), // TODO(krishna)
+            Self::Subgraph(_) => None, // TODO(krishna)
         }
     }
 }

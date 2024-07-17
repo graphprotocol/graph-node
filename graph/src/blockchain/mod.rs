@@ -25,7 +25,7 @@ use crate::{
         trigger_processor::RunnableTriggers,
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
-    data_source::{self, DataSourceTemplateInfo},
+    data_source::{self, subgraph, DataSourceTemplateInfo},
     prelude::{DataSourceContext, DeploymentHash},
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
@@ -250,7 +250,7 @@ impl From<web3::Error> for IngestorError {
 #[derive(Debug)]
 pub struct TriggerFilterWrapper<C: Blockchain> {
     pub filter: Arc<C::TriggerFilter>,
-    pub subgraph_filter:  Vec<(DeploymentHash, BlockNumber)>,
+    pub subgraph_filter: Vec<(DeploymentHash, BlockNumber)>, // TODO(krishna): Make this a struct
 }
 
 impl<C: Blockchain> TriggerFilterWrapper<C> {
@@ -400,7 +400,7 @@ pub trait UnresolvedDataSource<C: Blockchain>:
 #[derive(Debug)]
 pub enum Trigger<C: Blockchain> {
     Chain(C::TriggerData),
-    Subgraph(SubgraphTrigger),
+    Subgraph(subgraph::TriggerData),
 }
 
 impl<C: Blockchain> Trigger<C> {
@@ -411,7 +411,7 @@ impl<C: Blockchain> Trigger<C> {
         }
     }
 
-    pub fn as_subgraph(&self) -> Option<&SubgraphTrigger> {
+    pub fn as_subgraph(&self) -> Option<&subgraph::TriggerData> {
         match self {
             Trigger::Subgraph(data) => Some(data),
             _ => None,
@@ -465,10 +465,6 @@ impl<C: Blockchain> PartialOrd for Trigger<C> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
-}
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct SubgraphTrigger {
-    pub data: Vec<u8>,
 }
 
 pub trait TriggerData {

@@ -1,5 +1,5 @@
 use crate::{
-    blockchain::{BlockPtr, BlockTime, Blockchain},
+    blockchain::{Block, Blockchain},
     components::{link_resolver::LinkResolver, store::BlockNumber},
     data::{subgraph::SPEC_VERSION_1_3_0, value::Word},
     data_source,
@@ -65,32 +65,35 @@ impl DataSource {
 }
 
 impl DataSource {
+    // TODO(krishna): This needs to be revisited. The current implementation is
+    // a placeholder to get it working.
     pub fn match_and_decode<C: Blockchain>(
         &self,
+        block: &Arc<C::Block>,
         trigger: &TriggerData,
     ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
-        if self.source != trigger.source {
+        if self.source.address != trigger.source {
             return None;
         }
 
         let trigger_ref = self.mapping.handlers.iter().find_map(|handler| {
-            if handler.entity == trigger.entity {
-                Some(TriggerWithHandler::new(
-                    data_source::MappingTrigger::Subgraph(trigger.clone()),
-                    handler.handler.clone(),
-                    BlockPtr::new(Default::default(), self.creation_block.unwrap_or(0)),
-                    BlockTime::NONE,
-                ))
-            } else {
-                None
+            if handler.entity != trigger.entity {
+                return None;
             }
+            
+            Some(TriggerWithHandler::new(
+                data_source::MappingTrigger::Subgraph(trigger.clone()),
+                handler.handler.clone(),
+                block.ptr(),
+                block.timestamp(),
+            ))
         });
 
         return trigger_ref;
     }
 
     pub fn address(&self) -> Option<Vec<u8>> {
-        Some(self.source.address().to_string().into_bytes())
+        Some(self.source.address().to_bytes())
     }
 
     pub fn source_subgraph(&self) -> DeploymentHash {
@@ -275,25 +278,31 @@ impl UnresolvedDataSourceTemplate {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TriggerData {
-    pub source: Source,
+    pub source: DeploymentHash,
     pub entity: String,
     pub data: Arc<bytes::Bytes>,
 }
 
+impl TriggerData {
+    pub fn new(source: DeploymentHash, entity: String, data: Arc<bytes::Bytes>) -> Self {
+        Self {
+            source,
+            entity,
+            data,
+        }
+    }
+}
+
 impl fmt::Debug for TriggerData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        #[derive(Debug)]
-        struct TriggerDataWithoutData<'a> {
-            _source: &'a Source,
-        }
         write!(
             f,
-            "{:?}",
-            TriggerDataWithoutData {
-                _source: &self.source
-            }
+            "TriggerData {{ source: {:?}, entity: {:?}, data: {} bytes }}",
+            self.source,
+            self.entity,
+            self.data.len()
         )
     }
 }

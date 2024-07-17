@@ -140,6 +140,10 @@ impl DeploymentHash {
             link: format!("/ipfs/{}", self),
         }
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.as_bytes().to_vec()
+    }
 }
 
 impl Deref for DeploymentHash {
