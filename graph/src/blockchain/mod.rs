@@ -250,7 +250,7 @@ impl From<web3::Error> for IngestorError {
 #[derive(Debug)]
 pub struct TriggerFilterWrapper<C: Blockchain> {
     pub filter: Arc<C::TriggerFilter>,
-    pub subgraph_filter:  Vec<(DeploymentHash, BlockNumber)>,
+    pub subgraph_filter: Vec<(DeploymentHash, BlockNumber)>, // TODO(krishna): Make this a struct
 }
 
 impl<C: Blockchain> TriggerFilterWrapper<C> {

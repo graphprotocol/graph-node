@@ -18,11 +18,12 @@ use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::Address;
 use graph::prelude::{
-    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
+    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore, Value,
 };
+use graph::schema::InputSchema;
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
-    push_test_polling_trigger,
+    push_test_polling_trigger, push_test_subgraph_trigger,
 };
 
 use graph_tests::fixture::substreams::chain as substreams_chain;
@@ -1082,9 +1083,29 @@ async fn subgraph_data_sources() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("subgraph-data-sources", "subgraph-data-sources").await;
 
+    let schema = InputSchema::parse_latest(
+        "type User @entity { id: String!, val: String! }",
+        DeploymentHash::new("test").unwrap(),
+    )
+    .unwrap();
+
+    let entity = schema
+        .make_entity(vec![
+            ("id".into(), Value::String("id".to_owned())),
+            ("val".into(), Value::String("DATA".to_owned())),
+        ])
+        .unwrap();
+
     let blocks = {
         let block_0 = genesis();
-        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_subgraph_trigger(
+            &mut block_1,
+            DeploymentHash::new("QmRFXhvyvbm4z5Lo7z2mN9Ckmo623uuB2jJYbRmAXgYKXJ").unwrap(),
+            entity,
+            "User",
+        );
+
         let block_2 = empty_block(block_1.ptr(), test_ptr(2));
         vec![block_0, block_1, block_2]
     };
@@ -1092,7 +1113,12 @@ async fn subgraph_data_sources() {
     let chain = chain(&test_info.test_name, blocks, &stores, None).await;
 
     let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
-    ctx.start_and_sync_to(stop_block).await;
+    let _ = ctx
+        .runner(stop_block)
+        .await
+        .run_for_test(true)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
