@@ -1,5 +1,5 @@
 options:
-  machineType: "E2_STANDARD_32"
+  machineType: "E2-STANDARD-32"
 timeout: 1800s
 steps:
 - name: 'gcr.io/cloud-builders/docker'
