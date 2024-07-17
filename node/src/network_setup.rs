@@ -146,20 +146,30 @@ impl Networks {
         &ChainId,
         Vec<(ProviderName, Result<ChainIdentifier, anyhow::Error>)>,
     )> {
+        let timeout = Duration::from_secs(20);
         let mut out = vec![];
         for chain_id in self.adapters.iter().map(|a| a.chain_id()).sorted().dedup() {
             let mut inner = vec![];
             for adapter in self.rpc_provider_manager.get_all_unverified(chain_id) {
-                inner.push((adapter.provider_name(), adapter.net_identifiers().await));
+                inner.push((
+                    adapter.provider_name(),
+                    adapter.net_identifiers_with_timeout(timeout).await,
+                ));
             }
             for adapter in self.firehose_provider_manager.get_all_unverified(chain_id) {
-                inner.push((adapter.provider_name(), adapter.net_identifiers().await));
+                inner.push((
+                    adapter.provider_name(),
+                    adapter.net_identifiers_with_timeout(timeout).await,
+                ));
             }
             for adapter in self
                 .substreams_provider_manager
                 .get_all_unverified(chain_id)
             {
-                inner.push((adapter.provider_name(), adapter.net_identifiers().await));
+                inner.push((
+                    adapter.provider_name(),
+                    adapter.net_identifiers_with_timeout(timeout).await,
+                ));
             }
 
             out.push((chain_id, inner));
