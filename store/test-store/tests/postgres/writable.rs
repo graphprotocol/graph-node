@@ -6,6 +6,7 @@ use graph::schema::{EntityKey, EntityType, InputSchema};
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
+use std::ops::Range;
 use test_store::*;
 
 use graph::components::store::{DeploymentLocator, DerivedEntityQuery, WritableStore};
@@ -111,7 +112,12 @@ fn count_key(id: &str) -> EntityKey {
     COUNTER_TYPE.parse_key(id).unwrap()
 }
 
-async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {
+async fn insert_count(
+    store: &Arc<DieselSubgraphStore>,
+    deployment: &DeploymentLocator,
+    block: u8,
+    count: u8,
+) {
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
         count: count as i32
@@ -120,7 +126,7 @@ async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentL
         key: count_key(&data.get("id").unwrap().to_string()),
         data,
     };
-    transact_entity_operations(store, deployment, block_pointer(count), vec![entity_op])
+    transact_entity_operations(store, deployment, block_pointer(block), vec![entity_op])
         .await
         .unwrap();
 }
@@ -150,13 +156,13 @@ where
         }
 
         for count in 1..4 {
-            insert_count(&subgraph_store, &deployment, count).await;
+            insert_count(&subgraph_store, &deployment, count, count).await;
         }
 
         // Test reading back with pending writes to the same entity
         pause_writer(&deployment).await;
         for count in 4..7 {
-            insert_count(&subgraph_store, &deployment, count).await;
+            insert_count(&subgraph_store, &deployment, count, count).await;
         }
         assert_eq!(6, read_count());
 
@@ -165,7 +171,7 @@ where
 
         // Test reading back with pending writes and a pending revert
         for count in 7..10 {
-            insert_count(&subgraph_store, &deployment, count).await;
+            insert_count(&subgraph_store, &deployment, count, count).await;
         }
         writable
             .revert_block_operations(block_pointer(2), FirehoseCursor::None)
@@ -284,5 +290,23 @@ fn restart() {
         .unwrap();
         // Look, no errors
         writable.flush().await.unwrap();
+    })
+}
+
+#[test]
+fn dummy() {
+    run_test(|store, writable, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+        let read_count = || count_get(writable.as_ref());
+        writable.deployment_synced().unwrap();
+
+        for count in 1..7 {
+            insert_count(&subgraph_store, &deployment, count, 2 * count).await;
+        }
+        writable.flush().await.unwrap();
+        assert_eq!(2 * (7 - 1), read_count());
+        let br: Range<u32> = 2..5;
+        let e = writable.get_range(&count_key("1"), br).unwrap();
+        assert_eq!(e.len(), 5 - 2)
     })
 }
