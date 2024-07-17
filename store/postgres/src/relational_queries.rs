@@ -18,6 +18,7 @@ use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
+use graph::prelude::regex::Regex;
 use graph::prelude::{
     anyhow, r, serde_json, BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter,
     EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
@@ -31,6 +32,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
+use std::ops::Range;
 use std::str::FromStr;
 use std::string::ToString;
 
@@ -467,7 +469,7 @@ pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreErr
 /// at compile time. Because of that, we retrieve the actual data for an
 /// entity as Jsonb by converting the row containing the entity using the
 /// `to_jsonb` function.
-#[derive(QueryableByName, Debug)]
+#[derive(QueryableByName, Clone, Debug)]
 pub struct EntityData {
     #[diesel(sql_type = Text)]
     entity: String,
@@ -478,6 +480,35 @@ pub struct EntityData {
 impl EntityData {
     pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
         schema.entity_type(&self.entity).unwrap()
+    }
+
+    pub fn deserialize_block_number<T: FromEntityData>(self) -> Result<BlockNumber, StoreError> {
+        use serde_json::Value as j;
+        match self.data {
+            j::Object(map) => {
+                let mut entries = map.into_iter().filter_map(move |(key, json)| {
+                    if key == "block_range" {
+                        let r = json.as_str().unwrap();
+                        let rx = Regex::new("\\[(?P<start>[0-9]+),[0-9]+\\)").unwrap();
+                        let cap = rx.captures(r).unwrap();
+                        let start = cap
+                            .name("start")
+                            .map(|mtch| mtch.as_str().to_string())
+                            .unwrap();
+                        let n = start.parse::<i32>().unwrap();
+                        Some(n)
+                    } else {
+                        None
+                    }
+                });
+                let en = entries.next().unwrap();
+                assert!(entries.next().is_none()); // there should be just one block_range field
+                Ok(en)
+            }
+            _ => unreachable!(
+                "we use `to_json` in our queries, and will therefore always get an object back"
+            ),
+        }
     }
 
     /// Map the `EntityData` using the schema information in `Layout`
@@ -1971,6 +2002,65 @@ impl<'a> Query for FindQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
+
+#[derive(Debug, Clone)]
+pub struct FindRangeQuery<'a> {
+    table: &'a Table,
+    key: &'a EntityKey,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> FindRangeQuery<'a> {
+    pub fn new(table: &'a Table, key: &'a EntityKey, block_range: Range<u32>) -> Self {
+        let br_column = BlockRangeColumn::new2(table, "e.", block_range);
+        Self {
+            table,
+            key,
+            br_column,
+        }
+    }
+}
+
+impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        // Generate
+        //    select '..' as entity, to_jsonb(e.*) as data
+        //      from schema.table e where id = $1
+
+        // out.push_sql("\nunion all\n");
+
+        out.push_sql("select ");
+        // out.push_sql("e.* ");
+        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
+        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+        // out.push_sql(" select to_jsonb(e.*) as data\n");
+        out.push_sql("  from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" e\n where ");
+        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
+        out.push_sql(" and ");
+        if self.table.has_causality_region {
+            out.push_sql("causality_region = ");
+            out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
+            out.push_sql(" and ");
+        }
+        self.br_column.contains(&mut out, true)
+    }
+}
+
+impl<'a> QueryId for FindRangeQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> Query for FindRangeQuery<'a> {
+    type SqlType = Untyped;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindRangeQuery<'a> {}
 
 /// Builds a query over a given set of [`Table`]s in an attempt to find updated
 /// and/or newly inserted entities at a given block number; i.e. such that the
