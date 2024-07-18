@@ -2006,18 +2006,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 #[derive(Debug, Clone)]
 pub struct FindRangeQuery<'a> {
     table: &'a Table,
-    key: &'a EntityKey,
     br_column: BlockRangeColumn<'a>,
 }
 
 impl<'a> FindRangeQuery<'a> {
-    pub fn new(table: &'a Table, key: &'a EntityKey, block_range: Range<u32>) -> Self {
+    pub fn new(table: &'a Table, block_range: Range<u32>) -> Self {
         let br_column = BlockRangeColumn::new2(table, "e.", block_range);
-        Self {
-            table,
-            key,
-            br_column,
-        }
+        Self { table, br_column }
     }
 }
 
@@ -2028,24 +2023,17 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
-
-        // out.push_sql("\nunion all\n");
-
         out.push_sql("select ");
-        // out.push_sql("e.* ");
         out.push_bind_param::<Text, _>(self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
-        // out.push_sql(" select to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
-        out.push_sql(" and ");
-        if self.table.has_causality_region {
-            out.push_sql("causality_region = ");
-            out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
-            out.push_sql(" and ");
-        }
+        // if self.table.has_causality_region {
+        //     out.push_sql("causality_region = ");
+        //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
+        //     out.push_sql(" and ");
+        // }
         self.br_column.contains(&mut out, true)
     }
 }

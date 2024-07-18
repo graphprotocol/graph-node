@@ -354,12 +354,12 @@ impl SyncStore {
 
     fn get_range(
         &self,
-        key: &EntityKey,
+        entity_type: &EntityType,
         block_range: Range<u32>,
     ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
         retry::forever(&self.logger, "get_range", || {
             self.writable
-                .get_range(self.site.cheap_clone(), key, block_range.clone())
+                .get_range(self.site.cheap_clone(), entity_type, block_range.clone())
         })
     }
 
@@ -1231,11 +1231,11 @@ impl Queue {
 
     fn get_range(
         &self,
-        key: &EntityKey,
+        entity_type: &EntityType,
         block_range: Range<u32>,
     ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
         // TODO: implemet read from the queue
-        self.store.get_range(key, block_range)
+        self.store.get_range(entity_type, block_range)
     }
 
     fn get_derived(
@@ -1452,12 +1452,12 @@ impl Writer {
 
     fn get_range(
         &self,
-        key: &EntityKey,
+        entity_type: &EntityType,
         block_range: Range<u32>,
     ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_range(key, block_range),
-            Writer::Async { queue, .. } => queue.get_range(key, block_range),
+            Writer::Sync(store) => store.get_range(entity_type, block_range),
+            Writer::Async { queue, .. } => queue.get_range(entity_type, block_range),
         }
     }
 
@@ -1591,10 +1591,10 @@ impl ReadStore for WritableStore {
 
     fn get_range(
         &self,
-        key: &EntityKey,
+        entity_type: &EntityType,
         block_range: Range<u32>,
     ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
-        self.writer.get_range(key, block_range)
+        self.writer.get_range(entity_type, block_range)
     }
 
     fn get_derived(

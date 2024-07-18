@@ -307,7 +307,8 @@ fn entities_read_range() {
         writable.flush().await.unwrap();
         assert_eq!(2 * (7 - 1), read_count());
         let br: Range<u32> = 2..5;
-        let e = writable.get_range(&count_key("1"), br).unwrap();
+        let et = &COUNTER_TYPE;
+        let e = writable.get_range(&et, br).unwrap();
         assert_eq!(e.len(), 5 - 2)
     })
 }
