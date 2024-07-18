@@ -232,7 +232,7 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
         &self,
         from: crate::components::store::BlockNumber,
         to: crate::components::store::BlockNumber,
-        filter: &MockTriggerFilter,
+        filter: &Arc<TriggerFilterWrapper<MockBlockchain>>,
     ) -> Result<
         (
             Vec<block_stream::BlockWithTriggers<MockBlockchain>>,
@@ -264,7 +264,7 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
 async fn blocks_with_triggers(
     _from: crate::components::store::BlockNumber,
     to: crate::components::store::BlockNumber,
-    _filter: &MockTriggerFilter,
+    _filter: &Arc<TriggerFilterWrapper<MockBlockchain>>,
 ) -> Result<
     (
         Vec<block_stream::BlockWithTriggers<MockBlockchain>>,
