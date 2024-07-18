@@ -128,7 +128,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -143,7 +143,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
                 )
             });
 
-        let adapter = Arc::new(TriggersAdapterWrapper::new(adapter));
+        let adapter = Arc::new(TriggersAdapterWrapper::new(adapter, source_subgraph_stores));
 
         let logger = chain
             .logger_factory
@@ -758,7 +758,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-        filter: &TriggerFilter,
+        filter: &Arc<TriggerFilterWrapper<Chain>>,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         blocks_with_triggers(
             self.chain_client
@@ -770,7 +770,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.ethrpc_metrics.clone(),
             from,
             to,
-            filter,
+            &filter.filter.clone(),
             self.unified_api_version.clone(),
         )
         .await
