@@ -23,7 +23,8 @@ use graph::{
     firehose::{self, FirehoseEndpoint, ForkStep},
     futures03::future::TryFutureExt,
     prelude::{
-        async_trait, BlockHash, BlockNumber, ChainStore, DeploymentHash, Error, Logger, LoggerFactory, MetricsRegistry
+        async_trait, BlockHash, BlockNumber, ChainStore, DeploymentHash, Error, Logger,
+        LoggerFactory, MetricsRegistry,
     },
     schema::InputSchema,
     slog::o,
