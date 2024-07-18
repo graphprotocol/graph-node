@@ -9,12 +9,14 @@ use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
+use graph::components::store::WritableStore;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data::value::Word;
 use graph::data_source::causality_region::CausalityRegionSeq;
 use graph::env::EnvVars;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
+use graph::semver::Version;
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -202,6 +204,52 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         }
     }
 
+    pub async fn hashes_to_writable_store<C: Blockchain>(
+        &self,
+        logger: &Logger,
+        link_resolver: &Arc<dyn LinkResolver>,
+        hashes: Vec<DeploymentHash>,
+        max_spec_version: Version,
+        is_runner_test: bool,
+    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn WritableStore>)>> {
+        let mut writable_stores = Vec::new();
+        let subgraph_store = self.subgraph_store.clone();
+
+        if is_runner_test {
+            return Ok(writable_stores);
+        }
+
+        for hash in hashes {
+            let file_bytes = link_resolver
+                .cat(logger, &hash.to_ipfs_link())
+                .await
+                .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+            let raw: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes)
+                .map_err(|e| SubgraphAssignmentProviderError::ResolveError(e.into()))?;
+            let manifest = UnresolvedSubgraphManifest::<C>::parse(hash.cheap_clone(), raw)?;
+            let manifest = manifest
+                .resolve(&link_resolver, &logger, max_spec_version.clone())
+                .await?;
+
+            let loc = subgraph_store
+                .active_locator(&hash)?
+                .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
+
+            let writable_store = subgraph_store
+                .clone() // Clone the Arc again for each iteration
+                .writable(
+                    logger.clone(),
+                    loc.id.clone(),
+                    Arc::new(manifest.template_idx_and_name().collect()),
+                )
+                .await?;
+
+            writable_stores.push((loc.hash, writable_store));
+        }
+
+        Ok(writable_stores)
+    }
+
     pub async fn build_subgraph_runner<C>(
         &self,
         logger: Logger,
@@ -210,6 +258,26 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
         tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
+    ) -> anyhow::Result<SubgraphRunner<C, RuntimeHostBuilder<C>>>
+    where
+        C: Blockchain,
+        <C as Blockchain>::MappingTrigger: ToAscPtr,
+    {
+        self.build_subgraph_runner_inner(
+            logger, env_vars, deployment, manifest, stop_block, tp, false,
+        )
+        .await
+    }
+
+    pub async fn build_subgraph_runner_inner<C>(
+        &self,
+        logger: Logger,
+        env_vars: Arc<EnvVars>,
+        deployment: DeploymentLocator,
+        manifest: serde_yaml::Mapping,
+        stop_block: Option<BlockNumber>,
+        tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
+        is_runner_test: bool,
     ) -> anyhow::Result<SubgraphRunner<C, RuntimeHostBuilder<C>>>
     where
         C: Blockchain,
@@ -305,6 +373,16 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let onchain_data_sources = data_sources
             .iter()
             .filter_map(|d| d.as_onchain().cloned())
+            .collect::<Vec<_>>();
+
+        let subgraph_data_sources = data_sources
+            .iter()
+            .filter_map(|d| d.as_subgraph())
+            .collect::<Vec<_>>();
+
+        let subgraph_ds_source_deployments = subgraph_data_sources
+            .iter()
+            .map(|d| d.source.address())
             .collect::<Vec<_>>();
 
         let required_capabilities = C::NodeCapabilities::from_data_sources(&onchain_data_sources);
@@ -413,11 +491,22 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let decoder = Box::new(Decoder::new(decoder_hook));
 
+        let subgraph_data_source_writables = self
+            .hashes_to_writable_store::<C>(
+                &logger,
+                &link_resolver,
+                subgraph_ds_source_deployments,
+                manifest.spec_version.clone(),
+                is_runner_test,
+            )
+            .await?;
+
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
             features,
             start_blocks,
             end_blocks,
+            source_subgraph_stores: subgraph_data_source_writables,
             stop_block,
             store,
             debug_fork,
