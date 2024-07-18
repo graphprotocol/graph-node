@@ -518,12 +518,12 @@ impl Layout {
     pub fn find_range(
         &self,
         conn: &mut PgConnection,
-        key: &EntityKey,
+        entity_type: &EntityType,
         block_range: Range<u32>,
     ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
+        let table = self.table_for_entity(entity_type)?;
         let mut entities: BTreeMap<BlockNumber, Entity> = BTreeMap::new();
-        if let Some(vec) = FindRangeQuery::new(table.as_ref(), key, block_range)
+        if let Some(vec) = FindRangeQuery::new(table.as_ref(), block_range)
             .get_results::<EntityData>(conn)
             .optional()?
         {
