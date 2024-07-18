@@ -15,5 +15,5 @@ dataSources:
         - Gravatar
       handlers:
         - handler: handleBlock
-          entity: Gravatar
+          entity: User
       file: ./src/mapping.ts
