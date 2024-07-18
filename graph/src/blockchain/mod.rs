@@ -20,7 +20,9 @@ use crate::{
     components::{
         adapter::ChainId,
         metrics::subgraph::SubgraphInstanceMetrics,
-        store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource, WritableStore},
+        store::{
+            DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource, WritableStore,
+        },
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
         trigger_processor::RunnableTriggers,
     },

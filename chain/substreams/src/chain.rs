@@ -9,7 +9,9 @@ use graph::blockchain::{
 use graph::components::adapter::ChainId;
 use graph::components::store::{DeploymentCursorTracker, WritableStore};
 use graph::env::EnvVars;
-use graph::prelude::{BlockHash, CheapClone, DeploymentHash, Entity, LoggerFactory, MetricsRegistry};
+use graph::prelude::{
+    BlockHash, CheapClone, DeploymentHash, Entity, LoggerFactory, MetricsRegistry,
+};
 use graph::schema::EntityKey;
 use graph::{
     blockchain::{
