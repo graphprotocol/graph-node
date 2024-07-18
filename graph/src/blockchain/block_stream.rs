@@ -282,18 +282,18 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     }
 }
 
-pub struct TriggersAdaterWrapper<C: Blockchain> {
+pub struct TriggersAdapterWrapper<C: Blockchain> {
     pub adapter: Arc<dyn TriggersAdapter<C>>,
 }
 
-impl<C: Blockchain> TriggersAdaterWrapper<C> {
+impl<C: Blockchain> TriggersAdapterWrapper<C> {
     pub fn new(adapter: Arc<dyn TriggersAdapter<C>>) -> Self {
         Self { adapter }
     }
 }
 
 #[async_trait]
-impl<C: Blockchain> TriggersAdapter<C> for TriggersAdaterWrapper<C> {
+impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
     async fn ancestor_block(
         &self,
         ptr: BlockPtr,
