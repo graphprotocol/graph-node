@@ -7,11 +7,11 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, WritableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
-use graph::prelude::MetricsRegistry;
+use graph::prelude::{DeploymentHash, MetricsRegistry};
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -119,6 +119,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

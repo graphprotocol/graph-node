@@ -7,9 +7,9 @@ use graph::blockchain::{
     NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::components::adapter::ChainId;
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, WritableStore};
 use graph::env::EnvVars;
-use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
+use graph::prelude::{BlockHash, CheapClone, DeploymentHash, Entity, LoggerFactory, MetricsRegistry};
 use graph::schema::EntityKey;
 use graph::{
     blockchain::{
@@ -140,6 +140,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

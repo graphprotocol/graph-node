@@ -6,7 +6,7 @@ use graph::{
     },
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
     data_source::DataSourceTemplate,
-    prelude::BlockNumber,
+    prelude::{BlockNumber, DeploymentHash},
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub features: BTreeSet<SubgraphFeature>,
     pub start_blocks: Vec<BlockNumber>,
     pub end_blocks: BTreeSet<BlockNumber>,
+    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
     pub stop_block: Option<BlockNumber>,
     pub store: Arc<dyn WritableStore>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
@@ -39,6 +40,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             features,
             start_blocks,
             end_blocks,
+            source_subgraph_stores,
             stop_block,
             store: _,
             debug_fork,
@@ -56,6 +58,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             features: features.clone(),
             start_blocks: start_blocks.clone(),
             end_blocks: end_blocks.clone(),
+            source_subgraph_stores: source_subgraph_stores.clone(),
             stop_block: stop_block.clone(),
             store,
             debug_fork: debug_fork.clone(),
