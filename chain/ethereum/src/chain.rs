@@ -62,7 +62,7 @@ use crate::{BufferedCallCache, NodeCapabilities};
 use crate::{EthereumAdapter, RuntimeAdapter};
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
-    TriggersAdaterWrapper,
+    TriggersAdapterWrapper,
 };
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -143,7 +143,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
                 )
             });
 
-        let adapter = Arc::new(TriggersAdaterWrapper::new(adapter));
+        let adapter = Arc::new(TriggersAdapterWrapper::new(adapter));
 
         let logger = chain
             .logger_factory
