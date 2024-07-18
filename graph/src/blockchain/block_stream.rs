@@ -14,7 +14,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use super::substreams_block_stream::SubstreamsLogData;
 use super::{Block, BlockPtr, BlockTime, Blockchain, Trigger, TriggerFilterWrapper};
 use crate::anyhow::Result;
-use crate::components::store::{BlockNumber, DeploymentLocator};
+use crate::components::store::{BlockNumber, DeploymentLocator, WritableStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
 use crate::futures03::stream::StreamExt as _;
@@ -154,6 +154,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
