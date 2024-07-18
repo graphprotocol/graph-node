@@ -284,11 +284,18 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
 pub struct TriggersAdapterWrapper<C: Blockchain> {
     pub adapter: Arc<dyn TriggersAdapter<C>>,
+    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
-    pub fn new(adapter: Arc<dyn TriggersAdapter<C>>) -> Self {
-        Self { adapter }
+    pub fn new(
+        adapter: Arc<dyn TriggersAdapter<C>>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+    ) -> Self {
+        Self {
+            adapter,
+            source_subgraph_stores,
+        }
     }
 }
 
@@ -308,7 +315,7 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-        filter: &C::TriggerFilter,
+        filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         self.adapter
             .scan_triggers(from, to, filter)
@@ -386,7 +393,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-        filter: &C::TriggerFilter,
+        filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error>;
 
     // Used for reprocessing blocks when creating a data source.

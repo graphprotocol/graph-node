@@ -379,10 +379,7 @@ where
             );
 
             // Update with actually scanned range, to account for any skipped null blocks.
-            let (blocks, to) = self
-                .adapter
-                .scan_triggers(from, to, &self.filter.filter.clone())
-                .await?;
+            let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter).await?;
             let range_size = to - from + 1;
 
             // If the target block (`to`) is within the reorg threshold, indicating no non-null finalized blocks are
