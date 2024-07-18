@@ -18,6 +18,7 @@ pub async fn new_block_stream<C: Blockchain>(
             inputs.deployment.clone(),
             inputs.store.cheap_clone(),
             inputs.start_blocks.clone(),
+            inputs.source_subgraph_stores.clone(),
             Arc::new(filter.clone()),
             inputs.unified_api_version.clone(),
         )
