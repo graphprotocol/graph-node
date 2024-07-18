@@ -69,7 +69,7 @@ impl ReadStore for MockStore {
 
     fn get_range(
         &self,
-        _key: &EntityKey,
+        _entity_type: &EntityType,
         _block_range: Range<u32>,
     ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
         todo!()
