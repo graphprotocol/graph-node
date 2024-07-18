@@ -303,13 +303,13 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdaterWrapper<C> {
         self.adapter.ancestor_block(ptr, offset, root).await
     }
 
+    // TODO: Do a proper implementation, this is a complete mock implementation
     async fn scan_triggers(
         &self,
         from: BlockNumber,
         to: BlockNumber,
         filter: &C::TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
-        // TODO(krishna): Do a proper implementation
         self.adapter
             .scan_triggers(from, to, filter)
             .await
@@ -338,6 +338,30 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdaterWrapper<C> {
         self.adapter.parent_ptr(block).await
     }
 }
+
+// fn create_mock_trigger<C: Blockchain>() -> Trigger<C> {
+//     let entity = create_mock_entity();
+//     Trigger::Subgraph(subgraph::TriggerData {
+//         source: DeploymentHash::new("test").unwrap(),
+//         entity,
+//         entity_type: "User".to_string(),
+//     })
+// }
+
+// fn create_mock_entity() -> Entity {
+//     let schema = InputSchema::parse_latest(
+//         "type User @entity { id: String!, val: String! }",
+//         DeploymentHash::new("test").unwrap(),
+//     )
+//     .unwrap();
+
+//     schema
+//         .make_entity(vec![
+//             ("id".into(), Value::String("id".to_owned())),
+//             ("val".into(), Value::String("content".to_owned())),
+//         ])
+//         .unwrap()
+// }
 
 #[async_trait]
 pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
