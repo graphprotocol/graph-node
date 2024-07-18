@@ -1006,7 +1006,7 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &<C as Blockchain>::TriggerFilter,
+        _filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         todo!()
     }

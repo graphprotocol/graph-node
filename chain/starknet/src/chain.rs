@@ -393,7 +393,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &crate::adapter::TriggerFilter,
+        _filter: &Arc<TriggerFilterWrapper<Chain>>,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }

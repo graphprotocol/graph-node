@@ -1,7 +1,8 @@
 use anyhow::Error;
 use graph::{
     blockchain::{
-        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
+        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities,
+        MappingTriggerTrait, TriggerFilterWrapper,
     },
     components::{
         store::{DeploymentLocator, SubgraphFork},
@@ -140,7 +141,7 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &TriggerFilter,
+        _filter: &Arc<TriggerFilterWrapper<Chain>>,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         unimplemented!()
     }
