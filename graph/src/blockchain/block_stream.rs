@@ -351,21 +351,30 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
 //     Trigger::Subgraph(subgraph::TriggerData {
 //         source: DeploymentHash::new("test").unwrap(),
 //         entity,
-//         entity_type: "User".to_string(),
+//         entity_type: "Block".to_string(),
 //     })
 // }
 
 // fn create_mock_entity() -> Entity {
 //     let schema = InputSchema::parse_latest(
-//         "type User @entity { id: String!, val: String! }",
+//         "type Block @entity { id: Bytes!, number: BigInt!, hash: Bytes! }",
 //         DeploymentHash::new("test").unwrap(),
 //     )
 //     .unwrap();
 
+//     let hash = Value::Bytes(
+//         Bytes::from_str("0xd66ea6a52c13884f2a57596e09760905a0cbd3b8ad84af8bb213ad77d79149d0")
+//             .unwrap(),
+//     );
+
 //     schema
 //         .make_entity(vec![
-//             ("id".into(), Value::String("id".to_owned())),
-//             ("val".into(), Value::String("content".to_owned())),
+//             ("id".into(), hash.clone()),
+//             (
+//                 "number".into(),
+//                 Value::BigInt(BigInt::from_str("54321").unwrap()),
+//             ),
+//             ("hash".into(), hash),
 //         ])
 //         .unwrap()
 // }
