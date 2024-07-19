@@ -13,7 +13,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, Context, Result};
 use graph::futures03::StreamExt;
 use graph::prelude::serde_json::{json, Value};
 use graph::prelude::web3::types::U256;
@@ -95,6 +95,7 @@ impl TestResult {
 struct TestCase {
     name: String,
     test: TestFn,
+    source_subgraph: Option<String>,
 }
 
 impl TestCase {
@@ -112,10 +113,87 @@ impl TestCase {
         Self {
             name: name.to_string(),
             test: force_boxed(test),
+            source_subgraph: None,
         }
     }
 
+    fn new_with_source_subgraph<T>(
+        name: &str,
+        test: fn(TestContext) -> T,
+        source_subgraph: &str,
+    ) -> Self
+    where
+        T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+    {
+        fn force_boxed<T>(f: fn(TestContext) -> T) -> TestFn
+        where
+            T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+        {
+            Box::new(move |ctx| Box::pin(f(ctx)))
+        }
+
+        Self {
+            name: name.to_string(),
+            test: force_boxed(test),
+            source_subgraph: Some(source_subgraph.to_string()),
+        }
+    }
+
+    async fn deploy_and_wait(
+        &self,
+        subgraph_name: &str,
+        contracts: &[Contract],
+    ) -> Result<Subgraph> {
+        status!(&self.name, "Deploying subgraph");
+        let subgraph_name = match Subgraph::deploy(&subgraph_name, contracts).await {
+            Ok(name) => name,
+            Err(e) => {
+                error!(&self.name, "Deploy failed");
+                return Err(anyhow!(e.context("Deploy failed")));
+            }
+        };
+
+        status!(&self.name, "Waiting for subgraph to become ready");
+        let subgraph = match Subgraph::wait_ready(&subgraph_name).await {
+            Ok(subgraph) => subgraph,
+            Err(e) => {
+                error!(&self.name, "Subgraph never synced or failed");
+                return Err(anyhow!(e.context("Subgraph never synced or failed")));
+            }
+        };
+
+        if subgraph.healthy {
+            status!(&self.name, "Subgraph ({}) is synced", subgraph.deployment);
+        } else {
+            status!(&self.name, "Subgraph ({}) has failed", subgraph.deployment);
+        }
+
+        Ok(subgraph)
+    }
+
     async fn run(self, contracts: &[Contract]) -> TestResult {
+        // If a subgraph has a subgraph datasource, then deploy the source subgraph first
+        if let Some(source_subgraph) = &self.source_subgraph {
+            let subgraph = self.deploy_and_wait(source_subgraph, contracts).await;
+            match subgraph {
+                Ok(subgraph) => {
+                    status!(
+                        source_subgraph,
+                        "source subgraph deployed with hash {}",
+                        subgraph.deployment
+                    );
+                }
+                Err(e) => {
+                    error!(source_subgraph, "source subgraph deployment failed");
+                    return TestResult {
+                        name: self.name.clone(),
+                        subgraph: None,
+                        status: TestStatus::Err(e),
+                    };
+                }
+            }
+        }
+
         status!(&self.name, "Deploying subgraph");
         let subgraph_name = match Subgraph::deploy(&self.name, contracts).await {
             Ok(name) => name,
@@ -436,6 +514,10 @@ async fn test_eth_api(ctx: TestContext) -> anyhow::Result<()> {
     )
     .await?;
 
+    Ok(())
+}
+
+async fn subgraph_data_sources(_ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
@@ -787,6 +869,11 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("timestamp", test_timestamp),
         TestCase::new("ethereum-api-tests", test_eth_api),
         TestCase::new("topic-filter", test_topic_filters),
+        TestCase::new_with_source_subgraph(
+            "subgraph-data-sources",
+            subgraph_data_sources,
+            "source-subgraph",
+        ),
     ];
 
     let contracts = Contract::deploy_all().await?;
