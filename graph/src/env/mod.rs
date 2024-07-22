@@ -212,6 +212,24 @@ pub struct EnvVars {
     /// Set the maximum grpc decode size(in MB) for firehose BlockIngestor connections.
     /// Defaults to 25MB
     pub firehose_grpc_max_decode_size_mb: usize,
+
+    /// Sets the token that is used to authenticate graphman GraphQL queries.
+    ///
+    /// The authentication token must be exactly 64 characters long.
+    /// This is equivalent to an SHA-256 hash represented as a hex string.
+    ///
+    /// If not specified, the graphman server will not start.
+    pub graphman_server_auth_token: Option<String>,
+
+    /// Set the maximum query depth for the graphman GraphQL server.
+    ///
+    /// The default value is 255.
+    pub graphman_server_query_max_depth: u8,
+
+    /// Set the maximum query complexity for the graphman GraphQL server.
+    ///
+    /// The default value is 1,000,000.
+    pub graphman_server_query_max_complexity: u32,
 }
 
 impl EnvVars {
@@ -294,6 +312,9 @@ impl EnvVars {
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
             firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
+            graphman_server_auth_token: inner.graphman_server_auth_token,
+            graphman_server_query_max_depth: inner.graphman_server_query_max_depth,
+            graphman_server_query_max_complexity: inner.graphman_server_query_max_complexity,
         })
     }
 
@@ -439,6 +460,12 @@ struct Inner {
     section_map: Option<String>,
     #[envconfig(from = "GRAPH_NODE_FIREHOSE_MAX_DECODE_SIZE", default = "25")]
     firehose_grpc_max_decode_size_mb: usize,
+    #[envconfig(from = "GRAPHMAN_SERVER_AUTH_TOKEN")]
+    graphman_server_auth_token: Option<String>,
+    #[envconfig(from = "GRAPHMAN_SERVER_QUERY_MAX_DEPTH", default = "255")]
+    graphman_server_query_max_depth: u8,
+    #[envconfig(from = "GRAPHMAN_SERVER_QUERY_MAX_COMPLEXITY", default = "1000000")]
+    graphman_server_query_max_complexity: u32,
 }
 
 #[derive(Clone, Debug)]

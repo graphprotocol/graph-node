@@ -4,9 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+anyhow = "1.0"
 async-trait = "0.1.50"
 atomic_refcell = "0.1.13"
 bytes = "1.0"
+cid = "0.11.1"
+diesel = { workspace = true }
 graph = { path = "../graph" }
 # This dependency is temporary. The multiblockchain refactoring is not
 # finished as long as this dependency exists
@@ -17,11 +20,17 @@ graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-chain-substreams = { path = "../chain/substreams" }
 graph-chain-starknet = { path = "../chain/starknet" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
+graph-store-postgres = { workspace = true }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+regex = { workspace = true }
 serde_yaml = { workspace = true }
+slog = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 # Switch to crates.io once tower 0.5 is released
 tower = { git = "https://github.com/tower-rs/tower.git", features = ["full"] }
-cid = "0.11.1"
-anyhow = "1.0"
+uuid = { workspace = true }
 
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }

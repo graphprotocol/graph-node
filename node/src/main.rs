@@ -31,7 +31,10 @@ use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
-use graph_store_postgres::register_jobs as register_store_jobs;
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::Store;
+use graph_store_postgres::{register_jobs as register_store_jobs, NotificationSender};
+use graphman_server::{GraphmanServer, GraphmanServerConfig};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::time::Duration;
@@ -251,12 +254,23 @@ async fn main() {
     )
     .await;
 
-    let launch_services = |logger: Logger, env_vars: Arc<EnvVars>| async move {
-        let subscription_manager = store_builder.subscription_manager();
-        let chain_head_update_listener = store_builder.chain_head_update_listener();
-        let primary_pool = store_builder.primary_pool();
+    let primary_pool = store_builder.primary_pool();
+    let subscription_manager = store_builder.subscription_manager();
+    let chain_head_update_listener = store_builder.chain_head_update_listener();
+    let network_store = store_builder.network_store(config.chain_ids());
 
-        let network_store = store_builder.network_store(config.chain_ids());
+    let graphman_server_config = make_graphman_server_config(
+        primary_pool.clone(),
+        network_store.cheap_clone(),
+        metrics_registry.cheap_clone(),
+        &env_vars,
+        &logger,
+        &logger_factory,
+    );
+
+    start_graphman_server(opt.graphman_port, graphman_server_config);
+
+    let launch_services = |logger: Logger, env_vars: Arc<EnvVars>| async move {
         let block_store = network_store.block_store();
         let validator: Arc<dyn IdentValidator> = network_store.block_store();
         let network_adapters = Networks::from_config(
@@ -528,4 +542,45 @@ async fn main() {
     });
 
     graph::futures03::future::pending::<()>().await;
+}
+
+fn start_graphman_server(port: u16, config: Option<GraphmanServerConfig>) {
+    let Some(config) = config else {
+        return;
+    };
+
+    let server = GraphmanServer::new(config)
+        .unwrap_or_else(|err| panic!("Invalid graphman server configuration: {err}"));
+
+    let _server_manager = server.start(port);
+}
+
+fn make_graphman_server_config<'a>(
+    pool: ConnectionPool,
+    store: Arc<Store>,
+    metrics_registry: Arc<MetricsRegistry>,
+    env_vars: &EnvVars,
+    logger: &Logger,
+    logger_factory: &'a LoggerFactory,
+) -> Option<GraphmanServerConfig<'a>> {
+    let Some(auth_token) = &env_vars.graphman_server_auth_token else {
+        warn!(
+            logger,
+            "Missing graphman server auth token; graphman server will not start",
+        );
+
+        return None;
+    };
+
+    let notification_sender = Arc::new(NotificationSender::new(metrics_registry.clone()));
+
+    Some(GraphmanServerConfig {
+        pool,
+        notification_sender,
+        store,
+        logger_factory,
+        auth_token: auth_token.to_owned(),
+        max_query_depth: env_vars.graphman_server_query_max_depth as usize,
+        max_query_complexity: env_vars.graphman_server_query_max_complexity as usize,
+    })
 }

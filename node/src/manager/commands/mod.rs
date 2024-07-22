@@ -8,7 +8,6 @@ pub mod database;
 pub mod deploy;
 pub mod drop;
 pub mod index;
-pub mod info;
 pub mod listen;
 pub mod prune;
 pub mod query;

@@ -19,7 +19,7 @@ pub enum Filter {
 }
 
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct EthereumBlock(BlockPtr);
 
 impl EthereumBlock {
@@ -55,7 +55,7 @@ impl From<BlockPtr> for EthereumBlock {
 /// Indexing status information related to the chain. Right now, we only
 /// support Ethereum, but once we support more chains, we'll have to turn this into
 /// an enum
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ChainInfo {
     /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or `goerli`).
     pub network: String,

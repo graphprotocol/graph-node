@@ -9,7 +9,7 @@ pub mod catalog;
 pub mod color;
 pub mod commands;
 pub mod deployment;
-mod display;
+pub mod display;
 pub mod prompt;
 
 /// A dummy subscription manager that always panics
