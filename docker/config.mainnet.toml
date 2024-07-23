@@ -1,0 +1,25 @@
+[store]
+[store.primary]
+connection = "postgresql://ag-node:antigravity@postgres-pulse:5432/ag-node"
+weight = 1
+pool_size = 10
+[store.base]
+connection = "postgresql://ag-node:antigravity@postgres-base:5432/ag-node"
+weight = 1
+pool_size = 10
+[chains]
+ingestor = "graph-node"
+[chains.pulsechain]
+shard = "primary"
+provider = [ { label = "pulsechain", url = "https://rpc-pulsechain.g4mm4.io", features = [] } ]
+
+[chains.base]
+shard = "base"
+provider = [ { label = "base", url = "https://base-mainnet.g.alchemy.com/v2/RvG1g8xHiynLMuESOdK0U0-onioZUK9l", features = [] } ]
+
+[deployment]
+[[deployment.rule]]
+match = { network = [ "pulsechain", "base"] }
+indexers = [ "graph-node" ]
+[[deployment.rule]]
+indexers = [ "graph-node" ]

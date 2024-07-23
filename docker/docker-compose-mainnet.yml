@@ -12,21 +12,21 @@ services:
       - '8040:8040'
     depends_on:
       - ipfs
-      - postgres-base-sepolia
-      - postgres-sepolia
+      - postgres-base
+      - postgres-pulse
     extra_hosts:
       - 172.18.0.1:host-gateway
     environment:
       ipfs: 'ipfs:5001'
       GRAPH_LOG: info
-      GRAPH_NODE_CONFIG: /root/config.toml
+      GRAPH_NODE_CONFIG: /root/config.mainnet.toml
   ipfs:
     image: ipfs/kubo:v0.17.0
     ports:
       - '5001:5001'
     volumes:
       - ./data/ipfs:/data/ipfs:Z
-  postgres-base-sepolia:
+  postgres-base:
     image: postgres
     ports:
       - '5432:5432'
@@ -46,8 +46,8 @@ services:
       PGDATA: "/var/lib/postgresql/data"
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
     volumes:
-      - ./data/postgresBaseSepolia:/var/lib/postgresql/data:Z
-  postgres-sepolia:
+      - ./data/postgresBase:/var/lib/postgresql/data:Z
+  postgres-pulse:
     image: postgres
     ports:
       - '5440:5432'
@@ -67,5 +67,4 @@ services:
       PGDATA: "/var/lib/postgresql/data"
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
     volumes:
-      - ./data/postgresSepolia:/var/lib/postgresql/data:Z
-
+      - ./data/postgresPulse:/var/lib/postgresql/data:Z
