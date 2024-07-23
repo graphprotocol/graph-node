@@ -1,6 +1,7 @@
 //! Entity types that contain the graph-node state.
 
 use anyhow::{anyhow, bail, Error};
+use chrono::{DateTime, Utc};
 use hex;
 use rand::rngs::OsRng;
 use rand::Rng;
@@ -159,7 +160,7 @@ pub struct SubgraphDeploymentEntity {
     pub manifest: SubgraphManifestEntity,
     pub failed: bool,
     pub health: SubgraphHealth,
-    pub synced: bool,
+    pub synced_at: Option<DateTime<Utc>>,
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
     /// The earliest block for which we have data
