@@ -8,13 +8,13 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         adapter::{
-            ChainId, IdentValidator, MockIdentValidator, NetIdentifiable, ProviderManager,
+            ChainId, IdentValidator, NetIdentifiable, NoopIdentValidator, ProviderManager,
             ProviderName,
         },
         metrics::MetricsRegistry,
     },
     endpoint::EndpointMetrics,
-    env::EnvVars,
+    env::{EnvVars, ENV_VARS},
     firehose::{FirehoseEndpoint, FirehoseEndpoints},
     futures03::future::TryFutureExt,
     itertools::Itertools,
@@ -119,17 +119,17 @@ impl Networks {
             rpc_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                Arc::new(MockIdentValidator),
+                Arc::new(NoopIdentValidator),
             ),
             firehose_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                Arc::new(MockIdentValidator),
+                Arc::new(NoopIdentValidator),
             ),
             substreams_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                Arc::new(MockIdentValidator),
+                Arc::new(NoopIdentValidator),
             ),
         }
     }
@@ -146,7 +146,7 @@ impl Networks {
         &ChainId,
         Vec<(ProviderName, Result<ChainIdentifier, anyhow::Error>)>,
     )> {
-        let timeout = Duration::from_secs(20);
+        let timeout = ENV_VARS.genesis_validation_timeout;
         let mut out = vec![];
         for chain_id in self.adapters.iter().map(|a| a.chain_id()).sorted().dedup() {
             let mut inner = vec![];

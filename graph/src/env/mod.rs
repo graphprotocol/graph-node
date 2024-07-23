@@ -212,6 +212,15 @@ pub struct EnvVars {
     /// Set the maximum grpc decode size(in MB) for firehose BlockIngestor connections.
     /// Defaults to 25MB
     pub firehose_grpc_max_decode_size_mb: usize,
+    /// Defined whether or not graph-node should refuse to perform genesis validation
+    /// before using an adapter. Disabled by default for the moment, will be enabled
+    /// on the next release. Disabling validation means the recorded genesis will be 0x00
+    /// if no genesis hash can be retrieved from an adapter. If enabled, the adapter is
+    /// ignored if unable to produce a genesis hash or produces a different an unexpected hash.
+    pub genesis_validation_enabled: bool,
+    /// How long do we wait for a response from the provider before considering that it is unavailable.
+    /// Default is 30s.
+    pub genesis_validation_timeout: Duration,
 }
 
 impl EnvVars {
@@ -294,6 +303,8 @@ impl EnvVars {
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
             firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
+            genesis_validation_enabled: inner.genesis_validation_enabled.0,
+            genesis_validation_timeout: Duration::from_secs(inner.genesis_validation_timeout),
         })
     }
 
@@ -439,6 +450,10 @@ struct Inner {
     section_map: Option<String>,
     #[envconfig(from = "GRAPH_NODE_FIREHOSE_MAX_DECODE_SIZE", default = "25")]
     firehose_grpc_max_decode_size_mb: usize,
+    #[envconfig(from = "GRAPH_NODE_GENESIS_VALIDATION_ENABLED", default = "false")]
+    genesis_validation_enabled: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_NODE_GENESIS_VALIDATION_TIMEOUT_SECONDS", default = "30")]
+    genesis_validation_timeout: u64,
 }
 
 #[derive(Clone, Debug)]

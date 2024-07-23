@@ -98,7 +98,7 @@ impl EthereumNetworkAdapters {
 
         use graph::slog::{o, Discard, Logger};
 
-        use graph::components::adapter::MockIdentValidator;
+        use graph::components::adapter::NoopIdentValidator;
         let chain_id: ChainId = "testing".into();
         adapters.sort_by(|a, b| {
             a.capabilities
@@ -109,7 +109,7 @@ impl EthereumNetworkAdapters {
         let provider = ProviderManager::new(
             Logger::root(Discard, o!()),
             vec![(chain_id.clone(), adapters)].into_iter(),
-            Arc::new(MockIdentValidator),
+            Arc::new(NoopIdentValidator),
         );
         provider.mark_all_valid().await;
 
@@ -299,7 +299,7 @@ impl EthereumNetworkAdapters {
 #[cfg(test)]
 mod tests {
     use graph::cheap_clone::CheapClone;
-    use graph::components::adapter::{MockIdentValidator, ProviderManager, ProviderName};
+    use graph::components::adapter::{NoopIdentValidator, ProviderManager, ProviderName};
     use graph::data::value::Word;
     use graph::http::HeaderMap;
     use graph::{
@@ -746,7 +746,7 @@ mod tests {
                     .collect(),
             )]
             .into_iter(),
-            Arc::new(MockIdentValidator),
+            Arc::new(NoopIdentValidator),
         );
         manager.mark_all_valid().await;
 
@@ -842,7 +842,7 @@ mod tests {
                 .iter()
                 .cloned()
                 .map(|a| (chain_id.clone(), vec![a])),
-            Arc::new(MockIdentValidator),
+            Arc::new(NoopIdentValidator),
         );
         manager.mark_all_valid().await;
 
@@ -870,7 +870,7 @@ mod tests {
                 .iter()
                 .cloned()
                 .map(|a| (chain_id.clone(), vec![a])),
-            Arc::new(MockIdentValidator),
+            Arc::new(NoopIdentValidator),
         );
         manager.mark_all_valid().await;
 
@@ -912,7 +912,7 @@ mod tests {
                 no_available_adapter.iter().cloned().collect(),
             )]
             .into_iter(),
-            Arc::new(MockIdentValidator),
+            Arc::new(NoopIdentValidator),
         );
         manager.mark_all_valid().await;
 

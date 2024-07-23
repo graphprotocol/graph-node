@@ -1,6 +1,6 @@
 use clap::Parser as _;
 use git_testament::{git_testament, render_testament};
-use graph::components::adapter::IdentValidator;
+use graph::components::adapter::{IdentValidator, NoopIdentValidator};
 use graph::futures01::Future as _;
 use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
@@ -258,7 +258,13 @@ async fn main() {
 
         let network_store = store_builder.network_store(config.chain_ids());
         let block_store = network_store.block_store();
-        let validator: Arc<dyn IdentValidator> = network_store.block_store();
+
+        let validator: Arc<dyn IdentValidator> = if env_vars.genesis_validation_enabled {
+            network_store.block_store()
+        } else {
+            Arc::new(NoopIdentValidator {})
+        };
+
         let network_adapters = Networks::from_config(
             logger.cheap_clone(),
             &config,

@@ -31,7 +31,7 @@ use graph::itertools::Itertools;
 use graph::log::factory::LoggerFactory;
 use graph::prelude::anyhow;
 use graph::prelude::MetricsRegistry;
-use graph::slog::{debug, error, info, o, Logger};
+use graph::slog::{debug, error, info, o, warn, Logger};
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, Transport};
@@ -432,10 +432,14 @@ pub async fn networks_as_chains(
         let chain_store = match store.chain_store(chain_id) {
             Some(c) => c,
             None => {
-                let ident = networks
-                    .chain_identifier(&logger, chain_id)
-                    .await
-                    .expect("must be able to get chain identity to create a store");
+                let ident = match networks.chain_identifier(&logger, chain_id).await {
+                    Ok(ident) => ident,
+                    Err(err) if !config.genesis_validation_enabled => {
+                        warn!(&logger, "unable to fetch genesis for {}. Err: {}.falling back to the default value because validation is disabled", chain_id, err);
+                        ChainIdentifier::default()
+                    }
+                    err => err.expect("must be able to get chain identity to create a store"),
+                };
                 store
                     .create_chain_store(chain_id, ident)
                     .expect("must be able to create store if one is not yet setup for the chain")
@@ -669,7 +673,7 @@ pub async fn networks_as_chains(
 mod test {
     use crate::config::{Config, Opt};
     use crate::network_setup::{AdapterConfiguration, Networks};
-    use graph::components::adapter::{ChainId, MockIdentValidator};
+    use graph::components::adapter::{ChainId, NoopIdentValidator};
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};
@@ -702,7 +706,7 @@ mod test {
         let metrics = Arc::new(EndpointMetrics::mock());
         let config = Config::load(&logger, &opt).expect("can create config");
         let metrics_registry = Arc::new(MetricsRegistry::mock());
-        let ident_validator = Arc::new(MockIdentValidator);
+        let ident_validator = Arc::new(NoopIdentValidator);
 
         let networks =
             Networks::from_config(logger, &config, metrics_registry, metrics, ident_validator)
