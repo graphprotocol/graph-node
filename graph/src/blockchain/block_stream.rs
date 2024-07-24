@@ -1,3 +1,4 @@
+use crate::data_source::subgraph;
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
@@ -228,14 +229,30 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     /// Creates a BlockWithTriggers structure, which holds
     /// the trigger data ordered and without any duplicates.
     pub fn new(block: C::Block, trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
-        let mut trigger_data = trigger_data
-            .into_iter()
-            .map(|trigger_data| {
-                let trigger = Trigger::Chain(trigger_data);
-                trigger
-            })
-            .collect::<Vec<_>>();
+        Self::new_with_triggers(
+            block,
+            trigger_data.into_iter().map(Trigger::Chain).collect(),
+            logger,
+        )
+    }
 
+    pub fn new_with_subgraph_triggers(
+        block: C::Block,
+        trigger_data: Vec<subgraph::TriggerData>,
+        logger: &Logger,
+    ) -> Self {
+        Self::new_with_triggers(
+            block,
+            trigger_data.into_iter().map(Trigger::Subgraph).collect(),
+            logger,
+        )
+    }
+
+    fn new_with_triggers(
+        block: C::Block,
+        mut trigger_data: Vec<Trigger<C>>,
+        logger: &Logger,
+    ) -> Self {
         // This is where triggers get sorted.
         trigger_data.sort();
 
@@ -317,15 +334,7 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
         to: BlockNumber,
         filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
-        self.adapter
-            .scan_triggers(from, to, filter)
-            .await
-            .map(|(mut blocks, next_block)| {
-                for _ in &mut blocks {
-                    todo!()
-                }
-                (blocks, next_block)
-            })
+        self.adapter.scan_triggers(from, to, filter).await
     }
 
     async fn triggers_in_block(
