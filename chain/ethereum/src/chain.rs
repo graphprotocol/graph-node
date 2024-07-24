@@ -770,7 +770,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.ethrpc_metrics.clone(),
             from,
             to,
-            &filter.filter.clone(),
+            filter,
             self.unified_api_version.clone(),
         )
         .await
@@ -807,7 +807,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     self.ethrpc_metrics.clone(),
                     block_number,
                     block_number,
-                    filter,
+                    &Arc::new(TriggerFilterWrapper::<Chain>::new(filter.clone(), vec![])), // TODO(krishna): This is temporary until we take TriggerFilterWrapper as param in triggers_in_block
                     self.unified_api_version.clone(),
                 )
                 .await?;

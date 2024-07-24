@@ -517,7 +517,32 @@ async fn test_eth_api(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn subgraph_data_sources(_ctx: TestContext) -> anyhow::Result<()> {
+async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+    let expected_response = json!({
+        "blocks": [
+            {  "number": "0" },
+            {  "number": "1" },
+            { "number": "2" },
+            {  "number": "3" },
+            {  "number": "4" },
+            {  "number": "5" },
+            { "number": "6" },
+            {  "number": "7" },
+            {  "number": "8" },
+            {  "number": "9" },
+        ]
+    });
+
+    query_succeeds(
+        "Blocks should be right",
+        &subgraph,
+        "{ blocks(where: {number_lt: 10}, orderBy: number) { number } }",
+        expected_response,
+    )
+    .await?;
+
     Ok(())
 }
 
