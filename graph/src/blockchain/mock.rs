@@ -228,6 +228,11 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
         todo!()
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+    
+
     async fn scan_triggers(
         &self,
         from: crate::components::store::BlockNumber,
