@@ -638,7 +638,7 @@ impl FirehoseEndpoints {
     pub fn for_testing(adapters: Vec<Arc<FirehoseEndpoint>>) -> Self {
         use slog::{o, Discard};
 
-        use crate::components::adapter::MockIdentValidator;
+        use crate::components::adapter::NoopIdentValidator;
         let chain_id: Word = "testing".into();
 
         Self(
@@ -646,7 +646,7 @@ impl FirehoseEndpoints {
             ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![(chain_id, adapters)].into_iter(),
-                Arc::new(MockIdentValidator),
+                Arc::new(NoopIdentValidator),
             ),
         )
     }

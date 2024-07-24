@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use graph::{
     anyhow::{bail, Context},
     components::{
-        adapter::{ChainId, IdentValidator, IdentValidatorError, MockIdentValidator, ProviderName},
+        adapter::{ChainId, IdentValidator, IdentValidatorError, NoopIdentValidator, ProviderName},
         subgraph::{Setting, Settings},
     },
     endpoint::EndpointMetrics,
@@ -176,7 +176,7 @@ pub async fn provider(
         &config,
         registry,
         metrics,
-        Arc::new(MockIdentValidator),
+        Arc::new(NoopIdentValidator),
     )
     .await?;
     let network: ChainId = network.into();

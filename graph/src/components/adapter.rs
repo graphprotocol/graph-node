@@ -183,9 +183,10 @@ impl<T: ChainStoreTrait, B: BlockStoreTrait<ChainStore = T>> IdentValidator for 
     }
 }
 
-pub struct MockIdentValidator;
+/// This is mostly used for testing or for running with disabled genesis validation.
+pub struct NoopIdentValidator;
 
-impl IdentValidator for MockIdentValidator {
+impl IdentValidator for NoopIdentValidator {
     fn check_ident(
         &self,
         _chain_id: &ChainId,
@@ -227,7 +228,7 @@ impl<T: NetIdentifiable + Clone> Default for ProviderManager<T> {
                 logger: Logger::root(Discard, o!()),
                 adapters: HashMap::default(),
                 status: vec![],
-                validator: Arc::new(MockIdentValidator {}),
+                validator: Arc::new(NoopIdentValidator {}),
             }),
         }
     }
@@ -589,7 +590,7 @@ mod test {
     use crate::{
         bail,
         blockchain::BlockHash,
-        components::adapter::{ChainId, GenesisCheckStatus, MockIdentValidator},
+        components::adapter::{ChainId, GenesisCheckStatus, NoopIdentValidator},
         data::value::Word,
         prelude::lazy_static,
     };
@@ -782,7 +783,7 @@ mod test {
             let chain_id = chain_id.into();
 
             let validator: Arc<dyn IdentValidator> = match validator {
-                None => Arc::new(MockIdentValidator {}),
+                None => Arc::new(NoopIdentValidator {}),
                 Some(validator) => Arc::new(validator),
             };
 
