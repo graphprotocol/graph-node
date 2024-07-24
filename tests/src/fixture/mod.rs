@@ -1002,6 +1002,10 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         todo!()
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        todo!()
+    }
+
     async fn scan_triggers(
         &self,
         _from: BlockNumber,
