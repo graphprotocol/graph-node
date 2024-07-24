@@ -1648,6 +1648,28 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Ok(decoded)
     }
 
+    // This is a ugly temporary implementation to get the block ptrs for a range of blocks
+    async fn load_blocks_by_numbers(
+        &self,
+        logger: Logger,
+        chain_store: Arc<dyn ChainStore>,
+        block_numbers: HashSet<BlockNumber>,
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
+        let block_hashes = block_numbers
+            .into_iter()
+            .map(|number| {
+                chain_store
+                    .block_hashes_by_block_number(number)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .as_h256()
+            })
+            .collect::<HashSet<_>>();
+
+        self.load_blocks(logger, chain_store, block_hashes).await
+    }
+
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     async fn load_blocks(
         &self,
