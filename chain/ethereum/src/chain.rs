@@ -776,6 +776,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         .await
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        let chain_store = self.chain_store.clone();
+        chain_store.chain_head_ptr().await
+    }
+
     async fn triggers_in_block(
         &self,
         logger: &Logger,
