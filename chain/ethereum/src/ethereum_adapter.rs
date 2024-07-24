@@ -2,12 +2,12 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
-
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
+use graph::data_source::subgraph;
 use graph::futures01::stream;
 use graph::futures01::Future;
 use graph::futures01::Stream;
@@ -19,6 +19,10 @@ use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
+use graph::prelude::DeploymentHash;
+use graph::prelude::Entity;
+use graph::prelude::Value;
+use graph::schema::InputSchema;
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
@@ -1724,6 +1728,81 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 }
 
+// TODO(krishna): Currently this is a mock implementation of subgraph triggers.
+// This will be replaced with the actual implementation which will use the filters to
+// query the database of the source subgraph and return the entity triggers.
+async fn subgraph_triggers(
+    adapter: Arc<EthereumAdapter>,
+    logger: Logger,
+    chain_store: Arc<dyn ChainStore>,
+    _subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    from: BlockNumber,
+    to: BlockNumber,
+    filter: &Arc<TriggerFilterWrapper<Chain>>,
+    _unified_api_version: UnifiedMappingApiVersion,
+) -> Result<(Vec<BlockWithTriggers<crate::Chain>>, BlockNumber), Error> {
+    let logger2 = logger.cheap_clone();
+    let eth = adapter.clone();
+    let to_ptr = eth.next_existing_ptr_to_number(&logger, to).await?;
+    let to = to_ptr.block_number();
+
+    let first_filter = filter.subgraph_filter.first().unwrap();
+
+    let blocks = adapter
+        .load_blocks_by_numbers(
+            logger.cheap_clone(),
+            chain_store.clone(),
+            HashSet::from_iter(from..=to),
+        )
+        .await
+        .and_then(move |block| {
+            Ok(BlockWithTriggers::<Chain>::new_with_subgraph_triggers(
+                BlockFinality::Final(block.clone()),
+                vec![create_mock_subgraph_trigger(first_filter, &block)],
+                &logger2,
+            ))
+        })
+        .collect()
+        .compat()
+        .await?;
+
+    Ok((blocks, to))
+}
+
+fn create_mock_subgraph_trigger(
+    filter: &SubgraphFilter,
+    block: &LightEthereumBlock,
+) -> subgraph::TriggerData {
+    let mock_entity = create_mock_entity(block);
+    subgraph::TriggerData {
+        source: filter.subgraph.clone(),
+        entity: mock_entity,
+        entity_type: filter.entities.first().unwrap().clone(),
+    }
+}
+
+fn create_mock_entity(block: &LightEthereumBlock) -> Entity {
+    let id = DeploymentHash::new("test").unwrap();
+    let data_schema = InputSchema::parse_latest(
+        "type Block @entity { id: Bytes!, number: BigInt!, hash: Bytes! }",
+        id.clone(),
+    )
+    .unwrap();
+    let hash = Value::Bytes(scalar::Bytes::from(block.hash.unwrap().as_bytes().to_vec()));
+    let data = data_schema
+        .make_entity(vec![
+            ("id".into(), hash.clone()),
+            (
+                "number".into(),
+                Value::BigInt(scalar::BigInt::from(block.number())),
+            ),
+            ("hash".into(), hash),
+        ])
+        .unwrap();
+
+    data
+}
+
 /// Returns blocks with triggers, corresponding to the specified range and filters; and the resolved
 /// `to` block, which is the nearest non-null block greater than or equal to the passed `to` block.
 /// If a block contains no triggers, there may be no corresponding item in the stream.
@@ -1745,13 +1824,33 @@ pub(crate) async fn blocks_with_triggers(
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     from: BlockNumber,
     to: BlockNumber,
-    filter: &TriggerFilter,
+    filter: &Arc<TriggerFilterWrapper<Chain>>,
     unified_api_version: UnifiedMappingApiVersion,
 ) -> Result<(Vec<BlockWithTriggers<crate::Chain>>, BlockNumber), Error> {
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
     let eth = adapter.clone();
+    let subgraph_filter = filter.subgraph_filter.clone();
+
+    // TODO(krishna): In the initial implementation we do not allow any other datasource type
+    // When using subgraph data sources, there if subgraph_filter is not empty, we can return
+    // by just processing the subgraph triggers.
+    if !subgraph_filter.is_empty() {
+        return subgraph_triggers(
+            adapter.clone(),
+            logger.clone(),
+            chain_store.clone(),
+            subgraph_metrics.clone(),
+            from,
+            to,
+            filter,
+            unified_api_version,
+        )
+        .await;
+    }
+
+    let filter = filter.filter.clone();
     let call_filter = EthereumCallFilter::from(&filter.block);
 
     // Scan the block range to find relevant triggers
