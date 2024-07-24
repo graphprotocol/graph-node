@@ -197,6 +197,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+
     async fn scan_triggers(
         &self,
         _from: BlockNumber,
