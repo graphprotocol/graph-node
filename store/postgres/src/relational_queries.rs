@@ -488,7 +488,7 @@ impl EntityData {
                 let mut entries = map.into_iter().filter_map(move |(key, json)| {
                     if key == "block_range" {
                         let r = json.as_str().unwrap();
-                        let rx = Regex::new("\\[(?P<start>[0-9]+),[0-9]+\\)").unwrap();
+                        let rx = Regex::new("\\[(?P<start>[0-9]+),([0-9]+)?\\)").unwrap();
                         let cap = rx.captures(r).unwrap();
                         let start = cap
                             .name("start")
