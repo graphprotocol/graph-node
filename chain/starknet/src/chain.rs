@@ -383,6 +383,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+
     // Returns a sequence of blocks in increasing order of block number.
     // Each block will include all of its triggers that match the given `filter`.
     // The sequence may omit blocks that contain no triggers,
