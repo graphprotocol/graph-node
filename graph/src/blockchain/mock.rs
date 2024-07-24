@@ -240,7 +240,6 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
-    
 
     async fn scan_triggers(
         &self,
