@@ -137,6 +137,10 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         unimplemented!()
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+
     async fn scan_triggers(
         &self,
         _from: BlockNumber,

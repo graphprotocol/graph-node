@@ -353,31 +353,11 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         self.adapter.parent_ptr(block).await
     }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        self.adapter.chain_head_ptr().await
+    }
 }
-
-// fn create_mock_trigger<C: Blockchain>() -> Trigger<C> {
-//     let entity = create_mock_entity();
-//     Trigger::Subgraph(subgraph::TriggerData {
-//         source: DeploymentHash::new("test").unwrap(),
-//         entity,
-//         entity_type: "User".to_string(),
-//     })
-// }
-
-// fn create_mock_entity() -> Entity {
-//     let schema = InputSchema::parse_latest(
-//         "type User @entity { id: String!, val: String! }",
-//         DeploymentHash::new("test").unwrap(),
-//     )
-//     .unwrap();
-
-//     schema
-//         .make_entity(vec![
-//             ("id".into(), Value::String("id".to_owned())),
-//             ("val".into(), Value::String("content".to_owned())),
-//         ])
-//         .unwrap()
-// }
 
 #[async_trait]
 pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
@@ -419,6 +399,9 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
+
+    /// Get pointer to parent of `block`. This is called when reverting `block`.
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 }
 
 #[async_trait]
