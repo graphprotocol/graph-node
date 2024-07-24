@@ -8,7 +8,7 @@ use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
-    Block, BlockTime, Blockchain, DataSource as _, Trigger, TriggerFilter as _,
+    Block, BlockTime, Blockchain, DataSource as _, SubgraphFilter, Trigger, TriggerFilter as _,
     TriggerFilterWrapper,
 };
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
@@ -136,7 +136,16 @@ where
         let subgraph_filter = data_sources
             .iter()
             .filter_map(|ds| ds.as_subgraph())
-            .map(|ds| (ds.source.address(), ds.source.start_block))
+            .map(|ds| SubgraphFilter {
+                subgraph: ds.source.address(),
+                start_block: ds.source.start_block,
+                entities: ds
+                    .mapping
+                    .handlers
+                    .iter()
+                    .map(|handler| handler.entity.clone())
+                    .collect(),
+            })
             .collect::<Vec<_>>();
 
         // if static_filters is not enabled we just stick to the filter based on all the data sources.
