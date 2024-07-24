@@ -1,5 +1,5 @@
 import { Entity, log } from '@graphprotocol/graph-ts';
-import { Block } from '../generated/schema';
+import { MirrorBlock } from '../generated/schema';
 
 export function handleEntity(blockEntity: Entity): void {
   let blockNumber = blockEntity.getBigInt('number');
@@ -7,7 +7,7 @@ export function handleEntity(blockEntity: Entity): void {
 
   log.info('Block number: {}', [blockNumber.toString()]);
 
-  let block = new Block(blockHash);
+  let block = new MirrorBlock(blockHash);
   block.number = blockNumber;
   block.hash = blockHash;
   block.save();
