@@ -521,7 +521,7 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
     let expected_response = json!({
-        "blocks": [
+        "mirrorBlocks": [
             {  "number": "0" },
             {  "number": "1" },
             { "number": "2" },
@@ -538,7 +538,7 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     query_succeeds(
         "Blocks should be right",
         &subgraph,
-        "{ blocks(where: {number_lt: 10}, orderBy: number) { number } }",
+        "{ mirrorBlocks(where: {number_lt: 10}, orderBy: number) { number } }",
         expected_response,
     )
     .await?;
