@@ -256,7 +256,6 @@ pub struct TriggerFilterWrapper<C: Blockchain> {
     pub subgraph_filter: Vec<SubgraphFilter>,
 }
 
-
 #[derive(Clone, Debug)]
 pub struct SubgraphFilter {
     pub subgraph: DeploymentHash,
@@ -265,10 +264,7 @@ pub struct SubgraphFilter {
 }
 
 impl<C: Blockchain> TriggerFilterWrapper<C> {
-    pub fn new(
-        filter: C::TriggerFilter,
-        subgraph_filter: Vec<SubgraphFilter>,
-    ) -> Self {
+    pub fn new(filter: C::TriggerFilter, subgraph_filter: Vec<SubgraphFilter>) -> Self {
         Self {
             filter: Arc::new(filter),
             subgraph_filter,
