@@ -1,6 +1,5 @@
-type Data @entity {
-  id: ID!
-  foo: String
-  bar: Int
-  isTest: Boolean
+type Block @entity {
+  id: Bytes!
+  number: BigInt!
+  hash: Bytes!
 }
