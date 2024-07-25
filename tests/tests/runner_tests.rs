@@ -502,10 +502,19 @@ async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
     let runner = ctx.runner_substreams(test_ptr(0)).await;
     let filter = runner.build_filter_for_test();
 
-    assert_eq!(filter.filter.module_name(), "graph_out");
-    assert_eq!(filter.filter.modules().as_ref().unwrap().modules.len(), 2);
-    assert_eq!(filter.filter.start_block().unwrap(), 0);
-    assert_eq!(filter.filter.data_sources_len(), 1);
+    assert_eq!(filter.chain_filter.module_name(), "graph_out");
+    assert_eq!(
+        filter
+            .chain_filter
+            .modules()
+            .as_ref()
+            .unwrap()
+            .modules
+            .len(),
+        2
+    );
+    assert_eq!(filter.chain_filter.start_block().unwrap(), 0);
+    assert_eq!(filter.chain_filter.data_sources_len(), 1);
     Ok(())
 }
 
@@ -527,7 +536,11 @@ async fn end_block() -> anyhow::Result<()> {
         let runner = ctx.runner(block_ptr.clone()).await;
         let runner = runner.run_for_test(false).await.unwrap();
         let filter = runner.context().filter.as_ref().unwrap();
-        let addresses = filter.filter.log().contract_addresses().collect::<Vec<_>>();
+        let addresses = filter
+            .chain_filter
+            .log()
+            .contract_addresses()
+            .collect::<Vec<_>>();
 
         if should_contain_addr {
             assert!(addresses.contains(&addr));
