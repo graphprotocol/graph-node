@@ -726,7 +726,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
         unimplemented!();
     }
 
-    async fn build_subgraph_block_stream(
+    async fn build_polling(
         &self,
         chain: &C,
         deployment: DeploymentLocator,
@@ -739,7 +739,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
         let builder = self.0.lock().unwrap().clone();
 
         builder
-            .build_subgraph_block_stream(
+            .build_polling(
                 chain,
                 deployment,
                 start_blocks,
@@ -749,18 +749,6 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
                 unified_api_version,
             )
             .await
-    }
-
-    async fn build_polling(
-        &self,
-        _chain: &C,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilterWrapper<C>>,
-        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
-    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!("only firehose mode should be used for tests")
     }
 }
 
@@ -788,29 +776,6 @@ where
         _filter: Arc<C::TriggerFilter>,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
         unimplemented!()
-    }
-
-    async fn build_subgraph_block_stream(
-        &self,
-        _chain: &C,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
-        subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilterWrapper<C>>,
-        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
-    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        let current_idx = subgraph_current_block.map(|current_block| {
-            self.chain
-                .iter()
-                .enumerate()
-                .find(|(_, b)| b.ptr() == current_block)
-                .unwrap()
-                .0
-        });
-        Ok(Box::new(StaticStream {
-            stream: Box::pin(stream_events(self.chain.clone(), current_idx)),
-        }))
     }
 
     async fn build_firehose(
@@ -841,11 +806,22 @@ where
         _chain: &C,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
-        _subgraph_current_block: Option<graph::blockchain::BlockPtr>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        subgraph_current_block: Option<graph::blockchain::BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!("only firehose mode should be used for tests")
+        let current_idx = subgraph_current_block.map(|current_block| {
+            self.chain
+                .iter()
+                .enumerate()
+                .find(|(_, b)| b.ptr() == current_block)
+                .unwrap()
+                .0
+        });
+        Ok(Box::new(StaticStream {
+            stream: Box::pin(stream_events(self.chain.clone(), current_idx)),
+        }))
     }
 }
 
