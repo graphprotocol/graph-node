@@ -145,6 +145,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -159,7 +160,18 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<C>>>;
+    ) -> Result<Box<dyn BlockStream<C>>> {
+        self.build_polling(
+            chain,
+            deployment,
+            start_blocks,
+            source_subgraph_stores,
+            subgraph_current_block,
+            filter,
+            unified_api_version,
+        )
+        .await
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -316,9 +328,8 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
     }
 }
 
-#[async_trait]
-impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
-    async fn ancestor_block(
+impl<C: Blockchain> TriggersAdapterWrapper<C> {
+    pub async fn ancestor_block(
         &self,
         ptr: BlockPtr,
         offset: BlockNumber,
@@ -328,7 +339,7 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
     }
 
     // TODO: Do a proper implementation, this is a complete mock implementation
-    async fn scan_triggers(
+    pub async fn scan_triggers(
         &self,
         from: BlockNumber,
         to: BlockNumber,
@@ -337,7 +348,7 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
         self.adapter.scan_triggers(from, to, filter).await
     }
 
-    async fn triggers_in_block(
+    pub async fn triggers_in_block(
         &self,
         logger: &Logger,
         block: C::Block,
@@ -346,15 +357,15 @@ impl<C: Blockchain> TriggersAdapter<C> for TriggersAdapterWrapper<C> {
         self.adapter.triggers_in_block(logger, block, filter).await
     }
 
-    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+    pub async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
         self.adapter.is_on_main_chain(ptr).await
     }
 
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
+    pub async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         self.adapter.parent_ptr(block).await
     }
 
-    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+    pub async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         self.adapter.chain_head_ptr().await
     }
 }
