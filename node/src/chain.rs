@@ -32,6 +32,7 @@ use graph::log::factory::LoggerFactory;
 use graph::prelude::anyhow;
 use graph::prelude::MetricsRegistry;
 use graph::slog::{debug, error, info, o, warn, Logger};
+use graph::tokio::time::timeout;
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, Transport};
@@ -432,13 +433,17 @@ pub async fn networks_as_chains(
         let chain_store = match store.chain_store(chain_id) {
             Some(c) => c,
             None => {
-                let ident = match networks.chain_identifier(&logger, chain_id).await {
-                    Ok(ident) => ident,
-                    Err(err) if !config.genesis_validation_enabled => {
-                        warn!(&logger, "unable to fetch genesis for {}. Err: {}.falling back to the default value because validation is disabled", chain_id, err);
+                let ident = match timeout(
+                    config.genesis_validation_timeout,
+                    networks.chain_identifier(&logger, chain_id),
+                )
+                .await
+                {
+                    Ok(Ok(ident)) => ident,
+                    err => {
+                        warn!(&logger, "unable to fetch genesis for {}. Err: {:?}.falling back to the default value", chain_id, err);
                         ChainIdentifier::default()
                     }
-                    err => err.expect("must be able to get chain identity to create a store"),
                 };
                 store
                     .create_chain_store(chain_id, ident)
