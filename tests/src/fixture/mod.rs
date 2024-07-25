@@ -1,7 +1,7 @@
 pub mod ethereum;
 pub mod substreams;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -978,6 +978,14 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         todo!()
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<C::Block>, Error> {
+        unimplemented!()
+    }
+
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         todo!()
     }
@@ -986,7 +994,7 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &Arc<TriggerFilterWrapper<C>>,
+        _filter: &C::TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         todo!()
     }

@@ -153,7 +153,7 @@ impl Blockchain for Chain {
                 deployment,
                 store.firehose_cursor(),
                 store.block_ptr(),
-                filter.filter.clone(),
+                filter.chain_filter.clone(),
             )
             .await
     }

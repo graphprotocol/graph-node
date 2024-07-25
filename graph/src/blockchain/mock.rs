@@ -8,9 +8,10 @@ use crate::{
     data::subgraph::UnifiedMappingApiVersion,
     prelude::{BlockHash, DataSourceTemplateInfo, DeploymentHash},
 };
-use anyhow::Error;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
+use slog::Logger;
 use std::{collections::HashSet, convert::TryFrom, sync::Arc};
 
 use super::{
@@ -228,16 +229,23 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
         todo!()
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<MockBlock>> {
+        unimplemented!()
+    }
+
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
-    
 
     async fn scan_triggers(
         &self,
         from: crate::components::store::BlockNumber,
         to: crate::components::store::BlockNumber,
-        filter: &Arc<TriggerFilterWrapper<MockBlockchain>>,
+        filter: &MockTriggerFilter,
     ) -> Result<
         (
             Vec<block_stream::BlockWithTriggers<MockBlockchain>>,
@@ -269,7 +277,7 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
 async fn blocks_with_triggers(
     _from: crate::components::store::BlockNumber,
     to: crate::components::store::BlockNumber,
-    _filter: &Arc<TriggerFilterWrapper<MockBlockchain>>,
+    _filter: &MockTriggerFilter,
 ) -> Result<
     (
         Vec<block_stream::BlockWithTriggers<MockBlockchain>>,
