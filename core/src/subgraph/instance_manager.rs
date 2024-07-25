@@ -6,7 +6,7 @@ use crate::subgraph::Decoder;
 use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
-use graph::blockchain::block_stream::BlockStreamMetrics;
+use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::store::WritableStore;
@@ -500,6 +500,11 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 is_runner_test,
             )
             .await?;
+
+        let triggers_adapter = Arc::new(TriggersAdapterWrapper::new(
+            triggers_adapter,
+            subgraph_data_source_writables.clone(),
+        ));
 
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
