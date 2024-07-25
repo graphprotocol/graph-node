@@ -252,7 +252,7 @@ impl From<web3::Error> for IngestorError {
 
 #[derive(Debug)]
 pub struct TriggerFilterWrapper<C: Blockchain> {
-    pub filter: Arc<C::TriggerFilter>,
+    pub chain_filter: Arc<C::TriggerFilter>,
     pub subgraph_filter: Vec<SubgraphFilter>,
 }
 
@@ -266,7 +266,7 @@ pub struct SubgraphFilter {
 impl<C: Blockchain> TriggerFilterWrapper<C> {
     pub fn new(filter: C::TriggerFilter, subgraph_filter: Vec<SubgraphFilter>) -> Self {
         Self {
-            filter: Arc::new(filter),
+            chain_filter: Arc::new(filter),
             subgraph_filter,
         }
     }
@@ -275,7 +275,7 @@ impl<C: Blockchain> TriggerFilterWrapper<C> {
 impl<C: Blockchain> Clone for TriggerFilterWrapper<C> {
     fn clone(&self) -> Self {
         Self {
-            filter: self.filter.cheap_clone(),
+            chain_filter: self.chain_filter.cheap_clone(),
             subgraph_filter: self.subgraph_filter.clone(),
         }
     }
