@@ -32,10 +32,12 @@ use graph::{
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
 use crate::codec::substreams_triggers::BlockAndReceipts;
+use crate::codec::Block;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::trigger::{self, NearTrigger};
 use crate::{
@@ -243,7 +245,7 @@ impl Blockchain for Chain {
                     deployment,
                     store.firehose_cursor(),
                     store.block_ptr(),
-                    filter.filter.clone(),
+                    filter.chain_filter.clone(),
                 )
                 .await;
         }
@@ -255,7 +257,7 @@ impl Blockchain for Chain {
                 store.firehose_cursor(),
                 start_blocks,
                 store.block_ptr(),
-                filter.filter.clone(),
+                filter.chain_filter.clone(),
                 unified_api_version,
             )
             .await
@@ -318,9 +320,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &Arc<TriggerFilterWrapper<Chain>>,
+        _filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<Block>> {
+        unimplemented!()
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {

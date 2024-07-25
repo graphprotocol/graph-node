@@ -472,7 +472,7 @@ where
                             .triggers_in_block(
                                 &self.logger,
                                 head_ancestor,
-                                &self.filter.filter.clone(),
+                                &self.filter.chain_filter.clone(),
                             )
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
