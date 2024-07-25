@@ -155,7 +155,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let requirements = filter.filter.node_capabilities();
+        let requirements = filter.chain_filter.node_capabilities();
         let adapter = TriggersAdapterWrapper::new(
             chain
                 .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
@@ -480,7 +480,7 @@ impl Blockchain for Chain {
                         store.firehose_cursor(),
                         start_blocks,
                         current_ptr,
-                        filter.filter.clone(),
+                        filter.chain_filter.clone(),
                         unified_api_version,
                     )
                     .await
@@ -717,7 +717,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         from: BlockNumber,
         to: BlockNumber,
-        filter: &Arc<TriggerFilterWrapper<Chain>>,
+        filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         blocks_with_triggers(
             self.chain_client
@@ -733,6 +733,30 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.unified_api_version.clone(),
         )
         .await
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        logger: Logger,
+        block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<BlockFinality>> {
+        use graph::futures01::stream::Stream;
+
+        let adapter = self
+            .chain_client
+            .rpc()?
+            .cheapest_with(&self.capabilities)
+            .await?;
+
+        let blocks = adapter
+            .load_blocks_by_numbers(logger, self.chain_store.clone(), block_numbers)
+            .await
+            .map(|block| BlockFinality::Final(block))
+            .collect()
+            .compat()
+            .await?;
+
+        Ok(blocks)
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
@@ -771,7 +795,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     self.ethrpc_metrics.clone(),
                     block_number,
                     block_number,
-                    &Arc::new(TriggerFilterWrapper::<Chain>::new(filter.clone(), vec![])), // TODO(krishna): This is temporary until we take TriggerFilterWrapper as param in triggers_in_block
+                    filter,
                     self.unified_api_version.clone(),
                 )
                 .await?;

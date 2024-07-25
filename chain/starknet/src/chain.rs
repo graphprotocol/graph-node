@@ -30,7 +30,7 @@ use graph::{
     slog::o,
 };
 use prost::Message;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     adapter::TriggerFilter,
@@ -39,6 +39,7 @@ use crate::{
         DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
     },
     trigger::{StarknetBlockTrigger, StarknetEventTrigger, StarknetTrigger},
+    Block as StarknetBlock,
 };
 
 pub struct Chain {
@@ -126,7 +127,7 @@ impl Blockchain for Chain {
                 store.firehose_cursor(),
                 start_blocks,
                 store.block_ptr(),
-                filter.filter.clone(),
+                filter.chain_filter.clone(),
                 unified_api_version,
             )
             .await
@@ -371,6 +372,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<StarknetBlock>, Error> {
+        unimplemented!()
+    }
+
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
@@ -385,7 +394,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &Arc<TriggerFilterWrapper<Chain>>,
+        _filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
