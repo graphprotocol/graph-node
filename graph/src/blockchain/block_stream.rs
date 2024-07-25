@@ -1,3 +1,4 @@
+use crate::blockchain::SubgraphFilter;
 use crate::data::store::scalar;
 use crate::data_source::subgraph;
 use crate::substreams::Clock;
@@ -7,17 +8,16 @@ use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
 use prost_types::Any;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::substreams_block_stream::SubstreamsLogData;
-use super::{
-    Block, BlockPtr, BlockTime, Blockchain, SubgraphFilter, Trigger, TriggerFilterWrapper,
-};
+use super::{Block, BlockPtr, BlockTime, Blockchain, Trigger, TriggerFilterWrapper};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator, WritableStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -350,9 +350,44 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         if !filter.subgraph_filter.is_empty() {
-            return self
-                .subgraph_triggers(Logger::root(slog::Discard, o!()), from, to, filter)
-                .await;
+            // TODO: handle empty range, or empty entity set bellow
+            if to <= from {
+                return self
+                    .mock_subgraph_triggers(Logger::root(slog::Discard, o!()), from, to, filter)
+                    .await;
+            }
+
+            if let Some(SubgraphFilter {
+                subgraph: dh,
+                start_block: _sb,
+                entities: ent,
+            }) = filter.subgraph_filter.first()
+            {
+                if let Some((dh2, store)) = self.source_subgraph_stores.first() {
+                    if dh == dh2 {
+                        let schema = crate::components::store::ReadStore::input_schema(store);
+                        if let Some(entity_type) = ent.first() {
+                            let et = schema.entity_type(entity_type).unwrap();
+
+                            let f: u32 = from as u32;
+                            let t: u32 = to as u32;
+                            let br: Range<u32> = f..t;
+                            let entities = store.get_range(&et, br)?;
+                            if !entities.is_empty() {
+                                return self
+                                    .subgraph_triggers(
+                                        Logger::root(slog::Discard, o!()),
+                                        from,
+                                        to,
+                                        filter,
+                                        entities,
+                                    )
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         self.adapter
@@ -381,10 +416,50 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         self.adapter.chain_head_ptr().await
     }
 
+    async fn subgraph_triggers(
+        &self,
+        logger: Logger,
+        from: BlockNumber,
+        to: BlockNumber,
+        filter: &Arc<TriggerFilterWrapper<C>>,
+        entities: BTreeMap<BlockNumber, Entity>,
+    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
+        let logger2 = logger.cheap_clone();
+        let adapter = self.adapter.clone();
+        let first_filter = filter.subgraph_filter.first().unwrap();
+        let blocks = adapter
+            .load_blocks_by_numbers(logger, HashSet::from_iter(from..to))
+            .await?
+            .into_iter()
+            .map(|block| {
+                let key = block.number();
+                let entity = entities.get(&key).unwrap();
+                let trigger_data = vec![Self::create_subgraph_trigger_from_entity(
+                    first_filter,
+                    entity,
+                )];
+                BlockWithTriggers::new_with_subgraph_triggers(block, trigger_data, &logger2)
+            })
+            .collect();
+
+        Ok((blocks, to))
+    }
+
+    fn create_subgraph_trigger_from_entity(
+        filter: &SubgraphFilter,
+        entity: &Entity,
+    ) -> subgraph::TriggerData {
+        subgraph::TriggerData {
+            source: filter.subgraph.clone(),
+            entity: entity.clone(),
+            entity_type: filter.entities.first().unwrap().clone(),
+        }
+    }
+
     // TODO(krishna): Currently this is a mock implementation of subgraph triggers.
     // This will be replaced with the actual implementation which will use the filters to
     // query the database of the source subgraph and return the entity triggers.
-    async fn subgraph_triggers(
+    async fn mock_subgraph_triggers(
         &self,
         logger: Logger,
         from: BlockNumber,
