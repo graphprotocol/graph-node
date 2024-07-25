@@ -1,8 +1,7 @@
 use anyhow::Error;
 use graph::{
     blockchain::{
-        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities,
-        MappingTriggerTrait, TriggerFilterWrapper,
+        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
     },
     components::{
         store::{DeploymentLocator, SubgraphFork},
@@ -17,7 +16,7 @@ use graph::{
 };
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
 
@@ -137,6 +136,14 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         unimplemented!()
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<Block>, Error> {
+        unimplemented!()
+    }
+
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
@@ -145,7 +152,7 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &Arc<TriggerFilterWrapper<Chain>>,
+        _filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         unimplemented!()
     }
