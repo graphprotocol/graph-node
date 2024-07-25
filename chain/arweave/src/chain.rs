@@ -27,11 +27,13 @@ use graph::{
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::trigger::{self, ArweaveTrigger};
+use crate::Block as ArweaveBlock;
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -138,7 +140,7 @@ impl Blockchain for Chain {
 
         let firehose_mapper = Arc::new(FirehoseMapper {
             adapter,
-            filter: filter.filter.clone(),
+            filter: filter.chain_filter.clone(),
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
@@ -198,7 +200,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &Arc<TriggerFilterWrapper<Chain>>,
+        _filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
@@ -265,6 +267,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             hash: BlockHash::from(vec![0xff; 48]),
             number: block.number.saturating_sub(1),
         }))
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<ArweaveBlock>, Error> {
+        todo!()
     }
 }
 

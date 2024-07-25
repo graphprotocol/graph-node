@@ -4,6 +4,7 @@ use graph::components::adapter::ChainId;
 use graph::env::EnvVars;
 use graph::prelude::{DeploymentHash, MetricsRegistry};
 use graph::substreams::Clock;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -33,7 +34,7 @@ use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 use crate::trigger::CosmosTrigger;
-use crate::{codec, TriggerFilter};
+use crate::{codec, Block, TriggerFilter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -132,7 +133,7 @@ impl Blockchain for Chain {
 
         let firehose_mapper = Arc::new(FirehoseMapper {
             adapter,
-            filter: filter.filter.clone(),
+            filter: filter.chain_filter.clone(),
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
@@ -197,6 +198,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<Block>, Error> {
+        unimplemented!()
+    }
+
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
@@ -205,7 +214,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &Arc<TriggerFilterWrapper<Chain>>,
+        _filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
