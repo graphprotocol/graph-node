@@ -1,5 +1,5 @@
 use graph::{
-    blockchain::{Blockchain, TriggersAdapter},
+    blockchain::{block_stream::TriggersAdapterWrapper, Blockchain},
     components::{
         store::{DeploymentLocator, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,
@@ -20,7 +20,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub stop_block: Option<BlockNumber>,
     pub store: Arc<dyn WritableStore>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
-    pub triggers_adapter: Arc<dyn TriggersAdapter<C>>,
+    pub triggers_adapter: Arc<TriggersAdapterWrapper<C>>,
     pub chain: Arc<C>,
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
     pub unified_api_version: UnifiedMappingApiVersion,
