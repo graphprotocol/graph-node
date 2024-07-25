@@ -99,24 +99,12 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         unimplemented!()
     }
 
-    async fn build_subgraph_block_stream(
-        &self,
-        _chain: &Chain,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilterWrapper<Chain>>,
-        _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<Chain>>> {
-        unimplemented!()
-    }
-
     async fn build_polling(
         &self,
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,

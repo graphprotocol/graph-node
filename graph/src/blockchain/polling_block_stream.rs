@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use super::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
-    FirehoseCursor, TriggersAdapter, BUFFERED_BLOCK_STREAM_SIZE,
+    FirehoseCursor, TriggersAdapterWrapper, BUFFERED_BLOCK_STREAM_SIZE,
 };
 use super::{Block, BlockPtr, Blockchain, TriggerFilterWrapper};
 
@@ -79,7 +79,7 @@ where
     C: Blockchain,
 {
     chain_store: Arc<dyn ChainStore>,
-    adapter: Arc<dyn TriggersAdapter<C>>,
+    adapter: Arc<TriggersAdapterWrapper<C>>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
@@ -146,7 +146,7 @@ where
     pub fn new(
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
-        adapter: Arc<dyn TriggersAdapter<C>>,
+        adapter: Arc<TriggersAdapterWrapper<C>>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
         filter: Arc<TriggerFilterWrapper<C>>,
