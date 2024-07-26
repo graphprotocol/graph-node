@@ -239,6 +239,7 @@ impl Networks {
         registry: Arc<MetricsRegistry>,
         endpoint_metrics: Arc<EndpointMetrics>,
         store: Arc<dyn IdentValidator>,
+        genesis_validation_enabled: bool,
     ) -> Result<Networks> {
         if config.query_only(&config.node) {
             return Ok(Networks::noop());
@@ -264,13 +265,19 @@ impl Networks {
             .chain(substreams.into_iter())
             .collect();
 
-        Ok(Networks::new(&logger, adapters, store))
+        Ok(Networks::new(
+            &logger,
+            adapters,
+            store,
+            genesis_validation_enabled,
+        ))
     }
 
     fn new(
         logger: &Logger,
         adapters: Vec<AdapterConfiguration>,
         validator: Arc<dyn IdentValidator>,
+        genesis_validation_enabled: bool,
     ) -> Self {
         let adapters2 = adapters.clone();
         let eth_adapters = adapters.iter().flat_map(|a| a.as_rpc()).cloned().map(
@@ -316,7 +323,7 @@ impl Networks {
             )
             .collect_vec();
 
-        Self {
+        let s = Self {
             adapters: adapters2,
             rpc_provider_manager: ProviderManager::new(
                 logger.clone(),
@@ -337,7 +344,22 @@ impl Networks {
                     .map(|(chain_id, endpoints)| (chain_id, endpoints)),
                 validator.cheap_clone(),
             ),
+        };
+
+        if !genesis_validation_enabled {
+            let (r, f, s) = (
+                s.rpc_provider_manager.clone(),
+                s.firehose_provider_manager.clone(),
+                s.substreams_provider_manager.clone(),
+            );
+            graph::spawn(async move {
+                r.mark_all_valid().await;
+                f.mark_all_valid().await;
+                s.mark_all_valid().await;
+            });
         }
+
+        s
     }
 
     pub async fn block_ingestors(
