@@ -713,10 +713,16 @@ mod test {
         let metrics_registry = Arc::new(MetricsRegistry::mock());
         let ident_validator = Arc::new(NoopIdentValidator);
 
-        let networks =
-            Networks::from_config(logger, &config, metrics_registry, metrics, ident_validator)
-                .await
-                .expect("can parse config");
+        let networks = Networks::from_config(
+            logger,
+            &config,
+            metrics_registry,
+            metrics,
+            ident_validator,
+            false,
+        )
+        .await
+        .expect("can parse config");
         let mut network_names = networks
             .adapters
             .iter()

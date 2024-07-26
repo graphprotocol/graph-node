@@ -1009,7 +1009,7 @@ impl Context {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
         let metrics = Arc::new(EndpointMetrics::mock());
-        Networks::from_config(logger, &self.config, registry, metrics, block_store).await
+        Networks::from_config(logger, &self.config, registry, metrics, block_store, false).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {

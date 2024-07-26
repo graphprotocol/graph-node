@@ -100,6 +100,7 @@ pub async fn run(
         metrics_registry.cheap_clone(),
         endpoint_metrics,
         ident_validator,
+        env_vars.genesis_validation_enabled,
     )
     .await
     .expect("unable to parse network configuration");

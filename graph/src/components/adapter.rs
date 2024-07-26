@@ -290,7 +290,6 @@ impl<T: NetIdentifiable + Clone + 'static> ProviderManager<T> {
             .unwrap_or_default()
     }
 
-    #[cfg(debug_assertions)]
     pub async fn mark_all_valid(&self) {
         for (_, status) in self.inner.status.iter() {
             let mut s = status.write().await;

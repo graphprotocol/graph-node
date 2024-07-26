@@ -177,6 +177,7 @@ pub async fn provider(
         registry,
         metrics,
         Arc::new(NoopIdentValidator),
+        false,
     )
     .await?;
     let network: ChainId = network.into();

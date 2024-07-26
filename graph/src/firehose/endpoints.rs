@@ -121,7 +121,7 @@ impl GenesisDecoder for SubstreamsGenesisDecoder {
                     start_cursor: "".to_string(),
                     stop_block_num: 0,
                     final_blocks_only: true,
-                    production_mode: false,
+                    production_mode: true,
                     output_module: "map_blocks".to_string(),
                     modules: package.modules,
                     debug_initial_store_snapshot_for_modules: vec![],

@@ -271,6 +271,7 @@ async fn main() {
             metrics_registry.cheap_clone(),
             endpoint_metrics,
             validator,
+            env_vars.genesis_validation_enabled,
         )
         .await
         .expect("unable to parse network configuration");
