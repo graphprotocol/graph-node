@@ -411,10 +411,7 @@ impl Networks {
                 BlockchainKind::Cosmos => {
                     block_ingestor::<graph_chain_cosmos::Chain>(logger, id, chain, &mut res).await?
                 }
-                BlockchainKind::Substreams => {
-                    block_ingestor::<graph_chain_substreams::Chain>(logger, id, chain, &mut res)
-                        .await?
-                }
+                BlockchainKind::Substreams => {}
                 BlockchainKind::Starknet => {
                     block_ingestor::<graph_chain_starknet::Chain>(logger, id, chain, &mut res)
                         .await?
@@ -425,6 +422,7 @@ impl Networks {
         // substreams networks that also have other types of chain(rpc or firehose), will have
         // block ingestors already running.
         let visited: Vec<_> = res.iter().map(|b| b.network_name()).collect();
+
         for ((_, id), chain) in blockchain_map
             .iter()
             .filter(|((kind, id), _)| BlockchainKind::Substreams.eq(&kind) && !visited.contains(id))
