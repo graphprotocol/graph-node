@@ -459,6 +459,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
 
 [[package]]
+name = "bs58"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "bstr"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1921,7 +1930,7 @@ version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bs58",
+ "bs58 0.5.1",
  "ethabi",
  "graph",
  "graph-runtime-derive",
@@ -4869,7 +4878,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9922f437e6cb86b62cfd8bdede93937def710616ac2825ffff06b8770bbd06df"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "prost 0.11.9",
  "prost-build 0.11.9",
  "prost-types 0.11.9",
