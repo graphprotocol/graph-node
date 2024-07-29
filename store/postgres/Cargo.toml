@@ -23,7 +23,7 @@ openssl = "0.10.64"
 postgres-openssl = "0.5.0"
 rand = "0.8.4"
 serde = { workspace = true }
-uuid = { version = "1.9.1", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
 anyhow = "1.0.86"
 git-testament = "0.2.5"

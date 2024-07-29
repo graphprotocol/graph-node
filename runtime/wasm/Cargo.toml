@@ -11,7 +11,7 @@ graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
 semver = "1.0.23"
-uuid = { version = "1.9.1", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 anyhow = "1.0"
 never = "0.1"
 
