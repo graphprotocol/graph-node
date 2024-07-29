@@ -351,18 +351,6 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         if !filter.subgraph_filter.is_empty() {
             // TODO: handle empty range, or empty entity set bellow
-            if to <= from {
-                let entities = BTreeMap::<BlockNumber, Entity>::new();
-                return self
-                    .subgraph_triggers(
-                        Logger::root(slog::Discard, o!()),
-                        from,
-                        to,
-                        filter,
-                        entities,
-                    )
-                    .await;
-            }
 
             if let Some(SubgraphFilter {
                 subgraph: dh,
@@ -380,23 +368,20 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                             let t: u32 = to as u32;
                             let br: Range<u32> = f..t;
                             let entities = store.get_range(&et, br)?;
-                            if !entities.is_empty() {
-                                return self
-                                    .subgraph_triggers(
-                                        Logger::root(slog::Discard, o!()),
-                                        from,
-                                        to,
-                                        filter,
-                                        entities,
-                                    )
-                                    .await;
-                            }
+                            return self
+                                .subgraph_triggers(
+                                    Logger::root(slog::Discard, o!()),
+                                    from,
+                                    to,
+                                    filter,
+                                    entities,
+                                )
+                                .await;
                         }
                     }
                 }
             }
         }
-
         self.adapter
             .scan_triggers(from, to, &filter.chain_filter)
             .await
