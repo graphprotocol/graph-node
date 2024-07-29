@@ -19,7 +19,7 @@ lazy_static = "1.5"
 lru_time_cache = "0.11"
 maybe-owned = "0.3.4"
 postgres = "0.19.1"
-openssl = "0.10.64"
+openssl = "0.10.66"
 postgres-openssl = "0.5.0"
 rand = "0.8.4"
 serde = { workspace = true }
