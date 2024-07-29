@@ -352,8 +352,15 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         if !filter.subgraph_filter.is_empty() {
             // TODO: handle empty range, or empty entity set bellow
             if to <= from {
+                let entities = BTreeMap::<BlockNumber, Entity>::new();
                 return self
-                    .mock_subgraph_triggers(Logger::root(slog::Discard, o!()), from, to, filter)
+                    .subgraph_triggers(
+                        Logger::root(slog::Discard, o!()),
+                        from,
+                        to,
+                        filter,
+                        entities,
+                    )
                     .await;
             }
 
@@ -433,7 +440,10 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             .into_iter()
             .map(|block| {
                 let key = block.number();
-                let entity = entities.get(&key).unwrap();
+                let entity = match entities.get(&key) {
+                    Some(e) => e,
+                    None => &Self::create_mock_entity(&block),
+                };
                 let trigger_data = vec![Self::create_subgraph_trigger_from_entity(
                     first_filter,
                     entity,
@@ -452,48 +462,6 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         subgraph::TriggerData {
             source: filter.subgraph.clone(),
             entity: entity.clone(),
-            entity_type: filter.entities.first().unwrap().clone(),
-        }
-    }
-
-    // TODO(krishna): Currently this is a mock implementation of subgraph triggers.
-    // This will be replaced with the actual implementation which will use the filters to
-    // query the database of the source subgraph and return the entity triggers.
-    async fn mock_subgraph_triggers(
-        &self,
-        logger: Logger,
-        from: BlockNumber,
-        to: BlockNumber,
-        filter: &Arc<TriggerFilterWrapper<C>>,
-    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
-        let logger2 = logger.cheap_clone();
-        let adapter = self.adapter.clone();
-        // let to_ptr = eth.next_existing_ptr_to_number(&logger, to).await?;
-        // let to = to_ptr.block_number();
-
-        let first_filter = filter.subgraph_filter.first().unwrap();
-
-        let blocks = adapter
-            .load_blocks_by_numbers(logger, HashSet::from_iter(from..=to))
-            .await?
-            .into_iter()
-            .map(|block| {
-                let trigger_data = vec![Self::create_mock_subgraph_trigger(first_filter, &block)];
-                BlockWithTriggers::new_with_subgraph_triggers(block, trigger_data, &logger2)
-            })
-            .collect();
-
-        Ok((blocks, to))
-    }
-
-    fn create_mock_subgraph_trigger(
-        filter: &SubgraphFilter,
-        block: &C::Block,
-    ) -> subgraph::TriggerData {
-        let mock_entity = Self::create_mock_entity(block);
-        subgraph::TriggerData {
-            source: filter.subgraph.clone(),
-            entity: mock_entity,
             entity_type: filter.entities.first().unwrap().clone(),
         }
     }
