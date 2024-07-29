@@ -755,6 +755,40 @@ impl EthereumAdapter {
 
         Ok(req.response(result, call::Source::Rpc))
     }
+
+    fn load_blocks_by_number_rpc(
+        &self,
+        logger: Logger,
+        numbers: Vec<U64>,
+    ) -> impl Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send {
+        let web3 = self.web3.clone();
+
+        stream::iter_ok::<_, Error>(numbers.into_iter().map(move |number| {
+            let web3 = web3.clone();
+            retry(format!("load block {}", number), &logger)
+                .limit(ENV_VARS.request_retries)
+                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                .run(move || {
+                    Box::pin(
+                        web3.eth()
+                            .block_with_txs(BlockId::Number(Web3BlockNumber::Number(number))),
+                    )
+                    .compat()
+                    .from_err::<Error>()
+                    .and_then(move |block| {
+                        block.map(Arc::new).ok_or_else(|| {
+                            anyhow::anyhow!("Ethereum node did not find block {:?}", number)
+                        })
+                    })
+                    .compat()
+                })
+                .boxed()
+                .compat()
+                .from_err()
+        }))
+        .buffered(ENV_VARS.block_batch_size)
+    }
+
     /// Request blocks by hash through JSON-RPC.
     fn load_blocks_rpc(
         &self,
@@ -1655,25 +1689,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 
     // This is a ugly temporary implementation to get the block ptrs for a range of blocks
+    // Load Ethereum blocks in bulk by numbers, returning results as they come back as a Stream.
     async fn load_blocks_by_numbers(
         &self,
         logger: Logger,
-        chain_store: Arc<dyn ChainStore>,
+        _chain_store: Arc<dyn ChainStore>,
         block_numbers: HashSet<BlockNumber>,
     ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
-        let block_hashes = block_numbers
-            .into_iter()
-            .map(|number| {
-                chain_store
-                    .block_hashes_by_block_number(number)
-                    .unwrap()
-                    .first()
-                    .unwrap()
-                    .as_h256()
-            })
-            .collect::<HashSet<_>>();
+        let block_numbers: Vec<_> = block_numbers.iter().map(|n| U64::from(n.clone())).collect();
 
-        self.load_blocks(logger, chain_store, block_hashes).await
+        debug!(logger, "Requesting {} block(s)", block_numbers.len());
+
+        Box::new(
+            self.load_blocks_by_number_rpc(logger.clone(), block_numbers)
+                .collect()
+                .map(move |blocks| {
+                    let mut sorted_blocks = blocks;
+                    sorted_blocks.sort_by_key(|block| block.number);
+                    stream::iter_ok(sorted_blocks)
+                })
+                .flatten_stream(),
+        )
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
