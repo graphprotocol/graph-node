@@ -1,6 +1,7 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use graph::blockchain::ChainIdentifier;
+use graph::components::ethereum::BlockDetailLevel;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
@@ -261,6 +262,15 @@ impl TriggerFilter {
     #[cfg(debug_assertions)]
     pub fn block(&self) -> &EthereumBlockFilter {
         &self.block
+    }
+
+    /// Always require full blocks until we are able to strip down the block from the WASM ABI.
+    pub fn minimum_detail_level(&self) -> BlockDetailLevel {
+        if self.call.is_empty() && self.block.is_empty() {
+            return BlockDetailLevel::Light;
+        }
+
+        BlockDetailLevel::Full
     }
 }
 

@@ -7,9 +7,12 @@ use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
+    components::ethereum::BlockDetailLevel,
     prelude::{
-        web3,
-        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        web3::{
+            self,
+            types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        },
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
     },
@@ -217,6 +220,15 @@ impl TryInto<BlockFinality> for &Block {
     }
 }
 
+impl Into<BlockDetailLevel> for block::DetailLevel {
+    fn into(self) -> BlockDetailLevel {
+        match self {
+            block::DetailLevel::DetaillevelExtended => BlockDetailLevel::Full,
+            block::DetailLevel::DetaillevelBase => BlockDetailLevel::Light,
+        }
+    }
+}
+
 impl TryInto<EthereumBlockWithCalls> for &Block {
     type Error = Error;
 
@@ -370,6 +382,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     })
                     .collect::<Result<_, _>>()?,
             ),
+            detail_level: self.detail_level().into(),
         };
 
         Ok(block)

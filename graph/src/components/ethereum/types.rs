@@ -66,12 +66,25 @@ impl LightEthereumBlockExt for LightEthereumBlock {
     }
 }
 
+#[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq)]
+pub enum BlockDetailLevel {
+    Light,
+    Full,
+}
+
+impl std::fmt::Display for BlockDetailLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{:?}", self))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct EthereumBlockWithCalls {
     pub ethereum_block: EthereumBlock,
     /// The calls in this block; `None` means we haven't checked yet,
     /// `Some(vec![])` means that we checked and there were none
     pub calls: Option<Vec<EthereumCall>>,
+    pub detail_level: BlockDetailLevel,
 }
 
 impl EthereumBlockWithCalls {

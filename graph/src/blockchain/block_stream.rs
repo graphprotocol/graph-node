@@ -1,3 +1,4 @@
+use crate::components::ethereum::BlockDetailLevel;
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
@@ -518,6 +519,10 @@ impl SubstreamsError {
 pub enum BlockStreamError {
     #[error("Failed to decode protobuf {0}")]
     ProtobufDecodingError(#[from] prost::DecodeError),
+    #[error(
+        "subgraph requires block detail level: {0}, check firehose documentation for more details"
+    )]
+    BlockLevelRequirementUnet(BlockDetailLevel),
     #[error("substreams error: {0}")]
     SubstreamsError(#[from] SubstreamsError),
     #[error("block stream error {0}")]

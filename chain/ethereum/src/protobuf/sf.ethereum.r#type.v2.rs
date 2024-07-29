@@ -23,8 +23,66 @@ pub struct Block {
     pub transaction_traces: ::prost::alloc::vec::Vec<TransactionTrace>,
     #[prost(message, repeated, tag = "11")]
     pub balance_changes: ::prost::alloc::vec::Vec<BalanceChange>,
+    /// DetailLevel affects the data available in this block.
+    ///
+    /// ## DetailLevel_EXTENDED
+    ///
+    /// Describes the most complete block, with traces, balance changes, storage
+    /// changes. It is extracted during the execution of the block.
+    ///
+    /// ## DetailLevel_BASE
+    ///
+    /// Describes a block that contains only the block header, transaction receipts
+    /// and event logs: everything that can be extracted using the base JSON-RPC
+    /// interface
+    /// (<https://ethereum.org/en/developers/docs/apis/json-rpc/#json-rpc-methods>)
+    /// Furthermore, the eth_getTransactionReceipt call has been avoided because it
+    /// brings only minimal improvements at the cost of requiring an archive node
+    /// or a full node with complete transaction index.
+    #[prost(enumeration = "block::DetailLevel", tag = "12")]
+    pub detail_level: i32,
     #[prost(message, repeated, tag = "20")]
     pub code_changes: ::prost::alloc::vec::Vec<CodeChange>,
+}
+/// Nested message and enum types in `Block`.
+pub mod block {
+    #[derive(
+        Clone,
+        Copy,
+        Debug,
+        PartialEq,
+        Eq,
+        Hash,
+        PartialOrd,
+        Ord,
+        ::prost::Enumeration
+    )]
+    #[repr(i32)]
+    pub enum DetailLevel {
+        DetaillevelExtended = 0,
+        /// DETAILLEVEL_TRACE = 1; // TBD
+        DetaillevelBase = 2,
+    }
+    impl DetailLevel {
+        /// String value of the enum field names used in the ProtoBuf definition.
+        ///
+        /// The values are not transformed in any way and thus are considered stable
+        /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+        pub fn as_str_name(&self) -> &'static str {
+            match self {
+                DetailLevel::DetaillevelExtended => "DETAILLEVEL_EXTENDED",
+                DetailLevel::DetaillevelBase => "DETAILLEVEL_BASE",
+            }
+        }
+        /// Creates an enum from field names used in the ProtoBuf definition.
+        pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+            match value {
+                "DETAILLEVEL_EXTENDED" => Some(Self::DetaillevelExtended),
+                "DETAILLEVEL_BASE" => Some(Self::DetaillevelBase),
+                _ => None,
+            }
+        }
+    }
 }
 /// HeaderOnlyBlock is used to optimally unpack the \[Block\] structure (note the
 /// corresponding message number for the `header` field) while consuming less
