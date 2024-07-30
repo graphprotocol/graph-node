@@ -233,7 +233,7 @@ pub trait ReadStore: Send + Sync + 'static {
         &self,
         entity_type: &EntityType,
         block_range: Range<u32>,
-    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError>;
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
 
     /// Reverse lookup
     fn get_derived(
@@ -261,7 +261,7 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         &self,
         entity_type: &EntityType,
         block_range: Range<u32>,
-    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         (**self).get_range(entity_type, block_range)
     }
 
