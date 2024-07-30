@@ -445,13 +445,16 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
     fn create_subgraph_trigger_from_entity(
         filter: &SubgraphFilter,
-        entity: &Entity,
-    ) -> subgraph::TriggerData {
-        subgraph::TriggerData {
-            source: filter.subgraph.clone(),
-            entity: entity.clone(),
-            entity_type: filter.entities.first().unwrap().clone(),
-        }
+        entity: &Vec<Entity>,
+    ) -> Vec<subgraph::TriggerData> {
+        entity
+            .iter()
+            .map(|e| subgraph::TriggerData {
+                source: filter.subgraph.clone(),
+                entity: e.clone(),
+                entity_type: filter.entities.first().unwrap().clone(),
+            })
+            .collect()
     }
 }
 
