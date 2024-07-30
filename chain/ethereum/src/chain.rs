@@ -48,6 +48,7 @@ use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
 use crate::network::EthereumNetworkAdapters;
 use crate::runtime::runtime_adapter::eth_call_gas;
+use crate::ENV_VARS;
 use crate::{
     adapter::EthereumAdapter as _,
     codec,
@@ -56,7 +57,7 @@ use crate::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
         parse_log_triggers,
     },
-    SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
+    SubgraphEthRpcMetrics, TriggerFilter,
 };
 use crate::{BufferedCallCache, NodeCapabilities};
 use crate::{EthereumAdapter, RuntimeAdapter};
@@ -67,7 +68,9 @@ use graph::blockchain::block_stream::{
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
 
-pub struct EthereumStreamBuilder {}
+pub struct EthereumStreamBuilder {
+    pub firehose_chains_detail_level_check_disabled: Vec<ChainId>,
+}
 
 #[async_trait]
 impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
@@ -96,7 +99,15 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
+        let block_level_check_enabled = !self
+            .firehose_chains_detail_level_check_disabled
+            .contains(&chain.name);
+
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            adapter,
+            filter,
+            block_level_check_enabled,
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -855,6 +866,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 pub struct FirehoseMapper {
     adapter: Arc<dyn TriggersAdapterTrait<Chain>>,
     filter: Arc<TriggerFilter>,
+    block_level_check_enabled: bool,
 }
 
 #[async_trait]
@@ -870,13 +882,16 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
             ))?,
         };
 
-        // If the block doesn't meet the minimum level just stop here.
-        let minimum_detail_level = self.filter.minimum_detail_level();
-        if minimum_detail_level > block.detail_level().clone().into() {
-            return Err(BlockStreamError::BlockLevelRequirementUnet(
-                minimum_detail_level,
-            ));
+        if self.block_level_check_enabled {
+            // If the block doesn't meet the minimum level just stop here.
+            let minimum_detail_level = self.filter.minimum_detail_level();
+            if minimum_detail_level > block.detail_level().clone().into() {
+                return Err(BlockStreamError::BlockLevelRequirementUnet(
+                    minimum_detail_level,
+                ));
+            }
         }
+
         // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
         // is empty
         let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
@@ -1036,7 +1051,42 @@ mod test {
             block: EthereumBlockFilter::default(),
         });
 
-        let mapper = FirehoseMapper { adapter, filter };
+        let mapper = FirehoseMapper {
+            adapter,
+            filter,
+            block_level_check_enabled: true,
+        };
+
+        // Default is full block
+        let block = eth_block(None);
+
+        let res = mapper.decode_block(Some(block.encode_to_vec().as_ref()));
+        assert_eq!(res.is_err(), true, "{:?}", res);
+
+        // This error should mean that the minimum block detail is met and so it would normally
+        // decode the block. Since this block is a PITA to build and not that relevant to this test
+        // this will have to do. If you get a different error, maybe some order was changed, that's not
+        // great but relying on just an error could generate a false pass.
+        let res = res.unwrap_err();
+        assert!(res.to_string().contains("invalid block hash"), "{:?}", res);
+
+        Ok(())
+    }
+
+    #[test]
+    fn disabled_check_default_detail_level_is_full() -> Result<()> {
+        let adapter: Arc<dyn TriggersAdapterTrait<Chain>> = Arc::new(NoopTriggersAdapter {});
+        let filter = Arc::new(TriggerFilter {
+            log: EthereumLogFilter::default(),
+            call: EthereumCallFilter::default(),
+            block: EthereumBlockFilter::default(),
+        });
+
+        let mapper = FirehoseMapper {
+            adapter,
+            filter,
+            block_level_check_enabled: false,
+        };
 
         // Default is full block
         let block = eth_block(None);
@@ -1106,7 +1156,11 @@ mod test {
         });
         assert_eq!(filter.minimum_detail_level(), BlockDetailLevel::Full);
 
-        let mapper = FirehoseMapper { adapter, filter };
+        let mapper = FirehoseMapper {
+            adapter,
+            filter,
+            block_level_check_enabled: true,
+        };
 
         // Default is full block
         let light_block_with_tx = eth_block(Some(BlockDetailLevel::Light));
@@ -1123,6 +1177,38 @@ mod test {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn disabled_check_default_detail_level_is_checked() {
+        let adapter: Arc<dyn TriggersAdapterTrait<Chain>> = Arc::new(NoopTriggersAdapter {});
+        let filter = Arc::new(TriggerFilter {
+            log: EthereumLogFilter::default(),
+            call: EthereumCallFilter::default(),
+            block: EthereumBlockFilter {
+                trigger_every_block: true,
+                ..Default::default()
+            },
+        });
+        assert_eq!(filter.minimum_detail_level(), BlockDetailLevel::Full);
+
+        let mapper = FirehoseMapper {
+            adapter,
+            filter,
+            block_level_check_enabled: false,
+        };
+
+        // Default is full block
+        let block = eth_block(Some(BlockDetailLevel::Light));
+        let res = mapper.decode_block(Some(block.encode_to_vec().as_ref()));
+        assert_eq!(res.is_err(), true, "{:?}", res);
+
+        // This error should mean that the minimum block detail is met and so it would normally
+        // decode the block. Since this block is a PITA to build and not that relevant to this test
+        // this will have to do. If you get a different error, maybe some order was changed, that's not
+        // great but relying on just an error could generate a false pass.
+        let res = res.unwrap_err();
+        assert!(res.to_string().contains("invalid block hash"), "{:?}", res);
     }
 
     fn eth_block(detail_level: Option<BlockDetailLevel>) -> crate::codec::Block {

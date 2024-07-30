@@ -8,6 +8,7 @@ use ethereum::chain::{
 };
 use ethereum::network::EthereumNetworkAdapter;
 use ethereum::ProviderEthRpcMetrics;
+use ethereum::ENV_VARS as ETH_VARS;
 use graph::anyhow::bail;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
@@ -547,7 +548,11 @@ pub async fn networks_as_chains(
                     call_cache,
                     client,
                     chain_head_update_listener.clone(),
-                    Arc::new(EthereumStreamBuilder {}),
+                    Arc::new(EthereumStreamBuilder {
+                        firehose_chains_detail_level_check_disabled: ETH_VARS
+                            .chains_firehose_disable_detail_level_check
+                            .clone(),
+                    }),
                     Arc::new(EthereumBlockRefetcher {}),
                     Arc::new(adapter_selector),
                     Arc::new(EthereumRuntimeAdapterBuilder {}),

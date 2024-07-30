@@ -1,4 +1,5 @@
 use envconfig::Envconfig;
+use graph::components::adapter::ChainId;
 use graph::env::EnvVarBoolean;
 use graph::prelude::{envconfig, lazy_static, BlockNumber};
 use std::fmt;
@@ -88,6 +89,11 @@ pub struct EnvVars {
     /// This is a comma separated list of chain ids for which the gas field will not be set
     /// when calling `eth_call`.
     pub eth_call_no_gas: Vec<String>,
+    /// Chain names where detail_checking should be disabled. This option should only be used
+    /// for chains where the firehose extended block detail level is not available.
+    /// Using this env var on any other chains can result in determinism issues which are
+    /// slashable offenses.
+    pub chains_firehose_disable_detail_level_check: Vec<ChainId>,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -137,6 +143,16 @@ impl From<Inner> for EnvVars {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect(),
+            chains_firehose_disable_detail_level_check: x
+                .chains_firehose_disable_detail_level_check
+                .map(|input| {
+                    input
+                        .split(',')
+                        .filter(|s| !s.is_empty())
+                        .map(ChainId::from)
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 }
@@ -186,4 +202,6 @@ struct Inner {
     genesis_block_number: u64,
     #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613,421614")]
     eth_call_no_gas: String,
+    #[envconfig(from = "GRAPH_ETH_FIREHOSE_DETAIL_LEVEL_DISABLE_CHAINS")]
+    chains_firehose_disable_detail_level_check: Option<String>,
 }
