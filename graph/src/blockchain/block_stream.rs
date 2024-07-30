@@ -1,5 +1,4 @@
 use crate::blockchain::SubgraphFilter;
-use crate::data::store::scalar;
 use crate::data_source::subgraph;
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
@@ -425,16 +424,20 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             .into_iter()
             .map(|block| {
                 let key = block.number();
-                let entity = match entities.get(&key) {
-                    Some(e) => e,
-                    None => &Self::create_mock_entity(&block),
-                };
-                let trigger_data = vec![Self::create_subgraph_trigger_from_entity(
-                    first_filter,
-                    entity,
-                )];
-                BlockWithTriggers::new_with_subgraph_triggers(block, trigger_data, &logger2)
+                match entities.get(&key) {
+                    Some(e) => {
+                        let trigger_data =
+                            vec![Self::create_subgraph_trigger_from_entity(first_filter, e)];
+                        Some(BlockWithTriggers::new_with_subgraph_triggers(
+                            block,
+                            trigger_data,
+                            &logger2,
+                        ))
+                    }
+                    None => None,
+                }
             })
+            .flatten()
             .collect();
 
         Ok((blocks, to))
@@ -449,30 +452,6 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             entity: entity.clone(),
             entity_type: filter.entities.first().unwrap().clone(),
         }
-    }
-
-    fn create_mock_entity(block: &C::Block) -> Entity {
-        let id = DeploymentHash::new("test").unwrap();
-        let data_schema = InputSchema::parse_latest(
-            "type Block @entity { id: Bytes!, number: BigInt!, hash: Bytes! }",
-            id.clone(),
-        )
-        .unwrap();
-
-        let block = block.ptr();
-        let hash = Value::Bytes(scalar::Bytes::from(block.hash_slice().to_vec()));
-        let data = data_schema
-            .make_entity(vec![
-                ("id".into(), hash.clone()),
-                (
-                    "number".into(),
-                    Value::BigInt(scalar::BigInt::from(block.block_number())),
-                ),
-                ("hash".into(), hash),
-            ])
-            .unwrap();
-
-        data
     }
 }
 
