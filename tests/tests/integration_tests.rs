@@ -522,16 +522,15 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
     let expected_response = json!({
         "mirrorBlocks": [
-            {  "number": "0" },
-            {  "number": "1" },
+            { "number": "1" },
             { "number": "2" },
-            {  "number": "3" },
-            {  "number": "4" },
-            {  "number": "5" },
+            { "number": "3" },
+            { "number": "4" },
+            { "number": "5" },
             { "number": "6" },
-            {  "number": "7" },
-            {  "number": "8" },
-            {  "number": "9" },
+            { "number": "7" },
+            { "number": "8" },
+            { "number": "9" },
         ]
     });
 
