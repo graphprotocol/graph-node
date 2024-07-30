@@ -520,9 +520,9 @@ impl Layout {
         conn: &mut PgConnection,
         entity_type: &EntityType,
         block_range: Range<u32>,
-    ) -> Result<BTreeMap<BlockNumber, Entity>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         let table = self.table_for_entity(entity_type)?;
-        let mut entities: BTreeMap<BlockNumber, Entity> = BTreeMap::new();
+        let mut entities: BTreeMap<BlockNumber, Vec<Entity>> = BTreeMap::new();
         if let Some(vec) = FindRangeQuery::new(table.as_ref(), block_range)
             .get_results::<EntityData>(conn)
             .optional()?
@@ -530,7 +530,12 @@ impl Layout {
             for e in vec {
                 let block = e.clone().deserialize_block_number::<Entity>()?;
                 let en = e.deserialize_with_layout::<Entity>(self, None)?;
-                entities.insert(block, en);
+                match entities.get_mut(&block) {
+                    Some(vec) => vec.push(en),
+                    None => {
+                        let _ = entities.insert(block, vec![en]);
+                    }
+                };
             }
         }
         Ok(entities)
