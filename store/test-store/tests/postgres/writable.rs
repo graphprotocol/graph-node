@@ -308,6 +308,6 @@ fn entities_read_range() {
         let br: Range<u32> = 2..5;
         let et = &COUNTER_TYPE;
         let e = writable.get_range(&et, br).unwrap();
-        assert_eq!(e.len(), 5 - 2)
+        assert_eq!(e.len(), 4)
     })
 }
