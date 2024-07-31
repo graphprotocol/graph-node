@@ -379,7 +379,10 @@ where
             );
 
             // Update with actually scanned range, to account for any skipped null blocks.
-            let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter).await?;
+            let (blocks, to) = self
+                .adapter
+                .scan_triggers(&self.logger, from, to, &self.filter)
+                .await?;
             let range_size = to - from + 1;
 
             // If the target block (`to`) is within the reorg threshold, indicating no non-null finalized blocks are
@@ -469,11 +472,7 @@ where
                         // Note that head_ancestor is a child of subgraph_ptr.
                         let block = self
                             .adapter
-                            .triggers_in_block(
-                                &self.logger,
-                                head_ancestor,
-                                &self.filter.chain_filter.clone(),
-                            )
+                            .triggers_in_block(&self.logger, head_ancestor, &self.filter)
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {
