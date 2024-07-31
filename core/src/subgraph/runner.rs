@@ -33,6 +33,7 @@ use graph::schema::EntityKey;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::vec;
 
 const MINUTE: Duration = Duration::from_secs(60);
 
@@ -447,9 +448,12 @@ where
                 let (data_sources, runtime_hosts) =
                     self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
 
-                let filter = C::TriggerFilter::from_data_sources(
-                    data_sources.iter().filter_map(DataSource::as_onchain),
-                );
+                let filter = &Arc::new(TriggerFilterWrapper::new(
+                    C::TriggerFilter::from_data_sources(
+                        data_sources.iter().filter_map(DataSource::as_onchain),
+                    ),
+                    vec![],
+                ));
 
                 let block: Arc<C::Block> = if self.inputs.chain.is_refetch_block_required() {
                     let cur = firehose_cursor.clone();
@@ -478,7 +482,7 @@ where
                 let block_with_triggers = self
                     .inputs
                     .triggers_adapter
-                    .triggers_in_block(&logger, block.as_ref().clone(), &filter)
+                    .triggers_in_block(&logger, block.as_ref().clone(), filter)
                     .await?;
 
                 let triggers = block_with_triggers.trigger_data;
