@@ -211,8 +211,8 @@ impl Expr {
 
     fn to_sql(&self) -> String {
         match self {
-            Expr::Column(name) => name.to_string(),
-            Expr::Prefix(name, kind) => kind.to_sql(name),
+            Expr::Column(name) => format!("\"{}\"", name),
+            Expr::Prefix(name, kind) => kind.to_sql(&format!("\"{}\"", name)),
             Expr::Vid => VID_COLUMN.to_string(),
             Expr::Block => BLOCK_COLUMN.to_string(),
             Expr::BlockRange => BLOCK_RANGE_COLUMN.to_string(),
@@ -942,14 +942,14 @@ fn parse() {
         let exp = CreateIndex::from(exp);
         assert_eq!(exp, act);
 
-        let defn = defn.replace('\"', "").to_ascii_lowercase();
+        let defn = defn.to_ascii_lowercase();
         assert_eq!(defn, act.to_sql(false, false).unwrap());
     }
 
     use TestCond::*;
     use TestExpr::*;
 
-    let sql = "create index attr_1_0_token_id on sgd44.token using btree (id)";
+    let sql = "create index attr_1_0_token_id on sgd44.token using btree (\"id\")";
     let exp = Parsed {
         unique: false,
         name: "attr_1_0_token_id",
@@ -962,7 +962,7 @@ fn parse() {
     parse_one(sql, exp);
 
     let sql =
-        "create index attr_1_1_token_symbol on sgd44.token using btree (\"left\"(symbol, 256))";
+        "create index attr_1_1_token_symbol on sgd44.token using btree (left(\"symbol\", 256))";
     let exp = Parsed {
         unique: false,
         name: "attr_1_1_token_symbol",
@@ -974,7 +974,8 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql = "create index attr_1_5_token_trade_volume on sgd44.token using btree (trade_volume)";
+    let sql =
+        "create index attr_1_5_token_trade_volume on sgd44.token using btree (\"trade_volume\")";
     let exp = Parsed {
         unique: false,
         name: "attr_1_5_token_trade_volume",
@@ -1022,7 +1023,8 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql = "create index token_id_block_range_excl on sgd44.token using gist (id, block_range)";
+    let sql =
+        "create index token_id_block_range_excl on sgd44.token using gist (\"id\", block_range)";
     let exp = Parsed {
         unique: false,
         name: "token_id_block_range_excl",
@@ -1034,7 +1036,7 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql="create index attr_1_11_pool_owner on sgd411585.pool using btree (\"substring\"(owner, 1, 64))";
+    let sql="create index attr_1_11_pool_owner on sgd411585.pool using btree (substring(\"owner\", 1, 64))";
     let exp = Parsed {
         unique: false,
         name: "attr_1_11_pool_owner",
@@ -1047,7 +1049,7 @@ fn parse() {
     parse_one(sql, exp);
 
     let sql =
-        "create index attr_1_20_pool_vault_id on sgd411585.pool using gist (vault_id, block_range)";
+        "create index attr_1_20_pool_vault_id on sgd411585.pool using gist (\"vault_id\", block_range)";
     let exp = Parsed {
         unique: false,
         name: "attr_1_20_pool_vault_id",
@@ -1059,7 +1061,8 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql = "create index attr_1_22_pool_tokens_list on sgd411585.pool using gin (tokens_list)";
+    let sql =
+        "create index attr_1_22_pool_tokens_list on sgd411585.pool using gin (\"tokens_list\")";
     let exp = Parsed {
         unique: false,
         name: "attr_1_22_pool_tokens_list",
@@ -1071,7 +1074,7 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql = "create index manual_partial_pool_total_liquidity on sgd411585.pool using btree (total_liquidity) where (coalesce(upper(block_range), 2147483647) > 15635000)";
+    let sql = "create index manual_partial_pool_total_liquidity on sgd411585.pool using btree (\"total_liquidity\") where (coalesce(upper(block_range), 2147483647) > 15635000)";
     let exp = Parsed {
         unique: false,
         name: "manual_partial_pool_total_liquidity",
@@ -1083,7 +1086,7 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql = "create index manual_swap_pool_timestamp_id on sgd217942.swap using btree (pool, \"timestamp\", id)";
+    let sql = "create index manual_swap_pool_timestamp_id on sgd217942.swap using btree (\"pool\", \"timestamp\", \"id\")";
     let exp = Parsed {
         unique: false,
         name: "manual_swap_pool_timestamp_id",
@@ -1095,7 +1098,7 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql = "CREATE INDEX brin_scy ON sgd314614.scy USING brin (\"block$\", vid)";
+    let sql = "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid)";
     let exp = Parsed {
         unique: false,
         name: "brin_scy",
@@ -1107,8 +1110,7 @@ fn parse() {
     };
     parse_one(sql, exp);
 
-    let sql =
-        "CREATE INDEX brin_scy ON sgd314614.scy USING brin (\"block$\", vid) where (amount > 0)";
+    let sql = "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where (amount > 0)";
     let exp = Parsed {
         unique: false,
         name: "brin_scy",
@@ -1121,7 +1123,7 @@ fn parse() {
     parse_one(sql, exp);
 
     let sql =
-        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (decimals) WHERE (decimals > (5)::numeric)";
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE (decimals > (5)::numeric)";
     let exp = Parsed {
         unique: false,
         name: "manual_token_random_cond",
