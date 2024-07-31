@@ -367,9 +367,16 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                             let t: u32 = to as u32;
                             let br: Range<u32> = f..t;
                             let entities = store.get_range(&et, br)?;
+                            let block_numbers = entities
+                                .iter()
+                                .map(|(bn, _)| bn)
+                                .cloned()
+                                .collect::<HashSet<_>>();
+
                             return self
                                 .subgraph_triggers(
                                     Logger::root(slog::Discard, o!()),
+                                    block_numbers,
                                     from,
                                     to,
                                     filter,
@@ -410,7 +417,8 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
     async fn subgraph_triggers(
         &self,
         logger: Logger,
-        from: BlockNumber,
+        block_numbers: HashSet<BlockNumber>,
+        _from: BlockNumber,
         to: BlockNumber,
         filter: &Arc<TriggerFilterWrapper<C>>,
         entities: BTreeMap<BlockNumber, Entity>,
@@ -419,7 +427,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         let adapter = self.adapter.clone();
         let first_filter = filter.subgraph_filter.first().unwrap();
         let blocks = adapter
-            .load_blocks_by_numbers(logger, HashSet::from_iter(from..to))
+            .load_blocks_by_numbers(logger, block_numbers)
             .await?
             .into_iter()
             .map(|block| {
