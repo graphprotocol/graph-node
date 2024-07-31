@@ -264,7 +264,7 @@ impl<'a> BlockRangeColumn<'a> {
                 table_prefix: _,
                 block_range: BlockRange(start, finish),
             } => {
-                out.push_sql("block_range && int4range(");
+                out.push_sql("lower(block_range) >= ");
                 match start {
                     Bound::Included(block) => out.push_bind_param::<Integer, _>(block)?,
                     Bound::Excluded(block) => {
@@ -273,7 +273,7 @@ impl<'a> BlockRangeColumn<'a> {
                     }
                     Bound::Unbounded => todo!(),
                 };
-                out.push_sql(",");
+                out.push_sql(" AND lower(block_range) <= ");
                 match finish {
                     Bound::Included(block) => {
                         out.push_bind_param::<Integer, _>(block)?;
@@ -282,7 +282,6 @@ impl<'a> BlockRangeColumn<'a> {
                     Bound::Excluded(block) => out.push_bind_param::<Integer, _>(block)?,
                     Bound::Unbounded => todo!(),
                 };
-                out.push_sql(")");
                 Ok(())
             }
             BlockRangeColumn::ImmutableRange {
