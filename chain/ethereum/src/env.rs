@@ -111,6 +111,26 @@ impl EnvVars {
 
 impl From<Inner> for EnvVars {
     fn from(x: Inner) -> Self {
+        // Add these to the main var, this is a way of keeping the default
+        // values, while adding something new to the list.
+        let disabled_detail_level_chains_extra: Vec<_> = x
+            .chains_firehose_disable_detail_level_check_extra
+            .map(|input| {
+                input
+                    .split(',')
+                    .filter(|s| !s.is_empty())
+                    .map(ChainId::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let disabled_detail_level_chains: Vec<_> = x
+            .chains_firehose_disable_detail_level_check
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(ChainId::from)
+            .collect();
+
         Self {
             get_logs_max_contracts: x.get_logs_max_contracts,
             geth_eth_call_errors: x
@@ -143,16 +163,10 @@ impl From<Inner> for EnvVars {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect(),
-            chains_firehose_disable_detail_level_check: x
-                .chains_firehose_disable_detail_level_check
-                .map(|input| {
-                    input
-                        .split(',')
-                        .filter(|s| !s.is_empty())
-                        .map(ChainId::from)
-                        .collect()
-                })
-                .unwrap_or_default(),
+            chains_firehose_disable_detail_level_check: disabled_detail_level_chains
+                .into_iter()
+                .chain(disabled_detail_level_chains_extra.into_iter())
+                .collect(),
         }
     }
 }
@@ -202,6 +216,11 @@ struct Inner {
     genesis_block_number: u64,
     #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613,421614")]
     eth_call_no_gas: String,
-    #[envconfig(from = "GRAPH_ETH_FIREHOSE_DETAIL_LEVEL_DISABLE_CHAINS")]
-    chains_firehose_disable_detail_level_check: Option<String>,
+    #[envconfig(
+        from = "GRAPH_ETH_FIREHOSE_DETAIL_LEVEL_DISABLE_CHAINS",
+        default = "optimism,optimism-sepolia,arbiturm-one"
+    )]
+    chains_firehose_disable_detail_level_check: String,
+    #[envconfig(from = "GRAPH_ETH_FIREHOSE_DETAIL_LEVEL_DISABLE_CHAINS_EXTRA")]
+    chains_firehose_disable_detail_level_check_extra: Option<String>,
 }
