@@ -221,8 +221,6 @@ fn generate_ddl() {
     let il = IndexList::mock_thing_index_list();
     let layout = test_layout(THING_GQL);
     let sql = layout.as_ddl(Some(il)).expect("Failed to generate DDL");
-    println!("SQL: {}", sql);
-    println!("THING_DDL_ON_COPY: {}", THING_DDL_ON_COPY);
     check_eqv(THING_DDL_ON_COPY, &sql);
 
     let layout = test_layout(MUSIC_GQL);
@@ -486,9 +484,9 @@ create index thing_block_range_closed
     on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on sgd0815."thing" using btree (id);
+    on sgd0815."thing" using btree ("id");
 create index attr_0_1_thing_big_thing
-    on sgd0815."thing" using gist (big_thing, block_range);
+    on sgd0815."thing" using gist ("big_thing", block_range);
 
 
     create table "sgd0815"."scalar" (
@@ -513,7 +511,7 @@ create index scalar_block_range_closed
     on "sgd0815"."scalar"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_scalar_id
-    on sgd0815."scalar" using btree (id);
+    on sgd0815."scalar" using btree ("id");
 
 
     create table "sgd0815"."file_thing" (
@@ -532,7 +530,7 @@ create index file_thing_block_range_closed
     on "sgd0815"."file_thing"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_file_thing_id
-    on sgd0815."file_thing" using btree (id);
+    on sgd0815."file_thing" using btree ("id");
 "#;
 
 const BOOKS_GQL: &str = r#"type Author @entity {
