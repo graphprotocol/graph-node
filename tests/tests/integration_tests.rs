@@ -774,6 +774,9 @@ async fn test_missing(_sg: Subgraph) -> anyhow::Result<()> {
 async fn integration_tests() -> anyhow::Result<()> {
     // Test "api-version-v0-0-4" was commented out in the original; what's
     // up with that?
+
+    let test_name_to_run = std::env::var("TEST_CASE").ok();
+
     let cases = vec![
         TestCase::new("ganache-reverts", test_ganache_reverts),
         TestCase::new("host-exports", test_host_exports),
@@ -789,6 +792,16 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("topic-filter", test_topic_filters),
     ];
 
+    // Filter the test cases if a specific test name is provided
+    let cases_to_run: Vec<_> = if let Some(test_name) = test_name_to_run {
+        cases
+            .into_iter()
+            .filter(|case| case.name == test_name)
+            .collect()
+    } else {
+        cases
+    };
+
     let contracts = Contract::deploy_all().await?;
 
     status!("setup", "Resetting database");
@@ -801,7 +814,7 @@ async fn integration_tests() -> anyhow::Result<()> {
     status!("graph-node", "Starting graph-node");
     let mut graph_node_child_command = CONFIG.spawn_graph_node().await?;
 
-    let stream = tokio_stream::iter(cases)
+    let stream = tokio_stream::iter(cases_to_run)
         .map(|case| case.run(&contracts))
         .buffered(CONFIG.num_parallel_tests);
 
