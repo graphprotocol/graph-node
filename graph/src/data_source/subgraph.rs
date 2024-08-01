@@ -147,6 +147,7 @@ pub struct UnresolvedDataSource {
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnresolvedSource {
     address: DeploymentHash,
     #[serde(default)]
