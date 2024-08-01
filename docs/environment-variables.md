@@ -53,6 +53,13 @@ those.
   be used if the store uses more than one shard.
 - `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`: Specify genesis block number. If the flag
   is not set, the default value will be `0`.
+- `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`: Maximum number of contracts to query in a single `eth_getLogs` request.
+  Defaults to 2000.
+
+## Firehose configuration
+
+- `GRAPH_NODE_FIREHOSE_MAX_DECODE_SIZE`: Maximum size of a message that can be
+  decoded by the firehose. Defaults to 25MB.
 
 ## Running mapping handlers
 
@@ -251,11 +258,11 @@ those.
 - `GRAPH_STORE_WRITE_BATCH_SIZE`: how many changes to accumulate during
   syncing in kilobytes before a write has to happen. The default is 10_000
   which corresponds to 10MB. Setting this to 0 disables write batching.
-- `GRAPH_MIN_HISTORY_BLOCKS`: Specifies the minimum number of blocks to 
-retain for subgraphs with historyBlocks set to auto. The default value is 2 times the reorg threshold.
+- `GRAPH_MIN_HISTORY_BLOCKS`: Specifies the minimum number of blocks to
+  retain for subgraphs with historyBlocks set to auto. The default value is 2 times the reorg threshold.
 - `GRAPH_ETHEREUM_BLOCK_RECEIPTS_CHECK_TIMEOUT`: Timeout for checking
   `eth_getBlockReceipts` support during chain startup, if this times out
   individual transaction receipts will be fetched instead. Defaults to 10s.
 - `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`: During the coping of a subgraph
-  postponing creation of certain indexes (btree, attribute based ones), would 
-  speed up syncing. 
+  postponing creation of certain indexes (btree, attribute based ones), would
+  speed up syncing
