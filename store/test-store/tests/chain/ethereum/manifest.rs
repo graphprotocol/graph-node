@@ -185,7 +185,7 @@ dataSources:
     network: mainnet
     source: 
       address: 'QmUVaWpdKgcxBov1jHEa8dr46d2rkVzfHuZFu4fXJ4sFse'
-      startBlock: 0
+      startBlock: 9562480
     mapping:
       apiVersion: 0.0.6
       language: wasm/assemblyscript
@@ -207,6 +207,8 @@ specVersion: 1.3.0
     match data_source {
         DataSourceEnum::Subgraph(ds) => {
             assert_eq!(ds.name, "SubgraphSource");
+            assert_eq!(ds.kind, "subgraph");
+            assert_eq!(ds.source.start_block, 9562480);
         }
         _ => panic!("Expected a subgraph data source"),
     }
