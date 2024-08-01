@@ -369,6 +369,14 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                 )
                 .await?;
 
+            debug!(
+                logger,
+                "Scanned subgraph triggers";
+                "from" => from,
+                "to" => to,
+                "blocks_with_triggers" => blocks_with_triggers.len(),
+            );
+
             // Ensure the 'to' block is present even if it has no triggers
             if !blocks_with_triggers.iter().any(|b| b.block.number() == to) {
                 let to_block_numbers: HashSet<BlockNumber> = vec![to].into_iter().collect();
@@ -398,13 +406,23 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         block: C::Block,
         filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<BlockWithTriggers<C>, Error> {
+        trace!(
+            logger,
+            "triggers_in_block";
+            "block_number" => block.number(),
+            "block_hash" => block.hash().hash_hex(),
+        );
+
         let block_number = block.number();
+
         if filter.subgraph_filter.is_empty() {
+            trace!(logger, "No subgraph filters, scanning triggers in block");
             return self
                 .adapter
                 .triggers_in_block(logger, block, &filter.chain_filter)
                 .await;
         }
+
         self.scan_triggers(logger, block_number, block_number, filter)
             .await
             .map(|(mut blocks, _)| blocks.pop().unwrap())
@@ -419,7 +437,17 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
     }
 
     pub async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        self.adapter.chain_head_ptr().await
+        if self.source_subgraph_stores.is_empty() {
+            return self.adapter.chain_head_ptr().await;
+        }
+
+        let ptr = self
+            .source_subgraph_stores
+            .iter()
+            .filter_map(|(_, store)| store.block_ptr())
+            .min_by_key(|ptr| ptr.number);
+
+        Ok(ptr)
     }
     async fn subgraph_triggers(
         &self,
