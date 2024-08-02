@@ -287,10 +287,27 @@ impl<'a> BlockRangeColumn<'a> {
             BlockRangeColumn::ImmutableRange {
                 table: _,
                 table_prefix: _,
-                block_range: _,
+                block_range: BlockRange(start, finish),
             } => {
-                println!("ImmutableRange conatins()");
-                todo!()
+                out.push_sql("block$ >= ");
+                match start {
+                    Bound::Included(block) => out.push_bind_param::<Integer, _>(block)?,
+                    Bound::Excluded(block) => {
+                        out.push_bind_param::<Integer, _>(block)?;
+                        out.push_sql("+1");
+                    }
+                    Bound::Unbounded => todo!(),
+                };
+                out.push_sql(" AND block$ <= ");
+                match finish {
+                    Bound::Included(block) => {
+                        out.push_bind_param::<Integer, _>(block)?;
+                        out.push_sql("+1");
+                    }
+                    Bound::Excluded(block) => out.push_bind_param::<Integer, _>(block)?,
+                    Bound::Unbounded => todo!(),
+                };
+                Ok(())
             }
         }
     }
