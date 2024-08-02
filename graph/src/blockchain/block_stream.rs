@@ -406,7 +406,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         logger: Logger,
         block_numbers: HashSet<BlockNumber>,
         filter: &Arc<TriggerFilterWrapper<C>>,
-        entities: BTreeMap<BlockNumber, Entity>,
+        entities: BTreeMap<BlockNumber, Vec<Entity>>,
     ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
         let logger_clone = logger.cheap_clone();
         let adapter = self.adapter.clone();
@@ -419,10 +419,8 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             .filter_map(|block| {
                 let block_number = block.number();
                 entities.get(&block_number).map(|entity| {
-                    let trigger_data = vec![Self::create_subgraph_trigger_from_entity(
-                        first_filter,
-                        entity,
-                    )];
+                    let trigger_data =
+                        Self::create_subgraph_trigger_from_entity(first_filter, entity);
                     BlockWithTriggers::new_with_subgraph_triggers(
                         block,
                         trigger_data,
