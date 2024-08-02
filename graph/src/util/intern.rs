@@ -33,6 +33,7 @@ pub struct Atom(AtomInt);
 
 /// An atom and the underlying pool. A `FatAtom` can be used in place of a
 /// `String` or `Word`
+#[allow(dead_code)]
 pub struct FatAtom {
     pool: Arc<AtomPool>,
     atom: Atom,
