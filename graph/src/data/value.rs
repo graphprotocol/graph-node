@@ -276,7 +276,7 @@ impl<'a> IntoIterator for &'a Object {
 impl std::fmt::Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
-            .entries(self.0.into_iter().map(|e| {
+            .entries(self.0.iter().map(|e| {
                 (
                     e.key.as_ref().map(|w| w.as_str()).unwrap_or("---"),
                     &e.value,
