@@ -929,7 +929,7 @@ impl Aggregation {
 
     pub fn dimensions(&self) -> impl Iterator<Item = &Field> {
         self.fields
-            .into_iter()
+            .iter()
             .filter(|field| &field.name != &*ID && field.name != kw::TIMESTAMP)
     }
 
@@ -1240,7 +1240,7 @@ impl InputSchema {
         };
         Ok(obj_type
             .shared_interfaces
-            .into_iter()
+            .iter()
             .map(|atom| EntityType::new(self.cheap_clone(), *atom))
             .collect())
     }

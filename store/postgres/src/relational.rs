@@ -1508,7 +1508,7 @@ impl Table {
         let table_name = SqlName::from(defn.as_str());
         let columns = object_type
             .fields
-            .into_iter()
+            .iter()
             .filter(|field| !field.is_derived())
             .map(|field| Column::new(schema, &table_name, field, catalog))
             .chain(fulltexts.iter().map(Column::new_fulltext))
