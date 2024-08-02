@@ -496,6 +496,9 @@ impl EntityData {
                             .unwrap();
                         let n = start.parse::<i32>().unwrap();
                         Some(n)
+                    } else if key == "block$" {
+                        let block = json.as_i64().unwrap() as i32;
+                        Some(block)
                     } else {
                         None
                     }
