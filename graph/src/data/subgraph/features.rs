@@ -33,6 +33,10 @@ pub enum SubgraphFeature {
     NonFatalErrors,
     Grafting,
     FullTextSearch,
+    Aggregations,
+    Pruning,
+    DeclaredEthCalls,
+    ImmutableEntities,
     #[serde(alias = "nonDeterministicIpfs")]
     IpfsOnEthereumContracts,
 }
