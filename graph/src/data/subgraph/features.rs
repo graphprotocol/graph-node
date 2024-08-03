@@ -154,11 +154,15 @@ mod tests {
         FullTextSearch,
         IpfsOnEthereumContracts,
     ];
-    const STRING: [&str; 4] = [
+    const STRING: [&str; 8] = [
         "nonFatalErrors",
         "grafting",
         "fullTextSearch",
         "ipfsOnEthereumContracts",
+        "declaredEthCalls",
+        "aggregations",
+        "pruning",
+        "immutableEntities",
     ];
 
     #[test]

@@ -824,11 +824,24 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .flatten()
             .collect::<HashSet<_>>();
 
-        let features: Vec<String> = self
+        let mut features: Vec<String> = self
             .features
             .iter()
             .map(|f| f.to_string())
             .collect::<Vec<_>>();
+
+        if let Some(manifest) = &self.indexer_hints {
+            features.push("pruning".to_string());
+        }
+        if has_declared_calls {
+            features.push("declaredEthCalls".to_string());
+        }
+        if has_aggregations {
+            features.push("aggregations".to_string());
+        }
+        if immutable_entities.len() > 0 {
+            features.push("immutableEntities".to_string());
+        }
 
         let spec_version = self.spec_version.to_string();
 
