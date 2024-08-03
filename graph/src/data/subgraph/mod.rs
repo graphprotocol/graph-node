@@ -830,7 +830,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .map(|f| f.to_string())
             .collect::<Vec<_>>();
 
-        if let Some(manifest) = &self.indexer_hints {
+        if let Some(_manifest) = &self.indexer_hints {
             features.push("pruning".to_string());
         }
         if has_declared_calls {
