@@ -182,6 +182,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         self: Arc<Self>,
         logger: Logger,
         deployment: DeploymentId,
+        segment: SubgraphSegment,
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
@@ -366,6 +367,26 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     /// The maximum assigned causality region. Any higher number is therefore free to be assigned.
     async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError>;
+
+    /// Persists a set of segments according to the provided details. If called more than once
+    /// this should be a NOOP.
+    async fn create_segments(
+        &self,
+        deployment: DeploymentId,
+        segments: Vec<SegmentDetails>,
+    ) -> Result<Vec<SubgraphSegment>, StoreError>;
+
+    async fn get_segments(
+        &self,
+        deployment: DeploymentId,
+    ) -> Result<Vec<SubgraphSegment>, StoreError>;
+
+    /// Forces `current_block` to `stop_block`-1. Passing an already complete
+    /// segment should be a NOOP.
+    async fn mark_subgraph_segment_complete(
+        &self,
+        segment: SegmentDetails,
+    ) -> Result<(), StoreError>;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring

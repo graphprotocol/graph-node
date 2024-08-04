@@ -9,7 +9,8 @@ use graph::blockchain::BlockTime;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
     Batch, DeploymentLocator, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest,
-    PruningStrategy, QueryPermit, StoredDynamicDataSource, VersionStats,
+    PruningStrategy, QueryPermit, SegmentDetails, StoredDynamicDataSource, SubgraphSegment,
+    VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
@@ -1091,11 +1092,76 @@ impl DeploymentStore {
         self.execute_query(&mut conn, site, query)
             .map(|(entities, _)| entities)
     }
+    pub(crate) async fn create_subgraph_segments(
+        &self,
+
+        deployment: graph::components::store::DeploymentId,
+        segments: Vec<SegmentDetails>,
+    ) -> Result<Vec<SubgraphSegment>, StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::create_subgraph_segments(
+                conn,
+                deployment,
+                segments.into_iter().map(Into::into).collect(),
+            )
+            .map_err(CancelableError::from)
+        })
+        .await
+    }
+
+    /// Gets the next range of blocks that is ready to stream
+    /// Returns the range that includes the start block if one is provided.
+    /// If start block is provided it will return the range [start_block,`current_block`[  
+    /// wthin the relevant segment.
+    /// If start block is None, the same range of the lowest segment is returned.
+    /// When the `current_block` of the segment is lower or eql the provided start_block then (start_block, start_block)
+    /// is returned indicating there are no new blocks for processing.
+    #[allow(unused)]
+    pub(crate) async fn next_segment_block_range(
+        &self,
+        deployment: graph::components::store::DeploymentId,
+        start_block: Option<BlockNumber>,
+    ) -> Result<(BlockNumber, BlockNumber), StoreError> {
+        let details = self
+            .with_conn(move |conn, _| {
+                deployment::subgraph_segment_for_block_number(conn, deployment.into(), start_block)
+                    .map_err(CancelableError::from)
+            })
+            .await?;
+        let start_block = start_block.map(|s| s + 1).unwrap_or(details.start_block);
+        let current_block = details.current_block.unwrap_or(start_block);
+
+        let res = (start_block, current_block.min(start_block));
+
+        Ok(res)
+    }
+
+    pub(crate) async fn subgraph_segments(
+        &self,
+        deployment: graph::components::store::DeploymentId,
+    ) -> Result<Vec<SubgraphSegment>, StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::subgraph_segments(conn, deployment.into()).map_err(CancelableError::from)
+        })
+        .await
+    }
+
+    pub(crate) async fn mark_subgraph_segment_complete(
+        &self,
+        segment: SegmentDetails,
+    ) -> Result<(), StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::mark_subgraph_segment_complete(conn, &segment.into())
+                .map_err(CancelableError::from)
+        })
+        .await
+    }
 
     pub(crate) fn transact_block_operations(
         self: &Arc<Self>,
         logger: &Logger,
         site: Arc<Site>,
+        segment: &SubgraphSegment,
         batch: &Batch,
         last_rollup: Option<BlockTime>,
         stopwatch: &StopwatchMetrics,
@@ -1153,6 +1219,7 @@ impl DeploymentStore {
                 let earliest_block = deployment::transact_block(
                     conn,
                     &site,
+                    segment,
                     &batch.block_ptr,
                     &batch.firehose_cursor,
                     count,

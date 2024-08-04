@@ -225,6 +225,7 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         top_level_templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
+        has_parallel_feature: bool,
     ) -> Result<Self::Host, Error>;
 
     /// Spawn a mapping and return a channel for mapping requests. The sender should be able to be

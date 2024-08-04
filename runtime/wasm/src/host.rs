@@ -6,7 +6,7 @@ use graph::futures01::sync::mpsc::Sender;
 use graph::futures03::channel::oneshot::channel;
 
 use graph::blockchain::{BlockTime, Blockchain, HostFn, RuntimeAdapter};
-use graph::components::store::{EnsLookup, SubgraphFork};
+use graph::components::store::{EnsLookup, GetScope, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
@@ -89,6 +89,7 @@ where
         templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: Sender<WasmRequest<C>>,
         metrics: Arc<HostMetrics>,
+        has_parallel_feature: bool,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
             self.runtime_adapter.cheap_clone(),
@@ -100,6 +101,7 @@ where
             mapping_request_sender,
             metrics,
             self.ens_lookup.cheap_clone(),
+            has_parallel_feature,
         )
     }
 }
@@ -110,6 +112,7 @@ pub struct RuntimeHost<C: Blockchain> {
     mapping_request_sender: Sender<WasmRequest<C>>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
+    has_parallel_feature: bool,
 }
 
 impl<C> RuntimeHost<C>
@@ -126,6 +129,7 @@ where
         mapping_request_sender: Sender<WasmRequest<C>>,
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
+        has_parallel_feature: bool,
     ) -> Result<Self, Error> {
         let ds_details = DataSourceDetails::from_data_source(
             &data_source,
@@ -154,6 +158,7 @@ where
             mapping_request_sender,
             host_exports,
             metrics,
+            has_parallel_feature,
         })
     }
 
@@ -181,6 +186,11 @@ where
         let (result_sender, result_receiver) = channel();
         let start_time = Instant::now();
         let metrics = self.metrics.clone();
+        let force_scope = if self.has_parallel_feature {
+            Some(GetScope::InBlock)
+        } else {
+            None
+        };
 
         self.mapping_request_sender
             .clone()
@@ -196,6 +206,7 @@ where
                     debug_fork: debug_fork.cheap_clone(),
                     mapping_logger: Logger::new(&logger, o!("component" => "UserMapping")),
                     instrument,
+                    force_scope,
                 },
                 trigger,
                 result_sender,
@@ -248,6 +259,11 @@ where
         let (result_sender, result_receiver) = channel();
         let start_time = Instant::now();
         let metrics = self.metrics.clone();
+        let force_scope = if self.has_parallel_feature {
+            Some(GetScope::InBlock)
+        } else {
+            None
+        };
 
         self.mapping_request_sender
             .clone()
@@ -263,6 +279,7 @@ where
                     debug_fork: debug_fork.cheap_clone(),
                     mapping_logger: Logger::new(&logger, o!("component" => "UserBlockMapping")),
                     instrument,
+                    force_scope,
                 },
                 handler.clone(),
                 block_data,
