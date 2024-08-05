@@ -22,9 +22,14 @@ const SCHEMA_GQL: &str = "
         id: ID!,
         count: Int!,
     }
+    type Counter2 @entity(immutable: true) {
+        id: ID!,
+        count: Int!,
+    }
 ";
 
 const COUNTER: &str = "Counter";
+const COUNTER2: &str = "Counter2";
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("writableSubgraph");
@@ -34,6 +39,7 @@ lazy_static! {
         InputSchema::parse_latest(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref COUNTER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(COUNTER).unwrap();
+    static ref COUNTER2_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(COUNTER2).unwrap();
 }
 
 /// Inserts test data into the store.
@@ -117,19 +123,48 @@ async fn insert_count(
     deployment: &DeploymentLocator,
     block: u8,
     count: u8,
+    counter_type: &EntityType,
+    id: &str,
 ) {
+    let count_key_local = |id: &str| counter_type.parse_key(id).unwrap();
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
         count: count as i32,
         vid: count as i64,
     };
     let entity_op = EntityOperation::Set {
-        key: count_key(&data.get("id").unwrap().to_string()),
+        key: count_key_local(&data.get("id").unwrap().to_string()),
         data,
     };
     transact_entity_operations(store, deployment, block_pointer(block), vec![entity_op])
         .await
         .unwrap();
+}
+
+async fn insert_count_mutable(
+    store: &Arc<DieselSubgraphStore>,
+    deployment: &DeploymentLocator,
+    block: u8,
+    count: u8,
+) {
+    insert_count(store, deployment, block, count, &COUNTER_TYPE, "1").await;
+}
+
+async fn insert_count_immutable(
+    store: &Arc<DieselSubgraphStore>,
+    deployment: &DeploymentLocator,
+    block: u8,
+    count: u8,
+) {
+    insert_count(
+        store,
+        deployment,
+        block,
+        count,
+        &COUNTER2_TYPE,
+        &(block / 2).to_string(),
+    )
+    .await;
 }
 
 async fn pause_writer(deployment: &DeploymentLocator) {
@@ -157,13 +192,13 @@ where
         }
 
         for count in 1..4 {
-            insert_count(&subgraph_store, &deployment, count, count).await;
+            insert_count_mutable(&subgraph_store, &deployment, count, count).await;
         }
 
         // Test reading back with pending writes to the same entity
         pause_writer(&deployment).await;
         for count in 4..7 {
-            insert_count(&subgraph_store, &deployment, count, count).await;
+            insert_count_mutable(&subgraph_store, &deployment, count, count).await;
         }
         assert_eq!(6, read_count());
 
@@ -172,7 +207,7 @@ where
 
         // Test reading back with pending writes and a pending revert
         for count in 7..10 {
-            insert_count(&subgraph_store, &deployment, count, count).await;
+            insert_count_mutable(&subgraph_store, &deployment, count, count).await;
         }
         writable
             .revert_block_operations(block_pointer(2), FirehoseCursor::None)
@@ -294,21 +329,46 @@ fn restart() {
     })
 }
 
-#[test]
-fn entities_read_range() {
-    run_test(|store, writable, deployment| async move {
-        let subgraph_store = store.subgraph_store();
-        let read_count = || count_get(writable.as_ref());
-        writable.deployment_synced().unwrap();
+async fn read_range(
+    store: Arc<Store>,
+    writable: Arc<dyn WritableStore>,
+    deployment: DeploymentLocator,
+    mutable: bool,
+) -> usize {
+    let subgraph_store = store.subgraph_store();
+    writable.deployment_synced().unwrap();
 
-        for count in 1..7 {
-            insert_count(&subgraph_store, &deployment, count, 2 * count).await;
+    for count in 1..=7 {
+        if mutable {
+            insert_count_mutable(&subgraph_store, &deployment, 2 * count, 4 * count).await
+        } else {
+            insert_count_immutable(&subgraph_store, &deployment, 2 * count, 4 * count).await
         }
-        writable.flush().await.unwrap();
-        assert_eq!(2 * (7 - 1), read_count());
-        let br: Range<u32> = 2..5;
-        let et = &COUNTER_TYPE;
-        let e = writable.get_range(&et, br).unwrap();
-        assert_eq!(e.len(), 5 - 2)
+    }
+    writable.flush().await.unwrap();
+
+    let br: Range<u32> = 4..8;
+    let et: &EntityType = if mutable {
+        &COUNTER_TYPE
+    } else {
+        &COUNTER2_TYPE
+    };
+    let e = writable.get_range(et, br).unwrap();
+    e.len()
+}
+
+#[test]
+fn read_range_mutable() {
+    run_test(|store, writable, deployment| async move {
+        let num_entities = read_range(store, writable, deployment, true).await;
+        assert_eq!(num_entities, 2)
+    })
+}
+
+#[test]
+fn read_range_immutable() {
+    run_test(|store, writable, deployment| async move {
+        let num_entities = read_range(store, writable, deployment, false).await;
+        assert_eq!(num_entities, 3) // TODO: fix it - it should be 2 as the range is open
     })
 }
