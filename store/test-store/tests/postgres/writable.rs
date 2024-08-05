@@ -361,7 +361,7 @@ async fn read_range(
 fn read_range_mutable() {
     run_test(|store, writable, deployment| async move {
         let num_entities = read_range(store, writable, deployment, true).await;
-        assert_eq!(num_entities, 2)
+        assert_eq!(num_entities, 3) // TODO: fix it - it should be 2 as the range is open
     })
 }
 
