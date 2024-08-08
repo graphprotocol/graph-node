@@ -7,7 +7,10 @@ use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
-use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
+use graph::blockchain::{
+    Block, BlockTime, Blockchain, DataSource as _, SubgraphFilter, Trigger, TriggerFilter as _,
+    TriggerFilterWrapper,
+};
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::subgraph::InstanceDSTemplate;
 use graph::components::{
@@ -30,6 +33,7 @@ use graph::schema::EntityKey;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::vec;
 
 const MINUTE: Duration = Duration::from_secs(60);
 
@@ -116,7 +120,7 @@ where
         self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold
     }
 
-    fn build_filter(&self) -> C::TriggerFilter {
+    fn build_filter(&self) -> TriggerFilterWrapper<C> {
         let current_ptr = self.inputs.store.block_ptr();
         let static_filters = self.is_static_filters_enabled();
 
@@ -128,10 +132,30 @@ where
             None => true,
         };
 
+        let data_sources = self.ctx.static_data_sources();
+
+        let subgraph_filter = data_sources
+            .iter()
+            .filter_map(|ds| ds.as_subgraph())
+            .map(|ds| SubgraphFilter {
+                subgraph: ds.source.address(),
+                start_block: ds.source.start_block,
+                entities: ds
+                    .mapping
+                    .handlers
+                    .iter()
+                    .map(|handler| handler.entity.clone())
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+
         // if static_filters is not enabled we just stick to the filter based on all the data sources.
         if !static_filters {
-            return C::TriggerFilter::from_data_sources(
-                self.ctx.onchain_data_sources().filter(end_block_filter),
+            return TriggerFilterWrapper::new(
+                C::TriggerFilter::from_data_sources(
+                    self.ctx.onchain_data_sources().filter(end_block_filter),
+                ),
+                subgraph_filter,
             );
         }
 
@@ -158,11 +182,11 @@ where
 
         filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
 
-        filter
+        TriggerFilterWrapper::new(filter, subgraph_filter)
     }
 
     #[cfg(debug_assertions)]
-    pub fn build_filter_for_test(&self) -> C::TriggerFilter {
+    pub fn build_filter_for_test(&self) -> TriggerFilterWrapper<C> {
         self.build_filter()
     }
 
@@ -209,7 +233,7 @@ where
 
             let mut block_stream = new_block_stream(
                 &self.inputs,
-                self.ctx.filter.as_ref().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+                self.ctx.filter.clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
                 &self.metrics.subgraph,
             )
             .await?
@@ -323,7 +347,10 @@ where
             .match_and_decode_many(
                 &logger,
                 &block,
-                triggers.into_iter().map(TriggerData::Onchain),
+                triggers.into_iter().map(|t| match t {
+                    Trigger::Chain(t) => TriggerData::Onchain(t),
+                    Trigger::Subgraph(t) => TriggerData::Subgraph(t),
+                }),
                 hosts_filter,
                 &self.metrics.subgraph,
             )
@@ -421,9 +448,12 @@ where
                 let (data_sources, runtime_hosts) =
                     self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
 
-                let filter = C::TriggerFilter::from_data_sources(
-                    data_sources.iter().filter_map(DataSource::as_onchain),
-                );
+                let filter = &Arc::new(TriggerFilterWrapper::new(
+                    C::TriggerFilter::from_data_sources(
+                        data_sources.iter().filter_map(DataSource::as_onchain),
+                    ),
+                    vec![],
+                ));
 
                 let block: Arc<C::Block> = if self.inputs.chain.is_refetch_block_required() {
                     let cur = firehose_cursor.clone();
@@ -452,7 +482,7 @@ where
                 let block_with_triggers = self
                     .inputs
                     .triggers_adapter
-                    .triggers_in_block(&logger, block.as_ref().clone(), &filter)
+                    .triggers_in_block(&logger, block.as_ref().clone(), filter)
                     .await?;
 
                 let triggers = block_with_triggers.trigger_data;
@@ -482,7 +512,10 @@ where
                     .match_and_decode_many(
                         &logger,
                         &block,
-                        triggers.into_iter().map(TriggerData::Onchain),
+                        triggers.into_iter().map(|t| match t {
+                            Trigger::Chain(t) => TriggerData::Onchain(t),
+                            Trigger::Subgraph(_) => unreachable!(), // TODO(krishna): Re-evaulate this
+                        }),
                         |_| Box::new(runtime_hosts.iter().map(Arc::as_ref)),
                         &self.metrics.subgraph,
                     )

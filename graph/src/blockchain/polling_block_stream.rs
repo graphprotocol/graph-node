@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use super::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
-    FirehoseCursor, TriggersAdapter, BUFFERED_BLOCK_STREAM_SIZE,
+    FirehoseCursor, TriggersAdapterWrapper, BUFFERED_BLOCK_STREAM_SIZE,
 };
-use super::{Block, BlockPtr, Blockchain};
+use super::{Block, BlockPtr, Blockchain, TriggerFilterWrapper};
 
 use crate::components::store::BlockNumber;
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -79,13 +79,13 @@ where
     C: Blockchain,
 {
     chain_store: Arc<dyn ChainStore>,
-    adapter: Arc<dyn TriggersAdapter<C>>,
+    adapter: Arc<TriggersAdapterWrapper<C>>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
-    filter: Arc<C::TriggerFilter>,
+    filter: Arc<TriggerFilterWrapper<C>>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
     previous_triggers_per_block: f64,
@@ -146,10 +146,10 @@ where
     pub fn new(
         chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
-        adapter: Arc<dyn TriggersAdapter<C>>,
+        adapter: Arc<TriggersAdapterWrapper<C>>,
         node_id: NodeId,
         subgraph_id: DeploymentHash,
-        filter: Arc<C::TriggerFilter>,
+        filter: Arc<TriggerFilterWrapper<C>>,
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
@@ -218,7 +218,7 @@ where
         let max_block_range_size = self.max_block_range_size;
 
         // Get pointers from database for comparison
-        let head_ptr_opt = ctx.chain_store.chain_head_ptr().await?;
+        let head_ptr_opt = ctx.adapter.chain_head_ptr().await?;
         let subgraph_ptr = self.current_block.clone();
 
         // If chain head ptr is not set yet
@@ -379,7 +379,10 @@ where
             );
 
             // Update with actually scanned range, to account for any skipped null blocks.
-            let (blocks, to) = self.adapter.scan_triggers(from, to, &self.filter).await?;
+            let (blocks, to) = self
+                .adapter
+                .scan_triggers(&self.logger, from, to, &self.filter)
+                .await?;
             let range_size = to - from + 1;
 
             // If the target block (`to`) is within the reorg threshold, indicating no non-null finalized blocks are
