@@ -183,6 +183,15 @@ impl DeploymentSearch {
         };
         Ok(deployment_locator)
     }
+
+    pub fn get_name(self) -> String {
+        match self {
+            DeploymentSearch::All => String::from(""),
+            DeploymentSearch::Name { name } => name,
+            DeploymentSearch::Hash { hash, shard: _ } => hash,
+            DeploymentSearch::Deployment { namespace } => namespace,
+        }
+    }
 }
 
 #[derive(Queryable, PartialEq, Eq, Hash, Debug)]
