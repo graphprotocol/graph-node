@@ -1219,17 +1219,17 @@ async fn main() -> anyhow::Result<()> {
             let sender = ctx.notification_sender();
             let pool = ctx.primary_pool();
             let mut locators: Vec<DeploymentLocator> = Vec::new();
-            let mut failed: Vec<String> = Vec::new();
+            let mut deployments_not_found: Vec<String> = Vec::new();
             for deployment in deployments {
                 match deployment.locate_unique(&pool) {
                     Ok(locator) => {
                         locators.push(locator);
                     }
-                    Err(_) => failed.push(deployment.get_name()),
+                    Err(_) => deployments_not_found.push(deployment.get_name()),
                 }
             }
-            if failed.len() > 0 {
-                println!("No deployments found : {:?}", failed);
+            if deployments_not_found.len() > 0 {
+                println!("No deployments found : {:?}", deployments_not_found);
             }
             if locators.len() > 0 {
                 commands::assign::restart(pool, &sender, &locators, sleep)
