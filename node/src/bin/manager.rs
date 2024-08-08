@@ -5,6 +5,7 @@ use graph::bail;
 use graph::blockchain::BlockHash;
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
+use graph::components::store::DeploymentLocator;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
@@ -184,7 +185,7 @@ pub enum Command {
     /// Pause and resume a deployment
     Restart {
         /// The deployment (see `help info`)
-        deployment: DeploymentSearch,
+        deployments: Vec<DeploymentSearch>,
         /// Sleep for this many seconds after pausing subgraphs
         #[clap(
             long,
@@ -1214,12 +1215,27 @@ async fn main() -> anyhow::Result<()> {
 
             commands::assign::pause_or_resume(pool, &sender, locator, false)
         }
-        Restart { deployment, sleep } => {
+        Restart { deployments, sleep } => {
             let sender = ctx.notification_sender();
             let pool = ctx.primary_pool();
-            let locator = &deployment.locate_unique(&pool).unwrap();
-
-            commands::assign::restart(pool, &sender, locator, sleep)
+            let mut locators: Vec<DeploymentLocator> = Vec::new();
+            let mut failed: Vec<String> = Vec::new();
+            for deployment in deployments {
+                match deployment.locate_unique(&pool) {
+                    Ok(locator) => {
+                        locators.push(locator);
+                    }
+                    Err(_) => failed.push(deployment.get_name()),
+                }
+            }
+            if failed.len() > 0 {
+                println!("No deployments found : {:?}", failed);
+            }
+            if locators.len() > 0 {
+                commands::assign::restart(pool, &sender, &locators, sleep)
+            } else {
+                Ok(())
+            }
         }
         Rewind {
             force,

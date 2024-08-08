@@ -114,15 +114,17 @@ pub fn pause_or_resume(
 pub fn restart(
     primary: ConnectionPool,
     sender: &NotificationSender,
-    locator: &DeploymentLocator,
+    locators: &Vec<DeploymentLocator>,
     sleep: Duration,
 ) -> Result<(), Error> {
-    pause_or_resume(primary.clone(), sender, locator, true)?;
-    println!(
-        "Waiting {}s to make sure pausing was processed",
-        sleep.as_secs()
-    );
-    thread::sleep(sleep);
-    pause_or_resume(primary, sender, locator, false)?;
+    for locator in locators {
+        pause_or_resume(primary.clone(), sender, locator, true)?;
+        println!(
+            "Waiting {}s to make sure pausing was processed",
+            sleep.as_secs()
+        );
+        thread::sleep(sleep);
+        pause_or_resume(primary.clone(), sender, locator, false)?;
+    }
     Ok(())
 }
