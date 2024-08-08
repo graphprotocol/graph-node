@@ -4,7 +4,7 @@
 use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
-    dsl::{count, delete, insert_into, select, sql, update},
+    dsl::{count, delete, insert_into, now, select, sql, update},
     sql_types::{Bool, Integer},
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
@@ -132,7 +132,7 @@ table! {
         deployment -> Text,
         failed -> Bool,
         health -> crate::deployment::SubgraphHealthMapping,
-        synced -> Bool,
+        synced_at -> Nullable<Timestamptz>,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
         earliest_block_number -> Integer,
@@ -737,9 +737,9 @@ pub fn set_synced(conn: &mut PgConnection, id: &DeploymentHash) -> Result<(), St
     update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
-            .filter(d::synced.eq(false)),
+            .filter(d::synced_at.is_null()),
     )
-    .set(d::synced.eq(true))
+    .set(d::synced_at.eq(now))
     .execute(conn)?;
     Ok(())
 }
@@ -762,7 +762,7 @@ pub fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool, Stor
 
     let synced = d::table
         .filter(d::deployment.eq(id))
-        .select(d::synced)
+        .select(d::synced_at.is_not_null())
         .first(conn)
         .optional()?
         .unwrap_or(false);
@@ -1142,7 +1142,6 @@ pub fn create_deployment(
         d::id.eq(site.id),
         d::deployment.eq(site.deployment.as_str()),
         d::failed.eq(false),
-        d::synced.eq(false),
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
