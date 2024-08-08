@@ -146,8 +146,8 @@ impl BlockEventStream {
     fn write(&mut self, event: &ProofOfIndexingEvent<'_>) {
         let children = &[
             1,                // kvp -> v
-            0,                // PoICausalityRegion.blocks: Vec<Block>
-            self.block_index, // Vec<Block> -> [i]
+            0,                // PoICausalityRegion.blocks: Result<Vec<Block>>
+            self.block_index, // Result<Vec<Block>> -> [i]
             0,                // Block.events -> Vec<ProofOfIndexingEvent>
             self.vec_length,
         ];
