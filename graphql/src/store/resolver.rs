@@ -402,15 +402,21 @@ impl Resolver for StoreResolver {
             return Ok(());
         }
 
-        // Add the "indexing_error" to the response.
         assert!(result.errors_mut().is_empty());
-        *result.errors_mut() = vec![QueryError::IndexingError];
 
         match self.error_policy {
-            // If indexing errors are denied, we omit results, except for the `_meta` response.
+            // If the policy is to allow errors, we do nothing. We do not add an indexing error
+            // as that would cause the query to be marked as not attestable.
+            ErrorPolicy::Allow => (),
+
+            // However if they are denied, we omit results, except for the `_meta` response.
             // Note that the meta field could have been queried under a different response key,
             // or a different field queried under the response key `_meta`.
             ErrorPolicy::Deny => {
+                // If we got here we know that we want to mark an indexing error so we can add
+                // the "indexing_error" to the response.
+                *result.errors_mut() = vec![QueryError::IndexingError];
+
                 let mut data = result.take_data();
 
                 // Only keep the _meta, __schema and __type fields from the data
@@ -443,7 +449,6 @@ impl Resolver for StoreResolver {
 
                 result.set_data(meta_fields);
             }
-            ErrorPolicy::Allow => (),
         }
         Ok(())
     }
