@@ -70,8 +70,12 @@ type SubgraphIndexingStatus {
   nonFatalErrors: [SubgraphError!]!
   chains: [ChainIndexingStatus!]!
   entityCount: BigInt!
+
+  "null if deployment is not assigned to an indexing node"
   node: String
-  paused: Boolean!
+  "null if deployment is not assigned to an indexing node"
+  paused: Boolean
+
   historyBlocks: Int!
 }
 
