@@ -35,6 +35,7 @@ use std::ops::Range;
 use std::str::FromStr;
 use std::string::ToString;
 
+use crate::block_range::EntityBlockRange;
 use crate::relational::{
     Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
@@ -2008,13 +2009,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 #[derive(Debug, Clone)]
 pub struct FindRangeQuery<'a> {
     table: &'a Table,
-    br_column: BlockRangeColumn<'a>,
+    eb_range: EntityBlockRange,
 }
 
 impl<'a> FindRangeQuery<'a> {
     pub fn new(table: &'a Table, block_range: Range<u32>) -> Self {
-        let br_column = BlockRangeColumn::new2(table, "e.", block_range);
-        Self { table, br_column }
+        let eb_range = EntityBlockRange::new(table.immutable, block_range);
+        Self { table, eb_range }
     }
 }
 
@@ -2031,12 +2032,13 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
+        // TODO: do we need to care about it?
         // if self.table.has_causality_region {
         //     out.push_sql("causality_region = ");
         //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
         //     out.push_sql(" and ");
         // }
-        self.br_column.contains(&mut out, true)
+        self.eb_range.contains(&mut out)
     }
 }
 
