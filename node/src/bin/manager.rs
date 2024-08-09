@@ -583,6 +583,43 @@ pub enum ChainCommand {
         #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
     },
+    /// Rewind all subgraphs from a given chain.
+    Rewind {
+        /// Force rewinding even if the block hash is not found in the local
+        /// database
+        #[clap(long, short)]
+        force: bool,
+        /// Rewind to the start block of the subgraph
+        #[clap(long)]
+        start_block: bool,
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(required = true, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        chain_name: String,
+        /// The block hash of the target block
+        #[clap(
+            required_unless_present = "start_block",
+            conflicts_with = "start_block",
+            long,
+            short = 'H'
+        )]
+        block_hash: Option<String>,
+        /// The block number of the target block
+        #[clap(
+            required_unless_present = "start_block",
+            conflicts_with = "start_block",
+            long,
+            short = 'n'
+        )]
+        block_number: Option<i32>,
+        /// Sleep for this many seconds after pausing subgraphs
+        #[clap(
+            long,
+            short,
+            default_value = "20",
+            value_parser = parse_duration_in_secs
+        )]
+        sleep: Duration,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1441,6 +1478,31 @@ async fn main() -> anyhow::Result<()> {
                             commands::chain::clear_call_cache(chain_store, from, to).await
                         }
                     }
+                }
+                Rewind {
+                    chain_name,
+                    block_hash,
+                    block_number,
+                    sleep,
+                    force,
+                    start_block,
+                } => {
+                    let notification_sender = ctx.notification_sender();
+                    let (store, primary) = ctx.store_and_primary();
+                    let deployments = vec![DeploymentSearch::AllOnChain { chain_name }];
+
+                    commands::rewind::run(
+                        primary,
+                        store,
+                        deployments,
+                        block_hash,
+                        block_number,
+                        &notification_sender,
+                        force,
+                        sleep,
+                        start_block,
+                    )
+                    .await
                 }
             }
         }
