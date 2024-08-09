@@ -10,7 +10,7 @@ use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::futures01::stream;
 use graph::futures01::Future;
 use graph::futures01::Stream;
-use graph::futures03::future::try_join_all;
+use graph::futures03::future::join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
@@ -1621,15 +1621,22 @@ impl EthereumAdapterTrait for EthereumAdapter {
             async move {
                 let call = calls[req.index as usize];
                 match self.call_and_cache(logger, call, req, cache.clone()).await {
-                    Ok(resp) => Ok(resp),
+                    Ok(resp) => Some(resp),
                     Err(e) => {
                         log_call_error(logger, &e, call);
-                        Err(e)
+                        None
                     }
                 }
             }
         });
-        resps.extend(try_join_all(futs).await?);
+
+        let results: Vec<_> = join_all(futs).await;
+        let missing_resps: Vec<_> = results
+            .into_iter()
+            .filter_map(|r: Option<call::Response>| r)
+            .collect();
+
+        resps.extend(missing_resps);
 
         // If we make it here, we have a response for every call.
         debug_assert_eq!(resps.len(), calls.len());
