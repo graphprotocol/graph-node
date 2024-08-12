@@ -347,7 +347,7 @@ async fn read_range(
     }
     writable.flush().await.unwrap();
 
-    let br: Range<u32> = 4..8;
+    let br: Range<BlockNumber> = 4..8;
     let et: &EntityType = if mutable {
         &COUNTER_TYPE
     } else {
