@@ -3,7 +3,7 @@ use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::Decoder;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
@@ -211,8 +211,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         hashes: Vec<DeploymentHash>,
         max_spec_version: Version,
         is_runner_test: bool,
-    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn WritableStore>)>> {
-        let mut writable_stores = Vec::new();
+    ) -> anyhow::Result<HashMap<DeploymentHash, Arc<dyn WritableStore>>> {
+        let mut writable_stores = HashMap::new();
         let subgraph_store = self.subgraph_store.clone();
 
         if is_runner_test {
@@ -244,7 +244,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 )
                 .await?;
 
-            writable_stores.push((loc.hash, writable_store));
+            writable_stores.insert(hash, writable_store);
         }
 
         Ok(writable_stores)
