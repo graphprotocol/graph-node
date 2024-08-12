@@ -7,7 +7,7 @@ use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
 use prost_types::Any;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
@@ -21,7 +21,7 @@ use crate::components::store::{BlockNumber, DeploymentLocator, WritableStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
 use crate::futures03::stream::StreamExt as _;
-use crate::schema::InputSchema;
+use crate::schema::{EntityType, InputSchema};
 use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};
 
@@ -147,7 +147,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -158,7 +158,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -315,19 +315,89 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
 pub struct TriggersAdapterWrapper<C: Blockchain> {
     pub adapter: Arc<dyn TriggersAdapter<C>>,
-    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+    pub source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
     pub fn new(
         adapter: Arc<dyn TriggersAdapter<C>>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
     ) -> Self {
         Self {
             adapter,
             source_subgraph_stores,
         }
     }
+}
+
+fn create_subgraph_trigger_from_entity(
+    filter: &SubgraphFilter,
+    entity: &Entity,
+) -> subgraph::TriggerData {
+    subgraph::TriggerData {
+        source: filter.subgraph.clone(),
+        entity: entity.clone(),
+        entity_type: filter.entities.first().unwrap().clone(),
+    }
+}
+
+async fn create_subgraph_triggers<C: Blockchain>(
+    logger: Logger,
+    blocks: Vec<C::Block>,
+    filter: &SubgraphFilter,
+    entities: BTreeMap<BlockNumber, Entity>,
+) -> Result<Vec<BlockWithTriggers<C>>, Error> {
+    let logger_clone = logger.cheap_clone();
+
+    let blocks: Vec<BlockWithTriggers<C>> = blocks
+        .into_iter()
+        .map(|block| {
+            let block_number = block.number();
+            match entities.get(&block_number) {
+                Some(entity) => {
+                    let trigger_data = vec![create_subgraph_trigger_from_entity(filter, entity)];
+                    BlockWithTriggers::new_with_subgraph_triggers(
+                        block,
+                        trigger_data,
+                        &logger_clone,
+                    )
+                }
+                None => BlockWithTriggers::new_with_subgraph_triggers(block, vec![], &logger_clone),
+            }
+        })
+        .collect();
+
+    Ok(blocks)
+}
+
+async fn scan_subgraph_triggers<C: Blockchain>(
+    logger: &Logger,
+    store: &Arc<dyn WritableStore>,
+    adapter: &Arc<dyn TriggersAdapter<C>>,
+    schema: &InputSchema,
+    filter: &SubgraphFilter,
+    from: BlockNumber,
+    to: BlockNumber,
+) -> Result<Vec<BlockWithTriggers<C>>, Error> {
+    let entity_types: Vec<EntityType> = filter
+        .entities
+        .iter()
+        .map(|e| schema.entity_type(e).unwrap())
+        .collect();
+
+    let entity_type = entity_types.first().unwrap();
+    let range = from as u32..to as u32;
+    let entities = store.get_range(&entity_type, range)?;
+    let mut block_numbers: HashSet<BlockNumber> = entities.keys().cloned().collect();
+
+    // Ensure the 'to' block is included in the block_numbers
+    block_numbers.insert(to);
+
+    let blocks = adapter
+        .load_blocks_by_numbers(logger.clone(), block_numbers)
+        .await?;
+
+    create_subgraph_triggers::<C>(logger.clone(), blocks, filter, entities).await
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
@@ -339,6 +409,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
     ) -> Result<Option<C::Block>, Error> {
         self.adapter.ancestor_block(ptr, offset, root).await
     }
+
     pub async fn scan_triggers(
         &self,
         logger: &Logger,
@@ -347,28 +418,25 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         if let Some(subgraph_filter) = filter.subgraph_filter.first() {
-            let (stored_subgraph, store) = self.source_subgraph_stores.first().unwrap();
-            assert_eq!(stored_subgraph, &subgraph_filter.subgraph);
+            let store = self
+                .source_subgraph_stores
+                .get(&subgraph_filter.subgraph)
+                .unwrap(); // TODO(krishna): Avoid unwrap
 
             let schema = crate::components::store::ReadStore::input_schema(store);
-            let entity_type_name = subgraph_filter.entities.first().unwrap();
-            let entity_type = schema.entity_type(entity_type_name).unwrap();
 
-            let range = from as u32..to as u32;
-            let entities = store.get_range(&entity_type, range)?;
-            let mut block_numbers: HashSet<BlockNumber> = entities.keys().cloned().collect();
+            let adapter = self.adapter.clone();
 
-            // Ensure the 'to' block is included in the block_numbers
-            block_numbers.insert(to);
-
-            let mut blocks_with_triggers = self
-                .subgraph_triggers(
-                    Logger::root(slog::Discard, o!()),
-                    block_numbers,
-                    filter,
-                    entities,
-                )
-                .await?;
+            let blocks_with_triggers = scan_subgraph_triggers::<C>(
+                logger,
+                store,
+                &adapter,
+                &schema,
+                &subgraph_filter,
+                from,
+                to,
+            )
+            .await?;
 
             debug!(
                 logger,
@@ -378,61 +446,12 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                 "blocks_with_triggers" => blocks_with_triggers.len(),
             );
 
-            // Ensure the 'to' block is present even if it has no triggers
-            if !blocks_with_triggers.iter().any(|b| b.block.number() == to) {
-                let to_block_numbers: HashSet<BlockNumber> = vec![to].into_iter().collect();
-                let to_blocks = self
-                    .adapter
-                    .load_blocks_by_numbers(logger.clone(), to_block_numbers)
-                    .await?;
-                if let Some(to_block) = to_blocks.into_iter().next() {
-                    blocks_with_triggers.push(BlockWithTriggers::new_with_subgraph_triggers(
-                        to_block,
-                        vec![],
-                        &Logger::root(slog::Discard, o!()),
-                    ));
-                }
-            }
             return Ok((blocks_with_triggers, to));
         }
 
         self.adapter
             .scan_triggers(from, to, &filter.chain_filter)
             .await
-    }
-
-    async fn subgraph_triggers(
-        &self,
-        logger: Logger,
-        block_numbers: HashSet<BlockNumber>,
-        filter: &Arc<TriggerFilterWrapper<C>>,
-        entities: BTreeMap<BlockNumber, Entity>,
-    ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
-        let logger_clone = logger.cheap_clone();
-        let adapter = self.adapter.clone();
-        let first_filter = filter.subgraph_filter.first().unwrap();
-
-        let blocks: Vec<BlockWithTriggers<C>> = adapter
-            .load_blocks_by_numbers(logger.clone(), block_numbers)
-            .await?
-            .into_iter()
-            .filter_map(|block| {
-                let block_number = block.number();
-                entities.get(&block_number).map(|entity| {
-                    let trigger_data = vec![Self::create_subgraph_trigger_from_entity(
-                        first_filter,
-                        entity,
-                    )];
-                    BlockWithTriggers::new_with_subgraph_triggers(
-                        block,
-                        trigger_data,
-                        &logger_clone,
-                    )
-                })
-            })
-            .collect();
-
-        Ok(blocks)
     }
 
     pub async fn triggers_in_block(
@@ -483,17 +502,6 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             .min_by_key(|ptr| ptr.number);
 
         Ok(ptr)
-    }
-
-    fn create_subgraph_trigger_from_entity(
-        filter: &SubgraphFilter,
-        entity: &Entity,
-    ) -> subgraph::TriggerData {
-        subgraph::TriggerData {
-            source: filter.subgraph.clone(),
-            entity: entity.clone(),
-            entity_type: filter.entities.first().unwrap().clone(),
-        }
     }
 }
 

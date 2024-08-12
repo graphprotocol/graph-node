@@ -37,7 +37,7 @@ use graph::{
     },
 };
 use prost::Message;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Duration;
@@ -128,7 +128,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -150,7 +150,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -437,7 +437,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
