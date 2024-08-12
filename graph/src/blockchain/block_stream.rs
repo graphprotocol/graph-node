@@ -328,6 +328,24 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             source_subgraph_stores,
         }
     }
+
+    pub async fn blocks_with_subgraph_triggers(
+        &self,
+        logger: &Logger,
+        subgraph_filter: &SubgraphFilter,
+        range: SubgraphTriggerScanRange<C>,
+    ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
+        let store = self
+            .source_subgraph_stores
+            .get(&subgraph_filter.subgraph)
+            .unwrap(); // TODO(krishna): Avoid unwrap
+
+        let schema = crate::components::store::ReadStore::input_schema(store);
+
+        let adapter = self.adapter.clone();
+
+        scan_subgraph_triggers::<C>(logger, store, &adapter, &schema, &subgraph_filter, range).await
+    }
 }
 
 fn create_subgraph_trigger_from_entities(
@@ -373,34 +391,60 @@ async fn create_subgraph_triggers<C: Blockchain>(
     Ok(blocks)
 }
 
+pub enum SubgraphTriggerScanRange<C: Blockchain> {
+    Single(C::Block),
+    Range(BlockNumber, BlockNumber),
+}
+
 async fn scan_subgraph_triggers<C: Blockchain>(
     logger: &Logger,
     store: &Arc<dyn WritableStore>,
     adapter: &Arc<dyn TriggersAdapter<C>>,
     schema: &InputSchema,
     filter: &SubgraphFilter,
+    range: SubgraphTriggerScanRange<C>,
+) -> Result<Vec<BlockWithTriggers<C>>, Error> {
+    match range {
+        SubgraphTriggerScanRange::Single(block) => {
+            let entities =
+                get_entities_for_range(store, filter, schema, block.number(), block.number())
+                    .await?;
+            create_subgraph_triggers::<C>(logger.clone(), vec![block], filter, entities).await
+        }
+        SubgraphTriggerScanRange::Range(from, to) => {
+            let entities = get_entities_for_range(store, filter, schema, from, to).await?;
+            let mut block_numbers: HashSet<BlockNumber> = entities.keys().cloned().collect();
+            // Ensure the 'to' block is included in the block_numbers
+            block_numbers.insert(to);
+
+            let blocks = adapter
+                .load_blocks_by_numbers(logger.clone(), block_numbers)
+                .await?;
+
+            create_subgraph_triggers::<C>(logger.clone(), blocks, filter, entities).await
+        }
+    }
+}
+
+async fn get_entities_for_range(
+    store: &Arc<dyn WritableStore>,
+    filter: &SubgraphFilter,
+    schema: &InputSchema,
     from: BlockNumber,
     to: BlockNumber,
-) -> Result<Vec<BlockWithTriggers<C>>, Error> {
+) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, Error> {
     let entity_types: Vec<EntityType> = filter
         .entities
         .iter()
         .map(|e| schema.entity_type(e).unwrap())
         .collect();
-
-    let entity_type = entity_types.first().unwrap();
-    let range = from..to;
-    let entities = store.get_range(&entity_type, range)?;
-    let mut block_numbers: HashSet<BlockNumber> = entities.keys().cloned().collect();
-
-    // Ensure the 'to' block is included in the block_numbers
-    block_numbers.insert(to);
-
-    let blocks = adapter
-        .load_blocks_by_numbers(logger.clone(), block_numbers)
-        .await?;
-
-    create_subgraph_triggers::<C>(logger.clone(), blocks, filter, entities).await
+    let mut entities = BTreeMap::new();
+    for entity_type in entity_types {
+        let range = from..to;
+        let mut entities_for_type = store.get_range(&entity_type, range)?;
+        entities.append(&mut entities_for_type);
+    }
+    Ok(entities)
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
@@ -421,32 +465,13 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         if let Some(subgraph_filter) = filter.subgraph_filter.first() {
-            let store = self
-                .source_subgraph_stores
-                .get(&subgraph_filter.subgraph)
-                .unwrap(); // TODO(krishna): Avoid unwrap
-
-            let schema = crate::components::store::ReadStore::input_schema(store);
-            let adapter = self.adapter.clone();
-
-            let blocks_with_triggers = scan_subgraph_triggers::<C>(
-                logger,
-                store,
-                &adapter,
-                &schema,
-                &subgraph_filter,
-                from,
-                to,
-            )
-            .await?;
-
-            debug!(
-                logger,
-                "Scanned subgraph triggers";
-                "from" => from,
-                "to" => to,
-                "blocks_with_triggers" => blocks_with_triggers.len(),
-            );
+            let blocks_with_triggers = self
+                .blocks_with_subgraph_triggers(
+                    logger,
+                    subgraph_filter,
+                    SubgraphTriggerScanRange::Range(from, to),
+                )
+                .await?;
 
             return Ok((blocks_with_triggers, to));
         }
@@ -469,19 +494,21 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             "block_hash" => block.hash().hash_hex(),
         );
 
-        let block_number = block.number();
+        if let Some(subgraph_filter) = filter.subgraph_filter.first() {
+            let blocks_with_triggers = self
+                .blocks_with_subgraph_triggers(
+                    logger,
+                    subgraph_filter,
+                    SubgraphTriggerScanRange::Single(block),
+                )
+                .await?;
 
-        if filter.subgraph_filter.is_empty() {
-            trace!(logger, "No subgraph filters, scanning triggers in block");
-            return self
-                .adapter
-                .triggers_in_block(logger, block, &filter.chain_filter)
-                .await;
+            return Ok(blocks_with_triggers.into_iter().next().unwrap());
         }
 
-        self.scan_triggers(logger, block_number, block_number, filter)
+        self.adapter
+            .triggers_in_block(logger, block, &filter.chain_filter)
             .await
-            .map(|(mut blocks, _)| blocks.pop().unwrap())
     }
 
     pub async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
