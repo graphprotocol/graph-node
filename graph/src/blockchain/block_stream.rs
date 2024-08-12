@@ -354,7 +354,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             let entity_type_name = subgraph_filter.entities.first().unwrap();
             let entity_type = schema.entity_type(entity_type_name).unwrap();
 
-            let range = from as u32..to as u32;
+            let range = from..to;
             let entities = store.get_range(&entity_type, range)?;
             let mut block_numbers: HashSet<BlockNumber> = entities.keys().cloned().collect();
 
