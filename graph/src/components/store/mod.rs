@@ -1042,7 +1042,7 @@ impl ReadStore for EmptyStore {
     fn get_range(
         &self,
         _entity_type: &EntityType,
-        _block_range: Range<u32>,
+        _block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         Ok(BTreeMap::new())
     }
