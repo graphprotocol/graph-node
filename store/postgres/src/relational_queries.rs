@@ -2013,7 +2013,7 @@ pub struct FindRangeQuery<'a> {
 }
 
 impl<'a> FindRangeQuery<'a> {
-    pub fn new(table: &'a Table, block_range: Range<u32>) -> Self {
+    pub fn new(table: &'a Table, block_range: Range<BlockNumber>) -> Self {
         let eb_range = EntityBlockRange::new(table.immutable, block_range);
         Self { table, eb_range }
     }

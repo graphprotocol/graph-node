@@ -519,7 +519,7 @@ impl Layout {
         &self,
         conn: &mut PgConnection,
         entity_type: &EntityType,
-        block_range: Range<u32>,
+        block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         let table = self.table_for_entity(entity_type)?;
         let mut entities: BTreeMap<BlockNumber, Vec<Entity>> = BTreeMap::new();
