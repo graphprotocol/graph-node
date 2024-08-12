@@ -4,7 +4,7 @@ use graph::components::adapter::ChainId;
 use graph::env::EnvVars;
 use graph::prelude::{DeploymentHash, MetricsRegistry};
 use graph::substreams::Clock;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -114,7 +114,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
