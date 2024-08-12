@@ -3,7 +3,7 @@ use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::Decoder;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};

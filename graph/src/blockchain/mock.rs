@@ -12,7 +12,11 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use slog::Logger;
-use std::{collections::HashSet, convert::TryFrom, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    sync::Arc,
+};
 
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},

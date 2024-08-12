@@ -8,7 +8,7 @@ use graph::{
     data_source::DataSourceTemplate,
     prelude::BlockNumber,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 pub struct IndexingInputs<C: Blockchain> {

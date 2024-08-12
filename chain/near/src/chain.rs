@@ -32,7 +32,7 @@ use graph::{
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
