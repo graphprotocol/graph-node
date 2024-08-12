@@ -1060,7 +1060,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         entity_type: &EntityType,
-        block_range: Range<u32>,
+        block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         let mut conn = self.get_conn()?;
         let layout = self.layout(&mut conn, site)?;

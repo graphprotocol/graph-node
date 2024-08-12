@@ -140,10 +140,10 @@ pub enum EntityBlockRange {
 }
 
 impl EntityBlockRange {
-    pub fn new(immutable: bool, block_range: std::ops::Range<u32>) -> Self {
-        let st: Bound<BlockNumber> = Bound::Included(block_range.start.try_into().unwrap());
-        let en: Bound<BlockNumber> = Bound::Excluded(block_range.end.try_into().unwrap());
-        let block_range: BlockRange = BlockRange(st, en);
+    pub fn new(immutable: bool, block_range: std::ops::Range<BlockNumber>) -> Self {
+        let start: Bound<BlockNumber> = Bound::Included(block_range.start);
+        let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
+        let block_range: BlockRange = BlockRange(start, end);
         if immutable {
             Self::Immutable(block_range)
         } else {
