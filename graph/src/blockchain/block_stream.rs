@@ -363,9 +363,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                         if let Some(entity_type) = ent.first() {
                             let et = schema.entity_type(entity_type).unwrap();
 
-                            let f: u32 = from as u32;
-                            let t: u32 = to as u32;
-                            let br: Range<u32> = f..t;
+                            let br: Range<BlockNumber> = from..to;
                             let entities = store.get_range(&et, br)?;
                             return self
                                 .subgraph_triggers(
@@ -413,7 +411,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         from: BlockNumber,
         to: BlockNumber,
         filter: &Arc<TriggerFilterWrapper<C>>,
-        entities: BTreeMap<BlockNumber, Entity>,
+        entities: BTreeMap<BlockNumber, Vec<Entity>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         let logger2 = logger.cheap_clone();
         let adapter = self.adapter.clone();
@@ -427,7 +425,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                 match entities.get(&key) {
                     Some(e) => {
                         let trigger_data =
-                            vec![Self::create_subgraph_trigger_from_entity(first_filter, e)];
+                            Self::create_subgraph_trigger_from_entity(first_filter, e);
                         Some(BlockWithTriggers::new_with_subgraph_triggers(
                             block,
                             trigger_data,
