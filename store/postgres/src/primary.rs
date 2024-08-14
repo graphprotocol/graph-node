@@ -32,11 +32,15 @@ use diesel::{
 use graph::{
     components::store::DeploymentLocator,
     constraint_violation,
-    data::store::scalar::ToPrimitive,
-    data::subgraph::{status, DeploymentFeatures},
+    data::{
+        store::scalar::ToPrimitive,
+        subgraph::{status, DeploymentFeatures},
+    },
     prelude::{
-        anyhow, serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId,
-        StoreError, SubgraphName, SubgraphVersionSwitchingMode,
+        anyhow,
+        chrono::{DateTime, Utc},
+        serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId, StoreError,
+        SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{
@@ -175,7 +179,7 @@ table! {
         latest_ethereum_block_hash -> Nullable<Binary>,
         latest_ethereum_block_number -> Nullable<Integer>,
         failed -> Bool,
-        synced -> Bool,
+        synced_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -228,7 +232,7 @@ pub struct UnusedDeployment {
     pub latest_ethereum_block_hash: Option<Vec<u8>>,
     pub latest_ethereum_block_number: Option<i32>,
     pub failed: bool,
-    pub synced: bool,
+    pub synced_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
@@ -1676,7 +1680,7 @@ impl<'a> Connection<'a> {
                     u::latest_ethereum_block_hash.eq(latest_hash),
                     u::latest_ethereum_block_number.eq(latest_number),
                     u::failed.eq(detail.failed),
-                    u::synced.eq(detail.synced),
+                    u::synced_at.eq(detail.synced_at),
                 ))
                 .execute(self.conn.as_mut())?;
         }

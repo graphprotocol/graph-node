@@ -204,7 +204,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
 
     /// Handler for the `subgraph_resume` endpoint.
     async fn resume_handler(&self, params: SubgraphPauseParams) -> JsonRpcResult<GraphValue> {
-        info!(&self.logger, "Received subgraph_pause request"; "params" => format!("{:?}", params));
+        info!(&self.logger, "Received subgraph_resume request"; "params" => format!("{:?}", params));
 
         match self.registrar.resume_subgraph(&params.deployment).await {
             Ok(_) => Ok(Value::Null),
