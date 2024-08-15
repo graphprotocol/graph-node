@@ -522,22 +522,31 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
     let expected_response = json!({
         "mirrorBlocks": [
-            { "number": "1" },
-            { "number": "2" },
-            { "number": "3" },
-            { "number": "4" },
-            { "number": "5" },
-            { "number": "6" },
-            { "number": "7" },
-            { "number": "8" },
-            { "number": "9" },
+            { "number": "11" },
+            { "number": "12" },
+            { "number": "21" },
+            { "number": "22" },
+            { "number": "31" },
+            { "number": "32" },
+            { "number": "41" },
+            { "number": "42" },
+            { "number": "51" },
+            { "number": "52" },
+            { "number": "61" },
+            { "number": "62" },
+            { "number": "71" },
+            { "number": "72" },
+            { "number": "81" },
+            { "number": "82" },
+            { "number": "91" },
+            { "number": "92" },
         ]
     });
 
     query_succeeds(
         "Blocks should be right",
         &subgraph,
-        "{ mirrorBlocks(where: {number_lt: 10}, orderBy: number) { number } }",
+        "{ mirrorBlocks(where: {number_lt: 100}, orderBy: number) { number } }",
         expected_response,
     )
     .await?;
