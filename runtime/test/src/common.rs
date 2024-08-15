@@ -4,7 +4,8 @@ use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
 use graph::env::EnvVars;
-use graph::ipfs_client::IpfsClient;
+use graph::ipfs::IpfsRpcClient;
+use graph::ipfs::ServerAddress;
 use graph::log;
 use graph::prelude::*;
 use graph_chain_ethereum::{
@@ -64,12 +65,16 @@ fn mock_host_exports(
         Arc::new(templates.iter().map(|t| t.into()).collect()),
     );
 
+    let ipfs_client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &LOGGER)
+        .unwrap()
+        .into_boxed();
+
     HostExports::new(
         subgraph_id,
         network,
         ds_details,
-        Arc::new(graph::prelude::IpfsResolver::new(
-            vec![IpfsClient::localhost()],
+        Arc::new(IpfsResolver::new(
+            ipfs_client.into(),
             Arc::new(EnvVars::default()),
         )),
         ens_lookup,

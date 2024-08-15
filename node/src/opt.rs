@@ -106,7 +106,7 @@ pub struct Opt {
         long,
         value_name = "HOST:PORT",
         env = "IPFS",
-        help = "HTTP addresses of IPFS nodes"
+        help = "HTTP addresses of IPFS servers (RPC, Gateway)"
     )]
     pub ipfs: Vec<String>,
     #[clap(

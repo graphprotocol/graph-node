@@ -18,7 +18,7 @@ use graph::{
         CausalityRegion, DataSource, DataSourceTemplate,
     },
     derive::CheapClone,
-    ipfs_client::CidFile,
+    ipfs::ContentPath,
     prelude::{
         BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
         MetricsRegistry, RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics,
@@ -228,8 +228,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 }
 
 pub struct OffchainMonitor {
-    ipfs_monitor: PollingMonitor<CidFile>,
-    ipfs_monitor_rx: mpsc::UnboundedReceiver<(CidFile, Bytes)>,
+    ipfs_monitor: PollingMonitor<ContentPath>,
+    ipfs_monitor_rx: mpsc::UnboundedReceiver<(ContentPath, Bytes)>,
     arweave_monitor: PollingMonitor<Base64>,
     arweave_monitor_rx: mpsc::UnboundedReceiver<(Base64, Bytes)>,
 }

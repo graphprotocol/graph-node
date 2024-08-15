@@ -1,21 +1,21 @@
 use graph::blockchain::BlockTime;
 use graph::components::metrics::gas::GasMetrics;
+use graph::components::store::*;
 use graph::data::store::{scalar, Id, IdType};
 use graph::data::subgraph::*;
 use graph::data::value::Word;
+use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::prelude::web3::types::U256;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscIndexId, AscType, HostExportError};
 use graph::runtime::{AscPtr, ToAscObj};
 use graph::schema::{EntityType, InputSchema};
-use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph::{entity, prelude::*};
 use graph_chain_ethereum::DataSource;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{
     host_exports, ExperimentalFeatures, MappingContext, ValidModule, WasmInstance,
 };
-
 use semver::Version;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
@@ -418,8 +418,8 @@ async fn test_ipfs_cat(api_version: Version) {
     std::thread::spawn(move || {
         let _runtime_guard = runtime.enter();
 
-        let ipfs = IpfsClient::localhost();
-        let hash = graph::block_on(ipfs.add("42".into())).unwrap().hash;
+        let fut = add_files_to_local_ipfs_node_for_testing(["42".as_bytes().to_vec()]);
+        let hash = graph::block_on(fut).unwrap()[0].hash.to_owned();
 
         let mut module = graph::block_on(test_module(
             "ipfsCat",
@@ -455,8 +455,9 @@ async fn test_ipfs_block() {
     std::thread::spawn(move || {
         let _runtime_guard = runtime.enter();
 
-        let ipfs = IpfsClient::localhost();
-        let hash = graph::block_on(ipfs.add("42".into())).unwrap().hash;
+        let fut = add_files_to_local_ipfs_node_for_testing(["42".as_bytes().to_vec()]);
+        let hash = graph::block_on(fut).unwrap()[0].hash.to_owned();
+
         let mut module = graph::block_on(test_module(
             "ipfsBlock",
             mock_data_source(
@@ -493,15 +494,16 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
 const BAD_IPFS_HASH: &str = "bad-ipfs-hash";
 
 async fn run_ipfs_map(
-    ipfs: IpfsClient,
     subgraph_id: &'static str,
     json_string: String,
     api_version: Version,
-) -> Result<Vec<EntityModification>, anyhow::Error> {
+) -> Result<Vec<EntityModification>, Error> {
     let hash = if json_string == BAD_IPFS_HASH {
         "Qm".to_string()
     } else {
-        ipfs.add(json_string.into()).await.unwrap().hash
+        add_files_to_local_ipfs_node_for_testing([json_string.as_bytes().to_vec()]).await?[0]
+            .hash
+            .to_owned()
     };
 
     // Ipfs host functions use `block_on` which must be called from a sync context,
@@ -548,14 +550,12 @@ async fn run_ipfs_map(
 }
 
 async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
-    let ipfs = IpfsClient::localhost();
     let subgraph_id = "ipfsMap";
 
     // Try it with two valid objects
     let (str1, thing1) = make_thing("one", "eins");
     let (str2, thing2) = make_thing("two", "zwei");
     let ops = run_ipfs_map(
-        ipfs.clone(),
         subgraph_id,
         format!("{}\n{}", str1, str2),
         api_version.clone(),
@@ -567,14 +567,9 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
 
     // Valid JSON, but not what the callback expected; it will
     // fail on an assertion
-    let err = run_ipfs_map(
-        ipfs.clone(),
-        subgraph_id,
-        format!("{}\n[1,2]", str1),
-        api_version.clone(),
-    )
-    .await
-    .unwrap_err();
+    let err = run_ipfs_map(subgraph_id, format!("{}\n[1,2]", str1), api_version.clone())
+        .await
+        .unwrap_err();
     assert!(
         format!("{:#}", err).contains("JSON value is not an object."),
         "{:#}",
@@ -582,32 +577,21 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     );
 
     // Malformed JSON
-    let err = run_ipfs_map(
-        ipfs.clone(),
-        subgraph_id,
-        format!("{}\n[", str1),
-        api_version.clone(),
-    )
-    .await
-    .unwrap_err();
+    let err = run_ipfs_map(subgraph_id, format!("{}\n[", str1), api_version.clone())
+        .await
+        .unwrap_err();
     assert!(format!("{err:?}").contains("EOF while parsing a list"));
 
     // Empty input
-    let ops = run_ipfs_map(
-        ipfs.clone(),
-        subgraph_id,
-        "".to_string(),
-        api_version.clone(),
-    )
-    .await
-    .expect("call failed for emoty string");
+    let ops = run_ipfs_map(subgraph_id, "".to_string(), api_version.clone())
+        .await
+        .expect("call failed for emoty string");
     assert_eq!(0, ops.len());
 
     // Missing entry in the JSON object
     let errmsg = format!(
         "{:#}",
         run_ipfs_map(
-            ipfs.clone(),
             subgraph_id,
             "{\"value\": \"drei\"}".to_string(),
             api_version.clone(),
@@ -618,15 +602,10 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     assert!(errmsg.contains(json_error_msg));
 
     // Bad IPFS hash.
-    let err = run_ipfs_map(
-        ipfs.clone(),
-        subgraph_id,
-        BAD_IPFS_HASH.to_string(),
-        api_version.clone(),
-    )
-    .await
-    .unwrap_err();
-    assert!(format!("{err:?}").contains("500 Internal Server Error"));
+    let err = run_ipfs_map(subgraph_id, BAD_IPFS_HASH.to_string(), api_version.clone())
+        .await
+        .unwrap_err();
+    assert!(format!("{err:?}").contains("invalid CID"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

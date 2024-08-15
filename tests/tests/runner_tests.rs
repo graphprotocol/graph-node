@@ -13,7 +13,8 @@ use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
-use graph::ipfs_client::IpfsClient;
+use graph::ipfs;
+use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::Address;
@@ -632,18 +633,18 @@ async fn file_data_sources() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("file-data-sourcess", "file-data-sources").await;
 
-    let ipfs = IpfsClient::new("http://localhost:5001").unwrap();
-
-    async fn add_content_to_ipfs(ipfs: &IpfsClient, content: &str) -> String {
-        let bytes = content.to_string().into_bytes();
-        let resp = ipfs.add(bytes).await.unwrap();
-        resp.hash
+    async fn add_content_to_ipfs(content: &str) -> String {
+        add_files_to_local_ipfs_node_for_testing([content.as_bytes().to_vec()])
+            .await
+            .unwrap()[0]
+            .hash
+            .to_owned()
     }
 
-    let hash_1 = add_content_to_ipfs(&ipfs, "EXAMPLE_1").await;
-    let hash_2 = add_content_to_ipfs(&ipfs, "EXAMPLE_2").await;
-    let hash_3 = add_content_to_ipfs(&ipfs, "EXAMPLE_3").await;
-    let hash_4 = add_content_to_ipfs(&ipfs, "EXAMPLE_4").await;
+    let hash_1 = add_content_to_ipfs("EXAMPLE_1").await;
+    let hash_2 = add_content_to_ipfs("EXAMPLE_2").await;
+    let hash_3 = add_content_to_ipfs("EXAMPLE_3").await;
+    let hash_4 = add_content_to_ipfs("EXAMPLE_4").await;
 
     //concatenate hash2 and hash3
     let hash_2_comma_3 = format!("{},{}", hash_2, hash_3);
@@ -828,7 +829,7 @@ async fn file_data_sources() {
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
 
-        let hash_5 = add_content_to_ipfs(&ipfs, "EXAMPLE_5").await;
+        let hash_5 = add_content_to_ipfs("EXAMPLE_5").await;
 
         let mut block_5 = empty_block(test_ptr(4), test_ptr(5));
         push_test_command(&mut block_5, "CREATE_FOO", &hash_5);
@@ -1277,8 +1278,7 @@ async fn build_subgraph_with_yarn_cmd_and_arg(
     arg: Option<&str>,
 ) -> DeploymentHash {
     // Test that IPFS is up.
-    IpfsClient::localhost()
-        .test()
+    ipfs::IpfsRpcClient::new(ipfs::ServerAddress::local_rpc_api(), &graph::log::discard())
         .await
         .expect("Could not connect to IPFS, make sure it's running at port 5001");
 

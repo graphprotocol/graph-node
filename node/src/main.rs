@@ -21,7 +21,6 @@ use graph_core::{
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::chain::create_ipfs_clients;
 use graph_node::config::Config;
 use graph_node::network_setup::Networks;
 use graph_node::opt;
@@ -202,15 +201,17 @@ async fn main() {
     let logger_factory =
         LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
 
-    // Try to create IPFS clients for each URL specified in `--ipfs`
-    let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &opt.ipfs);
-    let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
+        .await
+        .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
+
     let ipfs_service = ipfs_service(
-        ipfs_client,
+        ipfs_client.cheap_clone(),
         ENV_VARS.mappings.max_ipfs_file_bytes,
         ENV_VARS.mappings.ipfs_timeout,
         ENV_VARS.mappings.ipfs_request_limit,
     );
+
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),
         opt.arweave
@@ -229,7 +230,7 @@ async fn main() {
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
+    let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
     let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(

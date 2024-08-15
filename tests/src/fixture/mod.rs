@@ -32,7 +32,7 @@ use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
-use graph::ipfs_client::IpfsClient;
+use graph::ipfs::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
@@ -169,7 +169,7 @@ pub struct TestContext {
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub arweave_resolver: Arc<dyn ArweaveResolver>,
     pub env_vars: Arc<EnvVars>,
-    pub ipfs: IpfsClient,
+    pub ipfs: Arc<dyn IpfsClient>,
     graphql_runner: Arc<GraphQlRunner>,
     indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store>>,
 }
@@ -462,13 +462,21 @@ pub async fn setup<C: Blockchain>(
 
     let static_filters = env_vars.experimental_static_filters;
 
-    let ipfs = IpfsClient::localhost();
+    let ipfs_client: Arc<dyn IpfsClient> = graph::ipfs::IpfsRpcClient::new_unchecked(
+        graph::ipfs::ServerAddress::local_rpc_api(),
+        &logger,
+    )
+    .unwrap()
+    .into_boxed()
+    .into();
+
     let link_resolver = Arc::new(IpfsResolver::new(
-        vec![ipfs.cheap_clone()],
+        ipfs_client.cheap_clone(),
         Default::default(),
     ));
+
     let ipfs_service = ipfs_service(
-        ipfs.cheap_clone(),
+        ipfs_client.cheap_clone(),
         env_vars.mappings.max_ipfs_file_bytes,
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
@@ -572,7 +580,7 @@ pub async fn setup<C: Blockchain>(
         link_resolver,
         env_vars,
         indexing_status_service,
-        ipfs,
+        ipfs: ipfs_client,
         arweave_resolver,
     }
 }

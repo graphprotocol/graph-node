@@ -1,29 +1,27 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::{anyhow, Error};
 use bytes::Bytes;
 use graph::futures03::future::BoxFuture;
-use graph::{
-    derive::CheapClone,
-    ipfs_client::{CidFile, IpfsClient},
-    prelude::CheapClone,
-};
-use std::time::Duration;
+use graph::ipfs::ContentPath;
+use graph::ipfs::IpfsClient;
+use graph::ipfs::IpfsError;
+use graph::{derive::CheapClone, prelude::CheapClone};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
-const CLOUDFLARE_TIMEOUT: u16 = 524;
-const GATEWAY_TIMEOUT: u16 = 504;
-
-pub type IpfsService = Buffer<CidFile, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
+pub type IpfsService = Buffer<ContentPath, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
 
 pub fn ipfs_service(
-    client: IpfsClient,
+    client: Arc<dyn IpfsClient>,
     max_file_size: usize,
     timeout: Duration,
     rate_limit: u16,
 ) -> IpfsService {
     let ipfs = IpfsServiceInner {
         client,
-        max_file_size,
         timeout,
+        max_file_size,
     };
 
     let svc = ServiceBuilder::new()
@@ -38,37 +36,30 @@ pub fn ipfs_service(
 
 #[derive(Clone, CheapClone)]
 struct IpfsServiceInner {
-    client: IpfsClient,
-    max_file_size: usize,
+    client: Arc<dyn IpfsClient>,
     timeout: Duration,
+    max_file_size: usize,
 }
 
 impl IpfsServiceInner {
-    async fn call_inner(self, req: CidFile) -> Result<Option<Bytes>, Error> {
-        let CidFile { cid, path } = req;
-        let multihash = cid.hash().code();
+    async fn call_inner(self, path: ContentPath) -> Result<Option<Bytes>, Error> {
+        let multihash = path.cid().hash().code();
         if !SAFE_MULTIHASHES.contains(&multihash) {
             return Err(anyhow!("CID multihash {} is not allowed", multihash));
         }
 
-        let cid_str = match path {
-            Some(path) => format!("{}/{}", cid, path),
-            None => cid.to_string(),
-        };
-
         let res = self
             .client
-            .cat_all(&cid_str, Some(self.timeout), self.max_file_size)
+            .cat(&path, self.max_file_size, Some(self.timeout))
             .await;
 
         match res {
             Ok(file_bytes) => Ok(Some(file_bytes)),
-            Err(e) => match e.status().map(|e| e.as_u16()) {
-                // Timeouts in IPFS mean the file is not available, so we return `None`
-                Some(GATEWAY_TIMEOUT) | Some(CLOUDFLARE_TIMEOUT) => return Ok(None),
-                _ if e.is_timeout() => return Ok(None),
-                _ => return Err(e.into()),
-            },
+            Err(IpfsError::RequestFailed(err)) if err.is_timeout() => {
+                // Timeouts in IPFS mean that the content is not available, so we return `None`.
+                Ok(None)
+            }
+            Err(err) => Err(err.into()),
         }
     }
 }
@@ -96,48 +87,42 @@ const SAFE_MULTIHASHES: [u64; 15] = [
 
 #[cfg(test)]
 mod test {
-    use ipfs::IpfsApi;
-    use ipfs_api as ipfs;
-    use std::{fs, str::FromStr, time::Duration};
+    use std::time::Duration;
+
+    use graph::components::link_resolver::ArweaveClient;
+    use graph::components::link_resolver::ArweaveResolver;
+    use graph::data::value::Word;
+    use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
+    use graph::ipfs::IpfsRpcClient;
+    use graph::ipfs::ServerAddress;
+    use graph::tokio;
     use tower::ServiceExt;
-
-    use cid::Cid;
-    use graph::{
-        components::link_resolver::{ArweaveClient, ArweaveResolver},
-        data::value::Word,
-        ipfs_client::IpfsClient,
-        tokio,
-    };
-
     use uuid::Uuid;
+
+    use super::*;
 
     #[tokio::test]
     async fn cat_file_in_folder() {
-        let path = "./tests/fixtures/ipfs_folder";
-        let uid = Uuid::new_v4().to_string();
-        fs::write(format!("{}/random.txt", path), &uid).unwrap();
+        let random_bytes = Uuid::new_v4().as_bytes().to_vec();
+        let ipfs_file = ("dir/file.txt", random_bytes.clone());
 
-        let cl: ipfs::IpfsClient = ipfs::IpfsClient::default();
-
-        let rsp = cl.add_path(path).await.unwrap();
-
-        let ipfs_folder = rsp.iter().find(|rsp| rsp.name == "ipfs_folder").unwrap();
-
-        let local = IpfsClient::localhost();
-        let cid = Cid::from_str(&ipfs_folder.hash).unwrap();
-        let file = "random.txt".to_string();
-
-        let svc = super::ipfs_service(local, 100000, Duration::from_secs(5), 10);
-
-        let content = svc
-            .oneshot(super::CidFile {
-                cid,
-                path: Some(file),
-            })
+        let add_resp = add_files_to_local_ipfs_node_for_testing([ipfs_file])
             .await
-            .unwrap()
             .unwrap();
-        assert_eq!(content.to_vec(), uid.as_bytes().to_vec());
+
+        let dir_cid = add_resp.into_iter().find(|x| x.name == "dir").unwrap().hash;
+
+        let client =
+            IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &graph::log::discard())
+                .unwrap()
+                .into_boxed();
+
+        let svc = ipfs_service(client.into(), 100000, Duration::from_secs(30), 10);
+
+        let path = ContentPath::new(format!("{dir_cid}/file.txt")).unwrap();
+        let content = svc.oneshot(path).await.unwrap().unwrap();
+
+        assert_eq!(content.to_vec(), random_bytes);
     }
 
     #[tokio::test]

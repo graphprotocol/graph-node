@@ -25,16 +25,13 @@ use graph::firehose::{
     SubstreamsGenesisDecoder,
 };
 use graph::futures03::future::try_join_all;
-use graph::futures03::TryFutureExt;
-use graph::ipfs_client::IpfsClient;
 use graph::itertools::Itertools;
 use graph::log::factory::LoggerFactory;
 use graph::prelude::anyhow;
 use graph::prelude::MetricsRegistry;
-use graph::slog::{debug, error, info, o, warn, Logger};
+use graph::slog::{debug, info, o, warn, Logger};
 use graph::tokio::time::timeout;
 use graph::url::Url;
-use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, Transport};
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 use std::cmp::Ordering;
@@ -52,73 +49,6 @@ pub enum ProviderNetworkStatus {
         chain_id: String,
         ident: ChainIdentifier,
     },
-}
-
-pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
-    // Parse the IPFS URL from the `--ipfs` command line argument
-    let ipfs_addresses: Vec<_> = ipfs_addresses
-        .iter()
-        .map(|uri| {
-            if uri.starts_with("http://") || uri.starts_with("https://") {
-                String::from(uri)
-            } else {
-                format!("http://{}", uri)
-            }
-        })
-        .collect();
-
-    ipfs_addresses
-        .into_iter()
-        .map(|ipfs_address| {
-            info!(
-                logger,
-                "Trying IPFS node at: {}",
-                SafeDisplay(&ipfs_address)
-            );
-
-            let ipfs_client = match IpfsClient::new(&ipfs_address) {
-                Ok(ipfs_client) => ipfs_client,
-                Err(e) => {
-                    error!(
-                        logger,
-                        "Failed to create IPFS client for `{}`: {}",
-                        SafeDisplay(&ipfs_address),
-                        e
-                    );
-                    panic!("Could not connect to IPFS");
-                }
-            };
-
-            // Test the IPFS client by getting the version from the IPFS daemon
-            let ipfs_test = ipfs_client.cheap_clone();
-            let ipfs_ok_logger = logger.clone();
-            let ipfs_err_logger = logger.clone();
-            let ipfs_address_for_ok = ipfs_address.clone();
-            let ipfs_address_for_err = ipfs_address;
-            graph::spawn(async move {
-                ipfs_test
-                    .test()
-                    .map_err(move |e| {
-                        error!(
-                            ipfs_err_logger,
-                            "Is there an IPFS node running at \"{}\"?",
-                            SafeDisplay(ipfs_address_for_err),
-                        );
-                        panic!("Failed to connect to IPFS: {}", e);
-                    })
-                    .map_ok(move |_| {
-                        info!(
-                            ipfs_ok_logger,
-                            "Successfully connected to IPFS node at: {}",
-                            SafeDisplay(ipfs_address_for_ok)
-                        );
-                    })
-                    .await
-            });
-
-            ipfs_client
-        })
-        .collect()
 }
 
 pub fn create_substreams_networks(
