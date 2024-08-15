@@ -125,6 +125,7 @@ async fn insert_count(
     count: u8,
     counter_type: &EntityType,
     id: &str,
+    id2: &str,
 ) {
     let count_key_local = |id: &str| counter_type.parse_key(id).unwrap();
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
@@ -136,9 +137,22 @@ async fn insert_count(
         key: count_key_local(&data.get("id").unwrap().to_string()),
         data,
     };
-    transact_entity_operations(store, deployment, block_pointer(block), vec![entity_op])
-        .await
-        .unwrap();
+    let data = entity! { TEST_SUBGRAPH_SCHEMA =>
+        id: id2,
+        count :count as i32,
+    };
+    let entity_op2 = EntityOperation::Set {
+        key: count_key_local(&data.get("id").unwrap().to_string()),
+        data,
+    };
+    transact_entity_operations(
+        store,
+        deployment,
+        block_pointer(block),
+        vec![entity_op, entity_op2],
+    )
+    .await
+    .unwrap();
 }
 
 async fn insert_count_mutable(
@@ -147,7 +161,7 @@ async fn insert_count_mutable(
     block: u8,
     count: u8,
 ) {
-    insert_count(store, deployment, block, count, &COUNTER_TYPE, "1").await;
+    insert_count(store, deployment, block, count, &COUNTER_TYPE, "1", "2").await;
 }
 
 async fn insert_count_immutable(
@@ -162,7 +176,8 @@ async fn insert_count_immutable(
         block,
         count,
         &COUNTER2_TYPE,
-        &(block / 2).to_string(),
+        &(block).to_string(),
+        &(block + 1).to_string(),
     )
     .await;
 }
@@ -354,14 +369,14 @@ async fn read_range(
         &COUNTER2_TYPE
     };
     let e = writable.get_range(et, br).unwrap();
-    e.len()
+    e.iter().map(|(_, v)| v.iter()).flatten().count()
 }
 
 #[test]
 fn read_range_mutable() {
     run_test(|store, writable, deployment| async move {
         let num_entities = read_range(store, writable, deployment, true).await;
-        assert_eq!(num_entities, 3) // TODO: fix it - it should be 2 as the range is open
+        assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
     })
 }
 
@@ -369,6 +384,6 @@ fn read_range_mutable() {
 fn read_range_immutable() {
     run_test(|store, writable, deployment| async move {
         let num_entities = read_range(store, writable, deployment, false).await;
-        assert_eq!(num_entities, 3) // TODO: fix it - it should be 2 as the range is open
+        assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
     })
 }
