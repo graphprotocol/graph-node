@@ -1,6 +1,11 @@
 
-
 type Block @entity {
+  id: ID!
+  number: BigInt!
+  hash: Bytes!
+}
+
+type Block2 @entity {
   id: ID!
   number: BigInt!
   hash: Bytes!
