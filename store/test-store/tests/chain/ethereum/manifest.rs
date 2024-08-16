@@ -184,7 +184,7 @@ dataSources:
         - Gravatar
     network: mainnet
     source: 
-      address: 'QmUVaWpdKgcxBov1jHEa8dr46d2rkVzfHuZFu4fXJ4sFse'
+      address: 'QmSWWT2yrTFDZSL8tRyoHEVrcEKAUsY2hj2TMQDfdDZU8h'
       startBlock: 9562480
     mapping:
       apiVersion: 0.0.6
