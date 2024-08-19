@@ -13,6 +13,7 @@ use graph::slog::Logger;
 use graph::stable_hash::crypto_stable_hash;
 use graph::util::herd_cache::HerdCache;
 
+use std::collections::BTreeMap;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -577,6 +578,50 @@ mod data {
                 }
             };
             Ok(())
+        }
+
+        pub(super) fn blocks_by_numbers(
+            &self,
+            conn: &mut PgConnection,
+            chain: &str,
+            numbers: &[BlockNumber],
+        ) -> Result<Vec<JsonBlock>, StoreError> {
+            let x = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    b::table
+                        .select((
+                            b::hash,
+                            b::number,
+                            b::parent_hash,
+                            sql::<Jsonb>("coalesce(data -> 'block', data)"),
+                        ))
+                        .filter(b::network_name.eq(chain))
+                        .filter(b::number.eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))))
+                        .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
+                }
+                Storage::Private(Schema { blocks, .. }) => blocks
+                    .table()
+                    .select((
+                        blocks.hash(),
+                        blocks.number(),
+                        blocks.parent_hash(),
+                        sql::<Jsonb>("coalesce(data -> 'block', data)"),
+                    ))
+                    .filter(
+                        blocks
+                            .number()
+                            .eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))),
+                    )
+                    .load::<(BlockHash, i64, BlockHash, json::Value)>(conn),
+            }?;
+
+            Ok(x.into_iter()
+                .map(|(hash, nr, parent, data)| {
+                    JsonBlock::new(BlockPtr::new(hash, nr as i32), parent, Some(data))
+                })
+                .collect())
         }
 
         pub(super) fn blocks(
@@ -1651,7 +1696,10 @@ impl ChainStoreMetrics {
 }
 
 #[derive(Clone, CheapClone)]
-struct BlocksLookupResult(Arc<Result<Vec<JsonBlock>, StoreError>>);
+enum BlocksLookupResult {
+    ByHash(Arc<Result<Vec<JsonBlock>, StoreError>>),
+    ByNumber(Arc<Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError>>),
+}
 
 pub struct ChainStore {
     logger: Logger,
@@ -1870,6 +1918,35 @@ impl ChainStore {
             .await?;
         Ok(values)
     }
+
+    async fn blocks_from_store_by_numbers(
+        self: &Arc<Self>,
+        numbers: Vec<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError> {
+        let store = self.cheap_clone();
+        let pool = self.pool.clone();
+
+        let values = pool
+            .with_conn(move |conn, _| {
+                store
+                    .storage
+                    .blocks_by_numbers(conn, &store.chain, &numbers)
+                    .map_err(CancelableError::from)
+            })
+            .await?;
+
+        let mut block_map = BTreeMap::new();
+
+        for block in values {
+            let block_number = block.ptr.block_number();
+            block_map
+                .entry(block_number)
+                .or_insert_with(Vec::new)
+                .push(block);
+        }
+
+        Ok(block_map)
+    }
 }
 
 #[async_trait]
@@ -2065,6 +2142,85 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
+    async fn blocks_by_numbers(
+        self: Arc<Self>,
+        numbers: Vec<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<json::Value>>, Error> {
+        if ENV_VARS.store.disable_block_cache_for_lookup {
+            let values = self
+                .blocks_from_store_by_numbers(numbers)
+                .await?
+                .into_iter()
+                .map(|(num, blocks)| {
+                    (
+                        num,
+                        blocks
+                            .into_iter()
+                            .filter_map(|block| block.data)
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect();
+            Ok(values)
+        } else {
+            let cached = self.recent_blocks_cache.get_blocks_by_numbers(&numbers);
+
+            let stored = if cached.len() < numbers.len() {
+                let missing_numbers = numbers
+                    .iter()
+                    .filter(|num| !cached.iter().any(|(ptr, _)| ptr.block_number() == **num))
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                let hash = crypto_stable_hash(&missing_numbers);
+                let this = self.clone();
+                let lookup_fut = async move {
+                    let res = this.blocks_from_store_by_numbers(missing_numbers).await;
+                    BlocksLookupResult::ByNumber(Arc::new(res))
+                };
+                let lookup_herd = self.lookup_herd.cheap_clone();
+                let logger = self.logger.cheap_clone();
+                let res = match lookup_herd.cached_query(hash, lookup_fut, &logger).await {
+                    (BlocksLookupResult::ByNumber(res), _) => res,
+                    _ => unreachable!(),
+                };
+                let res = Arc::try_unwrap(res).unwrap_or_else(|arc| (*arc).clone());
+
+                match res {
+                    Ok(blocks) => {
+                        for (_, blocks_for_num) in &blocks {
+                            if blocks.len() == 1 {
+                                self.recent_blocks_cache
+                                    .insert_block(blocks_for_num[0].clone());
+                            }
+                        }
+                        blocks
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                }
+            } else {
+                BTreeMap::new()
+            };
+
+            let cached_map = cached
+                .into_iter()
+                .map(|(ptr, data)| (ptr.block_number(), vec![data]))
+                .collect::<BTreeMap<_, _>>();
+
+            let mut result: BTreeMap<BlockNumber, Vec<json::Value>> = cached_map;
+            for (num, blocks) in stored {
+                result
+                    .entry(num)
+                    .or_default()
+                    .extend(blocks.into_iter().filter_map(|block| block.data));
+            }
+
+            Ok(result)
+        }
+    }
+
     async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<json::Value>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
             let values = self
@@ -2094,12 +2250,15 @@ impl ChainStoreTrait for ChainStore {
                 let this = self.clone();
                 let lookup_fut = async move {
                     let res = this.blocks_from_store(hashes).await;
-                    BlocksLookupResult(Arc::new(res))
+                    BlocksLookupResult::ByHash(Arc::new(res))
                 };
                 let lookup_herd = self.lookup_herd.cheap_clone();
                 let logger = self.logger.cheap_clone();
-                let (BlocksLookupResult(res), _) =
-                    lookup_herd.cached_query(hash, lookup_fut, &logger).await;
+                //TODO(krishna): Add comments explaining the return value of cached_query
+                let res = match lookup_herd.cached_query(hash, lookup_fut, &logger).await {
+                    (BlocksLookupResult::ByHash(res), _) => res,
+                    _ => unreachable!(),
+                };
                 // Try to avoid cloning a non-concurrent lookup; it's not
                 // entirely clear whether that will actually avoid a clone
                 // since it depends on a lot of the details of how the
@@ -2361,6 +2520,12 @@ mod recent_blocks_cache {
                 .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
         }
 
+        fn get_block_by_number(&self, number: BlockNumber) -> Option<(&BlockPtr, &json::Value)> {
+            self.blocks
+                .get(&number)
+                .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
+        }
+
         fn get_ancestor(
             &self,
             child_ptr: &BlockPtr,
@@ -2480,6 +2645,28 @@ mod recent_blocks_cache {
                 blocks.len(),
                 hashes.len() - blocks.len(),
             );
+            blocks
+        }
+
+        pub fn get_blocks_by_numbers(
+            &self,
+            numbers: &[BlockNumber],
+        ) -> Vec<(BlockPtr, json::Value)> {
+            let inner = self.inner.read();
+            let mut blocks: Vec<(BlockPtr, json::Value)> = Vec::new();
+
+            for &number in numbers {
+                if let Some((ptr, block)) = inner.get_block_by_number(number) {
+                    blocks.push((ptr.clone(), block.clone()));
+                }
+            }
+
+            inner.metrics.record_hit_and_miss(
+                &inner.network,
+                blocks.len(),
+                numbers.len() - blocks.len(),
+            );
+
             blocks
         }
 
