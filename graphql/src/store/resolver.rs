@@ -404,7 +404,7 @@ impl Resolver for StoreResolver {
 
         // Add the "indexing_error" to the response.
         assert!(result.errors_mut().is_empty());
-        *result.errors_mut() = vec![QueryError::IndexingError];
+        *result.errors_mut() = vec![QueryError::indexing_error_with_policy(self.error_policy)];
 
         match self.error_policy {
             // If indexing errors are denied, we omit results, except for the `_meta` response.
