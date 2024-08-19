@@ -133,6 +133,7 @@ table! {
         failed -> Bool,
         health -> crate::deployment::SubgraphHealthMapping,
         synced_at -> Nullable<Timestamptz>,
+        synced_at_block_number -> Nullable<Numeric>,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
         earliest_block_number -> Integer,
@@ -731,15 +732,25 @@ pub fn state(conn: &mut PgConnection, id: DeploymentHash) -> Result<DeploymentSt
 }
 
 /// Mark the deployment `id` as synced
-pub fn set_synced(conn: &mut PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
+pub fn set_synced(
+    conn: &mut PgConnection,
+    id: &DeploymentHash,
+    block_ptr: BlockPtr,
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
+
+    // Work around a Diesel issue with serializing BigDecimals to numeric
+    let number = format!("{}::numeric", block_ptr.number);
 
     update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
             .filter(d::synced_at.is_null()),
     )
-    .set(d::synced_at.eq(now))
+    .set((
+        d::synced_at.eq(now),
+        d::synced_at_block_number.eq(sql(&number)),
+    ))
     .execute(conn)?;
     Ok(())
 }
