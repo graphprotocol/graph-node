@@ -125,7 +125,6 @@ async fn insert_count(
     count: u8,
     counter_type: &EntityType,
     id: &str,
-    id2: &str,
 ) {
     let count_key_local = |id: &str| counter_type.parse_key(id).unwrap();
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
@@ -136,22 +135,9 @@ async fn insert_count(
         key: count_key_local(&data.get("id").unwrap().to_string()),
         data,
     };
-    let data = entity! { TEST_SUBGRAPH_SCHEMA =>
-        id: id2,
-        count :count as i32,
-    };
-    let entity_op2 = EntityOperation::Set {
-        key: count_key_local(&data.get("id").unwrap().to_string()),
-        data,
-    };
-    transact_entity_operations(
-        store,
-        deployment,
-        block_pointer(block),
-        vec![entity_op, entity_op2],
-    )
-    .await
-    .unwrap();
+    transact_entity_operations(store, deployment, block_pointer(block), vec![entity_op])
+        .await
+        .unwrap();
 }
 
 async fn insert_count_mutable(
@@ -160,7 +146,7 @@ async fn insert_count_mutable(
     block: u8,
     count: u8,
 ) {
-    insert_count(store, deployment, block, count, &COUNTER_TYPE, "1", "2").await;
+    insert_count(store, deployment, block, count, &COUNTER_TYPE, "1").await;
 }
 
 async fn insert_count_immutable(
@@ -175,8 +161,7 @@ async fn insert_count_immutable(
         block,
         count,
         &COUNTER2_TYPE,
-        &(block).to_string(),
-        &(block + 1).to_string(),
+        &(block / 2).to_string(),
     )
     .await;
 }
@@ -343,46 +328,22 @@ fn restart() {
     })
 }
 
-async fn read_range(
-    store: Arc<Store>,
-    writable: Arc<dyn WritableStore>,
-    deployment: DeploymentLocator,
-    mutable: bool,
-) -> usize {
-    let subgraph_store = store.subgraph_store();
-    writable.deployment_synced().unwrap();
+#[test]
+fn read_range_test() {
+    run_test(|store, writable, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+        writable.deployment_synced().unwrap();
 
-    for count in 1..=7 {
-        if mutable {
-            insert_count_mutable(&subgraph_store, &deployment, 2 * count, 4 * count).await
-        } else {
-            insert_count_immutable(&subgraph_store, &deployment, 2 * count, 4 * count).await
+        for count in 1..=7 {
+            insert_count_mutable(&subgraph_store, &deployment, 2 * count, 4 * count).await;
+            insert_count_immutable(&subgraph_store, &deployment, 2 * count + 1, 4 * count).await;
         }
-    }
-    writable.flush().await.unwrap();
+        writable.flush().await.unwrap();
 
-    let br: Range<BlockNumber> = 4..8;
-    let et: &EntityType = if mutable {
-        &COUNTER_TYPE
-    } else {
-        &COUNTER2_TYPE
-    };
-    let e = writable.get_range(et, br).unwrap();
-    e.iter().map(|(_, v)| v.iter()).flatten().count()
-}
-
-#[test]
-fn read_range_mutable() {
-    run_test(|store, writable, deployment| async move {
-        let num_entities = read_range(store, writable, deployment, true).await;
-        assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
-    })
-}
-
-#[test]
-fn read_range_immutable() {
-    run_test(|store, writable, deployment| async move {
-        let num_entities = read_range(store, writable, deployment, false).await;
-        assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
+        let br: Range<BlockNumber> = 4..8;
+        writable.deployment_synced().unwrap();
+        let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
+        let e = writable.get_range(entity_types, br).unwrap();
+        assert_eq!(e.len(), 5) // TODO: fix it - it should be 4 as the range is open
     })
 }
