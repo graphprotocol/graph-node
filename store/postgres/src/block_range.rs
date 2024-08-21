@@ -161,7 +161,7 @@ impl EntityBlockRange {
         let BlockRange(start, finish) = block_range;
 
         self.compare_column(out);
-        out.push_sql(" >= ");
+        out.push_sql(">= ");
         match start {
             Bound::Included(block) => out.push_bind_param::<Integer, _>(block)?,
             Bound::Excluded(block) => {
@@ -170,9 +170,9 @@ impl EntityBlockRange {
             }
             Bound::Unbounded => unimplemented!(),
         };
-        out.push_sql(" AND ");
+        out.push_sql(" and");
         self.compare_column(out);
-        out.push_sql(" <= ");
+        out.push_sql("<= ");
         match finish {
             Bound::Included(block) => {
                 out.push_bind_param::<Integer, _>(block)?;
