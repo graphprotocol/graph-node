@@ -579,7 +579,12 @@ impl SubgraphStoreInner {
 
         let index_def = if let Some(graft) = &graft_base.clone() {
             if let Some(site) = self.sites.get(graft) {
-                Some(deployment_store.load_indexes(site)?)
+                let store = self
+                    .stores
+                    .get(&site.shard)
+                    .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
+
+                Some(store.load_indexes(site)?)
             } else {
                 None
             }
