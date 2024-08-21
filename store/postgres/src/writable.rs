@@ -354,12 +354,15 @@ impl SyncStore {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         retry::forever(&self.logger, "get_range", || {
-            self.writable
-                .get_range(self.site.cheap_clone(), entity_type, block_range.clone())
+            self.writable.get_range(
+                self.site.cheap_clone(),
+                entity_types.clone(),
+                block_range.clone(),
+            )
         })
     }
 
@@ -1230,10 +1233,10 @@ impl Queue {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.store.get_range(entity_type, block_range)
+        self.store.get_range(entity_types, block_range)
     }
 
     fn get_derived(
@@ -1450,12 +1453,12 @@ impl Writer {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_range(entity_type, block_range),
-            Writer::Async { queue, .. } => queue.get_range(entity_type, block_range),
+            Writer::Sync(store) => store.get_range(entity_types, block_range),
+            Writer::Async { queue, .. } => queue.get_range(entity_types, block_range),
         }
     }
 
@@ -1589,10 +1592,10 @@ impl ReadStore for WritableStore {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.writer.get_range(entity_type, block_range)
+        self.writer.get_range(entity_types, block_range)
     }
 
     fn get_derived(
