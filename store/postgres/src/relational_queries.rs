@@ -2009,14 +2009,20 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct FindRangeQuery<'a> {
-    table: &'a Table,
-    eb_range: EntityBlockRange,
+    tables: &'a Vec<&'a Table>,
+    imm_range: EntityBlockRange,
+    mut_range: EntityBlockRange,
 }
 
 impl<'a> FindRangeQuery<'a> {
-    pub fn new(table: &'a Table, block_range: Range<BlockNumber>) -> Self {
-        let eb_range = EntityBlockRange::new(table.immutable, block_range);
-        Self { table, eb_range }
+    pub fn new(tables: &'a Vec<&Table>, block_range: Range<BlockNumber>) -> Self {
+        let imm_range = EntityBlockRange::new(true, block_range.clone());
+        let mut_range = EntityBlockRange::new(false, block_range);
+        Self {
+            tables,
+            imm_range,
+            mut_range,
+        }
     }
 }
 
@@ -2024,22 +2030,43 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        // Generate
-        //    select '..' as entity, to_jsonb(e.*) as data
-        //      from schema.table e where id = $1
-        out.push_sql("select ");
-        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
-        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
-        out.push_sql("  from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" e\n where ");
-        // TODO: do we need to care about it?
-        // if self.table.has_causality_region {
-        //     out.push_sql("causality_region = ");
-        //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
-        //     out.push_sql(" and ");
-        // }
-        self.eb_range.contains(&mut out)
+        let mut iter = self.tables.iter().peekable();
+        while let Some(table) = iter.next() {
+            // Generate
+            //    select '..' as entity, to_jsonb(e.*) as data, block$ as block_number
+            //      from schema.table e where id = $1
+            out.push_sql("select ");
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
+            out.push_sql(" as entity, to_jsonb(e.*) as data,");
+            if table.immutable {
+                self.imm_range.compare_column(&mut out)
+            } else {
+                self.mut_range.compare_column(&mut out)
+            }
+            out.push_sql("as block_number\n");
+            out.push_sql("  from ");
+            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(" e\n  where");
+            // TODO: do we need to care about it?
+            // if self.table.has_causality_region {
+            //     out.push_sql("causality_region = ");
+            //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
+            //     out.push_sql(" and ");
+            // }
+            if table.immutable {
+                self.imm_range.contains(&mut out)?;
+            } else {
+                self.mut_range.contains(&mut out)?;
+            }
+            // more elements left?
+            if iter.peek().is_some() {
+                out.push_sql("\nunion all\n"); // with the next
+            } else {
+                out.push_sql("\norder by block_number"); // on the last
+            }
+        }
+
+        Ok(())
     }
 }
 
