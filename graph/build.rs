@@ -5,6 +5,7 @@ fn main() {
         .compile(
             &[
                 "proto/firehose.proto",
+                "proto/info-rpc.proto",
                 "proto/ethereum/transforms.proto",
                 "proto/near/transforms.proto",
                 "proto/cosmos/transforms.proto",

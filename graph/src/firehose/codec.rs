@@ -14,7 +14,12 @@ mod pbnear;
 #[path = "sf.cosmos.transform.v1.rs"]
 mod pbcosmos;
 
+#[rustfmt::skip]
+#[path = "sf.info.v1.rs"]
+mod pbinfo;
+
 pub use pbcosmos::*;
 pub use pbethereum::*;
 pub use pbfirehose::*;
+pub use pbinfo::*;
 pub use pbnear::*;

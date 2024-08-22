@@ -21,6 +21,7 @@ use crate::{
 use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
 use async_trait::async_trait;
+use firehose::InfoRequest;
 use futures03::StreamExt;
 use http0::uri::{Scheme, Uri};
 use itertools::Itertools;
@@ -38,7 +39,10 @@ use tonic::{
     Request,
 };
 
-use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
+use super::{
+    codec as firehose, endpoint_info_client::EndpointInfoClient, interceptors::MetricsInterceptor,
+    stream_client::StreamClient,
+};
 
 /// This is constant because we found this magic number of connections after
 /// which the grpc connections start to hang.
@@ -90,7 +94,7 @@ impl<M: prost::Message + BlockchainBlock + Default + 'static> GenesisDecoder
         &self,
         endpoint: &Arc<FirehoseEndpoint>,
     ) -> Result<BlockPtr, anyhow::Error> {
-        endpoint.genesis_block_ptr::<M>(&self.logger).await
+        endpoint.genesis_block_ptr(&self.logger).await
     }
 
     fn box_clone(&self) -> Box<dyn GenesisDecoder> {
@@ -102,7 +106,9 @@ impl<M: prost::Message + BlockchainBlock + Default + 'static> GenesisDecoder
 }
 
 #[derive(Debug, Clone)]
-pub struct SubstreamsGenesisDecoder {}
+pub struct SubstreamsGenesisDecoder {
+    pub logger: Logger,
+}
 
 #[async_trait]
 impl GenesisDecoder for SubstreamsGenesisDecoder {
@@ -110,59 +116,13 @@ impl GenesisDecoder for SubstreamsGenesisDecoder {
         &self,
         endpoint: &Arc<FirehoseEndpoint>,
     ) -> Result<BlockPtr, anyhow::Error> {
-        let package = Package::decode(SUBSTREAMS_HEAD_TRACKER_BYTES.to_vec().as_ref()).unwrap();
-        let headers = ConnectionHeaders::new();
-        let endpoint = endpoint.cheap_clone();
-
-        let mut stream = endpoint
-            .substreams(
-                substreams_rpc::Request {
-                    start_block_num: 0,
-                    start_cursor: "".to_string(),
-                    stop_block_num: 0,
-                    final_blocks_only: true,
-                    production_mode: true,
-                    output_module: "map_blocks".to_string(),
-                    modules: package.modules,
-                    debug_initial_store_snapshot_for_modules: vec![],
-                },
-                &headers,
-            )
-            .await?;
-
-        tokio::time::timeout(Duration::from_secs(30), async move {
-            loop {
-                let rsp = stream.next().await;
-
-                match rsp {
-                    Some(Ok(Response { message })) => match message {
-                        Some(response::Message::BlockScopedData(BlockScopedData {
-                            clock, ..
-                        })) if clock.is_some() => {
-                            // unwrap: the match guard ensures this is safe.
-                            let clock = clock.unwrap();
-                            return Ok(BlockPtr {
-                                number: clock.number.try_into()?,
-                                hash: BlockHash::from_str(&clock.id)?,
-                            });
-                        }
-                        // most other messages are related to the protocol itself or debugging which are
-                        // not relevant for this use case.
-                        Some(_) => continue,
-                        // No idea when this would happen
-                        None => continue,
-                    },
-                    Some(Err(status)) => bail!("unable to get genesis block, status: {}", status),
-                    None => bail!("unable to get genesis block, stream ended"),
-                }
-            }
-        })
-        .await
-        .map_err(|_| anyhow!("unable to get genesis block, timed out."))?
+        endpoint.genesis_block_ptr(&self.logger).await
     }
 
     fn box_clone(&self) -> Box<dyn GenesisDecoder> {
-        Box::new(Self {})
+        Box::new(Self {
+            logger: self.logger.cheap_clone(),
+        })
     }
 }
 
@@ -420,6 +380,35 @@ impl FirehoseEndpoint {
         client
     }
 
+    fn new_info_rpc_client(
+        &self,
+    ) -> EndpointInfoClient<
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
+    > {
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            labels: RequestLabels {
+                provider: self.provider.clone().into(),
+                req_type: "unknown".into(),
+                conn_type: ConnectionType::Firehose,
+            },
+        };
+
+        let mut client: EndpointInfoClient<
+            InterceptedService<MetricsInterceptor<Channel>, AuthInterceptor>,
+        > = EndpointInfoClient::with_interceptor(metrics, self.auth.clone())
+            .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+        client = client
+            .max_decoding_message_size(1024 * 1024 * ENV_VARS.firehose_grpc_max_decode_size_mb);
+
+        client
+    }
+
     fn new_stream_client(
         &self,
     ) -> StreamClient<
@@ -509,18 +498,13 @@ impl FirehoseEndpoint {
         }
     }
 
-    pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
-    where
-        M: prost::Message + BlockchainBlock + Default + 'static,
-    {
+    pub async fn genesis_block_ptr(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error> {
         info!(logger, "Requesting genesis block from firehose";
             "provider" => self.provider.as_str());
 
-        // We use 0 here to mean the genesis block of the chain. Firehose
-        // when seeing start block number 0 will always return the genesis
-        // block of the chain, even if the chain's start block number is
-        // not starting at block #0.
-        self.block_ptr_for_number::<M>(logger, 0).await
+        let rsp = self.new_info_rpc_client().info(InfoRequest {}).await?;
+
+        rsp.into_inner().try_into()
     }
 
     pub async fn block_ptr_for_number<M>(

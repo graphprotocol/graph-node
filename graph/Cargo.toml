@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 base64 = "=0.21.7"
+base58 = "0"
 anyhow = "1.0"
 async-trait = "0.1.74"
 async-stream = "0.3"
