@@ -21,7 +21,7 @@ use crate::components::store::{BlockNumber, DeploymentLocator, WritableStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
 use crate::futures03::stream::StreamExt as _;
-use crate::schema::InputSchema;
+use crate::schema::{EntityType, InputSchema};
 use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};
 
@@ -350,14 +350,14 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
 fn create_subgraph_trigger_from_entities(
     filter: &SubgraphFilter,
-    entities: &Vec<Entity>,
+    entities: &Vec<EntityWithType>,
 ) -> Vec<subgraph::TriggerData> {
     entities
         .iter()
         .map(|e| subgraph::TriggerData {
             source: filter.subgraph.clone(),
-            entity: e.clone(),
-            entity_type: filter.entities.first().unwrap().clone(),
+            entity: e.entity.clone(),
+            entity_type: e.entity_type.as_str().to_string(),
         })
         .collect()
 }
@@ -366,7 +366,7 @@ async fn create_subgraph_triggers<C: Blockchain>(
     logger: Logger,
     blocks: Vec<C::Block>,
     filter: &SubgraphFilter,
-    entities: BTreeMap<BlockNumber, Vec<Entity>>,
+    entities: BTreeMap<BlockNumber, Vec<EntityWithType>>,
 ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
     let logger_clone = logger.cheap_clone();
 
@@ -426,13 +426,18 @@ async fn scan_subgraph_triggers<C: Blockchain>(
     }
 }
 
+pub struct EntityWithType {
+    pub entity_type: EntityType,
+    pub entity: Entity,
+}
+
 async fn get_entities_for_range(
     store: &Arc<dyn WritableStore>,
     filter: &SubgraphFilter,
     schema: &InputSchema,
     from: BlockNumber,
     to: BlockNumber,
-) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, Error> {
+) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, Error> {
     let mut entities_by_block = BTreeMap::new();
 
     for entity_name in &filter.entities {
@@ -440,10 +445,20 @@ async fn get_entities_for_range(
 
         let entity_ranges = store.get_range(&entity_type, from..to)?;
 
-        for (block_number, mut entity_vec) in entity_ranges {
+        for (block_number, entity_vec) in entity_ranges {
+            let mut entity_vec = entity_vec
+                .into_iter()
+                .map(|e| EntityWithType {
+                    entity_type: entity_type.clone(),
+                    entity: e,
+                })
+                .collect();
+
             entities_by_block
                 .entry(block_number)
-                .and_modify(|existing_vec: &mut Vec<Entity>| existing_vec.append(&mut entity_vec))
+                .and_modify(|existing_vec: &mut Vec<EntityWithType>| {
+                    existing_vec.append(&mut entity_vec);
+                })
                 .or_insert(entity_vec);
         }
     }
