@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use web3::types::{Address, H256};
 
 use super::*;
-use crate::blockchain::block_stream::FirehoseCursor;
+use crate::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
