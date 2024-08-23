@@ -24,6 +24,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
+use graph::blockchain::block_stream::EntityWithType;
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
@@ -520,23 +521,30 @@ impl Layout {
         conn: &mut PgConnection,
         entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         let mut tables = vec![];
+        let mut et_map: HashMap<String, Arc<EntityType>> = HashMap::new();
         for et in entity_types {
-            tables.push(self.table_for_entity(&et)?.as_ref())
+            tables.push(self.table_for_entity(&et)?.as_ref());
+            et_map.insert(et.to_string(), Arc::new(et));
         }
-        let mut entities: BTreeMap<BlockNumber, Vec<Entity>> = BTreeMap::new();
+        let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
         if let Some(vec) = FindRangeQuery::new(&tables, block_range)
             .get_results::<EntityData>(conn)
             .optional()?
         {
             for e in vec {
                 let block = e.clone().deserialize_block_number::<Entity>()?;
-                let en = e.deserialize_with_layout::<Entity>(self, None)?;
+                let entity_type = e.entity_type(&self.input_schema);
+                let entity = e.deserialize_with_layout::<Entity>(self, None)?;
+                let ewt = EntityWithType {
+                    entity_type,
+                    entity,
+                };
                 match entities.get_mut(&block) {
-                    Some(vec) => vec.push(en),
+                    Some(vec) => vec.push(ewt),
                     None => {
-                        let _ = entities.insert(block, vec![en]);
+                        let _ = entities.insert(block, vec![ewt]);
                     }
                 };
             }
