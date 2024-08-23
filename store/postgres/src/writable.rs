@@ -5,7 +5,7 @@ use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
-use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
@@ -356,7 +356,7 @@ impl SyncStore {
         &self,
         entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         retry::forever(&self.logger, "get_range", || {
             self.writable.get_range(
                 self.site.cheap_clone(),
@@ -1235,7 +1235,7 @@ impl Queue {
         &self,
         entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         self.store.get_range(entity_types, block_range)
     }
 
@@ -1455,7 +1455,7 @@ impl Writer {
         &self,
         entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         match self {
             Writer::Sync(store) => store.get_range(entity_types, block_range),
             Writer::Async { queue, .. } => queue.get_range(entity_types, block_range),
@@ -1594,7 +1594,7 @@ impl ReadStore for WritableStore {
         &self,
         entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         self.writer.get_range(entity_types, block_range)
     }
 

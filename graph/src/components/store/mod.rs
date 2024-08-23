@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use crate::blockchain::block_stream::EntityWithType;
 use crate::blockchain::{Block, BlockHash, BlockPtr};
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
@@ -1043,7 +1044,7 @@ impl ReadStore for EmptyStore {
         &self,
         _entity_types: Vec<EntityType>,
         _block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         Ok(BTreeMap::new())
     }
 
