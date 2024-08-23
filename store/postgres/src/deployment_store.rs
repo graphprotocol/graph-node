@@ -4,7 +4,7 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{prelude::*, sql_query};
 use graph::anyhow::Context;
-use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
@@ -1061,7 +1061,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         entity_types: Vec<EntityType>,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         let mut conn = self.get_conn()?;
         let layout = self.layout(&mut conn, site)?;
         layout.find_range(&mut conn, entity_types, block_range)
