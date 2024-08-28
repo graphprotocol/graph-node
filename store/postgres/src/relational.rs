@@ -24,7 +24,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
-use graph::blockchain::block_stream::EntityWithType;
+use graph::blockchain::block_stream::{EntitySubgraphOperation, EntityWithType};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
@@ -529,15 +529,18 @@ impl Layout {
             et_map.insert(et.to_string(), Arc::new(et));
         }
         let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
-        if let Some(vec) = FindRangeQuery::new(&tables, block_range)
+        if let Some(vec) = FindRangeQuery::new(&tables, false, block_range)
             .get_results::<EntityData>(conn)
             .optional()?
         {
+            // TODO: issue query with upper range and find modifictions and deletions
             for e in vec {
                 let block = e.clone().deserialize_block_number::<Entity>()?;
                 let entity_type = e.entity_type(&self.input_schema);
                 let entity = e.deserialize_with_layout::<Entity>(self, None)?;
+                let entity_op = EntitySubgraphOperation::Create;
                 let ewt = EntityWithType {
+                    entity_op,
                     entity_type,
                     entity,
                 };
