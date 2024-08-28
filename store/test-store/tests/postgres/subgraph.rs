@@ -550,9 +550,6 @@ fn subgraph_features() {
             vec![
                 SubgraphFeature::NonFatalErrors.to_string(),
                 SubgraphFeature::FullTextSearch.to_string(),
-                SubgraphFeature::DeclaredEthCalls.to_string(),
-                SubgraphFeature::Aggregations.to_string(),
-                SubgraphFeature::ImmutableEntities.to_string()
             ],
             features
         );

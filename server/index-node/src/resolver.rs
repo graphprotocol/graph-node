@@ -627,7 +627,24 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let subgraph_store = self.store.subgraph_store();
         let features = match subgraph_store.subgraph_features(&deployment_hash).await? {
-            Some(features) => features,
+            Some(features) => {
+                let mut deployment_features = features.clone();
+                let features = &mut deployment_features.features;
+
+                if deployment_features.has_declared_calls {
+                    features.push("declaredEthCalls".to_string());
+                }
+                if deployment_features.has_aggregations {
+                    features.push("aggregations".to_string());
+                }
+                if !deployment_features.immutable_entities.is_empty() {
+                    features.push("immutableEntities".to_string());
+                }
+                if deployment_features.has_bytes_as_ids {
+                    features.push("bytesAsIds".to_string());
+                }
+                deployment_features
+            }
             None => self.get_features_from_ipfs(&deployment_hash).await?,
         };
 

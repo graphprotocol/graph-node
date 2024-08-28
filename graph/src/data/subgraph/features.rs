@@ -34,7 +34,7 @@ pub enum SubgraphFeature {
     Grafting,
     FullTextSearch,
     Aggregations,
-    Pruning,
+    BytesAsIds,
     DeclaredEthCalls,
     ImmutableEntities,
     #[serde(alias = "nonDeterministicIpfs")]
@@ -165,8 +165,8 @@ mod tests {
         "ipfsOnEthereumContracts",
         "declaredEthCalls",
         "aggregations",
-        "pruning",
         "immutableEntities",
+        "bytesAsIds",
     ];
 
     #[test]
