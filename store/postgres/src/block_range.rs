@@ -135,19 +135,23 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
 /// Helper for generating SQL fragments for selecting entities in a specific block range
 #[derive(Debug, Clone, Copy)]
 pub enum EntityBlockRange {
-    Mutable(BlockRange), // TODO: check if this is a proper type here (maybe Range<BlockNumber>?)
+    Mutable((BlockRange, bool)), // TODO: check if this is a proper type here (maybe Range<BlockNumber>?)
     Immutable(BlockRange),
 }
 
 impl EntityBlockRange {
-    pub fn new(table: &Table, block_range: std::ops::Range<BlockNumber>) -> Self {
+    pub fn new(
+        immutable: bool,
+        block_range: std::ops::Range<BlockNumber>,
+        is_uppper_range: bool,
+    ) -> Self {
         let start: Bound<BlockNumber> = Bound::Included(block_range.start);
         let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
         let block_range: BlockRange = BlockRange(start, end);
         if table.immutable {
             Self::Immutable(block_range)
         } else {
-            Self::Mutable(block_range)
+            Self::Mutable((block_range, is_uppper_range))
         }
     }
 
@@ -155,7 +159,7 @@ impl EntityBlockRange {
     pub fn contains<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         let block_range = match self {
-            EntityBlockRange::Mutable(br) => br,
+            EntityBlockRange::Mutable((br, _)) => br,
             EntityBlockRange::Immutable(br) => br,
         };
         let BlockRange(start, finish) = block_range;
@@ -186,7 +190,13 @@ impl EntityBlockRange {
 
     pub fn compare_column(&self, out: &mut AstPass<Pg>) {
         match self {
-            EntityBlockRange::Mutable(_) => out.push_sql(" lower(block_range) "),
+            EntityBlockRange::Mutable((_, is_upper_range)) => {
+                if *is_upper_range {
+                    out.push_sql(" upper(block_range) ")
+                } else {
+                    out.push_sql(" lower(block_range) ")
+                }
+            }
             EntityBlockRange::Immutable(_) => out.push_sql(" block$ "),
         }
     }

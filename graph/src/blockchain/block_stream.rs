@@ -433,7 +433,16 @@ async fn scan_subgraph_triggers<C: Blockchain>(
     }
 }
 
+#[derive(Debug)]
+pub enum EntitySubgraphOperation {
+    Create,
+    Modify,
+    Delete,
+}
+
+#[derive(Debug)]
 pub struct EntityWithType {
+    pub entity_op: EntitySubgraphOperation,
     pub entity_type: EntityType,
     pub entity: Entity,
 }
