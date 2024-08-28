@@ -12,7 +12,10 @@ use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
 use graph::data::store::scalar::ToPrimitive;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
-use graph::prelude::{BigDecimal, BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity};
+use graph::prelude::{
+    chrono::{DateTime, Utc},
+    BigDecimal, BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity,
+};
 use graph::schema::InputSchema;
 use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
 use itertools::Itertools;
@@ -46,7 +49,7 @@ pub struct DeploymentDetail {
     pub deployment: String,
     pub failed: bool,
     health: HealthType,
-    pub synced: bool,
+    pub synced_at: Option<DateTime<Utc>>,
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
     /// The earliest block for which we have history
@@ -188,7 +191,7 @@ pub(crate) fn info_from_details(
         deployment,
         failed: _,
         health,
-        synced,
+        synced_at,
         fatal_error: _,
         non_fatal_errors: _,
         earliest_block_number,
@@ -238,7 +241,7 @@ pub(crate) fn info_from_details(
     Ok(status::Info {
         id: id.into(),
         subgraph: deployment,
-        synced,
+        synced: synced_at.is_some(),
         health,
         paused: None,
         fatal_error,
@@ -446,7 +449,7 @@ impl StoredDeploymentEntity {
             manifest: manifest.as_manifest(schema),
             failed: detail.failed,
             health: detail.health.into(),
-            synced: detail.synced,
+            synced_at: detail.synced_at,
             fatal_error: None,
             non_fatal_errors: vec![],
             earliest_block_number: detail.earliest_block_number,
