@@ -1722,7 +1722,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .filter(|&number| !blocks.iter().any(|block| block.number() == number))
             .collect();
 
-        debug!(logger, "Loading {} block(s)", missing_blocks.len());
+        if !missing_blocks.is_empty() {
+            debug!(
+                logger,
+                "Loading {} block(s) not in the block cache",
+                missing_blocks.len()
+            );
+        }
+
         Box::new(
             self.load_blocks_by_numbers_rpc(logger.clone(), missing_blocks)
                 .collect()
