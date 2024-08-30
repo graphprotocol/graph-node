@@ -19,7 +19,7 @@ pub const SUBSTREAMS_KIND: &str = "substreams";
 const DYNAMIC_DATA_SOURCE_ERROR: &str = "Substreams do not support dynamic data sources";
 const TEMPLATE_ERROR: &str = "Substreams do not support templates";
 
-const ALLOWED_MAPPING_KIND: [&str; 1] = ["substreams/graph-entities"];
+const ALLOWED_MAPPING_KIND: [&str; 2] = ["substreams/graph-entities", "substreams/triggers"];
 const SUBSTREAMS_HANDLER_KIND: &str = "substreams";
 #[derive(Clone, Debug, PartialEq)]
 /// Represents the DataSource portion of the manifest once it has been parsed
@@ -126,6 +126,12 @@ impl blockchain::DataSource<Chain> for DataSource {
                 "mapping kind has to be one of {:?}, found {}",
                 ALLOWED_MAPPING_KIND,
                 self.mapping.kind
+            ))
+        }
+
+        if self.mapping.kind.as_str() == "substreams/triggers" && self.mapping.handler.is_none() {
+            errs.push(anyhow!(
+                "mapping kind \"substreams/triggers\" requires a handler"
             ))
         }
 
@@ -480,8 +486,34 @@ mod test {
             vec![
                 "data source has invalid `kind`, expected substreams but found asdasd",
                 "name cannot be empty",
-                "mapping kind has to be one of [\"substreams/graph-entities\"], found asdasd"
+                &format!(
+                    "mapping kind has to be one of {:?}, found {}",
+                    super::ALLOWED_MAPPING_KIND,
+                    ds.mapping.kind
+                )
             ]
+        );
+    }
+
+    #[test]
+    fn data_source_validation_triggers() {
+        let mut ds = gen_data_source();
+        assert_eq!(true, ds.validate(LATEST_VERSION).is_empty());
+
+        ds.network = None;
+        assert_eq!(true, ds.validate(LATEST_VERSION).is_empty());
+
+        ds.kind = "substreams".into();
+        ds.name = "Uniswap".into();
+        ds.mapping.kind = "substreams/triggers".into();
+        let errs: Vec<String> = ds
+            .validate(LATEST_VERSION)
+            .into_iter()
+            .map(|e| e.to_string())
+            .collect();
+        assert_eq!(
+            errs,
+            vec!["mapping kind \"substreams/triggers\" requires a handler",]
         );
     }
 
@@ -507,6 +539,37 @@ mod test {
             mapping: UnresolvedMapping {
                 api_version: "0.0.7".into(),
                 kind: "substreams/graph-entities".into(),
+                handler: Some("bananas".to_string()),
+                file: Some(Link {
+                    link: "./src/mappings.ts".to_string(),
+                }),
+            },
+        };
+        assert_eq!(ds, expected);
+    }
+
+    #[test]
+    fn parse_data_source_with_triggers() {
+        let ds: UnresolvedDataSource =
+            serde_yaml::from_str(TEMPLATE_DATA_SOURCE_WITH_TRIGGERS).unwrap();
+
+        let expected = UnresolvedDataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::UnresolvedSource {
+                package: crate::UnresolvedPackage {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                    params: None,
+                },
+                start_block: None,
+            },
+            mapping: UnresolvedMapping {
+                api_version: "0.0.7".into(),
+                kind: "substreams/triggers".into(),
                 handler: Some("bananas".to_string()),
                 file: Some(Link {
                     link: "./src/mappings.ts".to_string(),
@@ -620,6 +683,23 @@ mod test {
                 123
         mapping:
           kind: substreams/graph-entities
+          apiVersion: 0.0.7
+          file:
+            /: ./src/mappings.ts
+          handler: bananas
+    "#;
+
+    const TEMPLATE_DATA_SOURCE_WITH_TRIGGERS: &str = r#"
+        kind: substreams
+        name: Uniswap
+        network: mainnet
+        source:
+          package:
+            moduleName: output
+            file:
+              /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
+        mapping:
+          kind: substreams/triggers
           apiVersion: 0.0.7
           file:
             /: ./src/mappings.ts
