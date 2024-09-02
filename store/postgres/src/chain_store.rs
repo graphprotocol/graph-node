@@ -580,7 +580,7 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn blocks_by_numbers(
+        pub(super) fn block_ptrs_by_numbers(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -1930,7 +1930,7 @@ impl ChainStore {
             .with_conn(move |conn, _| {
                 store
                     .storage
-                    .blocks_by_numbers(conn, &store.chain, &numbers)
+                    .block_ptrs_by_numbers(conn, &store.chain, &numbers)
                     .map_err(CancelableError::from)
             })
             .await?;
@@ -2142,7 +2142,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    async fn blocks_by_numbers(
+    async fn block_ptrs_by_numbers(
         self: Arc<Self>,
         numbers: Vec<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<json::Value>>, Error> {
@@ -2163,7 +2163,7 @@ impl ChainStoreTrait for ChainStore {
                 .collect();
             Ok(values)
         } else {
-            let cached = self.recent_blocks_cache.get_blocks_by_numbers(&numbers);
+            let cached = self.recent_blocks_cache.get_block_ptrs_by_numbers(&numbers);
 
             let stored = if cached.len() < numbers.len() {
                 let missing_numbers = numbers
@@ -2655,7 +2655,7 @@ mod recent_blocks_cache {
             blocks
         }
 
-        pub fn get_blocks_by_numbers(
+        pub fn get_block_ptrs_by_numbers(
             &self,
             numbers: &[BlockNumber],
         ) -> Vec<(BlockPtr, json::Value)> {
