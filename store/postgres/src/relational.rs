@@ -53,8 +53,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
-    ConflictingEntitiesData, ConflictingEntitiesQuery, FindChangesQuery, FindDerivedQuery,
-    FindPossibleDeletionsQuery, ReturnedEntityData,
+    ConflictingEntitiesData, ConflictingEntitiesQuery, EntityDataExt, FindChangesQuery,
+    FindDerivedQuery, FindPossibleDeletionsQuery, ReturnedEntityData,
 };
 use crate::{
     primary::{Namespace, Site},
@@ -529,28 +529,85 @@ impl Layout {
             et_map.insert(et.to_string(), Arc::new(et));
         }
         let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
-        if let Some(vec) = FindRangeQuery::new(&tables, false, block_range)
-            .get_results::<EntityData>(conn)
+        let lower_vec = FindRangeQuery::new(&tables, false, block_range.clone())
+            .get_results::<EntityDataExt>(conn)
             .optional()?
-        {
-            // TODO: issue query with upper range and find modifictions and deletions
-            for e in vec {
-                let block = e.clone().deserialize_block_number::<Entity>()?;
-                let entity_type = e.entity_type(&self.input_schema);
-                let entity = e.deserialize_with_layout::<Entity>(self, None)?;
-                let entity_op = EntitySubgraphOperation::Create;
-                let ewt = EntityWithType {
-                    entity_op,
-                    entity_type,
-                    entity,
-                };
-                match entities.get_mut(&block) {
-                    Some(vec) => vec.push(ewt),
-                    None => {
-                        let _ = entities.insert(block, vec![ewt]);
+            .unwrap_or_default();
+        let upper_vec = FindRangeQuery::new(&tables, true, block_range)
+            .get_results::<EntityDataExt>(conn)
+            .optional()?
+            .unwrap_or_default();
+        let mut lower_iter = lower_vec.iter().fuse().peekable();
+        let mut upper_iter = upper_vec.iter().fuse().peekable();
+        let mut lower_now = lower_iter.next();
+        let mut upper_now = upper_iter.next();
+        let mut lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
+        let mut upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+        let transform = |ede: EntityDataExt,
+                         entity_op: EntitySubgraphOperation|
+         -> Result<(EntityWithType, BlockNumber), StoreError> {
+            let e = EntityData::new(ede.entity, ede.data);
+            let block = ede.block_number;
+            let entity_type = e.entity_type(&self.input_schema);
+            let entity = e.deserialize_with_layout::<Entity>(self, None)?;
+            let ewt = EntityWithType {
+                entity_op,
+                entity_type,
+                entity,
+            };
+            Ok((ewt, block))
+        };
+        while lower_now.is_some() || upper_now.is_some() {
+            let (ewt, block) = if lower_now.is_some() {
+                if upper_now.is_some() {
+                    if lower > upper {
+                        // we have upper bound at this block, but no lower bounds at the same block so it's deletion
+                        let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                        // advance upper
+                        upper_now = upper_iter.next();
+                        upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+                        (ewt, block)
+                    } else if lower < upper {
+                        // we have lower bound at this block but no upper bound at the same block so its creation
+                        let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                        // advance lower
+                        lower_now = lower_iter.next();
+                        lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
+                        (ewt, block)
+                    } else {
+                        assert!(upper == lower);
+                        let (ewt, block) = transform(lower, EntitySubgraphOperation::Modify)?;
+                        // advance both
+                        lower_now = lower_iter.next();
+                        lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
+                        upper_now = upper_iter.next();
+                        upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+                        (ewt, block)
                     }
-                };
-            }
+                } else {
+                    // we have lower bound at this block but no upper bound at the same block so its creation
+                    let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                    // advance lower
+                    lower_now = lower_iter.next();
+                    lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
+                    (ewt, block)
+                }
+            } else {
+                // we have upper bound at this block, but no lower bounds at all so it's deletion
+                assert!(upper_now.is_some());
+                let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                // advance upper
+                upper_now = upper_iter.next();
+                upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+                (ewt, block)
+            };
+
+            match entities.get_mut(&block) {
+                Some(vec) => vec.push(ewt),
+                None => {
+                    let _ = entities.insert(block, vec![ewt]);
+                }
+            };
         }
         Ok(entities)
     }
