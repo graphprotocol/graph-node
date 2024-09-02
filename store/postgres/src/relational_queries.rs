@@ -17,7 +17,6 @@ use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
-use graph::prelude::regex::Regex;
 use graph::prelude::{
     anyhow, r, serde_json, BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter,
     EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
@@ -27,6 +26,7 @@ use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, FulltextConfig, In
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
@@ -478,40 +478,12 @@ pub struct EntityData {
 }
 
 impl EntityData {
-    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
-        schema.entity_type(&self.entity).unwrap()
+    pub fn new(entity: String, data: serde_json::Value) -> EntityData {
+        EntityData { entity, data }
     }
 
-    pub fn deserialize_block_number<T: FromEntityData>(self) -> Result<BlockNumber, StoreError> {
-        use serde_json::Value as j;
-        match self.data {
-            j::Object(map) => {
-                let mut entries = map.into_iter().filter_map(move |(key, json)| {
-                    if key == "block_range" {
-                        let r = json.as_str().unwrap();
-                        let rx = Regex::new("\\[(?P<start>[0-9]+),([0-9]+)?\\)").unwrap();
-                        let cap = rx.captures(r).unwrap();
-                        let start = cap
-                            .name("start")
-                            .map(|mtch| mtch.as_str().to_string())
-                            .unwrap();
-                        let n = start.parse::<i32>().unwrap();
-                        Some(n)
-                    } else if key == "block$" {
-                        let block = json.as_i64().unwrap() as i32;
-                        Some(block)
-                    } else {
-                        None
-                    }
-                });
-                let en = entries.next().unwrap();
-                assert!(entries.next().is_none()); // there should be just one block_range field
-                Ok(en)
-            }
-            _ => unreachable!(
-                "we use `to_json` in our queries, and will therefore always get an object back"
-            ),
-        }
+    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
+        schema.entity_type(&self.entity).unwrap()
     }
 
     /// Map the `EntityData` using the schema information in `Layout`
@@ -583,6 +555,46 @@ impl EntityData {
                 "we use `to_json` in our queries, and will therefore always get an object back"
             ),
         }
+    }
+}
+
+#[derive(QueryableByName, Clone, Debug, Default, Eq)]
+pub struct EntityDataExt {
+    #[diesel(sql_type = Text)]
+    pub entity: String,
+    #[diesel(sql_type = Jsonb)]
+    pub data: serde_json::Value,
+    #[diesel(sql_type = Integer)]
+    pub block_number: i32,
+    #[diesel(sql_type = Text)]
+    pub id: String,
+}
+
+impl Ord for EntityDataExt {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let ord = self.block_number.cmp(&other.block_number);
+        if ord != Ordering::Equal {
+            ord
+        } else {
+            let ord = self.entity.cmp(&other.entity);
+            if ord != Ordering::Equal {
+                ord
+            } else {
+                self.id.cmp(&other.id)
+            }
+        }
+    }
+}
+
+impl PartialOrd for EntityDataExt {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for EntityDataExt {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
     }
 }
 
