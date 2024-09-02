@@ -1,6 +1,7 @@
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
+use graph::blockchain::BlockPtrExt;
 use graph::blockchain::ChainIdentifier;
 
 use graph::components::transaction_receipt::LightTransactionReceipt;
@@ -783,11 +784,11 @@ impl EthereumAdapter {
     }
 
     /// Request blocks by number through JSON-RPC.
-    fn load_blocks_by_numbers_rpc(
+    fn load_block_ptrs_by_numbers_rpc(
         &self,
         logger: Logger,
         numbers: Vec<BlockNumber>,
-    ) -> impl Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send {
+    ) -> impl Stream<Item = Arc<BlockPtrExt>, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         stream::iter_ok::<_, Error>(numbers.into_iter().map(move |number| {
@@ -798,19 +799,29 @@ impl EthereumAdapter {
                 .run(move || {
                     Box::pin(
                         web3.eth()
-                            .block_with_txs(BlockId::Number(Web3BlockNumber::Number(
-                                number.into(),
-                            ))),
+                            .block(BlockId::Number(Web3BlockNumber::Number(number.into()))),
                     )
                     .compat()
                     .from_err::<Error>()
                     .and_then(move |block| {
-                        block.map(Arc::new).ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Ethereum node did not find block with number {:?}",
-                                number
-                            )
-                        })
+                        block
+                            .map(|block| {
+                                let ptr = BlockPtrExt::try_from((
+                                    block.hash,
+                                    block.number,
+                                    block.parent_hash,
+                                    block.timestamp,
+                                ))
+                                .unwrap();
+
+                                Arc::new(ptr)
+                            })
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "Ethereum node did not find block with number {:?}",
+                                    number
+                                )
+                            })
                     })
                     .compat()
                 })
@@ -1690,15 +1701,15 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 
     /// Load Ethereum blocks in bulk by number, returning results as they come back as a Stream.
-    async fn load_blocks_by_numbers(
+    async fn load_block_ptrs_by_numbers(
         &self,
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_numbers: HashSet<BlockNumber>,
-    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = Arc<BlockPtrExt>, Error = Error> + Send> {
         let blocks_map: BTreeMap<i32, Vec<json::Value>> = chain_store
             .cheap_clone()
-            .blocks_by_numbers(block_numbers.iter().map(|&b| b.into()).collect::<Vec<_>>())
+            .block_ptrs_by_numbers(block_numbers.iter().map(|&b| b.into()).collect::<Vec<_>>())
             .await
             .map_err(|e| {
                 error!(&logger, "Error accessing block cache {}", e);
@@ -1706,7 +1717,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
             .unwrap_or_default();
 
-        let mut blocks: Vec<Arc<LightEthereumBlock>> = blocks_map
+        let mut blocks: Vec<Arc<BlockPtrExt>> = blocks_map
             .into_iter()
             .filter_map(|(_number, values)| {
                 if values.len() == 1 {
@@ -1719,7 +1730,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let missing_blocks: Vec<i32> = block_numbers
             .into_iter()
-            .filter(|&number| !blocks.iter().any(|block| block.number() == number))
+            .filter(|&number| !blocks.iter().any(|block| block.block_number() == number))
             .collect();
 
         if !missing_blocks.is_empty() {
@@ -1731,20 +1742,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
         }
 
         Box::new(
-            self.load_blocks_by_numbers_rpc(logger.clone(), missing_blocks)
+            self.load_block_ptrs_by_numbers_rpc(logger.clone(), missing_blocks)
                 .collect()
                 .map(move |new_blocks| {
-                    let upsert_blocks: Vec<_> = new_blocks
-                        .iter()
-                        .map(|block| BlockFinality::Final(block.clone()))
-                        .collect();
-                    let block_refs: Vec<_> = upsert_blocks
-                        .iter()
-                        .map(|block| block as &dyn graph::blockchain::Block)
-                        .collect();
-                    if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
-                        error!(logger, "Error writing to block cache {}", e);
-                    }
                     blocks.extend(new_blocks);
                     blocks.sort_by_key(|block| block.number);
                     stream::iter_ok(blocks)
@@ -2028,6 +2028,9 @@ pub(crate) async fn get_calls(
                 calls: Some(calls),
             }))
         }
+        BlockFinality::Ptr(_) => {
+            unreachable!("get_calls called with BlockFinality::Ptr")
+        }
     }
 }
 
@@ -2207,6 +2210,11 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
             BlockFinality::NonFinal(_block_with_calls) => {
                 unreachable!(
                     "this function should not be called when dealing with non-final blocks"
+                )
+            }
+            BlockFinality::Ptr(_block) => {
+                unreachable!(
+                    "this function should not be called when dealing with header-only blocks"
                 )
             }
         }

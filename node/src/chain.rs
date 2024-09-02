@@ -532,6 +532,7 @@ pub async fn networks_as_chains(
                 };
 
                 let client = Arc::new(cc);
+                let eth_adapters = Arc::new(eth_adapters);
                 let adapter_selector = EthereumAdapterSelector::new(
                     logger_factory.clone(),
                     client.clone(),
@@ -554,7 +555,7 @@ pub async fn networks_as_chains(
                     Arc::new(EthereumBlockRefetcher {}),
                     Arc::new(adapter_selector),
                     Arc::new(EthereumRuntimeAdapterBuilder {}),
-                    Arc::new(eth_adapters.clone()),
+                    eth_adapters,
                     ENV_VARS.reorg_threshold,
                     polling_interval,
                     true,
