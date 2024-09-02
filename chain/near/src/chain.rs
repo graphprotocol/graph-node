@@ -325,7 +325,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
-    async fn load_blocks_by_numbers(
+    async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
         _block_numbers: HashSet<BlockNumber>,

@@ -5,10 +5,11 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Timestamptz;
 use diesel::sql_types::{Bytea, Nullable, Text};
 use diesel_derives::{AsExpression, FromSqlRow};
+use serde::Deserialize;
 use std::convert::TryFrom;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
-use web3::types::{Block, H256};
+use web3::types::{Block, H256, U256, U64};
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::BlockNumber;
@@ -20,7 +21,7 @@ use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression, Deserialize)]
 #[diesel(sql_type = Bytea)]
 pub struct BlockHash(pub Box<[u8]>);
 
@@ -326,6 +327,143 @@ impl From<BlockPtr> for H256 {
 
 impl From<BlockPtr> for BlockNumber {
     fn from(ptr: BlockPtr) -> Self {
+        ptr.number
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Deserialize)]
+pub struct BlockPtrExt {
+    pub hash: BlockHash,
+    pub number: BlockNumber,
+    pub parent_hash: BlockHash,
+    pub timestamp: U256,
+}
+
+impl BlockPtrExt {
+    pub fn new(
+        hash: BlockHash,
+        number: BlockNumber,
+        parent_hash: BlockHash,
+        timestamp: U256,
+    ) -> Self {
+        Self {
+            hash,
+            number,
+            parent_hash,
+            timestamp,
+        }
+    }
+
+    /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
+    /// Hashes are stored in the database in this format.
+    pub fn hash_hex(&self) -> String {
+        self.hash.hash_hex()
+    }
+
+    /// Encodes the parent block hash into a hexadecimal string **without** a "0x" prefix.
+    pub fn parent_hash_hex(&self) -> String {
+        self.parent_hash.hash_hex()
+    }
+
+    /// Block number to be passed into the store. Panics if it does not fit in an i32.
+    pub fn block_number(&self) -> BlockNumber {
+        self.number
+    }
+
+    pub fn hash_as_h256(&self) -> H256 {
+        H256::from_slice(&self.hash_slice()[..32])
+    }
+
+    pub fn parent_hash_as_h256(&self) -> H256 {
+        H256::from_slice(&self.parent_hash_slice()[..32])
+    }
+
+    pub fn hash_slice(&self) -> &[u8] {
+        self.hash.0.as_ref()
+    }
+
+    pub fn parent_hash_slice(&self) -> &[u8] {
+        self.parent_hash.0.as_ref()
+    }
+}
+
+impl fmt::Display for BlockPtrExt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "#{} ({}) [parent: {}]",
+            self.number,
+            self.hash_hex(),
+            self.parent_hash_hex()
+        )
+    }
+}
+
+impl fmt::Debug for BlockPtrExt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "#{} ({}) [parent: {}]",
+            self.number,
+            self.hash_hex(),
+            self.parent_hash_hex()
+        )
+    }
+}
+
+impl slog::Value for BlockPtrExt {
+    fn serialize(
+        &self,
+        record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        slog::Value::serialize(&self.to_string(), record, key, serializer)
+    }
+}
+
+impl IntoValue for BlockPtrExt {
+    fn into_value(self) -> r::Value {
+        object! {
+            __typename: "Block",
+            hash: self.hash_hex(),
+            number: format!("{}", self.number),
+            parent_hash: self.parent_hash_hex(),
+            timestamp: format!("{}", self.timestamp),
+        }
+    }
+}
+
+impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for BlockPtrExt {
+    type Error = anyhow::Error;
+
+    fn try_from(tuple: (Option<H256>, Option<U64>, H256, U256)) -> Result<Self, Self::Error> {
+        let (hash_opt, number_opt, parent_hash, timestamp) = tuple;
+
+        let hash = hash_opt.ok_or_else(|| anyhow!("Block hash is missing"))?;
+        let number = number_opt
+            .ok_or_else(|| anyhow!("Block number is missing"))?
+            .as_u64();
+
+        let block_number =
+            i32::try_from(number).map_err(|_| anyhow!("Block number out of range"))?;
+
+        Ok(BlockPtrExt {
+            hash: hash.into(),
+            number: block_number,
+            parent_hash: parent_hash.into(),
+            timestamp,
+        })
+    }
+}
+impl From<BlockPtrExt> for H256 {
+    fn from(ptr: BlockPtrExt) -> Self {
+        ptr.hash_as_h256()
+    }
+}
+
+impl From<BlockPtrExt> for BlockNumber {
+    fn from(ptr: BlockPtrExt) -> Self {
         ptr.number
     }
 }

@@ -3,7 +3,7 @@ use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
-    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggerFilterWrapper,
+    BlockIngestor, BlockPtrExt, BlockTime, BlockchainKind, ChainIdentifier, TriggerFilterWrapper,
     TriggersAdapterSelector,
 };
 use graph::components::adapter::ChainId;
@@ -156,6 +156,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         let requirements = filter.chain_filter.node_capabilities();
+        let is_using_subgraph_composition = !source_subgraph_stores.is_empty();
         let adapter = TriggersAdapterWrapper::new(
             chain
                 .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
@@ -181,20 +182,26 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         // This is ok because Celo blocks are always final. And we _need_ to do this because
         // some events appear only in eth_getLogs but not in transaction receipts.
         // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
-        let chain_id = match chain.chain_client().as_ref() {
+        let reorg_threshold = match chain.chain_client().as_ref() {
             ChainClient::Rpc(adapter) => {
-                adapter
+                let chain_id = adapter
                     .cheapest()
                     .await
                     .ok_or(anyhow!("unable to get eth adapter for chan_id call"))?
                     .chain_id()
-                    .await?
+                    .await?;
+
+                if CELO_CHAIN_IDS.contains(&chain_id) {
+                    0
+                } else {
+                    chain.reorg_threshold
+                }
             }
-            _ => panic!("expected rpc when using polling blockstream"),
-        };
-        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
-            false => chain.reorg_threshold,
-            true => 0,
+            _ if is_using_subgraph_composition => chain.reorg_threshold,
+            _ => panic!(
+                "expected rpc when using polling blockstream : {}",
+                is_using_subgraph_composition
+            ),
         };
 
         Ok(Box::new(PollingBlockStream::new(
@@ -617,6 +624,8 @@ pub enum BlockFinality {
 
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
+
+    Ptr(Arc<BlockPtrExt>),
 }
 
 impl Default for BlockFinality {
@@ -630,6 +639,7 @@ impl BlockFinality {
         match self {
             BlockFinality::Final(block) => block,
             BlockFinality::NonFinal(block) => &block.ethereum_block.block,
+            BlockFinality::Ptr(_) => unreachable!("light_block called on HeaderOnly"),
         }
     }
 }
@@ -639,6 +649,7 @@ impl<'a> From<&'a BlockFinality> for BlockPtr {
         match block {
             BlockFinality::Final(b) => BlockPtr::from(&**b),
             BlockFinality::NonFinal(b) => BlockPtr::from(&b.ethereum_block),
+            BlockFinality::Ptr(b) => BlockPtr::new(b.hash.clone(), b.number),
         }
     }
 }
@@ -648,6 +659,7 @@ impl Block for BlockFinality {
         match self {
             BlockFinality::Final(block) => block.block_ptr(),
             BlockFinality::NonFinal(block) => block.ethereum_block.block.block_ptr(),
+            BlockFinality::Ptr(block) => BlockPtr::new(block.hash.clone(), block.number),
         }
     }
 
@@ -655,6 +667,9 @@ impl Block for BlockFinality {
         match self {
             BlockFinality::Final(block) => block.parent_ptr(),
             BlockFinality::NonFinal(block) => block.ethereum_block.block.parent_ptr(),
+            BlockFinality::Ptr(block) => {
+                Some(BlockPtr::new(block.parent_hash.clone(), block.number - 1))
+            }
         }
     }
 
@@ -687,6 +702,7 @@ impl Block for BlockFinality {
                 json::to_value(eth_block)
             }
             BlockFinality::NonFinal(block) => json::to_value(&block.ethereum_block),
+            BlockFinality::Ptr(_) => Ok(json::Value::Null),
         }
     }
 
@@ -694,6 +710,7 @@ impl Block for BlockFinality {
         let ts = match self {
             BlockFinality::Final(block) => block.timestamp,
             BlockFinality::NonFinal(block) => block.ethereum_block.block.timestamp,
+            BlockFinality::Ptr(block) => block.timestamp,
         };
         let ts = i64::try_from(ts.as_u64()).unwrap();
         BlockTime::since_epoch(ts, 0)
@@ -735,7 +752,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         .await
     }
 
-    async fn load_blocks_by_numbers(
+    async fn load_block_ptrs_by_numbers(
         &self,
         logger: Logger,
         block_numbers: HashSet<BlockNumber>,
@@ -749,9 +766,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .await?;
 
         let blocks = adapter
-            .load_blocks_by_numbers(logger, self.chain_store.clone(), block_numbers)
+            .load_block_ptrs_by_numbers(logger, self.chain_store.clone(), block_numbers)
             .await
-            .map(|block| BlockFinality::Final(block))
+            .map(|block| BlockFinality::Ptr(block))
             .collect()
             .compat()
             .await?;
@@ -812,6 +829,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 triggers.append(&mut parse_block_triggers(&filter.block, full_block));
                 Ok(BlockWithTriggers::new(block, triggers, logger))
             }
+            BlockFinality::Ptr(_) => unreachable!("triggers_in_block called on HeaderOnly"),
         }
     }
 

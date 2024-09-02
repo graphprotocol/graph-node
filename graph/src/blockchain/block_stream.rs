@@ -412,7 +412,7 @@ async fn scan_subgraph_triggers<C: Blockchain>(
             block_numbers.insert(to);
 
             let blocks = adapter
-                .load_blocks_by_numbers(logger.clone(), block_numbers)
+                .load_block_ptrs_by_numbers(logger.clone(), block_numbers)
                 .await?;
 
             create_subgraph_triggers::<C>(logger.clone(), blocks, filter, entities).await
@@ -581,7 +581,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     /// Get pointer to parent of `block`. This is called when reverting `block`.
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
-    async fn load_blocks_by_numbers(
+    async fn load_block_ptrs_by_numbers(
         &self,
         logger: Logger,
         block_numbers: HashSet<BlockNumber>,

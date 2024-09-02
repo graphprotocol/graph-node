@@ -497,7 +497,7 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Returns the blocks present in the store for the given block numbers.
-    async fn blocks_by_numbers(
+    async fn block_ptrs_by_numbers(
         self: Arc<Self>,
         numbers: Vec<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<serde_json::Value>>, Error>;
