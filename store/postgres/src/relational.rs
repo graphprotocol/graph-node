@@ -550,10 +550,12 @@ impl Layout {
             let block = ede.block_number;
             let entity_type = e.entity_type(&self.input_schema);
             let entity = e.deserialize_with_layout::<Entity>(self, None)?;
+            let vid = ede.vid;
             let ewt = EntityWithType {
                 entity_op,
                 entity_type,
                 entity,
+                vid,
             };
             Ok((ewt, block))
         };
@@ -609,6 +611,12 @@ impl Layout {
                 }
             };
         }
+
+        // sort the elements in each blocks bucket by vid
+        for (_, vec) in &mut entities {
+            vec.sort_by(|a, b| a.vid.cmp(&b.vid));
+        }
+
         Ok(entities)
     }
 
