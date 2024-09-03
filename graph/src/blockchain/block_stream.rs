@@ -445,6 +445,7 @@ pub struct EntityWithType {
     pub entity_op: EntitySubgraphOperation,
     pub entity_type: EntityType,
     pub entity: Entity,
+    pub vid: i64,
 }
 
 async fn get_entities_for_range(
