@@ -568,6 +568,8 @@ pub struct EntityDataExt {
     pub block_number: i32,
     #[diesel(sql_type = Text)]
     pub id: String,
+    #[diesel(sql_type = BigInt)]
+    pub vid: i64,
 }
 
 impl Ord for EntityDataExt {
@@ -2068,7 +2070,7 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
                 } else {
                     self.mut_range.compare_column(&mut out)
                 }
-                out.push_sql("as block_number, id\n");
+                out.push_sql("as block_number, id, vid\n");
                 out.push_sql("  from ");
                 out.push_sql(table.qualified_name.as_str());
                 out.push_sql(" e\n  where");
