@@ -161,6 +161,10 @@ enum Feature {
   grafting
   fullTextSearch
   ipfsOnEthereumContracts
+  aggregations
+  declaredEthCalls
+  immutableEntities
+  bytesAsIds
 }
 
 input BlockInput {

@@ -549,7 +549,7 @@ fn subgraph_features() {
         assert_eq!(
             vec![
                 SubgraphFeature::NonFatalErrors.to_string(),
-                SubgraphFeature::FullTextSearch.to_string()
+                SubgraphFeature::FullTextSearch.to_string(),
             ],
             features
         );

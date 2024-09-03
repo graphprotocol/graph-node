@@ -33,6 +33,10 @@ pub enum SubgraphFeature {
     NonFatalErrors,
     Grafting,
     FullTextSearch,
+    Aggregations,
+    BytesAsIds,
+    DeclaredEthCalls,
+    ImmutableEntities,
     #[serde(alias = "nonDeterministicIpfs")]
     IpfsOnEthereumContracts,
 }
@@ -154,11 +158,15 @@ mod tests {
         FullTextSearch,
         IpfsOnEthereumContracts,
     ];
-    const STRING: [&str; 4] = [
+    const STRING: [&str; 8] = [
         "nonFatalErrors",
         "grafting",
         "fullTextSearch",
         "ipfsOnEthereumContracts",
+        "declaredEthCalls",
+        "aggregations",
+        "immutableEntities",
+        "bytesAsIds",
     ];
 
     #[test]
