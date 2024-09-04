@@ -1,10 +1,10 @@
-use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use lazy_static::lazy_static;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::ops::Range;
 use test_store::*;
@@ -123,48 +123,39 @@ async fn insert_count(
     deployment: &DeploymentLocator,
     block: u8,
     count: u8,
-    counter_type: &EntityType,
-    id: &str,
+    immutable: bool,
 ) {
-    let count_key_local = |id: &str| counter_type.parse_key(id).unwrap();
+    let count_key_local = |counter_type: &EntityType, id: &str| counter_type.parse_key(id).unwrap();
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
         count: count as i32,
         vid: count as i64,
     };
-    let entity_op = EntityOperation::Set {
-        key: count_key_local(&data.get("id").unwrap().to_string()),
-        data,
+    let entity_op = if (block != 3 && block != 5 && block != 7) || !immutable {
+        EntityOperation::Set {
+            key: count_key_local(&COUNTER_TYPE, &data.get("id").unwrap().to_string()),
+            data,
+        }
+    } else {
+        EntityOperation::Remove {
+            key: count_key_local(&COUNTER_TYPE, &data.get("id").unwrap().to_string()),
+        }
     };
-    transact_entity_operations(store, deployment, block_pointer(block), vec![entity_op])
+    let mut ops = vec![entity_op];
+    if immutable && block < 6 {
+        let data = entity! { TEST_SUBGRAPH_SCHEMA =>
+            id: &block.to_string(),
+            count :count as i32,
+        };
+        let entity_op = EntityOperation::Set {
+            key: count_key_local(&COUNTER2_TYPE, &data.get("id").unwrap().to_string()),
+            data,
+        };
+        ops.push(entity_op);
+    }
+    transact_entity_operations(store, deployment, block_pointer(block), ops)
         .await
         .unwrap();
-}
-
-async fn insert_count_mutable(
-    store: &Arc<DieselSubgraphStore>,
-    deployment: &DeploymentLocator,
-    block: u8,
-    count: u8,
-) {
-    insert_count(store, deployment, block, count, &COUNTER_TYPE, "1").await;
-}
-
-async fn insert_count_immutable(
-    store: &Arc<DieselSubgraphStore>,
-    deployment: &DeploymentLocator,
-    block: u8,
-    count: u8,
-) {
-    insert_count(
-        store,
-        deployment,
-        block,
-        count,
-        &COUNTER2_TYPE,
-        &(block / 2).to_string(),
-    )
-    .await;
 }
 
 async fn pause_writer(deployment: &DeploymentLocator) {
@@ -192,13 +183,13 @@ where
         }
 
         for count in 1..4 {
-            insert_count_mutable(&subgraph_store, &deployment, count, count).await;
+            insert_count(&subgraph_store, &deployment, count, count, false).await;
         }
 
         // Test reading back with pending writes to the same entity
         pause_writer(&deployment).await;
         for count in 4..7 {
-            insert_count_mutable(&subgraph_store, &deployment, count, count).await;
+            insert_count(&subgraph_store, &deployment, count, count, false).await;
         }
         assert_eq!(6, read_count());
 
@@ -207,7 +198,7 @@ where
 
         // Test reading back with pending writes and a pending revert
         for count in 7..10 {
-            insert_count_mutable(&subgraph_store, &deployment, count, count).await;
+            insert_count(&subgraph_store, &deployment, count, count, false).await;
         }
         writable
             .revert_block_operations(block_pointer(2), FirehoseCursor::None)
@@ -332,19 +323,46 @@ fn restart() {
 #[test]
 fn read_range_test() {
     run_test(|store, writable, deployment| async move {
+        let result_entities = vec![
+            r#"(1, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(2), id: String("1") }, vid: 1 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(2), id: String("1") }, vid: 1 }])"#,
+            r#"(2, [EntityWithType { entity_op: Modify, entity_type: EntityType(Counter), entity: Entity { count: Int(4), id: String("1") }, vid: 2 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(4), id: String("2") }, vid: 2 }])"#,
+            r#"(3, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(4), id: String("1") }, vid: 2 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(6), id: String("3") }, vid: 3 }])"#,
+            r#"(4, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(8), id: String("1") }, vid: 3 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(8), id: String("4") }, vid: 4 }])"#,
+            r#"(5, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(8), id: String("1") }, vid: 3 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(10), id: String("5") }, vid: 5 }])"#,
+            r#"(6, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1") }, vid: 4 }])"#,
+            r#"(7, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1") }, vid: 4 }])"#,
+        ];
         let subgraph_store = store.subgraph_store();
         writable.deployment_synced().unwrap();
 
-        for count in 1..=7 {
-            insert_count_mutable(&subgraph_store, &deployment, 2 * count, 4 * count).await;
-            insert_count_immutable(&subgraph_store, &deployment, 2 * count + 1, 4 * count).await;
+        for count in 1..=5 {
+            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
         }
         writable.flush().await.unwrap();
-
-        let br: Range<BlockNumber> = 4..8;
         writable.deployment_synced().unwrap();
+
+        let br: Range<BlockNumber> = 0..18;
         let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
-        let e = writable.get_range(entity_types, br).unwrap();
-        assert_eq!(e.len(), 5) // TODO: fix it - it should be 4 as the range is open
+        let e: BTreeMap<i32, Vec<EntityWithType>> = writable
+            .get_range(entity_types.clone(), br.clone())
+            .unwrap();
+        assert_eq!(e.len(), 5);
+        for en in &e {
+            let index = *en.0 - 1;
+            let a = result_entities[index as usize];
+            assert_eq!(a, format!("{:?}", en));
+        }
+        for count in 6..=7 {
+            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+        }
+        writable.flush().await.unwrap();
+        writable.deployment_synced().unwrap();
+        let e: BTreeMap<i32, Vec<EntityWithType>> = writable.get_range(entity_types, br).unwrap();
+        assert_eq!(e.len(), 7);
+        for en in &e {
+            let index = *en.0 - 1;
+            let a = result_entities[index as usize];
+            assert_eq!(a, format!("{:?}", en));
+        }
     })
 }

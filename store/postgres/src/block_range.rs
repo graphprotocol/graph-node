@@ -135,7 +135,7 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
 /// Helper for generating SQL fragments for selecting entities in a specific block range
 #[derive(Debug, Clone, Copy)]
 pub enum EntityBlockRange {
-    Mutable((BlockRange, bool)), // TODO: check if this is a proper type here (maybe Range<BlockNumber>?)
+    Mutable((BlockRange, bool)),
     Immutable(BlockRange),
 }
 

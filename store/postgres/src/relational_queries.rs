@@ -579,6 +579,7 @@ impl Ord for EntityDataExt {
         if ord != Ordering::Equal {
             ord
         } else {
+            // TODO: check if this and the next cmp for string match postgress C localle
             let ord = self.entity.cmp(&other.entity);
             if ord != Ordering::Equal {
                 ord
@@ -2075,7 +2076,7 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
                 out.push_sql("  from ");
                 out.push_sql(table.qualified_name.as_str());
                 out.push_sql(" e\n  where");
-                // TODO: do we need to care about it?
+                // TODO: add casuality region to the query
                 // if self.table.has_causality_region {
                 //     out.push_sql("causality_region = ");
                 //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
