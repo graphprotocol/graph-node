@@ -224,6 +224,9 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             }
         };
 
+        let initial_block =
+            initial_block.map(|x| x.max(self.source.start_block.unwrap_or_default() as u64));
+
         let initial_block: Option<i32> = initial_block
             .map_or(Ok(None), |x: u64| TryInto::<i32>::try_into(x).map(Some))
             .map_err(anyhow::Error::from)?;
@@ -358,6 +361,34 @@ mod test {
                     params: None,
                 },
                 start_block: None,
+            },
+            mapping: UnresolvedMapping {
+                api_version: "0.0.7".into(),
+                kind: "substreams/graph-entities".into(),
+                handler: None,
+                file: None,
+            },
+        };
+        assert_eq!(ds, expected);
+    }
+
+    #[test]
+    fn parse_data_source_with_startblock() {
+        let ds: UnresolvedDataSource =
+            serde_yaml::from_str(TEMPLATE_DATA_SOURCE_WITH_START_BLOCK).unwrap();
+        let expected = UnresolvedDataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::UnresolvedSource {
+                package: crate::UnresolvedPackage {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                    params: None,
+                },
+                start_block: Some(567),
             },
             mapping: UnresolvedMapping {
                 api_version: "0.0.7".into(),
@@ -594,6 +625,22 @@ mod test {
         name: Uniswap
         network: mainnet
         source:
+          package:
+            moduleName: output
+            file:
+              /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
+              # This IPFs path would be generated from a local path at deploy time
+        mapping:
+          kind: substreams/graph-entities
+          apiVersion: 0.0.7
+    "#;
+
+    const TEMPLATE_DATA_SOURCE_WITH_START_BLOCK: &str = r#"
+        kind: substreams
+        name: Uniswap
+        network: mainnet
+        source:
+          startBlock: 567
           package:
             moduleName: output
             file:
