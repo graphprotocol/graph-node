@@ -298,7 +298,7 @@ pub struct Chain {
     reorg_threshold: BlockNumber,
     polling_ingestor_interval: Duration,
     pub is_ingestible: bool,
-    block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+    pub block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
     adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
     runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,

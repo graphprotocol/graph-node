@@ -1,0 +1,13 @@
+{
+  "name": "auto-graft-sync",
+  "version": "0.1.0",
+  "scripts": {
+    "codegen": "graph codegen graft-base.yaml --skip-migrations",
+    "build-graft-root": "graph build graft-base.yaml --ipfs $IPFS_URI",
+    "build:test-auto-graft-sync": "node generateAndPublishManifestFromTemplate.js"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "0.60.0",
+    "@graphprotocol/graph-ts": "0.31.0"
+  }
+}

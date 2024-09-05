@@ -466,7 +466,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         ))
     }
 
-    async fn start_subgraph_inner<C: Blockchain>(
+    pub async fn start_subgraph_inner<C: Blockchain>(
         &self,
         logger: Logger,
         deployment: DeploymentLocator,
@@ -503,5 +503,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         });
 
         Ok(())
+    }
+
+    pub fn subgraph_logger(&self, loc: &DeploymentLocator) -> Logger {
+        self.logger_factory.subgraph_logger(loc)
+    }
+
+    pub fn get_env_vars(&self) -> Arc<EnvVars> {
+        self.env_vars.cheap_clone()
     }
 }

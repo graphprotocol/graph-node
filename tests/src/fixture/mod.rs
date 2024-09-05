@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Error;
 use async_stream::stream;
+use ethereum::{WrappedEthChain, WrappedSubgraphInstanceManager, WrappedSubgraphRegistrar};
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -120,9 +121,9 @@ impl CommonChainConfig {
     }
 }
 
-pub struct TestChain<C: Blockchain> {
+pub struct TestChain<C: Blockchain, C2: Blockchain = C> {
     pub chain: Arc<C>,
-    pub block_stream_builder: Arc<MutexBlockStreamBuilder<C>>,
+    pub block_stream_builder: Arc<MutexBlockStreamBuilder<C2>>,
 }
 
 impl TestChainTrait<Chain> for TestChain<Chain> {
@@ -133,6 +134,18 @@ impl TestChainTrait<Chain> for TestChain<Chain> {
 
     fn chain(&self) -> Arc<Chain> {
         self.chain.clone()
+    }
+}
+
+impl TestChainTrait<WrappedEthChain, Chain> for TestChain<WrappedEthChain, Chain> {
+    fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<Chain>>) {
+        let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
+        *self.chain.1.lock().unwrap() = static_block_stream.clone();
+        *self.block_stream_builder.0.lock().unwrap() = static_block_stream;
+    }
+
+    fn chain(&self) -> Arc<WrappedEthChain> {
+        Arc::clone(&self.chain)
     }
 }
 
@@ -149,23 +162,22 @@ impl TestChainTrait<graph_chain_substreams::Chain> for TestChainSubstreams {
     }
 }
 
-pub trait TestChainTrait<C: Blockchain> {
-    fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C>>);
-
+pub trait TestChainTrait<C: Blockchain, C2: Blockchain = C> {
     fn chain(&self) -> Arc<C>;
+    fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C2>>);
 }
 
 pub struct TestContext {
     pub logger: Logger,
     pub provider: Arc<
         IpfsSubgraphAssignmentProvider<
-            SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
+            WrappedSubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
         >,
     >,
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
     pub subgraph_name: SubgraphName,
-    pub instance_manager: SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
+    pub instance_manager: WrappedSubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub arweave_resolver: Arc<dyn ArweaveResolver>,
     pub env_vars: Arc<EnvVars>,
@@ -203,14 +215,12 @@ impl TestContext {
     pub async fn runner(
         &self,
         stop_block: BlockPtr,
-    ) -> graph_core::SubgraphRunner<
-        graph_chain_ethereum::Chain,
-        RuntimeHostBuilder<graph_chain_ethereum::Chain>,
-    > {
+    ) -> graph_core::SubgraphRunner<WrappedEthChain, RuntimeHostBuilder<WrappedEthChain>> {
         let (logger, deployment, raw) = self.get_runner_context().await;
         let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
 
         self.instance_manager
+            .inner
             .build_subgraph_runner(
                 logger,
                 self.env_vars.cheap_clone(),
@@ -236,6 +246,7 @@ impl TestContext {
         );
 
         self.instance_manager
+            .inner
             .build_subgraph_runner(
                 logger,
                 self.env_vars.cheap_clone(),
@@ -436,10 +447,10 @@ pub struct TestInfo {
     pub hash: DeploymentHash,
 }
 
-pub async fn setup<C: Blockchain>(
+pub async fn setup<C: Blockchain, C2: Blockchain>(
     test_info: &TestInfo,
     stores: &Stores,
-    chain: &impl TestChainTrait<C>,
+    chain: &impl TestChainTrait<C, C2>,
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
@@ -459,6 +470,8 @@ pub async fn setup<C: Blockchain>(
 
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain.chain());
+    println!("configured chain map {:?}", blockchain_map);
+    let blockchain_map = Arc::new(blockchain_map);
 
     let static_filters = env_vars.experimental_static_filters;
 
@@ -493,7 +506,6 @@ pub async fn setup<C: Blockchain>(
     );
     let sg_count = Arc::new(SubgraphCountMetric::new(mock_registry.cheap_clone()));
 
-    let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -506,6 +518,11 @@ pub async fn setup<C: Blockchain>(
         arweave_service,
         static_filters,
     );
+
+    // wrap the subgraph instance manager with our custom chain so the runner works
+    let wrapped_subgraph_instance_manager = WrappedSubgraphInstanceManager {
+        inner: Arc::new(subgraph_instance_manager),
+    };
 
     // Graphql runner
     let subscription_manager = Arc::new(PanicSubscriptionManager {});
@@ -529,13 +546,13 @@ pub async fn setup<C: Blockchain>(
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
         link_resolver.cheap_clone(),
-        subgraph_instance_manager.clone(),
+        wrapped_subgraph_instance_manager.clone(),
         sg_count,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
 
-    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+    let subgraph_registrar = IpfsSubgraphRegistrar::new(
         &logger_factory,
         link_resolver.cheap_clone(),
         subgraph_provider.clone(),
@@ -545,17 +562,19 @@ pub async fn setup<C: Blockchain>(
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
-    ));
+    );
+
+    let wrapped_subgraph_registrar = Arc::new(WrappedSubgraphRegistrar(subgraph_registrar));
 
     SubgraphRegistrar::create_subgraph(
-        subgraph_registrar.as_ref(),
+        wrapped_subgraph_registrar.as_ref(),
         test_info.subgraph_name.clone(),
     )
     .await
     .expect("unable to create subgraph");
 
     let deployment = SubgraphRegistrar::create_subgraph_version(
-        subgraph_registrar.as_ref(),
+        wrapped_subgraph_registrar.as_ref(),
         test_info.subgraph_name.clone(),
         test_info.hash.clone(),
         node_id.clone(),
@@ -576,7 +595,7 @@ pub async fn setup<C: Blockchain>(
         deployment,
         subgraph_name: test_info.subgraph_name.clone(),
         graphql_runner,
-        instance_manager: subgraph_instance_manager,
+        instance_manager: wrapped_subgraph_instance_manager,
         link_resolver,
         env_vars,
         indexing_status_service,
@@ -652,7 +671,7 @@ pub async fn wait_for_sync(
             return Err(fatal_error);
         }
 
-        if block_ptr == stop_block {
+        if block_ptr.number >= stop_block.number {
             info!(logger, "TEST: reached stop block");
             return Ok(());
         }
@@ -742,7 +761,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
 ///
 /// If the stream is reset, emitted reorged blocks will not be emitted again.
 /// See also: static-stream-builder
-struct StaticStreamBuilder<C: Blockchain> {
+pub struct StaticStreamBuilder<C: Blockchain> {
     chain: Vec<BlockWithTriggers<C>>,
 }
 
