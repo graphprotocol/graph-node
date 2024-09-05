@@ -100,6 +100,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
 
         Ok(Box::new(FirehoseBlockStream::new(
+            chain.chain_store(),
             deployment.hash,
             chain.chain_client(),
             subgraph_current_block,
