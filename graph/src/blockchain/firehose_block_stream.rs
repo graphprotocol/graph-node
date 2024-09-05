@@ -4,7 +4,7 @@ use super::block_stream::{
 use super::client::ChainClient;
 use super::Blockchain;
 use crate::blockchain::block_stream::FirehoseCursor;
-use crate::blockchain::TriggerFilter;
+use crate::blockchain::{Block, TriggerFilter};
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 use crate::{firehose, firehose::FirehoseEndpoint};
@@ -108,6 +108,7 @@ where
     C: Blockchain,
 {
     pub fn new<F>(
+        chain_store: Arc<dyn ChainStore>,
         deployment: DeploymentHash,
         client: Arc<ChainClient<C>>,
         subgraph_current_block: Option<BlockPtr>,
@@ -134,6 +135,7 @@ where
         let metrics = FirehoseBlockStreamMetrics::new(registry, deployment.clone());
         FirehoseBlockStream {
             stream: Box::pin(stream_blocks(
+                chain_store,
                 client,
                 cursor,
                 deployment,
@@ -148,6 +150,7 @@ where
 }
 
 fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
+    chain_store: Arc<dyn ChainStore>,
     client: Arc<ChainClient<C>>,
     mut latest_cursor: FirehoseCursor,
     deployment: DeploymentHash,
@@ -257,6 +260,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
                     for await response in stream {
                         match process_firehose_response(
+                            chain_store.clone(),
                             &endpoint,
                             response,
                             &mut check_subgraph_continuity,
@@ -344,6 +348,7 @@ enum BlockResponse<C: Blockchain> {
 }
 
 async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
+    chain_store: Arc<dyn ChainStore>,
     endpoint: &Arc<FirehoseEndpoint>,
     result: Result<firehose::Response, Status>,
     check_subgraph_continuity: &mut bool,
@@ -359,11 +364,46 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
         .await
         .context("Mapping block to BlockStreamEvent failed")?;
 
+    if let BlockStreamEvent::ProcessBlock(block, _) = &event {
+        info!(logger, "Inserting block to cache"; "block_number" => block.block.number(), "block_hash" => format!("{:?}", block.block.hash()));
+
+        let start_time = Instant::now();
+
+        let result = chain_store
+            .insert_block(Arc::new(block.block.clone()))
+            .await;
+
+        let elapsed = start_time.elapsed();
+
+        match result {
+            Ok(_) => {
+                trace!(
+                    logger,
+                    "Block inserted to cache successfully";
+                    "block_number" => block.block.number(),
+                    "block_hash" => format!("{:?}", block.block.hash()),
+                    "time_taken" => format!("{:?}", elapsed)
+                );
+            }
+            Err(e) => {
+                error!(
+                    logger,
+                    "Failed to insert block into store";
+                    "block_number" => block.block.number(),
+                    "block_hash" => format!("{:?}", block.block.hash()),
+                    "error" => format!("{:?}", e),
+                    "time_taken" => format!("{:?}", elapsed)
+                );
+            }
+        }
+    }
+
     if *check_subgraph_continuity {
         info!(logger, "Firehose started from a subgraph pointer without an existing cursor, ensuring chain continuity");
 
         if let BlockStreamEvent::ProcessBlock(ref block, _) = event {
             let previous_block_ptr = block.parent_ptr();
+
             if previous_block_ptr.is_some() && previous_block_ptr.as_ref() != subgraph_current_block
             {
                 warn!(&logger,

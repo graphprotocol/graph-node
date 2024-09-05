@@ -1956,6 +1956,27 @@ impl ChainStore {
 
         Ok(block_map)
     }
+
+    async fn save_block(&self, block: Arc<dyn Block>, allow_update: bool) -> Result<(), Error> {
+        // We should always have the parent block available to us at this point.
+        if let Some(parent_hash) = block.parent_hash() {
+            let block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
+            self.recent_blocks_cache.insert_block(block);
+        }
+
+        let pool = self.pool.clone();
+        let network = self.chain.clone();
+        let storage = self.storage.clone();
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|conn| {
+                storage
+                    .upsert_block(conn, &network, block.as_ref(), allow_update)
+                    .map_err(CancelableError::from)
+            })
+        })
+        .await
+        .map_err(Error::from)
+    }
 }
 
 fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<BlockPtrExt, Error> {
@@ -1984,24 +2005,11 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
-        // We should always have the parent block available to us at this point.
-        if let Some(parent_hash) = block.parent_hash() {
-            let block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
-            self.recent_blocks_cache.insert_block(block);
-        }
+        self.save_block(block, true).await
+    }
 
-        let pool = self.pool.clone();
-        let network = self.chain.clone();
-        let storage = self.storage.clone();
-        pool.with_conn(move |conn, _| {
-            conn.transaction(|conn| {
-                storage
-                    .upsert_block(conn, &network, block.as_ref(), true)
-                    .map_err(CancelableError::from)
-            })
-        })
-        .await
-        .map_err(Error::from)
+    async fn insert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
+        self.save_block(block, false).await
     }
 
     fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
