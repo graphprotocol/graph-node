@@ -5,7 +5,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Timestamptz;
 use diesel::sql_types::{Bytea, Nullable, Text};
 use diesel_derives::{AsExpression, FromSqlRow};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::convert::TryFrom;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
@@ -21,7 +21,7 @@ use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
 #[diesel(sql_type = Bytea)]
 pub struct BlockHash(pub Box<[u8]>);
 
@@ -46,6 +46,16 @@ impl BlockHash {
 
     pub fn zero() -> Self {
         Self::from(H256::zero())
+    }
+}
+
+impl<'de> Deserialize<'de> for BlockHash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        BlockHash::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -331,9 +341,25 @@ impl From<BlockPtr> for BlockNumber {
     }
 }
 
+fn deserialize_block_number<'de, D>(deserializer: D) -> Result<BlockNumber, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+
+    if s.starts_with("0x") {
+        let s = s.trim_start_matches("0x");
+        i32::from_str_radix(s, 16).map_err(serde::de::Error::custom)
+    } else {
+        i32::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockPtrExt {
     pub hash: BlockHash,
+    #[serde(deserialize_with = "deserialize_block_number")]
     pub number: BlockNumber,
     pub parent_hash: BlockHash,
     pub timestamp: U256,
@@ -575,5 +601,67 @@ impl TryFrom<&Value> for BlockTime {
 impl ToSql<Timestamptz, Pg> for BlockTime {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <Timestamp as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_blockhash_deserialization() {
+        let json_data = "\"0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac\"";
+
+        let block_hash: BlockHash =
+            serde_json::from_str(json_data).expect("Deserialization failed");
+
+        let expected_bytes =
+            hex::decode("8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac")
+                .expect("Hex decoding failed");
+
+        assert_eq!(
+            *block_hash.0, expected_bytes,
+            "BlockHash does not match expected bytes"
+        );
+    }
+
+    #[test]
+    fn test_block_ptr_ext_deserialization() {
+        // JSON data with a hex string for BlockNumber
+        let json_data = r#"
+        {
+            "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
+            "number": "0x2A",
+            "parentHash": "0xabc123",
+            "timestamp": "123456789012345678901234567890"
+        }
+        "#;
+
+        // Deserialize the JSON string into a BlockPtrExt
+        let block_ptr_ext: BlockPtrExt =
+            serde_json::from_str(json_data).expect("Deserialization failed");
+
+        // Verify the deserialized values
+        assert_eq!(block_ptr_ext.number, 42); // 0x2A in hex is 42 in decimal
+    }
+
+    #[test]
+    fn test_invalid_block_number_deserialization() {
+        let invalid_json_data = r#"
+        {
+            "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
+            "number": "invalid_hex_string",
+            "parentHash": "0xabc123",
+            "timestamp": "123456789012345678901234567890"
+        }
+        "#;
+
+        let result: Result<BlockPtrExt, _> = serde_json::from_str(invalid_json_data);
+
+        assert!(
+            result.is_err(),
+            "Deserialization should have failed for invalid block number"
+        );
     }
 }
