@@ -204,6 +204,12 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             ),
         };
 
+        let max_block_range_size = if is_using_subgraph_composition {
+            ENV_VARS.max_block_range_size * 10
+        } else {
+            ENV_VARS.max_block_range_size
+        };
+
         Ok(Box::new(PollingBlockStream::new(
             chain_store,
             chain_head_update_stream,
@@ -214,7 +220,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             start_blocks,
             reorg_threshold,
             logger,
-            ENV_VARS.max_block_range_size,
+            max_block_range_size,
             ENV_VARS.target_triggers_per_block_range,
             unified_api_version,
             subgraph_current_block,
