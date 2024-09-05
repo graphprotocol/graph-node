@@ -547,7 +547,9 @@ macro_rules! deserialize_data_source {
                         .map($t::Onchain)
                 } else {
                     Err(serde::de::Error::custom(format!(
-                        "data source has invalid `kind`; expected {}, file/ipfs",
+                        "data source ({}) has invalid `kind`({}); expected {}, file/ipfs",
+                        std::any::type_name::<$t<C>>(),
+                        kind,
                         C::KIND,
                     )))
                 }

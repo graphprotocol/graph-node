@@ -63,7 +63,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await?;
 
-                    self.start_subgraph_inner(logger, loc, runner).await
+                    self.start_subgraph_thread(logger, loc, runner).await
                 }
                 BlockchainKind::Ethereum => {
                     let runner = instance_manager
@@ -77,7 +77,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await?;
 
-                    self.start_subgraph_inner(logger, loc, runner).await
+                    self.start_subgraph_thread(logger, loc, runner).await
                 }
                 BlockchainKind::Near => {
                     let runner = instance_manager
@@ -91,7 +91,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await?;
 
-                    self.start_subgraph_inner(logger, loc, runner).await
+                    self.start_subgraph_thread(logger, loc, runner).await
                 }
                 BlockchainKind::Cosmos => {
                     let runner = instance_manager
@@ -105,7 +105,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await?;
 
-                    self.start_subgraph_inner(logger, loc, runner).await
+                    self.start_subgraph_thread(logger, loc, runner).await
                 }
                 BlockchainKind::Substreams => {
                     let runner = instance_manager
@@ -119,7 +119,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await?;
 
-                    self.start_subgraph_inner(logger, loc, runner).await
+                    self.start_subgraph_thread(logger, loc, runner).await
                 }
                 BlockchainKind::Starknet => {
                     let runner = instance_manager
@@ -133,7 +133,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await?;
 
-                    self.start_subgraph_inner(logger, loc, runner).await
+                    self.start_subgraph_thread(logger, loc, runner).await
                 }
             }
         };
@@ -466,7 +466,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         ))
     }
 
-    async fn start_subgraph_inner<C: Blockchain>(
+    pub async fn start_subgraph_thread<C: Blockchain>(
         &self,
         logger: Logger,
         deployment: DeploymentLocator,
@@ -503,5 +503,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         });
 
         Ok(())
+    }
+
+    pub fn subgraph_logger(&self, loc: &DeploymentLocator) -> Logger {
+        self.logger_factory.subgraph_logger(loc)
+    }
+
+    pub fn get_env_vars(&self) -> Arc<EnvVars> {
+        self.env_vars.cheap_clone()
     }
 }

@@ -155,6 +155,7 @@ impl StoreBuilder {
             notification_sender,
             fork_base,
             registry,
+            config.auto_graft_sync,
         ));
 
         (store, pools, coord)

@@ -491,7 +491,8 @@ impl FirehoseEndpoint {
     }
 }
 
-#[derive(Debug)]
+// Clone is still required here for the runner tests.
+#[derive(Debug, Clone)]
 pub struct FirehoseEndpoints(ChainName, ProviderManager<Arc<FirehoseEndpoint>>);
 
 impl FirehoseEndpoints {
