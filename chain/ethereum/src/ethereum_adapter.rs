@@ -829,7 +829,7 @@ impl EthereumAdapter {
                 .compat()
                 .from_err()
         }))
-        .buffered(ENV_VARS.block_batch_size)
+        .buffered(ENV_VARS.block_ptr_batch_size)
     }
 
     /// Request blocks ptrs for numbers through JSON-RPC.
