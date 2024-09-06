@@ -1043,6 +1043,7 @@ impl ReadStore for EmptyStore {
     fn get_range(
         &self,
         _entity_types: Vec<EntityType>,
+        _causality_region: CausalityRegion,
         _block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         Ok(BTreeMap::new())
