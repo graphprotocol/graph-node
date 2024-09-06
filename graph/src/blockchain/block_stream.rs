@@ -1,5 +1,5 @@
 use crate::blockchain::SubgraphFilter;
-use crate::data_source::subgraph;
+use crate::data_source::{subgraph, CausalityRegion};
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
@@ -460,7 +460,7 @@ async fn get_entities_for_range(
         let entity_type = schema.entity_type(entity_name)?;
         entity_types.push(entity_type);
     }
-    Ok(store.get_range(entity_types, from..to)?)
+    Ok(store.get_range(entity_types, CausalityRegion::ONCHAIN, from..to)?)
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
