@@ -232,6 +232,7 @@ pub trait ReadStore: Send + Sync + 'static {
     fn get_range(
         &self,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError>;
 
@@ -260,9 +261,10 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
     fn get_range(
         &self,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
-        (**self).get_range(entity_types, block_range)
+        (**self).get_range(entity_types, causality_region, block_range)
     }
 
     fn get_derived(

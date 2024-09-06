@@ -355,12 +355,14 @@ impl SyncStore {
     fn get_range(
         &self,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         retry::forever(&self.logger, "get_range", || {
             self.writable.get_range(
                 self.site.cheap_clone(),
                 entity_types.clone(),
+                causality_region,
                 block_range.clone(),
             )
         })
@@ -1235,9 +1237,11 @@ impl Queue {
     fn get_range(
         &self,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
-        self.store.get_range(entity_types, block_range)
+        self.store
+            .get_range(entity_types, causality_region, block_range)
     }
 
     fn get_derived(
@@ -1455,11 +1459,14 @@ impl Writer {
     fn get_range(
         &self,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_range(entity_types, block_range),
-            Writer::Async { queue, .. } => queue.get_range(entity_types, block_range),
+            Writer::Sync(store) => store.get_range(entity_types, causality_region, block_range),
+            Writer::Async { queue, .. } => {
+                queue.get_range(entity_types, causality_region, block_range)
+            }
         }
     }
 
@@ -1594,9 +1601,11 @@ impl ReadStore for WritableStore {
     fn get_range(
         &self,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
-        self.writer.get_range(entity_types, block_range)
+        self.writer
+            .get_range(entity_types, causality_region, block_range)
     }
 
     fn get_derived(

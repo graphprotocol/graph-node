@@ -1064,11 +1064,12 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         let mut conn = self.get_conn()?;
         let layout = self.layout(&mut conn, site)?;
-        layout.find_range(&mut conn, entity_types, block_range)
+        layout.find_range(&mut conn, entity_types, causality_region, block_range)
     }
 
     pub(crate) fn get_derived(

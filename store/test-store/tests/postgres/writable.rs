@@ -344,7 +344,7 @@ fn read_range_test() {
         let br: Range<BlockNumber> = 0..18;
         let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
         let e: BTreeMap<i32, Vec<EntityWithType>> = writable
-            .get_range(entity_types.clone(), br.clone())
+            .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
             .unwrap();
         assert_eq!(e.len(), 5);
         for en in &e {
@@ -357,7 +357,9 @@ fn read_range_test() {
         }
         writable.flush().await.unwrap();
         writable.deployment_synced().unwrap();
-        let e: BTreeMap<i32, Vec<EntityWithType>> = writable.get_range(entity_types, br).unwrap();
+        let e: BTreeMap<i32, Vec<EntityWithType>> = writable
+            .get_range(entity_types, CausalityRegion::ONCHAIN, br)
+            .unwrap();
         assert_eq!(e.len(), 7);
         for en in &e {
             let index = *en.0 - 1;
