@@ -2024,6 +2024,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 #[derive(Debug, Clone)]
 pub struct FindRangeQuery<'a> {
     tables: &'a Vec<&'a Table>,
+    causality_region: CausalityRegion,
     is_upper_range: bool,
     imm_range: EntityBlockRange,
     mut_range: EntityBlockRange,
@@ -2032,6 +2033,7 @@ pub struct FindRangeQuery<'a> {
 impl<'a> FindRangeQuery<'a> {
     pub fn new(
         tables: &'a Vec<&Table>,
+        causality_region: CausalityRegion,
         is_upper_range: bool,
         block_range: Range<BlockNumber>,
     ) -> Self {
@@ -2039,6 +2041,7 @@ impl<'a> FindRangeQuery<'a> {
         let mut_range = EntityBlockRange::new(false, block_range, is_upper_range);
         Self {
             tables,
+            causality_region,
             is_upper_range,
             imm_range,
             mut_range,
@@ -2075,12 +2078,12 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
                 out.push_sql("  from ");
                 out.push_sql(table.qualified_name.as_str());
                 out.push_sql(" e\n  where");
-                // TODO: add casuality region to the query
-                // if self.table.has_causality_region {
-                //     out.push_sql("causality_region = ");
-                //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
-                //     out.push_sql(" and ");
-                // }
+                // add casuality region to the query
+                if table.has_causality_region {
+                    out.push_sql("causality_region = ");
+                    out.push_bind_param::<Integer, _>(&self.causality_region)?;
+                    out.push_sql(" and ");
+                }
                 if table.immutable {
                     self.imm_range.contains(&mut out)?;
                 } else {

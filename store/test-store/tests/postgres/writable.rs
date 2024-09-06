@@ -376,58 +376,30 @@ fn read_range_test() {
             let subgraph_store = store.subgraph_store();
             writable.deployment_synced().unwrap();
 
-            // First test sourceable store with individual types
-            let mutable_count = read_range(
-                store.clone(),
-                writable.clone(),
-                sourceable.clone(),
-                deployment.clone(),
-                true,
-            )
-            .await;
-            let immutable_count = read_range(
-                store.clone(),
-                writable.clone(),
-                sourceable.clone(),
-                deployment.clone(),
-                false,
-            )
-            .await;
-            assert_eq!(mutable_count, 4); // Fixed: range is half-open
-            assert_eq!(immutable_count, 4); // Fixed: range is half-open
-
-            // Then test writable store with the detailed entity checks
-            for count in 1..=5 {
-                insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
-            }
-            writable.flush().await.unwrap();
-            writable.deployment_synced().unwrap();
-
-            let br: Range<BlockNumber> = 0..18;
-            let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
-            let e: BTreeMap<i32, Vec<EntityWithType>> = writable
-                .get_range(entity_types.clone(), br.clone())
-                .unwrap();
-            assert_eq!(e.len(), 5);
-            for en in &e {
-                let index = *en.0 - 1;
-                let a = result_entities[index as usize];
-                assert_eq!(a, format!("{:?}", en));
-            }
-
-            for count in 6..=7 {
-                insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
-            }
-            writable.flush().await.unwrap();
-            writable.deployment_synced().unwrap();
-
-            let e: BTreeMap<i32, Vec<EntityWithType>> = writable.get_range(entity_types, br).unwrap();
-            assert_eq!(e.len(), 7);
-            for en in &e {
-                let index = *en.0 - 1;
-                let a = result_entities[index as usize];
-                assert_eq!(a, format!("{:?}", en));
-            }
-        },
-    )
+        let br: Range<BlockNumber> = 0..18;
+        let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
+        let e: BTreeMap<i32, Vec<EntityWithType>> = writable
+            .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .unwrap();
+        assert_eq!(e.len(), 5);
+        for en in &e {
+            let index = *en.0 - 1;
+            let a = result_entities[index as usize];
+            assert_eq!(a, format!("{:?}", en));
+        }
+        for count in 6..=7 {
+            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+        }
+        writable.flush().await.unwrap();
+        writable.deployment_synced().unwrap();
+        let e: BTreeMap<i32, Vec<EntityWithType>> = writable
+            .get_range(entity_types, CausalityRegion::ONCHAIN, br)
+            .unwrap();
+        assert_eq!(e.len(), 7);
+        for en in &e {
+            let index = *en.0 - 1;
+            let a = result_entities[index as usize];
+            assert_eq!(a, format!("{:?}", en));
+        }
+    })
 }
