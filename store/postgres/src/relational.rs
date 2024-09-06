@@ -520,6 +520,7 @@ impl Layout {
         &self,
         conn: &mut PgConnection,
         entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         let mut tables = vec![];
@@ -529,11 +530,11 @@ impl Layout {
             et_map.insert(et.to_string(), Arc::new(et));
         }
         let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
-        let lower_vec = FindRangeQuery::new(&tables, false, block_range.clone())
+        let lower_vec = FindRangeQuery::new(&tables, causality_region, false, block_range.clone())
             .get_results::<EntityDataExt>(conn)
             .optional()?
             .unwrap_or_default();
-        let upper_vec = FindRangeQuery::new(&tables, true, block_range)
+        let upper_vec = FindRangeQuery::new(&tables, causality_region, true, block_range)
             .get_results::<EntityDataExt>(conn)
             .optional()?
             .unwrap_or_default();
