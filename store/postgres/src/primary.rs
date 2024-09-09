@@ -39,8 +39,8 @@ use graph::{
     prelude::{
         anyhow,
         chrono::{DateTime, Utc},
-        serde_json, BigDecimal, DeploymentHash, EntityChange, EntityChangeOperation, NodeId,
-        StoreError, SubgraphName, SubgraphVersionSwitchingMode,
+        serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId, StoreError,
+        SubgraphName, SubgraphVersionSwitchingMode,
     },
 };
 use graph::{
@@ -180,7 +180,7 @@ table! {
         latest_ethereum_block_number -> Nullable<Integer>,
         failed -> Bool,
         synced_at -> Nullable<Timestamptz>,
-        synced_at_block_number -> Nullable<Numeric>,
+        synced_at_block_number -> Nullable<Int4>,
     }
 }
 
@@ -234,7 +234,7 @@ pub struct UnusedDeployment {
     pub latest_ethereum_block_number: Option<i32>,
     pub failed: bool,
     pub synced_at: Option<DateTime<Utc>>,
-    pub synced_at_block_number: Option<BigDecimal>,
+    pub synced_at_block_number: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]

@@ -50,7 +50,7 @@ pub struct DeploymentDetail {
     pub failed: bool,
     health: HealthType,
     pub synced_at: Option<DateTime<Utc>>,
-    pub synced_at_block_number: Option<BigDecimal>,
+    pub synced_at_block_number: Option<i32>,
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
     /// The earliest block for which we have history

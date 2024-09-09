@@ -133,7 +133,7 @@ table! {
         failed -> Bool,
         health -> crate::deployment::SubgraphHealthMapping,
         synced_at -> Nullable<Timestamptz>,
-        synced_at_block_number -> Nullable<Numeric>,
+        synced_at_block_number -> Nullable<Int4>,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
         earliest_block_number -> Integer,
@@ -740,7 +740,7 @@ pub fn set_synced(
     use subgraph_deployment as d;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
-    let number = format!("{}::numeric", block_ptr.number);
+    let number = format!("{}::int4", block_ptr.number);
 
     update(
         d::table
