@@ -368,6 +368,11 @@ pub enum IndexForAscTypeId {
     // ...
     // LastStarknetType = 4499,
 
+
+    // Subgraph Data Source types
+    AscEntityTrigger = 4500,
+
+
     // Reserved discriminant space for a future blockchain type IDs: [4,500, 5,499]
     //
     // Generated with the following shell script:
