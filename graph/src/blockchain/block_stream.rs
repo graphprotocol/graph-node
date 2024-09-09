@@ -357,14 +357,13 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
 fn create_subgraph_trigger_from_entities(
     filter: &SubgraphFilter,
-    entities: &Vec<EntityWithType>,
+    entities: Vec<EntityWithType>,
 ) -> Vec<subgraph::TriggerData> {
     entities
-        .iter()
-        .map(|e| subgraph::TriggerData {
+        .into_iter()
+        .map(|entity| subgraph::TriggerData {
             source: filter.subgraph.clone(),
-            entity: e.entity.clone(),
-            entity_type: e.entity_type.as_str().to_string(),
+            entity,
         })
         .collect()
 }
@@ -373,7 +372,7 @@ async fn create_subgraph_triggers<C: Blockchain>(
     logger: Logger,
     blocks: Vec<C::Block>,
     filter: &SubgraphFilter,
-    entities: BTreeMap<BlockNumber, Vec<EntityWithType>>,
+    mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>>,
 ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
     let logger_clone = logger.cheap_clone();
 
@@ -381,17 +380,12 @@ async fn create_subgraph_triggers<C: Blockchain>(
         .into_iter()
         .map(|block| {
             let block_number = block.number();
-            match entities.get(&block_number) {
-                Some(e) => {
-                    let trigger_data = create_subgraph_trigger_from_entities(filter, e);
-                    BlockWithTriggers::new_with_subgraph_triggers(
-                        block,
-                        trigger_data,
-                        &logger_clone,
-                    )
-                }
-                None => BlockWithTriggers::new_with_subgraph_triggers(block, vec![], &logger_clone),
-            }
+            let trigger_data = entities
+                .remove(&block_number)
+                .map(|e| create_subgraph_trigger_from_entities(filter, e))
+                .unwrap_or_else(Vec::new);
+
+            BlockWithTriggers::new_with_subgraph_triggers(block, trigger_data, &logger_clone)
         })
         .collect();
 
@@ -433,14 +427,14 @@ async fn scan_subgraph_triggers<C: Blockchain>(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum EntitySubgraphOperation {
     Create,
     Modify,
     Delete,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct EntityWithType {
     pub entity_op: EntitySubgraphOperation,
     pub entity_type: EntityType,
