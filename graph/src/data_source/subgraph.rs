@@ -1,9 +1,6 @@
 use crate::{
-    blockchain::{Block, Blockchain},
-    components::{
-        link_resolver::LinkResolver,
-        store::{BlockNumber, Entity},
-    },
+    blockchain::{block_stream::EntityWithType, Block, Blockchain},
+    components::{link_resolver::LinkResolver, store::BlockNumber},
     data::{subgraph::SPEC_VERSION_1_3_0, value::Word},
     data_source,
     prelude::{DataSourceContext, DeploymentHash, Link},
@@ -76,7 +73,7 @@ impl DataSource {
         }
 
         let trigger_ref = self.mapping.handlers.iter().find_map(|handler| {
-            if handler.entity != trigger.entity_type {
+            if handler.entity != trigger.entity_type() {
                 return None;
             }
 
@@ -281,17 +278,16 @@ impl UnresolvedDataSourceTemplate {
 #[derive(Clone, PartialEq, Eq)]
 pub struct TriggerData {
     pub source: DeploymentHash,
-    pub entity: Entity,
-    pub entity_type: String,
+    pub entity: EntityWithType,
 }
 
 impl TriggerData {
-    pub fn new(source: DeploymentHash, entity: Entity, entity_type: String) -> Self {
-        Self {
-            source,
-            entity,
-            entity_type,
-        }
+    pub fn new(source: DeploymentHash, entity: EntityWithType) -> Self {
+        Self { source, entity }
+    }
+
+    pub fn entity_type(&self) -> &str {
+        self.entity.entity_type.as_str()
     }
 }
 
