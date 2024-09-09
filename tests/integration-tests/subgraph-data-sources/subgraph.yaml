@@ -6,7 +6,7 @@ dataSources:
     name: Contract
     network: test
     source:
-      address: 'QmeZhEiJuBusu7GxCe6AytvqSsgwV8QxkbSYx5ojSFB28a'
+      address: 'Qmaqf8cRxfxbduZppSHKG9DMuX5JZPMoGuwGb2DQuo48sq'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
