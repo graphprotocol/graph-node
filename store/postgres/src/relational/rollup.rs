@@ -336,20 +336,14 @@ impl<'a> RollupSql<'a> {
         if with_block {
             write!(w, ", $3")?;
         }
-        if !self.dimensions.is_empty() {
-            write!(w, ", ")?;
-            write_dims(self.dimensions, w)?;
-        }
+        write_dims(self.dimensions, w)?;
         comma_sep(self.aggregates, false, w, |w, agg| agg.aggregate("id", w))?;
         let secs = self.interval.as_duration().as_secs();
         write!(
             w,
             " from (select id, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp"
         )?;
-        if !self.dimensions.is_empty() {
-            write!(w, ", ")?;
-            write_dims(self.dimensions, w)?;
-        }
+        write_dims(self.dimensions, w)?;
         let agg_srcs: Vec<&str> = {
             let mut agg_srcs: Vec<_> = self
                 .aggregates
@@ -373,10 +367,7 @@ impl<'a> RollupSql<'a> {
             " order by {src_table}.timestamp) data group by timestamp",
             src_table = self.src_table
         )?;
-        Ok(if !self.dimensions.is_empty() {
-            write!(w, ", ")?;
-            write_dims(self.dimensions, w)?;
-        })
+        Ok(write_dims(self.dimensions, w)?)
     }
 
     fn select(&self, w: &mut dyn fmt::Write) -> fmt::Result {
@@ -390,11 +381,11 @@ impl<'a> RollupSql<'a> {
     fn insert_into(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(
             w,
-            "insert into {}(id, timestamp, block$, ",
+            "insert into {}(id, timestamp, block$",
             self.agg_table.qualified_name
         )?;
         write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, self.dimensions.is_empty(), w, |w, agg| {
+        comma_sep(self.aggregates, false, w, |w, agg| {
             write!(w, "\"{}\"", agg.agg_column.name)
         })?;
         write!(w, ") ")
@@ -443,10 +434,7 @@ impl<'a> RollupSql<'a> {
             " from (select *, 1 as seq from prev union all select *, 2 as seq from bucket) u "
         )?;
         write!(w, " group by id, timestamp")?;
-        if !self.dimensions.is_empty() {
-            write!(w, ", ")?;
-            write_dims(self.dimensions, w)?;
-        }
+        write_dims(self.dimensions, w)?;
         Ok(())
     }
 
@@ -478,9 +466,9 @@ impl<'a> RollupSql<'a> {
         self.select_cte(w)?;
         write!(w, " ")?;
         self.insert_into(w)?;
-        write!(w, "select id, timestamp, $3 as block$, ")?;
+        write!(w, "select id, timestamp, $3 as block$")?;
         write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, self.dimensions.is_empty(), w, |w, agg| {
+        comma_sep(self.aggregates, false, w, |w, agg| {
             write!(w, "\"{}\"", agg.agg_column.name)
         })?;
         write!(w, " from combined")
@@ -519,7 +507,7 @@ where
 /// Write the names of the columns in `dimensions` into `w` as a
 /// comma-separated list of quoted column names.
 fn write_dims(dimensions: &[&Column], w: &mut dyn fmt::Write) -> fmt::Result {
-    comma_sep(dimensions, true, w, |w, col| write!(w, "\"{}\"", col.name))
+    comma_sep(dimensions, false, w, |w, col| write!(w, "\"{}\"", col.name))
 }
 
 #[cfg(test)]
