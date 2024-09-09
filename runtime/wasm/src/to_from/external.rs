@@ -1,15 +1,18 @@
 use ethabi;
 
+use graph::blockchain::block_stream::{EntitySubgraphOperation, EntityWithType};
 use graph::data::store::scalar::Timestamp;
 use graph::data::value::Word;
 use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{
-    asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
+    asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, IndexForAscTypeId,
+    ToAscObj,
 };
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
+use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class::*;
 
@@ -462,4 +465,44 @@ where
             },
         })
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, AscType)]
+pub enum AscSubgraphEntityOp {
+    Create,
+    Modify,
+    Delete,
+}
+
+#[derive(AscType)]
+pub struct AscEntityTrigger {
+    pub entity_op: AscSubgraphEntityOp,
+    pub entity_type: AscPtr<AscString>,
+    pub entity: AscPtr<AscEntity>,
+    pub vid: i64,
+}
+
+impl ToAscObj<AscEntityTrigger> for EntityWithType {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEntityTrigger, HostExportError> {
+        let entity_op = match self.entity_op {
+            EntitySubgraphOperation::Create => AscSubgraphEntityOp::Create,
+            EntitySubgraphOperation::Modify => AscSubgraphEntityOp::Modify,
+            EntitySubgraphOperation::Delete => AscSubgraphEntityOp::Delete,
+        };
+
+        Ok(AscEntityTrigger {
+            entity_op,
+            entity_type: asc_new(heap, &self.entity_type.as_str(), gas)?,
+            entity: asc_new(heap, &self.entity.sorted_ref(), gas)?,
+            vid: self.vid,
+        })
+    }
+}
+
+impl AscIndexId for AscEntityTrigger {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::AscEntityTrigger;
 }
