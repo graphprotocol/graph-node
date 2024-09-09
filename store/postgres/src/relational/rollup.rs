@@ -337,7 +337,7 @@ impl<'a> RollupSql<'a> {
             write!(w, ", $3")?;
         }
         write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, false, w, |w, agg| agg.aggregate("id", w))?;
+        comma_sep(self.aggregates, w, |w, agg| agg.aggregate("id", w))?;
         let secs = self.interval.as_duration().as_secs();
         write!(
             w,
@@ -356,7 +356,7 @@ impl<'a> RollupSql<'a> {
             agg_srcs.dedup();
             agg_srcs
         };
-        comma_sep(agg_srcs, false, w, |w, col: &str| write!(w, "\"{}\"", col))?;
+        comma_sep(agg_srcs, w, |w, col: &str| write!(w, "\"{}\"", col))?;
         write!(
             w,
             " from {src_table} where {src_table}.timestamp >= $1 and {src_table}.timestamp < $2",
@@ -385,7 +385,7 @@ impl<'a> RollupSql<'a> {
             self.agg_table.qualified_name
         )?;
         write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, false, w, |w, agg| {
+        comma_sep(self.aggregates, w, |w, agg| {
             write!(w, "\"{}\"", agg.agg_column.name)
         })?;
         write!(w, ") ")
@@ -406,10 +406,10 @@ impl<'a> RollupSql<'a> {
     /// for any group keys that appear in `bucket`
     fn select_prev(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(w, "select bucket.id, bucket.timestamp")?;
-        comma_sep(self.dimensions, false, w, |w, col| {
+        comma_sep(self.dimensions, w, |w, col| {
             write!(w, "bucket.\"{}\"", col.name)
         })?;
-        comma_sep(self.aggregates, false, w, |w, agg| agg.prev_agg(w))?;
+        comma_sep(self.aggregates, w, |w, agg| agg.prev_agg(w))?;
         write!(w, " from bucket cross join lateral (")?;
         write!(w, "select * from {} prev", self.agg_table.qualified_name)?;
         write!(w, " where prev.timestamp < $1")?;
@@ -425,10 +425,8 @@ impl<'a> RollupSql<'a> {
 
     fn select_combined(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(w, "select id, timestamp")?;
-        comma_sep(self.dimensions, false, w, |w, col| {
-            write!(w, "\"{}\"", col.name)
-        })?;
-        comma_sep(self.aggregates, false, w, |w, agg| agg.combine("seq", w))?;
+        comma_sep(self.dimensions, w, |w, col| write!(w, "\"{}\"", col.name))?;
+        comma_sep(self.aggregates, w, |w, agg| agg.combine("seq", w))?;
         write!(
             w,
             " from (select *, 1 as seq from prev union all select *, 2 as seq from bucket) u "
@@ -468,7 +466,7 @@ impl<'a> RollupSql<'a> {
         self.insert_into(w)?;
         write!(w, "select id, timestamp, $3 as block$")?;
         write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, false, w, |w, agg| {
+        comma_sep(self.aggregates, w, |w, agg| {
             write!(w, "\"{}\"", agg.agg_column.name)
         })?;
         write!(w, " from combined")
@@ -485,20 +483,12 @@ impl<'a> RollupSql<'a> {
 
 /// Write the elements in `list` separated by commas into `w`. The list
 /// elements are written by calling `out` with each of them.
-fn comma_sep<T, F>(
-    list: impl IntoIterator<Item = T>,
-    mut first: bool,
-    w: &mut dyn fmt::Write,
-    out: F,
-) -> fmt::Result
+fn comma_sep<T, F>(list: impl IntoIterator<Item = T>, w: &mut dyn fmt::Write, out: F) -> fmt::Result
 where
     F: Fn(&mut dyn fmt::Write, T) -> fmt::Result,
 {
     for elem in list {
-        if !first {
-            write!(w, ", ")?;
-        }
-        first = false;
+        write!(w, ", ")?;
         out(w, elem)?;
     }
     Ok(())
@@ -507,7 +497,7 @@ where
 /// Write the names of the columns in `dimensions` into `w` as a
 /// comma-separated list of quoted column names.
 fn write_dims(dimensions: &[&Column], w: &mut dyn fmt::Write) -> fmt::Result {
-    comma_sep(dimensions, false, w, |w, col| write!(w, "\"{}\"", col.name))
+    comma_sep(dimensions, w, |w, col| write!(w, "\"{}\"", col.name))
 }
 
 #[cfg(test)]
