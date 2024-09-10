@@ -8,7 +8,7 @@ use graph::blockchain::block_stream::{
     SubstreamsError,
 };
 use graph::blockchain::BlockTime;
-use graph::data::store::scalar::Bytes;
+use graph::data::store::scalar::{Bytes, Timestamp};
 use graph::data::store::IdType;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
@@ -264,6 +264,10 @@ fn decode_value(value: &crate::codec::value::Typed) -> anyhow::Result<Value> {
 
         Typed::Bool(new_value) => Ok(Value::Bool(*new_value)),
 
+        Typed::Timestamp(new_value) => Timestamp::from_microseconds_since_epoch(*new_value)
+            .map(Value::Timestamp)
+            .map_err(|err| anyhow::Error::from(err)),
+
         Typed::Array(arr) => arr
             .value
             .iter()
@@ -282,7 +286,7 @@ mod test {
     use crate::codec::{Array, Value};
     use base64::prelude::*;
     use graph::{
-        data::store::scalar::Bytes,
+        data::store::scalar::{Bytes, Timestamp},
         prelude::{BigDecimal, BigInt, Value as GraphValue},
     };
 
@@ -373,6 +377,13 @@ mod test {
                     typed: Some(Typed::Bool(true)),
                 },
                 expected_value: GraphValue::Bool(true),
+            },
+            Case {
+                name: "timestamp value".to_string(),
+                value: Value {
+                    typed: Some(Typed::Timestamp(1234565789)),
+                },
+                expected_value: GraphValue::Timestamp(Timestamp::from_microseconds_since_epoch(1234565789).unwrap()),
             },
             Case {
                 name: "string array".to_string(),
