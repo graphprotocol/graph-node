@@ -92,7 +92,7 @@ impl WasmInstance {
         self.instance
             .get_func(self.store.as_context_mut(), handler_name)
             .with_context(|| format!("function {} not found", handler_name))?
-            .typed(self.store.as_context_mut())?
+            .typed::<(u32, u32), ()>(self.store.as_context_mut())?
             .call(
                 self.store.as_context_mut(),
                 (value?.wasm_ptr(), user_data?.wasm_ptr()),

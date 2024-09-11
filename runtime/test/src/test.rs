@@ -226,7 +226,7 @@ impl WasmInstanceExt for WasmInstance {
     fn invoke_export1_val_void<V: wasmtime::WasmTy>(&mut self, f: &str, v: V) -> Result<(), Error> {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed::<V, ()>(&self.store.as_context())
             .unwrap()
             .clone();
         func.call(&mut self.store.as_context_mut(), v)?;
@@ -525,7 +525,7 @@ async fn run_ipfs_map(
         // Invoke the callback
         let func = instance
             .get_func("ipfsMap")
-            .typed(&instance.store.as_context())
+            .typed::<(u32, u32), ()>(&instance.store.as_context())
             .unwrap()
             .clone();
         func.call(
