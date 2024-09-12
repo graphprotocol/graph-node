@@ -496,6 +496,12 @@ pub trait ChainStore: Send + Sync + 'static {
         hashes: Vec<BlockHash>,
     ) -> Result<Vec<serde_json::Value>, Error>;
 
+    /// Returns the blocks present in the store for the given block numbers.
+    async fn blocks_by_numbers(
+        self: Arc<Self>,
+        numbers: Vec<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<serde_json::Value>>, Error>;
+
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. If `root` is passed, short-circuit upon finding
     /// a child of `root`. Returns None if unable to complete due to missing blocks in the chain
