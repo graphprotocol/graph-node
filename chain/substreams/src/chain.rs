@@ -25,6 +25,7 @@ use graph::{
     slog::Logger,
 };
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 // ParsedChanges are an internal representation of the equivalent operations defined on the
@@ -142,7 +143,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

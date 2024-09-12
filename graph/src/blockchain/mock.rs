@@ -12,7 +12,11 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
 use slog::Logger;
-use std::{collections::HashSet, convert::TryFrom, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    sync::Arc,
+};
 
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
@@ -386,7 +390,7 @@ impl Blockchain for MockBlockchain {
         _deployment: DeploymentLocator,
         _store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         _filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

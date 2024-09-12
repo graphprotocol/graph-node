@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use graph::{
     blockchain::{
@@ -104,7 +104,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,

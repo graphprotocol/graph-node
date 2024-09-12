@@ -8,7 +8,7 @@ use graph::{
     data_source::DataSourceTemplate,
     prelude::{BlockNumber, DeploymentHash},
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 pub struct IndexingInputs<C: Blockchain> {
@@ -16,7 +16,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub features: BTreeSet<SubgraphFeature>,
     pub start_blocks: Vec<BlockNumber>,
     pub end_blocks: BTreeSet<BlockNumber>,
-    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+    pub source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
     pub stop_block: Option<BlockNumber>,
     pub store: Arc<dyn WritableStore>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,

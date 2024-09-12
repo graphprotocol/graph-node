@@ -32,7 +32,7 @@ use graph::{
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
@@ -152,7 +152,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
@@ -232,7 +232,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: HashMap<DeploymentHash, Arc<dyn WritableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
