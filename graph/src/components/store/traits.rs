@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use web3::types::{Address, H256};
 
 use super::*;
-use crate::blockchain::block_stream::FirehoseCursor;
+use crate::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
@@ -231,9 +231,10 @@ pub trait ReadStore: Send + Sync + 'static {
     /// Looks up entities using the given store key for a range of blocks.
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError>;
 
     /// Reverse lookup
     fn get_derived(
@@ -259,10 +260,11 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        (**self).get_range(entity_type, block_range)
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+        (**self).get_range(entity_types, causality_region, block_range)
     }
 
     fn get_derived(

@@ -5,7 +5,7 @@ use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
-use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
@@ -354,12 +354,17 @@ impl SyncStore {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         retry::forever(&self.logger, "get_range", || {
-            self.writable
-                .get_range(self.site.cheap_clone(), entity_type, block_range.clone())
+            self.writable.get_range(
+                self.site.cheap_clone(),
+                entity_types.clone(),
+                causality_region,
+                block_range.clone(),
+            )
         })
     }
 
@@ -1230,10 +1235,12 @@ impl Queue {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.store.get_range(entity_type, block_range)
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+        self.store
+            .get_range(entity_types, causality_region, block_range)
     }
 
     fn get_derived(
@@ -1450,12 +1457,15 @@ impl Writer {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_range(entity_type, block_range),
-            Writer::Async { queue, .. } => queue.get_range(entity_type, block_range),
+            Writer::Sync(store) => store.get_range(entity_types, causality_region, block_range),
+            Writer::Async { queue, .. } => {
+                queue.get_range(entity_types, causality_region, block_range)
+            }
         }
     }
 
@@ -1589,10 +1599,12 @@ impl ReadStore for WritableStore {
 
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.writer.get_range(entity_type, block_range)
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+        self.writer
+            .get_range(entity_types, causality_region, block_range)
     }
 
     fn get_derived(

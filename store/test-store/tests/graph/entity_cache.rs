@@ -1,4 +1,4 @@
-use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
@@ -69,9 +69,10 @@ impl ReadStore for MockStore {
 
     fn get_range(
         &self,
-        _entity_type: &EntityType,
+        _entity_types: Vec<EntityType>,
+        _causality_region: CausalityRegion,
         _block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         todo!()
     }
 
