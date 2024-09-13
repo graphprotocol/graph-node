@@ -146,8 +146,6 @@ pub mod unused {
         Hash(String),
         /// Lists deployments with a specific deployment id
         Deployment(String),
-        /// Lists all deployments on a specified chain
-        AllOnChain(String),
     }
 }
 

@@ -1702,7 +1702,6 @@ impl<'a> Connection<'a> {
         &mut self,
         filter: unused::Filter,
     ) -> Result<Vec<UnusedDeployment>, StoreError> {
-        use deployment_schemas as ds;
         use unused::Filter::*;
         use unused_deployments as u;
 
@@ -1747,14 +1746,6 @@ impl<'a> Connection<'a> {
             Deployment(id) => Ok(u::table
                 .filter(u::namespace.eq(id))
                 .order_by(u::entity_count)
-                .load(conn)?),
-
-            AllOnChain(chain_name) => Ok(u::table
-                .inner_join(ds::table.on(u::id.eq(ds::id)))
-                .filter(u::removed_at.is_null())
-                .filter(ds::network.eq(&chain_name))
-                .order_by(u::unused_at.desc())
-                .select(u::all_columns)
                 .load(conn)?),
         }
     }

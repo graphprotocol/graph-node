@@ -33,7 +33,6 @@ pub enum DeploymentSearch {
     Name { name: String },
     Hash { hash: String, shard: Option<String> },
     All,
-    AllOnChain { chain_name: String },
     Deployment { namespace: String },
 }
 
@@ -46,7 +45,6 @@ impl fmt::Display for DeploymentSearch {
                 shard: Some(shard),
             } => write!(f, "{}:{}", hash, shard),
             DeploymentSearch::All => Ok(()),
-            DeploymentSearch::AllOnChain { chain_name: _ } => Ok(()),
             DeploymentSearch::Hash { hash, shard: None } => write!(f, "{}", hash),
             DeploymentSearch::Deployment { namespace } => write!(f, "{}", namespace),
         }
@@ -84,7 +82,6 @@ impl DeploymentSearch {
                     unused::Filter::All
                 }
             }
-            DeploymentSearch::AllOnChain { chain_name } => unused::Filter::AllOnChain(chain_name),
             DeploymentSearch::Deployment { namespace } => unused::Filter::Deployment(namespace),
         }
     }
@@ -140,9 +137,6 @@ impl DeploymentSearch {
                 query.filter(ds::name.eq(&namespace)).load(conn)?
             }
             DeploymentSearch::All => query.load(conn)?,
-            DeploymentSearch::AllOnChain { chain_name } => {
-                query.filter(ds::network.eq(&chain_name)).load(conn)?
-            }
         };
         Ok(deployments)
     }
