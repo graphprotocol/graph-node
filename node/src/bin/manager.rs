@@ -34,6 +34,7 @@ use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
     SubscriptionManager, PRIMARY_SHARD,
 };
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::str::FromStr;
 use std::{collections::HashMap, num::ParseIntError, sync::Arc, time::Duration};
@@ -181,10 +182,10 @@ pub enum Command {
         /// The deployment (see `help info`)
         deployment: DeploymentSearch,
     },
-    /// Pause and resume a deployment
+    /// Pause and resume one or multiple deployments
     Restart {
-        /// The deployment (see `help info`)
-        deployment: DeploymentSearch,
+        /// The deployment(s) (see `help info`)
+        deployments: Vec<DeploymentSearch>,
         /// Sleep for this many seconds after pausing subgraphs
         #[clap(
             long,
@@ -1209,17 +1210,22 @@ async fn main() -> anyhow::Result<()> {
 
             commands::deployment::resume::run(primary_pool, notifications_sender, deployment)
         }
-        Restart { deployment, sleep } => {
+        Restart { deployments, sleep } => {
             let notifications_sender = ctx.notification_sender();
             let primary_pool = ctx.primary_pool();
-            let deployment = make_deployment_selector(deployment);
 
-            commands::deployment::restart::run(
-                primary_pool,
-                notifications_sender,
-                deployment,
-                sleep,
-            )
+            for deployment in deployments.into_iter().unique() {
+                let deployment = make_deployment_selector(deployment);
+
+                commands::deployment::restart::run(
+                    primary_pool.clone(),
+                    notifications_sender.clone(),
+                    deployment,
+                    sleep,
+                )?;
+            }
+
+            Ok(())
         }
         Rewind {
             force,

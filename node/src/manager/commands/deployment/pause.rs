@@ -14,6 +14,8 @@ pub fn run(
 ) -> Result<()> {
     let active_deployment = load_active_deployment(primary_pool.clone(), &deployment)?;
 
+    println!("Pausing deployment {} ...", active_deployment.locator());
+
     pause_active_deployment(primary_pool, notification_sender, active_deployment)?;
 
     Ok(())

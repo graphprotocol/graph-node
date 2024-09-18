@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use graph::components::store::DeploymentLocator;
 use graph::prelude::StoreEvent;
 use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::command_support::catalog::Site;
@@ -12,7 +13,10 @@ use crate::deployment::DeploymentSelector;
 use crate::deployment::DeploymentVersionSelector;
 use crate::GraphmanError;
 
-pub struct PausedDeployment(Site);
+pub struct PausedDeployment {
+    locator: DeploymentLocator,
+    site: Site,
+}
 
 #[derive(Debug, Error)]
 pub enum ResumeDeploymentError {
@@ -21,6 +25,12 @@ pub enum ResumeDeploymentError {
 
     #[error(transparent)]
     Common(#[from] GraphmanError),
+}
+
+impl PausedDeployment {
+    pub fn locator(&self) -> &DeploymentLocator {
+        &self.locator
+    }
 }
 
 pub fn load_paused_deployment(
@@ -56,7 +66,7 @@ pub fn load_paused_deployment(
         return Err(ResumeDeploymentError::NotPaused(locator.to_string()));
     }
 
-    Ok(PausedDeployment(site))
+    Ok(PausedDeployment { locator, site })
 }
 
 pub fn resume_paused_deployment(
@@ -67,7 +77,7 @@ pub fn resume_paused_deployment(
     let primary_conn = primary_pool.get()?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
-    let changes = catalog_conn.resume_subgraph(&paused_deployment.0)?;
+    let changes = catalog_conn.resume_subgraph(&paused_deployment.site)?;
     catalog_conn.send_store_event(&notification_sender, &StoreEvent::new(changes))?;
 
     Ok(())

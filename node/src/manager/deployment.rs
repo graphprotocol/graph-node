@@ -25,7 +25,7 @@ lazy_static! {
 /// by subgraph name, IPFS hash, or namespace. Since there can be multiple
 /// deployments for the same IPFS hash, the search term for a hash can
 /// optionally specify a shard.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DeploymentSearch {
     Name { name: String },
     Hash { hash: String, shard: Option<String> },

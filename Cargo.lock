@@ -2056,6 +2056,7 @@ dependencies = [
  "graph-store-postgres",
  "graphman",
  "graphman-server",
+ "itertools 0.13.0",
  "json-structural-diff",
  "lazy_static",
  "prometheus",

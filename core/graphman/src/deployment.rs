@@ -137,7 +137,9 @@ pub(crate) fn load_deployment(
         .exactly_one()
         .map_err(|err| {
             let count = err.into_iter().count();
-            GraphmanError::Store(anyhow!("expected exactly one deployment, found {count}"))
+            GraphmanError::Store(anyhow!(
+                "expected exactly one deployment for '{deployment:?}', found {count}"
+            ))
         })?;
 
     Ok(deployment)
