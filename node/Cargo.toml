@@ -13,6 +13,7 @@ name = "graphman"
 path = "src/bin/manager.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 env_logger = "0.11.3"
 clap.workspace = true
 git-testament = "0.2"
@@ -33,6 +34,8 @@ graph-server-json-rpc = { path = "../server/json-rpc" }
 graph-server-websocket = { path = "../server/websocket" }
 graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
+graphman-server = { workspace = true }
+graphman = { workspace = true }
 serde = { workspace = true }
 shellexpand = "3.1.0"
 termcolor = "1.4.1"
