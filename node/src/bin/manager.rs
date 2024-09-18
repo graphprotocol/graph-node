@@ -1123,28 +1123,23 @@ async fn main() -> anyhow::Result<()> {
             used,
             all,
         } => {
-            let (primary, store) = if status {
-                let (store, primary) = ctx.store_and_primary();
-                (primary, Some(store))
-            } else {
-                (ctx.primary_pool(), None)
+            let (store, primary_pool) = ctx.store_and_primary();
+
+            let ctx = commands::deployment::info::Context {
+                primary_pool,
+                store,
             };
 
-            match deployment {
-                Some(deployment) => {
-                    commands::info::run(primary, store, deployment, current, pending, used).err();
-                }
-                None => {
-                    if all {
-                        let deployment = DeploymentSearch::All;
-                        commands::info::run(primary, store, deployment, current, pending, used)
-                            .err();
-                    } else {
-                        bail!("Please specify a deployment or use --all to list all deployments");
-                    }
-                }
+            let args = commands::deployment::info::Args {
+                deployment: deployment.map(make_deployment_selector),
+                current,
+                pending,
+                status,
+                used,
+                all,
             };
-            Ok(())
+
+            commands::deployment::info::run(ctx, args)
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();
@@ -1201,25 +1196,30 @@ async fn main() -> anyhow::Result<()> {
             commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
         }
         Pause { deployment } => {
-            let sender = ctx.notification_sender();
-            let pool = ctx.primary_pool();
-            let locator = &deployment.locate_unique(&pool)?;
-            commands::assign::pause_or_resume(pool, &sender, locator, true)
+            let notifications_sender = ctx.notification_sender();
+            let primary_pool = ctx.primary_pool();
+            let deployment = make_deployment_selector(deployment);
+
+            commands::deployment::pause::run(primary_pool, notifications_sender, deployment)
         }
-
         Resume { deployment } => {
-            let sender = ctx.notification_sender();
-            let pool = ctx.primary_pool();
-            let locator = &deployment.locate_unique(&pool).unwrap();
+            let notifications_sender = ctx.notification_sender();
+            let primary_pool = ctx.primary_pool();
+            let deployment = make_deployment_selector(deployment);
 
-            commands::assign::pause_or_resume(pool, &sender, locator, false)
+            commands::deployment::resume::run(primary_pool, notifications_sender, deployment)
         }
         Restart { deployment, sleep } => {
-            let sender = ctx.notification_sender();
-            let pool = ctx.primary_pool();
-            let locator = &deployment.locate_unique(&pool).unwrap();
+            let notifications_sender = ctx.notification_sender();
+            let primary_pool = ctx.primary_pool();
+            let deployment = make_deployment_selector(deployment);
 
-            commands::assign::restart(pool, &sender, locator, sleep)
+            commands::deployment::restart::run(
+                primary_pool,
+                notifications_sender,
+                deployment,
+                sleep,
+            )
         }
         Rewind {
             force,
@@ -1634,4 +1634,17 @@ async fn main() -> anyhow::Result<()> {
 
 fn parse_duration_in_secs(s: &str) -> Result<Duration, ParseIntError> {
     Ok(Duration::from_secs(s.parse()?))
+}
+
+fn make_deployment_selector(
+    deployment: DeploymentSearch,
+) -> graphman::deployment::DeploymentSelector {
+    use graphman::deployment::DeploymentSelector::*;
+
+    match deployment {
+        DeploymentSearch::Name { name } => Name(name),
+        DeploymentSearch::Hash { hash, shard } => Subgraph { hash, shard },
+        DeploymentSearch::All => All,
+        DeploymentSearch::Deployment { namespace } => Schema(namespace),
+    }
 }
