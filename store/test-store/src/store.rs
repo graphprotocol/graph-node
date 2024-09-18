@@ -65,7 +65,7 @@ lazy_static! {
     ));
     static ref STORE_POOL_CONFIG: (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) =
         build_store();
-    pub(crate) static ref PRIMARY_POOL: ConnectionPool = STORE_POOL_CONFIG.1.clone();
+    pub static ref PRIMARY_POOL: ConnectionPool = STORE_POOL_CONFIG.1.clone();
     pub static ref STORE: Arc<Store> = STORE_POOL_CONFIG.0.clone();
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();

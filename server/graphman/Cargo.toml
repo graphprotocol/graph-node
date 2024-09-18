@@ -1,0 +1,27 @@
+[package]
+name = "graphman-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+async-graphql = { workspace = true }
+async-graphql-axum = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+graph = { workspace = true }
+graph-store-postgres = { workspace = true }
+graphman = { workspace = true }
+graphman-store = { workspace = true }
+serde_json = { workspace = true }
+slog = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+
+[dev-dependencies]
+diesel = { workspace = true }
+lazy_static = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+test-store = { workspace = true }
