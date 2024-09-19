@@ -739,9 +739,6 @@ pub fn set_synced(
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    // Work around a Diesel issue with serializing BigDecimals to numeric
-    let number = format!("{}::int4", block_ptr.number);
-
     update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
@@ -749,7 +746,7 @@ pub fn set_synced(
     )
     .set((
         d::synced_at.eq(now),
-        d::synced_at_block_number.eq(sql(&number)),
+        d::synced_at_block_number.eq(block_ptr.number),
     ))
     .execute(conn)?;
     Ok(())
