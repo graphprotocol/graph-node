@@ -482,7 +482,7 @@ fn on_sync() {
                     .await?;
 
                 writable.start_subgraph_deployment(&LOGGER).await?;
-                writable.deployment_synced()?;
+                writable.deployment_synced(BLOCKS[0].clone())?;
 
                 let mut primary = primary_connection();
                 let src_site = primary.locate_site(src)?.unwrap();
@@ -539,7 +539,7 @@ fn on_sync() {
             store.activate(&dst)?;
             store.remove_deployment(src.id.into())?;
 
-            let res = writable.deployment_synced();
+            let res = writable.deployment_synced(BLOCKS[2].clone());
             assert!(res.is_ok());
         }
         Ok(())

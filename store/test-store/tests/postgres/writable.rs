@@ -146,7 +146,7 @@ where
         let read_count = || read_count(writable.as_ref());
 
         if !batch {
-            writable.deployment_synced().unwrap();
+            writable.deployment_synced(block_pointer(0)).unwrap();
         }
 
         for count in 1..4 {

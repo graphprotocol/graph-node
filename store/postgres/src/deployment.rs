@@ -133,6 +133,7 @@ table! {
         failed -> Bool,
         health -> crate::deployment::SubgraphHealthMapping,
         synced_at -> Nullable<Timestamptz>,
+        synced_at_block_number -> Nullable<Int4>,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
         earliest_block_number -> Integer,
@@ -731,7 +732,11 @@ pub fn state(conn: &mut PgConnection, id: DeploymentHash) -> Result<DeploymentSt
 }
 
 /// Mark the deployment `id` as synced
-pub fn set_synced(conn: &mut PgConnection, id: &DeploymentHash) -> Result<(), StoreError> {
+pub fn set_synced(
+    conn: &mut PgConnection,
+    id: &DeploymentHash,
+    block_ptr: BlockPtr,
+) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     update(
@@ -739,7 +744,10 @@ pub fn set_synced(conn: &mut PgConnection, id: &DeploymentHash) -> Result<(), St
             .filter(d::deployment.eq(id.as_str()))
             .filter(d::synced_at.is_null()),
     )
-    .set(d::synced_at.eq(now))
+    .set((
+        d::synced_at.eq(now),
+        d::synced_at_block_number.eq(block_ptr.number),
+    ))
     .execute(conn)?;
     Ok(())
 }

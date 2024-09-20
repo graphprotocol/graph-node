@@ -420,7 +420,7 @@ impl SyncStore {
         }
     }
 
-    fn deployment_synced(&self) -> Result<(), StoreError> {
+    fn deployment_synced(&self, block_ptr: BlockPtr) -> Result<(), StoreError> {
         retry::forever(&self.logger, "deployment_synced", || {
             let event = {
                 // Make sure we drop `pconn` before we call into the deployment
@@ -452,7 +452,8 @@ impl SyncStore {
                 }
             }
 
-            self.writable.deployment_synced(&self.site.deployment)?;
+            self.writable
+                .deployment_synced(&self.site.deployment, block_ptr.clone())?;
 
             self.store.send_store_event(&event)
         })
@@ -1659,7 +1660,7 @@ impl WritableStoreTrait for WritableStore {
         is_caught_up_with_chain_head: bool,
     ) -> Result<(), StoreError> {
         if is_caught_up_with_chain_head {
-            self.deployment_synced()?;
+            self.deployment_synced(block_ptr_to.clone())?;
         } else {
             self.writer.start_batching();
         }
@@ -1696,10 +1697,10 @@ impl WritableStoreTrait for WritableStore {
     /// - Disable the time-to-sync metrics gathering.
     /// - Stop batching writes.
     /// - Promote it to 'synced' status in the DB, if that hasn't been done already.
-    fn deployment_synced(&self) -> Result<(), StoreError> {
+    fn deployment_synced(&self, block_ptr: BlockPtr) -> Result<(), StoreError> {
         self.writer.deployment_synced();
         if !self.is_deployment_synced.load(Ordering::SeqCst) {
-            self.store.deployment_synced()?;
+            self.store.deployment_synced(block_ptr)?;
             self.is_deployment_synced.store(true, Ordering::SeqCst);
         }
         Ok(())

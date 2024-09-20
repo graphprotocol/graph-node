@@ -180,6 +180,7 @@ table! {
         latest_ethereum_block_number -> Nullable<Integer>,
         failed -> Bool,
         synced_at -> Nullable<Timestamptz>,
+        synced_at_block_number -> Nullable<Int4>,
     }
 }
 
@@ -233,6 +234,7 @@ pub struct UnusedDeployment {
     pub latest_ethereum_block_number: Option<i32>,
     pub failed: bool,
     pub synced_at: Option<DateTime<Utc>>,
+    pub synced_at_block_number: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
@@ -1681,6 +1683,7 @@ impl<'a> Connection<'a> {
                     u::latest_ethereum_block_number.eq(latest_number),
                     u::failed.eq(detail.failed),
                     u::synced_at.eq(detail.synced_at),
+                    u::synced_at_block_number.eq(detail.synced_at_block_number.clone()),
                 ))
                 .execute(self.conn.as_mut())?;
         }

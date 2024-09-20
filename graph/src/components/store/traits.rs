@@ -350,7 +350,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     ) -> Result<(), StoreError>;
 
     /// Force synced status, used for testing.
-    fn deployment_synced(&self) -> Result<(), StoreError>;
+    fn deployment_synced(&self, block_ptr: BlockPtr) -> Result<(), StoreError>;
 
     /// Return true if the deployment with the given id is fully synced, and return false otherwise.
     /// Cheap, cached operation.

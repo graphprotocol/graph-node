@@ -563,9 +563,13 @@ impl DeploymentStore {
         deployment::exists_and_synced(&mut conn, id.as_str())
     }
 
-    pub(crate) fn deployment_synced(&self, id: &DeploymentHash) -> Result<(), StoreError> {
+    pub(crate) fn deployment_synced(
+        &self,
+        id: &DeploymentHash,
+        block_ptr: BlockPtr,
+    ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|conn| deployment::set_synced(conn, id))
+        conn.transaction(|conn| deployment::set_synced(conn, id, block_ptr))
     }
 
     /// Look up the on_sync action for this deployment

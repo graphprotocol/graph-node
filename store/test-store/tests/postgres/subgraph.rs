@@ -209,14 +209,18 @@ fn create_subgraph() {
         changes
     }
 
-    fn deployment_synced(store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
+    fn deployment_synced(
+        store: &Arc<SubgraphStore>,
+        deployment: &DeploymentLocator,
+        block_ptr: BlockPtr,
+    ) {
         futures03::executor::block_on(store.cheap_clone().writable(
             LOGGER.clone(),
             deployment.id,
             Arc::new(Vec::new()),
         ))
         .expect("can get writable")
-        .deployment_synced()
+        .deployment_synced(block_ptr)
         .unwrap();
     }
 
@@ -259,7 +263,7 @@ fn create_subgraph() {
         assert!(pending.is_none());
 
         // Sync deployment
-        deployment_synced(&store, &deployment2);
+        deployment_synced(&store, &deployment2, GENESIS_PTR.clone());
 
         // Deploying again still overwrites current
         let (deployment3, events) = deploy(store.as_ref(), ID3, MODE);
@@ -319,7 +323,7 @@ fn create_subgraph() {
         assert!(pending.is_none());
 
         // Deploy when current is synced leaves current alone and adds pending
-        deployment_synced(&store, &deployment2);
+        deployment_synced(&store, &deployment2, GENESIS_PTR.clone());
         let (deployment3, events) = deploy(store.as_ref(), ID3, MODE);
         let expected = deploy_event(&deployment3);
         assert_eq!(expected, events);
@@ -354,7 +358,7 @@ fn create_subgraph() {
         assert_eq!(None, pending.as_deref());
 
         // Mark `ID3` as synced and deploy that again
-        deployment_synced(&store, &deployment3);
+        deployment_synced(&store, &deployment3, GENESIS_PTR.clone());
         let expected = HashSet::from([unassigned(&deployment2), assigned(&deployment3)]);
         let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
         assert_eq!(&deployment3, &deployment3_again);
