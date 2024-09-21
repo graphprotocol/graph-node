@@ -22,7 +22,6 @@ use tokio::sync::{mpsc, watch};
 use tower::retry::backoff::{Backoff, ExponentialBackoff, ExponentialBackoffMaker, MakeBackoff};
 use tower::util::rng::HasherRng;
 use tower::{Service, ServiceExt};
-use tokio::process::Command as TokioCommand;
 
 
 pub use self::metrics::PollingMonitorMetrics;
@@ -247,7 +246,8 @@ mod tests {
     use anyhow::anyhow;
     use graph::log;
     use tower_test::mock;
-
+    use tokio::process::Command as TokioCommand;
+    
     use super::*;
 
     async fn send_response<T, U>(handle: &mut mock::Handle<T, U>, res: U) {
