@@ -15,6 +15,7 @@ use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
+use graph::slog::info;
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -451,6 +452,17 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
+        // temporary hack until we can refactor this to use the block stream
+        if self.block_stream_builder.can_directly_resolve_blocks() {
+            info!(&logger, "block_pointer_from_number - can_directly_resolve_blocks"; "number" => number);
+            if let Some(block_ptr) = self
+                .block_stream_builder
+                .directly_resolve_block_from_number(number)
+            {
+                return Ok(block_ptr);
+            }
+        }
+        info!(&logger, "block_pointer_from_number"; "number" => number);
         match self.client.as_ref() {
             ChainClient::Firehose(endpoints) => endpoints
                 .endpoint()

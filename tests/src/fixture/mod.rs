@@ -644,7 +644,7 @@ pub async fn wait_for_sync(
             return Err(fatal_error);
         }
 
-        if block_ptr == stop_block {
+        if block_ptr.number >= stop_block.number {
             info!(logger, "TEST: reached stop block");
             return Ok(());
         }
@@ -679,6 +679,17 @@ pub struct MutexBlockStreamBuilder<C: Blockchain>(pub Mutex<Arc<dyn BlockStreamB
 
 #[async_trait]
 impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
+    fn can_directly_resolve_blocks(&self) -> bool {
+        true
+    }
+
+    fn directly_resolve_block_from_number(&self, number: BlockNumber) -> Option<BlockPtr> {
+        self.0
+            .lock()
+            .unwrap()
+            .directly_resolve_block_from_number(number)
+    }
+
     async fn build_firehose(
         &self,
         chain: &C,
@@ -743,6 +754,22 @@ impl<C: Blockchain> BlockStreamBuilder<C> for StaticStreamBuilder<C>
 where
     C::TriggerData: Clone,
 {
+    fn can_directly_resolve_blocks(&self) -> bool {
+        true
+    }
+
+    fn directly_resolve_block_from_number(&self, number: BlockNumber) -> Option<BlockPtr> {
+        let mut blocks = self.chain.iter().map(|b| b.ptr());
+        let block = blocks.find_map(|b| {
+            if b.number == number {
+                Some(b.clone())
+            } else {
+                None
+            }
+        });
+        block
+    }
+
     async fn build_substreams(
         &self,
         _chain: &C,

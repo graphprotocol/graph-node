@@ -215,6 +215,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// When this flag is set, indexing of the deployment should log
     /// additional diagnostic information
     fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
+
+    fn auto_graft_sync(&self) -> bool;
 }
 
 pub trait ReadStore: Send + Sync + 'static {

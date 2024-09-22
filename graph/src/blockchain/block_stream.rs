@@ -118,6 +118,14 @@ pub trait BlockRefetcher<C: Blockchain>: Send + Sync {
 /// BlockStreamBuilder is an abstraction that would separate the logic for building streams from the blockchain trait
 #[async_trait]
 pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
+    fn can_directly_resolve_blocks(&self) -> bool {
+        false
+    }
+
+    fn directly_resolve_block_from_number(&self, _number: BlockNumber) -> Option<BlockPtr> {
+        None
+    }
+
     async fn build_firehose(
         &self,
         chain: &C,

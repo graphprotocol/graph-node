@@ -48,6 +48,7 @@ pub struct Opt {
     pub ethereum_ws: Vec<String>,
     pub ethereum_ipc: Vec<String>,
     pub unsafe_config: bool,
+    pub auto_graft_sync: bool,
 }
 
 impl Default for Opt {
@@ -64,6 +65,7 @@ impl Default for Opt {
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
             unsafe_config: false,
+            auto_graft_sync: false,
         }
     }
 }
@@ -77,6 +79,8 @@ pub struct Config {
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
     pub deployment: Deployment,
+    #[serde(default)]
+    pub auto_graft_sync: bool,
 }
 
 fn validate_name(s: &str) -> Result<()> {
@@ -192,6 +196,7 @@ impl Config {
         let chains = ChainSection::from_opt(opt)?;
         let node = NodeId::new(opt.node_id.to_string())
             .map_err(|()| anyhow!("invalid node id {}", opt.node_id))?;
+        let auto_graft_sync = opt.auto_graft_sync;
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
             node,
@@ -199,6 +204,7 @@ impl Config {
             stores,
             chains,
             deployment,
+            auto_graft_sync,
         })
     }
 

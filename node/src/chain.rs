@@ -706,6 +706,7 @@ mod test {
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
             unsafe_config: false,
+            auto_graft_sync: false,
         };
 
         let metrics = Arc::new(EndpointMetrics::mock());

@@ -26,6 +26,8 @@ use stable_hash_legacy::SequenceNumber;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     marker::PhantomData,
+    time::Duration,
+    time::Instant,
 };
 use thiserror::Error;
 use wasmparser;
@@ -284,6 +286,8 @@ pub enum SubgraphRegistrarError {
     NameExists(String),
     #[error("subgraph name not found: {0}")]
     NameNotFound(String),
+    #[error("subgraph name not valid: {0}")]
+    NameNotValid(String),
     #[error("network not supported by registrar: {0}")]
     NetworkNotSupported(Error),
     #[error("deployment not found: {0}")]
@@ -298,6 +302,8 @@ pub enum SubgraphRegistrarError {
     ManifestValidationError(Vec<SubgraphManifestValidationError>),
     #[error("subgraph deployment error: {0}")]
     SubgraphDeploymentError(StoreError),
+    #[error("auto-graft-sync subgraph assignment error: {0}")]
+    AutoGraftSubgraphAssignmentError(SubgraphAssignmentProviderError),
     #[error("subgraph registrar error: {0}")]
     Unknown(#[from] anyhow::Error),
 }
@@ -514,6 +520,39 @@ impl Graft {
                 self.base, self.block, ptr.number - 1
             ))),
             (Some(_), _) => Ok(()),
+        }
+    }
+
+    /// Awaits the target block sync for the graft.
+    pub async fn await_sync<S: SubgraphStore>(
+        &self,
+        store: Arc<S>,
+        interval: Duration,
+    ) -> Result<(), SubgraphRegistrarError> {
+        const MAX_WAIT_NO_BLOCKS: Duration = Duration::from_secs(10);
+        let start = Instant::now();
+
+        loop {
+            let maybe_latest_block = store
+                .least_block_ptr(&self.base)
+                .await
+                .map_err(|e| SubgraphRegistrarError::DeploymentNotFound(e.to_string()))?;
+
+            // TODO: could we get a stream over the block pointers?
+            if let Some(block) = maybe_latest_block {
+                if block.block_number() >= self.block {
+                    break Ok(());
+                } else {
+                    tokio::time::sleep(interval).await;
+                }
+            } else {
+                if start.elapsed() > MAX_WAIT_NO_BLOCKS {
+                    return Err(SubgraphRegistrarError::ManifestValidationError(vec![SubgraphManifestValidationError::GraftBaseInvalid(format!(
+                        "failed to graft onto `{}` at block {} since it has not processed any blocks",
+                        self.base, self.block
+                    ))]));
+                }
+            }
         }
     }
 }
@@ -746,6 +785,11 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
 
     pub fn spec_version(&self) -> &Version {
         &self.0.spec_version
+    }
+
+    /// Get the graft from this unvalidated manifest.
+    pub fn unvalidated_graft(&self) -> Option<&Graft> {
+        self.0.graft.as_ref()
     }
 }
 

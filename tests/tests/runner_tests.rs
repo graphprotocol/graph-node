@@ -143,10 +143,10 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
-    let hash = build_subgraph_with_yarn_cmd_and_arg(
+    let hash = build_subgraph_with_yarn_cmd_and_args(
         "./runner-tests/data-source-revert",
         "deploy:test-grafted",
-        Some(&test_info.hash),
+        vec![&test_info.hash],
     )
     .await;
     let test_info = TestInfo {
@@ -1261,6 +1261,121 @@ async fn arweave_file_data_sources() {
     );
 }
 
+#[tokio::test]
+async fn auto_graft_sync() -> anyhow::Result<()> {
+    let stores = fixture::stores(
+        "auto_graft_sync",
+        "./runner-tests/auto-graft-sync/config.toml",
+    )
+    .await;
+
+    assert_eq!(
+        stores.network_store.subgraph_store().auto_graft_sync(),
+        true,
+        "Auto graft sync should be enabled"
+    );
+
+    let test_name = "auto_graft_sync";
+
+    let blocks = {
+        let block0 = genesis();
+        let mut last_block = block0.ptr();
+        let mut blocks = vec![block0];
+        for i in 1..=20 {
+            let block = empty_block(last_block, test_ptr(i));
+            last_block = block.ptr();
+            blocks.push(block);
+        }
+        blocks
+    };
+
+    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
+
+    // Root graft
+    // only build the subgraph and create it, but don't deploy it to be assigned
+    let root_deployment_hash = build_subgraph_with_yarn_cmd_and_args(
+        "./runner-tests/auto-graft-sync",
+        "build-graft-root",
+        vec![],
+    )
+    .await;
+
+    let mut prev_hash = root_deployment_hash.clone();
+
+    let subgraph_name = SubgraphName::new("auto-graft-sync-tip".to_string()).unwrap();
+    let root_deployment = TestInfo {
+        test_name: test_name.to_string(),
+        hash: root_deployment_hash.clone(),
+        test_dir: "./runner-tests/auto-graft-sync".to_string(),
+        subgraph_name,
+    };
+
+    // our "root deployment" does not have a graft, so this should complete.
+    let base_ctx = fixture::setup(&root_deployment, &stores, &chain, None, None).await;
+    base_ctx.start_and_sync_to(test_ptr(1)).await;
+
+    let block_ptr = stores
+        .network_store
+        .subgraph_store()
+        .least_block_ptr(&root_deployment.hash)
+        .await
+        .unwrap()
+        .unwrap();
+
+    base_ctx
+        .start_and_sync_to(test_ptr(block_ptr.number + 1))
+        .await;
+
+    for i in 0..3 {
+        let outfile = format!("auto-graft-sync-{}.yaml", i);
+        // Test grafted version
+        let hash = build_subgraph_with_yarn_cmd_and_args(
+            "./runner-tests/auto-graft-sync",
+            "build:test-auto-graft-sync",
+            vec![&outfile, &prev_hash, &(block_ptr.number + 1).to_string()],
+        )
+        .await;
+        prev_hash = hash;
+    }
+
+    let top_graft_info = TestInfo {
+        test_name: test_name.to_string(),
+        hash: prev_hash.clone(),
+        test_dir: "./runner-tests/auto-graft-sync".to_string(),
+        subgraph_name: SubgraphName::new("auto-graft-sync-tip".to_string()).unwrap(),
+    };
+
+    let ctx = fixture::setup(&top_graft_info, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(test_ptr(block_ptr.number + 1)).await;
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    for i in 0..10 {
+        let query_res = ctx
+            .query(&format!(
+                "{{ dataSourceCount(id: \"{}\") {{ id, count }} }}",
+                i
+            ))
+            .await
+            .unwrap();
+        println!("query_res: {:?}", query_res);
+    }
+
+    // TODO: The semantically correct value for `count` would be 5. But because the test fixture
+    // uses a `NoopTriggersAdapter` the data sources are not reprocessed in the block in which they
+    // are created.
+    let query_res = base_ctx
+        .query(r#"{ dataSourceCount(id: "3") { id, count } }"#)
+        .await
+        .unwrap();
+    assert_eq!(
+        query_res,
+        Some(object! { dataSourceCount: object!{ id: "3", count: 3 } })
+    );
+
+    Ok(())
+}
+
 /// deploy_cmd is the command to run to deploy the subgraph. If it is None, the
 /// default `yarn deploy:test` is used.
 async fn build_subgraph(dir: &str, deploy_cmd: Option<&str>) -> DeploymentHash {
@@ -1268,13 +1383,13 @@ async fn build_subgraph(dir: &str, deploy_cmd: Option<&str>) -> DeploymentHash {
 }
 
 async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
-    build_subgraph_with_yarn_cmd_and_arg(dir, yarn_cmd, None).await
+    build_subgraph_with_yarn_cmd_and_args(dir, yarn_cmd, vec![]).await
 }
 
-async fn build_subgraph_with_yarn_cmd_and_arg(
+async fn build_subgraph_with_yarn_cmd_and_args(
     dir: &str,
     yarn_cmd: &str,
-    arg: Option<&str>,
+    mut additional_args: Vec<&str>,
 ) -> DeploymentHash {
     // Test that IPFS is up.
     IpfsClient::localhost()
@@ -1296,7 +1411,7 @@ async fn build_subgraph_with_yarn_cmd_and_arg(
     run_cmd(Command::new("yarn").arg("codegen").current_dir(dir));
 
     let mut args = vec![yarn_cmd];
-    args.extend(arg);
+    args.append(&mut additional_args);
 
     // Run `deploy` for the side effect of uploading to IPFS, the graph node url
     // is fake and the actual deploy call is meant to fail.
