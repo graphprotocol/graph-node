@@ -29,4 +29,4 @@ ipfs-api-backend-hyper = "0.6"
 ipfs-api = { version = "0.17.0", features = [
     "with-hyper-rustls",
 ], default-features = false }
-uuid = { version = "1.9.1", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
