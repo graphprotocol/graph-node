@@ -39,6 +39,7 @@ pub enum SubgraphFeature {
     ImmutableEntities,
     #[serde(alias = "nonDeterministicIpfs")]
     IpfsOnEthereumContracts,
+    Parallel,
 }
 
 impl fmt::Display for SubgraphFeature {

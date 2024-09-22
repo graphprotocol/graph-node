@@ -8,7 +8,9 @@ use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, DerivedEntityQuery, WritableStore};
+use graph::components::store::{
+    DeploymentLocator, DerivedEntityQuery, SubgraphSegment, WritableStore,
+};
 use graph::data::subgraph::*;
 use graph::semver::Version;
 use graph::{entity, prelude::*};
@@ -92,7 +94,12 @@ where
         let deployment = insert_test_data(subgraph_store.clone()).await;
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .writable(
+                LOGGER.clone(),
+                deployment.id,
+                SubgraphSegment::default(),
+                Arc::new(Vec::new()),
+            )
             .await
             .expect("we can get a writable store");
 
