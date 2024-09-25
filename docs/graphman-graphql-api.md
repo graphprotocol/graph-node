@@ -1,13 +1,14 @@
 # Graphman GraphQL API
 
-When starting the `graph-node` optionally, a graphman GraphQL server can be started, which makes it possible to execute
-graphman commands via GraphQL.
+The graphman API provides functionality to manage various aspects of `graph-node` through GraphQL operations. It is only
+started when the environment variable `GRAPHMAN_SERVER_AUTH_TOKEN` is set. The token is used to authenticate graphman
+GraphQL requests. Even with the token, the server should not be exposed externally as it provides operations that an
+attacker can use to severely impede the functioning of an indexer. The server listens on the port `GRAPHMAN_PORT`, port
+`8050` by default.
 
-To start the graphman GraphQL server, the `GRAPHMAN_SERVER_AUTH_TOKEN` environment variable should be set. The token is
-used to authenticate graphman GraphQL requests.
+Environment variables to control the graphman API:
 
-Other environment variables that can be set:
-
+- `GRAPHMAN_SERVER_AUTH_TOKEN` - The token is used to authenticate graphman GraphQL requests.
 - `GRAPHMAN_PORT` - The port for the graphman GraphQL server (Defaults to `8050`)
 
 ## GraphQL playground

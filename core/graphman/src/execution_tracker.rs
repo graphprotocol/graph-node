@@ -20,7 +20,7 @@ impl<S> GraphmanExecutionTracker<S>
 where
     S: GraphmanStore + Send + Sync + 'static,
 {
-    /// Creates a new execution tracker that spawns a separate process that keeps
+    /// Creates a new execution tracker that spawns a separate background task that keeps
     /// the execution active by periodically updating its status.
     pub fn new(store: Arc<S>, id: ExecutionId) -> Self {
         let heartbeat_stopper = Arc::new(Notify::new());
