@@ -300,7 +300,7 @@ from the database is that it is impossible with Diesel to execute queries
 where the number and types of the columns of the result are not known at
 compile time.
 
-We need to to be careful though to not convert to JSONB too early, as that
+We need to be careful though to not convert to JSONB too early, as that
 is slow when done for large numbers of rows. Deferring conversion is
 responsible for some of the complexity in these queries.
 
