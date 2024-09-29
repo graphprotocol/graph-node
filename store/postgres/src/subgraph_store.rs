@@ -11,7 +11,7 @@ use std::{
 };
 use std::{iter::FromIterator, time::Duration};
 
-use graph::futures03::future::join_all;
+use graph::{bail, futures03::future::join_all};
 use graph::{
     cheap_clone::CheapClone,
     components::{
@@ -1349,6 +1349,28 @@ impl SubgraphStoreTrait for SubgraphStore {
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
+    }
+
+    fn drop_subgraph(&self, hash: &DeploymentHash) -> Result<(), StoreError> {
+        let deployments = self.subgraphs_for_deployment_hash(hash)?;
+        if deployments.len() > 1 {
+            bail!(
+                "multiple subgraphs exist for this hash, please remove them before trying to drop"
+            );
+        }
+        for (deployment, _) in deployments.into_iter() {
+            self.remove_subgraph(
+                SubgraphName::new(deployment.clone())
+                    .map_err(|_| StoreError::DeploymentNotFound(deployment))?,
+            )?;
+        }
+
+        let locators = self.locators(hash)?;
+        for loc in locators.iter() {
+            self.inner.remove_deployment(loc.id.into())?;
+        }
+
+        Ok(())
     }
 
     fn reassign_subgraph(
