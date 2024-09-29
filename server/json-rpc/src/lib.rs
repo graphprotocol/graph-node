@@ -64,6 +64,11 @@ impl JsonRpcServer {
             })
             .unwrap();
         rpc_module
+            .register_async_method("subgraph_drop", |params, state| async move {
+                state.drop_handler(params.parse()?).await
+            })
+            .unwrap();
+        rpc_module
             .register_async_method("subgraph_reassign", |params, state| async move {
                 state.reassign_handler(params.parse()?).await
             })
@@ -145,6 +150,22 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 "subgraph_deploy",
                 e,
                 Self::DEPLOY_ERROR,
+                params,
+            )),
+        }
+    }
+
+    /// Handler for the `subgraph_drop` endpoint.
+    async fn drop_handler(&self, params: SubgraphDropParams) -> JsonRpcResult<GraphValue> {
+        info!(&self.logger, "Received subgraph_drop request"; "params" => format!("{:?}", params));
+
+        match self.registrar.remove_deployment(&params.ipfs_hash).await {
+            Ok(_) => Ok(Value::Null),
+            Err(e) => Err(json_rpc_error(
+                &self.logger,
+                "subgraph_drop",
+                e,
+                Self::REMOVE_ERROR,
                 params,
             )),
         }
@@ -287,6 +308,11 @@ struct SubgraphDeployParams {
 #[derive(Debug, Deserialize)]
 struct SubgraphRemoveParams {
     name: SubgraphName,
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphDropParams {
+    ipfs_hash: DeploymentHash,
 }
 
 #[derive(Debug, Deserialize)]

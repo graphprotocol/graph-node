@@ -1351,6 +1351,23 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
+    fn drop_subgraph(&self, hash: &DeploymentHash) -> Result<(), StoreError> {
+        let deployments = self.subgraphs_for_deployment_hash(hash)?;
+        for (deployment, _) in deployments.into_iter() {
+            self.remove_subgraph(
+                SubgraphName::new(deployment.clone())
+                    .map_err(|_| StoreError::DeploymentNotFound(deployment))?,
+            )?;
+        }
+
+        let locators = self.locators(hash)?;
+        for loc in locators.iter() {
+            self.inner.remove_deployment(loc.id.into())?;
+        }
+
+        Ok(())
+    }
+
     fn reassign_subgraph(
         &self,
         deployment: &DeploymentLocator,

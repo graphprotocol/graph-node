@@ -455,6 +455,14 @@ where
         Ok(())
     }
 
+    async fn remove_deployment(&self, id: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
+        self.store.drop_subgraph(id)?;
+
+        debug!(self.logger, "Removing deployment(s)"; "hash" => id.to_string());
+
+        Ok(())
+    }
+
     /// Reassign a subgraph deployment to a different node.
     ///
     /// Reassigning to a nodeId that does not match any reachable graph-nodes will effectively pause the
