@@ -306,6 +306,12 @@ mod test {
                 path: "".to_string(),
                 expected: Err(anyhow!("Failed to parse multihash")),
             },
+            Case {
+                name: "malformed CID",
+                input: "bafyreibjo4xmgaevkgud7mbifn3dzp4v4lyaui4yvqp3f2bqwtxcjrdqg4-malformed".to_string(),
+                path: "".to_string(),
+                expected: Err(anyhow!("Failed to parse multihash")),
+            },
         ];
 
         for case in cases {
