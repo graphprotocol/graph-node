@@ -231,6 +231,13 @@ pub struct Opt {
         help = "Base URL for forking subgraphs"
     )]
     pub fork_base: Option<String>,
+    #[clap(
+        long,
+        default_value = "8050",
+        value_name = "GRAPHMAN_PORT",
+        help = "Port for the graphman GraphQL server"
+    )]
+    pub graphman_port: u16,
 }
 
 impl From<Opt> for config::Opt {

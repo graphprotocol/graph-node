@@ -38,6 +38,8 @@ mod subgraph_store;
 pub mod transaction_receipt;
 mod writable;
 
+pub mod graphman;
+
 #[cfg(debug_assertions)]
 pub mod layout_for_tests {
     pub use crate::block_range::*;

@@ -8,14 +8,11 @@ use diesel::{sql_types::Text, PgConnection};
 use graph::components::store::DeploymentId;
 use graph::{
     components::store::DeploymentLocator,
-    data::subgraph::status,
     prelude::{anyhow, lazy_static, regex::Regex, DeploymentHash},
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::unused;
-
-use crate::manager::display::List;
 
 lazy_static! {
     // `Qm...` optionally follow by `:$shard`
@@ -28,7 +25,7 @@ lazy_static! {
 /// by subgraph name, IPFS hash, or namespace. Since there can be multiple
 /// deployments for the same IPFS hash, the search term for a hash can
 /// optionally specify a shard.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DeploymentSearch {
     Name { name: String },
     Hash { hash: String, shard: Option<String> },
@@ -204,72 +201,5 @@ impl Deployment {
             DeploymentId(self.id),
             DeploymentHash::new(self.deployment.clone()).unwrap(),
         )
-    }
-
-    pub fn print_table(deployments: Vec<Self>, statuses: Vec<status::Info>) {
-        let mut rows = vec![
-            "name",
-            "status",
-            "id",
-            "namespace",
-            "shard",
-            "active",
-            "chain",
-            "node_id",
-        ];
-        if !statuses.is_empty() {
-            rows.extend(vec![
-                "paused",
-                "synced",
-                "health",
-                "earliest block",
-                "latest block",
-                "chain head block",
-            ]);
-        }
-
-        let mut list = List::new(rows);
-
-        for deployment in deployments {
-            let status = statuses
-                .iter()
-                .find(|status| &status.id.0 == &deployment.id);
-
-            let mut rows = vec![
-                deployment.name,
-                deployment.status,
-                deployment.deployment,
-                deployment.namespace,
-                deployment.shard,
-                deployment.active.to_string(),
-                deployment.chain,
-                deployment.node_id.unwrap_or("---".to_string()),
-            ];
-            if let Some(status) = status {
-                let chain = &status.chains[0];
-                rows.extend(vec![
-                    status
-                        .paused
-                        .map(|b| b.to_string())
-                        .unwrap_or("---".to_string()),
-                    status.synced.to_string(),
-                    status.health.as_str().to_string(),
-                    chain.earliest_block_number.to_string(),
-                    chain
-                        .latest_block
-                        .as_ref()
-                        .map(|b| b.number().to_string())
-                        .unwrap_or("-".to_string()),
-                    chain
-                        .chain_head_block
-                        .as_ref()
-                        .map(|b| b.number().to_string())
-                        .unwrap_or("-".to_string()),
-                ])
-            }
-            list.append(rows);
-        }
-
-        list.render();
     }
 }

@@ -1,0 +1,10 @@
+[package]
+name = "graphman-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+diesel = { workspace = true }
+strum = { workspace = true }

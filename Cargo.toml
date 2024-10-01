@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
     "core",
+    "core/graphman",
+    "core/graphman_store",
     "chain/*",
     "graphql",
     "node",
@@ -24,25 +26,46 @@ repository = "https://github.com/graphprotocol/graph-node"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-diesel = { version = "2.1.3", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
+anyhow = "1.0"
+async-graphql = { version = "7.0.6", features = ["chrono", "uuid"] }
+async-graphql-axum = "7.0.6"
+axum = "0.7.5"
+chrono = "0.4.38"
+clap = { version = "4.5.4", features = ["derive", "env"] }
+diesel = { version = "2.1.3", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono", "uuid"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
-diesel_derives = "2.1.4"
 diesel-dynamic-schema = "0.2.1"
+diesel_derives = "2.1.4"
 diesel_migrations = "2.1.0"
+graph = { path = "./graph" }
+graph-core = { path = "./core" }
+graph-store-postgres = { path = "./store/postgres" }
+graphman-server = { path = "./server/graphman" }
+graphman = { path = "./core/graphman" }
+graphman-store = { path = "./core/graphman_store" }
+itertools = "0.13.0"
+lazy_static = "1.5.0"
 prost = "0.12.6"
 prost-types = "0.12.6"
+regex = "1.5.4"
+reqwest = "0.12.5"
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_regex = "1.1.0"
 serde_yaml = "0.9.21"
+slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 sqlparser = "0.46.0"
+strum = { version = "0.26", features = ["derive"] }
 syn = { version = "2.0.66", features = ["full"] }
+test-store = { path = "./store/test-store" }
+thiserror = "1.0.25"
+tokio = { version = "1.38.0", features = ["full"] }
 tonic = { version = "0.11.0", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.11.0", features = ["prost"] }
-wasmtime = "15.0.1"
+tower-http = { version = "0.5.2", features = ["cors"] }
 wasmparser = "0.118.1"
-clap = { version = "4.5.4", features = ["derive", "env"] }
+wasmtime = "15.0.1"
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]
