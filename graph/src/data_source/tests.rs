@@ -2,7 +2,7 @@ use cid::Cid;
 
 use crate::{
     blockchain::mock::{MockBlockchain, MockDataSource},
-    ipfs_client::CidFile,
+    ipfs::ContentPath,
     prelude::Link,
 };
 
@@ -31,10 +31,7 @@ fn offchain_duplicate() {
     assert!(!a.is_duplicate_of(&c));
 
     let mut c = a.clone();
-    c.source = Source::Ipfs(CidFile {
-        cid: Cid::default(),
-        path: Some("/foo".into()),
-    });
+    c.source = Source::Ipfs(ContentPath::new(format!("{}/foo", Cid::default())).unwrap());
     assert!(!a.is_duplicate_of(&c));
 
     let mut c = a.clone();
@@ -73,10 +70,7 @@ fn new_datasource() -> offchain::DataSource {
         offchain::OffchainDataSourceKind::Ipfs,
         "theName".into(),
         0,
-        Source::Ipfs(CidFile {
-            cid: Cid::default(),
-            path: None,
-        }),
+        Source::Ipfs(ContentPath::new(Cid::default().to_string()).unwrap()),
         Mapping {
             language: String::new(),
             api_version: Version::new(0, 0, 0),

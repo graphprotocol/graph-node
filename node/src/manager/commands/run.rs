@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::chain::create_ipfs_clients;
 use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::network_setup::Networks;
@@ -59,14 +58,15 @@ pub async fn run(
     let logger_factory = LoggerFactory::new(logger.clone(), None, metrics_ctx.registry.clone());
 
     // FIXME: Hard-coded IPFS config, take it from config file instead?
-    let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &ipfs_url);
-    let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
+    let ipfs_client = graph::ipfs::new_ipfs_client(&ipfs_url, &logger).await?;
+
     let ipfs_service = ipfs_service(
-        ipfs_client,
+        ipfs_client.cheap_clone(),
         env_vars.mappings.max_ipfs_file_bytes,
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
     );
+
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),
         arweave_url.parse().expect("invalid arweave url"),
@@ -88,7 +88,7 @@ pub async fn run(
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(IpfsResolver::new(ipfs_clients, env_vars.cheap_clone()));
+    let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
 
     let chain_head_update_listener = store_builder.chain_head_update_listener();
     let network_store = store_builder.network_store(config.chain_ids());

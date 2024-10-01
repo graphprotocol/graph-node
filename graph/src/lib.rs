@@ -16,8 +16,6 @@ pub mod log;
 /// `CheapClone` trait.
 pub mod cheap_clone;
 
-pub mod ipfs_client;
-
 pub mod data_source;
 
 pub mod blockchain;
@@ -36,6 +34,8 @@ pub mod schema;
 
 /// Helpers for parsing environment variables.
 pub mod env;
+
+pub mod ipfs;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;

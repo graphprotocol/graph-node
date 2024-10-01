@@ -8,7 +8,7 @@ use crate::{
     },
     data::{store::scalar::Bytes, subgraph::SPEC_VERSION_0_0_7, value::Word},
     data_source,
-    ipfs_client::CidFile,
+    ipfs::ContentPath,
     prelude::{DataSourceContext, Link},
     schema::{EntityType, InputSchema},
 };
@@ -47,8 +47,8 @@ impl OffchainDataSourceKind {
     pub fn try_parse_source(&self, bs: Bytes) -> Result<Source, anyhow::Error> {
         let source = match self {
             OffchainDataSourceKind::Ipfs => {
-                let cid_file = CidFile::try_from(bs)?;
-                Source::Ipfs(cid_file)
+                let path = ContentPath::try_from(bs)?;
+                Source::Ipfs(path)
             }
             OffchainDataSourceKind::Arweave => {
                 let base64 = Word::from(String::from_utf8(bs.to_vec())?);
@@ -187,7 +187,7 @@ impl DataSource {
             OffchainDataSourceKind::Ipfs => match source.parse() {
                 Ok(source) => Source::Ipfs(source),
                 // Ignore data sources created with an invalid CID.
-                Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
+                Err(e) => return Err(DataSourceCreationError::Ignore(source, e.into())),
             },
             OffchainDataSourceKind::Arweave => Source::Arweave(Word::from(source)),
         };
@@ -313,7 +313,7 @@ pub type Base64 = Word;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
-    Ipfs(CidFile),
+    Ipfs(ContentPath),
     Arweave(Base64),
 }
 
@@ -326,7 +326,7 @@ impl Source {
     ///    the `source` of the data source is equal the `source` of the `TriggerData`.
     pub fn address(&self) -> Option<Vec<u8>> {
         match self {
-            Source::Ipfs(ref cid) => Some(cid.to_bytes()),
+            Source::Ipfs(ref path) => Some(path.to_string().as_bytes().to_vec()),
             Source::Arweave(ref base64) => Some(base64.as_bytes().to_vec()),
         }
     }
@@ -335,7 +335,7 @@ impl Source {
 impl Into<Bytes> for Source {
     fn into(self) -> Bytes {
         match self {
-            Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
+            Source::Ipfs(ref path) => Bytes::from(path.to_string().as_bytes().to_vec()),
             Source::Arweave(ref base64) => Bytes::from(base64.as_bytes()),
         }
     }
@@ -526,11 +526,9 @@ impl fmt::Debug for TriggerData {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
     use crate::{
         data::{store::scalar::Bytes, value::Word},
-        ipfs_client::CidFile,
+        ipfs::ContentPath,
     };
 
     use super::{OffchainDataSourceKind, Source};
@@ -538,13 +536,13 @@ mod test {
     #[test]
     fn test_source_bytes_round_trip() {
         let base64 = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
-        let cid = CidFile::from_str("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap();
+        let path = ContentPath::new("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap();
 
-        let ipfs_source: Bytes = Source::Ipfs(cid.clone()).into();
+        let ipfs_source: Bytes = Source::Ipfs(path.clone()).into();
         let s = OffchainDataSourceKind::Ipfs
             .try_parse_source(ipfs_source)
             .unwrap();
-        assert! { matches!(s, Source::Ipfs(ipfs) if ipfs.eq(&cid))};
+        assert! { matches!(s, Source::Ipfs(ipfs) if ipfs.eq(&path))};
 
         let arweave_source = Source::Arweave(Word::from(base64));
         let s = OffchainDataSourceKind::Arweave
