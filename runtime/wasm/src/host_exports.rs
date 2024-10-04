@@ -248,6 +248,7 @@ impl HostExports {
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
+        let vid = state.next_vid(block);
 
         Self::expect_object_type(&entity_type, "set")?;
 
@@ -314,6 +315,7 @@ impl HostExports {
                 data.insert(store::ID.clone(), value);
             }
         }
+        data.insert(store::VID.clone(), Value::Int8(vid));
 
         self.check_invalid_fields(
             self.data_source.api_version.clone(),
