@@ -77,6 +77,8 @@ pub struct BlockState {
     // data source that have been processed.
     pub processed_data_sources: Vec<StoredDynamicDataSource>,
 
+    pub vid_seq: i32,
+
     // Marks whether a handler is currently executing.
     in_handler: bool,
 
@@ -92,6 +94,7 @@ impl BlockState {
             persisted_data_sources: Vec::new(),
             handler_created_data_sources: Vec::new(),
             processed_data_sources: Vec::new(),
+            vid_seq: 0,
             in_handler: false,
             metrics: BlockStateMetrics::new(),
         }
@@ -109,6 +112,7 @@ impl BlockState {
             persisted_data_sources,
             handler_created_data_sources,
             processed_data_sources,
+            vid_seq: _,
             in_handler,
             metrics,
         } = self;
@@ -177,5 +181,10 @@ impl BlockState {
 
     pub fn persist_data_source(&mut self, ds: StoredDynamicDataSource) {
         self.persisted_data_sources.push(ds)
+    }
+    pub fn next_vid(&mut self, block_number: BlockNumber) -> i64 {
+        let vid = ((block_number as i64) << 32) + self.vid_seq as i64;
+        self.vid_seq += 1;
+        vid
     }
 }

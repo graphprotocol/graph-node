@@ -45,6 +45,7 @@ pub enum EntityModification {
         data: Arc<Entity>,
         block: BlockNumber,
         end: Option<BlockNumber>,
+        vid: i64,
     },
     /// Update the entity by overwriting it
     Overwrite {
@@ -52,6 +53,7 @@ pub enum EntityModification {
         data: Arc<Entity>,
         block: BlockNumber,
         end: Option<BlockNumber>,
+        vid: i64,
     },
     /// Remove the entity
     Remove { key: EntityKey, block: BlockNumber },
@@ -67,6 +69,7 @@ pub struct EntityWrite<'a> {
     // The end of the block range for which this write is valid. The value
     // of `end` itself is not included in the range
     pub end: Option<BlockNumber>,
+    pub vid: i64,
 }
 
 impl std::fmt::Display for EntityWrite<'_> {
@@ -89,24 +92,28 @@ impl<'a> TryFrom<&'a EntityModification> for EntityWrite<'a> {
                 data,
                 block,
                 end,
+                vid,
             } => Ok(EntityWrite {
                 id: &key.entity_id,
                 entity: data,
                 causality_region: key.causality_region,
                 block: *block,
                 end: *end,
+                vid: *vid,
             }),
             EntityModification::Overwrite {
                 key,
                 data,
                 block,
                 end,
+                vid,
             } => Ok(EntityWrite {
                 id: &key.entity_id,
                 entity: &data,
                 causality_region: key.causality_region,
                 block: *block,
                 end: *end,
+                vid: *vid,
             }),
 
             EntityModification::Remove { .. } => Err(()),
@@ -213,11 +220,13 @@ impl EntityModification {
                 data,
                 block,
                 end,
+                vid,
             } => Ok(Insert {
                 key,
                 data,
                 block,
                 end,
+                vid,
             }),
             Remove { key, .. } => {
                 return Err(constraint_violation!(
@@ -271,21 +280,23 @@ impl EntityModification {
 }
 
 impl EntityModification {
-    pub fn insert(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
+    pub fn insert(key: EntityKey, data: Entity, block: BlockNumber, vid: i64) -> Self {
         EntityModification::Insert {
             key,
             data: Arc::new(data),
             block,
             end: None,
+            vid,
         }
     }
 
-    pub fn overwrite(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
+    pub fn overwrite(key: EntityKey, data: Entity, block: BlockNumber, vid: i64) -> Self {
         EntityModification::Overwrite {
             key,
             data: Arc::new(data),
             block,
             end: None,
+            vid,
         }
     }
 
@@ -1017,18 +1028,21 @@ mod test {
 
             let value = value.clone();
             let key = THING_TYPE.parse_key("one").unwrap();
+            let vid = 0;
             match value {
                 Ins(block) => EntityModification::Insert {
                     key,
                     data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: None,
+                    vid,
                 },
                 Ovw(block) => EntityModification::Overwrite {
                     key,
                     data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: None,
+                    vid,
                 },
                 Rem(block) => EntityModification::Remove { key, block },
                 InsC(block, end) => EntityModification::Insert {
@@ -1036,12 +1050,14 @@ mod test {
                     data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: Some(end),
+                    vid,
                 },
                 OvwC(block, end) => EntityModification::Overwrite {
                     key,
                     data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: Some(end),
+                    vid,
                 },
             }
         }
