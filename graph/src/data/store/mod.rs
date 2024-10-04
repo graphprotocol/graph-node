@@ -735,6 +735,9 @@ where
 lazy_static! {
     /// The name of the id attribute, `"id"`
     pub static ref ID: Word = Word::from("id");
+
+    /// The name of the vid attribute, `"vid"`
+    pub static ref VID: Word = Word::from("vid");
 }
 
 /// An entity is represented as a map of attribute names to values.
@@ -908,6 +911,17 @@ impl Entity {
     /// return an error
     pub fn id(&self) -> Id {
         Id::try_from(self.get("id").unwrap().clone()).expect("the id is set to a valid value")
+    }
+
+    pub fn vid(&self) -> i64 {
+        self.get("vid")
+            .expect("the vid is set")
+            .as_int8()
+            .expect("the vid is set to a valid value")
+    }
+
+    pub fn vid_opt(&self) -> Option<i64> {
+        self.get("vid").map(|vid| vid.as_int8()).unwrap_or_default()
     }
 
     /// Merges an entity update `update` into this entity.

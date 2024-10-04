@@ -461,11 +461,13 @@ impl EntityCache {
                     updates.remove_null_fields();
                     let data = Arc::new(updates);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
+                    let vid = data.vid_opt().unwrap_or_default();
                     Some(Insert {
                         key,
                         data,
                         block,
                         end: None,
+                        vid,
                     })
                 }
                 // Entity may have been changed
@@ -476,11 +478,13 @@ impl EntityCache {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {
+                        let vid = data.vid_opt().unwrap_or_default();
                         Some(Overwrite {
                             key,
                             data,
                             block,
                             end: None,
+                            vid,
                         })
                     } else {
                         None
@@ -491,11 +495,13 @@ impl EntityCache {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
+                        let vid = data.vid();
                         Some(Overwrite {
                             key,
                             data,
                             block,
                             end: None,
+                            vid,
                         })
                     } else {
                         None
