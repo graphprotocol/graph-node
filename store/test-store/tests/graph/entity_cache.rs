@@ -221,8 +221,8 @@ fn insert_modifications() {
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
-            EntityModification::insert(mogwai_key, mogwai_data, 0),
-            EntityModification::insert(sigurros_key, sigurros_data, 0)
+            EntityModification::insert(mogwai_key, mogwai_data, 0, 0),
+            EntityModification::insert(sigurros_key, sigurros_data, 0, 0)
         ])
     );
 }
@@ -265,8 +265,8 @@ fn overwrite_modifications() {
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
-            EntityModification::overwrite(mogwai_key, mogwai_data, 0),
-            EntityModification::overwrite(sigurros_key, sigurros_data, 0)
+            EntityModification::overwrite(mogwai_key, mogwai_data, 0, 0),
+            EntityModification::overwrite(sigurros_key, sigurros_data, 0, 0)
         ])
     );
 }
@@ -304,6 +304,7 @@ fn consecutive_modifications() {
         sort_by_entity_key(vec![EntityModification::overwrite(
             update_key,
             entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 },
+            0,
             0
         )])
     );
