@@ -891,6 +891,7 @@ fn conflicting_entity() {
                             data: fred,
                             block: 2,
                             end: None,
+                            vid: 0,
                         },
                         2,
                     )
