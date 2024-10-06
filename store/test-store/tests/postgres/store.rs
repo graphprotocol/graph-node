@@ -1510,7 +1510,7 @@ fn handle_large_string_with_index() {
 
         let key = USER_TYPE.parse_key(id).unwrap();
 
-        EntityModification::insert(key, data, block)
+        EntityModification::insert(key, data, block, 0)
     }
 
     run_test(|store, writable, deployment| async move {
@@ -1609,7 +1609,7 @@ fn handle_large_bytea_with_index() {
 
         let key = USER_TYPE.parse_key(id).unwrap();
 
-        EntityModification::insert(key, data, block)
+        EntityModification::insert(key, data, block, 0)
     }
 
     run_test(|store, writable, deployment| async move {
