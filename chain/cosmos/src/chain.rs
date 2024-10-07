@@ -137,6 +137,7 @@ impl Blockchain for Chain {
         });
 
         Ok(Box::new(FirehoseBlockStream::new(
+            self.chain_store(),
             deployment.hash,
             self.chain_client(),
             store.block_ptr(),

@@ -445,6 +445,8 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Insert a block into the store (or update if they are already present).
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
 
+    async fn insert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
+
     fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
