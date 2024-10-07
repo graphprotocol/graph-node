@@ -197,15 +197,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     ) -> Result<Option<codec::Block>, Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
-
-    async fn load_blocks_by_numbers(
+    async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
         _block_numbers: HashSet<BlockNumber>,
     ) -> Result<Vec<Block>, Error> {
-        unimplemented!()
+        todo!()
     }
-
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
