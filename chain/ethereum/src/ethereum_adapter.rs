@@ -1707,7 +1707,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         chain_store: Arc<dyn ChainStore>,
         block_numbers: HashSet<BlockNumber>,
     ) -> Box<dyn Stream<Item = Arc<BlockPtrExt>, Error = Error> + Send> {
-        let blocks_map: BTreeMap<i32, Vec<json::Value>> = chain_store
+        let blocks_map = chain_store
             .cheap_clone()
             .block_ptrs_by_numbers(block_numbers.iter().map(|&b| b.into()).collect::<Vec<_>>())
             .await
@@ -1721,7 +1721,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .into_iter()
             .filter_map(|(_number, values)| {
                 if values.len() == 1 {
-                    json::from_value(values[0].clone()).ok()
+                    Arc::new(values[0].clone()).into()
                 } else {
                     None
                 }
