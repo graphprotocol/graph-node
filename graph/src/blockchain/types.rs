@@ -482,6 +482,21 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for BlockPtrExt {
         })
     }
 }
+
+impl TryFrom<(H256, i32, H256, U256)> for BlockPtrExt {
+    type Error = anyhow::Error;
+
+    fn try_from(tuple: (H256, i32, H256, U256)) -> Result<Self, Self::Error> {
+        let (hash, block_number, parent_hash, timestamp) = tuple;
+
+        Ok(BlockPtrExt {
+            hash: hash.into(),
+            number: block_number,
+            parent_hash: parent_hash.into(),
+            timestamp,
+        })
+    }
+}
 impl From<BlockPtrExt> for H256 {
     fn from(ptr: BlockPtrExt) -> Self {
         ptr.hash_as_h256()
