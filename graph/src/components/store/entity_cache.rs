@@ -461,7 +461,7 @@ impl EntityCache {
                     updates.remove_null_fields();
                     let data = Arc::new(updates);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    let vid = data.vid();
+                    let vid = data.vid_opt();
                     Some(Insert {
                         key,
                         data,
@@ -478,7 +478,7 @@ impl EntityCache {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {
-                        let vid = data.vid();
+                        let vid = data.vid_opt();
                         Some(Overwrite {
                             key,
                             data,

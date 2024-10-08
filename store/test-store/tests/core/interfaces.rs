@@ -202,8 +202,8 @@ async fn reference_interface_derived() {
     let query = "query { events { id transaction { id } } }";
 
     let buy = ("BuyEvent", entity! { schema => id: "buy" });
-    let sell1 = ("SellEvent", entity! { schema => id: "sell1" });
-    let sell2 = ("SellEvent", entity! { schema => id: "sell2" });
+    let sell1 = ("SellEvent", entity! { schema => id: "sell1", vid: 0i64 });
+    let sell2 = ("SellEvent", entity! { schema => id: "sell2", vid: 1i64 });
     let gift = (
         "GiftEvent",
         entity! { schema => id: "gift", transaction: "txn" },
@@ -278,11 +278,11 @@ async fn follow_interface_reference() {
 
     let parent = (
         "Animal",
-        entity! { schema => id: "parent", legs: 4, parent: Value::Null },
+        entity! { schema => id: "parent", legs: 4, parent: Value::Null, vid: 0i64},
     );
     let child = (
         "Animal",
-        entity! { schema => id: "child", legs: 3, parent: "parent" },
+        entity! { schema => id: "child", legs: 3, parent: "parent" , vid: 1i64},
     );
 
     let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
@@ -459,16 +459,16 @@ async fn interface_inline_fragment_with_subquery() {
     ";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let mama_cow = ("Parent", entity! { schema =>  id: "mama_cow" });
+    let mama_cow = ("Parent", entity! { schema =>  id: "mama_cow", vid: 0i64 });
     let cow = (
         "Animal",
-        entity! { schema =>  id: "1", name: "cow", legs: 4, parent: "mama_cow" },
+        entity! { schema =>  id: "1", name: "cow", legs: 4, parent: "mama_cow", vid: 0i64 },
     );
 
-    let mama_bird = ("Parent", entity! { schema =>  id: "mama_bird" });
+    let mama_bird = ("Parent", entity! { schema =>  id: "mama_bird", vid: 1i64 });
     let bird = (
         "Bird",
-        entity! { schema =>  id: "2", airspeed: 5, legs: 2, parent: "mama_bird" },
+        entity! { schema =>  id: "2", airspeed: 5, legs: 2, parent: "mama_bird", vid: 1i64 },
     );
 
     let query = "query { leggeds(orderBy: legs) { legs ... on Bird { airspeed parent { id } } } }";
@@ -545,11 +545,11 @@ async fn alias() {
 
     let parent = (
         "Animal",
-        entity! { schema =>  id: "parent", legs: 4, parent: Value::Null },
+        entity! { schema =>  id: "parent", legs: 4, parent: Value::Null, vid: 0i64 },
     );
     let child = (
         "Animal",
-        entity! { schema =>  id: "child", legs: 3, parent: "parent" },
+        entity! { schema =>  id: "child", legs: 3, parent: "parent", vid: 1i64 },
     );
 
     let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
@@ -608,8 +608,14 @@ async fn fragments_dont_panic() {
     ";
 
     // The panic manifests if two parents exist.
-    let parent = ("Parent", entity! { schema => id: "p", child: "c" });
-    let parent2 = ("Parent", entity! { schema => id: "p2", child: Value::Null });
+    let parent = (
+        "Parent",
+        entity! { schema => id: "p", child: "c", vid: 0i64 },
+    );
+    let parent2 = (
+        "Parent",
+        entity! { schema => id: "p2", child: Value::Null, vid: 1i64 },
+    );
     let child = ("Child", entity! { schema => id:"c" });
 
     let res = insert_and_query(subgraph_id, document, vec![parent, parent2, child], query)
@@ -668,10 +674,13 @@ async fn fragments_dont_duplicate_data() {
     ";
 
     // This bug manifests if two parents exist.
-    let parent = ("Parent", entity! { schema => id: "p", children: vec!["c"] });
+    let parent = (
+        "Parent",
+        entity! { schema => id: "p", children: vec!["c"], vid: 0i64 },
+    );
     let parent2 = (
         "Parent",
-        entity! { schema => id: "b", children: Vec::<String>::new() },
+        entity! { schema => id: "b", children: Vec::<String>::new(), vid: 1i64 },
     );
     let child = ("Child", entity! { schema => id:"c" });
 
@@ -721,11 +730,11 @@ async fn redundant_fields() {
 
     let parent = (
         "Animal",
-        entity! { schema => id: "parent", parent: Value::Null },
+        entity! { schema => id: "parent", parent: Value::Null, vid: 0i64 },
     );
     let child = (
         "Animal",
-        entity! { schema => id: "child", parent: "parent" },
+        entity! { schema => id: "child", parent: "parent", vid: 1i64 },
     );
 
     let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
@@ -1081,11 +1090,11 @@ async fn enums() {
     let entities = vec![
         (
             "Trajectory",
-            entity! { schema =>  id: "1", direction: "EAST", meters: 10 },
+            entity! { schema =>  id: "1", direction: "EAST", meters: 10, vid: 0i64},
         ),
         (
             "Trajectory",
-            entity! { schema =>  id: "2", direction: "NORTH", meters: 15 },
+            entity! { schema =>  id: "2", direction: "NORTH", meters: 15, vid: 1i64},
         ),
     ];
     let query = "query { trajectories { id, direction, meters } }";
@@ -1134,15 +1143,15 @@ async fn enum_list_filters() {
     let entities = vec![
         (
             "Trajectory",
-            entity! { schema =>  id: "1", direction: "EAST", meters: 10 },
+            entity! { schema =>  id: "1", direction: "EAST", meters: 10, vid: 0i64 },
         ),
         (
             "Trajectory",
-            entity! { schema =>  id: "2", direction: "NORTH", meters: 15 },
+            entity! { schema =>  id: "2", direction: "NORTH", meters: 15, vid: 1i64 },
         ),
         (
             "Trajectory",
-            entity! { schema =>  id: "3", direction: "WEST", meters: 20 },
+            entity! { schema =>  id: "3", direction: "WEST", meters: 20, vid: 2i64 },
         ),
     ];
 
