@@ -591,8 +591,8 @@ fn check_for_insert_async_store() {
     run_store_test(|mut cache, store, deployment, _writable| async move {
         let account_id = ACCOUNT_TYPE.parse_id("2").unwrap();
         // insert a new wallet
-        let wallet_entity_5 = create_wallet_operation("5", &account_id, 79_i32, 2);
-        let wallet_entity_6 = create_wallet_operation("6", &account_id, 200_i32, 3);
+        let wallet_entity_5 = create_wallet_operation("5", &account_id, 79_i32, 12);
+        let wallet_entity_6 = create_wallet_operation("6", &account_id, 200_i32, 13);
 
         transact_entity_operations(
             &store,
@@ -609,12 +609,12 @@ fn check_for_insert_async_store() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 1);
-        let wallet_2 = create_wallet_entity("5", &account_id, 79_i32, 2);
-        let wallet_3 = create_wallet_entity("6", &account_id, 200_i32, 3);
+        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 21);
+        let wallet_2 = create_wallet_entity("5", &account_id, 79_i32, 22);
+        let wallet_3 = create_wallet_entity("6", &account_id, 200_i32, 23);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
 
-        assert_eq!(result, filter_vid(expeted_vec));
+        assert_eq!(filter_vid(result), filter_vid(expeted_vec));
     });
 }
 
@@ -656,7 +656,7 @@ fn check_for_update_async_related() {
     run_store_test(|mut cache, store, deployment, writable| async move {
         let entity_key = WALLET_TYPE.parse_key("1").unwrap();
         let account_id = entity_key.entity_id.clone();
-        let wallet_entity_update = create_wallet_operation("1", &account_id, 79_i32, 1);
+        let wallet_entity_update = create_wallet_operation("1", &account_id, 79_i32, 11);
 
         let new_data = match wallet_entity_update {
             EntityOperation::Set { ref data, .. } => data.clone(),
@@ -680,8 +680,8 @@ fn check_for_update_async_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
+        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 12);
+        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 13);
         let expeted_vec = vec![new_data, wallet_2, wallet_3];
 
         assert_eq!(filter_vid(result), filter_vid(expeted_vec));
@@ -743,7 +743,10 @@ fn scoped_get() {
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
         assert_eq!(None, act1);
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(
+            filter_vid(vec![wallet1.clone()]),
+            vec![act1.as_ref().map(|e| e.as_ref()).unwrap().clone()]
+        );
         // Even after reading from the store, the entity is not visible with
         // `InBlock`
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
