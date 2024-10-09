@@ -895,7 +895,7 @@ create index attr_0_1_data_amount
     on "sgd0815"."data" using btree("amount");
 
 create table "sgd0815"."stats_hour" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -913,7 +913,7 @@ create index attr_1_2_stats_hour_max_price
     on "sgd0815"."stats_hour" using btree("max_price");
 
 create table "sgd0815"."stats_day" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -992,7 +992,7 @@ create index attr_0_3_data_amount
 on "sgd0815"."data" using btree("amount");
 
 create table "sgd0815"."stats_1_hour" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -1008,7 +1008,7 @@ on "sgd0815"."stats_1_hour" using btree("volume");
 
 
 create table "sgd0815"."stats_1_day" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -1024,7 +1024,7 @@ on "sgd0815"."stats_1_day" using btree("volume");
 
 
 create table "sgd0815"."stats_2_hour" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -1044,7 +1044,7 @@ create index stats_2_hour_dims
 on "sgd0815"."stats_2_hour"(group_1, timestamp);
 
 create table "sgd0815"."stats_2_day" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -1064,7 +1064,7 @@ create index stats_2_day_dims
 on "sgd0815"."stats_2_day"(group_1, timestamp);
 
 create table "sgd0815"."stats_3_hour" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
@@ -1087,7 +1087,7 @@ create index stats_3_hour_dims
 on "sgd0815"."stats_3_hour"(group_2, group_1, timestamp);
 
 create table "sgd0815"."stats_3_day" (
-    vid                  bigint primary key,
+    vid                  bigserial primary key,
     block$               int not null,
     "id"                 int8 not null,
     "timestamp"          timestamptz not null,
