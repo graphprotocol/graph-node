@@ -4,7 +4,6 @@ use std::{
 };
 
 use graph::{
-    data::subgraph::schema::POI_TABLE,
     prelude::{BLOCK_NUMBER_MAX, ENV_VARS},
     schema::InputSchema,
 };
@@ -117,7 +116,7 @@ impl Table {
             Ok(cols)
         }
 
-        let vid_type = if self.name.as_str() == POI_TABLE {
+        let vid_type = if self.object.is_poi() || !self.object.is_object_type() {
             "bigserial"
         } else {
             "bigint"
