@@ -193,11 +193,8 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 fn filter_vid(arr: Vec<Entity>) -> Vec<Entity> {
     arr.into_iter()
         .map(|mut e| {
-            // println!("E1: {:?}", e);
             e.remove("vid");
-            // println!("E2: {:?}", e);
             e.remove_null_fields();
-            // println!("E3: {:?}", e);
             e
         })
         .collect()
