@@ -318,6 +318,7 @@ fn insert_user_entity(
     drinks: Option<Vec<&str>>,
     visits: i64,
     block: BlockNumber,
+    vid: i64,
 ) {
     let user = make_user(
         &layout.input_schema,
@@ -330,6 +331,7 @@ fn insert_user_entity(
         favorite_color,
         drinks,
         visits,
+        vid,
     );
 
     insert_entity_at(conn, layout, entity_type, vec![user], block);
@@ -346,6 +348,7 @@ fn make_user(
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
     visits: i64,
+    vid: i64,
 ) -> Entity {
     let favorite_color = favorite_color
         .map(|s| Value::String(s.to_owned()))
@@ -361,7 +364,8 @@ fn make_user(
         weight: BigDecimal::from(weight),
         coffee: coffee,
         favorite_color: favorite_color,
-        visits: visits
+        visits: visits,
+        vid: vid,
     };
     if let Some(drinks) = drinks {
         user.insert("drinks", drinks.into()).unwrap();
@@ -384,6 +388,7 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         None,
         60,
         0,
+        0,
     );
     insert_user_entity(
         conn,
@@ -399,6 +404,7 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         Some(vec!["beer", "wine"]),
         50,
         0,
+        1,
     );
     insert_user_entity(
         conn,
@@ -414,6 +420,7 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         Some(vec!["coffee", "tea"]),
         22,
         0,
+        2,
     );
 }
 
@@ -431,6 +438,7 @@ fn update_user_entity(
     drinks: Option<Vec<&str>>,
     visits: i64,
     block: BlockNumber,
+    vid: i64,
 ) {
     let user = make_user(
         &layout.input_schema,
@@ -443,6 +451,7 @@ fn update_user_entity(
         favorite_color,
         drinks,
         visits,
+        vid,
     );
     update_entity_at(conn, layout, entity_type, vec![user], block);
 }
@@ -1050,6 +1059,7 @@ impl<'a> QueryChecker<'a> {
             None,
             23,
             0,
+            3,
         );
         insert_pets(conn, layout);
 
@@ -1162,6 +1172,7 @@ fn check_block_finds() {
             None,
             55,
             1,
+            4,
         );
 
         checker
