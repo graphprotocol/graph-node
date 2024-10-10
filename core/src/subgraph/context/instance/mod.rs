@@ -29,6 +29,9 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// will return the onchain hosts in the same order as they were inserted.
     onchain_hosts: OnchainHosts<C, T>,
 
+    // TODO(krishna): Describe subgraph_hosts
+    subgraph_hosts: OnchainHosts<C, T>,
+
     offchain_hosts: OffchainHosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
@@ -79,6 +82,7 @@ where
             network,
             static_data_sources: Arc::new(manifest.data_sources),
             onchain_hosts: OnchainHosts::new(),
+            subgraph_hosts: OnchainHosts::new(),
             offchain_hosts: OffchainHosts::new(),
             module_cache: HashMap::new(),
             templates,
@@ -138,34 +142,44 @@ where
             );
         }
 
-        let is_onchain = data_source.is_onchain();
         let Some(host) = self.new_host(logger.clone(), data_source)? else {
             return Ok(None);
         };
 
         // Check for duplicates and add the host.
-        if is_onchain {
-            // `onchain_hosts` will remain ordered by the creation block.
-            // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
-            ensure!(
-                self.onchain_hosts
-                    .last()
-                    .and_then(|h| h.creation_block_number())
-                    <= host.data_source().creation_block(),
-            );
+        match host.data_source() {
+            DataSource::Onchain(_) => {
+                // `onchain_hosts` will remain ordered by the creation block.
+                // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+                ensure!(
+                    self.onchain_hosts
+                        .last()
+                        .and_then(|h| h.creation_block_number())
+                        <= host.data_source().creation_block(),
+                );
 
-            if self.onchain_hosts.contains(&host) {
-                Ok(None)
-            } else {
-                self.onchain_hosts.push(host.cheap_clone());
-                Ok(Some(host))
+                if self.onchain_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.onchain_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
             }
-        } else {
-            if self.offchain_hosts.contains(&host) {
-                Ok(None)
-            } else {
-                self.offchain_hosts.push(host.cheap_clone());
-                Ok(Some(host))
+            DataSource::Offchain(_) => {
+                if self.offchain_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.offchain_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
+            }
+            DataSource::Subgraph(_) => {
+                if self.subgraph_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.subgraph_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
             }
         }
     }
@@ -226,6 +240,9 @@ where
             TriggerData::Offchain(trigger) => self
                 .offchain_hosts
                 .matches_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
+            TriggerData::Subgraph(trigger) => self
+                .subgraph_hosts
+                .matches_by_address(Some(trigger.source.to_bytes().as_slice())),
         }
     }
 
