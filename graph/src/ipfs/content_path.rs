@@ -233,4 +233,44 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn test_try_from_bytes_valid() {
+        let bytes = crate::data::store::scalar::Bytes::from(CID_V0.as_bytes());
+        let path = ContentPath::try_from(bytes).unwrap();
+    
+        assert_eq!(
+            path,
+            ContentPath {
+                cid: CID_V0.parse().unwrap(),
+                path: None,
+            }
+        );
+    }
+    
+    #[test]
+    fn test_try_from_bytes_invalid_utf8() {
+        let bytes = crate::data::store::scalar::Bytes::from(vec![0xff, 0xff, 0xff]);
+        let err = ContentPath::try_from(bytes).unwrap_err();
+        assert!(err.to_string().contains("is not a valid IPFS content path"));
+    }
+
+    #[test]
+    fn test_from_str_valid_cid() {
+        let path = CID_V0.parse::<ContentPath>().unwrap();
+        assert_eq!(
+            path,
+            ContentPath {
+                cid: CID_V0.parse().unwrap(),
+                path: None,
+            }
+        );
+    }
+    
+    #[test]
+    fn test_from_str_invalid_cid() {
+        let err = "invalid_cid".parse::<ContentPath>().unwrap_err();
+        assert!(err.to_string().contains("invalid CID"));
+    }
+    
 }
