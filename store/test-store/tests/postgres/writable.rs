@@ -114,7 +114,8 @@ fn count_key(id: &str) -> EntityKey {
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
-        count: count as i32
+        count: count as i32,
+        vid: count as i64,
     };
     let entity_op = EntityOperation::Set {
         key: count_key(&data.get("id").unwrap().to_string()),
