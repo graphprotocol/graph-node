@@ -97,8 +97,9 @@ pub fn row_group_insert(
 ) -> RowGroup {
     let mut group = RowGroup::new(entity_type.clone(), false);
     for (key, data) in data {
+        let vid = data.vid();
         group
-            .push(EntityModification::insert(key, data, block, 0), block)
+            .push(EntityModification::insert(key, data, block, vid), block)
             .unwrap();
     }
     group
