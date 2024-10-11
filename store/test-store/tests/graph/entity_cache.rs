@@ -24,6 +24,7 @@ use std::sync::Arc;
 use web3::types::H256;
 
 use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
+use test_store::store::filter_vid;
 use test_store::*;
 
 lazy_static! {
@@ -188,16 +189,6 @@ fn make_band_key(id: &'static str) -> EntityKey {
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
     mods.sort_by_key(|m| m.key().clone());
     mods
-}
-
-fn filter_vid(arr: Vec<Entity>) -> Vec<Entity> {
-    arr.into_iter()
-        .map(|mut e| {
-            e.remove("vid");
-            e.remove_null_fields();
-            e
-        })
-        .collect()
 }
 
 #[tokio::test]
