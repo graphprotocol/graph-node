@@ -57,7 +57,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
     }
 
     pub fn push(&mut self, host: Arc<T::Host>) {
-        assert!(host.data_source().as_onchain().is_some());
+        assert!(host.data_source().is_chain_based());
 
         self.hosts.push(host.cheap_clone());
         let idx = self.hosts.len() - 1;

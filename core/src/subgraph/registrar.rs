@@ -629,7 +629,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     )
     .map_err(SubgraphRegistrarError::ResolveError)
     .await?;
-
     // Determine if the graft_base should be validated.
     // Validate the graft_base if there is a pending graft, ensuring its presence.
     // If the subgraph is new (indicated by DeploymentNotFound), the graft_base should be validated.
