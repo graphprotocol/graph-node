@@ -330,6 +330,7 @@ async fn check_graft(
 
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com").unwrap();
+    shaq.set("vid", 5i64).unwrap();
     let op = EntityOperation::Set {
         key: user_type.parse_key("3").unwrap(),
         data: shaq,

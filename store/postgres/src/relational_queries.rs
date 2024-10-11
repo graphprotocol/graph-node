@@ -4694,6 +4694,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_sql(", ");
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
+        out.push_sql(", vid");
 
         out.push_sql(")\nselect ");
         for column in &self.columns {
@@ -4759,6 +4760,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 ));
             }
         }
+        out.push_sql(", vid");
+
         out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
         out.push_sql(" where vid >= ");
