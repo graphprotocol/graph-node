@@ -1138,6 +1138,7 @@ impl DeploymentStore {
 
                 if !batch.deterministic_errors.is_empty() {
                     deployment::insert_subgraph_errors(
+                        &self.logger,
                         conn,
                         &site.deployment,
                         &batch.deterministic_errors,
@@ -1145,6 +1146,12 @@ impl DeploymentStore {
                     )?;
 
                     if batch.is_non_fatal_errors_active {
+                        debug!(
+                            logger,
+                            "Updating non-fatal errors for subgraph";
+                            "subgraph" => site.deployment.to_string(),
+                            "block" => batch.block_ptr.number,
+                        );
                         deployment::update_non_fatal_errors(
                             conn,
                             &site.deployment,
@@ -1273,6 +1280,7 @@ impl DeploymentStore {
         firehose_cursor: &FirehoseCursor,
         truncate: bool,
     ) -> Result<StoreEvent, StoreError> {
+        let logger = self.logger.cheap_clone();
         let event = deployment::with_lock(conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // The revert functions want the number of the first block that we need to get rid of
@@ -1303,7 +1311,7 @@ impl DeploymentStore {
                 // importantly creation of dynamic data sources. We ensure in the
                 // rest of the code that we only record history for those meta data
                 // changes that might need to be reverted
-                Layout::revert_metadata(conn, &site, block)?;
+                Layout::revert_metadata(&logger, conn, &site, block)?;
 
                 Ok(event)
             })

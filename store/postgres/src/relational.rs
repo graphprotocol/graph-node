@@ -930,12 +930,13 @@ impl Layout {
     /// For metadata, reversion always means deletion since the metadata that
     /// is subject to reversion is only ever created but never updated
     pub fn revert_metadata(
+        logger: &Logger,
         conn: &mut PgConnection,
         site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         crate::dynds::revert(conn, site, block)?;
-        crate::deployment::revert_subgraph_errors(conn, &site.deployment, block)?;
+        crate::deployment::revert_subgraph_errors(logger, conn, &site.deployment, block)?;
 
         Ok(())
     }
