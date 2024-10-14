@@ -17,12 +17,7 @@ use graph::{
 };
 use itertools::Itertools;
 
-use crate::{
-    catalog,
-    copy::AdaptiveBatchSize,
-    deployment,
-    relational::{Table, VID_COLUMN},
-};
+use crate::{catalog, copy::AdaptiveBatchSize, deployment, relational::Table};
 
 use super::{Catalog, Layout, Namespace};
 
@@ -73,7 +68,6 @@ struct TablePair {
     // has the same name as `src` but is in a different namespace
     dst: Arc<Table>,
     src_nsp: Namespace,
-    dst_nsp: Namespace,
 }
 
 impl TablePair {
@@ -100,12 +94,7 @@ impl TablePair {
         }
         conn.batch_execute(&query)?;
 
-        Ok(TablePair {
-            src,
-            dst,
-            src_nsp,
-            dst_nsp,
-        })
+        Ok(TablePair { src, dst, src_nsp })
     }
 
     /// Copy all entity versions visible between `earliest_block` and
@@ -239,10 +228,6 @@ impl TablePair {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
-        let dst_nsp = &self.dst_nsp;
-
-        let vid_seq = format!("{}_{VID_COLUMN}_seq", self.src.name);
-
         let mut query = String::new();
 
         // What we are about to do would get blocked by autovacuum on our
@@ -252,12 +237,13 @@ impl TablePair {
                   "src" => src_nsp.as_str(), "error" => e.to_string());
         }
 
+        // TODO: check if this is needed
         // Make sure the vid sequence
         // continues from where it was
-        writeln!(
-            query,
-            "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
-        )?;
+        // writeln!(
+        //     query,
+        //     "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
+        // )?;
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
