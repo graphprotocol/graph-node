@@ -3,6 +3,7 @@ use crate::{EthereumAdapter, EthereumAdapterTrait as _};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
 use graph::components::adapter::ChainId;
+use graph::components::ethereum::BlockDetailLevel;
 use graph::futures03::compat::Future01CompatExt as _;
 use graph::slog::o;
 use graph::util::backoff::ExponentialBackoff;
@@ -182,10 +183,12 @@ impl PollingBlockIngestor {
 
         // We need something that implements `Block` to store the block; the
         // store does not care whether the block is final or not
-        let ethereum_block = BlockFinality::NonFinal(EthereumBlockWithCalls {
+        let ethereum_block_with_calls = EthereumBlockWithCalls {
             ethereum_block,
             calls: None,
-        });
+            detail_level: BlockDetailLevel::Full,
+        };
+        let ethereum_block = BlockFinality::NonFinal(ethereum_block_with_calls);
 
         // Store it in the database and try to advance the chain head pointer
         self.chain_store
