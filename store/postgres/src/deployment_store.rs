@@ -910,7 +910,11 @@ impl DeploymentStore {
 
         let mut conn = self.get_conn()?;
         let layout = store.layout(&mut conn, site.cheap_clone())?;
-        layout.block_time(&mut conn, block)
+        if ENV_VARS.store.last_rollup_from_poi {
+            layout.block_time(&mut conn, block)
+        } else {
+            layout.last_rollup(&mut conn)
+        }
     }
 
     pub(crate) async fn supports_proof_of_indexing<'a>(
