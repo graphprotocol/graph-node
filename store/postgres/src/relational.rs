@@ -1039,6 +1039,20 @@ impl Layout {
         Ok(block_time)
     }
 
+    /// Find the time of the last rollup for the subgraph. We do this by
+    /// looking for the maximum timestamp in any aggregation table and
+    /// adding a little bit more than the corresponding interval to it. This
+    /// method crucially depends on the fact that we always write the rollup
+    /// for all aggregations, meaning that if some aggregations do not have
+    /// an entry with the maximum timestamp that there was just no data for
+    /// that interval, but we did try to aggregate at that time.
+    pub(crate) fn last_rollup(
+        &self,
+        conn: &mut PgConnection,
+    ) -> Result<Option<BlockTime>, StoreError> {
+        Rollup::last_rollup(&self.rollups, conn)
+    }
+
     /// Construct `Rolllup` for each of the aggregation mappings
     /// `schema.agg_mappings()` and return them in the same order as the
     /// aggregation mappings
