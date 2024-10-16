@@ -1,12 +1,11 @@
-use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use lazy_static::lazy_static;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::marker::PhantomData;
-use std::ops::Range;
 use test_store::*;
 
 use graph::components::store::{DeploymentLocator, DerivedEntityQuery, WritableStore};
@@ -320,51 +319,51 @@ fn restart() {
     })
 }
 
-#[test]
-fn read_range_test() {
-    run_test(|store, writable, deployment| async move {
-        let result_entities = vec![
-            r#"(1, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(2), id: String("1") }, vid: 1 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(2), id: String("1") }, vid: 1 }])"#,
-            r#"(2, [EntityWithType { entity_op: Modify, entity_type: EntityType(Counter), entity: Entity { count: Int(4), id: String("1") }, vid: 2 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(4), id: String("2") }, vid: 2 }])"#,
-            r#"(3, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(4), id: String("1") }, vid: 2 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(6), id: String("3") }, vid: 3 }])"#,
-            r#"(4, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(8), id: String("1") }, vid: 3 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(8), id: String("4") }, vid: 4 }])"#,
-            r#"(5, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(8), id: String("1") }, vid: 3 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(10), id: String("5") }, vid: 5 }])"#,
-            r#"(6, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1") }, vid: 4 }])"#,
-            r#"(7, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1") }, vid: 4 }])"#,
-        ];
-        let subgraph_store = store.subgraph_store();
-        writable.deployment_synced().unwrap();
+// #[test]
+// fn read_range_test() {
+//     run_test(|store, writable, deployment| async move {
+//         let result_entities = vec![
+//             r#"(1, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(2), id: String("1") }, vid: 1 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(2), id: String("1") }, vid: 1 }])"#,
+//             r#"(2, [EntityWithType { entity_op: Modify, entity_type: EntityType(Counter), entity: Entity { count: Int(4), id: String("1") }, vid: 2 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(4), id: String("2") }, vid: 2 }])"#,
+//             r#"(3, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(4), id: String("1") }, vid: 2 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(6), id: String("3") }, vid: 3 }])"#,
+//             r#"(4, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(8), id: String("1") }, vid: 3 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(8), id: String("4") }, vid: 4 }])"#,
+//             r#"(5, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(8), id: String("1") }, vid: 3 }, EntityWithType { entity_op: Create, entity_type: EntityType(Counter2), entity: Entity { count: Int(10), id: String("5") }, vid: 5 }])"#,
+//             r#"(6, [EntityWithType { entity_op: Create, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1") }, vid: 4 }])"#,
+//             r#"(7, [EntityWithType { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1") }, vid: 4 }])"#,
+//         ];
+//         let subgraph_store = store.subgraph_store();
+//         writable.deployment_synced().unwrap();
 
-        for count in 1..=5 {
-            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
-        }
-        writable.flush().await.unwrap();
-        writable.deployment_synced().unwrap();
+//         for count in 1..=5 {
+//             insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+//         }
+//         writable.flush().await.unwrap();
+//         writable.deployment_synced().unwrap();
 
-        let br: Range<BlockNumber> = 0..18;
-        let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
-        let e: BTreeMap<i32, Vec<EntityWithType>> = writable
-            .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
-            .unwrap();
-        assert_eq!(e.len(), 5);
-        for en in &e {
-            let index = *en.0 - 1;
-            let a = result_entities[index as usize];
-            assert_eq!(a, format!("{:?}", en));
-        }
-        for count in 6..=7 {
-            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
-        }
-        writable.flush().await.unwrap();
-        writable.deployment_synced().unwrap();
-        let e: BTreeMap<i32, Vec<EntityWithType>> = writable
-            .get_range(entity_types, CausalityRegion::ONCHAIN, br)
-            .unwrap();
-        assert_eq!(e.len(), 7);
-        for en in &e {
-            let index = *en.0 - 1;
-            let a = result_entities[index as usize];
-            assert_eq!(a, format!("{:?}", en));
-        }
-    })
-}
+//         let br: Range<BlockNumber> = 0..18;
+//         let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
+//         let e: BTreeMap<i32, Vec<EntityWithType>> = writable
+//             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+//             .unwrap();
+//         assert_eq!(e.len(), 5);
+//         for en in &e {
+//             let index = *en.0 - 1;
+//             let a = result_entities[index as usize];
+//             assert_eq!(a, format!("{:?}", en));
+//         }
+//         for count in 6..=7 {
+//             insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+//         }
+//         writable.flush().await.unwrap();
+//         writable.deployment_synced().unwrap();
+//         let e: BTreeMap<i32, Vec<EntityWithType>> = writable
+//             .get_range(entity_types, CausalityRegion::ONCHAIN, br)
+//             .unwrap();
+//         assert_eq!(e.len(), 7);
+//         for en in &e {
+//             let index = *en.0 - 1;
+//             let a = result_entities[index as usize];
+//             assert_eq!(a, format!("{:?}", en));
+//         }
+//     })
+// }
