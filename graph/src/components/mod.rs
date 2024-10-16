@@ -62,6 +62,8 @@ pub mod versions;
 
 pub mod adapter;
 
+pub mod tracing;
+
 /// A component that receives events of type `T`.
 pub trait EventConsumer<E> {
     /// Get the event sink.
