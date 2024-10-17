@@ -2524,6 +2524,9 @@ impl<'a> InsertQuery<'a> {
                 count += 1
             }
         }
+
+        count += 1; // for vid field
+
         POSTGRES_MAX_PARAMETERS / count
     }
 }
