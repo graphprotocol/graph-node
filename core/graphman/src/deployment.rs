@@ -127,13 +127,15 @@ pub(crate) fn load_deployments(
     query.load(primary_conn).map_err(Into::into)
 }
 
-pub(crate) fn load_deployment(
+pub(crate) fn load_deployment_locator(
     primary_conn: &mut PgConnection,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
-) -> Result<Deployment, GraphmanError> {
-    let deployment = load_deployments(primary_conn, deployment, version)?
+) -> Result<DeploymentLocator, GraphmanError> {
+    let deployment_locator = load_deployments(primary_conn, deployment, version)?
         .into_iter()
+        .map(|deployment| deployment.locator())
+        .unique()
         .exactly_one()
         .map_err(|err| {
             let count = err.into_iter().count();
@@ -142,5 +144,5 @@ pub(crate) fn load_deployment(
             ))
         })?;
 
-    Ok(deployment)
+    Ok(deployment_locator)
 }
