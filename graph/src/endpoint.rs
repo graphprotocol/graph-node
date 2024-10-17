@@ -9,10 +9,8 @@ use std::{
 use prometheus::IntCounterVec;
 use slog::{warn, Logger};
 
-use crate::{
-    components::{adapter::ProviderName, metrics::MetricsRegistry},
-    data::value::Word,
-};
+use crate::components::network_provider::ProviderName;
+use crate::{components::metrics::MetricsRegistry, data::value::Word};
 
 /// ProviderCount is the underlying structure to keep the count,
 /// we require that all the hosts are known ahead of time, this way we can

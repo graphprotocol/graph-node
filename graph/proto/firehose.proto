@@ -14,28 +14,32 @@ service Fetch {
   rpc Block(SingleBlockRequest) returns (SingleBlockResponse);
 }
 
+service EndpointInfo {
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
+
 message SingleBlockRequest {
 
   // Get the current known canonical version of a block at with this number
   message BlockNumber{
-    uint64 num=1;
+    uint64 num = 1;
   }
 
   // Get the current block with specific hash and number
   message BlockHashAndNumber{
-    uint64 num=1;
-    string hash=2;
+    uint64 num = 1;
+    string hash = 2;
   }
 
   // Get the block that generated a specific cursor
   message Cursor{
-    string cursor=1;
+    string cursor = 1;
   }
 
   oneof reference{
-    BlockNumber block_number=3;
-    BlockHashAndNumber block_hash_and_number=4;
-    Cursor cursor=5;
+    BlockNumber block_number = 3;
+    BlockHashAndNumber block_hash_and_number = 4;
+    Cursor cursor = 5;
   }
 
   repeated google.protobuf.Any transforms = 6;
@@ -107,4 +111,36 @@ enum ForkStep {
   // Block is now final and can be committed (finality is chain specific,
   // see chain documentation for more details)
   STEP_FINAL = 3;
+}
+
+message InfoRequest {}
+
+message InfoResponse {
+  // Canonical chain name from https://thegraph.com/docs/en/developing/supported-networks/ (ex: matic, mainnet ...).
+  string chain_name = 1;
+
+  // Alternate names for the chain.
+  repeated string chain_name_aliases = 2;
+
+  // First block that is served by this endpoint.
+  // This should usually be the genesis block, but some providers may have truncated history.
+  uint64 first_streamable_block_num = 3;
+  string first_streamable_block_id = 4;
+
+  enum BlockIdEncoding {
+    BLOCK_ID_ENCODING_UNSET = 0;
+    BLOCK_ID_ENCODING_HEX = 1;
+    BLOCK_ID_ENCODING_0X_HEX = 2;
+    BLOCK_ID_ENCODING_BASE58 = 3;
+    BLOCK_ID_ENCODING_BASE64 = 4;
+    BLOCK_ID_ENCODING_BASE64URL = 5;
+  }
+
+  // This informs the client on how to decode the `block_id` field inside the `Block` message
+  // as well as the `first_streamable_block_id` above.
+  BlockIdEncoding block_id_encoding = 5;
+
+  // Features describes the blocks.
+  // Popular values for EVM chains include "base", "extended" or "hybrid".
+  repeated string block_features = 10;
 }

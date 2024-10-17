@@ -3,7 +3,7 @@ use graph::blockchain::block_stream::{BlockStreamEvent, FirehoseCursor};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::endpoint::EndpointMetrics;
-use graph::firehose::{FirehoseEndpoints, NoopGenesisDecoder, SubgraphLimit};
+use graph::firehose::{FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::{info, tokio, DeploymentHash, MetricsRegistry, Registry};
 use graph::tokio_stream::StreamExt;
 use graph::{env::env_var, firehose::FirehoseEndpoint, log::logger, substreams};
@@ -57,7 +57,6 @@ async fn main() -> Result<(), Error> {
         false,
         SubgraphLimit::Unlimited,
         Arc::new(endpoint_metrics),
-        NoopGenesisDecoder::boxed(),
     ));
 
     let client = Arc::new(ChainClient::new_firehose(FirehoseEndpoints::for_testing(

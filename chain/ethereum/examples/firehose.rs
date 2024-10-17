@@ -2,7 +2,7 @@ use anyhow::Error;
 use graph::{
     endpoint::EndpointMetrics,
     env::env_var,
-    firehose::{self, FirehoseEndpoint, NoopGenesisDecoder, SubgraphLimit},
+    firehose::{self, FirehoseEndpoint, SubgraphLimit},
     log::logger,
     prelude::{prost, tokio, tonic, MetricsRegistry},
 };
@@ -38,7 +38,6 @@ async fn main() -> Result<(), Error> {
         false,
         SubgraphLimit::Unlimited,
         metrics,
-        NoopGenesisDecoder::boxed(),
     ));
 
     loop {
