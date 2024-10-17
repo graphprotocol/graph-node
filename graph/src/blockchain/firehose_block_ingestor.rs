@@ -2,7 +2,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
     blockchain::Block as BlockchainBlock,
-    components::{adapter::ChainId, store::ChainStore},
+    components::store::ChainStore,
     firehose::{self, decode_firehose_block, HeaderOnly},
     prelude::{error, info, Logger},
     util::backoff::ExponentialBackoff,
@@ -16,6 +16,7 @@ use slog::{o, trace};
 use tonic::Streaming;
 
 use super::{client::ChainClient, BlockIngestor, Blockchain, BlockchainKind};
+use crate::components::network_provider::ChainName;
 
 const TRANSFORM_ETHEREUM_HEADER_ONLY: &str =
     "type.googleapis.com/sf.ethereum.transform.v1.HeaderOnly";
@@ -43,7 +44,7 @@ where
     client: Arc<ChainClient<C>>,
     logger: Logger,
     default_transforms: Vec<Transforms>,
-    chain_name: ChainId,
+    chain_name: ChainName,
 
     phantom: PhantomData<M>,
 }
@@ -56,7 +57,7 @@ where
         chain_store: Arc<dyn ChainStore>,
         client: Arc<ChainClient<C>>,
         logger: Logger,
-        chain_name: ChainId,
+        chain_name: ChainName,
     ) -> FirehoseBlockIngestor<M, C> {
         FirehoseBlockIngestor {
             chain_store,
@@ -226,7 +227,7 @@ where
         }
     }
 
-    fn network_name(&self) -> ChainId {
+    fn network_name(&self) -> ChainName {
         self.chain_name.clone()
     }
 

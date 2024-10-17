@@ -1,4 +1,4 @@
-use graph::components::adapter::ProviderName;
+use graph::components::network_provider::ProviderName;
 use graph::endpoint::{EndpointMetrics, RequestLabels};
 use jsonrpc_core::types::Call;
 use jsonrpc_core::Value;

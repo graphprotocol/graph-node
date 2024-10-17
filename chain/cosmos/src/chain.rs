@@ -1,6 +1,6 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{BlockIngestor, NoopDecoderHook};
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
@@ -37,7 +37,7 @@ use crate::{codec, TriggerFilter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
-    name: ChainId,
+    name: ChainName,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<MetricsRegistry>,

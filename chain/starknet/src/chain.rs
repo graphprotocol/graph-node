@@ -1,3 +1,4 @@
+use graph::components::network_provider::ChainName;
 use graph::{
     anyhow::Result,
     blockchain::{
@@ -14,10 +15,7 @@ use graph::{
         RuntimeAdapter as RuntimeAdapterTrait,
     },
     cheap_clone::CheapClone,
-    components::{
-        adapter::ChainId,
-        store::{DeploymentCursorTracker, DeploymentLocator},
-    },
+    components::store::{DeploymentCursorTracker, DeploymentLocator},
     data::subgraph::UnifiedMappingApiVersion,
     env::EnvVars,
     firehose::{self, FirehoseEndpoint, ForkStep},
@@ -43,7 +41,7 @@ use crate::{
 
 pub struct Chain {
     logger_factory: LoggerFactory,
-    name: ChainId,
+    name: ChainName,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<MetricsRegistry>,

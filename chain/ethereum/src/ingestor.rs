@@ -2,7 +2,7 @@ use crate::{chain::BlockFinality, ENV_VARS};
 use crate::{EthereumAdapter, EthereumAdapterTrait as _};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::futures03::compat::Future01CompatExt as _;
 use graph::slog::o;
 use graph::util::backoff::ExponentialBackoff;
@@ -22,7 +22,7 @@ pub struct PollingBlockIngestor {
     chain_client: Arc<ChainClient<crate::chain::Chain>>,
     chain_store: Arc<dyn ChainStore>,
     polling_interval: Duration,
-    network_name: ChainId,
+    network_name: ChainName,
 }
 
 impl PollingBlockIngestor {
@@ -32,7 +32,7 @@ impl PollingBlockIngestor {
         chain_client: Arc<ChainClient<crate::chain::Chain>>,
         chain_store: Arc<dyn ChainStore>,
         polling_interval: Duration,
-        network_name: ChainId,
+        network_name: ChainName,
     ) -> Result<PollingBlockIngestor, Error> {
         Ok(PollingBlockIngestor {
             logger,
@@ -266,7 +266,7 @@ impl BlockIngestor for PollingBlockIngestor {
         }
     }
 
-    fn network_name(&self) -> ChainId {
+    fn network_name(&self) -> ChainName {
         self.network_name.clone()
     }
 

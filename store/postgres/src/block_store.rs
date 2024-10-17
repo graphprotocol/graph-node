@@ -10,12 +10,10 @@ use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     sql_query, ExpressionMethods as _, PgConnection, RunQueryDsl,
 };
+use graph::components::network_provider::ChainName;
 use graph::{
     blockchain::ChainIdentifier,
-    components::{
-        adapter::ChainId,
-        store::{BlockStore as BlockStoreTrait, QueryPermit},
-    },
+    components::store::{BlockStore as BlockStoreTrait, QueryPermit},
     prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
     slog::o,
 };
@@ -540,7 +538,7 @@ impl BlockStore {
     /// has to be refreshed afterwards for the update to be reflected.
     pub fn set_chain_identifier(
         &self,
-        chain_id: ChainId,
+        chain_id: ChainName,
         ident: &ChainIdentifier,
     ) -> Result<(), StoreError> {
         use primary::chains as c;

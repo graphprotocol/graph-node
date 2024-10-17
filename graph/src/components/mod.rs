@@ -60,8 +60,6 @@ pub mod metrics;
 /// Components dealing with versioning
 pub mod versions;
 
-pub mod adapter;
-
 /// A component that receives events of type `T`.
 pub trait EventConsumer<E> {
     /// Get the event sink.
@@ -80,4 +78,5 @@ pub trait EventProducer<E> {
     fn take_event_stream(&mut self) -> Option<Box<dyn Stream<Item = E, Error = ()> + Send>>;
 }
 
+pub mod network_provider;
 pub mod transaction_receipt;

@@ -7,7 +7,7 @@ use graph::blockchain::BlockchainKind;
 use graph::blockchain::{
     client::ChainClient, substreams_block_stream::SubstreamsBlockStream, BlockIngestor,
 };
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::prelude::MetricsRegistry;
 use graph::slog::trace;
 use graph::substreams::Package;
@@ -29,7 +29,7 @@ pub struct SubstreamsBlockIngestor {
     chain_store: Arc<dyn ChainStore>,
     client: Arc<ChainClient<super::Chain>>,
     logger: Logger,
-    chain_name: ChainId,
+    chain_name: ChainName,
     metrics: Arc<MetricsRegistry>,
 }
 
@@ -38,7 +38,7 @@ impl SubstreamsBlockIngestor {
         chain_store: Arc<dyn ChainStore>,
         client: Arc<ChainClient<super::Chain>>,
         logger: Logger,
-        chain_name: ChainId,
+        chain_name: ChainName,
         metrics: Arc<MetricsRegistry>,
     ) -> SubstreamsBlockIngestor {
         SubstreamsBlockIngestor {
@@ -194,7 +194,7 @@ impl BlockIngestor for SubstreamsBlockIngestor {
         }
     }
 
-    fn network_name(&self) -> ChainId {
+    fn network_name(&self) -> ChainName {
         self.chain_name.clone()
     }
     fn kind(&self) -> BlockchainKind {
