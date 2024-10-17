@@ -17,9 +17,9 @@ use graph::blockchain::{
     TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::ChainId;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
+use graph::components::network_provider::ChainName;
 use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
@@ -27,7 +27,7 @@ use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, NoopGenesisDecoder, SubgraphLimit};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
@@ -107,7 +107,6 @@ impl CommonChainConfig {
                 false,
                 SubgraphLimit::Unlimited,
                 Arc::new(EndpointMetrics::mock()),
-                NoopGenesisDecoder::boxed(),
             ))]);
 
         Self {
@@ -361,7 +360,7 @@ impl Drop for TestContext {
 }
 
 pub struct Stores {
-    network_name: ChainId,
+    network_name: ChainName,
     chain_head_listener: Arc<ChainHeadUpdateListener>,
     pub network_store: Arc<Store>,
     chain_store: Arc<ChainStore>,
@@ -400,7 +399,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
 
-    let network_name: ChainId = config
+    let network_name: ChainName = config
         .chains
         .chains
         .iter()
@@ -410,7 +409,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
         .as_str()
         .into();
     let chain_head_listener = store_builder.chain_head_update_listener();
-    let network_identifiers: Vec<ChainId> = vec![network_name.clone()].into_iter().collect();
+    let network_identifiers: Vec<ChainName> = vec![network_name.clone()].into_iter().collect();
     let network_store = store_builder.network_store(network_identifiers);
     let ident = ChainIdentifier {
         net_version: "".into(),
