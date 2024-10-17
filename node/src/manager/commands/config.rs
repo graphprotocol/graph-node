@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use graph::components::network_provider::ChainIdentifierStore;
+use graph::components::network_provider::ChainName;
+use graph::components::network_provider::ProviderName;
 use graph::{
     anyhow::{bail, Context},
-    components::{
-        adapter::{ChainId, IdentValidator, IdentValidatorError, NoopIdentValidator, ProviderName},
-        subgraph::{Setting, Settings},
-    },
+    components::subgraph::{Setting, Settings},
     endpoint::EndpointMetrics,
     env::EnvVars,
     itertools::Itertools,
@@ -30,15 +30,15 @@ pub async fn check_provider_genesis(networks: &Networks, store: Arc<BlockStore>)
         let (_oks, errs): (Vec<_>, Vec<_>) = ids
             .into_iter()
             .map(|(provider, id)| {
-                id.map_err(IdentValidatorError::from)
-                    .and_then(|id| store.check_ident(chain_id, &id))
-                    .map_err(|e| (provider, e))
+                id.and_then(|id| store.validate_identifier(chain_id, &id).map_err(Into::into))
+                    .map_err(|e| (provider, e.to_string()))
             })
             .partition_result();
+
         let errs = errs
             .into_iter()
-            .dedup_by(|e1, e2| e1.eq(e2))
-            .collect::<Vec<(ProviderName, IdentValidatorError)>>();
+            .dedup_by(|e1, e2| e1 == e2)
+            .collect::<Vec<(ProviderName, String)>>();
 
         if errs.is_empty() {
             println!("chain_id: {}: status: OK", chain_id);
@@ -171,16 +171,8 @@ pub async fn provider(
 
     let metrics = Arc::new(EndpointMetrics::mock());
     let caps = caps_from_features(features)?;
-    let networks = Networks::from_config(
-        logger,
-        &config,
-        registry,
-        metrics,
-        Arc::new(NoopIdentValidator),
-        false,
-    )
-    .await?;
-    let network: ChainId = network.into();
+    let networks = Networks::from_config(logger, &config, registry, metrics, &[]).await?;
+    let network: ChainName = network.into();
     let adapters = networks.ethereum_rpcs(network.clone());
 
     let adapters = adapters.all_cheapest_with(&caps).await;

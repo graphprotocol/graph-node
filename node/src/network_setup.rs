@@ -2,17 +2,16 @@ use ethereum::{
     network::{EthereumNetworkAdapter, EthereumNetworkAdapters},
     BlockIngestor,
 };
+use graph::components::network_provider::ChainName;
+use graph::components::network_provider::NetworkDetails;
+use graph::components::network_provider::ProviderCheck;
+use graph::components::network_provider::ProviderManager;
+use graph::components::network_provider::ProviderName;
 use graph::{
     anyhow::{self, bail},
     blockchain::{Blockchain, BlockchainKind, BlockchainMap, ChainIdentifier},
     cheap_clone::CheapClone,
-    components::{
-        adapter::{
-            ChainId, IdentValidator, NetIdentifiable, NoopIdentValidator, ProviderManager,
-            ProviderName,
-        },
-        metrics::MetricsRegistry,
-    },
+    components::metrics::MetricsRegistry,
     endpoint::EndpointMetrics,
     env::{EnvVars, ENV_VARS},
     firehose::{FirehoseEndpoint, FirehoseEndpoints},
@@ -37,7 +36,7 @@ use crate::chain::{
 
 #[derive(Debug, Clone)]
 pub struct EthAdapterConfig {
-    pub chain_id: ChainId,
+    pub chain_id: ChainName,
     pub adapters: Vec<EthereumNetworkAdapter>,
     pub call_only: Vec<EthereumNetworkAdapter>,
     // polling interval is set per chain so if set all adapter configuration will have
@@ -47,7 +46,7 @@ pub struct EthAdapterConfig {
 
 #[derive(Debug, Clone)]
 pub struct FirehoseAdapterConfig {
-    pub chain_id: ChainId,
+    pub chain_id: ChainName,
     pub kind: BlockchainKind,
     pub adapters: Vec<Arc<FirehoseEndpoint>>,
 }
@@ -66,7 +65,7 @@ impl AdapterConfiguration {
             AdapterConfiguration::Firehose(fh) | AdapterConfiguration::Substreams(fh) => &fh.kind,
         }
     }
-    pub fn chain_id(&self) -> &ChainId {
+    pub fn chain_id(&self) -> &ChainName {
         match self {
             AdapterConfiguration::Rpc(EthAdapterConfig { chain_id, .. })
             | AdapterConfiguration::Firehose(FirehoseAdapterConfig { chain_id, .. })
@@ -119,17 +118,17 @@ impl Networks {
             rpc_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                Arc::new(NoopIdentValidator),
+                &[],
             ),
             firehose_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                Arc::new(NoopIdentValidator),
+                &[],
             ),
             substreams_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                Arc::new(NoopIdentValidator),
+                &[],
             ),
         }
     }
@@ -143,32 +142,32 @@ impl Networks {
     pub async fn all_chain_identifiers(
         &self,
     ) -> Vec<(
-        &ChainId,
+        &ChainName,
         Vec<(ProviderName, Result<ChainIdentifier, anyhow::Error>)>,
     )> {
         let timeout = ENV_VARS.genesis_validation_timeout;
         let mut out = vec![];
         for chain_id in self.adapters.iter().map(|a| a.chain_id()).sorted().dedup() {
             let mut inner = vec![];
-            for adapter in self.rpc_provider_manager.get_all_unverified(chain_id) {
+            for adapter in self.rpc_provider_manager.providers_unchecked(chain_id) {
                 inner.push((
                     adapter.provider_name(),
-                    adapter.net_identifiers_with_timeout(timeout).await,
+                    adapter.chain_identifier_with_timeout(timeout).await,
                 ));
             }
-            for adapter in self.firehose_provider_manager.get_all_unverified(chain_id) {
+            for adapter in self.firehose_provider_manager.providers_unchecked(chain_id) {
                 inner.push((
                     adapter.provider_name(),
-                    adapter.net_identifiers_with_timeout(timeout).await,
+                    adapter.chain_identifier_with_timeout(timeout).await,
                 ));
             }
             for adapter in self
                 .substreams_provider_manager
-                .get_all_unverified(chain_id)
+                .providers_unchecked(chain_id)
             {
                 inner.push((
                     adapter.provider_name(),
-                    adapter.net_identifiers_with_timeout(timeout).await,
+                    adapter.chain_identifier_with_timeout(timeout).await,
                 ));
             }
 
@@ -181,16 +180,16 @@ impl Networks {
     pub async fn chain_identifier(
         &self,
         logger: &Logger,
-        chain_id: &ChainId,
+        chain_id: &ChainName,
     ) -> Result<ChainIdentifier> {
-        async fn get_identifier<T: NetIdentifiable + Clone>(
+        async fn get_identifier<T: NetworkDetails + Clone>(
             pm: ProviderManager<T>,
             logger: &Logger,
-            chain_id: &ChainId,
+            chain_id: &ChainName,
             provider_type: &str,
         ) -> Result<ChainIdentifier> {
-            for adapter in pm.get_all_unverified(chain_id) {
-                match adapter.net_identifiers().await {
+            for adapter in pm.providers_unchecked(chain_id) {
+                match adapter.chain_identifier().await {
                     Ok(ident) => return Ok(ident),
                     Err(err) => {
                         warn!(
@@ -208,29 +207,24 @@ impl Networks {
             bail!("no working adapters for chain {}", chain_id);
         }
 
-        get_identifier(
-            self.rpc_provider_manager.cheap_clone(),
-            logger,
-            chain_id,
-            "rpc",
-        )
-        .or_else(|_| {
-            get_identifier(
-                self.firehose_provider_manager.cheap_clone(),
-                logger,
-                chain_id,
-                "firehose",
-            )
-        })
-        .or_else(|_| {
-            get_identifier(
-                self.substreams_provider_manager.cheap_clone(),
-                logger,
-                chain_id,
-                "substreams",
-            )
-        })
-        .await
+        get_identifier(self.rpc_provider_manager.clone(), logger, chain_id, "rpc")
+            .or_else(|_| {
+                get_identifier(
+                    self.firehose_provider_manager.clone(),
+                    logger,
+                    chain_id,
+                    "firehose",
+                )
+            })
+            .or_else(|_| {
+                get_identifier(
+                    self.substreams_provider_manager.clone(),
+                    logger,
+                    chain_id,
+                    "substreams",
+                )
+            })
+            .await
     }
 
     pub async fn from_config(
@@ -238,8 +232,7 @@ impl Networks {
         config: &crate::config::Config,
         registry: Arc<MetricsRegistry>,
         endpoint_metrics: Arc<EndpointMetrics>,
-        store: Arc<dyn IdentValidator>,
-        genesis_validation_enabled: bool,
+        provider_checks: &[Arc<dyn ProviderCheck>],
     ) -> Result<Networks> {
         if config.query_only(&config.node) {
             return Ok(Networks::noop());
@@ -265,19 +258,13 @@ impl Networks {
             .chain(substreams.into_iter())
             .collect();
 
-        Ok(Networks::new(
-            &logger,
-            adapters,
-            store,
-            genesis_validation_enabled,
-        ))
+        Ok(Networks::new(&logger, adapters, provider_checks))
     }
 
     fn new(
         logger: &Logger,
         adapters: Vec<AdapterConfiguration>,
-        validator: Arc<dyn IdentValidator>,
-        genesis_validation_enabled: bool,
+        provider_checks: &[Arc<dyn ProviderCheck>],
     ) -> Self {
         let adapters2 = adapters.clone();
         let eth_adapters = adapters.iter().flat_map(|a| a.as_rpc()).cloned().map(
@@ -328,36 +315,23 @@ impl Networks {
             rpc_provider_manager: ProviderManager::new(
                 logger.clone(),
                 eth_adapters,
-                validator.cheap_clone(),
+                provider_checks,
             ),
             firehose_provider_manager: ProviderManager::new(
                 logger.clone(),
                 firehose_adapters
                     .into_iter()
                     .map(|(chain_id, endpoints)| (chain_id, endpoints)),
-                validator.cheap_clone(),
+                provider_checks,
             ),
             substreams_provider_manager: ProviderManager::new(
                 logger.clone(),
                 substreams_adapters
                     .into_iter()
                     .map(|(chain_id, endpoints)| (chain_id, endpoints)),
-                validator.cheap_clone(),
+                provider_checks,
             ),
         };
-
-        if !genesis_validation_enabled {
-            let (r, f, s) = (
-                s.rpc_provider_manager.clone(),
-                s.firehose_provider_manager.clone(),
-                s.substreams_provider_manager.clone(),
-            );
-            graph::spawn(async move {
-                r.mark_all_valid().await;
-                f.mark_all_valid().await;
-                s.mark_all_valid().await;
-            });
-        }
 
         s
     }
@@ -368,7 +342,7 @@ impl Networks {
     ) -> anyhow::Result<Vec<Box<dyn BlockIngestor>>> {
         async fn block_ingestor<C: Blockchain>(
             logger: &Logger,
-            chain_id: &ChainId,
+            chain_id: &ChainName,
             chain: &Arc<dyn Any + Send + Sync>,
             ingestors: &mut Vec<Box<dyn BlockIngestor>>,
         ) -> anyhow::Result<()> {
@@ -461,15 +435,15 @@ impl Networks {
         bm
     }
 
-    pub fn firehose_endpoints(&self, chain_id: ChainId) -> FirehoseEndpoints {
-        FirehoseEndpoints::new(chain_id, self.firehose_provider_manager.cheap_clone())
+    pub fn firehose_endpoints(&self, chain_id: ChainName) -> FirehoseEndpoints {
+        FirehoseEndpoints::new(chain_id, self.firehose_provider_manager.clone())
     }
 
-    pub fn substreams_endpoints(&self, chain_id: ChainId) -> FirehoseEndpoints {
-        FirehoseEndpoints::new(chain_id, self.substreams_provider_manager.cheap_clone())
+    pub fn substreams_endpoints(&self, chain_id: ChainName) -> FirehoseEndpoints {
+        FirehoseEndpoints::new(chain_id, self.substreams_provider_manager.clone())
     }
 
-    pub fn ethereum_rpcs(&self, chain_id: ChainId) -> EthereumNetworkAdapters {
+    pub fn ethereum_rpcs(&self, chain_id: ChainName) -> EthereumNetworkAdapters {
         let eth_adapters = self
             .adapters
             .iter()
@@ -480,7 +454,7 @@ impl Networks {
 
         EthereumNetworkAdapters::new(
             chain_id,
-            self.rpc_provider_manager.cheap_clone(),
+            self.rpc_provider_manager.clone(),
             eth_adapters,
             None,
         )

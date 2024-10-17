@@ -4,7 +4,7 @@ use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::blockchain::BlockHash;
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
@@ -1006,11 +1006,12 @@ impl Context {
         ))
     }
 
-    async fn networks(&self, block_store: Arc<BlockStore>) -> anyhow::Result<Networks> {
+    async fn networks(&self) -> anyhow::Result<Networks> {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
         let metrics = Arc::new(EndpointMetrics::mock());
-        Networks::from_config(logger, &self.config, registry, metrics, block_store, false).await
+
+        Networks::from_config(logger, &self.config, registry, metrics, &[]).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
@@ -1025,8 +1026,7 @@ impl Context {
         self,
         chain_name: &str,
     ) -> anyhow::Result<(Arc<ChainStore>, Arc<EthereumAdapter>)> {
-        let block_store = self.store().block_store();
-        let networks = self.networks(block_store).await?;
+        let networks = self.networks().await?;
         let chain_store = self.chain_store(chain_name)?;
         let ethereum_adapter = networks
             .ethereum_rpcs(chain_name.into())
@@ -1169,7 +1169,7 @@ async fn main() -> anyhow::Result<()> {
             match cmd {
                 CheckProviders {} => {
                     let store = ctx.store().block_store();
-                    let networks = ctx.networks(store.cheap_clone()).await?;
+                    let networks = ctx.networks().await?;
                     Ok(commands::config::check_provider_genesis(&networks, store).await)
                 }
                 Place { name, network } => {
@@ -1367,8 +1367,8 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let store_builder = ctx.store_builder().await;
                     let store = ctx.store().block_store();
-                    let networks = ctx.networks(store.cheap_clone()).await?;
-                    let chain_id = ChainId::from(chain_name);
+                    let networks = ctx.networks().await?;
+                    let chain_id = ChainName::from(chain_name);
                     let block_hash = BlockHash::from_str(&block_hash)?;
                     commands::chain::update_chain_genesis(
                         &networks,

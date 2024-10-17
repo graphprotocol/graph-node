@@ -226,6 +226,14 @@ pub struct EnvVars {
     ///
     /// If not specified, the graphman server will not start.
     pub graphman_server_auth_token: Option<String>,
+
+    /// If enabled for a chain, requires providers to support extended block details.
+    ///
+    /// Providers that do not support extended block details for enabled chains are
+    /// considered invalid and will not be used.
+    ///
+    /// Defaults to an empty list;
+    pub firehose_require_extended_blocks_for_chains: Vec<String>,
 }
 
 impl EnvVars {
@@ -311,6 +319,10 @@ impl EnvVars {
             genesis_validation_enabled: inner.genesis_validation_enabled.0,
             genesis_validation_timeout: Duration::from_secs(inner.genesis_validation_timeout),
             graphman_server_auth_token: inner.graphman_server_auth_token,
+            firehose_require_extended_blocks_for_chains:
+                Self::firehose_require_extended_blocks_for_chains(
+                    inner.firehose_require_extended_blocks_for_chains,
+                ),
         })
     }
 
@@ -334,6 +346,14 @@ impl EnvVars {
 
     pub fn log_gql_cache_timing(&self) -> bool {
         self.log_query_timing_contains("cache") && self.log_gql_timing()
+    }
+
+    fn firehose_require_extended_blocks_for_chains(s: Option<String>) -> Vec<String> {
+        s.unwrap_or_default()
+            .split(",")
+            .map(|x| x.trim().to_string())
+            .filter(|x| !x.is_empty())
+            .collect()
     }
 }
 
@@ -462,6 +482,8 @@ struct Inner {
     genesis_validation_timeout: u64,
     #[envconfig(from = "GRAPHMAN_SERVER_AUTH_TOKEN")]
     graphman_server_auth_token: Option<String>,
+    #[envconfig(from = "GRAPH_NODE_FIREHOSE_REQUIRE_EXTENDED_BLOCKS_FOR_CHAINS")]
+    firehose_require_extended_blocks_for_chains: Option<String>,
 }
 
 #[derive(Clone, Debug)]
