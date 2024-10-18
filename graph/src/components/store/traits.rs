@@ -102,6 +102,9 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// their assignment, but keep the deployments themselves around
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
 
+    /// Remove all the subgraph's versions, assignments and data.
+    fn drop_subgraph(&self, name: &DeploymentHash) -> Result<(), StoreError>;
+
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.
     fn reassign_subgraph(
