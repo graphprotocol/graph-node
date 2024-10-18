@@ -35,12 +35,11 @@ pub fn load_deployment(
 ) -> Result<ActiveDeployment, ReassignDeploymentError> {
     let mut primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
 
-    let locator = crate::deployment::load_deployment(
+    let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
         deployment,
         &DeploymentVersionSelector::All,
-    )?
-    .locator();
+    )?;
 
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
