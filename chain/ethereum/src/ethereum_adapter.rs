@@ -1892,15 +1892,13 @@ pub(crate) async fn get_calls(
     // For final blocks, or nonfinal blocks where we already checked
     // (`calls.is_some()`), do nothing; if we haven't checked for calls, do
     // that now
-    match block {
+    let block_finality = match block {
         BlockFinality::Final(_)
-        | BlockFinality::NonFinal(EthereumBlockWithCalls {
-            ethereum_block: _,
-            calls: Some(_),
-        }) => Ok(block),
+        | BlockFinality::NonFinal(EthereumBlockWithCalls { calls: Some(_), .. }) => Ok(block),
         BlockFinality::NonFinal(EthereumBlockWithCalls {
             ethereum_block,
             calls: None,
+            detail_level,
         }) => {
             let calls = if !requires_traces || ethereum_block.transaction_receipts.is_empty() {
                 vec![]
@@ -1921,9 +1919,11 @@ pub(crate) async fn get_calls(
             Ok(BlockFinality::NonFinal(EthereumBlockWithCalls {
                 ethereum_block,
                 calls: Some(calls),
+                detail_level,
             }))
         }
-    }
+    };
+    block_finality
 }
 
 pub(crate) fn parse_log_triggers(
@@ -2607,6 +2607,7 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
+    use graph::components::ethereum::BlockDetailLevel;
     use graph::prelude::ethabi::ethereum_types::U64;
     use graph::prelude::tokio::{self};
     use graph::prelude::web3::transports::test::TestTransport;
@@ -2634,6 +2635,7 @@ mod tests {
                 input: bytes(vec![1; 36]),
                 ..Default::default()
             }]),
+            detail_level: BlockDetailLevel::Full,
         };
 
         assert_eq!(
@@ -2800,6 +2802,7 @@ mod tests {
                 input: bytes(vec![1; 36]),
                 ..Default::default()
             }]),
+            detail_level: BlockDetailLevel::Full,
         };
 
         assert_eq!(
@@ -2832,6 +2835,7 @@ mod tests {
                 input: bytes(vec![1; 36]),
                 ..Default::default()
             }]),
+            detail_level: BlockDetailLevel::Full,
         };
 
         assert_eq!(

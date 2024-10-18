@@ -22,6 +22,31 @@ message Block {
 
   repeated TransactionTrace transaction_traces = 10;
   repeated BalanceChange balance_changes = 11;
+
+  enum DetailLevel{
+    DETAILLEVEL_EXTENDED = 0;
+    // DETAILLEVEL_TRACE = 1; // TBD
+    DETAILLEVEL_BASE = 2;
+  }
+
+  // DetailLevel affects the data available in this block.
+  //
+  // ## DetailLevel_EXTENDED
+  //
+  // Describes the most complete block, with traces, balance changes, storage
+  // changes. It is extracted during the execution of the block.
+  //
+  // ## DetailLevel_BASE
+  //
+  // Describes a block that contains only the block header, transaction receipts
+  // and event logs: everything that can be extracted using the base JSON-RPC
+  // interface
+  // (https://ethereum.org/en/developers/docs/apis/json-rpc/#json-rpc-methods)
+  // Furthermore, the eth_getTransactionReceipt call has been avoided because it
+  // brings only minimal improvements at the cost of requiring an archive node
+  // or a full node with complete transaction index.
+  DetailLevel detail_level = 12;
+  
   repeated CodeChange code_changes = 20;
 
   reserved 40; // bool filtering_applied = 40 [deprecated = true];
