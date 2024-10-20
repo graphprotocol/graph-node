@@ -1,7 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
-    components::adapter::ChainId,
+    components::network_provider::ChainName,
     env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
@@ -104,7 +104,7 @@ fn validate_name(s: &str) -> Result<()> {
 }
 
 impl Config {
-    pub fn chain_ids(&self) -> Vec<ChainId> {
+    pub fn chain_ids(&self) -> Vec<ChainName> {
         self.chains
             .chains
             .keys()

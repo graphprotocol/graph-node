@@ -1,6 +1,5 @@
 use clap::Parser as _;
 use git_testament::{git_testament, render_testament};
-use graph::components::adapter::{IdentValidator, NoopIdentValidator};
 use graph::futures01::Future as _;
 use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
@@ -273,21 +272,36 @@ async fn main() {
     start_graphman_server(opt.graphman_port, graphman_server_config).await;
 
     let launch_services = |logger: Logger, env_vars: Arc<EnvVars>| async move {
+        use graph::components::network_provider;
+
         let block_store = network_store.block_store();
 
-        let validator: Arc<dyn IdentValidator> = if env_vars.genesis_validation_enabled {
-            network_store.block_store()
-        } else {
-            Arc::new(NoopIdentValidator {})
-        };
+        let mut provider_checks: Vec<Arc<dyn network_provider::ProviderCheck>> = Vec::new();
+
+        if env_vars.genesis_validation_enabled {
+            provider_checks.push(Arc::new(network_provider::GenesisHashCheck::new(
+                block_store.clone(),
+            )));
+        }
+
+        if !env_vars
+            .firehose_require_extended_blocks_for_chains
+            .is_empty()
+        {
+            provider_checks.push(Arc::new(network_provider::ExtendedBlocksCheck::new(
+                env_vars
+                    .firehose_require_extended_blocks_for_chains
+                    .iter()
+                    .map(|x| x.as_str().into()),
+            )));
+        }
 
         let network_adapters = Networks::from_config(
             logger.cheap_clone(),
             &config,
             metrics_registry.cheap_clone(),
             endpoint_metrics,
-            validator,
-            env_vars.genesis_validation_enabled,
+            &provider_checks,
         )
         .await
         .expect("unable to parse network configuration");

@@ -1,10 +1,14 @@
 use anyhow::{anyhow, bail};
 use graph::blockchain::ChainIdentifier;
-use graph::components::adapter::{ChainId, NetIdentifiable, ProviderManager, ProviderName};
+use graph::components::network_provider::ChainName;
+use graph::components::network_provider::NetworkDetails;
+use graph::components::network_provider::ProviderManager;
+use graph::components::network_provider::ProviderName;
 use graph::endpoint::EndpointMetrics;
 use graph::firehose::{AvailableCapacity, SubgraphLimit};
 use graph::prelude::rand::seq::IteratorRandom;
 use graph::prelude::rand::{self, Rng};
+use itertools::Itertools;
 use std::sync::Arc;
 
 pub use graph::impl_slog_value;
@@ -29,12 +33,17 @@ pub struct EthereumNetworkAdapter {
 }
 
 #[async_trait]
-impl NetIdentifiable for EthereumNetworkAdapter {
-    async fn net_identifiers(&self) -> Result<ChainIdentifier, anyhow::Error> {
-        self.adapter.net_identifiers().await
-    }
+impl NetworkDetails for EthereumNetworkAdapter {
     fn provider_name(&self) -> ProviderName {
         self.adapter.provider().into()
+    }
+
+    async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
+        self.adapter.net_identifiers().await
+    }
+
+    async fn provides_extended_blocks(&self) -> Result<bool, Error> {
+        Ok(true)
     }
 }
 
@@ -72,7 +81,7 @@ impl EthereumNetworkAdapter {
 
 #[derive(Debug, Clone)]
 pub struct EthereumNetworkAdapters {
-    chain_id: ChainId,
+    chain_id: ChainName,
     manager: ProviderManager<EthereumNetworkAdapter>,
     call_only_adapters: Vec<EthereumNetworkAdapter>,
     // Percentage of request that should be used to retest errored adapters.
@@ -98,8 +107,7 @@ impl EthereumNetworkAdapters {
 
         use graph::slog::{o, Discard, Logger};
 
-        use graph::components::adapter::NoopIdentValidator;
-        let chain_id: ChainId = "testing".into();
+        let chain_id: ChainName = "testing".into();
         adapters.sort_by(|a, b| {
             a.capabilities
                 .partial_cmp(&b.capabilities)
@@ -109,15 +117,14 @@ impl EthereumNetworkAdapters {
         let provider = ProviderManager::new(
             Logger::root(Discard, o!()),
             vec![(chain_id.clone(), adapters)].into_iter(),
-            Arc::new(NoopIdentValidator),
+            &[],
         );
-        provider.mark_all_valid().await;
 
         Self::new(chain_id, provider, call_only, None)
     }
 
     pub fn new(
-        chain_id: ChainId,
+        chain_id: ChainName,
         manager: ProviderManager<EthereumNetworkAdapter>,
         call_only_adapters: Vec<EthereumNetworkAdapter>,
         retest_percent: Option<f64>,
@@ -159,8 +166,9 @@ impl EthereumNetworkAdapters {
     ) -> impl Iterator<Item = &EthereumNetworkAdapter> + '_ {
         let all = self
             .manager
-            .get_all(&self.chain_id)
+            .providers(&self.chain_id)
             .await
+            .map(|adapters| adapters.collect_vec())
             .unwrap_or_default();
 
         Self::available_with_capabilities(all, required_capabilities)
@@ -172,7 +180,10 @@ impl EthereumNetworkAdapters {
         &self,
         required_capabilities: &NodeCapabilities,
     ) -> impl Iterator<Item = &EthereumNetworkAdapter> + '_ {
-        let all = self.manager.get_all_unverified(&self.chain_id);
+        let all = self
+            .manager
+            .providers_unchecked(&self.chain_id)
+            .collect_vec();
 
         Self::available_with_capabilities(all, required_capabilities)
     }
@@ -242,10 +253,10 @@ impl EthereumNetworkAdapters {
         // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
         // struct is instantiated so they do not need to be sorted here
         self.manager
-            .get_all(&self.chain_id)
+            .providers(&self.chain_id)
             .await
+            .map(|mut adapters| adapters.next())
             .unwrap_or_default()
-            .first()
             .map(|ethereum_network_adapter| ethereum_network_adapter.adapter.clone())
     }
 
@@ -299,7 +310,8 @@ impl EthereumNetworkAdapters {
 #[cfg(test)]
 mod tests {
     use graph::cheap_clone::CheapClone;
-    use graph::components::adapter::{NoopIdentValidator, ProviderManager, ProviderName};
+    use graph::components::network_provider::ProviderManager;
+    use graph::components::network_provider::ProviderName;
     use graph::data::value::Word;
     use graph::http::HeaderMap;
     use graph::{
@@ -746,18 +758,14 @@ mod tests {
                     .collect(),
             )]
             .into_iter(),
-            Arc::new(NoopIdentValidator),
+            &[],
         );
-        manager.mark_all_valid().await;
 
-        let no_retest_adapters = EthereumNetworkAdapters::new(
-            chain_id.clone(),
-            manager.cheap_clone(),
-            vec![],
-            Some(0f64),
-        );
+        let no_retest_adapters =
+            EthereumNetworkAdapters::new(chain_id.clone(), manager.clone(), vec![], Some(0f64));
+
         let always_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id, manager.cheap_clone(), vec![], Some(1f64));
+            EthereumNetworkAdapters::new(chain_id, manager.clone(), vec![], Some(1f64));
 
         assert_eq!(
             no_retest_adapters
@@ -842,16 +850,12 @@ mod tests {
                 .iter()
                 .cloned()
                 .map(|a| (chain_id.clone(), vec![a])),
-            Arc::new(NoopIdentValidator),
+            &[],
         );
-        manager.mark_all_valid().await;
 
-        let always_retest_adapters = EthereumNetworkAdapters::new(
-            chain_id.clone(),
-            manager.cheap_clone(),
-            vec![],
-            Some(1f64),
-        );
+        let always_retest_adapters =
+            EthereumNetworkAdapters::new(chain_id.clone(), manager.clone(), vec![], Some(1f64));
+
         assert_eq!(
             always_retest_adapters
                 .cheapest_with(&NodeCapabilities {
@@ -870,9 +874,8 @@ mod tests {
                 .iter()
                 .cloned()
                 .map(|a| (chain_id.clone(), vec![a])),
-            Arc::new(NoopIdentValidator),
+            &[],
         );
-        manager.mark_all_valid().await;
 
         let no_retest_adapters =
             EthereumNetworkAdapters::new(chain_id.clone(), manager, vec![], Some(0f64));
@@ -912,9 +915,8 @@ mod tests {
                 no_available_adapter.iter().cloned().collect(),
             )]
             .into_iter(),
-            Arc::new(NoopIdentValidator),
+            &[],
         );
-        manager.mark_all_valid().await;
 
         let no_available_adapter = EthereumNetworkAdapters::new(chain_id, manager, vec![], None);
         let res = no_available_adapter

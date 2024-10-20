@@ -9,8 +9,8 @@ use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
 use graph::anyhow::bail;
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::IdentValidator;
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
+use graph::components::network_provider::ChainIdentifierStore;
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::Settings;
 use graph::endpoint::EndpointMetrics;
@@ -93,14 +93,24 @@ pub async fn run(
     let chain_head_update_listener = store_builder.chain_head_update_listener();
     let network_store = store_builder.network_store(config.chain_ids());
     let block_store = network_store.block_store();
-    let ident_validator: Arc<dyn IdentValidator> = network_store.block_store();
+
+    let mut provider_checks: Vec<Arc<dyn graph::components::network_provider::ProviderCheck>> =
+        Vec::new();
+
+    if env_vars.genesis_validation_enabled {
+        let store: Arc<dyn ChainIdentifierStore> = network_store.block_store();
+
+        provider_checks.push(Arc::new(
+            graph::components::network_provider::GenesisHashCheck::new(store),
+        ));
+    }
+
     let networks = Networks::from_config(
         logger.cheap_clone(),
         &config,
         metrics_registry.cheap_clone(),
         endpoint_metrics,
-        ident_validator,
-        env_vars.genesis_validation_enabled,
+        &provider_checks,
     )
     .await
     .expect("unable to parse network configuration");

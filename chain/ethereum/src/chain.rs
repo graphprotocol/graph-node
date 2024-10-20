@@ -5,7 +5,7 @@ use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transfor
 use graph::blockchain::{
     BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggersAdapterSelector,
 };
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -288,7 +288,7 @@ impl RuntimeAdapterBuilder for EthereumRuntimeAdapterBuilder {
 
 pub struct Chain {
     logger_factory: LoggerFactory,
-    pub name: ChainId,
+    pub name: ChainName,
     node_id: NodeId,
     registry: Arc<MetricsRegistry>,
     client: Arc<ChainClient<Self>>,
@@ -315,7 +315,7 @@ impl Chain {
     /// Creates a new Ethereum [`Chain`].
     pub fn new(
         logger_factory: LoggerFactory,
-        name: ChainId,
+        name: ChainName,
         node_id: NodeId,
         registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,

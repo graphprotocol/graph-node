@@ -15,15 +15,12 @@ use graph::blockchain::{
     ChainIdentifier,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::components::store::{BlockStore as _, ChainStore};
 use graph::data::store::NodeId;
 use graph::endpoint::EndpointMetrics;
 use graph::env::{EnvVars, ENV_VARS};
-use graph::firehose::{
-    FirehoseEndpoint, FirehoseGenesisDecoder, GenesisDecoder, SubgraphLimit,
-    SubstreamsGenesisDecoder,
-};
+use graph::firehose::{FirehoseEndpoint, SubgraphLimit};
 use graph::futures03::future::try_join_all;
 use graph::itertools::Itertools;
 use graph::log::factory::LoggerFactory;
@@ -63,11 +60,11 @@ pub fn create_substreams_networks(
         config.chains.ingestor,
     );
 
-    let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainId), Vec<Arc<FirehoseEndpoint>>> =
+    let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainName), Vec<Arc<FirehoseEndpoint>>> =
         BTreeMap::new();
 
     for (name, chain) in &config.chains.chains {
-        let name: ChainId = name.as_str().into();
+        let name: ChainName = name.as_str().into();
         for provider in &chain.providers {
             if let ProviderDetails::Substreams(ref firehose) = provider.details {
                 info!(
@@ -93,7 +90,6 @@ pub fn create_substreams_networks(
                         firehose.compression_enabled(),
                         SubgraphLimit::Unlimited,
                         endpoint_metrics.clone(),
-                        Box::new(SubstreamsGenesisDecoder {}),
                     )));
                 }
             }
@@ -124,11 +120,11 @@ pub fn create_firehose_networks(
         config.chains.ingestor,
     );
 
-    let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainId), Vec<Arc<FirehoseEndpoint>>> =
+    let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainName), Vec<Arc<FirehoseEndpoint>>> =
         BTreeMap::new();
 
     for (name, chain) in &config.chains.chains {
-        let name: ChainId = name.as_str().into();
+        let name: ChainName = name.as_str().into();
         for provider in &chain.providers {
             let logger = logger.cheap_clone();
             if let ProviderDetails::Firehose(ref firehose) = provider.details {
@@ -142,27 +138,6 @@ pub fn create_firehose_networks(
                 let parsed_networks = networks_by_kind
                     .entry((chain.protocol, name.clone()))
                     .or_insert_with(Vec::new);
-
-                let decoder: Box<dyn GenesisDecoder> = match chain.protocol {
-                    BlockchainKind::Arweave => {
-                        FirehoseGenesisDecoder::<graph_chain_arweave::Block>::new(logger)
-                    }
-                    BlockchainKind::Ethereum => {
-                        FirehoseGenesisDecoder::<graph_chain_ethereum::codec::Block>::new(logger)
-                    }
-                    BlockchainKind::Near => {
-                        FirehoseGenesisDecoder::<graph_chain_near::HeaderOnlyBlock>::new(logger)
-                    }
-                    BlockchainKind::Cosmos => {
-                        FirehoseGenesisDecoder::<graph_chain_cosmos::Block>::new(logger)
-                    }
-                    BlockchainKind::Substreams => {
-                        unreachable!("Substreams configuration should not be handled here");
-                    }
-                    BlockchainKind::Starknet => {
-                        FirehoseGenesisDecoder::<graph_chain_starknet::Block>::new(logger)
-                    }
-                };
 
                 // Create n FirehoseEndpoints where n is the size of the pool. If a
                 // subgraph limit is defined for this endpoint then each endpoint
@@ -182,7 +157,6 @@ pub fn create_firehose_networks(
                         firehose.compression_enabled(),
                         firehose.limit_for(&config.node),
                         endpoint_metrics.cheap_clone(),
-                        decoder.box_clone(),
                     )));
                 }
             }
@@ -384,7 +358,7 @@ pub async fn networks_as_chains(
         async fn add_substreams<C: Blockchain>(
             networks: &Networks,
             config: &Arc<EnvVars>,
-            chain_id: ChainId,
+            chain_id: ChainName,
             blockchain_map: &mut BlockchainMap,
             logger_factory: LoggerFactory,
             chain_store: Arc<dyn ChainStore>,
@@ -608,7 +582,7 @@ pub async fn networks_as_chains(
 mod test {
     use crate::config::{Config, Opt};
     use crate::network_setup::{AdapterConfiguration, Networks};
-    use graph::components::adapter::{ChainId, NoopIdentValidator};
+    use graph::components::network_provider::ChainName;
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};
@@ -641,23 +615,15 @@ mod test {
         let metrics = Arc::new(EndpointMetrics::mock());
         let config = Config::load(&logger, &opt).expect("can create config");
         let metrics_registry = Arc::new(MetricsRegistry::mock());
-        let ident_validator = Arc::new(NoopIdentValidator);
 
-        let networks = Networks::from_config(
-            logger,
-            &config,
-            metrics_registry,
-            metrics,
-            ident_validator,
-            false,
-        )
-        .await
-        .expect("can parse config");
+        let networks = Networks::from_config(logger, &config, metrics_registry, metrics, &[])
+            .await
+            .expect("can parse config");
         let mut network_names = networks
             .adapters
             .iter()
             .map(|a| a.chain_id())
-            .collect::<Vec<&ChainId>>();
+            .collect::<Vec<&ChainName>>();
         network_names.sort();
 
         let traces = NodeCapabilities {

@@ -18,7 +18,6 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::{
-        adapter::ChainId,
         metrics::subgraph::SubgraphInstanceMetrics,
         store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
@@ -58,11 +57,12 @@ use self::{
     block_stream::{BlockStream, FirehoseCursor},
     client::ChainClient,
 };
+use crate::components::network_provider::ChainName;
 
 #[async_trait]
 pub trait BlockIngestor: 'static + Send + Sync {
     async fn run(self: Box<Self>);
-    fn network_name(&self) -> ChainId;
+    fn network_name(&self) -> ChainName;
     fn kind(&self) -> BlockchainKind;
 }
 
@@ -516,7 +516,7 @@ impl BlockchainKind {
 
 /// A collection of blockchains, keyed by `BlockchainKind` and network.
 #[derive(Default, Debug, Clone)]
-pub struct BlockchainMap(HashMap<(BlockchainKind, ChainId), Arc<dyn Any + Send + Sync>>);
+pub struct BlockchainMap(HashMap<(BlockchainKind, ChainName), Arc<dyn Any + Send + Sync>>);
 
 impl BlockchainMap {
     pub fn new() -> Self {
@@ -525,11 +525,11 @@ impl BlockchainMap {
 
     pub fn iter(
         &self,
-    ) -> impl Iterator<Item = (&(BlockchainKind, ChainId), &Arc<dyn Any + Sync + Send>)> {
+    ) -> impl Iterator<Item = (&(BlockchainKind, ChainName), &Arc<dyn Any + Sync + Send>)> {
         self.0.iter()
     }
 
-    pub fn insert<C: Blockchain>(&mut self, network: ChainId, chain: Arc<C>) {
+    pub fn insert<C: Blockchain>(&mut self, network: ChainName, chain: Arc<C>) {
         self.0.insert((C::KIND, network), chain);
     }
 
@@ -551,7 +551,7 @@ impl BlockchainMap {
             .collect::<Result<Vec<Arc<C>>, Error>>()
     }
 
-    pub fn get<C: Blockchain>(&self, network: ChainId) -> Result<Arc<C>, Error> {
+    pub fn get<C: Blockchain>(&self, network: ChainName) -> Result<Arc<C>, Error> {
         self.0
             .get(&(C::KIND, network.clone()))
             .with_context(|| format!("no network {} found on chain {}", network, C::KIND))?

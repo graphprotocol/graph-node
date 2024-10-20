@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use graph::{blockchain::client::ChainClient, components::adapter::ChainId};
+use graph::{blockchain::client::ChainClient, components::network_provider::ChainName};
 
 use super::{CommonChainConfig, Stores, TestChainSubstreams};
 
@@ -24,7 +24,7 @@ pub async fn chain(test_name: &str, stores: &Stores) -> TestChainSubstreams {
         mock_registry,
         chain_store,
         block_stream_builder.clone(),
-        ChainId::from("test-chain"),
+        ChainName::from("test-chain"),
     ));
 
     TestChainSubstreams {

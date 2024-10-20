@@ -6,7 +6,7 @@ use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopDecoderHook,
     NoopRuntimeAdapter,
 };
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
 use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
@@ -67,7 +67,7 @@ impl blockchain::Block for Block {
 pub struct Chain {
     chain_store: Arc<dyn ChainStore>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
-    chain_id: ChainId,
+    chain_id: ChainName,
 
     pub(crate) logger_factory: LoggerFactory,
     pub(crate) client: Arc<ChainClient<Self>>,
@@ -81,7 +81,7 @@ impl Chain {
         metrics_registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
-        chain_id: ChainId,
+        chain_id: ChainName,
     ) -> Self {
         Self {
             logger_factory,
