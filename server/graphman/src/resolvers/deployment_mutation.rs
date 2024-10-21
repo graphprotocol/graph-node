@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_graphql::Context;
 use async_graphql::Object;
 use async_graphql::Result;
+use graph::prelude::SubgraphName;
 use graph_store_postgres::graphman::GraphmanStore;
 
 use crate::entities::DeploymentSelector;
@@ -10,6 +11,7 @@ use crate::entities::EmptyResponse;
 use crate::entities::ExecutionId;
 use crate::resolvers::context::GraphmanContext;
 
+mod create;
 mod pause;
 mod restart;
 mod resume;
@@ -64,5 +66,13 @@ impl DeploymentMutation {
         let deployment = deployment.try_into()?;
 
         restart::run_in_background(ctx, store, deployment, delay_seconds).await
+    }
+
+    /// Create a subgraph
+    pub async fn create(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
+        let ctx = GraphmanContext::new(ctx)?;
+
+        create::run(&ctx, &name);
+        Ok(EmptyResponse::new())
     }
 }
