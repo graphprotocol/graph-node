@@ -25,4 +25,4 @@ anyhow = "1.0"
 
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }
-uuid = { version = "1.9.1", features = ["v4"] }
+uuid = { version = "1.11.0", features = ["v4"] }
