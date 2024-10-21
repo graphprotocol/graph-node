@@ -58,7 +58,7 @@ serde_yaml = "0.9.21"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 sqlparser = "0.46.0"
 strum = { version = "0.26", features = ["derive"] }
-syn = { version = "2.0.66", features = ["full"] }
+syn = { version = "2.0.82", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "1.0.25"
 tokio = { version = "1.38.0", features = ["full"] }
