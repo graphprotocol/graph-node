@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 use anyhow::anyhow;
 use anyhow::Error;
 use graph::blockchain::Blockchain;
+use graph::data_source::subgraph;
 use graph::util::mem::init_slice;
 use semver::Version;
 use wasmtime::AsContext;
@@ -69,6 +70,16 @@ impl ToAscPtr for offchain::TriggerData {
     }
 }
 
+impl ToAscPtr for subgraph::TriggerData {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, HostExportError> {
+        asc_new(heap, &self.entity.sorted_ref(), gas).map(|ptr| ptr.erase())
+    }
+}
+
 impl<C: Blockchain> ToAscPtr for MappingTrigger<C>
 where
     C::MappingTrigger: ToAscPtr,
@@ -81,6 +92,7 @@ where
         match self {
             MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas),
             MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas),
+            MappingTrigger::Subgraph(trigger) => trigger.to_asc_ptr(heap, gas),
         }
     }
 }
