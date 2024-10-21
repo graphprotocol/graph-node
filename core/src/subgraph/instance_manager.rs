@@ -331,6 +331,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             })
             .collect();
 
+        let max_end_block: Option<BlockNumber> = if manifest.data_sources.len() == end_blocks.len()
+        {
+            end_blocks.iter().max().cloned()
+        } else {
+            None
+        };
+
         let templates = Arc::new(manifest.templates.clone());
 
         // Obtain the debug fork from the subgraph store
@@ -419,6 +426,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             start_blocks,
             end_blocks,
             stop_block,
+            max_end_block,
             store,
             debug_fork,
             triggers_adapter,

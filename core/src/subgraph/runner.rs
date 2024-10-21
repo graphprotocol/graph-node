@@ -197,6 +197,17 @@ where
                     .unfail_deterministic_error(&current_ptr, &parent_ptr)
                     .await?;
             }
+
+            // Stop subgraph when we reach maximum endblock.
+            if let Some(max_end_block) = self.inputs.max_end_block {
+                if max_end_block < current_ptr.block_number() {
+                    info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
+                                "max_end_block" => max_end_block,
+                                "current_block" => current_ptr.block_number());
+                    self.inputs.store.flush().await?;
+                    return Ok(self);
+                }
+            }
         }
 
         loop {
@@ -987,44 +998,57 @@ where
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let action = match event {
-            Some(Ok(BlockStreamEvent::ProcessWasmBlock(
-                block_ptr,
-                block_time,
-                data,
-                handler,
-                cursor,
-            ))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
-                self.handle_process_wasm_block(
-                    block_ptr,
-                    block_time,
-                    data,
-                    handler,
-                    cursor,
-                    cancel_handle,
-                )
-                .await?
-            }
-            Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(PROCESS_BLOCK_SECTION_NAME);
-                self.handle_process_block(block, cursor, cancel_handle)
-                    .await?
-            }
-            Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(HANDLE_REVERT_SECTION_NAME);
-                self.handle_revert(revert_to_ptr, cursor).await?
+            Some(Ok(event)) => {
+                if self.inputs.max_end_block.map_or(false, |max_end_block| {
+                    event.block_ptr().block_number() > max_end_block
+                }) {
+                    info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
+                                "max_end_block" => self.inputs.max_end_block,
+                                "current_block" => event.block_ptr().block_number());
+                    return Ok(Action::Stop);
+                }
+
+                match event {
+                    BlockStreamEvent::ProcessWasmBlock(
+                        block_ptr,
+                        block_time,
+                        data,
+                        handler,
+                        cursor,
+                    ) => {
+                        let _section = self
+                            .metrics
+                            .stream
+                            .stopwatch
+                            .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
+                        self.handle_process_wasm_block(
+                            block_ptr,
+                            block_time,
+                            data,
+                            handler,
+                            cursor,
+                            cancel_handle,
+                        )
+                        .await?
+                    }
+                    BlockStreamEvent::ProcessBlock(block, cursor) => {
+                        let _section = self
+                            .metrics
+                            .stream
+                            .stopwatch
+                            .start_section(PROCESS_BLOCK_SECTION_NAME);
+                        self.handle_process_block(block, cursor, cancel_handle)
+                            .await?
+                    }
+                    BlockStreamEvent::Revert(revert_to_ptr, cursor) => {
+                        let _section = self
+                            .metrics
+                            .stream
+                            .stopwatch
+                            .start_section(HANDLE_REVERT_SECTION_NAME);
+                        self.handle_revert(revert_to_ptr, cursor).await?
+                    }
+                }
             }
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
