@@ -329,6 +329,10 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         }
     }
 
+    pub fn has_source_subgraphs(&self) -> bool {
+        !self.source_subgraph_stores.is_empty()
+    }
+
     pub async fn blocks_with_subgraph_triggers(
         &self,
         logger: &Logger,

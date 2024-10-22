@@ -361,15 +361,24 @@ where
             //   10000 triggers found, 2 per block, range_size = 1000 / 2 = 500
             // - Scan 500 blocks:
             //   1000 triggers found, 2 per block, range_size = 1000 / 2 = 500
+
+            let target_triggers_per_block_range = if self.adapter.has_source_subgraphs() {
+                self.target_triggers_per_block_range * 10
+            } else {
+                self.target_triggers_per_block_range
+            };
+
             let range_size_upper_limit =
                 max_block_range_size.min(ctx.previous_block_range_size * 10);
+
             let target_range_size = if ctx.previous_triggers_per_block == 0.0 {
                 range_size_upper_limit
             } else {
-                (self.target_triggers_per_block_range as f64 / ctx.previous_triggers_per_block)
+                (target_triggers_per_block_range as f64 / ctx.previous_triggers_per_block)
                     .max(1.0)
                     .min(range_size_upper_limit as f64) as BlockNumber
             };
+
             let to = cmp::min(from + target_range_size - 1, to_limit);
 
             info!(
