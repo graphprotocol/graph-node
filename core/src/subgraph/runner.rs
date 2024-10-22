@@ -683,7 +683,11 @@ where
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
         let store = &self.inputs.store;
-        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
+        if has_errors
+            && !ENV_VARS.disable_fail_fast
+            && !store.is_deployment_synced()
+            && !is_non_fatal_errors_active
+        {
             store
                 .unassign_subgraph()
                 .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
