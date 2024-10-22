@@ -1,7 +1,7 @@
 use crate::resolvers::context::GraphmanContext;
 use anyhow::anyhow;
 use async_graphql::Result;
-use graph::prelude::SubgraphName;
+use graph::prelude::{StoreEvent, SubgraphName};
 use graph_store_postgres::command_support::catalog;
 use graphman::GraphmanError;
 
@@ -19,7 +19,8 @@ pub fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
         }
     };
 
-    catalog_conn.create_subgraph(&name)?;
+    let changes = catalog_conn.remove_subgraph(name)?;
+    catalog_conn.send_store_event(&ctx.notification_sender, &StoreEvent::new(changes))?;
 
     Ok(())
 }
