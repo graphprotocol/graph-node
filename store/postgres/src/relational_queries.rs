@@ -4943,6 +4943,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
+        let not_poi = self.dst.name.as_str() != POI_TABLE;
+
         // Construct a query
         //   insert into {dst}({columns})
         //   select {columns} from {src}
@@ -4963,7 +4965,9 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_sql(", ");
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
-        out.push_sql(", vid");
+        if not_poi {
+            out.push_sql(", vid");
+        }
 
         out.push_sql(")\nselect ");
         for column in &self.columns {
@@ -5029,7 +5033,9 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 ));
             }
         }
-        out.push_sql(", vid");
+        if not_poi {
+            out.push_sql(", vid");
+        }
 
         out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
