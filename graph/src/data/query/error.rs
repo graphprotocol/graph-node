@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crate::data::subgraph::*;
 use crate::prelude::q;
-use crate::{components::store::StoreError, prelude::CacheWeight};
+use crate::{components::store::StoreError, prelude::CacheWeight, schema::ErrorPolicy};
 
 #[derive(Debug, Clone)]
 pub struct CloneableAnyhowError(Arc<anyhow::Error>);
@@ -350,7 +350,7 @@ pub enum QueryError {
     EncodingError(FromUtf8Error),
     ParseError(Arc<anyhow::Error>),
     ExecutionError(QueryExecutionError),
-    IndexingError,
+    IndexingError { subgraph_error_allowed: bool },
 }
 
 impl QueryError {
@@ -358,7 +358,15 @@ impl QueryError {
         match self {
             QueryError::EncodingError(_) | QueryError::ParseError(_) => true,
             QueryError::ExecutionError(err) => err.is_attestable(),
-            QueryError::IndexingError => false,
+            QueryError::IndexingError {
+                subgraph_error_allowed,
+            } => *subgraph_error_allowed || false,
+        }
+    }
+
+    pub fn indexing_error_with_policy(policy: ErrorPolicy) -> Self {
+        QueryError::IndexingError {
+            subgraph_error_allowed: matches!(policy, ErrorPolicy::Allow),
         }
     }
 }
@@ -397,7 +405,9 @@ impl fmt::Display for QueryError {
             QueryError::ParseError(ref e) => write!(f, "{}", e),
 
             // This error message is part of attestable responses.
-            QueryError::IndexingError => write!(f, "indexing_error"),
+            QueryError::IndexingError {
+                subgraph_error_allowed: _,
+            } => write!(f, "indexing_error"),
         }
     }
 }
