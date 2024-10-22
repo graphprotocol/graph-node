@@ -3,7 +3,6 @@ use std::sync::Arc;
 use async_graphql::Context;
 use async_graphql::Object;
 use async_graphql::Result;
-use graph::prelude::SubgraphName;
 use graph_store_postgres::graphman::GraphmanStore;
 
 use crate::entities::DeploymentSelector;
@@ -13,6 +12,7 @@ use crate::resolvers::context::GraphmanContext;
 
 mod create;
 mod pause;
+mod remove;
 mod restart;
 mod resume;
 
@@ -71,8 +71,14 @@ impl DeploymentMutation {
     /// Create a subgraph
     pub async fn create(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
         let ctx = GraphmanContext::new(ctx)?;
+        create::run(&ctx, &name)?;
+        Ok(EmptyResponse::new())
+    }
 
-        create::run(&ctx, &name);
+    /// Remove a subgraph
+    pub async fn remove(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
+        let ctx = GraphmanContext::new(ctx)?;
+        remove::run(&ctx, &name)?;
         Ok(EmptyResponse::new())
     }
 }
