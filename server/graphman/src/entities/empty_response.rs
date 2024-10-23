@@ -5,15 +5,11 @@ use async_graphql::SimpleObject;
 #[derive(Clone, Debug, SimpleObject)]
 pub struct EmptyResponse {
     pub success: bool,
-    pub message: Option<String>,
 }
 
 impl EmptyResponse {
     /// Returns a successful response.
-    pub fn new(msg: Option<String>) -> Self {
-        Self {
-            success: true,
-            message: msg,
-        }
+    pub fn new() -> Self {
+        Self { success: true }
     }
 }
