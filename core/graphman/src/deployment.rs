@@ -31,6 +31,19 @@ pub enum DeploymentSelector {
     All,
 }
 
+impl DeploymentSelector {
+    pub fn as_str(&self) -> String {
+        match self {
+            DeploymentSelector::Name(name) => name.clone(),
+            DeploymentSelector::Subgraph { hash, shard } => {
+                format!("[Hash:{}, Shard:{:?}]", hash, shard)
+            }
+            DeploymentSelector::Schema(schema) => schema.clone(),
+            DeploymentSelector::All => "All".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum DeploymentVersionSelector {
     Current,

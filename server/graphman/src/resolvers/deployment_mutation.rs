@@ -1,19 +1,24 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use async_graphql::Context;
 use async_graphql::Object;
 use async_graphql::Result;
+use graph::prelude::NodeId;
+use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::graphman::GraphmanStore;
 
 use crate::entities::DeploymentSelector;
 use crate::entities::EmptyResponse;
 use crate::entities::ExecutionId;
+use crate::entities::Response;
 use crate::resolvers::context::GraphmanContext;
 
 mod pause;
+mod reassign;
 mod restart;
 mod resume;
-
+mod unassign;
 pub struct DeploymentMutation;
 
 /// Mutations related to one or multiple deployments.
@@ -64,5 +69,46 @@ impl DeploymentMutation {
         let deployment = deployment.try_into()?;
 
         restart::run_in_background(ctx, store, deployment, delay_seconds).await
+    }
+
+    /// Unassign a deployment
+    pub async fn unassign(
+        &self,
+        ctx: &Context<'_>,
+        deployment: DeploymentSelector,
+    ) -> Result<Response> {
+        let ctx = GraphmanContext::new(ctx)?;
+        let deployment = deployment.try_into()?;
+
+        unassign::run(&ctx, &deployment)?;
+
+        Ok(Response::new(
+            true,
+            format!("Unassigned {}", deployment.as_str()),
+        ))
+    }
+
+    /// Assign or reassign a deployment
+    pub async fn reassign(
+        &self,
+        ctx: &Context<'_>,
+        deployment: DeploymentSelector,
+        node: String,
+    ) -> Result<Response> {
+        let ctx = GraphmanContext::new(ctx)?;
+        let deployment = deployment.try_into()?;
+        let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
+        reassign::run(&ctx, &deployment, &node)?;
+
+        let mirror = catalog::Mirror::primary_only(ctx.primary_pool);
+        let count = mirror.assignments(&node)?.len();
+        if count == 1 {
+            Ok(Response::new(true,format!("warning: this is the only deployment assigned to '{}'. Are you sure it is spelled correctly?",node.as_str())))
+        } else {
+            Ok(Response::new(
+                true,
+                format!("Ressigned {} to {}", deployment.as_str(), node.as_str()),
+            ))
+        }
     }
 }
