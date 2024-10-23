@@ -52,8 +52,8 @@ pub fn load_assigned_deployment(
     {
         Some(_) => Ok(AssignedDeployment { site }),
         None => Err(UnassignDeploymentError::AlreadyUnassigned(format!(
-            "{:?}",
-            deployment
+            "{}",
+            deployment.as_str()
         ))),
     }
 }

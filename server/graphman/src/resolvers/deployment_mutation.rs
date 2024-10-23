@@ -11,6 +11,7 @@ use graph_store_postgres::graphman::GraphmanStore;
 use crate::entities::DeploymentSelector;
 use crate::entities::EmptyResponse;
 use crate::entities::ExecutionId;
+use crate::entities::Response;
 use crate::resolvers::context::GraphmanContext;
 
 mod create;
@@ -37,7 +38,7 @@ impl DeploymentMutation {
 
         pause::run(&ctx, &deployment)?;
 
-        Ok(EmptyResponse::new(None))
+        Ok(EmptyResponse::new())
     }
 
     /// Resumes a deployment that has been previously paused.
@@ -51,7 +52,7 @@ impl DeploymentMutation {
 
         resume::run(&ctx, &deployment)?;
 
-        Ok(EmptyResponse::new(None))
+        Ok(EmptyResponse::new())
     }
 
     /// Pauses a deployment and resumes it after a delay.
@@ -92,13 +93,16 @@ impl DeploymentMutation {
         &self,
         ctx: &Context<'_>,
         deployment: DeploymentSelector,
-    ) -> Result<EmptyResponse> {
+    ) -> Result<Response> {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
 
         unassign::run(&ctx, &deployment)?;
 
-        Ok(EmptyResponse::new(None))
+        Ok(Response::new(
+            true,
+            format!("Unassigned {}", deployment.as_str()),
+        ))
     }
 
     /// Assign or reassign a deployment
@@ -107,7 +111,7 @@ impl DeploymentMutation {
         ctx: &Context<'_>,
         deployment: DeploymentSelector,
         node: String,
-    ) -> Result<EmptyResponse> {
+    ) -> Result<Response> {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
         let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
@@ -116,9 +120,12 @@ impl DeploymentMutation {
         let mirror = catalog::Mirror::primary_only(ctx.primary_pool);
         let count = mirror.assignments(&node)?.len();
         if count == 1 {
-            Ok(EmptyResponse::new(Some(format!("warning: this is the only deployment assigned to '{}'. Are you sure it is spelled correctly?",node.as_str()))))
+            Ok(Response::new(true,format!("warning: this is the only deployment assigned to '{}'. Are you sure it is spelled correctly?",node.as_str())))
         } else {
-            Ok(EmptyResponse::new(None))
+            Ok(Response::new(
+                true,
+                format!("Ressigned {} to {}", deployment.as_str(), node.as_str()),
+            ))
         }
     }
 }
