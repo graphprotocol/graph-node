@@ -87,11 +87,14 @@ impl RequestError {
             return true;
         };
 
+        const CLOUDFLARE_WEB_SERVER_DOWN: u16 = 521;
+
         [
             StatusCode::TOO_MANY_REQUESTS,
             StatusCode::INTERNAL_SERVER_ERROR,
             StatusCode::BAD_GATEWAY,
             StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::from_u16(CLOUDFLARE_WEB_SERVER_DOWN).unwrap(),
         ]
         .into_iter()
         .any(|x| status == x)
