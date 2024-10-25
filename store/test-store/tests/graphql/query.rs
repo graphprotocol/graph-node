@@ -472,7 +472,7 @@ async fn insert_test_entities(
                 entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100, birthDate: timestamp.clone(), vid: 1i64 },
             ],
         ),
-        ("Publisher", vec![entity! { is => id: pub1 }]),
+        ("Publisher", vec![entity! { is => id: pub1, vid: 0i64 }]),
         (
             "Band",
             vec![
@@ -492,7 +492,7 @@ async fn insert_test_entities(
         (
             "User",
             vec![
-                entity! { is => id: "u1", name: "User 1", latestSongReview: "r3", latestBandReview: "r1", latestReview: "r3" },
+                entity! { is => id: "u1", name: "User 1", latestSongReview: "r3", latestBandReview: "r1", latestReview: "r3", vid: 0i64 },
             ],
         ),
         (
@@ -528,7 +528,7 @@ async fn insert_test_entities(
         (
             "AnonymousUser",
             vec![
-                entity! { is => id: "u3", name: "Anonymous 3",  latestSongReview: "r6", latestBandReview: "r5", latestReview: "r5" },
+                entity! { is => id: "u3", name: "Anonymous 3",  latestSongReview: "r6", latestBandReview: "r5", latestReview: "r5", vid: 0i64 },
             ],
         ),
         (
@@ -549,7 +549,9 @@ async fn insert_test_entities(
         ),
         (
             "Album",
-            vec![entity! { is => id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]] }],
+            vec![
+                entity! { is => id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]], vid: 0i64 },
+            ],
         ),
         (
             "Single",

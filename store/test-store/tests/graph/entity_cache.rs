@@ -208,11 +208,11 @@ fn insert_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai" };
+    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", vid: 0i64 };
     let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
+    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", vid: 0i64 };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
@@ -243,8 +243,8 @@ fn overwrite_modifications() {
     // every set operation as an overwrite.
     let store = {
         let entities = vec![
-            entity! { SCHEMA => id: "mogwai", name: "Mogwai" },
-            entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" },
+            entity! { SCHEMA => id: "mogwai", name: "Mogwai", vid: 0i64 },
+            entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", vid: 0i64 },
         ];
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -252,11 +252,12 @@ fn overwrite_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 };
+    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995, vid: 0i64 };
     let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994 };
+    let sigurros_data =
+        entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994, vid: 0i64 };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
@@ -277,8 +278,9 @@ fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
     let store = {
-        let entities =
-            vec![entity! { SCHEMA => id: "mogwai", name: "Mogwai", label: "Chemikal Underground" }];
+        let entities = vec![
+            entity! { SCHEMA => id: "mogwai", name: "Mogwai", label: "Chemikal Underground", vid: 0i64 },
+        ];
 
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -304,7 +306,7 @@ fn consecutive_modifications() {
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::overwrite(
             update_key,
-            entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 },
+            entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995, vid: 0i64 },
             0,
             0
         )])
