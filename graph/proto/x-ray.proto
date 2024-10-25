@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package thegraph.tracing.v1;
+
+message EthereumABIToken {
+  message FixedBytes {
+    uint32 size = 1;
+    bytes items = 2;
+  }
+
+  message FixedArray {
+    uint32 size = 1;
+    repeated EthereumABIToken items = 2;
+  }
+
+  message Array {
+    repeated EthereumABIToken array = 1;
+  }
+  
+  oneof value {
+  string address = 1;
+  FixedBytes bytes = 2;
+  int64 int = 3;
+  uint64 uint = 4;
+  bool bool = 5;
+  string str = 6;
+  Array array = 7;
+  Array tuple = 8;
+  }
+}
+
+message EthCallResult {
+  oneof result {
+  string error = 1;
+  EthereumABIToken.Array array = 2;
+  }
+}
+
+message EthereumCall {
+    string contract_name = 1;
+    string contract_address = 2;
+    string function_name = 3;
+    string function_signature = 4;
+    repeated EthereumABIToken function_args = 5;
+    EthCallResult result = 6;
+}
+
+message WasmError {
+  string message = 1;
+  bool deterministic = 2;
+}
+
+message Output {
+  oneof output {
+      EntityChanges entity_changes = 1;
+      WasmError error = 2;
+    }
+}
+
+message Trigger {}
+
+message Input {
+  repeated Trigger triggers = 1;
+  repeated ChainSpecificInput chain_inputs = 2;
+}
+
+message ChainSpecificInput {
+  oneof input{
+    EthereumCall call = 1;
+  }
+}
+
+message Trace {
+  Input inputs = 1;
+  Output output = 2;
+  string poi = 3;
+}
+
+
+message EntityChanges {
+  repeated EntityChange entity_changes = 5;
+}
+
+message EntityChange {
+  string entity = 1;
+  string id = 2;
+  uint64 ordinal = 3;
+  enum Operation {
+    UNSET = 0;    // Protobuf default should not be used, this is used so that the consume can ensure that the value was actually specified
+    CREATE = 1;
+    UPDATE = 2;
+    DELETE = 3;
+  }
+  Operation operation = 4;
+  repeated Field fields = 5;
+}
+
+message Value {
+  oneof typed {
+    int32 int32 = 1;
+    string bigdecimal = 2;
+    string bigint = 3;
+    string string = 4;
+    bytes bytes = 5;
+    bool bool = 6;
+
+    Array array = 10;
+  }
+}
+
+message Array {
+  repeated Value value = 1;
+}
+
+message Field {
+  string name = 1;
+  optional Value new_value = 3;
+  optional Value old_value = 5;
+}
