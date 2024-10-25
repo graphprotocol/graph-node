@@ -920,14 +920,6 @@ impl Entity {
             .expect("the vid is set to a valid value")
     }
 
-    // TODO: try to remove it
-    pub fn vid_opt(&self) -> i64 {
-        self.get("vid")
-            .map(|vid| vid.as_int8())
-            .unwrap_or_default()
-            .unwrap_or_default()
-    }
-
     /// Merges an entity update `update` into this entity.
     ///
     /// If a key exists in both entities, the value from `update` is chosen.

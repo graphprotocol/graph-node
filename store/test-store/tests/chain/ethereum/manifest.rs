@@ -272,7 +272,7 @@ specVersion: 0.0.2
             .unwrap();
 
         // Adds an example entity.
-        let thing = entity! { schema => id: "datthing" };
+        let thing = entity! { schema => id: "datthing", vid : 0i64 };
         test_store::insert_entities(
             &deployment,
             vec![(schema.entity_type("Thing").unwrap(), thing)],
@@ -372,7 +372,7 @@ specVersion: 0.0.2
             msg
         );
 
-        let thing = entity! { schema => id: "datthing" };
+        let thing = entity! { schema => id: "datthing", vid : 1i64 };
         test_store::insert_entities(
             &deployment,
             vec![(schema.entity_type("Thing").unwrap(), thing)],
