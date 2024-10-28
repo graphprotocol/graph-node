@@ -1488,6 +1488,7 @@ impl InputSchema {
     }
 
     pub fn has_field_with_name(&self, entity_type: &EntityType, field: &str) -> bool {
+        // TODO: check if it is needed
         if field == VID {
             return true;
         }
