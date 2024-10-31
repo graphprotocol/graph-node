@@ -913,6 +913,7 @@ impl Entity {
         Id::try_from(self.get("id").unwrap().clone()).expect("the id is set to a valid value")
     }
 
+    // TODO: only for tests!
     pub fn vid(&self) -> i64 {
         self.get("vid")
             .expect("the vid is set")
@@ -934,8 +935,8 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
-        for (key, value) in update.0.into_iter() {
+    pub fn merge_remove_null_fields(&mut self, update: EntityV) -> Result<(), InternError> {
+        for (key, value) in update.e.0.into_iter() {
             match value {
                 Value::Null => self.0.remove(&key),
                 _ => self.0.insert(&key, value)?,
@@ -1083,6 +1084,19 @@ impl std::fmt::Debug for Entity {
             ds.field(k, v);
         }
         ds.finish()
+    }
+}
+
+/// An entity is represented as a map of attribute names to values.
+#[derive(Debug, Clone, CacheWeight, PartialEq, Eq, Serialize)]
+pub struct EntityV {
+    pub e: Entity,
+    pub vid: i64,
+}
+
+impl EntityV {
+    pub fn new(e: Entity, vid: i64) -> Self {
+        Self { e, vid }
     }
 }
 
