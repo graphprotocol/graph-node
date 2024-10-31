@@ -6,6 +6,7 @@ use graph::components::store::BlockStore;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
+use graph::data::store::EntityV;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::data::subgraph::SubgraphFeature;
 use graph::data_source::DataSource;
@@ -432,12 +433,13 @@ pub async fn insert_entities(
     deployment: &DeploymentLocator,
     entities: Vec<(EntityType, Entity)>,
 ) -> Result<(), StoreError> {
-    let insert_ops = entities
-        .into_iter()
-        .map(|(entity_type, data)| EntityOperation::Set {
+    let insert_ops = entities.into_iter().map(|(entity_type, data)| {
+        let vid = data.vid();
+        EntityOperation::Set {
             key: entity_type.key(data.id()),
-            data,
-        });
+            data: EntityV::new(data, vid),
+        }
+    });
 
     transact_entity_operations(
         &SUBGRAPH_STORE,
