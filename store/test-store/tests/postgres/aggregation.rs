@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::{future::Future, sync::Arc};
 
+use graph::data::store::EntityV;
 use graph::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     components::{
@@ -82,7 +83,11 @@ pub async fn insert(
         .map(|data| {
             let data_type = schema.entity_type("Data").unwrap();
             let key = data_type.key(data.id());
-            EntityOperation::Set { data, key }
+            let vid = data.vid();
+            EntityOperation::Set {
+                data: EntityV::new(data, vid),
+                key,
+            }
         })
         .collect();
 

@@ -143,7 +143,6 @@ async fn insert_count(
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
         count: count as i32,
-        vid: count as i64,
     };
     let entity_op = if (block != 3 && block != 5 && block != 7) || !immutable {
         EntityOperation::Set {
@@ -292,7 +291,7 @@ fn restart() {
         // Cause an error by leaving out the non-nullable `count` attribute
         let entity_ops = vec![EntityOperation::Set {
             key: count_key("1"),
-            data: entity! { schema => id: "1", vid: 0i64 },
+            data: EntityV::new(entity! { schema => id: "1"}, 0),
         }];
         transact_entity_operations(
             &subgraph_store,
@@ -316,7 +315,7 @@ fn restart() {
         // Retry our write with correct data
         let entity_ops = vec![EntityOperation::Set {
             key: count_key("1"),
-            data: entity! { schema => id: "1", count: 1, vid: 0i64 },
+            data: EntityV::new(entity! { schema => id: "1", count: 1}, 0),
         }];
         // `SubgraphStore` caches the correct writable so that this call
         // uses the restarted writable, and is equivalent to using
