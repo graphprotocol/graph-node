@@ -534,10 +534,18 @@ impl Layout {
             .get_results::<EntityDataExt>(conn)
             .optional()?
             .unwrap_or_default();
-        let upper_vec = FindRangeQuery::new(&tables, causality_region, true, block_range)
-            .get_results::<EntityDataExt>(conn)
-            .optional()?
-            .unwrap_or_default();
+
+        let has_mutable_entities = tables.iter().any(|table| !table.immutable);
+
+        let upper_vec = if !has_mutable_entities {
+            vec![]
+        } else {
+            FindRangeQuery::new(&tables, causality_region, true, block_range)
+                .get_results::<EntityDataExt>(conn)
+                .optional()?
+                .unwrap_or_default()
+        };
+
         let mut lower_iter = lower_vec.iter().fuse().peekable();
         let mut upper_iter = upper_vec.iter().fuse().peekable();
         let mut lower_now = lower_iter.next();

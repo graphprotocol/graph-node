@@ -10,7 +10,9 @@ use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::Untyped;
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Timestamptz};
+use diesel::sql_types::{
+    Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Timestamptz,
+};
 use graph::components::store::write::{EntityWrite, RowGroup, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{Id, IdType, NULL};
@@ -567,8 +569,8 @@ pub struct EntityDataExt {
     pub data: serde_json::Value,
     #[diesel(sql_type = Integer)]
     pub block_number: i32,
-    #[diesel(sql_type = Text)]
-    pub id: String,
+    #[diesel(sql_type = Binary)]
+    pub id: Vec<u8>,
     #[diesel(sql_type = BigInt)]
     pub vid: i64,
 }
