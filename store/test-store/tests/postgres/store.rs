@@ -2,6 +2,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
+use graph::data::store::EntityV;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::futures01::{future, Stream};
 use graph::futures03::compat::Future01CompatExt;
@@ -288,12 +289,11 @@ fn create_test_entity(
         weight: Value::BigDecimal(weight.into()),
         coffee: coffee,
         favorite_color: favorite_color,
-        vid: vid,
     };
 
     EntityOperation::Set {
         key: entity_type.parse_key(id).unwrap(),
-        data: test_entity,
+        data: EntityV::new(test_entity, vid),
     }
 }
 
@@ -443,7 +443,7 @@ fn update_existing() {
         };
 
         // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
+        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data.e);
 
         // Set test entity; as the entity already exists an update should be performed
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -458,13 +458,16 @@ fn update_existing() {
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
 
         // Verify that the entity in the store has changed to what we have set.
-        let bin_name = match new_data.get("bin_name") {
+        let bin_name = match new_data.e.get("bin_name") {
             Some(Value::Bytes(bytes)) => bytes.clone(),
             _ => unreachable!(),
         };
 
-        new_data.insert("bin_name", Value::Bytes(bin_name)).unwrap();
-        assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
+        new_data
+            .e
+            .insert("bin_name", Value::Bytes(bin_name))
+            .unwrap();
+        assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data.e));
     })
 }
 
@@ -474,8 +477,7 @@ fn partially_update_existing() {
         let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
-        let partial_entity =
-            entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 11i64 };
+        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         let original_entity = writable
             .get(&entity_key)
@@ -489,7 +491,7 @@ fn partially_update_existing() {
             TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
-                data: partial_entity.clone(),
+                data: EntityV::new(partial_entity.clone(), 11),
             }],
         )
         .await
@@ -1085,8 +1087,7 @@ fn revert_block_with_partial_update() {
         let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
-        let partial_entity =
-            entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 5i64 };
+        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
 
@@ -1097,7 +1098,7 @@ fn revert_block_with_partial_update() {
             TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
-                data: partial_entity.clone(),
+                data: EntityV::new(partial_entity.clone(), 5),
             }],
         )
         .await
@@ -1181,8 +1182,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Create operations to add a user
         let user_key = USER_TYPE.parse_key("1").unwrap();
-        let partial_entity =
-            entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 5i64 };
+        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
         let original_user = writable.get(&user_key).unwrap().expect("missing entity");
@@ -1193,7 +1193,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         let ops = vec![EntityOperation::Set {
             key: user_key.clone(),
-            data: partial_entity.clone(),
+            data: EntityV::new(partial_entity.clone(), 5),
         }];
 
         // Add user and dynamic data source to the store
@@ -1316,7 +1316,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
                     key: USER_TYPE.parse_key(id.as_str()).unwrap(),
-                    data: data.clone(),
+                    data: EntityV::new(data.clone(), data.vid()),
                 })
                 .collect(),
         )
@@ -1324,10 +1324,10 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // Update an entity in the store
-        let updated_entity = entity! { schema => id: "1", name: "Johnny", vid: 7i64 };
+        let updated_entity = entity! { schema => id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
             key: USER_TYPE.parse_key("1").unwrap(),
-            data: updated_entity.clone(),
+            data: EntityV::new(updated_entity.clone(), 7),
         };
 
         // Delete an entity in the store
@@ -1831,12 +1831,11 @@ fn window() {
         age: i32,
         vid: i64,
     ) -> EntityOperation {
-        let entity =
-            entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color, vid: vid };
+        let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
 
         EntityOperation::Set {
             key: entity_type.parse_key(id).unwrap(),
-            data: entity,
+            data: EntityV::new(entity, vid),
         }
     }
 

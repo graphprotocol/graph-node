@@ -8,6 +8,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
         trigger_processor::HostedTrigger,
     },
+    data::store::EntityV,
     prelude::{
         anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
@@ -225,7 +226,8 @@ where
                         logger,
                     );
 
-                    state.entity_cache.set(key, entity)?;
+                    // TODO: check if 0 is correct VID
+                    state.entity_cache.set(key, EntityV::new(entity, 0))?;
                 }
                 ParsedChanges::Delete(entity_key) => {
                     let entity_type = entity_key.entity_type.cheap_clone();

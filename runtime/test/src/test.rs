@@ -478,13 +478,12 @@ async fn test_ipfs_block() {
 const USER_DATA: &str = "user_data";
 
 fn make_thing(id: &str, value: &str, vid: i64) -> (String, EntityModification) {
-    const DOCUMENT: &str =
-        " type Thing @entity { id: String!, value: String!, extra: String, vid: Int8 }";
+    const DOCUMENT: &str = " type Thing @entity { id: String!, value: String!, extra: String }";
     lazy_static! {
         static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
-    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA, vid:vid };
+    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA};
     let key = THING_TYPE.parse_key(id).unwrap();
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),

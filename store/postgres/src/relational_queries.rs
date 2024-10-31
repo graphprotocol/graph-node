@@ -14,7 +14,7 @@ use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text,
 use diesel::QuerySource as _;
 use graph::components::store::write::{EntityWrite, RowGroup, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
-use graph::data::store::{Id, IdType, NULL};
+use graph::data::store::{EntityV, Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::data::value::{Object, Word};
@@ -171,6 +171,23 @@ impl FromEntityData for Entity {
     ) -> Result<Self, StoreError> {
         debug_assert_eq!(None, parent_id);
         schema.try_make_entity(iter).map_err(StoreError::from)
+    }
+}
+
+impl FromEntityData for EntityV {
+    const WITH_INTERNAL_KEYS: bool = false;
+
+    type Value = graph::prelude::Value;
+
+    fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        schema: &InputSchema,
+        parent_id: Option<Id>,
+        iter: I,
+    ) -> Result<Self, StoreError> {
+        debug_assert_eq!(None, parent_id);
+        let e = schema.try_make_entity(iter).map_err(StoreError::from)?;
+        let vid = e.vid();
+        Ok(EntityV::new(e, vid))
     }
 }
 

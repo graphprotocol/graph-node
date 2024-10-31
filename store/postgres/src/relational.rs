@@ -67,7 +67,7 @@ use crate::{
     },
 };
 use graph::components::store::{AttributeNames, DerivedEntityQuery};
-use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
+use graph::data::store::{EntityV, Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
@@ -588,12 +588,12 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type(&self.input_schema);
-            let data: Entity = entity_data.deserialize_with_layout(self, None)?;
-            let entity_id = data.id();
+            let data: EntityV = entity_data.deserialize_with_layout(self, None)?;
+            let entity_id = data.e.id();
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
             changes.push(EntityOperation::Set {
-                key: entity_type.key_in(entity_id, CausalityRegion::from_entity(&data)),
+                key: entity_type.key_in(entity_id, CausalityRegion::from_entity(&data.e)),
                 data,
             });
         }

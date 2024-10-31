@@ -18,7 +18,7 @@ use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::subgraph::{
     InstanceDSTemplate, PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
-use graph::data::store::{self};
+use graph::data::store::{self, EntityV};
 use graph::data_source::{CausalityRegion, DataSource, EntityTypeAccess};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
@@ -315,7 +315,7 @@ impl HostExports {
                 data.insert(store::ID.clone(), value);
             }
         }
-        data.insert(store::VID.clone(), Value::Int8(vid));
+        // data.insert(store::VID.clone(), Value::Int8(vid));
 
         self.check_invalid_fields(
             self.data_source.api_version.clone(),
@@ -352,7 +352,7 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
-        state.entity_cache.set(key, entity)?;
+        state.entity_cache.set(key, EntityV::new(entity, vid))?;
 
         Ok(())
     }
