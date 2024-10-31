@@ -142,11 +142,7 @@ where
             ens_lookup,
         ));
 
-        let host_fns = data_source
-            .as_onchain()
-            .map(|ds| runtime_adapter.host_fns(ds))
-            .transpose()?
-            .unwrap_or_default();
+        let host_fns = runtime_adapter.host_fns(&data_source).unwrap_or_default();
 
         Ok(RuntimeHost {
             host_fns: Arc::new(host_fns),
