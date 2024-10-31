@@ -1,16 +1,23 @@
 use crate::{
     blockchain::{block_stream::EntityWithType, Block, Blockchain},
     components::{link_resolver::LinkResolver, store::BlockNumber},
-    data::{subgraph::SPEC_VERSION_1_3_0, value::Word},
+    data::{
+        subgraph::{calls_host_fn, SPEC_VERSION_1_3_0},
+        value::Word,
+    },
     data_source,
     prelude::{DataSourceContext, DeploymentHash, Link},
 };
 use anyhow::{Context, Error};
+use futures03::{stream::FuturesOrdered, TryStreamExt};
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::{fmt, sync::Arc};
 
-use super::{DataSourceTemplateInfo, TriggerWithHandler};
+use super::{
+    common::{MappingABI, UnresolvedMappingABI},
+    DataSourceTemplateInfo, TriggerWithHandler,
+};
 
 pub const SUBGRAPH_DS_KIND: &str = "subgraph";
 
@@ -122,10 +129,17 @@ impl Source {
 pub struct Mapping {
     pub language: String,
     pub api_version: semver::Version,
+    pub abis: Vec<Arc<MappingABI>>,
     pub entities: Vec<String>,
     pub handlers: Vec<EntityHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
+}
+
+impl Mapping {
+    pub fn requires_archive(&self) -> anyhow::Result<bool> {
+        calls_host_fn(&self.runtime, "ethereum.call")
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -158,6 +172,7 @@ pub struct UnresolvedMapping {
     pub language: String,
     pub file: Link,
     pub handlers: Vec<EntityHandler>,
+    pub abis: Option<Vec<UnresolvedMappingABI>>,
     pub entities: Vec<String>,
 }
 
@@ -202,11 +217,31 @@ impl UnresolvedMapping {
     ) -> Result<Mapping, Error> {
         info!(logger, "Resolve subgraph ds mapping"; "link" => &self.file.link);
 
+        // Resolve each ABI and collect the results
+        let abis = match self.abis {
+            Some(abis) => {
+                abis.into_iter()
+                    .map(|unresolved_abi| {
+                        let resolver = Arc::clone(resolver);
+                        let logger = logger.clone();
+                        async move {
+                            let resolved_abi = unresolved_abi.resolve(&resolver, &logger).await?;
+                            Ok::<_, Error>(Arc::new(resolved_abi))
+                        }
+                    })
+                    .collect::<FuturesOrdered<_>>()
+                    .try_collect::<Vec<_>>()
+                    .await?
+            }
+            None => Vec::new(),
+        };
+
         Ok(Mapping {
             language: self.language,
             api_version: semver::Version::parse(&self.api_version)?,
             entities: self.entities,
             handlers: self.handlers,
+            abis,
             runtime: Arc::new(resolver.cat(logger, &self.file).await?),
             link: self.file,
         })
