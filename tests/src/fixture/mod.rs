@@ -25,6 +25,7 @@ use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::data_source::DataSource;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, NoopGenesisDecoder, SubgraphLimit};
@@ -892,10 +893,7 @@ struct NoopRuntimeAdapter<C> {
 }
 
 impl<C: Blockchain> RuntimeAdapter<C> for NoopRuntimeAdapter<C> {
-    fn host_fns(
-        &self,
-        _ds: &<C as Blockchain>::DataSource,
-    ) -> Result<Vec<graph::blockchain::HostFn>, Error> {
+    fn host_fns(&self, _ds: &DataSource<C>) -> Result<Vec<graph::blockchain::HostFn>, Error> {
         Ok(vec![])
     }
 }
