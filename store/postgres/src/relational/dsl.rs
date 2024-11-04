@@ -267,6 +267,10 @@ impl<'a> Table<'a> {
             }
         };
 
+        // NB: Exclude full-text search columns from selection. These columns are used for indexing
+        // and searching but are not part of the entity's data model.
+        cols.retain(|c| !c.is_fulltext());
+
         if T::WITH_INTERNAL_KEYS {
             match parent_type {
                 Some(IdType::String) => cols.push(&*PARENT_STRING_COL),
@@ -346,7 +350,10 @@ impl<'a> Table<'a> {
                 ColumnType::Int8 => add_field::<BigInt>(&mut selection, self, column),
                 ColumnType::Timestamp => add_field::<Timestamptz>(&mut selection, self, column),
                 ColumnType::String => add_field::<Text>(&mut selection, self, column),
-                ColumnType::TSVector(_) => add_field::<Text>(&mut selection, self, column),
+                ColumnType::TSVector(_) => {
+                    // Skip tsvector columns in SELECT as they are for full-text search only and not
+                    // meant to be directly queried or returned
+                }
                 ColumnType::Enum(_) => add_enum_field(&mut selection, self, column),
             };
         }
