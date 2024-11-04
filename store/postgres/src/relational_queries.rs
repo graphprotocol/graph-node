@@ -2091,7 +2091,14 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
                 }
             }
         }
-        out.push_sql("\norder by block_number, entity, id");
+
+        if first {
+            // In case we have only immutable entities, the upper range will not create any
+            // select statement. So here we have to generate an empty SQL statement.
+            out.push_sql("select 1");
+        } else {
+            out.push_sql("\norder by block_number, entity, id");
+        }
 
         Ok(())
     }
