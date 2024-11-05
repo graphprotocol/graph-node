@@ -52,7 +52,7 @@ COPY docker/Dockerfile /Dockerfile
 COPY docker/bin/* /usr/local/bin/
 
 # The graph-node runtime image with only the executable
-FROM debian:bullseye-slim as graph-node
+FROM debian:bookworm-20240722-slim as graph-node
 ENV RUST_LOG ""
 ENV GRAPH_LOG ""
 ENV EARLY_LOG_CHUNK_SIZE ""
