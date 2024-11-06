@@ -459,16 +459,16 @@ impl EntityCache {
                 // Entity was created
                 (None, EntityOp::Update(mut updates))
                 | (None, EntityOp::Overwrite(mut updates)) => {
+                    let vid = updates.vid;
                     updates.e.remove_null_fields();
-                    let data = Arc::new(updates);
-                    self.current
-                        .insert(key.clone(), Some(data.e.clone().into()));
+                    let data = Arc::new(updates.e.clone());
+                    self.current.insert(key.clone(), Some(data.cheap_clone()));
                     Some(Insert {
                         key,
-                        data: data.e.clone().into(),
+                        data,
                         block,
                         end: None,
-                        vid: data.vid,
+                        vid,
                     })
                 }
                 // Entity may have been changed
@@ -493,16 +493,16 @@ impl EntityCache {
                 }
                 // Entity was removed and then updated, so it will be overwritten
                 (Some(current), EntityOp::Overwrite(data)) => {
-                    let data = Arc::new(data);
-                    self.current
-                        .insert(key.clone(), Some(data.e.clone().into()));
-                    if current != data.e.clone().into() {
+                    let vid = data.vid;
+                    let data = Arc::new(data.e.clone());
+                    self.current.insert(key.clone(), Some(data.cheap_clone()));
+                    if current != data {
                         Some(Overwrite {
                             key,
-                            data: data.e.clone().into(),
+                            data,
                             block,
                             end: None,
-                            vid: data.vid,
+                            vid,
                         })
                     } else {
                         None

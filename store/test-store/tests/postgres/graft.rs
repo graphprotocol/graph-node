@@ -257,7 +257,7 @@ fn create_test_entity(
         seconds_age: age * 31557600,
         weight: Value::BigDecimal(weight.into()),
         coffee: coffee,
-        favorite_color: favorite_color,
+        favorite_color: favorite_color
     };
 
     let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(entity_type).unwrap();
@@ -329,10 +329,9 @@ async fn check_graft(
 
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com").unwrap();
-    // shaq.set("vid", 5i64).unwrap();
     let op = EntityOperation::Set {
         key: user_type.parse_key("3").unwrap(),
-        data: EntityV::new(shaq, 5),
+        data: EntityV::new(shaq, 3),
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
         .await
