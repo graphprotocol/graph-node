@@ -6,8 +6,6 @@ services:
       - '8000:8000'
       - '8001:8001'
       - '8020:8020'
-      - '8030:8030'
-      - '8040:8040'
     depends_on:
       - ipfs
       - postgres
@@ -29,8 +27,6 @@ services:
       - ./data/ipfs:/data/ipfs:Z
   postgres:
     image: postgres
-    ports:
-      - '5432:5432'
     command:
       [
         "postgres",
