@@ -1522,7 +1522,7 @@ fn handle_large_string_with_index() {
         block: BlockNumber,
         vid: i64,
     ) -> EntityModification {
-        let data = entity! { schema => id: id, name: name, vid: vid };
+        let data = entity! { schema => id: id, name: name };
 
         let key = USER_TYPE.parse_key(id).unwrap();
 
@@ -1622,7 +1622,7 @@ fn handle_large_bytea_with_index() {
         block: BlockNumber,
         vid: i64,
     ) -> EntityModification {
-        let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name), vid: vid };
+        let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
         let key = USER_TYPE.parse_key(id).unwrap();
 
@@ -2157,15 +2157,15 @@ fn reorg_tracking() {
         check_state!(store, 2, 2, 2);
 
         // Forward to block 3
-        update_john(&subgraph_store, &deployment, 70, &TEST_BLOCK_3_PTR, 30).await;
+        update_john(&subgraph_store, &deployment, 70, &TEST_BLOCK_3_PTR, 5).await;
         check_state!(store, 2, 2, 3);
 
         // Forward to block 4
-        update_john(&subgraph_store, &deployment, 71, &TEST_BLOCK_4_PTR, 40).await;
+        update_john(&subgraph_store, &deployment, 71, &TEST_BLOCK_4_PTR, 6).await;
         check_state!(store, 2, 2, 4);
 
         // Forward to block 5
-        update_john(&subgraph_store, &deployment, 72, &TEST_BLOCK_5_PTR, 50).await;
+        update_john(&subgraph_store, &deployment, 72, &TEST_BLOCK_5_PTR, 7).await;
         check_state!(store, 2, 2, 5);
 
         // Revert all the way back to block 2

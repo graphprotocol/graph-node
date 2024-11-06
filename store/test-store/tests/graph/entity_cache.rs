@@ -469,7 +469,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
 fn create_account_entity(id: &str, name: &str, email: &str, age: i32, vid: i64) -> EntityOperation {
     let test_entity =
-        entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age, vid: vid };
+        entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age };
 
     EntityOperation::Set {
         key: ACCOUNT_TYPE.parse_key(id).unwrap(),
@@ -479,8 +479,7 @@ fn create_account_entity(id: &str, name: &str, email: &str, age: i32, vid: i64) 
 
 fn create_wallet_entity(id: &str, account_id: &Id, balance: i32, vid: i64) -> EntityV {
     let account_id = Value::from(account_id.clone());
-    let e =
-        entity! { LOAD_RELATED_SUBGRAPH => id: id, account: account_id, balance: balance, vid: vid};
+    let e = entity! { LOAD_RELATED_SUBGRAPH => id: id, account: account_id, balance: balance};
     EntityV::new(e, vid)
 }
 fn create_wallet_operation(id: &str, account_id: &Id, balance: i32, vid: i64) -> EntityOperation {
@@ -716,53 +715,49 @@ fn check_for_delete_async_related() {
     });
 }
 
-// #[test]
-// fn scoped_get() {
-//     run_store_test(|mut cache, _store, _deployment, _writable| async move {
-//         // Key for an existing entity that is in the store
-//         let account1 = ACCOUNT_TYPE.parse_id("1").unwrap();
-//         let key1 = WALLET_TYPE.parse_key("1").unwrap();
-//         let wallet1 = create_wallet_entity("1", &account1, 67, 1);
+#[test]
+fn scoped_get() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        // Key for an existing entity that is in the store
+        let account1 = ACCOUNT_TYPE.parse_id("1").unwrap();
+        let key1 = WALLET_TYPE.parse_key("1").unwrap();
+        let wallet1 = create_wallet_entity("1", &account1, 67, 1);
 
-//         // Create a new entity that is not in the store
-//         let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
-//         let wallet5 = create_wallet_entity("5", &account5, 100, 5);
-//         let key5 = WALLET_TYPE.parse_key("5").unwrap();
-//         cache
-//             .set(key5.clone(), EntityV::new(wallet5.clone(), 5))
-//             .unwrap();
+        // Create a new entity that is not in the store
+        let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
+        let wallet5 = create_wallet_entity("5", &account5, 100, 5);
+        let key5 = WALLET_TYPE.parse_key("5").unwrap();
+        cache.set(key5.clone(), wallet5.clone()).unwrap();
 
-//         // For the new entity, we can retrieve it with either scope
-//         let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
-//         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
-//         let act5 = cache.get(&key5, GetScope::Store).unwrap();
-//         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
+        // For the new entity, we can retrieve it with either scope
+        let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
+        assert_eq!(Some(&wallet5.e), act5.as_ref().map(|e| e.as_ref()));
+        let act5 = cache.get(&key5, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet5.e), act5.as_ref().map(|e| e.as_ref()));
 
-//         // For an entity in the store, we can not get it `InBlock` but with
-//         // `Store`
-//         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
-//         assert_eq!(None, act1);
-//         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-//         assert_eq!(
-//             filter_vid(vec![wallet1.clone()]),
-//             vec![act1.as_ref().map(|e| e.as_ref()).unwrap().clone()]
-//         );
-//         // Even after reading from the store, the entity is not visible with
-//         // `InBlock`
-//         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
-//         assert_eq!(None, act1);
-//         // But if it gets updated, it becomes visible with either scope
-//         let mut wallet1 = wallet1;
-//         wallet1.set("balance", 70).unwrap();
-//         cache
-//             .set(key1.clone(), EntityV::new(wallet1.clone(), 1))
-//             .unwrap();
-//         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
-//         assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
-//         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-//         assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
-//     })
-// }
+        // For an entity in the store, we can not get it `InBlock` but with
+        // `Store`
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(None, act1);
+        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        assert_eq!(
+            filter_vid(vec![wallet1.e.clone()]),
+            vec![act1.as_ref().map(|e| e.as_ref()).unwrap().clone()]
+        );
+        // Even after reading from the store, the entity is not visible with
+        // `InBlock`
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(None, act1);
+        // But if it gets updated, it becomes visible with either scope
+        let mut wallet1 = wallet1;
+        wallet1.e.set("balance", 70).unwrap();
+        cache.set(key1.clone(), wallet1.clone()).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(Some(&wallet1.e), act1.as_ref().map(|e| e.as_ref()));
+        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet1.e), act1.as_ref().map(|e| e.as_ref()));
+    })
+}
 
 /// Entities should never contain a `__typename` or `g$parent_id` field, if
 /// they do, that can cause PoI divergences, because entities will differ
