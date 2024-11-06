@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
+use anyhow::Error;
 use bytes::Bytes;
 use graph::futures03::future::BoxFuture;
 use graph::ipfs::ContentPath;
 use graph::ipfs::IpfsClient;
-use graph::ipfs::IpfsError;
+use graph::ipfs::RetryPolicy;
 use graph::{derive::CheapClone, prelude::CheapClone};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
@@ -50,12 +51,17 @@ impl IpfsServiceInner {
 
         let res = self
             .client
-            .cat(&path, self.max_file_size, Some(self.timeout))
+            .cat(
+                &path,
+                self.max_file_size,
+                Some(self.timeout),
+                RetryPolicy::None,
+            )
             .await;
 
         match res {
             Ok(file_bytes) => Ok(Some(file_bytes)),
-            Err(IpfsError::RequestFailed(err)) if err.is_timeout() => {
+            Err(err) if err.is_timeout() => {
                 // Timeouts in IPFS mean that the content is not available, so we return `None`.
                 Ok(None)
             }
@@ -114,10 +120,9 @@ mod test {
 
         let client =
             IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &graph::log::discard())
-                .unwrap()
-                .into_boxed();
+                .unwrap();
 
-        let svc = ipfs_service(client.into(), 100000, Duration::from_secs(30), 10);
+        let svc = ipfs_service(Arc::new(client), 100000, Duration::from_secs(30), 10);
 
         let path = ContentPath::new(format!("{dir_cid}/file.txt")).unwrap();
         let content = svc.oneshot(path).await.unwrap().unwrap();
