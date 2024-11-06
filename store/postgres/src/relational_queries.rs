@@ -15,7 +15,7 @@ use graph::components::store::write::{EntityWrite, RowGroup, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{EntityV, Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
-use graph::data::subgraph::schema::POI_TABLE;
+// use graph::data::subgraph::schema::POI_TABLE;
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -2559,7 +2559,8 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
-        let not_poi = self.table.name.as_str() != POI_TABLE;
+        // let not_poi = self.table.name.as_str() != POI_TABLE;
+        let not_poi = !self.table.object.is_poi();
 
         // Construct a query
         //   insert into schema.table(column, ...)
@@ -5107,7 +5108,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let not_poi = self.dst.name.as_str() != POI_TABLE;
+        // let not_poi = self.dst.name.as_str() != POI_TABLE;
+        let not_poi = !self.dst.object.is_poi();
 
         // Construct a query
         //   insert into {dst}({columns})
