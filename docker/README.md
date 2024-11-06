@@ -35,7 +35,8 @@ docker run -it \
 The Docker Compose setup requires an Ethereum network name and node
 to connect to. By default, it will use `mainnet:http://host.docker.internal:8545`
 in order to connect to an Ethereum node running on your host machine.
-You can replace this with anything else in `docker-compose.yaml`.
+You can replace this with anything else in `docker-compose.yaml` or set the
+environment variables `NETWORK_NAME` and `ETHEREUM_RPC_URL`.
 
 After you have set up an Ethereum node—e.g. Ganache or Parity—simply
 clone this repository and run
