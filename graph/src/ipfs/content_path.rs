@@ -4,8 +4,8 @@ use cid::Cid;
 use crate::ipfs::IpfsError;
 use crate::ipfs::IpfsResult;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Represents a path to some data on IPFS.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContentPath {
     cid: Cid,
     path: Option<String>,

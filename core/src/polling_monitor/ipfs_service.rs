@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
+use anyhow::Error;
 use bytes::Bytes;
 use graph::futures03::future::BoxFuture;
 use graph::ipfs::ContentPath;
 use graph::ipfs::IpfsClient;
-use graph::ipfs::IpfsError;
+use graph::ipfs::RetryPolicy;
 use graph::{derive::CheapClone, prelude::CheapClone};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
@@ -50,12 +51,17 @@ impl IpfsServiceInner {
 
         let res = self
             .client
-            .cat(&path, self.max_file_size, Some(self.timeout))
+            .cat(
+                &path,
+                self.max_file_size,
+                Some(self.timeout),
+                RetryPolicy::None,
+            )
             .await;
 
         match res {
             Ok(file_bytes) => Ok(Some(file_bytes)),
-            Err(IpfsError::RequestFailed(err)) if err.is_timeout() => {
+            Err(err) if err.is_timeout() => {
                 // Timeouts in IPFS mean that the content is not available, so we return `None`.
                 Ok(None)
             }
@@ -95,9 +101,14 @@ mod test {
     use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
     use graph::ipfs::IpfsRpcClient;
     use graph::ipfs::ServerAddress;
+    use graph::log::discard;
     use graph::tokio;
     use tower::ServiceExt;
     use uuid::Uuid;
+    use wiremock::matchers as m;
+    use wiremock::Mock;
+    use wiremock::MockServer;
+    use wiremock::ResponseTemplate;
 
     use super::*;
 
@@ -114,10 +125,9 @@ mod test {
 
         let client =
             IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &graph::log::discard())
-                .unwrap()
-                .into_boxed();
+                .unwrap();
 
-        let svc = ipfs_service(client.into(), 100000, Duration::from_secs(30), 10);
+        let svc = ipfs_service(Arc::new(client), 100000, Duration::from_secs(30), 10);
 
         let path = ContentPath::new(format!("{dir_cid}/file.txt")).unwrap();
         let content = svc.oneshot(path).await.unwrap().unwrap();
@@ -137,5 +147,35 @@ mod test {
             {"name":"Arloader NFT #1","description":"Super dope, one of a kind NFT","collection":{"name":"Arloader NFT","family":"We AR"},"attributes":[{"trait_type":"cx","value":-0.4042198883730073},{"trait_type":"cy","value":0.5641681708263335},{"trait_type":"iters","value":44}],"properties":{"category":"image","files":[{"uri":"https://arweave.net/7gWCr96zc0QQCXOsn5Vk9ROVGFbMaA9-cYpzZI8ZMDs","type":"image/png"},{"uri":"https://arweave.net/URwQtoqrbYlc5183STNy3ZPwSCRY4o8goaF7MJay3xY/1.png","type":"image/png"}]},"image":"https://arweave.net/URwQtoqrbYlc5183STNy3ZPwSCRY4o8goaF7MJay3xY/1.png"}
         "#.trim_start().trim_end();
         assert_eq!(expected, body);
+    }
+
+    #[tokio::test]
+    async fn no_client_retries_to_allow_polling_monitor_to_handle_retries_internally() {
+        const CID: &str = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
+
+        let server = MockServer::start().await;
+        let ipfs_client = IpfsRpcClient::new_unchecked(server.uri(), &discard()).unwrap();
+        let ipfs_service = ipfs_service(Arc::new(ipfs_client), 10, Duration::from_secs(1), 1);
+        let path = ContentPath::new(CID).unwrap();
+
+        Mock::given(m::method("POST"))
+            .and(m::path("/api/v0/cat"))
+            .and(m::query_param("arg", CID))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(m::method("POST"))
+            .and(m::path("/api/v0/cat"))
+            .and(m::query_param("arg", CID))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(..=1)
+            .mount(&server)
+            .await;
+
+        // This means that we never reached the successful response.
+        ipfs_service.oneshot(path).await.unwrap_err();
     }
 }
