@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+alloy = { workspace = true }
 base64 = "=0.21.7"
 anyhow = "1.0"
 async-trait = "0.1.74"
@@ -24,7 +25,6 @@ envconfig = "0.10.0"
 Inflector = "0.11.3"
 isatty = "0.1.9"
 reqwest = { version = "0.12.5", features = ["json", "stream", "multipart"] }
-ethabi = "17.2"
 hex = "0.4.3"
 http0 = { version = "0", package = "http" }
 http = "1"

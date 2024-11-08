@@ -33,8 +33,8 @@ use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
 use graph::ipfs::IpfsClient;
-use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
+use graph::prelude::web3::types::H256;
 use graph::prelude::{
     async_trait, lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
     GraphQlRunner as _, IpfsResolver, LoggerFactory, NodeId, QueryError,

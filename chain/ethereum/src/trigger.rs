@@ -3,18 +3,17 @@ use graph::blockchain::TriggerData;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
-use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::ethereum_types::H256;
-use graph::prelude::ethabi::ethereum_types::U128;
-use graph::prelude::ethabi::ethereum_types::U256;
-use graph::prelude::ethabi::ethereum_types::U64;
-use graph::prelude::ethabi::Address;
-use graph::prelude::ethabi::Bytes;
-use graph::prelude::ethabi::LogParam;
+use graph::prelude::web3::types::Address;
 use graph::prelude::web3::types::Block;
+use graph::prelude::web3::types::Bytes;
 use graph::prelude::web3::types::Log;
 use graph::prelude::web3::types::Transaction;
 use graph::prelude::web3::types::TransactionReceipt;
+use graph::prelude::web3::types::H160;
+use graph::prelude::web3::types::H256;
+use graph::prelude::web3::types::U128;
+use graph::prelude::web3::types::U256;
+use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::{CheapClone, EthereumCall};
@@ -47,7 +46,7 @@ pub enum MappingTrigger {
         block: Arc<LightEthereumBlock>,
         transaction: Arc<Transaction>,
         log: Arc<Log>,
-        params: Vec<LogParam>,
+        params: Vec<graph::abi::DynSolParam>,
         receipt: Option<Arc<TransactionReceipt>>,
         calls: Vec<DeclaredCall>,
     },
@@ -55,8 +54,8 @@ pub enum MappingTrigger {
         block: Arc<LightEthereumBlock>,
         transaction: Arc<Transaction>,
         call: Arc<EthereumCall>,
-        inputs: Vec<LogParam>,
-        outputs: Vec<LogParam>,
+        inputs: Vec<graph::abi::DynSolParam>,
+        outputs: Vec<graph::abi::DynSolParam>,
     },
     Block {
         block: Arc<LightEthereumBlock>,
@@ -86,13 +85,13 @@ impl std::fmt::Debug for MappingTrigger {
             Log {
                 _transaction: Arc<Transaction>,
                 _log: Arc<Log>,
-                _params: Vec<LogParam>,
+                _params: Vec<graph::abi::DynSolParam>,
             },
             Call {
                 _transaction: Arc<Transaction>,
                 _call: Arc<EthereumCall>,
-                _inputs: Vec<LogParam>,
-                _outputs: Vec<LogParam>,
+                _inputs: Vec<graph::abi::DynSolParam>,
+                _outputs: Vec<graph::abi::DynSolParam>,
             },
             Block,
         }
@@ -488,7 +487,7 @@ impl From<&'_ Transaction> for EthereumTransactionData {
             value: tx.value,
             gas_limit: tx.gas,
             gas_price: tx.gas_price.unwrap_or(U256::zero()), // EIP-1559 made this optional.
-            input: tx.input.0.clone(),
+            input: tx.input.clone(),
             nonce: tx.nonce,
         }
     }
@@ -503,7 +502,7 @@ pub struct EthereumEventData {
     pub log_type: Option<String>,
     pub block: EthereumBlockData,
     pub transaction: EthereumTransactionData,
-    pub params: Vec<LogParam>,
+    pub params: Vec<graph::abi::DynSolParam>,
 }
 
 /// An Ethereum call executed within a transaction within a block to a contract address.
@@ -513,6 +512,6 @@ pub struct EthereumCallData {
     pub to: Address,
     pub block: EthereumBlockData,
     pub transaction: EthereumTransactionData,
-    pub inputs: Vec<LogParam>,
-    pub outputs: Vec<LogParam>,
+    pub inputs: Vec<graph::abi::DynSolParam>,
+    pub outputs: Vec<graph::abi::DynSolParam>,
 }

@@ -595,8 +595,8 @@ mod test {
     };
     use async_trait::async_trait;
     use chrono::{Duration, Utc};
-    use ethabi::ethereum_types::H256;
     use slog::{o, Discard, Logger};
+    use web3::types::H256;
 
     use crate::{blockchain::ChainIdentifier, components::adapter::ProviderManagerError};
 

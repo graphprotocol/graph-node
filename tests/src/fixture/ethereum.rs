@@ -6,13 +6,14 @@ use super::{
     test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
     NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
+use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
-use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::web3::types::H256;
+use graph::prelude::web3::types::U64;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
-use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
+use graph::prelude::{tiny_keccak, LightEthereumBlock, ENV_VARS};
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
 use graph_chain_ethereum::Chain;
@@ -136,7 +137,9 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
     let log = Arc::new(Log {
         address: Address::zero(),
         topics: vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
-        data: ethabi::encode(&[ethabi::Token::String(payload.into())]).into(),
+        data: graph::abi::DynSolValue::String(payload.into())
+            .abi_encode()
+            .into(),
         block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
         block_number: Some(block.ptr().number.into()),
         transaction_hash: Some(H256::from_low_u64_be(0)),
@@ -159,10 +162,11 @@ pub fn push_test_command(
     let log = Arc::new(Log {
         address: Address::zero(),
         topics: vec![tiny_keccak::keccak256(b"TestEvent(string,string)").into()],
-        data: ethabi::encode(&[
-            ethabi::Token::String(test_command.into()),
-            ethabi::Token::String(data.into()),
+        data: graph::abi::DynSolValue::Tuple(vec![
+            graph::abi::DynSolValue::String(test_command.into()),
+            graph::abi::DynSolValue::String(data.into()),
         ])
+        .abi_encode_params()
         .into(),
         block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
         block_number: Some(block.ptr().number.into()),

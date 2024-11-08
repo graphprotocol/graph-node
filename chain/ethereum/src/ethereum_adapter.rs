@@ -1,4 +1,6 @@
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
+use graph::abi::DynSolValueExt;
+use graph::abi::FunctionExt;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
@@ -14,8 +16,6 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
-use graph::prelude::ethabi::ParamType;
-use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
@@ -25,8 +25,7 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak,
-        trace, warn,
+        async_trait, debug, error, hex, info, retry, serde_json as json, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
@@ -656,9 +655,10 @@ impl EthereumAdapter {
 
                         match bytes.len() >= 4 && &bytes[..4] == solidity_revert_function_selector {
                             false => None,
-                            true => ethabi::decode(&[ParamType::String], &bytes[4..])
+                            true => graph::abi::DynSolType::String
+                                .abi_decode(&bytes[4..])
                                 .ok()
-                                .and_then(|tokens| tokens[0].clone().into_string()),
+                                .and_then(|val| val.clone().as_str().map(ToOwned::to_owned)),
                         }
                     };
 
@@ -1501,7 +1501,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         inp_call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError> {
+    ) -> Result<(Option<Vec<graph::abi::DynSolValue>>, call::Source), ContractCallError> {
         let mut result = self.contract_calls(logger, &[inp_call], cache).await?;
         // unwrap: self.contract_calls returns as many results as there were calls
         Ok(result.pop().unwrap())
@@ -1512,20 +1512,26 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError> {
+    ) -> Result<Vec<(Option<Vec<graph::abi::DynSolValue>>, call::Source)>, ContractCallError> {
         fn as_req(
             logger: &Logger,
             call: &ContractCall,
             index: u32,
         ) -> Result<call::Request, ContractCallError> {
             // Emit custom error for type mismatches.
-            for (token, kind) in call
+            for (val, kind) in call
                 .args
                 .iter()
-                .zip(call.function.inputs.iter().map(|p| &p.kind))
+                .zip(call.function.inputs.iter().map(|p| p.selector_type()))
             {
-                if !token.type_check(kind) {
-                    return Err(ContractCallError::TypeError(token.clone(), kind.clone()));
+                let kind: graph::abi::DynSolType = kind.parse().map_err(|err| {
+                    ContractCallError::ABIError(anyhow!(
+                        "failed to parse function input type '{kind}': {err}"
+                    ))
+                })?;
+
+                if !val.type_check(&kind) {
+                    return Err(ContractCallError::TypeError(val.clone(), kind.clone()));
                 }
             }
 
@@ -1533,8 +1539,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             let req = {
                 let encoded_call = call
                     .function
-                    .encode_input(&call.args)
-                    .map_err(ContractCallError::EncodingError)?;
+                    .abi_encode_input(&call.args)
+                    .map_err(|err| ContractCallError::EncodingError(err.into()))?;
                 call::Request::new(call.address, encoded_call, index)
             };
 
@@ -1552,7 +1558,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             logger: &Logger,
             resp: call::Response,
             call: &ContractCall,
-        ) -> (Option<Vec<Token>>, call::Source) {
+        ) -> (Option<Vec<graph::abi::DynSolValue>>, call::Source) {
             let call::Response {
                 retval,
                 source,
@@ -1560,7 +1566,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             } = resp;
             use call::Retval::*;
             match retval {
-                Value(output) => match call.function.decode_output(&output) {
+                Value(output) => match call.function.abi_decode_output(&output) {
                     Ok(tokens) => (Some(tokens), source),
                     Err(e) => {
                         // Decode failures are reverts. The reasoning is that if Solidity fails to
@@ -2607,9 +2613,9 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
-    use graph::prelude::ethabi::ethereum_types::U64;
     use graph::prelude::tokio::{self};
     use graph::prelude::web3::transports::test::TestTransport;
+    use graph::prelude::web3::types::U64;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
     use graph::prelude::web3::Web3;
     use graph::prelude::EthereumCall;
