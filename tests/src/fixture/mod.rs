@@ -462,13 +462,13 @@ pub async fn setup<C: Blockchain>(
 
     let static_filters = env_vars.experimental_static_filters;
 
-    let ipfs_client: Arc<dyn IpfsClient> = graph::ipfs::IpfsRpcClient::new_unchecked(
-        graph::ipfs::ServerAddress::local_rpc_api(),
-        &logger,
-    )
-    .unwrap()
-    .into_boxed()
-    .into();
+    let ipfs_client: Arc<dyn IpfsClient> = Arc::new(
+        graph::ipfs::IpfsRpcClient::new_unchecked(
+            graph::ipfs::ServerAddress::local_rpc_api(),
+            &logger,
+        )
+        .unwrap(),
+    );
 
     let link_resolver = Arc::new(IpfsResolver::new(
         ipfs_client.cheap_clone(),

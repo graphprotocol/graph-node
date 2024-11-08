@@ -21,6 +21,7 @@ use crate::futures01::Async;
 use crate::futures01::Poll;
 use crate::ipfs::ContentPath;
 use crate::ipfs::IpfsClient;
+use crate::ipfs::RetryPolicy;
 use crate::prelude::{LinkResolver as LinkResolverTrait, *};
 
 #[derive(Clone, CheapClone, Derivative)]
@@ -36,6 +37,9 @@ pub struct IpfsResolver {
     max_file_size: usize,
     max_map_file_size: usize,
     max_cache_file_size: usize,
+
+    /// When set to `true`, it means infinite retries, ignoring the timeout setting.
+    retry: bool,
 }
 
 impl IpfsResolver {
@@ -51,6 +55,7 @@ impl IpfsResolver {
             max_file_size: env.max_ipfs_file_bytes,
             max_map_file_size: env.max_ipfs_map_file_size,
             max_cache_file_size: env.max_ipfs_cache_file_size,
+            retry: false,
         }
     }
 }
@@ -64,8 +69,9 @@ impl LinkResolverTrait for IpfsResolver {
     }
 
     fn with_retries(&self) -> Box<dyn LinkResolverTrait> {
-        // IPFS clients have internal retries enabled by default.
-        Box::new(self.cheap_clone())
+        let mut s = self.cheap_clone();
+        s.retry = true;
+        Box::new(s)
     }
 
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
@@ -81,9 +87,16 @@ impl LinkResolverTrait for IpfsResolver {
 
         trace!(logger, "IPFS cat cache miss"; "hash" => path.to_string());
 
+        let (timeout, retry_policy) = if self.retry {
+            (None, RetryPolicy::NonDeterministic)
+        } else {
+            (Some(timeout), RetryPolicy::Networking)
+        };
+
         let data = self
             .client
-            .cat(&path, max_file_size, Some(timeout))
+            .clone()
+            .cat(&path, max_file_size, timeout, retry_policy)
             .await?
             .to_vec();
 
@@ -111,7 +124,18 @@ impl LinkResolverTrait for IpfsResolver {
 
         trace!(logger, "IPFS block get"; "hash" => path.to_string());
 
-        let data = self.client.get_block(&path, Some(timeout)).await?.to_vec();
+        let (timeout, retry_policy) = if self.retry {
+            (None, RetryPolicy::NonDeterministic)
+        } else {
+            (Some(timeout), RetryPolicy::Networking)
+        };
+
+        let data = self
+            .client
+            .clone()
+            .get_block(&path, timeout, retry_policy)
+            .await?
+            .to_vec();
 
         Ok(data)
     }
@@ -119,12 +143,20 @@ impl LinkResolverTrait for IpfsResolver {
     async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error> {
         let path = ContentPath::new(&link.link)?;
         let max_map_file_size = self.max_map_file_size;
+        let timeout = self.timeout;
 
         trace!(logger, "IPFS JSON stream"; "hash" => path.to_string());
 
+        let (timeout, retry_policy) = if self.retry {
+            (None, RetryPolicy::NonDeterministic)
+        } else {
+            (Some(timeout), RetryPolicy::Networking)
+        };
+
         let mut stream = self
             .client
-            .cat_stream(&path, None)
+            .clone()
+            .cat_stream(&path, timeout, retry_policy)
             .await?
             .fuse()
             .boxed()
@@ -228,11 +260,8 @@ mod tests {
 
         let logger = crate::log::discard();
 
-        let client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &logger)
-            .unwrap()
-            .into_boxed();
-
-        let resolver = IpfsResolver::new(client.into(), Arc::new(env_vars));
+        let client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &logger).unwrap();
+        let resolver = IpfsResolver::new(Arc::new(client), Arc::new(env_vars));
 
         let err = IpfsResolver::cat(&resolver, &logger, &Link { link: cid.clone() })
             .await
@@ -250,9 +279,8 @@ mod tests {
             .to_owned();
 
         let logger = crate::log::discard();
-        let client =
-            IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &logger)?.into_boxed();
-        let resolver = IpfsResolver::new(client.into(), Arc::new(env_vars));
+        let client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &logger)?;
+        let resolver = IpfsResolver::new(Arc::new(client), Arc::new(env_vars));
 
         let stream = IpfsResolver::json_stream(&resolver, &logger, &Link { link: cid }).await?;
         stream.map_ok(|sv| sv.value).try_collect().await
