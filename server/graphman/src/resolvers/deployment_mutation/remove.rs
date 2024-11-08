@@ -1,8 +1,9 @@
-use crate::resolvers::context::GraphmanContext;
 use anyhow::anyhow;
 use async_graphql::Result;
 use graph::prelude::{StoreEvent, SubgraphName};
 use graph_store_postgres::command_support::catalog;
+
+use crate::resolvers::context::GraphmanContext;
 use graphman::GraphmanError;
 
 pub fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
@@ -15,7 +16,7 @@ pub fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
             return Err(GraphmanError::Store(anyhow!(
                 "Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'"
             ))
-            .try_into()?)
+            .into())
         }
     };
 
