@@ -248,6 +248,11 @@ impl From<web3::Error> for IngestorError {
     }
 }
 
+/// The `TriggerFilterWrapper` is a higher-level wrapper around the chain-specific `TriggerFilter`,
+/// enabling subgraph-based trigger filtering for subgraph datasources. This abstraction is necessary
+/// because subgraph filtering operates at a higher level than chain-based filtering. By using this wrapper,
+/// we reduce code duplication, allowing subgraph-based filtering to be implemented once, instead of
+/// duplicating it across different chains.
 #[derive(Debug)]
 pub struct TriggerFilterWrapper<C: Blockchain> {
     pub chain_filter: Arc<C::TriggerFilter>,

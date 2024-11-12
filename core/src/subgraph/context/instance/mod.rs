@@ -22,14 +22,15 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     pub(super) static_data_sources: Arc<Vec<DataSource<C>>>,
     host_metrics: Arc<HostMetrics>,
 
-    /// The hosts represent the data sources in the subgraph. There is one host per data source.
+    /// The hosts represent the onchain data sources in the subgraph. There is one host per data source.
     /// Data sources with no mappings (e.g. direct substreams) have no host.
     ///
     /// Onchain hosts must be created in increasing order of block number. `fn hosts_for_trigger`
     /// will return the onchain hosts in the same order as they were inserted.
     onchain_hosts: OnchainHosts<C, T>,
 
-    // TODO(krishna): Describe subgraph_hosts
+    /// `subgraph_hosts` represent subgraph data sources declared in the manifest. These are a special
+    /// kind of data source that depends on the data from another source subgraph.
     subgraph_hosts: OnchainHosts<C, T>,
 
     offchain_hosts: OffchainHosts<C, T>,

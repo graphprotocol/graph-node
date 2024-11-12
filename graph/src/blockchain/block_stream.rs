@@ -315,6 +315,9 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     }
 }
 
+/// The `TriggersAdapterWrapper` wraps the chain-specific `TriggersAdapter`, enabling chain-agnostic
+/// handling of subgraph datasource triggers. Without this wrapper, we would have to duplicate the same
+/// logic for each chain, increasing code repetition.
 pub struct TriggersAdapterWrapper<C: Blockchain> {
     pub adapter: Arc<dyn TriggersAdapter<C>>,
     pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
