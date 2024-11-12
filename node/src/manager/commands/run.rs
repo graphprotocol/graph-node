@@ -105,6 +105,15 @@ pub async fn run(
         ));
     }
 
+    provider_checks.push(Arc::new(
+        graph::components::network_provider::ExtendedBlocksCheck::new(
+            env_vars
+                .firehose_disable_extended_blocks_for_chains
+                .iter()
+                .map(|x| x.as_str().into()),
+        ),
+    ));
+
     let networks = Networks::from_config(
         logger.cheap_clone(),
         &config,
