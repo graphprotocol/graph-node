@@ -7,13 +7,20 @@ use crate::components::network_provider::ChainName;
 use crate::components::store::BlockStore;
 use crate::components::store::ChainStore;
 
+/// Additional requirements for stores that are necessary for provider checks.
 pub trait ChainIdentifierStore: Send + Sync + 'static {
+    /// Verifies that the chain identifier returned by the network provider
+    /// matches the previously stored value.
+    ///
+    /// Fails if the identifiers do not match or if something goes wrong.
     fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
     ) -> Result<(), ChainIdentifierStoreError>;
 
+    /// Saves the provided identifier that will be used as the source of truth
+    /// for future validations.
     fn update_identifier(
         &self,
         chain_name: &ChainName,

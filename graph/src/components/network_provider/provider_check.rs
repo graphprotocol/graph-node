@@ -9,6 +9,8 @@ use crate::components::network_provider::ProviderName;
 
 #[async_trait]
 pub trait ProviderCheck: Send + Sync + 'static {
+    fn name(&self) -> &'static str;
+
     async fn check(
         &self,
         logger: &Logger,
@@ -18,7 +20,7 @@ pub trait ProviderCheck: Send + Sync + 'static {
     ) -> ProviderCheckStatus;
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderCheckStatus {
     NotChecked,
     TemporaryFailure { checked_at: Instant },

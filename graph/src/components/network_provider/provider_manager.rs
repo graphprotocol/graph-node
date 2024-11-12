@@ -6,6 +6,8 @@ use std::time::Duration;
 use derivative::Derivative;
 use itertools::Itertools;
 use slog::error;
+use slog::info;
+use slog::warn;
 use slog::Logger;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -103,8 +105,25 @@ impl<T: NetworkDetails> ProviderManager<T> {
         strategy: ProviderCheckStrategy<'_>,
     ) -> Self {
         let enabled_checks = match strategy {
-            ProviderCheckStrategy::MarkAsValid => &[],
-            ProviderCheckStrategy::RequireAll(checks) => checks,
+            ProviderCheckStrategy::MarkAsValid => {
+                warn!(
+                    &logger,
+                    "No network provider checks enabled. \
+                     This can cause data inconsistency and many other issues."
+                );
+
+                &[]
+            }
+            ProviderCheckStrategy::RequireAll(checks) => {
+                info!(
+                    &logger,
+                    "All network providers have checks enabled. \
+                     To be considered valid they will have to pass the following checks: [{}]",
+                    checks.iter().map(|x| x.name()).join(",")
+                );
+
+                checks
+            }
         };
 
         let mut validations: Vec<Validation> = Vec::new();
@@ -449,6 +468,10 @@ mod tests {
 
     #[async_trait]
     impl ProviderCheck for TestProviderCheck {
+        fn name(&self) -> &'static str {
+            "TestProviderCheck"
+        }
+
         async fn check(
             &self,
             _logger: &Logger,

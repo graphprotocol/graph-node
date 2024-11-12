@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use slog::error;
+use slog::warn;
 use slog::Logger;
 
 use crate::components::network_provider::ChainName;
@@ -26,6 +27,10 @@ impl ExtendedBlocksCheck {
 
 #[async_trait]
 impl ProviderCheck for ExtendedBlocksCheck {
+    fn name(&self) -> &'static str {
+        "ExtendedBlocksCheck"
+    }
+
     async fn check(
         &self,
         logger: &Logger,
@@ -34,6 +39,13 @@ impl ProviderCheck for ExtendedBlocksCheck {
         adapter: &dyn NetworkDetails,
     ) -> ProviderCheckStatus {
         if self.disabled_for_chains.contains(chain_name) {
+            warn!(
+                logger,
+                "Extended blocks check for provider '{}' was disabled on chain '{}'",
+                provider_name,
+                chain_name,
+            );
+
             return ProviderCheckStatus::Valid;
         }
 
@@ -63,5 +75,154 @@ impl ProviderCheck for ExtendedBlocksCheck {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use anyhow::anyhow;
+    use anyhow::Result;
+
+    use super::*;
+    use crate::blockchain::ChainIdentifier;
+    use crate::log::discard;
+
+    macro_rules! lock {
+        ($obj:ident.$field:ident. $( $call:tt )+) => {{
+            $obj.$field.lock().unwrap(). $( $call )+
+        }};
+    }
+
+    #[derive(Default)]
+    struct TestAdapter {
+        provides_extended_blocks_calls: Mutex<Vec<Result<bool>>>,
+    }
+
+    #[async_trait]
+    impl NetworkDetails for TestAdapter {
+        fn provider_name(&self) -> ProviderName {
+            unimplemented!();
+        }
+
+        async fn chain_identifier(&self) -> Result<ChainIdentifier> {
+            unimplemented!();
+        }
+
+        async fn provides_extended_blocks(&self) -> Result<bool> {
+            lock!(self.provides_extended_blocks_calls.remove(0))
+        }
+    }
+
+    impl Drop for TestAdapter {
+        fn drop(&mut self) {
+            assert!(lock!(self.provides_extended_blocks_calls.is_empty()));
+        }
+    }
+
+    #[tokio::test]
+    async fn check_valid_when_disabled_for_chain() {
+        let check = ExtendedBlocksCheck::new(["chain-1".into()]);
+        let adapter = TestAdapter::default();
+
+        let status = check
+            .check(
+                &discard(),
+                &("chain-1".into()),
+                &("provider-1".into()),
+                &adapter,
+            )
+            .await;
+
+        assert_eq!(status, ProviderCheckStatus::Valid);
+    }
+
+    #[tokio::test]
+    async fn check_valid_when_disabled_for_multiple_chains() {
+        let check = ExtendedBlocksCheck::new(["chain-1".into(), "chain-2".into()]);
+        let adapter = TestAdapter::default();
+
+        let status = check
+            .check(
+                &discard(),
+                &("chain-1".into()),
+                &("provider-1".into()),
+                &adapter,
+            )
+            .await;
+
+        assert_eq!(status, ProviderCheckStatus::Valid);
+
+        let status = check
+            .check(
+                &discard(),
+                &("chain-2".into()),
+                &("provider-2".into()),
+                &adapter,
+            )
+            .await;
+
+        assert_eq!(status, ProviderCheckStatus::Valid);
+    }
+
+    #[tokio::test]
+    async fn check_valid_when_extended_blocks_are_supported() {
+        let check = ExtendedBlocksCheck::new([]);
+
+        let adapter = TestAdapter::default();
+        lock! { adapter.provides_extended_blocks_calls.push(Ok(true)) };
+
+        let status = check
+            .check(
+                &discard(),
+                &("chain-1".into()),
+                &("provider-1".into()),
+                &adapter,
+            )
+            .await;
+
+        assert_eq!(status, ProviderCheckStatus::Valid);
+    }
+
+    #[tokio::test]
+    async fn check_fails_when_extended_blocks_are_not_supported() {
+        let check = ExtendedBlocksCheck::new([]);
+
+        let adapter = TestAdapter::default();
+        lock! { adapter.provides_extended_blocks_calls.push(Ok(false)) };
+
+        let status = check
+            .check(
+                &discard(),
+                &("chain-1".into()),
+                &("provider-1".into()),
+                &adapter,
+            )
+            .await;
+
+        assert_eq!(status, ProviderCheckStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn check_temporary_failure_when_provider_request_fails() {
+        let check = ExtendedBlocksCheck::new([]);
+
+        let adapter = TestAdapter::default();
+        lock! { adapter.provides_extended_blocks_calls.push(Err(anyhow!("error"))) };
+
+        let status = check
+            .check(
+                &discard(),
+                &("chain-1".into()),
+                &("provider-1".into()),
+                &adapter,
+            )
+            .await;
+
+        assert!(matches!(
+            status,
+            ProviderCheckStatus::TemporaryFailure { .. }
+        ))
     }
 }
