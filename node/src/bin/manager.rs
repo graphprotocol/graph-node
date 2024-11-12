@@ -440,9 +440,13 @@ pub enum ConfigCommand {
         network: String,
     },
 
-    /// Compare the NetIdentifier of all defined adapters with the existing
-    /// identifiers on the ChainStore.
-    CheckProviders {},
+    /// Run all available provider checks against all providers.
+    CheckProviders {
+        /// Maximum duration of all provider checks for a provider.
+        ///
+        /// Defaults to 60 seconds.
+        timeout_seconds: Option<u64>,
+    },
 
     /// Show subgraph-specific settings
     ///
@@ -1167,10 +1171,15 @@ async fn main() -> anyhow::Result<()> {
             use ConfigCommand::*;
 
             match cmd {
-                CheckProviders {} => {
-                    let store = ctx.store().block_store();
+                CheckProviders { timeout_seconds } => {
+                    let logger = ctx.logger.clone();
                     let networks = ctx.networks().await?;
-                    Ok(commands::config::check_provider_genesis(&networks, store).await)
+                    let store = ctx.store().block_store();
+                    let timeout = Duration::from_secs(timeout_seconds.unwrap_or(60));
+
+                    commands::provider_checks::execute(&logger, &networks, store, timeout).await;
+
+                    Ok(())
                 }
                 Place { name, network } => {
                     commands::config::place(&ctx.config.deployment, &name, &network)

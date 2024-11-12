@@ -7,14 +7,13 @@ use graph::components::network_provider::NetworkDetails;
 use graph::components::network_provider::ProviderCheck;
 use graph::components::network_provider::ProviderCheckStrategy;
 use graph::components::network_provider::ProviderManager;
-use graph::components::network_provider::ProviderName;
 use graph::{
     anyhow::{self, bail},
     blockchain::{Blockchain, BlockchainKind, BlockchainMap, ChainIdentifier},
     cheap_clone::CheapClone,
     components::metrics::MetricsRegistry,
     endpoint::EndpointMetrics,
-    env::{EnvVars, ENV_VARS},
+    env::EnvVars,
     firehose::{FirehoseEndpoint, FirehoseEndpoints},
     futures03::future::TryFutureExt,
     itertools::Itertools,
@@ -106,9 +105,9 @@ impl AdapterConfiguration {
 
 pub struct Networks {
     pub adapters: Vec<AdapterConfiguration>,
-    rpc_provider_manager: ProviderManager<EthereumNetworkAdapter>,
-    firehose_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
-    substreams_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
+    pub rpc_provider_manager: ProviderManager<EthereumNetworkAdapter>,
+    pub firehose_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
+    pub substreams_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
 }
 
 impl Networks {
@@ -132,50 +131,6 @@ impl Networks {
                 ProviderCheckStrategy::MarkAsValid,
             ),
         }
-    }
-
-    /// Gets the chain identifier from all providers for every chain.
-    /// This function is intended for checking the status of providers and
-    /// whether they match their store counterparts more than for general
-    /// graph-node use. It may trigger verification (which would add delays on hot paths)
-    /// and it will also make calls on potentially unveried providers (this means the providers
-    /// have not been checked for correct net_version and genesis block hash)
-    pub async fn all_chain_identifiers(
-        &self,
-    ) -> Vec<(
-        &ChainName,
-        Vec<(ProviderName, Result<ChainIdentifier, anyhow::Error>)>,
-    )> {
-        let timeout = ENV_VARS.genesis_validation_timeout;
-        let mut out = vec![];
-        for chain_id in self.adapters.iter().map(|a| a.chain_id()).sorted().dedup() {
-            let mut inner = vec![];
-            for adapter in self.rpc_provider_manager.providers_unchecked(chain_id) {
-                inner.push((
-                    adapter.provider_name(),
-                    adapter.chain_identifier_with_timeout(timeout).await,
-                ));
-            }
-            for adapter in self.firehose_provider_manager.providers_unchecked(chain_id) {
-                inner.push((
-                    adapter.provider_name(),
-                    adapter.chain_identifier_with_timeout(timeout).await,
-                ));
-            }
-            for adapter in self
-                .substreams_provider_manager
-                .providers_unchecked(chain_id)
-            {
-                inner.push((
-                    adapter.provider_name(),
-                    adapter.chain_identifier_with_timeout(timeout).await,
-                ));
-            }
-
-            out.push((chain_id, inner));
-        }
-
-        out
     }
 
     pub async fn chain_identifier(
