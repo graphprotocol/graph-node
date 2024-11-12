@@ -20,6 +20,7 @@ impl<C: Blockchain> From<&DataSourceTemplate<C>> for InstanceDSTemplate {
         match value {
             DataSourceTemplate::Onchain(ds) => Self::Onchain(ds.info()),
             DataSourceTemplate::Offchain(ds) => Self::Offchain(ds.clone()),
+            DataSourceTemplate::Subgraph(_) => todo!(), // TODO(krishna)
         }
     }
 }

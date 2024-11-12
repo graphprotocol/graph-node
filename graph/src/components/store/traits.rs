@@ -185,6 +185,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
+    async fn readable(
+        self: Arc<Self>,
+        logger: Logger,
+        deployment: DeploymentId,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+    ) -> Result<Arc<dyn ReadStore>, StoreError>;
+
     /// Initiate a graceful shutdown of the writable that a previous call to
     /// `writable` might have started
     async fn stop_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;

@@ -2,6 +2,7 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
+
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
@@ -58,6 +59,7 @@ use crate::chain::BlockFinality;
 use crate::trigger::LogRef;
 use crate::Chain;
 use crate::NodeCapabilities;
+use crate::TriggerFilter;
 use crate::{
     adapter::{
         ContractCall, ContractCallError, EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait,
@@ -66,7 +68,7 @@ use crate::{
     },
     transport::Transport,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
-    TriggerFilter, ENV_VARS,
+    ENV_VARS,
 };
 
 #[derive(Debug, Clone)]
@@ -1648,6 +1650,28 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Ok(decoded)
     }
 
+    // This is a ugly temporary implementation to get the block ptrs for a range of blocks
+    async fn load_blocks_by_numbers(
+        &self,
+        logger: Logger,
+        chain_store: Arc<dyn ChainStore>,
+        block_numbers: HashSet<BlockNumber>,
+    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
+        let block_hashes = block_numbers
+            .into_iter()
+            .map(|number| {
+                chain_store
+                    .block_hashes_by_block_number(number)
+                    .unwrap()
+                    .first()
+                    .unwrap()
+                    .as_h256()
+            })
+            .collect::<HashSet<_>>();
+
+        self.load_blocks(logger, chain_store, block_hashes).await
+    }
+
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     async fn load_blocks(
         &self,
@@ -2077,8 +2101,8 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let transaction_hashes: BTreeSet<H256> = block
         .trigger_data
         .iter()
-        .filter_map(|trigger| match trigger {
-            EthereumTrigger::Call(call_trigger) => Some(call_trigger.transaction_hash),
+        .filter_map(|trigger| match trigger.as_chain() {
+            Some(EthereumTrigger::Call(call_trigger)) => Some(call_trigger.transaction_hash),
             _ => None,
         })
         .collect::<Option<BTreeSet<H256>>>()
@@ -2169,7 +2193,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
     // Filter call triggers from unsuccessful transactions
     block.trigger_data.retain(|trigger| {
-        if let EthereumTrigger::Call(call_trigger) = trigger {
+        if let Some(EthereumTrigger::Call(call_trigger)) = trigger.as_chain() {
             // Unwrap: We already checked that those values exist
             transaction_success[&call_trigger.transaction_hash.unwrap()]
         } else {

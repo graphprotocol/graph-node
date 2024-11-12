@@ -33,7 +33,7 @@ use web3::types::Address;
 
 use crate::{
     bail,
-    blockchain::{BlockPtr, Blockchain, DataSource as _},
+    blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
         store::{StoreError, SubgraphStore},
@@ -139,6 +139,10 @@ impl DeploymentHash {
         Link {
             link: format!("/ipfs/{}", self),
         }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.as_bytes().to_vec()
     }
 }
 
@@ -719,7 +723,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .0
             .data_sources
             .iter()
-            .filter_map(|d| Some(d.as_onchain()?.network()?.to_string()))
+            .filter_map(|d| Some(d.network()?.to_string()))
             .collect::<Vec<String>>();
         networks.sort();
         networks.dedup();
@@ -765,11 +769,9 @@ impl<C: Blockchain> SubgraphManifest<C> {
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         let unresolved = UnresolvedSubgraphManifest::parse(id, raw)?;
-
         let resolved = unresolved
             .resolve(resolver, logger, max_spec_version)
             .await?;
-
         Ok(resolved)
     }
 
@@ -777,14 +779,14 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            .find_map(|d| Some(d.as_onchain()?.network()?.to_string()))
+            .find_map(|d| Some(d.network()?.to_string()))
             .expect("Validated manifest does not have a network defined on any datasource")
     }
 
     pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.data_sources
             .iter()
-            .filter_map(|d| Some(d.as_onchain()?.start_block()))
+            .filter_map(|d| d.start_block())
             .collect()
     }
 

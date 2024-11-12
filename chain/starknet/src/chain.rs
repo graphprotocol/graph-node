@@ -11,26 +11,26 @@ use graph::{
         firehose_block_stream::FirehoseBlockStream,
         BasicBlockchainBuilder, Block, BlockIngestor, BlockPtr, Blockchain, BlockchainBuilder,
         BlockchainKind, EmptyNodeCapabilities, IngestorError, NoopDecoderHook, NoopRuntimeAdapter,
-        RuntimeAdapter as RuntimeAdapterTrait,
+        RuntimeAdapter as RuntimeAdapterTrait, TriggerFilterWrapper,
     },
     cheap_clone::CheapClone,
     components::{
         adapter::ChainId,
-        store::{DeploymentCursorTracker, DeploymentLocator},
+        store::{DeploymentCursorTracker, DeploymentLocator, ReadStore},
     },
     data::subgraph::UnifiedMappingApiVersion,
     env::EnvVars,
     firehose::{self, FirehoseEndpoint, ForkStep},
     futures03::future::TryFutureExt,
     prelude::{
-        async_trait, BlockHash, BlockNumber, ChainStore, Error, Logger, LoggerFactory,
-        MetricsRegistry,
+        async_trait, BlockHash, BlockNumber, ChainStore, DeploymentHash, Error, Logger,
+        LoggerFactory, MetricsRegistry,
     },
     schema::InputSchema,
     slog::o,
 };
 use prost::Message;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     adapter::TriggerFilter,
@@ -39,6 +39,7 @@ use crate::{
         DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
     },
     trigger::{StarknetBlockTrigger, StarknetEventTrigger, StarknetTrigger},
+    Block as StarknetBlock,
 };
 
 pub struct Chain {
@@ -115,7 +116,8 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
@@ -125,7 +127,7 @@ impl Blockchain for Chain {
                 store.firehose_cursor(),
                 start_blocks,
                 store.block_ptr(),
-                filter,
+                filter.chain_filter.clone(),
                 unified_api_version,
             )
             .await
@@ -238,8 +240,9 @@ impl BlockStreamBuilder<Chain> for StarknetStreamBuilder {
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilter>,
+        _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         panic!("StarkNet does not support polling block stream")
@@ -369,6 +372,18 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<StarknetBlock>, Error> {
+        unimplemented!()
+    }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+
     // Returns a sequence of blocks in increasing order of block number.
     // Each block will include all of its triggers that match the given `filter`.
     // The sequence may omit blocks that contain no triggers,
@@ -379,7 +394,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &crate::adapter::TriggerFilter,
+        _filter: &TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<Chain>>, BlockNumber), Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
