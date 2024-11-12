@@ -284,17 +284,12 @@ async fn main() {
             )));
         }
 
-        if !env_vars
-            .firehose_require_extended_blocks_for_chains
-            .is_empty()
-        {
-            provider_checks.push(Arc::new(network_provider::ExtendedBlocksCheck::new(
-                env_vars
-                    .firehose_require_extended_blocks_for_chains
-                    .iter()
-                    .map(|x| x.as_str().into()),
-            )));
-        }
+        provider_checks.push(Arc::new(network_provider::ExtendedBlocksCheck::new(
+            env_vars
+                .firehose_disable_extended_blocks_for_chains
+                .iter()
+                .map(|x| x.as_str().into()),
+        )));
 
         let network_adapters = Networks::from_config(
             logger.cheap_clone(),

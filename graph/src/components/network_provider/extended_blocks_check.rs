@@ -13,13 +13,13 @@ use crate::components::network_provider::ProviderName;
 
 /// Requires providers to support extended block details.
 pub struct ExtendedBlocksCheck {
-    enabled_for_chains: HashSet<ChainName>,
+    disabled_for_chains: HashSet<ChainName>,
 }
 
 impl ExtendedBlocksCheck {
-    pub fn new(enabled_for_chains: impl IntoIterator<Item = ChainName>) -> Self {
+    pub fn new(disabled_for_chains: impl IntoIterator<Item = ChainName>) -> Self {
         Self {
-            enabled_for_chains: enabled_for_chains.into_iter().collect(),
+            disabled_for_chains: disabled_for_chains.into_iter().collect(),
         }
     }
 }
@@ -33,7 +33,7 @@ impl ProviderCheck for ExtendedBlocksCheck {
         provider_name: &ProviderName,
         adapter: &dyn NetworkDetails,
     ) -> ProviderCheckStatus {
-        if !self.enabled_for_chains.contains(chain_name) {
+        if self.disabled_for_chains.contains(chain_name) {
             return ProviderCheckStatus::Valid;
         }
 
