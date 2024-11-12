@@ -52,26 +52,26 @@ impl ProviderCheck for ExtendedBlocksCheck {
         match adapter.provides_extended_blocks().await {
             Ok(true) => ProviderCheckStatus::Valid,
             Ok(false) => {
-                error!(
-                    logger,
+                let message = format!(
                     "Provider '{}' does not support extended blocks on chain '{}'",
-                    provider_name,
-                    chain_name,
+                    provider_name, chain_name,
                 );
 
-                ProviderCheckStatus::Failed
+                error!(logger, "{}", message);
+
+                ProviderCheckStatus::Failed { message }
             }
             Err(err) => {
-                error!(
-                    logger,
+                let message = format!(
                     "Failed to check if provider '{}' supports extended blocks on chain '{}': {:#}",
-                    provider_name,
-                    chain_name,
-                    err,
+                    provider_name, chain_name, err,
                 );
+
+                error!(logger, "{}", message);
 
                 ProviderCheckStatus::TemporaryFailure {
                     checked_at: Instant::now(),
+                    message,
                 }
             }
         }
@@ -89,15 +89,25 @@ mod tests {
     use crate::blockchain::ChainIdentifier;
     use crate::log::discard;
 
-    macro_rules! lock {
-        ($obj:ident.$field:ident. $( $call:tt )+) => {{
-            $obj.$field.lock().unwrap(). $( $call )+
-        }};
-    }
-
     #[derive(Default)]
     struct TestAdapter {
         provides_extended_blocks_calls: Mutex<Vec<Result<bool>>>,
+    }
+
+    impl TestAdapter {
+        fn provides_extended_blocks_call(&self, x: Result<bool>) {
+            self.provides_extended_blocks_calls.lock().unwrap().push(x)
+        }
+    }
+
+    impl Drop for TestAdapter {
+        fn drop(&mut self) {
+            assert!(self
+                .provides_extended_blocks_calls
+                .lock()
+                .unwrap()
+                .is_empty());
+        }
     }
 
     #[async_trait]
@@ -111,13 +121,10 @@ mod tests {
         }
 
         async fn provides_extended_blocks(&self) -> Result<bool> {
-            lock!(self.provides_extended_blocks_calls.remove(0))
-        }
-    }
-
-    impl Drop for TestAdapter {
-        fn drop(&mut self) {
-            assert!(lock!(self.provides_extended_blocks_calls.is_empty()));
+            self.provides_extended_blocks_calls
+                .lock()
+                .unwrap()
+                .remove(0)
         }
     }
 
@@ -171,7 +178,7 @@ mod tests {
         let check = ExtendedBlocksCheck::new([]);
 
         let adapter = TestAdapter::default();
-        lock! { adapter.provides_extended_blocks_calls.push(Ok(true)) };
+        adapter.provides_extended_blocks_call(Ok(true));
 
         let status = check
             .check(
@@ -190,7 +197,7 @@ mod tests {
         let check = ExtendedBlocksCheck::new([]);
 
         let adapter = TestAdapter::default();
-        lock! { adapter.provides_extended_blocks_calls.push(Ok(false)) };
+        adapter.provides_extended_blocks_call(Ok(false));
 
         let status = check
             .check(
@@ -201,7 +208,7 @@ mod tests {
             )
             .await;
 
-        assert_eq!(status, ProviderCheckStatus::Failed);
+        assert!(matches!(status, ProviderCheckStatus::Failed { .. }));
     }
 
     #[tokio::test]
@@ -209,7 +216,7 @@ mod tests {
         let check = ExtendedBlocksCheck::new([]);
 
         let adapter = TestAdapter::default();
-        lock! { adapter.provides_extended_blocks_calls.push(Err(anyhow!("error"))) };
+        adapter.provides_extended_blocks_call(Err(anyhow!("error")));
 
         let status = check
             .check(

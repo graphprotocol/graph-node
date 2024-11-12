@@ -360,7 +360,10 @@ impl<T: NetworkDetails> Inner<T> {
                 NotChecked => {
                     // Check is required;
                 }
-                TemporaryFailure { checked_at } => {
+                TemporaryFailure {
+                    checked_at,
+                    message: _,
+                } => {
                     if checked_at.elapsed() < validation_retry_interval {
                         continue;
                     }
@@ -368,7 +371,7 @@ impl<T: NetworkDetails> Inner<T> {
                     // A new check is required;
                 }
                 Valid => continue,
-                Failed => continue,
+                Failed { message: _ } => continue,
             }
 
             *check_result = self.enabled_checks[i]
@@ -401,17 +404,9 @@ mod tests {
     use crate::blockchain::ChainIdentifier;
     use crate::log::discard;
 
-    macro_rules! lock {
-        ($obj:ident.$field:ident. $( $call:tt )+) => {{
-            $obj.$field.lock().unwrap(). $( $call )+
-        }};
-    }
-
     struct TestAdapter {
         id: usize,
         provider_name_calls: Mutex<Vec<ProviderName>>,
-        chain_identifier_calls: Mutex<Vec<Result<ChainIdentifier>>>,
-        provides_extended_blocks_calls: Mutex<Vec<Result<bool>>>,
     }
 
     impl TestAdapter {
@@ -419,50 +414,54 @@ mod tests {
             Self {
                 id,
                 provider_name_calls: Default::default(),
-                chain_identifier_calls: Default::default(),
-                provides_extended_blocks_calls: Default::default(),
             }
+        }
+
+        fn provider_name_call(&self, x: ProviderName) {
+            self.provider_name_calls.lock().unwrap().push(x)
         }
     }
 
     impl Drop for TestAdapter {
         fn drop(&mut self) {
-            assert!(lock! { self.provider_name_calls.is_empty() });
-            assert!(lock! { self.chain_identifier_calls.is_empty() });
-            assert!(lock! { self.provides_extended_blocks_calls.is_empty() });
+            let Self {
+                id: _,
+                provider_name_calls,
+            } = self;
+
+            assert!(provider_name_calls.lock().unwrap().is_empty());
         }
     }
 
     #[async_trait]
     impl NetworkDetails for Arc<TestAdapter> {
         fn provider_name(&self) -> ProviderName {
-            lock! { self.provider_name_calls.remove(0) }
+            self.provider_name_calls.lock().unwrap().remove(0)
         }
 
         async fn chain_identifier(&self) -> Result<ChainIdentifier> {
-            lock! { self.chain_identifier_calls.remove(0) }
+            unimplemented!();
         }
 
         async fn provides_extended_blocks(&self) -> Result<bool> {
-            lock! { self.provides_extended_blocks_calls.remove(0) }
+            unimplemented!();
         }
     }
 
+    #[derive(Default)]
     struct TestProviderCheck {
         check_calls: Mutex<Vec<Box<dyn FnOnce() -> ProviderCheckStatus + Send>>>,
     }
 
     impl TestProviderCheck {
-        fn new() -> Self {
-            Self {
-                check_calls: Default::default(),
-            }
+        fn check_call(&self, x: Box<dyn FnOnce() -> ProviderCheckStatus + Send>) {
+            self.check_calls.lock().unwrap().push(x)
         }
     }
 
     impl Drop for TestProviderCheck {
         fn drop(&mut self) {
-            assert!(lock! { self.check_calls.is_empty() });
+            assert!(self.check_calls.lock().unwrap().is_empty());
         }
     }
 
@@ -479,7 +478,7 @@ mod tests {
             _provider_name: &ProviderName,
             _adapter: &dyn NetworkDetails,
         ) -> ProviderCheckStatus {
-            lock! { self.check_calls.remove(0)() }
+            self.check_calls.lock().unwrap().remove(0)()
         }
     }
 
@@ -508,7 +507,7 @@ mod tests {
     #[tokio::test]
     async fn no_providers_for_chain() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -537,10 +536,10 @@ mod tests {
     #[tokio::test]
     async fn multiple_providers() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
         let adapter_2 = Arc::new(TestAdapter::new(2));
-        lock! { adapter_2.provider_name_calls.push("provider_2".into()) };
+        adapter_2.provider_name_call("provider_2".into());
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -561,9 +560,9 @@ mod tests {
     #[tokio::test]
     async fn providers_unchecked_skips_provider_checks() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
+        let check_1 = Arc::new(TestProviderCheck::default());
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -577,10 +576,10 @@ mod tests {
     #[tokio::test]
     async fn successful_provider_check() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -603,13 +602,13 @@ mod tests {
     #[tokio::test]
     async fn multiple_successful_provider_checks() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
-        let check_2 = Arc::new(TestProviderCheck::new());
-        lock! { check_2.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_2 = Arc::new(TestProviderCheck::default());
+        check_2.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -632,18 +631,18 @@ mod tests {
     #[tokio::test]
     async fn multiple_successful_provider_checks_on_multiple_adapters() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
         let adapter_2 = Arc::new(TestAdapter::new(2));
-        lock! { adapter_2.provider_name_calls.push("provider_2".into()) };
+        adapter_2.provider_name_call("provider_2".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
-        let check_2 = Arc::new(TestProviderCheck::new());
-        lock! { check_2.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
-        lock! { check_2.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_2 = Arc::new(TestProviderCheck::default());
+        check_2.check_call(Box::new(|| ProviderCheckStatus::Valid));
+        check_2.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -666,13 +665,13 @@ mod tests {
     #[tokio::test]
     async fn successful_provider_check_for_a_pool_of_adapters_for_a_provider() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
         let adapter_2 = Arc::new(TestAdapter::new(2));
-        lock! { adapter_2.provider_name_calls.push("provider_1".into()) };
+        adapter_2.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -695,16 +694,16 @@ mod tests {
     #[tokio::test]
     async fn multiple_successful_provider_checks_for_a_pool_of_adapters_for_a_provider() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
         let adapter_2 = Arc::new(TestAdapter::new(2));
-        lock! { adapter_2.provider_name_calls.push("provider_1".into()) };
+        adapter_2.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
-        let check_2 = Arc::new(TestProviderCheck::new());
-        lock! { check_2.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_2 = Arc::new(TestProviderCheck::default());
+        check_2.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -727,15 +726,13 @@ mod tests {
     #[tokio::test]
     async fn provider_validation_timeout() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! {
-            check_1.check_calls.push(Box::new(|| {
-                std::thread::sleep(Duration::from_millis(200));
-                ProviderCheckStatus::Valid
-            }))
-        };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| {
+            std::thread::sleep(Duration::from_millis(200));
+            ProviderCheckStatus::Valid
+        }));
 
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -759,14 +756,13 @@ mod tests {
     #[tokio::test]
     async fn no_providers_available() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! {
-            check_1.check_calls.push(Box::new(|| ProviderCheckStatus::TemporaryFailure {
-                checked_at: Instant::now(),
-            }))
-        };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::TemporaryFailure {
+            checked_at: Instant::now(),
+            message: "error".to_owned(),
+        }));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -788,10 +784,12 @@ mod tests {
     #[tokio::test]
     async fn all_providers_failed() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Failed)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Failed {
+            message: "error".to_owned(),
+        }));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -813,15 +811,14 @@ mod tests {
     #[tokio::test]
     async fn temporary_provider_check_failures_are_retried() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! {
-            check_1.check_calls.push(Box::new(|| ProviderCheckStatus::TemporaryFailure {
-                checked_at: Instant::now(),
-            }))
-        };
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::TemporaryFailure {
+            checked_at: Instant::now(),
+            message: "error".to_owned(),
+        }));
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -844,10 +841,12 @@ mod tests {
     #[tokio::test]
     async fn final_provider_check_failures_are_not_retried() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Failed)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Failed {
+            message: "error".to_owned(),
+        }));
 
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -867,22 +866,23 @@ mod tests {
     #[tokio::test]
     async fn mix_valid_and_invalid_providers() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
         let adapter_2 = Arc::new(TestAdapter::new(2));
-        lock! { adapter_2.provider_name_calls.push("provider_2".into()) };
+        adapter_2.provider_name_call("provider_2".into());
 
         let adapter_3 = Arc::new(TestAdapter::new(3));
-        lock! { adapter_3.provider_name_calls.push("provider_3".into()) };
+        adapter_3.provider_name_call("provider_3".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Failed)) };
-        lock! {
-            check_1.check_calls.push(Box::new(|| ProviderCheckStatus::TemporaryFailure {
-                checked_at: Instant::now(),
-            }))
-        };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Failed {
+            message: "error".to_owned(),
+        }));
+        check_1.check_call(Box::new(|| ProviderCheckStatus::TemporaryFailure {
+            checked_at: Instant::now(),
+            message: "error".to_owned(),
+        }));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -902,15 +902,17 @@ mod tests {
     #[tokio::test]
     async fn one_provider_check_failure_is_enough_to_mark_an_provider_as_invalid() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
-        let check_2 = Arc::new(TestProviderCheck::new());
-        lock! { check_2.check_calls.push(Box::new(|| ProviderCheckStatus::Failed)) };
+        let check_2 = Arc::new(TestProviderCheck::default());
+        check_2.check_call(Box::new(|| ProviderCheckStatus::Failed {
+            message: "error".to_owned(),
+        }));
 
-        let check_3 = Arc::new(TestProviderCheck::new());
+        let check_3 = Arc::new(TestProviderCheck::default());
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
@@ -924,10 +926,10 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrent_providers_access_does_not_trigger_multiple_validations() {
         let adapter_1 = Arc::new(TestAdapter::new(1));
-        lock! { adapter_1.provider_name_calls.push("provider_1".into()) };
+        adapter_1.provider_name_call("provider_1".into());
 
-        let check_1 = Arc::new(TestProviderCheck::new());
-        lock! { check_1.check_calls.push(Box::new(|| ProviderCheckStatus::Valid)) };
+        let check_1 = Arc::new(TestProviderCheck::default());
+        check_1.check_call(Box::new(|| ProviderCheckStatus::Valid));
 
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),

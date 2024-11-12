@@ -2,7 +2,6 @@ use anyhow::{anyhow, bail};
 use graph::blockchain::ChainIdentifier;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::NetworkDetails;
-use graph::components::network_provider::ProviderCheckStrategy;
 use graph::components::network_provider::ProviderManager;
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::EndpointMetrics;
@@ -106,6 +105,7 @@ impl EthereumNetworkAdapters {
     ) -> Self {
         use std::cmp::Ordering;
 
+        use graph::components::network_provider::ProviderCheckStrategy;
         use graph::slog::{o, Discard, Logger};
 
         let chain_id: ChainName = "testing".into();

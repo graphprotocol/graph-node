@@ -20,12 +20,17 @@ pub trait ProviderCheck: Send + Sync + 'static {
     ) -> ProviderCheckStatus;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProviderCheckStatus {
     NotChecked,
-    TemporaryFailure { checked_at: Instant },
+    TemporaryFailure {
+        checked_at: Instant,
+        message: String,
+    },
     Valid,
-    Failed,
+    Failed {
+        message: String,
+    },
 }
 
 impl ProviderCheckStatus {
@@ -34,6 +39,6 @@ impl ProviderCheckStatus {
     }
 
     pub fn is_failed(&self) -> bool {
-        matches!(self, ProviderCheckStatus::Failed)
+        matches!(self, ProviderCheckStatus::Failed { .. })
     }
 }
