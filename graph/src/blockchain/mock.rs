@@ -2,7 +2,7 @@ use crate::{
     bail,
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator, WritableStore},
+        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator, ReadStore},
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::UnifiedMappingApiVersion,
@@ -386,7 +386,7 @@ impl Blockchain for MockBlockchain {
         _deployment: DeploymentLocator,
         _store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         _filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

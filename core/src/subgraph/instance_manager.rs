@@ -9,7 +9,7 @@ use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
-use graph::components::store::WritableStore;
+use graph::components::store::ReadStore;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data::value::Word;
@@ -204,14 +204,14 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         }
     }
 
-    pub async fn hashes_to_writable_store<C: Blockchain>(
+    pub async fn hashes_to_read_store<C: Blockchain>(
         &self,
         logger: &Logger,
         link_resolver: &Arc<dyn LinkResolver>,
         hashes: Vec<DeploymentHash>,
         max_spec_version: Version,
         is_runner_test: bool,
-    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn WritableStore>)>> {
+    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn ReadStore>)>> {
         let mut writable_stores = Vec::new();
         let subgraph_store = self.subgraph_store.clone();
 
@@ -235,16 +235,16 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 .active_locator(&hash)?
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
-            let writable_store = subgraph_store
-                .clone() // Clone the Arc again for each iteration
-                .writable(
+            let readable_store = subgraph_store
+                .clone()
+                .readable(
                     logger.clone(),
                     loc.id.clone(),
                     Arc::new(manifest.template_idx_and_name().collect()),
                 )
                 .await?;
 
-            writable_stores.push((loc.hash, writable_store));
+            writable_stores.push((loc.hash, readable_store));
         }
 
         Ok(writable_stores)
@@ -491,8 +491,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let decoder = Box::new(Decoder::new(decoder_hook));
 
-        let subgraph_data_source_writables = self
-            .hashes_to_writable_store::<C>(
+        let subgraph_data_source_read_stores = self
+            .hashes_to_read_store::<C>(
                 &logger,
                 &link_resolver,
                 subgraph_ds_source_deployments,
@@ -503,7 +503,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let triggers_adapter = Arc::new(TriggersAdapterWrapper::new(
             triggers_adapter,
-            subgraph_data_source_writables.clone(),
+            subgraph_data_source_read_stores.clone(),
         ));
 
         let inputs = IndexingInputs {
@@ -511,7 +511,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             features,
             start_blocks,
             end_blocks,
-            source_subgraph_stores: subgraph_data_source_writables,
+            source_subgraph_stores: subgraph_data_source_read_stores,
             stop_block,
             store,
             debug_fork,

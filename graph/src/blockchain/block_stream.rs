@@ -19,7 +19,7 @@ use super::{
     Block, BlockPtr, BlockTime, Blockchain, SubgraphFilter, Trigger, TriggerFilterWrapper,
 };
 use crate::anyhow::Result;
-use crate::components::store::{BlockNumber, DeploymentLocator, WritableStore};
+use crate::components::store::{BlockNumber, DeploymentLocator, ReadStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
 use crate::futures03::stream::StreamExt as _;
@@ -149,7 +149,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -160,7 +160,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -317,13 +317,13 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
 pub struct TriggersAdapterWrapper<C: Blockchain> {
     pub adapter: Arc<dyn TriggersAdapter<C>>,
-    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
     pub fn new(
         adapter: Arc<dyn TriggersAdapter<C>>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
     ) -> Self {
         Self {
             adapter,

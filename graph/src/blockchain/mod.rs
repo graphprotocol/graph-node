@@ -20,9 +20,7 @@ use crate::{
     components::{
         adapter::ChainId,
         metrics::subgraph::SubgraphInstanceMetrics,
-        store::{
-            DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource, WritableStore,
-        },
+        store::{DeploymentCursorTracker, DeploymentLocator, ReadStore, StoredDynamicDataSource},
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
         trigger_processor::RunnableTriggers,
     },
@@ -191,7 +189,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;

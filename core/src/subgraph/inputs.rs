@@ -1,7 +1,7 @@
 use graph::{
     blockchain::{block_stream::TriggersAdapterWrapper, Blockchain},
     components::{
-        store::{DeploymentLocator, SubgraphFork, WritableStore},
+        store::{DeploymentLocator, ReadStore, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,
     },
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
@@ -16,7 +16,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub features: BTreeSet<SubgraphFeature>,
     pub start_blocks: Vec<BlockNumber>,
     pub end_blocks: BTreeSet<BlockNumber>,
-    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn WritableStore>)>,
+    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
     pub stop_block: Option<BlockNumber>,
     pub store: Arc<dyn WritableStore>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
