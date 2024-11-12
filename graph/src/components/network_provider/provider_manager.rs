@@ -33,6 +33,16 @@ pub struct ProviderManager<T: NetworkDetails> {
     validation_retry_interval: Duration,
 }
 
+/// The strategy used by the [ProviderManager] when checking providers.
+#[derive(Clone)]
+pub enum ProviderCheckStrategy<'a> {
+    /// Marks a provider as valid without performing any checks on it.
+    MarkAsValid,
+
+    /// Requires a provider to pass all specified checks to be considered valid.
+    RequireAll(&'a [Arc<dyn ProviderCheck>]),
+}
+
 #[derive(Debug, Error)]
 pub enum ProviderManagerError {
     #[error("provider validation timed out on chain '{0}'")]
@@ -90,8 +100,13 @@ impl<T: NetworkDetails> ProviderManager<T> {
     pub fn new(
         logger: Logger,
         adapters: impl IntoIterator<Item = (ChainName, Vec<T>)>,
-        enabled_checks: &[Arc<dyn ProviderCheck>],
+        strategy: ProviderCheckStrategy<'_>,
     ) -> Self {
+        let enabled_checks = match strategy {
+            ProviderCheckStrategy::MarkAsValid => &[],
+            ProviderCheckStrategy::RequireAll(checks) => checks,
+        };
+
         let mut validations: Vec<Validation> = Vec::new();
         let adapters = Self::adapters_by_chain_names(adapters, &mut validations, &enabled_checks);
 
@@ -459,7 +474,8 @@ mod tests {
 
     #[tokio::test]
     async fn no_providers() {
-        let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(discard(), [], &[]);
+        let manager: ProviderManager<Arc<TestAdapter>> =
+            ProviderManager::new(discard(), [], ProviderCheckStrategy::MarkAsValid);
 
         assert_eq!(manager.len(&chain_name()), 0);
         assert_eq!(manager.providers_unchecked(&chain_name()).count(), 0);
@@ -474,7 +490,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(other_chain_name(), vec![adapter_1.clone()])],
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         assert_eq!(manager.len(&chain_name()), 0);
@@ -506,7 +522,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone(), adapter_2.clone()])],
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         assert_eq!(manager.len(&chain_name()), 2);
@@ -529,7 +545,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         assert_eq!(ids(manager.providers_unchecked(&chain_name())), vec![1]);
@@ -546,7 +562,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         assert_eq!(
@@ -575,7 +591,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone(), check_2.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone(), check_2.clone()]),
         );
 
         assert_eq!(
@@ -609,7 +625,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone(), adapter_2.clone()])],
-            &[check_1.clone(), check_2.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone(), check_2.clone()]),
         );
 
         assert_eq!(
@@ -638,7 +654,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone(), adapter_2.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         assert_eq!(
@@ -670,7 +686,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone(), adapter_2.clone()])],
-            &[check_1.clone(), check_2.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone(), check_2.clone()]),
         );
 
         assert_eq!(
@@ -701,7 +717,7 @@ mod tests {
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         manager.validation_max_duration = Duration::from_millis(100);
@@ -732,7 +748,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         match manager.providers(&chain_name()).await {
@@ -757,7 +773,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         match manager.providers(&chain_name()).await {
@@ -787,7 +803,7 @@ mod tests {
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         manager.validation_retry_interval = Duration::from_millis(100);
@@ -813,7 +829,7 @@ mod tests {
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         manager.validation_retry_interval = Duration::from_millis(100);
@@ -851,7 +867,7 @@ mod tests {
                 chain_name(),
                 vec![adapter_1.clone(), adapter_2.clone(), adapter_3.clone()],
             )],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         assert_eq!(
@@ -876,7 +892,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone(), check_2.clone(), check_3.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone(), check_2.clone(), check_3.clone()]),
         );
 
         assert!(manager.providers(&chain_name()).await.is_err());
@@ -893,7 +909,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
-            &[check_1.clone()],
+            ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
         let fut = || {

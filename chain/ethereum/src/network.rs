@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail};
 use graph::blockchain::ChainIdentifier;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::NetworkDetails;
+use graph::components::network_provider::ProviderCheckStrategy;
 use graph::components::network_provider::ProviderManager;
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::EndpointMetrics;
@@ -117,7 +118,7 @@ impl EthereumNetworkAdapters {
         let provider = ProviderManager::new(
             Logger::root(Discard, o!()),
             vec![(chain_id.clone(), adapters)].into_iter(),
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         Self::new(chain_id, provider, call_only, None)
@@ -310,6 +311,7 @@ impl EthereumNetworkAdapters {
 #[cfg(test)]
 mod tests {
     use graph::cheap_clone::CheapClone;
+    use graph::components::network_provider::ProviderCheckStrategy;
     use graph::components::network_provider::ProviderManager;
     use graph::components::network_provider::ProviderName;
     use graph::data::value::Word;
@@ -758,7 +760,7 @@ mod tests {
                     .collect(),
             )]
             .into_iter(),
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         let no_retest_adapters =
@@ -850,7 +852,7 @@ mod tests {
                 .iter()
                 .cloned()
                 .map(|a| (chain_id.clone(), vec![a])),
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         let always_retest_adapters =
@@ -874,7 +876,7 @@ mod tests {
                 .iter()
                 .cloned()
                 .map(|a| (chain_id.clone(), vec![a])),
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         let no_retest_adapters =
@@ -915,7 +917,7 @@ mod tests {
                 no_available_adapter.iter().cloned().collect(),
             )]
             .into_iter(),
-            &[],
+            ProviderCheckStrategy::MarkAsValid,
         );
 
         let no_available_adapter = EthereumNetworkAdapters::new(chain_id, manager, vec![], None);

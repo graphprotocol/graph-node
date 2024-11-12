@@ -30,6 +30,7 @@ use tonic::{
 use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
 use crate::components::network_provider::ChainName;
 use crate::components::network_provider::NetworkDetails;
+use crate::components::network_provider::ProviderCheckStrategy;
 use crate::components::network_provider::ProviderManager;
 use crate::components::network_provider::ProviderName;
 
@@ -499,7 +500,11 @@ impl FirehoseEndpoints {
 
         Self(
             chain_name.clone(),
-            ProviderManager::new(crate::log::discard(), [(chain_name, adapters)], &[]),
+            ProviderManager::new(
+                crate::log::discard(),
+                [(chain_name, adapters)],
+                ProviderCheckStrategy::MarkAsValid,
+            ),
         )
     }
 

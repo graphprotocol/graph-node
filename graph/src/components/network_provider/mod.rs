@@ -12,6 +12,7 @@ pub use self::genesis_hash_check::GenesisHashCheck;
 pub use self::network_details::NetworkDetails;
 pub use self::provider_check::ProviderCheck;
 pub use self::provider_check::ProviderCheckStatus;
+pub use self::provider_manager::ProviderCheckStrategy;
 pub use self::provider_manager::ProviderManager;
 
 // Used to increase memory efficiency.

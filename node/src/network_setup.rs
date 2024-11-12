@@ -5,6 +5,7 @@ use ethereum::{
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::NetworkDetails;
 use graph::components::network_provider::ProviderCheck;
+use graph::components::network_provider::ProviderCheckStrategy;
 use graph::components::network_provider::ProviderManager;
 use graph::components::network_provider::ProviderName;
 use graph::{
@@ -118,17 +119,17 @@ impl Networks {
             rpc_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                &[],
+                ProviderCheckStrategy::MarkAsValid,
             ),
             firehose_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                &[],
+                ProviderCheckStrategy::MarkAsValid,
             ),
             substreams_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
-                &[],
+                ProviderCheckStrategy::MarkAsValid,
             ),
         }
     }
@@ -315,21 +316,21 @@ impl Networks {
             rpc_provider_manager: ProviderManager::new(
                 logger.clone(),
                 eth_adapters,
-                provider_checks,
+                ProviderCheckStrategy::RequireAll(provider_checks),
             ),
             firehose_provider_manager: ProviderManager::new(
                 logger.clone(),
                 firehose_adapters
                     .into_iter()
                     .map(|(chain_id, endpoints)| (chain_id, endpoints)),
-                provider_checks,
+                ProviderCheckStrategy::RequireAll(provider_checks),
             ),
             substreams_provider_manager: ProviderManager::new(
                 logger.clone(),
                 substreams_adapters
                     .into_iter()
                     .map(|(chain_id, endpoints)| (chain_id, endpoints)),
-                provider_checks,
+                ProviderCheckStrategy::RequireAll(provider_checks),
             ),
         };
 
