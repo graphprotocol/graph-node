@@ -11,11 +11,13 @@ use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::compat::Future01CompatExt;
+use graph::futures03::TryStreamExt;
 use graph::prelude::{
     BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
+use graph::slog::{debug, error, warn};
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -242,7 +244,7 @@ impl BlockRefetcher<Chain> for EthereumBlockRefetcher {
         logger: &Logger,
         cursor: FirehoseCursor,
     ) -> Result<BlockFinality, Error> {
-        let endpoint = chain.chain_client().firehose_endpoint().await?;
+        let endpoint: Arc<FirehoseEndpoint> = chain.chain_client().firehose_endpoint().await?;
         let block = endpoint.get_block::<codec::Block>(cursor, logger).await?;
         let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
         Ok(BlockFinality::NonFinal(ethereum_block))
@@ -713,13 +715,17 @@ impl Block for BlockFinality {
     }
 
     fn timestamp(&self) -> BlockTime {
-        let ts = match self {
-            BlockFinality::Final(block) => block.timestamp,
-            BlockFinality::NonFinal(block) => block.ethereum_block.block.timestamp,
+        match self {
+            BlockFinality::Final(block) => {
+                let ts = i64::try_from(block.timestamp.as_u64()).unwrap();
+                BlockTime::since_epoch(ts, 0)
+            }
+            BlockFinality::NonFinal(block) => {
+                let ts = i64::try_from(block.ethereum_block.block.timestamp.as_u64()).unwrap();
+                BlockTime::since_epoch(ts, 0)
+            }
             BlockFinality::Ptr(block) => block.timestamp,
-        };
-        let ts = i64::try_from(ts.as_u64()).unwrap();
-        BlockTime::since_epoch(ts, 0)
+        }
     }
 }
 
@@ -732,6 +738,61 @@ pub struct TriggersAdapter {
     chain_client: Arc<ChainClient<Chain>>,
     capabilities: NodeCapabilities,
     unified_api_version: UnifiedMappingApiVersion,
+}
+
+/// Fetches blocks from the cache based on block numbers, excluding duplicates
+/// (i.e., multiple blocks for the same number), and identifying missing blocks that
+/// need to be fetched via RPC/Firehose. Returns a tuple of the found blocks and the missing block numbers.
+async fn fetch_unique_blocks_from_cache(
+    logger: &Logger,
+    chain_store: Arc<dyn ChainStore>,
+    block_numbers: HashSet<BlockNumber>,
+) -> (Vec<Arc<ExtendedBlockPtr>>, Vec<i32>) {
+    // Load blocks from the cache
+    let blocks_map = chain_store
+        .cheap_clone()
+        .block_ptrs_by_numbers(block_numbers.iter().map(|&b| b.into()).collect::<Vec<_>>())
+        .await
+        .map_err(|e| {
+            error!(logger, "Error accessing block cache {}", e);
+            e
+        })
+        .unwrap_or_default();
+
+    // Collect blocks and filter out ones with multiple entries
+    let blocks: Vec<Arc<ExtendedBlockPtr>> = blocks_map
+        .into_iter()
+        .filter_map(|(number, values)| {
+            if values.len() == 1 {
+                Some(Arc::new(values[0].clone()))
+            } else {
+                warn!(
+                    logger,
+                    "Expected one block for block number {:?}, found {}",
+                    number,
+                    values.len()
+                );
+                None
+            }
+        })
+        .collect();
+
+    // Identify missing blocks
+    let missing_blocks: Vec<i32> = block_numbers
+        .into_iter()
+        .filter(|&number| !blocks.iter().any(|block| block.block_number() == number))
+        .collect();
+
+    if !missing_blocks.is_empty() {
+        debug!(
+            logger,
+            "Loading {} block(s) not in the block cache",
+            missing_blocks.len()
+        );
+        debug!(logger, "Missing blocks {:?}", missing_blocks);
+    }
+
+    (blocks, missing_blocks)
 }
 
 #[async_trait]
@@ -763,21 +824,75 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         logger: Logger,
         block_numbers: HashSet<BlockNumber>,
     ) -> Result<Vec<BlockFinality>> {
-        use graph::futures01::stream::Stream;
+        let blocks = match &*self.chain_client {
+            ChainClient::Firehose(endpoints, _) => {
+                let endpoint = endpoints.endpoint().await?;
+                let chain_store = self.chain_store.clone();
 
-        let adapter = self
-            .chain_client
-            .rpc()?
-            .cheapest_with(&self.capabilities)
-            .await?;
+                // Fetch blocks that are in the cache. We ignore duplicates (i.e., multiple blocks for the same number) so
+                // that we can fetch the right block from the RPC.
+                let (mut cached_blocks, missing_block_numbers) =
+                    fetch_unique_blocks_from_cache(&logger, chain_store, block_numbers).await;
 
-        let blocks = adapter
-            .load_block_ptrs_by_numbers(logger, self.chain_store.clone(), block_numbers)
-            .await
-            .map(|block| BlockFinality::Ptr(block))
-            .collect()
-            .compat()
-            .await?;
+                // Then fetch missing blocks from RPC
+                if !missing_block_numbers.is_empty() {
+                    let missing_blocks = endpoint
+                        .load_blocks_by_numbers::<codec::Block>(
+                            missing_block_numbers.iter().map(|&n| n as u64).collect(),
+                            &logger,
+                        )
+                        .await?
+                        .into_iter()
+                        .map(|block| {
+                            let block: ExtendedBlockPtr = ExtendedBlockPtr {
+                                hash: block.hash(),
+                                number: block.number(),
+                                parent_hash: block.parent_hash().unwrap_or_default(),
+                                timestamp: block.timestamp(),
+                            };
+                            Arc::new(block)
+                        })
+                        .collect::<Vec<_>>();
+
+                    // Combine cached and newly fetched blocks
+                    cached_blocks.extend(missing_blocks);
+                    cached_blocks.sort_by_key(|block| block.number);
+                }
+
+                // Convert to BlockFinality
+                let blocks: Vec<BlockFinality> =
+                    cached_blocks.into_iter().map(BlockFinality::Ptr).collect();
+
+                blocks
+            }
+            ChainClient::Rpc(client) => {
+                let adapter = client.cheapest_with(&self.capabilities).await?;
+                let chain_store = self.chain_store.clone();
+
+                // Fetch blocks that are in the cache. We ignore duplicates (i.e., multiple blocks for the same number) so
+                // that we can fetch the right block from the RPC.
+                let (mut cached_blocks, missing_block_numbers) =
+                    fetch_unique_blocks_from_cache(&logger, chain_store, block_numbers).await;
+
+                // Then fetch missing blocks from RPC
+                if !missing_block_numbers.is_empty() {
+                    let missing_blocks: Vec<Arc<ExtendedBlockPtr>> = adapter
+                        .load_block_ptrs_by_numbers_rpc(logger.clone(), missing_block_numbers)
+                        .try_collect()
+                        .await?;
+
+                    // Combine cached and newly fetched blocks
+                    cached_blocks.extend(missing_blocks);
+                    cached_blocks.sort_by_key(|block| block.number);
+                }
+
+                // Convert to BlockFinality
+                let blocks: Vec<BlockFinality> =
+                    cached_blocks.into_iter().map(BlockFinality::Ptr).collect();
+
+                blocks
+            }
+        };
 
         Ok(blocks)
     }

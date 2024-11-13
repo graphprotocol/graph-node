@@ -362,7 +362,7 @@ pub struct ExtendedBlockPtr {
     #[serde(deserialize_with = "deserialize_block_number")]
     pub number: BlockNumber,
     pub parent_hash: BlockHash,
-    pub timestamp: U256,
+    pub timestamp: BlockTime,
 }
 
 impl ExtendedBlockPtr {
@@ -370,7 +370,7 @@ impl ExtendedBlockPtr {
         hash: BlockHash,
         number: BlockNumber,
         parent_hash: BlockHash,
-        timestamp: U256,
+        timestamp: BlockTime,
     ) -> Self {
         Self {
             hash,
@@ -464,7 +464,7 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
     fn try_from(tuple: (Option<H256>, Option<U64>, H256, U256)) -> Result<Self, Self::Error> {
-        let (hash_opt, number_opt, parent_hash, timestamp) = tuple;
+        let (hash_opt, number_opt, parent_hash, timestamp_u256) = tuple;
 
         let hash = hash_opt.ok_or_else(|| anyhow!("Block hash is missing"))?;
         let number = number_opt
@@ -474,11 +474,16 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
         let block_number =
             i32::try_from(number).map_err(|_| anyhow!("Block number out of range"))?;
 
+        // Convert `U256` to `BlockTime`
+        let secs =
+            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
+        let block_time = BlockTime::since_epoch(secs, 0);
+
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
-            timestamp,
+            timestamp: block_time,
         })
     }
 }
@@ -487,13 +492,18 @@ impl TryFrom<(H256, i32, H256, U256)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
     fn try_from(tuple: (H256, i32, H256, U256)) -> Result<Self, Self::Error> {
-        let (hash, block_number, parent_hash, timestamp) = tuple;
+        let (hash, block_number, parent_hash, timestamp_u256) = tuple;
+
+        // Convert `U256` to `BlockTime`
+        let secs =
+            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
+        let block_time = BlockTime::since_epoch(secs, 0);
 
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
-            timestamp,
+            timestamp: block_time,
         })
     }
 }
@@ -543,7 +553,9 @@ impl fmt::Display for ChainIdentifier {
 
 /// The timestamp associated with a block. This is used whenever a time
 /// needs to be connected to data within the block
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, FromSqlRow, AsExpression)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, FromSqlRow, AsExpression, Deserialize,
+)]
 #[diesel(sql_type = Timestamptz)]
 pub struct BlockTime(Timestamp);
 
@@ -616,6 +628,12 @@ impl TryFrom<&Value> for BlockTime {
 impl ToSql<Timestamptz, Pg> for BlockTime {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <Timestamp as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
+    }
+}
+
+impl fmt::Display for BlockTime {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.as_microseconds_since_epoch())
     }
 }
 
