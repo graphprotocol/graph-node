@@ -25,7 +25,7 @@ use futures03::StreamExt;
 use http0::uri::{Scheme, Uri};
 use itertools::Itertools;
 use prost::Message;
-use slog::Logger;
+use slog::{error, Logger};
 use std::{
     collections::HashMap, fmt::Display, marker::PhantomData, ops::ControlFlow, str::FromStr,
     sync::Arc, time::Duration,
@@ -507,6 +507,75 @@ impl FirehoseEndpoint {
             )?),
             Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
         }
+    }
+
+    pub async fn get_block_by_number<M>(
+        &self,
+        number: u64,
+        logger: &Logger,
+    ) -> Result<M, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
+        debug!(
+            logger,
+            "Connecting to firehose to retrieve block for number {}", number;
+            "provider" => self.provider.as_str(),
+        );
+
+        let req = firehose::SingleBlockRequest {
+            transforms: [].to_vec(),
+            reference: Some(firehose::single_block_request::Reference::BlockNumber(
+                firehose::single_block_request::BlockNumber { num: number },
+            )),
+        };
+
+        let mut client = self.new_client();
+        match client.block(req).await {
+            Ok(v) => Ok(M::decode(
+                v.get_ref().block.as_ref().unwrap().value.as_ref(),
+            )?),
+            Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
+        }
+    }
+
+    pub async fn load_blocks_by_numbers<M>(
+        &self,
+        numbers: Vec<u64>,
+        logger: &Logger,
+    ) -> Result<Vec<M>, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
+        let mut blocks = Vec::with_capacity(numbers.len());
+
+        for number in numbers {
+            debug!(
+                logger,
+                "Loading block for block number {}", number;
+                "provider" => self.provider.as_str(),
+            );
+
+            match self.get_block_by_number::<M>(number, logger).await {
+                Ok(block) => {
+                    blocks.push(block);
+                }
+                Err(e) => {
+                    error!(
+                        logger,
+                        "Failed to load block number {}: {}", number, e;
+                        "provider" => self.provider.as_str(),
+                    );
+                    return Err(anyhow::format_err!(
+                        "failed to load block number {}: {}",
+                        number,
+                        e
+                    ));
+                }
+            }
+        }
+
+        Ok(blocks)
     }
 
     pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
