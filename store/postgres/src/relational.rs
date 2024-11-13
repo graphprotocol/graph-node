@@ -530,12 +530,7 @@ impl Layout {
             for e in vec {
                 let block = e.clone().deserialize_block_number::<Entity>()?;
                 let en = e.deserialize_with_layout::<Entity>(self, None)?;
-                match entities.get_mut(&block) {
-                    Some(vec) => vec.push(en),
-                    None => {
-                        let _ = entities.insert(block, vec![en]);
-                    }
-                };
+                entities.entry(block).or_default().push(en);
             }
         }
         Ok(entities)

@@ -235,7 +235,8 @@ pub trait ReadStore: Send + Sync + 'static {
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
-    /// Looks up entities using the given store key for a range of blocks.
+    /// Returns all versions of entities of the given entity_type that were
+    /// changed in the given block_range.
     fn get_range(
         &self,
         entity_type: &EntityType,

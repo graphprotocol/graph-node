@@ -140,11 +140,11 @@ pub enum EntityBlockRange {
 }
 
 impl EntityBlockRange {
-    pub fn new(immutable: bool, block_range: std::ops::Range<BlockNumber>) -> Self {
+    pub fn new(table: &Table, block_range: std::ops::Range<BlockNumber>) -> Self {
         let start: Bound<BlockNumber> = Bound::Included(block_range.start);
         let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
         let block_range: BlockRange = BlockRange(start, end);
-        if immutable {
+        if table.immutable {
             Self::Immutable(block_range)
         } else {
             Self::Mutable(block_range)
