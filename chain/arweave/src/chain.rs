@@ -6,7 +6,7 @@ use graph::blockchain::{
     EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
@@ -42,7 +42,7 @@ use graph::blockchain::block_stream::{
 
 pub struct Chain {
     logger_factory: LoggerFactory,
-    name: ChainId,
+    name: ChainName,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<MetricsRegistry>,

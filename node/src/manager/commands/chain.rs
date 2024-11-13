@@ -7,8 +7,8 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
 use graph::blockchain::ChainIdentifier;
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::ChainId;
-use graph::components::adapter::IdentValidator;
+use graph::components::network_provider::ChainIdentifierStore;
+use graph::components::network_provider::ChainName;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
@@ -161,7 +161,7 @@ pub async fn update_chain_genesis(
     coord: Arc<PoolCoordinator>,
     store: Arc<BlockStore>,
     logger: &Logger,
-    chain_id: ChainId,
+    chain_id: ChainName,
     genesis_hash: BlockHash,
     force: bool,
 ) -> Result<(), Error> {
@@ -183,7 +183,7 @@ pub async fn update_chain_genesis(
     // Update the local shard's genesis, whether or not it is the primary.
     // The chains table is replicated from the primary and keeps another genesis hash.
     // To keep those in sync we need to update the primary and then refresh the shard tables.
-    store.update_ident(
+    store.update_identifier(
         &chain_id,
         &ChainIdentifier {
             net_version: ident.net_version.clone(),

@@ -14,6 +14,7 @@ atomic_refcell = "0.1.13"
 # make sure that it does not cause PoI changes
 old_bigdecimal = { version = "=0.1.2", features = ["serde"], package = "bigdecimal" }
 bytes = "1.0.1"
+bs58 = { workspace = true }
 cid = "0.11.1"
 derivative = { workspace = true }
 graph_derive = { path = "./derive" }

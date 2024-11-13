@@ -226,6 +226,18 @@ pub struct EnvVars {
     ///
     /// If not specified, the graphman server will not start.
     pub graphman_server_auth_token: Option<String>,
+
+    /// By default, all providers are required to support extended block details,
+    /// as this is the safest option for a graph-node operator.
+    ///
+    /// Providers that do not support extended block details for enabled chains
+    /// are considered invalid and will not be used.
+    ///
+    /// To disable checks for one or more chains, simply specify their names
+    /// in this configuration option.
+    ///
+    /// Defaults to an empty list, which means that this feature is enabled for all chains;
+    pub firehose_disable_extended_blocks_for_chains: Vec<String>,
 }
 
 impl EnvVars {
@@ -311,6 +323,10 @@ impl EnvVars {
             genesis_validation_enabled: inner.genesis_validation_enabled.0,
             genesis_validation_timeout: Duration::from_secs(inner.genesis_validation_timeout),
             graphman_server_auth_token: inner.graphman_server_auth_token,
+            firehose_disable_extended_blocks_for_chains:
+                Self::firehose_disable_extended_blocks_for_chains(
+                    inner.firehose_disable_extended_blocks_for_chains,
+                ),
         })
     }
 
@@ -334,6 +350,14 @@ impl EnvVars {
 
     pub fn log_gql_cache_timing(&self) -> bool {
         self.log_query_timing_contains("cache") && self.log_gql_timing()
+    }
+
+    fn firehose_disable_extended_blocks_for_chains(s: Option<String>) -> Vec<String> {
+        s.unwrap_or_default()
+            .split(",")
+            .map(|x| x.trim().to_string())
+            .filter(|x| !x.is_empty())
+            .collect()
     }
 }
 
@@ -462,6 +486,8 @@ struct Inner {
     genesis_validation_timeout: u64,
     #[envconfig(from = "GRAPHMAN_SERVER_AUTH_TOKEN")]
     graphman_server_auth_token: Option<String>,
+    #[envconfig(from = "GRAPH_NODE_FIREHOSE_DISABLE_EXTENDED_BLOCKS_FOR_CHAINS")]
+    firehose_disable_extended_blocks_for_chains: Option<String>,
 }
 
 #[derive(Clone, Debug)]

@@ -113,7 +113,6 @@ pub mod prelude {
 
     pub use crate::blockchain::{BlockHash, BlockPtr};
 
-    pub use crate::components::adapter;
     pub use crate::components::ethereum::{
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
         LightEthereumBlockExt,

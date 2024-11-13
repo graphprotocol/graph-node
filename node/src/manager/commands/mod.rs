@@ -10,6 +10,7 @@ pub mod deployment;
 pub mod drop;
 pub mod index;
 pub mod listen;
+pub mod provider_checks;
 pub mod prune;
 pub mod query;
 pub mod remove;
