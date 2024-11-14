@@ -261,3 +261,24 @@ pub fn change_block_cache_shard(
 
     Ok(())
 }
+
+pub fn rewind(
+    store: Arc<BlockStore>,
+    chain_name: String,
+    block_hash: BlockHash,
+    block_number: i32,
+) -> Result<(), Error> {
+    let block_ptr_to = BlockPtr::new(block_hash.clone(), block_number);
+    let chain_store = store
+        .chain_store(&chain_name)
+        .ok_or_else(|| anyhow!("Chain store not found for {}", chain_name))?;
+
+    chain_store.rewind_chain(block_ptr_to)?;
+
+    println!(
+        "Successfully rewound {} to block {} ({})",
+        chain_name, block_number, block_hash
+    );
+
+    Ok(())
+}

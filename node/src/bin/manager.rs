@@ -588,6 +588,21 @@ pub enum ChainCommand {
         #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
     },
+    /// Rewind all blocks on a specific chain
+    ///
+    /// Note that this doesn't rewind the deployments, only deletes blocks past the target and
+    /// updates the chain head.
+    Rewind {
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(required = true, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        chain_name: String,
+        /// The block hash of the target block
+        #[clap(long, short = 'H')]
+        block_hash: String,
+        /// The block number of the target block
+        #[clap(long, short = 'n')]
+        block_number: i32,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1456,6 +1471,17 @@ async fn main() -> anyhow::Result<()> {
                             commands::chain::clear_call_cache(chain_store, from, to).await
                         }
                     }
+                }
+                Rewind {
+                    chain_name,
+                    block_hash,
+                    block_number,
+                } => {
+                    let (block_store, _) = ctx.block_store_and_primary_pool();
+                    let block_hash =
+                        BlockHash::from_str(&block_hash).context("invalid block hash")?;
+
+                    commands::chain::rewind(block_store, chain_name, block_hash, block_number)
                 }
             }
         }

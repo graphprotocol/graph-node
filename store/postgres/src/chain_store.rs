@@ -1123,6 +1123,32 @@ mod data {
             }
         }
 
+        pub(super) fn delete_blocks_after(
+            &self,
+            conn: &mut PgConnection,
+            chain: &str,
+            block: i64,
+        ) -> Result<usize, Error> {
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    diesel::delete(b::table)
+                        .filter(b::network_name.eq(chain))
+                        .filter(b::number.gt(block))
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query = format!("delete from {} where number > $1", blocks.qname);
+                    sql_query(query)
+                        .bind::<BigInt, _>(block)
+                        .execute(conn)
+                        .map_err(Error::from)
+                }
+            }
+        }
+
         pub(super) fn delete_blocks_by_hash(
             &self,
             conn: &mut PgConnection,
@@ -1869,6 +1895,29 @@ impl ChainStore {
             })
             .await?;
         Ok(values)
+    }
+
+    pub fn rewind_chain(&self, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        let mut conn = self.pool.get()?;
+
+        conn.transaction(|conn| {
+            use public::ethereum_networks;
+
+            self.storage
+                .delete_blocks_after(conn, &self.chain, block_ptr_to.number as i64)?;
+
+            // Update the chain head
+            diesel::update(
+                ethereum_networks::table.filter(ethereum_networks::name.eq(&self.chain)),
+            )
+            .set((
+                ethereum_networks::head_block_number.eq(block_ptr_to.number as i64),
+                ethereum_networks::head_block_hash.eq(block_ptr_to.hash_hex()),
+            ))
+            .execute(conn)?;
+
+            Ok(())
+        })
     }
 }
 
