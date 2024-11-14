@@ -332,12 +332,11 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .collect();
 
         // We can set `max_end_block` to the maximum of `end_blocks` and stop the subgraph
-        // at that point only when there are no dynamic data sources present and offchain
-        // data sources exist. This is because:
+        // only when there are no dynamic data sources and no offchain data sources present. This is because:
         // - Dynamic data sources do not have a defined `end_block`, so we can't determine
         //   when to stop processing them.
-        // - Offchain data sources might still require processing beyond the end block of
-        //   onchain data sources, necessitating the continuation of the subgraph.
+        // - Offchain data sources might require processing beyond the end block of
+        //   onchain data sources, so the subgraph needs to continue.
         let max_end_block: Option<BlockNumber> = if data_sources.len() == end_blocks.len() {
             end_blocks.iter().max().cloned()
         } else {
