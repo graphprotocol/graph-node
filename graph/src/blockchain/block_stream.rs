@@ -341,7 +341,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         let store = self
             .source_subgraph_stores
             .get(&subgraph_filter.subgraph)
-            .unwrap(); // TODO(krishna): Avoid unwrap
+            .ok_or_else(|| anyhow!("Store not found for subgraph: {}", subgraph_filter.subgraph))?;
 
         let schema = <dyn crate::components::store::SourceableStore>::input_schema(store);
 
