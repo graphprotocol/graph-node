@@ -197,6 +197,17 @@ where
                     .unfail_deterministic_error(&current_ptr, &parent_ptr)
                     .await?;
             }
+
+            // Stop subgraph when we reach maximum endblock.
+            if let Some(max_end_block) = self.inputs.max_end_block {
+                if max_end_block <= current_ptr.block_number() {
+                    info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
+                                "max_end_block" => max_end_block,
+                                "current_block" => current_ptr.block_number());
+                    self.inputs.store.flush().await?;
+                    return Ok(self);
+                }
+            }
         }
 
         loop {
@@ -837,9 +848,21 @@ where
                     }
                 }
 
-                if let Some(stop_block) = &self.inputs.stop_block {
-                    if block_ptr.number >= *stop_block {
-                        info!(self.logger, "stop block reached for subgraph");
+                if let Some(stop_block) = self.inputs.stop_block {
+                    if block_ptr.number >= stop_block {
+                        info!(self.logger, "Stop block reached for subgraph");
+                        return Ok(Action::Stop);
+                    }
+                }
+
+                if let Some(max_end_block) = self.inputs.max_end_block {
+                    if block_ptr.number >= max_end_block {
+                        info!(
+                            self.logger,
+                            "Stopping subgraph as maximum endBlock reached";
+                            "max_end_block" => max_end_block,
+                            "current_block" => block_ptr.number
+                        );
                         return Ok(Action::Stop);
                     }
                 }
