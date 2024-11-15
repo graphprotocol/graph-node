@@ -17,7 +17,7 @@ use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
-use graph::slog::{debug, error, warn};
+use graph::slog::{debug, error, trace, warn};
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -825,7 +825,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         block_numbers: HashSet<BlockNumber>,
     ) -> Result<Vec<BlockFinality>> {
         let blocks = match &*self.chain_client {
-            ChainClient::Firehose(endpoints, _) => {
+            ChainClient::Firehose(endpoints) => {
+                trace!(
+                                    logger,
+                                    "Loading blocks from firehose";
+                                    "block_numbers" => format!("{:?}", block_numbers)
+                );
                 let endpoint = endpoints.endpoint().await?;
                 let chain_store = self.chain_store.clone();
 
@@ -866,6 +871,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 blocks
             }
             ChainClient::Rpc(client) => {
+                trace!(
+                    logger,
+                    "Loading blocks from RPC";
+                    "block_numbers" => format!("{:?}", block_numbers)
+                );
                 let adapter = client.cheapest_with(&self.capabilities).await?;
                 let chain_store = self.chain_store.clone();
 
@@ -955,13 +965,25 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
-        self.chain_client
-            .rpc()?
-            .cheapest()
-            .await
-            .ok_or(anyhow!("unable to get adapter for is_on_main_chain"))?
-            .is_on_main_chain(&self.logger, ptr.clone())
-            .await
+        match &*self.chain_client {
+            ChainClient::Firehose(endpoints) => {
+                let endpoint = endpoints.endpoint().await?;
+                let block = endpoint
+                    .get_block_by_number::<codec::Block>(ptr.number as u64, &self.logger)
+                    .await
+                    .map_err(|e| anyhow!("Failed to fetch block from firehose: {}", e))?;
+
+                Ok(block.hash() == ptr.hash)
+            }
+            ChainClient::Rpc(adapter) => {
+                let adapter = adapter
+                    .cheapest()
+                    .await
+                    .ok_or_else(|| anyhow!("unable to get adapter for is_on_main_chain"))?;
+
+                adapter.is_on_main_chain(&self.logger, ptr).await
+            }
+        }
     }
 
     async fn ancestor_block(
@@ -991,10 +1013,18 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         use graph::prelude::LightEthereumBlockExt;
 
         let block = match self.chain_client.as_ref() {
-            ChainClient::Firehose(_) => Some(BlockPtr {
-                hash: BlockHash::from(vec![0xff; 32]),
-                number: block.number.saturating_sub(1),
-            }),
+            ChainClient::Firehose(endpoints) => {
+                let endpoint = endpoints.endpoint().await?;
+                let block = endpoint
+                    .get_block_by_ptr::<codec::Block>(block, &self.logger)
+                    .await
+                    .context(format!(
+                        "Failed to fetch block by ptr {} from firehose, backtrace: {}",
+                        block,
+                        std::backtrace::Backtrace::force_capture()
+                    ))?;
+                block.parent_ptr()
+            }
             ChainClient::Rpc(adapters) => {
                 let blocks = adapters
                     .cheapest_with(&self.capabilities)

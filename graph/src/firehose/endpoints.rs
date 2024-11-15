@@ -509,6 +509,41 @@ impl FirehoseEndpoint {
         }
     }
 
+    pub async fn get_block_by_ptr<M>(
+        &self,
+        ptr: &BlockPtr,
+        logger: &Logger,
+    ) -> Result<M, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
+        debug!(
+            logger,
+            "Connecting to firehose to retrieve block for ptr {}", ptr;
+            "provider" => self.provider.as_str(),
+        );
+
+        let req = firehose::SingleBlockRequest {
+            transforms: [].to_vec(),
+            reference: Some(
+                firehose::single_block_request::Reference::BlockHashAndNumber(
+                    firehose::single_block_request::BlockHashAndNumber {
+                        hash: ptr.hash.to_string(),
+                        num: ptr.number as u64,
+                    },
+                ),
+            ),
+        };
+
+        let mut client = self.new_client();
+        match client.block(req).await {
+            Ok(v) => Ok(M::decode(
+                v.get_ref().block.as_ref().unwrap().value.as_ref(),
+            )?),
+            Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
+        }
+    }
+
     pub async fn get_block_by_number<M>(
         &self,
         number: u64,
