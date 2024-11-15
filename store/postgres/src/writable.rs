@@ -1228,14 +1228,6 @@ impl Queue {
         Ok(map)
     }
 
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.store.get_range(entity_type, block_range)
-    }
-
     fn get_derived(
         &self,
         derived_query: &DerivedEntityQuery,
@@ -1448,17 +1440,6 @@ impl Writer {
         }
     }
 
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        match self {
-            Writer::Sync(store) => store.get_range(entity_type, block_range),
-            Writer::Async { queue, .. } => queue.get_range(entity_type, block_range),
-        }
-    }
-
     fn get_derived(
         &self,
         key: &DerivedEntityQuery,
@@ -1587,12 +1568,14 @@ impl ReadStore for WritableStore {
         self.writer.get_many(keys)
     }
 
+    // The entities that are returned are only the ones from the database.
+    // The ones in the queue are ignored.
     fn get_range(
         &self,
         entity_type: &EntityType,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.writer.get_range(entity_type, block_range)
+        self.store.get_range(entity_type, block_range)
     }
 
     fn get_derived(
