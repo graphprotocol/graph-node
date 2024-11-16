@@ -231,6 +231,7 @@ pub struct Opt {
         help = "Base URL for forking subgraphs"
     )]
     pub fork_base: Option<String>,
+
     #[clap(
         long,
         default_value = "8050",
@@ -238,6 +239,13 @@ pub struct Opt {
         help = "Port for the graphman GraphQL server"
     )]
     pub graphman_port: u16,
+
+    #[clap(
+        long,
+        env = "AUTO_GRAFT_SYNC",
+        help = "Automatically sync grafts from the base subgraph"
+    )]
+    pub auto_graft_sync: bool,
 }
 
 impl From<Opt> for config::Opt {
@@ -254,6 +262,7 @@ impl From<Opt> for config::Opt {
             ethereum_ws,
             ethereum_ipc,
             unsafe_config,
+            auto_graft_sync,
             ..
         } = opt;
 
@@ -269,6 +278,7 @@ impl From<Opt> for config::Opt {
             ethereum_ws,
             ethereum_ipc,
             unsafe_config,
+            auto_graft_sync,
         }
     }
 }

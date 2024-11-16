@@ -207,6 +207,8 @@ pub struct SubgraphStore {
     /// subgraph forks will fetch entities.
     /// Example: https://api.thegraph.com/subgraphs/
     fork_base: Option<Url>,
+
+    auto_graft_sync: bool,
 }
 
 impl SubgraphStore {
@@ -231,12 +233,14 @@ impl SubgraphStore {
         sender: Arc<NotificationSender>,
         fork_base: Option<Url>,
         registry: Arc<MetricsRegistry>,
+        auto_graft_sync: bool,
     ) -> Self {
         Self {
             inner: Arc::new(SubgraphStoreInner::new(
                 logger, stores, placer, sender, registry,
             )),
             fork_base,
+            auto_graft_sync,
         }
     }
 
@@ -1599,5 +1603,9 @@ impl SubgraphStoreTrait for SubgraphStore {
 
         let info = store.subgraph_info(site)?;
         Ok(info.instrument)
+    }
+
+    fn auto_graft_sync(&self) -> bool {
+        self.auto_graft_sync
     }
 }

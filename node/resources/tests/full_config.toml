@@ -1,5 +1,6 @@
 [general]
 query = "query_node_.*"
+auto_sync_grafts = false
 
 [store]
 [store.primary]
