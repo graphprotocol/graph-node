@@ -355,6 +355,25 @@ where
     }
 }
 
+fn deserialize_block_time<'de, D>(deserializer: D) -> Result<BlockTime, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+
+    if value.starts_with("0x") {
+        let hex_value = value.trim_start_matches("0x");
+
+        i64::from_str_radix(hex_value, 16)
+            .map(|secs| BlockTime::since_epoch(secs, 0))
+            .map_err(serde::de::Error::custom)
+    } else {
+        value
+            .parse::<i64>()
+            .map(|secs| BlockTime::since_epoch(secs, 0))
+            .map_err(serde::de::Error::custom)
+    }
+}
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedBlockPtr {
@@ -362,6 +381,7 @@ pub struct ExtendedBlockPtr {
     #[serde(deserialize_with = "deserialize_block_number")]
     pub number: BlockNumber,
     pub parent_hash: BlockHash,
+    #[serde(deserialize_with = "deserialize_block_time")]
     pub timestamp: BlockTime,
 }
 
@@ -666,8 +686,8 @@ mod tests {
         {
             "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
             "number": "0x2A",
-            "parentHash": "0xabc123",
-            "timestamp": "123456789012345678901234567890"
+            "parentHash": "0xd71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e",
+            "timestamp": "0x673b284f"
         }
         "#;
 
@@ -677,6 +697,15 @@ mod tests {
 
         // Verify the deserialized values
         assert_eq!(block_ptr_ext.number, 42); // 0x2A in hex is 42 in decimal
+        assert_eq!(
+            block_ptr_ext.hash_hex(),
+            "8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac"
+        );
+        assert_eq!(
+            block_ptr_ext.parent_hash_hex(),
+            "d71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e"
+        );
+        assert_eq!(block_ptr_ext.timestamp.0.as_secs_since_epoch(), 1731930191);
     }
 
     #[test]
@@ -685,7 +714,7 @@ mod tests {
         {
             "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
             "number": "invalid_hex_string",
-            "parentHash": "0xabc123",
+            "parentHash": "0xd71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e",
             "timestamp": "123456789012345678901234567890"
         }
         "#;
