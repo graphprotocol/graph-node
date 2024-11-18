@@ -106,16 +106,6 @@ lazy_static! {
     };
 }
 
-pub fn filter_vid(arr: Vec<Entity>) -> Vec<Entity> {
-    arr.into_iter()
-        .map(|mut e| {
-            e.remove("vid");
-            e.remove_null_fields();
-            e
-        })
-        .collect()
-}
-
 /// Run the `test` after performing `setup`. The result of `setup` is passed
 /// into `test`. All tests using `run_test_sequentially` are run in sequence,
 /// never in parallel. The `test` is passed a `Store`, but it is permissible
