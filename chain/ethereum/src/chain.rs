@@ -40,6 +40,7 @@ use graph::{
 };
 use prost::Message;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Duration;
@@ -825,87 +826,96 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         logger: Logger,
         block_numbers: HashSet<BlockNumber>,
     ) -> Result<Vec<BlockFinality>> {
-        let blocks = match &*self.chain_client {
+        // Common function to handle block loading, regardless of source
+        async fn load_blocks<F, Fut>(
+            logger: &Logger,
+            chain_store: Arc<dyn ChainStore>,
+            block_numbers: HashSet<BlockNumber>,
+            fetch_missing: F,
+        ) -> Result<Vec<BlockFinality>>
+        where
+            F: FnOnce(Vec<BlockNumber>) -> Fut,
+            Fut: Future<Output = Result<Vec<Arc<BlockPtrExt>>>>,
+        {
+            // Fetch cached blocks and identify missing ones
+            let (mut cached_blocks, missing_block_numbers) =
+                fetch_unique_blocks_from_cache(logger, chain_store, block_numbers).await;
+
+            // Fetch missing blocks if any
+            if !missing_block_numbers.is_empty() {
+                let missing_blocks = fetch_missing(missing_block_numbers).await?;
+                cached_blocks.extend(missing_blocks);
+                cached_blocks.sort_by_key(|block| block.number);
+            }
+
+            // Convert to BlockFinality
+            Ok(cached_blocks.into_iter().map(BlockFinality::Ptr).collect())
+        }
+
+        match &*self.chain_client {
             ChainClient::Firehose(endpoints, _) => {
                 trace!(
-                                    logger,
-                                    "Loading blocks from firehose";
-                                    "block_numbers" => format!("{:?}", block_numbers)
+                    logger,
+                    "Loading blocks from firehose";
+                    "block_numbers" => format!("{:?}", block_numbers)
                 );
+
                 let endpoint = endpoints.endpoint().await?;
                 let chain_store = self.chain_store.clone();
+                let logger_clone = logger.clone();
 
-                // Fetch blocks that are in the cache. We ignore duplicates (i.e., multiple blocks for the same number) so
-                // that we can fetch the right block from the RPC.
-                let (mut cached_blocks, missing_block_numbers) =
-                    fetch_unique_blocks_from_cache(&logger, chain_store, block_numbers).await;
-
-                // Then fetch missing blocks from RPC
-                if !missing_block_numbers.is_empty() {
-                    let missing_blocks = endpoint
-                        .load_blocks_by_numbers::<codec::Block>(
-                            missing_block_numbers.iter().map(|&n| n as u64).collect(),
-                            &logger,
-                        )
-                        .await?
-                        .into_iter()
-                        .map(|block| {
-                            let block: BlockPtrExt = BlockPtrExt {
-                                hash: block.hash(),
-                                number: block.number(),
-                                parent_hash: block.parent_hash().unwrap_or_default(),
-                                timestamp: block.timestamp(),
-                            };
-                            Arc::new(block)
-                        })
-                        .collect::<Vec<_>>();
-
-                    // Combine cached and newly fetched blocks
-                    cached_blocks.extend(missing_blocks);
-                    cached_blocks.sort_by_key(|block| block.number);
-                }
-
-                // Convert to BlockFinality
-                let blocks: Vec<BlockFinality> =
-                    cached_blocks.into_iter().map(BlockFinality::Ptr).collect();
-
-                blocks
+                load_blocks(
+                    &logger,
+                    chain_store,
+                    block_numbers,
+                    |missing_numbers| async move {
+                        let blocks = endpoint
+                            .load_blocks_by_numbers::<codec::Block>(
+                                missing_numbers.iter().map(|&n| n as u64).collect(),
+                                &logger_clone,
+                            )
+                            .await?
+                            .into_iter()
+                            .map(|block| {
+                                Arc::new(BlockPtrExt {
+                                    hash: block.hash(),
+                                    number: block.number(),
+                                    parent_hash: block.parent_hash().unwrap_or_default(),
+                                    timestamp: block.timestamp(),
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        Ok(blocks)
+                    },
+                )
+                .await
             }
+
             ChainClient::Rpc(client) => {
                 trace!(
                     logger,
                     "Loading blocks from RPC";
                     "block_numbers" => format!("{:?}", block_numbers)
                 );
+
                 let adapter = client.cheapest_with(&self.capabilities).await?;
                 let chain_store = self.chain_store.clone();
+                let logger_clone = logger.clone();
 
-                // Fetch blocks that are in the cache. We ignore duplicates (i.e., multiple blocks for the same number) so
-                // that we can fetch the right block from the RPC.
-                let (mut cached_blocks, missing_block_numbers) =
-                    fetch_unique_blocks_from_cache(&logger, chain_store, block_numbers).await;
-
-                // Then fetch missing blocks from RPC
-                if !missing_block_numbers.is_empty() {
-                    let missing_blocks: Vec<Arc<BlockPtrExt>> = adapter
-                        .load_block_ptrs_by_numbers_rpc(logger.clone(), missing_block_numbers)
-                        .try_collect()
-                        .await?;
-
-                    // Combine cached and newly fetched blocks
-                    cached_blocks.extend(missing_blocks);
-                    cached_blocks.sort_by_key(|block| block.number);
-                }
-
-                // Convert to BlockFinality
-                let blocks: Vec<BlockFinality> =
-                    cached_blocks.into_iter().map(BlockFinality::Ptr).collect();
-
-                blocks
+                load_blocks(
+                    &logger,
+                    chain_store,
+                    block_numbers,
+                    |missing_numbers| async move {
+                        adapter
+                            .load_block_ptrs_by_numbers_rpc(logger_clone, missing_numbers)
+                            .try_collect()
+                            .await
+                    },
+                )
+                .await
             }
-        };
-
-        Ok(blocks)
+        }
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
