@@ -315,7 +315,6 @@ impl HostExports {
                 data.insert(store::ID.clone(), value);
             }
         }
-        // data.insert(store::VID.clone(), Value::Int8(vid));
 
         self.check_invalid_fields(
             self.data_source.api_version.clone(),

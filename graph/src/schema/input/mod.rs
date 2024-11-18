@@ -35,7 +35,7 @@ pub(crate) const POI_OBJECT: &str = "Poi$";
 const POI_DIGEST: &str = "digest";
 /// The name of the PoI attribute for storing the block time
 const POI_BLOCK_TIME: &str = "blockTime";
-const VID: &str = "vid";
+const VID_FIELD: &str = "vid";
 
 pub mod kw {
     pub const ENTITY: &str = "entity";
@@ -1488,10 +1488,6 @@ impl InputSchema {
     }
 
     pub fn has_field_with_name(&self, entity_type: &EntityType, field: &str) -> bool {
-        // TODO: check if it is needed
-        // if field == VID {
-        //     return true;
-        // }
         let field = self.inner.pool.lookup(field);
 
         match field {
@@ -1602,7 +1598,7 @@ fn atom_pool(document: &s::Document) -> AtomPool {
     pool.intern(POI_DIGEST);
     pool.intern(POI_BLOCK_TIME);
 
-    pool.intern(VID);
+    pool.intern(VID_FIELD);
 
     for definition in &document.definitions {
         match definition {

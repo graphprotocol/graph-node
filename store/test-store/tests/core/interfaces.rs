@@ -1114,11 +1114,11 @@ async fn enums() {
     let entities = vec![
         (
             "Trajectory",
-            entity! { schema =>  id: "1", direction: "EAST", meters: 10, vid: 0i64},
+            entity! { schema =>  id: "1", direction: "EAST", meters: 10, vid: 0i64 },
         ),
         (
             "Trajectory",
-            entity! { schema =>  id: "2", direction: "NORTH", meters: 15, vid: 1i64},
+            entity! { schema =>  id: "2", direction: "NORTH", meters: 15, vid: 1i64 },
         ),
     ];
     let query = "query { trajectories { id, direction, meters } }";
@@ -1365,11 +1365,11 @@ async fn derived_interface_bytes() {
         ("Pool", entity! { schema =>  id: b("0xf001"), vid: 0i64 }),
         (
             "Sell",
-            entity! { schema =>  id: b("0xc0"), pool: "0xf001", vid: 0i64},
+            entity! { schema =>  id: b("0xc0"), pool: "0xf001", vid: 0i64 },
         ),
         (
             "Buy",
-            entity! { schema =>  id: b("0xb0"), pool: "0xf001", vid: 0i64},
+            entity! { schema =>  id: b("0xb0"), pool: "0xf001", vid: 0i64 },
         ),
     ];
 

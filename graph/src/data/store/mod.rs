@@ -913,10 +913,12 @@ impl Entity {
         Id::try_from(self.get("id").unwrap().clone()).expect("the id is set to a valid value")
     }
 
-    // TODO: only for tests!
+    // TODO: try to use it only for tests!
+    // #[cfg(debug_assertions)]
     pub fn vid(&self) -> i64 {
         self.get("vid")
             .expect("the vid is set")
+            // .unwrap_or(&Value::Int8(0))
             .as_int8()
             .expect("the vid is set to a valid value")
     }
@@ -1087,7 +1089,7 @@ impl std::fmt::Debug for Entity {
     }
 }
 
-/// An entity is represented as a map of attribute names to values.
+/// An entity wrapper that has VID too.
 #[derive(Debug, Clone, CacheWeight, PartialEq, Eq, Serialize)]
 pub struct EntityV {
     pub e: Entity,
