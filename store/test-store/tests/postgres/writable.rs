@@ -142,7 +142,7 @@ async fn insert_count(
     let count_key_local = |counter_type: &EntityType, id: &str| counter_type.parse_key(id).unwrap();
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
-        count: count as i32,
+        count: count as i32
     };
     let entity_op = if block != 3 && block != 5 && block != 7 {
         EntityOperation::Set {
