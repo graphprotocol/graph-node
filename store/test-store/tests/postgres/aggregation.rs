@@ -83,7 +83,7 @@ pub async fn insert(
         .map(|data| {
             let data_type = schema.entity_type("Data").unwrap();
             let key = data_type.key(data.id());
-            let vid = data.vid();
+            let vid = data.vid_or_default();
             EntityOperation::Set {
                 data: EntityV::new(data, vid),
                 key,

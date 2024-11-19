@@ -1022,8 +1022,8 @@ async fn test_entity_store(api_version: Version) {
 
     let schema = store.input_schema(&deployment.hash).unwrap();
 
-    let alex = entity! { schema => id: "alex", name: "Alex", vid: 0i64};
-    let steve = entity! { schema => id: "steve", name: "Steve", vid: 1i64};
+    let alex = entity! { schema => id: "alex", name: "Alex", vid: 0i64 };
+    let steve = entity! { schema => id: "steve", name: "Steve", vid: 1i64 };
     let user_type = schema.entity_type("User").unwrap();
     test_store::insert_entities(
         &deployment,

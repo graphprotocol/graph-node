@@ -1317,7 +1317,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
                     key: USER_TYPE.parse_key(id.as_str()).unwrap(),
-                    data: EntityV::new(data.clone(), data.vid()),
+                    data: EntityV::new(data.clone(), data.vid_or_default()),
                 })
                 .collect(),
         )
