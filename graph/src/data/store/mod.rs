@@ -913,12 +913,21 @@ impl Entity {
         Id::try_from(self.get("id").unwrap().clone()).expect("the id is set to a valid value")
     }
 
-    // TODO: try to use it only for tests!
-    // #[cfg(debug_assertions)]
+    /// Return the VID of this entity and if its missing or of a type different than
+    /// i64 it panics.
     pub fn vid(&self) -> i64 {
         self.get("vid")
             .expect("the vid is set")
-            // .unwrap_or(&Value::Int8(0))
+            .as_int8()
+            .expect("the vid is set to a valid value")
+    }
+
+    /// This version of the function returns 0 if the VID is not set. It should be
+    /// used only in the testing code for more lenient definition of entities.
+    #[cfg(debug_assertions)]
+    pub fn vid_or_default(&self) -> i64 {
+        self.get("vid")
+            .unwrap_or(&Value::Int8(0))
             .as_int8()
             .expect("the vid is set to a valid value")
     }

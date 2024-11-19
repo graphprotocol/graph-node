@@ -205,13 +205,11 @@ lazy_static! {
             bigInt: big_int.clone(),
             bigIntArray: vec![big_int.clone(), (big_int + 1.into())],
             color: "yellow",
-            vid: 0i64,
         }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
         entity! { THINGS_SCHEMA =>
             id: "one",
-            vid: 0i64,
         }
     };
     static ref SCALAR_TYPE: EntityType = THINGS_SCHEMA.entity_type("Scalar").unwrap();

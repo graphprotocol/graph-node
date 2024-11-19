@@ -426,7 +426,7 @@ async fn insert_test_entities(
             .map(|(typename, entities)| {
                 let entity_type = schema.entity_type(typename).unwrap();
                 entities.into_iter().map(move |data| {
-                    let vid = data.vid();
+                    let vid = data.vid_or_default();
                     EntityOperation::Set {
                         key: entity_type.key(data.id()),
                         data: EntityV::new(data, vid),
