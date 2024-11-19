@@ -1,8 +1,8 @@
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
-use graph::blockchain::BlockPtrExt;
 use graph::blockchain::ChainIdentifier;
+use graph::blockchain::ExtendedBlockPtr;
 
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
@@ -788,7 +788,7 @@ impl EthereumAdapter {
         &self,
         logger: Logger,
         numbers: Vec<BlockNumber>,
-    ) -> impl Stream<Item = Arc<BlockPtrExt>, Error = Error> + Send {
+    ) -> impl Stream<Item = Arc<ExtendedBlockPtr>, Error = Error> + Send {
         let web3 = self.web3.clone();
 
         stream::iter_ok::<_, Error>(numbers.into_iter().map(move |number| {
@@ -806,7 +806,7 @@ impl EthereumAdapter {
                     .and_then(move |block| {
                         block
                             .map(|block| {
-                                let ptr = BlockPtrExt::try_from((
+                                let ptr = ExtendedBlockPtr::try_from((
                                     block.hash,
                                     block.number,
                                     block.parent_hash,
@@ -1706,7 +1706,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_numbers: HashSet<BlockNumber>,
-    ) -> Box<dyn Stream<Item = Arc<BlockPtrExt>, Error = Error> + Send> {
+    ) -> Box<dyn Stream<Item = Arc<ExtendedBlockPtr>, Error = Error> + Send> {
         let blocks_map = chain_store
             .cheap_clone()
             .block_ptrs_by_numbers(block_numbers.iter().map(|&b| b.into()).collect::<Vec<_>>())
@@ -1717,7 +1717,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
             .unwrap_or_default();
 
-        let mut blocks: Vec<Arc<BlockPtrExt>> = blocks_map
+        let mut blocks: Vec<Arc<ExtendedBlockPtr>> = blocks_map
             .into_iter()
             .filter_map(|(_number, values)| {
                 if values.len() == 1 {

@@ -1,7 +1,7 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
-use graph::blockchain::BlockPtrExt;
 use graph::blockchain::ChainIdentifier;
+use graph::blockchain::ExtendedBlockPtr;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
 use graph::firehose::CallToFilter;
@@ -1115,7 +1115,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         _logger: Logger,
         _chain_store: Arc<dyn ChainStore>,
         _block_numbers: HashSet<BlockNumber>,
-    ) -> Box<dyn Stream<Item = Arc<BlockPtrExt>, Error = Error> + Send>;
+    ) -> Box<dyn Stream<Item = Arc<ExtendedBlockPtr>, Error = Error> + Send>;
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     /// May use the `chain_store` as a cache.
