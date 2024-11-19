@@ -182,6 +182,7 @@ impl BlockState {
     pub fn persist_data_source(&mut self, ds: StoredDynamicDataSource) {
         self.persisted_data_sources.push(ds)
     }
+
     pub fn next_vid(&mut self, block_number: BlockNumber) -> i64 {
         let vid = ((block_number as i64) << 32) + self.vid_seq as i64;
         self.vid_seq += 1;
