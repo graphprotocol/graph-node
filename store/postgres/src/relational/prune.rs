@@ -237,14 +237,6 @@ impl TablePair {
                   "src" => src_nsp.as_str(), "error" => e.to_string());
         }
 
-        // TODO: check if this is needed
-        // Make sure the vid sequence
-        // continues from where it was
-        // writeln!(
-        //     query,
-        //     "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
-        // )?;
-
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
         conn.transaction(|conn| conn.batch_execute(&query))?;
