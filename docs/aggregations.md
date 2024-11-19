@@ -141,7 +141,7 @@ The following aggregation functions are currently supported:
 
 The `first` and `last` aggregation function calculate the first and last
 value in an interval by sorting the data by `id`; `graph-node` enforces
-correctness here by automatically setting the `id` for timeseries entities.
+correctness hereby automatically setting the `id` for timeseries entities.
 
 #### Aggregation expressions
 
