@@ -84,7 +84,7 @@ pub fn row_group_update(
 ) -> RowGroup {
     let mut group = RowGroup::new(entity_type.clone(), false);
     for (key, data) in data {
-        let vid = data.vid();
+        let vid = data.vid_or_default();
         group
             .push(EntityModification::overwrite(key, data, block, vid), block)
             .unwrap();
@@ -99,7 +99,7 @@ pub fn row_group_insert(
 ) -> RowGroup {
     let mut group = RowGroup::new(entity_type.clone(), false);
     for (key, data) in data {
-        let vid = data.vid();
+        let vid = data.vid_or_default();
         group
             .push(EntityModification::insert(key, data, block, vid), block)
             .unwrap();

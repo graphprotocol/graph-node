@@ -424,7 +424,7 @@ pub async fn insert_entities(
     entities: Vec<(EntityType, Entity)>,
 ) -> Result<(), StoreError> {
     let insert_ops = entities.into_iter().map(|(entity_type, data)| {
-        let vid = data.vid();
+        let vid = data.vid_or_default();
         EntityOperation::Set {
             key: entity_type.key(data.id()),
             data: EntityV::new(data, vid),

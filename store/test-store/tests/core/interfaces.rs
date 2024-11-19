@@ -69,7 +69,7 @@ async fn one_interface_one_entity() {
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let entity = ("Animal", entity! { schema => id: "1", legs: 3, vid: 0i64 });
+    let entity = ("Animal", entity! { schema => id: "1", legs: 3 });
 
     // Collection query.
     let query = "query { leggeds(first: 100) { legs } }";
@@ -97,7 +97,7 @@ async fn one_interface_one_entity_typename() {
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let entity = ("Animal", entity! { schema => id: "1", legs: 3, vid: 0i64 });
+    let entity = ("Animal", entity! { schema => id: "1", legs: 3 });
 
     let query = "query { leggeds(first: 100) { __typename } }";
 
@@ -118,11 +118,8 @@ async fn one_interface_multiple_entities() {
                   ";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let animal = ("Animal", entity! { schema => id: "1", legs: 3, vid: 0i64 });
-    let furniture = (
-        "Furniture",
-        entity! { schema => id: "2", legs: 4, vid: 0i64 },
-    );
+    let animal = ("Animal", entity! { schema => id: "1", legs: 3 });
+    let furniture = ("Furniture", entity! { schema => id: "2", legs: 4 });
 
     let query = "query { leggeds(first: 100, orderBy: legs) { legs } }";
 
@@ -153,8 +150,8 @@ async fn reference_interface() {
 
     let query = "query { leggeds(first: 100) { leg { id } } }";
 
-    let leg = ("Leg", entity! { schema => id: "1", vid: 0i64 });
-    let animal = ("Animal", entity! { schema => id: "1", leg: 1, vid: 0i64 });
+    let leg = ("Leg", entity! { schema => id: "1" });
+    let animal = ("Animal", entity! { schema => id: "1", leg: 1 });
 
     let res = insert_and_query(subgraph_id, document, vec![leg, animal], query)
         .await
@@ -209,11 +206,11 @@ async fn reference_interface_derived() {
     let sell2 = ("SellEvent", entity! { schema => id: "sell2", vid: 1i64 });
     let gift = (
         "GiftEvent",
-        entity! { schema => id: "gift", transaction: "txn", vid: 0i64 },
+        entity! { schema => id: "gift", transaction: "txn" },
     );
     let txn = (
         "Transaction",
-        entity! { schema => id: "txn", buyEvent: "buy", sellEvents: vec!["sell1", "sell2"], vid: 0i64 },
+        entity! { schema => id: "txn", buyEvent: "buy", sellEvents: vec!["sell1", "sell2"] },
     );
 
     let entities = vec![buy, sell1, sell2, gift, txn];
@@ -308,11 +305,8 @@ async fn conflicting_implementors_id() {
                   ";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let animal = ("Animal", entity! { schema => id: "1", legs: 3, vid: 0i64 });
-    let furniture = (
-        "Furniture",
-        entity! { schema => id: "1", legs: 3, vid: 0i64 },
-    );
+    let animal = ("Animal", entity! { schema => id: "1", legs: 3 });
+    let furniture = ("Furniture", entity! { schema => id: "1", legs: 3 });
 
     let query = "query { leggeds(first: 100) { legs } }";
 
@@ -340,11 +334,8 @@ async fn derived_interface_relationship() {
                   ";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let forest = ("Forest", entity! { schema => id: "1", vid: 0i64 });
-    let animal = (
-        "Animal",
-        entity! { schema => id: "1", forest: "1", vid: 0i64 },
-    );
+    let forest = ("Forest", entity! { schema => id: "1" });
+    let animal = ("Animal", entity! { schema => id: "1", forest: "1" });
 
     let query = "query { forests(first: 100) { dwellers(first: 100) { id } } }";
 
@@ -371,12 +362,9 @@ async fn two_interfaces() {
                   ";
     let schema = InputSchema::raw(document, subgraph_id);
 
-    let a = ("A", entity! { schema => id: "1", foo: "bla", vid: 0i64 });
-    let b = ("B", entity! { schema => id: "1", bar: 100, vid: 0i64 });
-    let ab = (
-        "AB",
-        entity! { schema => id: "2", foo: "ble", bar: 200, vid: 0i64 },
-    );
+    let a = ("A", entity! { schema => id: "1", foo: "bla" });
+    let b = ("B", entity! { schema => id: "1", bar: 100 });
+    let ab = ("AB", entity! { schema => id: "2", foo: "ble", bar: 200 });
 
     let query = "query {
                     ibars(first: 100, orderBy: bar) { bar }
@@ -402,7 +390,7 @@ async fn interface_non_inline_fragment() {
 
     let entity = (
         "Animal",
-        entity! { schema => id: "1", name: "cow", legs: 3, vid: 0i64 },
+        entity! { schema => id: "1", name: "cow", legs: 3 },
     );
 
     // Query only the fragment.
@@ -434,12 +422,9 @@ async fn interface_inline_fragment() {
 
     let animal = (
         "Animal",
-        entity! { schema => id: "1", name: "cow", legs: 4, vid: 0i64 },
+        entity! { schema => id: "1", name: "cow", legs: 4 },
     );
-    let bird = (
-        "Bird",
-        entity! { schema => id: "2", airspeed: 24, legs: 2, vid: 0i64 },
-    );
+    let bird = ("Bird", entity! { schema => id: "2", airspeed: 24, legs: 2 });
 
     let query =
         "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
@@ -867,14 +852,8 @@ async fn merge_fields_not_in_interface() {
                     }
             }";
 
-    let animal = (
-        "Animal",
-        entity! { schema => id: "cow", human: "fred", vid: 0i64 },
-    );
-    let human = (
-        "Human",
-        entity! { schema => id: "fred", animal: "cow", vid: 0i64 },
-    );
+    let animal = ("Animal", entity! { schema => id: "cow", human: "fred" });
+    let human = ("Human", entity! { schema => id: "fred", animal: "cow" });
 
     let res = insert_and_query(subgraph_id, document, vec![animal, human], query)
         .await
@@ -947,15 +926,15 @@ async fn nested_interface_fragments() {
                     }
             }";
 
-    let foo = ("Foo", entity! { schema => id: "foo", vid: 0i64 });
-    let one = ("One", entity! { schema => id: "1", foo1: "foo", vid: 0i64 });
+    let foo = ("Foo", entity! { schema => id: "foo" });
+    let one = ("One", entity! { schema => id: "1", foo1: "foo" });
     let two = (
         "Two",
-        entity! { schema => id: "2", foo1: "foo", foo2: "foo", vid: 0i64 },
+        entity! { schema => id: "2", foo1: "foo", foo2: "foo" },
     );
     let three = (
         "Three",
-        entity! { schema => id: "3", foo1: "foo", foo2: "foo", foo3: "foo", vid: 0i64 },
+        entity! { schema => id: "3", foo1: "foo", foo2: "foo", foo3: "foo" },
     );
 
     let res = insert_and_query(subgraph_id, document, vec![foo, one, two, three], query)
@@ -1028,9 +1007,9 @@ async fn nested_interface_fragments_overlapping() {
                     }
             }";
 
-    let foo = ("Foo", entity! { schema => id: "foo", vid: 0i64 });
-    let one = ("One", entity! { schema => id: "1", foo1: "foo", vid: 0i64 });
-    let two = ("Two", entity! { schema => id: "2", foo1: "foo", vid: 0i64 });
+    let foo = ("Foo", entity! { schema => id: "foo" });
+    let one = ("One", entity! { schema => id: "1", foo1: "foo" });
+    let two = ("Two", entity! { schema => id: "2", foo1: "foo" });
     let res = insert_and_query(subgraph_id, document, vec![foo, one, two], query)
         .await
         .unwrap();
@@ -1305,13 +1284,10 @@ async fn mixed_mutability() {
     let query = "query { events { id } }";
 
     let entities = vec![
-        (
-            "Mutable",
-            entity! { schema =>  id: "mut0", name: "mut0", vid: 0i64 },
-        ),
+        ("Mutable", entity! { schema =>  id: "mut0", name: "mut0" }),
         (
             "Immutable",
-            entity! { schema =>  id: "immo0", name: "immo0", vid: 0i64 },
+            entity! { schema =>  id: "immo0", name: "immo0" },
         ),
     ];
 
@@ -1362,15 +1338,9 @@ async fn derived_interface_bytes() {
     let query = "query { pools { trades { id } } }";
 
     let entities = vec![
-        ("Pool", entity! { schema =>  id: b("0xf001"), vid: 0i64 }),
-        (
-            "Sell",
-            entity! { schema =>  id: b("0xc0"), pool: "0xf001", vid: 0i64 },
-        ),
-        (
-            "Buy",
-            entity! { schema =>  id: b("0xb0"), pool: "0xf001", vid: 0i64 },
-        ),
+        ("Pool", entity! { schema =>  id: b("0xf001") }),
+        ("Sell", entity! { schema =>  id: b("0xc0"), pool: "0xf001" }),
+        ("Buy", entity! { schema =>  id: b("0xb0"), pool: "0xf001" }),
     ];
 
     let res = insert_and_query(subgraph_id, document, entities, query)
