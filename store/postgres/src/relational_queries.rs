@@ -13,9 +13,8 @@ use diesel::sql_types::Untyped;
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Timestamptz};
 use graph::components::store::write::{EntityWrite, RowGroup, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
-use graph::data::store::{EntityV, Id, IdType, NULL};
+use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
-// use graph::data::subgraph::schema::POI_TABLE;
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -195,23 +194,6 @@ impl FromEntityData for Entity {
     ) -> Result<Self, StoreError> {
         debug_assert_eq!(None, parent_id);
         schema.try_make_entity(iter).map_err(StoreError::from)
-    }
-}
-
-impl FromEntityData for EntityV {
-    const WITH_INTERNAL_KEYS: bool = false;
-
-    type Value = graph::prelude::Value;
-
-    fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
-        schema: &InputSchema,
-        parent_id: Option<Id>,
-        iter: I,
-    ) -> Result<Self, StoreError> {
-        debug_assert_eq!(None, parent_id);
-        let e = schema.try_make_entity(iter).map_err(StoreError::from)?;
-        let vid = e.vid();
-        Ok(EntityV::new(e, vid))
     }
 }
 
@@ -2412,7 +2394,6 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
-        // let not_poi = self.table.name.as_str() != POI_TABLE;
         let not_poi = !self.table.object.is_poi();
 
         // Construct a query
@@ -4961,7 +4942,6 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        // let not_poi = self.dst.name.as_str() != POI_TABLE;
         let not_poi = !self.dst.object.is_poi();
 
         // Construct a query
