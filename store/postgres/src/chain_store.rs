@@ -2254,11 +2254,18 @@ impl ChainStoreTrait for ChainStore {
                 };
                 let lookup_herd = self.lookup_herd.cheap_clone();
                 let logger = self.logger.cheap_clone();
-                //TODO(krishna): Add comments explaining the return value of cached_query
+                // This match can only return ByHash because lookup_fut explicitly constructs
+                // BlocksLookupResult::ByHash. The cache preserves the exact future result,
+                // so ByNumber variant is structurally impossible here.
                 let res = match lookup_herd.cached_query(hash, lookup_fut, &logger).await {
                     (BlocksLookupResult::ByHash(res), _) => res,
-                    _ => unreachable!(),
+                    (BlocksLookupResult::ByNumber(_), _) => {
+                        Arc::new(Err(StoreError::Unknown(anyhow::anyhow!(
+                            "Unexpected BlocksLookupResult::ByNumber returned from cached block lookup by hash"
+                        ))))
+                    }
                 };
+
                 // Try to avoid cloning a non-concurrent lookup; it's not
                 // entirely clear whether that will actually avoid a clone
                 // since it depends on a lot of the details of how the
