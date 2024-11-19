@@ -357,7 +357,7 @@ where
 
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BlockPtrExt {
+pub struct ExtendedBlockPtr {
     pub hash: BlockHash,
     #[serde(deserialize_with = "deserialize_block_number")]
     pub number: BlockNumber,
@@ -365,7 +365,7 @@ pub struct BlockPtrExt {
     pub timestamp: U256,
 }
 
-impl BlockPtrExt {
+impl ExtendedBlockPtr {
     pub fn new(
         hash: BlockHash,
         number: BlockNumber,
@@ -413,7 +413,7 @@ impl BlockPtrExt {
     }
 }
 
-impl fmt::Display for BlockPtrExt {
+impl fmt::Display for ExtendedBlockPtr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -425,7 +425,7 @@ impl fmt::Display for BlockPtrExt {
     }
 }
 
-impl fmt::Debug for BlockPtrExt {
+impl fmt::Debug for ExtendedBlockPtr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -437,7 +437,7 @@ impl fmt::Debug for BlockPtrExt {
     }
 }
 
-impl slog::Value for BlockPtrExt {
+impl slog::Value for ExtendedBlockPtr {
     fn serialize(
         &self,
         record: &slog::Record,
@@ -448,7 +448,7 @@ impl slog::Value for BlockPtrExt {
     }
 }
 
-impl IntoValue for BlockPtrExt {
+impl IntoValue for ExtendedBlockPtr {
     fn into_value(self) -> r::Value {
         object! {
             __typename: "Block",
@@ -460,7 +460,7 @@ impl IntoValue for BlockPtrExt {
     }
 }
 
-impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for BlockPtrExt {
+impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
     fn try_from(tuple: (Option<H256>, Option<U64>, H256, U256)) -> Result<Self, Self::Error> {
@@ -474,7 +474,7 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for BlockPtrExt {
         let block_number =
             i32::try_from(number).map_err(|_| anyhow!("Block number out of range"))?;
 
-        Ok(BlockPtrExt {
+        Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
@@ -483,13 +483,13 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for BlockPtrExt {
     }
 }
 
-impl TryFrom<(H256, i32, H256, U256)> for BlockPtrExt {
+impl TryFrom<(H256, i32, H256, U256)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
     fn try_from(tuple: (H256, i32, H256, U256)) -> Result<Self, Self::Error> {
         let (hash, block_number, parent_hash, timestamp) = tuple;
 
-        Ok(BlockPtrExt {
+        Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
@@ -497,14 +497,14 @@ impl TryFrom<(H256, i32, H256, U256)> for BlockPtrExt {
         })
     }
 }
-impl From<BlockPtrExt> for H256 {
-    fn from(ptr: BlockPtrExt) -> Self {
+impl From<ExtendedBlockPtr> for H256 {
+    fn from(ptr: ExtendedBlockPtr) -> Self {
         ptr.hash_as_h256()
     }
 }
 
-impl From<BlockPtrExt> for BlockNumber {
-    fn from(ptr: BlockPtrExt) -> Self {
+impl From<ExtendedBlockPtr> for BlockNumber {
+    fn from(ptr: ExtendedBlockPtr) -> Self {
         ptr.number
     }
 }
@@ -653,8 +653,8 @@ mod tests {
         }
         "#;
 
-        // Deserialize the JSON string into a BlockPtrExt
-        let block_ptr_ext: BlockPtrExt =
+        // Deserialize the JSON string into a ExtendedBlockPtr
+        let block_ptr_ext: ExtendedBlockPtr =
             serde_json::from_str(json_data).expect("Deserialization failed");
 
         // Verify the deserialized values
@@ -672,7 +672,7 @@ mod tests {
         }
         "#;
 
-        let result: Result<BlockPtrExt, _> = serde_json::from_str(invalid_json_data);
+        let result: Result<ExtendedBlockPtr, _> = serde_json::from_str(invalid_json_data);
 
         assert!(
             result.is_err(),

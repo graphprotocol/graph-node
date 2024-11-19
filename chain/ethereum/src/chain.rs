@@ -3,8 +3,8 @@ use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
-    BlockIngestor, BlockPtrExt, BlockTime, BlockchainKind, ChainIdentifier, TriggerFilterWrapper,
-    TriggersAdapterSelector,
+    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, ExtendedBlockPtr,
+    TriggerFilterWrapper, TriggersAdapterSelector,
 };
 use graph::components::adapter::ChainId;
 use graph::components::store::{DeploymentCursorTracker, SourceableStore};
@@ -631,7 +631,7 @@ pub enum BlockFinality {
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
 
-    Ptr(Arc<BlockPtrExt>),
+    Ptr(Arc<ExtendedBlockPtr>),
 }
 
 impl Default for BlockFinality {

@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
 };
 
-use graph::blockchain::{Block, BlockHash, BlockPtrExt, ChainIdentifier};
+use graph::blockchain::{Block, BlockHash, ChainIdentifier, ExtendedBlockPtr};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::{H256, U256};
 use graph::prelude::{
@@ -1958,7 +1958,7 @@ impl ChainStore {
     }
 }
 
-fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<BlockPtrExt, Error> {
+fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPtr, Error> {
     let hash = json_block.ptr.hash.clone();
     let number = json_block.ptr.number;
     let parent_hash = json_block.parent_hash.clone();
@@ -1967,8 +1967,9 @@ fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<BlockPtrExt, Er
         .timestamp()
         .ok_or_else(|| anyhow!("Timestamp is missing"))?;
 
-    let ptr = BlockPtrExt::try_from((hash.as_h256(), number, parent_hash.as_h256(), timestamp))
-        .map_err(|e| anyhow!("Failed to convert to BlockPtrExt: {}", e))?;
+    let ptr =
+        ExtendedBlockPtr::try_from((hash.as_h256(), number, parent_hash.as_h256(), timestamp))
+            .map_err(|e| anyhow!("Failed to convert to ExtendedBlockPtr: {}", e))?;
 
     Ok(ptr)
 }
@@ -2168,7 +2169,7 @@ impl ChainStoreTrait for ChainStore {
     async fn block_ptrs_by_numbers(
         self: Arc<Self>,
         numbers: Vec<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<BlockPtrExt>>, Error> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<ExtendedBlockPtr>>, Error> {
         let result = if ENV_VARS.store.disable_block_cache_for_lookup {
             let values = self.blocks_from_store_by_numbers(numbers).await?;
 
