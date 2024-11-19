@@ -226,8 +226,8 @@ where
                         logger,
                     );
 
-                    // TODO: check if 0 is correct VID
-                    state.entity_cache.set(key, EntityV::new(entity, 0))?;
+                    let vid = state.next_vid(block.number);
+                    state.entity_cache.set(key, EntityV::new(entity, vid))?;
                 }
                 ParsedChanges::Delete(entity_key) => {
                     let entity_type = entity_key.entity_type.cheap_clone();
