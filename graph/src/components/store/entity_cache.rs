@@ -8,7 +8,7 @@ use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
 use crate::data::store::{EntityValidationError, Id, IdType, IntoEntityIterator};
-use crate::prelude::ENV_VARS;
+use crate::prelude::{CacheWeight, ENV_VARS};
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
@@ -349,9 +349,27 @@ impl EntityCache {
     /// with existing data. The entity will be validated against the
     /// subgraph schema, and any errors will result in an `Err` being
     /// returned.
-    pub fn set(&mut self, key: EntityKey, entity: Entity) -> Result<(), anyhow::Error> {
+    pub fn set(
+        &mut self,
+        key: EntityKey,
+        entity: Entity,
+        write_capacity_remaining: Option<&mut usize>,
+    ) -> Result<(), anyhow::Error> {
         // check the validate for derived fields
         let is_valid = entity.validate(&key).is_ok();
+
+        if let Some(write_capacity_remaining) = write_capacity_remaining {
+            let weight = entity.weight();
+
+            if !self.current.contains_key(&key) && weight > *write_capacity_remaining {
+                return Err(anyhow!(
+                    "exceeded block write limit when writing entity `{}`",
+                    key.entity_id,
+                ));
+            }
+
+            *write_capacity_remaining -= weight;
+        }
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
 

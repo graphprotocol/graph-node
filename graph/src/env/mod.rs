@@ -238,6 +238,8 @@ pub struct EnvVars {
     ///
     /// Defaults to an empty list, which means that this feature is enabled for all chains;
     pub firehose_disable_extended_blocks_for_chains: Vec<String>,
+
+    pub block_write_capacity: usize,
 }
 
 impl EnvVars {
@@ -327,6 +329,7 @@ impl EnvVars {
                 Self::firehose_disable_extended_blocks_for_chains(
                     inner.firehose_disable_extended_blocks_for_chains,
                 ),
+            block_write_capacity: inner.block_write_capacity.0,
         })
     }
 
@@ -488,6 +491,8 @@ struct Inner {
     graphman_server_auth_token: Option<String>,
     #[envconfig(from = "GRAPH_NODE_FIREHOSE_DISABLE_EXTENDED_BLOCKS_FOR_CHAINS")]
     firehose_disable_extended_blocks_for_chains: Option<String>,
+    #[envconfig(from = "GRAPH_NODE_BLOCK_WRITE_CAPACITY", default = "4_000_000_000")]
+    block_write_capacity: NoUnderscores<usize>,
 }
 
 #[derive(Clone, Debug)]
