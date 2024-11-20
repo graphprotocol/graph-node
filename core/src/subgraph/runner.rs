@@ -1607,7 +1607,7 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi)
+        entity_cache.set(key, poi, None)
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
