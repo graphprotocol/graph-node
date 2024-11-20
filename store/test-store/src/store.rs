@@ -526,7 +526,7 @@ async fn execute_subgraph_query_internal(
         100,
         graphql_metrics(),
     ));
-    let mut result = QueryResults::empty(query.root_trace(trace));
+    let mut result = QueryResults::empty(query.root_trace(trace), None);
     let deployment = query.schema.id().clone();
     let store = STORE
         .clone()

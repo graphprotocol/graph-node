@@ -4,7 +4,7 @@ use crate::cheap_clone::CheapClone;
 use crate::components::server::query::ServerResponse;
 use crate::data::value::Object;
 use crate::derive::CacheWeight;
-use crate::prelude::{r, CacheWeight, DeploymentHash};
+use crate::prelude::{r, BlockHash, BlockNumber, CacheWeight, DeploymentHash};
 use http_body_util::Full;
 use hyper::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -48,6 +48,13 @@ where
     ser.end()
 }
 
+fn serialize_block_hash<S>(data: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&data.to_string())
+}
+
 pub type Data = Object;
 
 #[derive(Debug)]
@@ -55,13 +62,23 @@ pub type Data = Object;
 pub struct QueryResults {
     results: Vec<Arc<QueryResult>>,
     pub trace: Trace,
+    pub indexed_block: Option<LatestBlockInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LatestBlockInfo {
+    #[serde(serialize_with = "serialize_block_hash")]
+    pub hash: BlockHash,
+    pub number: BlockNumber,
+    pub timestamp: Option<u64>,
 }
 
 impl QueryResults {
-    pub fn empty(trace: Trace) -> Self {
+    pub fn empty(trace: Trace, indexed_block: Option<LatestBlockInfo>) -> Self {
         QueryResults {
             results: Vec::new(),
             trace,
+            indexed_block,
         }
     }
 
@@ -155,6 +172,7 @@ impl From<Data> for QueryResults {
         QueryResults {
             results: vec![Arc::new(x.into())],
             trace: Trace::None,
+            indexed_block: None,
         }
     }
 }
@@ -164,6 +182,7 @@ impl From<QueryResult> for QueryResults {
         QueryResults {
             results: vec![Arc::new(x)],
             trace: Trace::None,
+            indexed_block: None,
         }
     }
 }
@@ -173,6 +192,7 @@ impl From<Arc<QueryResult>> for QueryResults {
         QueryResults {
             results: vec![x],
             trace: Trace::None,
+            indexed_block: None,
         }
     }
 }
@@ -182,6 +202,7 @@ impl From<QueryExecutionError> for QueryResults {
         QueryResults {
             results: vec![Arc::new(x.into())],
             trace: Trace::None,
+            indexed_block: None,
         }
     }
 }
@@ -191,6 +212,7 @@ impl From<Vec<QueryExecutionError>> for QueryResults {
         QueryResults {
             results: vec![Arc::new(x.into())],
             trace: Trace::None,
+            indexed_block: None,
         }
     }
 }
@@ -205,6 +227,7 @@ impl QueryResults {
     pub fn as_http_response(&self) -> ServerResponse {
         let json = serde_json::to_string(&self).unwrap();
         let attestable = self.results.iter().all(|r| r.is_attestable());
+        let indexed_block = serde_json::to_string(&self.indexed_block).unwrap();
         Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -212,7 +235,8 @@ impl QueryResults {
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
             .header(CONTENT_TYPE, "application/json")
-            .header("Graph-Attestable", attestable.to_string())
+            .header("graph-attestable", attestable.to_string())
+            .header("graph-indexed", indexed_block)
             .body(Full::from(json))
             .unwrap()
     }
@@ -386,8 +410,7 @@ fn multiple_data_items() {
     let obj1 = make_obj("key1", "value1");
     let obj2 = make_obj("key2", "value2");
 
-    let trace = Trace::None;
-    let mut res = QueryResults::empty(trace);
+    let mut res = QueryResults::empty(Trace::None, None);
     res.append(obj1, CacheStatus::default());
     res.append(obj2, CacheStatus::default());
 
