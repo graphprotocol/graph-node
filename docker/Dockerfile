@@ -52,7 +52,7 @@ COPY docker/Dockerfile /Dockerfile
 COPY docker/bin/* /usr/local/bin/
 
 # The graph-node runtime image with only the executable
-FROM debian:bookworm-20240722-slim as graph-node
+FROM debian:bookworm-20241111-slim as graph-node
 ENV RUST_LOG ""
 ENV GRAPH_LOG ""
 ENV EARLY_LOG_CHUNK_SIZE ""
@@ -97,7 +97,8 @@ EXPOSE 8020
 EXPOSE 8030
 
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates netcat-openbsd
+    && apt-get install -y libpq-dev ca-certificates \
+    netcat-openbsd
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
@@ -105,3 +106,4 @@ COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY --from=envsubst /go/bin/envsubst /usr/local/bin/
 COPY docker/Dockerfile /Dockerfile
 CMD ["start"]
+
