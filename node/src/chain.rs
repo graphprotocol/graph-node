@@ -530,33 +530,6 @@ pub async fn networks_as_chains(
                 )
                 .await;
             }
-            BlockchainKind::Starknet => {
-                let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
-                blockchain_map.insert::<graph_chain_starknet::Chain>(
-                    chain_id.clone(),
-                    Arc::new(
-                        BasicBlockchainBuilder {
-                            logger_factory: logger_factory.clone(),
-                            name: chain_id.clone(),
-                            chain_store: chain_store.cheap_clone(),
-                            firehose_endpoints,
-                            metrics_registry: metrics_registry.clone(),
-                        }
-                        .build(config)
-                        .await,
-                    ),
-                );
-                add_substreams::<graph_chain_starknet::Chain>(
-                    networks,
-                    config,
-                    chain_id.clone(),
-                    blockchain_map,
-                    logger_factory.clone(),
-                    chain_store,
-                    metrics_registry.clone(),
-                )
-                .await;
-            }
             BlockchainKind::Substreams => {
                 let substreams_endpoints = networks.substreams_endpoints(chain_id.clone());
                 blockchain_map.insert::<graph_chain_substreams::Chain>(
