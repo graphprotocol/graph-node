@@ -52,6 +52,15 @@ where
     pub metrics: RunnerMetrics,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SubgraphRunnerError {
+    #[error("subgraph runner terminated because a newer one was active")]
+    Duplicate,
+
+    #[error(transparent)]
+    Unknown(#[from] Error),
+}
+
 impl<C, T> SubgraphRunner<C, T>
 where
     C: Blockchain,
@@ -109,7 +118,7 @@ where
 
     #[cfg(debug_assertions)]
     pub async fn run_for_test(self, break_on_restart: bool) -> Result<Self, Error> {
-        self.run_inner(break_on_restart).await
+        self.run_inner(break_on_restart).await.map_err(Into::into)
     }
 
     fn is_static_filters_enabled(&self) -> bool {
@@ -166,11 +175,11 @@ where
         self.build_filter()
     }
 
-    pub async fn run(self) -> Result<(), Error> {
+    pub async fn run(self) -> Result<(), SubgraphRunnerError> {
         self.run_inner(false).await.map(|_| ())
     }
 
-    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, Error> {
+    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
@@ -246,7 +255,8 @@ where
                 // TODO: move cancel handle to the Context
                 // This will require some code refactor in how the BlockStream is created
                 let block_start = Instant::now();
-                match self
+
+                let action = self
                     .handle_stream_event(event, &block_stream_cancel_handle)
                     .await
                     .map(|res| {
@@ -254,7 +264,30 @@ where
                             .subgraph
                             .observe_block_processed(block_start.elapsed(), res.block_finished());
                         res
-                    })? {
+                    })?;
+
+                // It is possible that the subgraph was unassigned, but the runner was in
+                // a retry delay state and did not observe the cancel signal.
+                if block_stream_cancel_handle.is_canceled() {
+                    // It is also possible that the runner was in a retry delay state while
+                    // the subgraph was reassigned and a new runner was started.
+                    if self.ctx.instances.contains(&self.inputs.deployment.id) {
+                        warn!(
+                            self.logger,
+                            "Terminating the subgraph runner because a newer one is active. \
+                             Possible reassignment detected while the runner was in a non-cancellable pending state",
+                        );
+                        return Err(SubgraphRunnerError::Duplicate);
+                    }
+
+                    warn!(
+                        self.logger,
+                        "Terminating the subgraph runner because subgraph was unassigned",
+                    );
+                    return Ok(self);
+                }
+
+                match action {
                     Action::Continue => continue,
                     Action::Stop => {
                         info!(self.logger, "Stopping subgraph");
@@ -1576,6 +1609,12 @@ where
             .range(revert_to_ptr.number..=subgraph_ptr.number)
             .next()
             .is_some()
+    }
+}
+
+impl From<StoreError> for SubgraphRunnerError {
+    fn from(err: StoreError) -> Self {
+        Self::Unknown(err.into())
     }
 }
 

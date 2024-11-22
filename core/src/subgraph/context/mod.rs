@@ -58,6 +58,10 @@ impl SubgraphKeepAlive {
             self.sg_metrics.running_count.inc();
         }
     }
+
+    pub fn contains(&self, deployment_id: &DeploymentId) -> bool {
+        self.alive_map.read().unwrap().contains_key(deployment_id)
+    }
 }
 
 // The context keeps track of mutable in-memory state that is retained across blocks.
