@@ -55,10 +55,12 @@ pub const SPEC_VERSION_1_1_0: Version = Version::new(1, 1, 0);
 pub const SPEC_VERSION_1_2_0: Version = Version::new(1, 2, 0);
 
 // Enables subgraphs as datasource
+// Change the way the VID field is generated. It used to be autoincrement. Now its
+// based on block number and the sequence of the entities in a block.
 pub const SPEC_VERSION_1_3_0: Version = Version::new(1, 3, 0);
 
 // The latest spec version available
-pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_2_0;
+pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_3_0;
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
