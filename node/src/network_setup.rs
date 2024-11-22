@@ -342,10 +342,6 @@ impl Networks {
                     block_ingestor::<graph_chain_cosmos::Chain>(logger, id, chain, &mut res).await?
                 }
                 BlockchainKind::Substreams => {}
-                BlockchainKind::Starknet => {
-                    block_ingestor::<graph_chain_starknet::Chain>(logger, id, chain, &mut res)
-                        .await?
-                }
             }
         }
 

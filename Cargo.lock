@@ -1945,21 +1945,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-starknet"
-version = "0.35.0"
-dependencies = [
- "graph",
- "graph-runtime-derive",
- "graph-runtime-wasm",
- "hex",
- "prost 0.12.6",
- "prost-types 0.12.6",
- "serde",
- "sha3",
- "tonic-build",
-]
-
-[[package]]
 name = "graph-chain-substreams"
 version = "0.35.0"
 dependencies = [
@@ -1991,7 +1976,6 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-runtime-wasm",
  "serde_yaml",
@@ -2030,7 +2014,6 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
@@ -2116,7 +2099,6 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-graphql",
 ]
@@ -2425,9 +2407,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "hex-literal"
