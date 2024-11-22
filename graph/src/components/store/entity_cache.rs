@@ -453,7 +453,6 @@ impl EntityCache {
         for (key, update) in self.updates {
             use EntityModification::*;
 
-            // let is_poi = key.entity_type.is_poi();
             let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
                 // Entity was created
