@@ -453,7 +453,6 @@ where
     }
 }
 
-// TODO(krishna): Proper ordering for triggers
 impl<C: Blockchain> Ord for Trigger<C>
 where
     C::TriggerData: Ord,
@@ -463,7 +462,7 @@ where
             (Trigger::Chain(data1), Trigger::Chain(data2)) => data1.cmp(data2),
             (Trigger::Subgraph(_), Trigger::Chain(_)) => std::cmp::Ordering::Greater,
             (Trigger::Chain(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Less,
-            (Trigger::Subgraph(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Equal,
+            (Trigger::Subgraph(t1), Trigger::Subgraph(t2)) => t1.entity.vid.cmp(&t2.entity.vid),
         }
     }
 }
@@ -540,7 +539,7 @@ pub struct HostFn {
 }
 
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
-    fn host_fns(&self, ds: &C::DataSource) -> Result<Vec<HostFn>, Error>;
+    fn host_fns(&self, ds: &data_source::DataSource<C>) -> Result<Vec<HostFn>, Error>;
 }
 
 pub trait NodeCapabilities<C: Blockchain> {

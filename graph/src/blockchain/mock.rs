@@ -6,6 +6,7 @@ use crate::{
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::UnifiedMappingApiVersion,
+    data_source,
     prelude::{
         transaction_receipt::LightTransactionReceipt, BlockHash, ChainStore,
         DataSourceTemplateInfo, DeploymentHash, StoreError,
@@ -352,7 +353,7 @@ impl<C: Blockchain> TriggerFilter<C> for MockTriggerFilter {
 pub struct MockRuntimeAdapter;
 
 impl<C: Blockchain> RuntimeAdapter<C> for MockRuntimeAdapter {
-    fn host_fns(&self, _ds: &C::DataSource) -> Result<Vec<HostFn>, Error> {
+    fn host_fns(&self, _ds: &data_source::DataSource<C>) -> Result<Vec<HostFn>, Error> {
         todo!()
     }
 }

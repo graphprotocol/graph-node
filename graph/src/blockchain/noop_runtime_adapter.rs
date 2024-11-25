@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use crate::data_source;
+
 use super::{Blockchain, HostFn, RuntimeAdapter};
 
 /// A [`RuntimeAdapter`] that does not expose any host functions.
@@ -16,7 +18,7 @@ impl<C> RuntimeAdapter<C> for NoopRuntimeAdapter<C>
 where
     C: Blockchain,
 {
-    fn host_fns(&self, _ds: &C::DataSource) -> anyhow::Result<Vec<HostFn>> {
+    fn host_fns(&self, _ds: &data_source::DataSource<C>) -> anyhow::Result<Vec<HostFn>> {
         Ok(vec![])
     }
 }
