@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
@@ -21,9 +22,9 @@ use std::{
     sync::Arc,
 };
 
-use graph::blockchain::{Block, BlockHash, ChainIdentifier};
+use graph::blockchain::{Block, BlockHash, ChainIdentifier, ExtendedBlockPtr};
 use graph::cheap_clone::CheapClone;
-use graph::prelude::web3::types::H256;
+use graph::prelude::web3::types::{H256, U256};
 use graph::prelude::{
     async_trait, serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber,
     BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error,
@@ -52,6 +53,14 @@ impl JsonBlock {
             parent_hash,
             data,
         }
+    }
+
+    fn timestamp(&self) -> Option<U256> {
+        self.data
+            .as_ref()
+            .and_then(|data| data.get("timestamp"))
+            .and_then(|ts| ts.as_str())
+            .and_then(|ts| U256::from_dec_str(ts).ok())
     }
 }
 
@@ -580,7 +589,7 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn blocks_by_numbers(
+        pub(super) fn block_ptrs_by_numbers(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -1930,7 +1939,7 @@ impl ChainStore {
             .with_conn(move |conn, _| {
                 store
                     .storage
-                    .blocks_by_numbers(conn, &store.chain, &numbers)
+                    .block_ptrs_by_numbers(conn, &store.chain, &numbers)
                     .map_err(CancelableError::from)
             })
             .await?;
@@ -1949,6 +1958,21 @@ impl ChainStore {
     }
 }
 
+fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPtr, Error> {
+    let hash = json_block.ptr.hash.clone();
+    let number = json_block.ptr.number;
+    let parent_hash = json_block.parent_hash.clone();
+
+    let timestamp = json_block
+        .timestamp()
+        .ok_or_else(|| anyhow!("Timestamp is missing"))?;
+
+    let ptr =
+        ExtendedBlockPtr::try_from((hash.as_h256(), number, parent_hash.as_h256(), timestamp))
+            .map_err(|e| anyhow!("Failed to convert to ExtendedBlockPtr: {}", e))?;
+
+    Ok(ptr)
+}
 #[async_trait]
 impl ChainStoreTrait for ChainStore {
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
@@ -2142,28 +2166,16 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    async fn blocks_by_numbers(
+    async fn block_ptrs_by_numbers(
         self: Arc<Self>,
         numbers: Vec<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<json::Value>>, Error> {
-        if ENV_VARS.store.disable_block_cache_for_lookup {
-            let values = self
-                .blocks_from_store_by_numbers(numbers)
-                .await?
-                .into_iter()
-                .map(|(num, blocks)| {
-                    (
-                        num,
-                        blocks
-                            .into_iter()
-                            .filter_map(|block| block.data)
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .collect();
-            Ok(values)
+    ) -> Result<BTreeMap<BlockNumber, Vec<ExtendedBlockPtr>>, Error> {
+        let result = if ENV_VARS.store.disable_block_cache_for_lookup {
+            let values = self.blocks_from_store_by_numbers(numbers).await?;
+
+            values
         } else {
-            let cached = self.recent_blocks_cache.get_blocks_by_numbers(&numbers);
+            let cached = self.recent_blocks_cache.get_block_ptrs_by_numbers(&numbers);
 
             let stored = if cached.len() < numbers.len() {
                 let missing_numbers = numbers
@@ -2209,16 +2221,28 @@ impl ChainStoreTrait for ChainStore {
                 .map(|(ptr, data)| (ptr.block_number(), vec![data]))
                 .collect::<BTreeMap<_, _>>();
 
-            let mut result: BTreeMap<BlockNumber, Vec<json::Value>> = cached_map;
+            let mut result = cached_map;
             for (num, blocks) in stored {
-                result
-                    .entry(num)
-                    .or_default()
-                    .extend(blocks.into_iter().filter_map(|block| block.data));
+                if !result.contains_key(&num) {
+                    result.insert(num, blocks);
+                }
             }
 
-            Ok(result)
-        }
+            result
+        };
+
+        let ptrs = result
+            .into_iter()
+            .map(|(num, blocks)| {
+                let ptrs = blocks
+                    .into_iter()
+                    .filter_map(|block| json_block_to_block_ptr_ext(&block).ok())
+                    .collect();
+                (num, ptrs)
+            })
+            .collect();
+
+        Ok(ptrs)
     }
 
     async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<json::Value>, Error> {
@@ -2527,10 +2551,8 @@ mod recent_blocks_cache {
                 .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
         }
 
-        fn get_block_by_number(&self, number: BlockNumber) -> Option<(&BlockPtr, &json::Value)> {
-            self.blocks
-                .get(&number)
-                .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
+        fn get_block_by_number(&self, number: BlockNumber) -> Option<&JsonBlock> {
+            self.blocks.get(&number)
         }
 
         fn get_ancestor(
@@ -2655,16 +2677,16 @@ mod recent_blocks_cache {
             blocks
         }
 
-        pub fn get_blocks_by_numbers(
+        pub fn get_block_ptrs_by_numbers(
             &self,
             numbers: &[BlockNumber],
-        ) -> Vec<(BlockPtr, json::Value)> {
+        ) -> Vec<(BlockPtr, JsonBlock)> {
             let inner = self.inner.read();
-            let mut blocks: Vec<(BlockPtr, json::Value)> = Vec::new();
+            let mut blocks: Vec<(BlockPtr, JsonBlock)> = Vec::new();
 
             for &number in numbers {
-                if let Some((ptr, block)) = inner.get_block_by_number(number) {
-                    blocks.push((ptr.clone(), block.clone()));
+                if let Some(block) = inner.get_block_by_number(number) {
+                    blocks.push((block.ptr.clone(), block.clone()));
                 }
             }
 
