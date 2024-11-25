@@ -17,7 +17,7 @@ use graph::prelude::{
     SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
 use graph::schema::{EntityKey, EntityType, InputSchema};
-use graph::slog::{info, warn};
+use graph::slog::{debug, info, warn};
 use graph::tokio::select;
 use graph::tokio::sync::Notify;
 use graph::tokio::task::JoinHandle;
@@ -936,6 +936,7 @@ impl Queue {
                         // Graceful shutdown. We also handled the request
                         // successfully
                         queue.queue.pop().await;
+                        debug!(logger, "Subgraph writer has processed a stop request");
                         return;
                     }
                     Ok(Err(e)) => {
