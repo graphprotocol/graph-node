@@ -17,7 +17,7 @@ use graph::{
 };
 use graph::{data::graphql::load_manager::LoadManager, prelude::QueryStoreManager};
 use graph::{
-    data::query::{QueryResults, QueryTarget},
+    data::query::{LatestBlockInfo, QueryResults, QueryTarget},
     prelude::QueryStore,
 };
 
@@ -117,6 +117,20 @@ where
         let network = Some(store.network_name().to_string());
         let schema = store.api_schema()?;
 
+        let latest_block = match store.block_ptr().await.ok().flatten() {
+            Some(block) => Some(LatestBlockInfo {
+                timestamp: store
+                    .block_number_with_timestamp_and_parent_hash(&block.hash)
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|(_, t, _)| t),
+                hash: block.hash,
+                number: block.number,
+            }),
+            None => None,
+        };
+
         // Test only, see c435c25decbc4ad7bbbadf8e0ced0ff2
         #[cfg(debug_assertions)]
         let state = INITIAL_DEPLOYMENT_STATE_FOR_TESTS
@@ -148,7 +162,8 @@ where
         let by_block_constraint =
             StoreResolver::locate_blocks(store.as_ref(), &state, &query).await?;
         let mut max_block = 0;
-        let mut result: QueryResults = QueryResults::empty(query.root_trace(do_trace));
+        let mut result: QueryResults =
+            QueryResults::empty(query.root_trace(do_trace), latest_block);
         let mut query_res_futures: Vec<_> = vec![];
         let setup_elapsed = execute_start.elapsed();
 
