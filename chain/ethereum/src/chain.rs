@@ -389,7 +389,7 @@ impl Chain {
     // caller can spawn.
     pub async fn cheapest_adapter(&self) -> Arc<EthereumAdapter> {
         let adapters = match self.client.as_ref() {
-            ChainClient::Firehose(_, _) => panic!("no adapter with firehose"),
+            ChainClient::Firehose(_) => panic!("no adapter with firehose"),
             ChainClient::Rpc(adapter) => adapter,
         };
         adapters.cheapest().await.unwrap()
@@ -472,7 +472,7 @@ impl Blockchain for Chain {
                     )
                     .await
             }
-            ChainClient::Firehose(_, _) => {
+            ChainClient::Firehose(_) => {
                 self.block_stream_builder
                     .build_firehose(
                         self,
@@ -498,7 +498,7 @@ impl Blockchain for Chain {
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
         match self.client.as_ref() {
-            ChainClient::Firehose(endpoints, _) => endpoints
+            ChainClient::Firehose(endpoints) => endpoints
                 .endpoint()
                 .await?
                 .block_ptr_for_number::<HeaderOnlyBlock>(logger, number)
@@ -557,7 +557,7 @@ impl Blockchain for Chain {
 
     async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         let ingestor: Box<dyn BlockIngestor> = match self.chain_client().as_ref() {
-            ChainClient::Firehose(_, _) => {
+            ChainClient::Firehose(_) => {
                 let ingestor = FirehoseBlockIngestor::<HeaderOnlyBlock, Self>::new(
                     self.chain_store.cheap_clone(),
                     self.chain_client(),
@@ -852,7 +852,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         use graph::prelude::LightEthereumBlockExt;
 
         let block = match self.chain_client.as_ref() {
-            ChainClient::Firehose(_, _) => Some(BlockPtr {
+            ChainClient::Firehose(_) => Some(BlockPtr {
                 hash: BlockHash::from(vec![0xff; 32]),
                 number: block.number.saturating_sub(1),
             }),
