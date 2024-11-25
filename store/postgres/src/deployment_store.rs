@@ -874,8 +874,7 @@ impl DeploymentStore {
     }
 }
 
-/// Methods that back the trait `graph::components::Store`, but have small
-/// variations in their signatures
+/// Methods that back the trait `WritableStore`, but have small variations in their signatures
 impl DeploymentStore {
     pub(crate) async fn block_ptr(&self, site: Arc<Site>) -> Result<Option<BlockPtr>, StoreError> {
         let site = site.cheap_clone();
