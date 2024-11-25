@@ -523,10 +523,7 @@ pub async fn networks_as_chains(
                 let eth_adapters = networks.ethereum_rpcs(chain_id.clone());
 
                 let cc = if firehose_endpoints.len() > 0 {
-                    ChainClient::<graph_chain_ethereum::Chain>::new_firehose_with_rpc(
-                        firehose_endpoints,
-                        eth_adapters.clone(),
-                    )
+                    ChainClient::<graph_chain_ethereum::Chain>::new_firehose(firehose_endpoints)
                 } else {
                     ChainClient::<graph_chain_ethereum::Chain>::new_rpc(eth_adapters.clone())
                 };
