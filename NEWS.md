@@ -1,5 +1,88 @@
 # NEWS
 
+## v0.36.0
+
+### What's new
+
+- Add support for substreams using 'index modules', 'block filters', 'store:sum_set'. [(#5463)](https://github.com/graphprotocol/graph-node/pull/5463)
+- Implement new IPFS client [(#5600)](https://github.com/graphprotocol/graph-node/pull/5600)
+- Add `timestamp` support to substreams. [(#5641)](https://github.com/graphprotocol/graph-node/pull/5641)
+- Add graph-indexed header to query responses. [(#5710)](https://github.com/graphprotocol/graph-node/pull/5710)
+- Use the new Firehose info endpoint. [(#5672)](https://github.com/graphprotocol/graph-node/pull/5672)
+- Store `synced_at_block_number` when a deployment syncs. [(#5610)](https://github.com/graphprotocol/graph-node/pull/5610)
+- Create nightly docker builds from master branch. [(#5400)](https://github.com/graphprotocol/graph-node/pull/5400)
+- Make sure `transact_block_operations` does not go backwards. [(#5419)](https://github.com/graphprotocol/graph-node/pull/5419)
+- Improve error message when store write fails. [(#5420)](https://github.com/graphprotocol/graph-node/pull/5420)
+- Allow generating map of section nesting in debug builds. [(#5279)](https://github.com/graphprotocol/graph-node/pull/5279)
+- Ensure substream module name is valid. [(#5424)](https://github.com/graphprotocol/graph-node/pull/5424)
+- Improve error message when resolving references. [(#5385)](https://github.com/graphprotocol/graph-node/pull/5385)
+- Check if subgraph head exists before trying to unfail. [(#5409)](https://github.com/graphprotocol/graph-node/pull/5409)
+- Check for EIP 1898 support when checking block receipts support. [(#5406)](https://github.com/graphprotocol/graph-node/pull/5406)
+- Use latest block hash for `check_block_receipts`. [(#5427)](https://github.com/graphprotocol/graph-node/pull/5427)
+- Handle null blocks from Lotus. [(#5294)](https://github.com/graphprotocol/graph-node/pull/5294)
+- Increase firehose grpc max decode size. [(#5483)](https://github.com/graphprotocol/graph-node/pull/5483)
+- Improve Environment variable docs, rename `GRAPH_ETHEREUM_BLOCK_RECEIPTS_TIMEOUT` to `GRAPH_ETHEREUM_BLOCK_RECEIPTS_CHECK_TIMEOUT`. [(#5468)](https://github.com/graphprotocol/graph-node/pull/5468)
+- Remove provider checks at startup. [(#5337)](https://github.com/graphprotocol/graph-node/pull/5337)
+- Track more features in subgraph features table. [(#5479)](https://github.com/graphprotocol/graph-node/pull/5479)
+- Implement is_duplicate_of for substreams. [(#5482)](https://github.com/graphprotocol/graph-node/pull/5482)
+- Add docs for `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`. [(#5515)](https://github.com/graphprotocol/graph-node/pull/5515)
+- Improve error message for missing template during grafting. [(#5464)](https://github.com/graphprotocol/graph-node/pull/5464)
+- Enable "hard-coded" values in declarative eth_calls. [(#5498)](https://github.com/graphprotocol/graph-node/pull/5498)
+- Respect causality region in derived fields. [(#5488)](https://github.com/graphprotocol/graph-node/pull/5488)
+- Improve net_identifiers call with timeout. [(#5549)](https://github.com/graphprotocol/graph-node/pull/5549)
+- Add arbitrum-sepolia chain ID to GRAPH_ETH_CALL_NO_GAS default value. [(#5504)](https://github.com/graphprotocol/graph-node/pull/5504)
+- Disable genesis validation by default. [(#5565)](https://github.com/graphprotocol/graph-node/pull/5565)
+- Timeout when trying to get `net_identifiers` at startup. [(#5568)](https://github.com/graphprotocol/graph-node/pull/5568)
+- Only start substreams if no other block investor is available. [(#5569)](https://github.com/graphprotocol/graph-node/pull/5569)
+- Allow running a single test case for integration tests. [(#5577)](https://github.com/graphprotocol/graph-node/pull/5577)
+- Store timestamp when marking subgraph as synced. [(#5566)](https://github.com/graphprotocol/graph-node/pull/5566)
+- Document missing env vars. [(#5580)](https://github.com/graphprotocol/graph-node/pull/5580)
+- Return more features in status API. [(#5582)](https://github.com/graphprotocol/graph-node/pull/5582)
+- Respect substreams datasource `startBlock`. [(#5617)](https://github.com/graphprotocol/graph-node/pull/5617)
+- Update flagged dependencies. [(#5659)](https://github.com/graphprotocol/graph-node/pull/5659)
+- Add more debug logs when subgraph is marked unhealthy. [(#5662)](https://github.com/graphprotocol/graph-node/pull/5662)
+- Add config option for cache stores. [(#5716)](https://github.com/graphprotocol/graph-node/pull/5716)
+
+### Bug fixes
+
+- Add safety check when rewinding. [(#5423)](https://github.com/graphprotocol/graph-node/pull/5423)
+- Fix rewind for deployments with multiple names. [(#5502)](https://github.com/graphprotocol/graph-node/pull/5502)
+- Improve `graphman copy` performance [(#5425)](https://github.com/graphprotocol/graph-node/pull/5425)
+- Fix retrieving chain info with graphman for some edge cases. [(#5516)](https://github.com/graphprotocol/graph-node/pull/5516)
+- Improve `graphman restart` to handle multiple subgraph names for a deployment. [(#5674)](https://github.com/graphprotocol/graph-node/pull/5674)
+- Improve adapter startup. [(#5503)](https://github.com/graphprotocol/graph-node/pull/5503)
+- Detect Nethermind eth_call reverts. [(#5533)](https://github.com/graphprotocol/graph-node/pull/5533)
+- Fix genesis block fetching for substreams. [(#5548)](https://github.com/graphprotocol/graph-node/pull/5548)
+- Fix subgraph_resume being mislabelled as pause. [(#5588)](https://github.com/graphprotocol/graph-node/pull/5588)
+- Make `SubgraphIndexingStatus.paused` nullable. [(#5551)](https://github.com/graphprotocol/graph-node/pull/5551)
+- Fix a count aggregation bug. [(#5639)](https://github.com/graphprotocol/graph-node/pull/5639)
+- Fix prost generated file. [(#5450)](https://github.com/graphprotocol/graph-node/pull/5450)
+- Fix `deployment_head` metrics not progressing for substreams. [(#5522)](https://github.com/graphprotocol/graph-node/pull/5522)
+- Enable graft validation checks in debug builds. [(#5584)](https://github.com/graphprotocol/graph-node/pull/5584)
+- Use correct store when loading indexes for graft base. [(#5616)](https://github.com/graphprotocol/graph-node/pull/5616)
+- Sanitise columns in SQL. [(#5578)](https://github.com/graphprotocol/graph-node/pull/5578)
+- Truncate `subgraph_features` table before migrating. [(#5505)](https://github.com/graphprotocol/graph-node/pull/5505)
+- Consistently apply max decode size. [(#5520)](https://github.com/graphprotocol/graph-node/pull/5520)
+- Various docker packaging improvements [(#5709)](https://github.com/graphprotocol/graph-node/pull/5709) [(#5711)](https://github.com/graphprotocol/graph-node/pull/5711) [(#5712)](https://github.com/graphprotocol/graph-node/pull/5712) [(#5620)](https://github.com/graphprotocol/graph-node/pull/5620) [(#5621)](https://github.com/graphprotocol/graph-node/pull/5621)
+- Retry IPFS requests on Cloudflare 521 Web Server Down. [(#5687)](https://github.com/graphprotocol/graph-node/pull/5687)
+- Optimize IPFS retries. [(#5698)](https://github.com/graphprotocol/graph-node/pull/5698)
+- Exclude full-text search columns from entity queries. [(#5693)](https://github.com/graphprotocol/graph-node/pull/5693)
+- Do not allow multiple active runners for a subgraph. [(#5715)](https://github.com/graphprotocol/graph-node/pull/5715)
+- Stop subgraphs passing max endBlock. [(#5583)](https://github.com/graphprotocol/graph-node/pull/5583)
+- Do not repeat a rollup after restart in some corner cases. [(#5675)](https://github.com/graphprotocol/graph-node/pull/5675)
+
+### Graphman
+
+- Add command to update genesis block for a chain and to check genesis information against all providers. [(#5517)](https://github.com/graphprotocol/graph-node/pull/5517)
+- Create GraphQL API to execute commands [(#5554)](https://github.com/graphprotocol/graph-node/pull/5554)
+- Add graphman create/remove commands to GraphQL API. [(#5685)](https://github.com/graphprotocol/graph-node/pull/5685)
+
+### Contributors
+
+Thanks to all contributors for this release: @dwerner, @encalypto, @incrypto32, @isum, @leoyvens, @lutter, @mangas, @sduchesneau, @Shiyasmohd, @shuaibbapputty, @YaroShkvorets, @ziyadonji, @zorancv
+
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.35.1...v0.36.0
+
 ## v0.35.0
 ### What's new
 
