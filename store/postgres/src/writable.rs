@@ -352,17 +352,6 @@ impl SyncStore {
         })
     }
 
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        retry::forever(&self.logger, "get_range", || {
-            self.writable
-                .get_range(self.site.cheap_clone(), entity_type, block_range.clone())
-        })
-    }
-
     fn get_derived(
         &self,
         key: &DerivedEntityQuery,
@@ -1568,16 +1557,6 @@ impl ReadStore for WritableStore {
         self.writer.get_many(keys)
     }
 
-    // The entities that are returned are only the ones from the database.
-    // The ones in the queue are ignored.
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.store.get_range(entity_type, block_range)
-    }
-
     fn get_derived(
         &self,
         key: &DerivedEntityQuery,
@@ -1587,6 +1566,28 @@ impl ReadStore for WritableStore {
 
     fn input_schema(&self) -> InputSchema {
         self.store.input_schema()
+    }
+}
+
+pub struct SourceableStore {
+    site: Arc<Site>,
+    store: Arc<DeploymentStore>,
+}
+
+impl SourceableStore {
+    pub fn new(site: Arc<Site>, store: Arc<DeploymentStore>) -> Self {
+        Self { site, store }
+    }
+}
+
+impl store::SourceableStore for SourceableStore {
+    fn get_range(
+        &self,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+        self.store
+            .get_range(self.site.clone(), entity_type, block_range)
     }
 }
 

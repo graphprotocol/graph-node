@@ -44,7 +44,7 @@ use crate::{
         index::{IndexList, Method},
         Layout,
     },
-    writable::WritableStore,
+    writable::{SourceableStore, WritableStore},
     NotificationSender,
 };
 use crate::{
@@ -1546,6 +1546,17 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.get_or_create_writable_store(logger, deployment, manifest_idx_and_name)
             .await
             .map(|store| store as Arc<dyn store::ReadStore>)
+    }
+
+    async fn sourceable(
+        self: Arc<Self>,
+        deployment: graph::components::store::DeploymentId,
+    ) -> Result<Arc<dyn store::SourceableStore>, StoreError> {
+        let deployment = deployment.into();
+        let site = self.find_site(deployment)?;
+        let store = self.for_site(&site)?;
+        let s = Arc::new(SourceableStore::new(site, store.clone()));
+        Ok(s as Arc<dyn store::SourceableStore>)
     }
 
     async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {

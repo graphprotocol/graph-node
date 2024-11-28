@@ -193,6 +193,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn ReadStore>, StoreError>;
 
+    async fn sourceable(
+        self: Arc<Self>,
+        deployment: DeploymentId,
+    ) -> Result<Arc<dyn SourceableStore>, StoreError>;
+
     /// Initiate a graceful shutdown of the writable that a previous call to
     /// `writable` might have started
     async fn stop_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
@@ -235,14 +240,6 @@ pub trait ReadStore: Send + Sync + 'static {
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
-    /// Returns all versions of entities of the given entity_type that were
-    /// changed in the given block_range.
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
-
     /// Reverse lookup
     fn get_derived(
         &self,
@@ -265,14 +262,6 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_many(keys)
     }
 
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        (**self).get_range(entity_type, block_range)
-    }
-
     fn get_derived(
         &self,
         entity_derived: &DerivedEntityQuery,
@@ -282,6 +271,27 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
 
     fn input_schema(&self) -> InputSchema {
         (**self).input_schema()
+    }
+}
+
+pub trait SourceableStore: Send + Sync + 'static {
+    /// Returns all versions of entities of the given entity_type that were
+    /// changed in the given block_range.
+    fn get_range(
+        &self,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
+}
+
+// This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
+    fn get_range(
+        &self,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+        (**self).get_range(entity_type, block_range)
     }
 }
 

@@ -9,7 +9,9 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, DerivedEntityQuery, WritableStore};
+use graph::components::store::{
+    DeploymentLocator, DerivedEntityQuery, SourceableStore, WritableStore,
+};
 use graph::data::subgraph::*;
 use graph::semver::Version;
 use graph::{entity, prelude::*};
@@ -87,7 +89,14 @@ fn remove_test_data(store: Arc<DieselSubgraphStore>) {
 /// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
-    F: FnOnce(Arc<DieselStore>, Arc<dyn WritableStore>, DeploymentLocator) -> R + Send + 'static,
+    F: FnOnce(
+            Arc<DieselStore>,
+            Arc<dyn WritableStore>,
+            Arc<dyn SourceableStore>,
+            DeploymentLocator,
+        ) -> R
+        + Send
+        + 'static,
     R: std::future::Future<Output = ()> + Send + 'static,
 {
     run_test_sequentially(|store| async move {
@@ -102,10 +111,15 @@ where
             .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
             .await
             .expect("we can get a writable store");
+        let sourceable = store
+            .subgraph_store()
+            .sourceable(deployment.id)
+            .await
+            .expect("we can get a writable store");
 
         // Run test and wait for the background writer to finish its work so
         // it won't conflict with the next test
-        test(store, writable, deployment).await;
+        test(store, writable, sourceable, deployment).await;
     });
 }
 
@@ -196,7 +210,7 @@ fn get_with_pending<F>(batch: bool, read_count: F)
 where
     F: Send + Fn(&dyn WritableStore) -> i32 + Sync + 'static,
 {
-    run_test(move |store, writable, deployment| async move {
+    run_test(move |store, writable, _, deployment| async move {
         let subgraph_store = store.subgraph_store();
 
         let read_count = || read_count(writable.as_ref());
@@ -294,7 +308,7 @@ fn get_derived_nobatch() {
 
 #[test]
 fn restart() {
-    run_test(|store, writable, deployment| async move {
+    run_test(|store, writable, _, deployment| async move {
         let subgraph_store = store.subgraph_store();
         let schema = subgraph_store.input_schema(&deployment.hash).unwrap();
 
@@ -346,6 +360,7 @@ fn restart() {
 async fn read_range(
     store: Arc<Store>,
     writable: Arc<dyn WritableStore>,
+    sourceable: Arc<dyn SourceableStore>,
     deployment: DeploymentLocator,
     mutable: bool,
 ) -> usize {
@@ -367,22 +382,26 @@ async fn read_range(
     } else {
         &COUNTER2_TYPE
     };
-    let e = writable.get_range(et, br).unwrap();
+    let e = sourceable.get_range(et, br).unwrap();
     e.iter().map(|(_, v)| v.iter()).flatten().count()
 }
 
 #[test]
 fn read_range_mutable() {
-    run_test(|store, writable, deployment| async move {
-        let num_entities = read_range(store, writable, deployment, true).await;
-        assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
-    })
+    run_test(
+        |store, writable, sourceable: Arc<dyn SourceableStore>, deployment| async move {
+            let num_entities = read_range(store, writable, sourceable, deployment, true).await;
+            assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
+        },
+    )
 }
 
 #[test]
 fn read_range_immutable() {
-    run_test(|store, writable, deployment| async move {
-        let num_entities = read_range(store, writable, deployment, false).await;
-        assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
-    })
+    run_test(
+        |store, writable, sourceable: Arc<dyn SourceableStore>, deployment| async move {
+            let num_entities = read_range(store, writable, sourceable, deployment, false).await;
+            assert_eq!(num_entities, 6) // TODO: fix it - it should be 4 as the range is open
+        },
+    )
 }
