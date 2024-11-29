@@ -70,6 +70,7 @@ jobs:
           POSTGRES_DB: graph_node_test
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
           POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
+          POSTGRESQL_REPLICATION_USE_PASSFILE: no
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s

@@ -225,7 +225,11 @@ where
                         logger,
                     );
 
-                    state.entity_cache.set(key, entity)?;
+                    state.entity_cache.set(
+                        key,
+                        entity,
+                        Some(&mut state.write_capacity_remaining),
+                    )?;
                 }
                 ParsedChanges::Delete(entity_key) => {
                     let entity_type = entity_key.entity_type.cheap_clone();

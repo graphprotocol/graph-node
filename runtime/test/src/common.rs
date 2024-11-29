@@ -65,16 +65,14 @@ fn mock_host_exports(
         Arc::new(templates.iter().map(|t| t.into()).collect()),
     );
 
-    let ipfs_client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &LOGGER)
-        .unwrap()
-        .into_boxed();
+    let client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &LOGGER).unwrap();
 
     HostExports::new(
         subgraph_id,
         network,
         ds_details,
         Arc::new(IpfsResolver::new(
-            ipfs_client.into(),
+            Arc::new(client),
             Arc::new(EnvVars::default()),
         )),
         ens_lookup,

@@ -11,6 +11,5 @@ graph-chain-arweave = { path = "../../chain/arweave" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-chain-near = { path = "../../chain/near" }
 graph-chain-cosmos = { path = "../../chain/cosmos" }
-graph-chain-starknet = { path = "../../chain/starknet" }
 graph-chain-substreams = { path = "../../chain/substreams" }
 git-testament = "0.2.5"

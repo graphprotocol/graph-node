@@ -209,12 +209,14 @@ fn insert_modifications() {
 
     let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai" };
     let mogwai_key = make_band_key("mogwai");
-    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
+    cache
+        .set(mogwai_key.clone(), mogwai_data.clone(), None)
+        .unwrap();
 
     let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
-        .set(sigurros_key.clone(), sigurros_data.clone())
+        .set(sigurros_key.clone(), sigurros_data.clone(), None)
         .unwrap();
 
     let result = cache.as_modifications(0);
@@ -253,12 +255,14 @@ fn overwrite_modifications() {
 
     let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 };
     let mogwai_key = make_band_key("mogwai");
-    cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
+    cache
+        .set(mogwai_key.clone(), mogwai_data.clone(), None)
+        .unwrap();
 
     let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994 };
     let sigurros_key = make_band_key("sigurros");
     cache
-        .set(sigurros_key.clone(), sigurros_data.clone())
+        .set(sigurros_key.clone(), sigurros_data.clone(), None)
         .unwrap();
 
     let result = cache.as_modifications(0);
@@ -289,12 +293,12 @@ fn consecutive_modifications() {
     let update_data =
         entity! { SCHEMA => id: "mogwai", founded: 1995, label: "Rock Action Records" };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key, update_data).unwrap();
+    cache.set(update_key, update_data, None).unwrap();
 
     // Then, just reset the "label".
     let update_data = entity! { SCHEMA => id: "mogwai", label: Value::Null };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key.clone(), update_data).unwrap();
+    cache.set(update_key.clone(), update_data, None).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
@@ -715,7 +719,7 @@ fn scoped_get() {
         let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
         let wallet5 = create_wallet_entity("5", &account5, 100);
         let key5 = WALLET_TYPE.parse_key("5").unwrap();
-        cache.set(key5.clone(), wallet5.clone()).unwrap();
+        cache.set(key5.clone(), wallet5.clone(), None).unwrap();
 
         // For the new entity, we can retrieve it with either scope
         let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
@@ -736,7 +740,7 @@ fn scoped_get() {
         // But if it gets updated, it becomes visible with either scope
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
-        cache.set(key1.clone(), wallet1.clone()).unwrap();
+        cache.set(key1.clone(), wallet1.clone(), None).unwrap();
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
         assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
@@ -783,6 +787,6 @@ fn no_interface_mods() {
 
         let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
 
-        cache.set(key, entity).unwrap_err();
+        cache.set(key, entity, None).unwrap_err();
     })
 }

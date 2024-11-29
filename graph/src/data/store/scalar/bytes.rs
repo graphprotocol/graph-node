@@ -1,3 +1,5 @@
+use diesel::deserialize::FromSql;
+use diesel::pg::PgValue;
 use diesel::serialize::ToSql;
 use hex;
 use serde::{self, Deserialize, Serialize};
@@ -113,5 +115,11 @@ impl ToSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
         out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
     ) -> diesel::serialize::Result {
         <_ as ToSql<diesel::sql_types::Binary, _>>::to_sql(self.as_slice(), &mut out.reborrow())
+    }
+}
+
+impl FromSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
+    fn from_sql(value: PgValue) -> diesel::deserialize::Result<Self> {
+        <Vec<u8> as FromSql<diesel::sql_types::Binary, _>>::from_sql(value).map(Bytes::from)
     }
 }

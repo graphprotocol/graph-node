@@ -605,6 +605,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
 
 [[package]]
+name = "bs58"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "bstr"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1784,6 +1793,7 @@ dependencies = [
  "atomic_refcell",
  "base64 0.21.7",
  "bigdecimal 0.1.2",
+ "bs58 0.5.1",
  "bytes",
  "chrono",
  "cid",
@@ -1935,21 +1945,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-starknet"
-version = "0.35.0"
-dependencies = [
- "graph",
- "graph-runtime-derive",
- "graph-runtime-wasm",
- "hex",
- "prost 0.12.6",
- "prost-types 0.12.6",
- "serde",
- "sha3",
- "tonic-build",
-]
-
-[[package]]
 name = "graph-chain-substreams"
 version = "0.35.0"
 dependencies = [
@@ -1981,13 +1976,13 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-runtime-wasm",
  "serde_yaml",
  "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
@@ -2019,7 +2014,6 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
@@ -2071,7 +2065,7 @@ version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bs58",
+ "bs58 0.4.0",
  "ethabi",
  "graph",
  "graph-runtime-derive",
@@ -2105,7 +2099,6 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-starknet",
  "graph-chain-substreams",
  "graph-graphql",
 ]
@@ -2414,9 +2407,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "hex-literal"
@@ -4894,7 +4884,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9922f437e6cb86b62cfd8bdede93937def710616ac2825ffff06b8770bbd06df"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "prost 0.11.9",
  "prost-build 0.11.9",
  "prost-types 0.11.9",

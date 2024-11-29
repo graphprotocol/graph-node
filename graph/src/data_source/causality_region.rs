@@ -4,6 +4,7 @@ use diesel::{
     serialize::{Output, ToSql},
     sql_types::Integer,
 };
+use diesel_derives::AsExpression;
 use std::fmt;
 
 use crate::components::subgraph::Entity;
@@ -20,7 +21,10 @@ use crate::derive::CacheWeight;
 /// This necessary for determinism because offchain data sources don't have a deterministic order of
 /// execution, for example an IPFS file may become available at any point in time. The isolation
 /// rules make the indexing result reproducible, given a set of available files.
-#[derive(Debug, CacheWeight, Copy, Clone, PartialEq, Eq, FromSqlRow, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, CacheWeight, Copy, Clone, PartialEq, Eq, FromSqlRow, Hash, PartialOrd, Ord, AsExpression,
+)]
+#[diesel(sql_type = Integer)]
 pub struct CausalityRegion(i32);
 
 impl fmt::Display for CausalityRegion {

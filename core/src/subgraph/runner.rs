@@ -52,6 +52,15 @@ where
     pub metrics: RunnerMetrics,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum SubgraphRunnerError {
+    #[error("subgraph runner terminated because a newer one was active")]
+    Duplicate,
+
+    #[error(transparent)]
+    Unknown(#[from] Error),
+}
+
 impl<C, T> SubgraphRunner<C, T>
 where
     C: Blockchain,
@@ -109,7 +118,7 @@ where
 
     #[cfg(debug_assertions)]
     pub async fn run_for_test(self, break_on_restart: bool) -> Result<Self, Error> {
-        self.run_inner(break_on_restart).await
+        self.run_inner(break_on_restart).await.map_err(Into::into)
     }
 
     fn is_static_filters_enabled(&self) -> bool {
@@ -166,11 +175,11 @@ where
         self.build_filter()
     }
 
-    pub async fn run(self) -> Result<(), Error> {
+    pub async fn run(self) -> Result<(), SubgraphRunnerError> {
         self.run_inner(false).await.map(|_| ())
     }
 
-    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, Error> {
+    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
@@ -196,6 +205,17 @@ where
                     .store
                     .unfail_deterministic_error(&current_ptr, &parent_ptr)
                     .await?;
+            }
+
+            // Stop subgraph when we reach maximum endblock.
+            if let Some(max_end_block) = self.inputs.max_end_block {
+                if max_end_block <= current_ptr.block_number() {
+                    info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
+                                "max_end_block" => max_end_block,
+                                "current_block" => current_ptr.block_number());
+                    self.inputs.store.flush().await?;
+                    return Ok(self);
+                }
             }
         }
 
@@ -235,7 +255,8 @@ where
                 // TODO: move cancel handle to the Context
                 // This will require some code refactor in how the BlockStream is created
                 let block_start = Instant::now();
-                match self
+
+                let action = self
                     .handle_stream_event(event, &block_stream_cancel_handle)
                     .await
                     .map(|res| {
@@ -243,7 +264,30 @@ where
                             .subgraph
                             .observe_block_processed(block_start.elapsed(), res.block_finished());
                         res
-                    })? {
+                    })?;
+
+                // It is possible that the subgraph was unassigned, but the runner was in
+                // a retry delay state and did not observe the cancel signal.
+                if block_stream_cancel_handle.is_canceled() {
+                    // It is also possible that the runner was in a retry delay state while
+                    // the subgraph was reassigned and a new runner was started.
+                    if self.ctx.instances.contains(&self.inputs.deployment.id) {
+                        warn!(
+                            self.logger,
+                            "Terminating the subgraph runner because a newer one is active. \
+                             Possible reassignment detected while the runner was in a non-cancellable pending state",
+                        );
+                        return Err(SubgraphRunnerError::Duplicate);
+                    }
+
+                    warn!(
+                        self.logger,
+                        "Terminating the subgraph runner because subgraph was unassigned",
+                    );
+                    return Ok(self);
+                }
+
+                match action {
                     Action::Continue => continue,
                     Action::Stop => {
                         info!(self.logger, "Stopping subgraph");
@@ -837,9 +881,21 @@ where
                     }
                 }
 
-                if let Some(stop_block) = &self.inputs.stop_block {
-                    if block_ptr.number >= *stop_block {
-                        info!(self.logger, "stop block reached for subgraph");
+                if let Some(stop_block) = self.inputs.stop_block {
+                    if block_ptr.number >= stop_block {
+                        info!(self.logger, "Stop block reached for subgraph");
+                        return Ok(Action::Stop);
+                    }
+                }
+
+                if let Some(max_end_block) = self.inputs.max_end_block {
+                    if block_ptr.number >= max_end_block {
+                        info!(
+                            self.logger,
+                            "Stopping subgraph as maximum endBlock reached";
+                            "max_end_block" => max_end_block,
+                            "current_block" => block_ptr.number
+                        );
                         return Ok(Action::Stop);
                     }
                 }
@@ -1556,6 +1612,12 @@ where
     }
 }
 
+impl From<StoreError> for SubgraphRunnerError {
+    fn from(err: StoreError) -> Self {
+        Self::Unknown(err.into())
+    }
+}
+
 /// Transform the proof of indexing changes into entity updates that will be
 /// inserted when as_modifications is called.
 async fn update_proof_of_indexing(
@@ -1584,7 +1646,7 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi)
+        entity_cache.set(key, poi, None)
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");

@@ -1,4 +1,5 @@
 mod codec;
+mod endpoint_info;
 mod endpoints;
 mod helpers;
 mod interceptors;

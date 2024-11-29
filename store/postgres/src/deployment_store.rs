@@ -874,8 +874,7 @@ impl DeploymentStore {
     }
 }
 
-/// Methods that back the trait `graph::components::Store`, but have small
-/// variations in their signatures
+/// Methods that back the trait `WritableStore`, but have small variations in their signatures
 impl DeploymentStore {
     pub(crate) async fn block_ptr(&self, site: Arc<Site>) -> Result<Option<BlockPtr>, StoreError> {
         let site = site.cheap_clone();
@@ -910,7 +909,11 @@ impl DeploymentStore {
 
         let mut conn = self.get_conn()?;
         let layout = store.layout(&mut conn, site.cheap_clone())?;
-        layout.block_time(&mut conn, block)
+        if ENV_VARS.store.last_rollup_from_poi {
+            layout.block_time(&mut conn, block)
+        } else {
+            layout.last_rollup(&mut conn)
+        }
     }
 
     pub(crate) async fn supports_proof_of_indexing<'a>(

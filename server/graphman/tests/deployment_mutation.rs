@@ -266,3 +266,127 @@ fn graphql_allows_tracking_restart_deployment_executions() {
         assert_eq!(resp, expected_resp);
     });
 }
+
+#[test]
+fn graphql_can_create_new_subgraph() {
+    run_test(|| async {
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"mutation CreateSubgraph {
+                    deployment {
+                        create(name: "subgraph_1") {
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "deployment": {
+                    "create": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        assert_eq!(resp, expected_resp);
+    });
+}
+
+#[test]
+fn graphql_cannot_create_new_subgraph_with_invalid_name() {
+    run_test(|| async {
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"mutation CreateInvalidSubgraph {
+                    deployment {
+                        create(name: "*@$%^subgraph") {
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let success_resp = json!({
+            "data": {
+                "deployment": {
+                    "create": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        assert_ne!(resp, success_resp);
+    });
+}
+
+#[test]
+fn graphql_can_remove_subgraph() {
+    run_test(|| async {
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"mutation RemoveSubgraph {
+                    deployment {
+                        remove(name: "subgraph_1") {
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "deployment": {
+                    "remove": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        assert_eq!(resp, expected_resp);
+    });
+}
+
+#[test]
+fn graphql_cannot_remove_subgraph_with_invalid_name() {
+    run_test(|| async {
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"mutation RemoveInvalidSubgraph {
+                    deployment {
+                        remove(name: "*@$%^subgraph") {
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let success_resp = json!({
+            "data": {
+                "deployment": {
+                    "remove": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        assert_ne!(resp, success_resp);
+    });
+}

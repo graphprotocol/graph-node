@@ -8,8 +8,8 @@ use crate::derive::CheapClone;
 use crate::ipfs::IpfsError;
 use crate::ipfs::IpfsResult;
 
-#[derive(Clone, Debug, CheapClone)]
 /// Contains a valid IPFS server address.
+#[derive(Clone, Debug, CheapClone)]
 pub struct ServerAddress {
     inner: Arc<str>,
 }

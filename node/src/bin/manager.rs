@@ -4,7 +4,7 @@ use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::blockchain::BlockHash;
 use graph::cheap_clone::CheapClone;
-use graph::components::adapter::ChainId;
+use graph::components::network_provider::ChainName;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
@@ -440,9 +440,13 @@ pub enum ConfigCommand {
         network: String,
     },
 
-    /// Compare the NetIdentifier of all defined adapters with the existing
-    /// identifiers on the ChainStore.
-    CheckProviders {},
+    /// Run all available provider checks against all providers.
+    CheckProviders {
+        /// Maximum duration of all provider checks for a provider.
+        ///
+        /// Defaults to 60 seconds.
+        timeout_seconds: Option<u64>,
+    },
 
     /// Show subgraph-specific settings
     ///
@@ -1006,11 +1010,12 @@ impl Context {
         ))
     }
 
-    async fn networks(&self, block_store: Arc<BlockStore>) -> anyhow::Result<Networks> {
+    async fn networks(&self) -> anyhow::Result<Networks> {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
         let metrics = Arc::new(EndpointMetrics::mock());
-        Networks::from_config(logger, &self.config, registry, metrics, block_store, false).await
+
+        Networks::from_config(logger, &self.config, registry, metrics, &[]).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
@@ -1025,8 +1030,7 @@ impl Context {
         self,
         chain_name: &str,
     ) -> anyhow::Result<(Arc<ChainStore>, Arc<EthereumAdapter>)> {
-        let block_store = self.store().block_store();
-        let networks = self.networks(block_store).await?;
+        let networks = self.networks().await?;
         let chain_store = self.chain_store(chain_name)?;
         let ethereum_adapter = networks
             .ethereum_rpcs(chain_name.into())
@@ -1167,10 +1171,15 @@ async fn main() -> anyhow::Result<()> {
             use ConfigCommand::*;
 
             match cmd {
-                CheckProviders {} => {
+                CheckProviders { timeout_seconds } => {
+                    let logger = ctx.logger.clone();
+                    let networks = ctx.networks().await?;
                     let store = ctx.store().block_store();
-                    let networks = ctx.networks(store.cheap_clone()).await?;
-                    Ok(commands::config::check_provider_genesis(&networks, store).await)
+                    let timeout = Duration::from_secs(timeout_seconds.unwrap_or(60));
+
+                    commands::provider_checks::execute(&logger, &networks, store, timeout).await;
+
+                    Ok(())
                 }
                 Place { name, network } => {
                     commands::config::place(&ctx.config.deployment, &name, &network)
@@ -1367,8 +1376,8 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let store_builder = ctx.store_builder().await;
                     let store = ctx.store().block_store();
-                    let networks = ctx.networks(store.cheap_clone()).await?;
-                    let chain_id = ChainId::from(chain_name);
+                    let networks = ctx.networks().await?;
+                    let chain_id = ChainName::from(chain_name);
                     let block_hash = BlockHash::from_str(&block_hash)?;
                     commands::chain::update_chain_genesis(
                         &networks,

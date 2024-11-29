@@ -1,39 +1,31 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use bytes::Bytes;
-use bytes::BytesMut;
 use derivative::Derivative;
-use futures03::stream::BoxStream;
-use futures03::StreamExt;
-use futures03::TryStreamExt;
-use graph_derive::CheapClone;
 use http::header::CONTENT_LENGTH;
 use reqwest::Response;
 use reqwest::StatusCode;
 use slog::Logger;
 
-use crate::ipfs::retry_policy::retry_policy;
-use crate::ipfs::CanProvide;
-use crate::ipfs::Cat;
-use crate::ipfs::CatStream;
-use crate::ipfs::ContentPath;
-use crate::ipfs::GetBlock;
 use crate::ipfs::IpfsClient;
 use crate::ipfs::IpfsError;
+use crate::ipfs::IpfsRequest;
+use crate::ipfs::IpfsResponse;
 use crate::ipfs::IpfsResult;
+use crate::ipfs::RetryPolicy;
 use crate::ipfs::ServerAddress;
 
 /// The request that verifies that the IPFS RPC API is accessible is generally fast because
 /// it does not involve querying the distributed network.
-const TEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+const TEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
-#[derive(Clone, CheapClone, Derivative)]
-#[derivative(Debug)]
 /// A client that connects to an IPFS RPC API.
 ///
 /// Reference: <https://docs.ipfs.tech/reference/kubo/rpc>
+#[derive(Clone, Derivative)]
+#[derivative(Debug)]
 pub struct IpfsRpcClient {
     server_address: ServerAddress,
 
@@ -72,30 +64,31 @@ impl IpfsRpcClient {
         })
     }
 
-    pub fn into_boxed(self) -> Box<dyn IpfsClient> {
-        Box::new(self)
-    }
-
+    /// A one-time request sent at client initialization to verify that the specified
+    /// server address is a valid IPFS RPC server.
     async fn send_test_request(&self) -> anyhow::Result<()> {
-        let client = self.to_owned();
+        let fut = RetryPolicy::NonDeterministic
+            .create("IPFS.RPC.send_test_request", &self.logger)
+            .run({
+                let client = self.to_owned();
 
-        let ok = retry_policy("IPFS.RPC.send_test_request", &self.logger)
-            .run(move || {
-                let client = client.clone();
+                move || {
+                    let client = client.clone();
 
-                async move {
-                    // While there may be unrelated servers that successfully respond to this
-                    // request, it is good enough to at least filter out unresponsive servers and
-                    // confirm that the server behaves like an IPFS RPC API.
-                    let status = client
-                        .call("version", Some(client.test_request_timeout))
-                        .await?
-                        .status();
+                    async move {
+                        // While there may be unrelated servers that successfully respond to this
+                        // request, it is good enough to at least filter out unresponsive servers
+                        // and confirm that the server behaves like an IPFS RPC API.
+                        let status = client.send_request("version").await?.status();
 
-                    Ok(status == StatusCode::OK)
+                        Ok(status == StatusCode::OK)
+                    }
                 }
-            })
-            .await?;
+            });
+
+        let ok = tokio::time::timeout(TEST_REQUEST_TIMEOUT, fut)
+            .await
+            .map_err(|_| anyhow!("request timed out"))??;
 
         if !ok {
             return Err(anyhow!("not an RPC API"));
@@ -104,20 +97,12 @@ impl IpfsRpcClient {
         Ok(())
     }
 
-    async fn call(
-        &self,
-        path_and_query: impl AsRef<str>,
-        timeout: Option<Duration>,
-    ) -> IpfsResult<Response> {
+    async fn send_request(&self, path_and_query: impl AsRef<str>) -> IpfsResult<Response> {
         let url = self.url(path_and_query);
         let mut req = self.http_client.post(url);
 
         // Some servers require `content-length` even for an empty body.
         req = req.header(CONTENT_LENGTH, 0);
-
-        if let Some(timeout) = timeout {
-            req = req.timeout(timeout);
-        }
 
         Ok(req.send().await?.error_for_status()?)
     }
@@ -128,122 +113,29 @@ impl IpfsRpcClient {
 }
 
 #[async_trait]
-impl CanProvide for IpfsRpcClient {
-    async fn can_provide(&self, path: &ContentPath, timeout: Option<Duration>) -> IpfsResult<bool> {
-        let client = self.to_owned();
-        let path = path.to_owned();
-
-        retry_policy("IPFS.RPC.can_provide", &self.logger)
-            .run(move || {
-                let client = client.clone();
-                let path = path.clone();
-
-                async move {
-                    let status = client
-                        .call(format!("cat?arg={path}&length=1"), timeout)
-                        .await?
-                        .status();
-
-                    Ok(status == StatusCode::OK)
-                }
-            })
-            .await
+impl IpfsClient for IpfsRpcClient {
+    fn logger(&self) -> &Logger {
+        &self.logger
     }
-}
 
-#[async_trait]
-impl CatStream for IpfsRpcClient {
-    async fn cat_stream(
-        &self,
-        path: &ContentPath,
-        timeout: Option<Duration>,
-    ) -> IpfsResult<BoxStream<'static, IpfsResult<Bytes>>> {
-        let client = self.to_owned();
-        let path = path.to_owned();
+    async fn call(self: Arc<Self>, req: IpfsRequest) -> IpfsResult<IpfsResponse> {
+        use IpfsRequest::*;
 
-        let resp = retry_policy("IPFS.RPC.cat_stream", &self.logger)
-            .run(move || {
-                let client = client.clone();
-                let path = path.clone();
+        let (path_and_query, path) = match req {
+            Cat(path) => (format!("cat?arg={path}"), path),
+            GetBlock(path) => (format!("block/get?arg={path}"), path),
+        };
 
-                async move { Ok(client.call(format!("cat?arg={path}"), timeout).await?) }
-            })
-            .await?;
+        let response = self.send_request(path_and_query).await?;
 
-        Ok(resp.bytes_stream().err_into().boxed())
-    }
-}
-
-#[async_trait]
-impl Cat for IpfsRpcClient {
-    async fn cat(
-        &self,
-        path: &ContentPath,
-        max_size: usize,
-        timeout: Option<Duration>,
-    ) -> IpfsResult<Bytes> {
-        let client = self.to_owned();
-        let path = path.to_owned();
-
-        retry_policy("IPFS.RPC.cat", &self.logger)
-            .run(move || {
-                let client = client.clone();
-                let path = path.clone();
-
-                async move {
-                    let content = client
-                        .call(format!("cat?arg={path}"), timeout)
-                        .await?
-                        .bytes_stream()
-                        .err_into()
-                        .try_fold(BytesMut::new(), |mut acc, chunk| async {
-                            acc.extend(chunk);
-
-                            if acc.len() > max_size {
-                                return Err(IpfsError::ContentTooLarge {
-                                    path: path.clone(),
-                                    max_size,
-                                });
-                            }
-
-                            Ok(acc)
-                        })
-                        .await?;
-
-                    Ok(content.into())
-                }
-            })
-            .await
-    }
-}
-
-#[async_trait]
-impl GetBlock for IpfsRpcClient {
-    async fn get_block(&self, path: &ContentPath, timeout: Option<Duration>) -> IpfsResult<Bytes> {
-        let client = self.to_owned();
-        let path = path.to_owned();
-
-        retry_policy("IPFS.RPC.get_block", &self.logger)
-            .run(move || {
-                let client = client.clone();
-                let path = path.clone();
-
-                async move {
-                    let block = client
-                        .call(format!("block/get?arg={path}"), timeout)
-                        .await?
-                        .bytes()
-                        .await?;
-
-                    Ok(block)
-                }
-            })
-            .await
+        Ok(IpfsResponse { path, response })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use bytes::BytesMut;
+    use futures03::TryStreamExt;
     use wiremock::matchers as m;
     use wiremock::Mock;
     use wiremock::MockBuilder;
@@ -251,6 +143,7 @@ mod tests {
     use wiremock::ResponseTemplate;
 
     use super::*;
+    use crate::ipfs::ContentPath;
     use crate::log::discard;
 
     const CID: &str = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
@@ -263,12 +156,6 @@ mod tests {
         Mock::given(m::method("POST")).and(m::path(format!("/api/v0/{path}")))
     }
 
-    fn mock_can_provide() -> MockBuilder {
-        mock_post("cat")
-            .and(m::query_param("arg", CID))
-            .and(m::query_param("length", "1"))
-    }
-
     fn mock_cat() -> MockBuilder {
         mock_post("cat").and(m::query_param("arg", CID))
     }
@@ -277,11 +164,11 @@ mod tests {
         mock_post("block/get").and(m::query_param("arg", CID))
     }
 
-    async fn make_client() -> (MockServer, IpfsRpcClient) {
+    async fn make_client() -> (MockServer, Arc<IpfsRpcClient>) {
         let server = mock_server().await;
         let client = IpfsRpcClient::new_unchecked(server.uri(), &discard()).unwrap();
 
-        (server, client)
+        (server, Arc::new(client))
     }
 
     fn make_path() -> ContentPath {
@@ -315,7 +202,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn new_retries_rpc_api_check_on_retriable_errors() {
+    async fn new_retries_rpc_api_check_on_non_deterministic_errors() {
         let server = mock_server().await;
 
         mock_post("version")
@@ -335,106 +222,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn new_does_not_retry_rpc_api_check_on_non_retriable_errors() {
-        let server = mock_server().await;
-
-        mock_post("version")
-            .respond_with(ResponseTemplate::new(StatusCode::METHOD_NOT_ALLOWED))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        IpfsRpcClient::new(server.uri(), &discard())
-            .await
-            .unwrap_err();
-    }
-
-    #[tokio::test]
     async fn new_unchecked_creates_the_client_without_checking_the_rpc_api() {
         let server = mock_server().await;
 
         IpfsRpcClient::new_unchecked(server.uri(), &discard()).unwrap();
-    }
-
-    #[tokio::test]
-    async fn can_provide_returns_true_when_content_is_available() {
-        let (server, client) = make_client().await;
-
-        mock_can_provide()
-            .respond_with(ResponseTemplate::new(StatusCode::OK))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let ok = client.can_provide(&make_path(), None).await.unwrap();
-
-        assert!(ok);
-    }
-
-    #[tokio::test]
-    async fn can_provide_returns_false_when_content_is_not_completely_available() {
-        let (server, client) = make_client().await;
-
-        mock_can_provide()
-            .respond_with(ResponseTemplate::new(StatusCode::PARTIAL_CONTENT))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let ok = client.can_provide(&make_path(), None).await.unwrap();
-
-        assert!(!ok);
-    }
-
-    #[tokio::test]
-    async fn can_provide_fails_on_timeout() {
-        let (server, client) = make_client().await;
-
-        mock_can_provide()
-            .respond_with(ResponseTemplate::new(StatusCode::OK).set_delay(ms(500)))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        client
-            .can_provide(&make_path(), Some(ms(300)))
-            .await
-            .unwrap_err();
-    }
-
-    #[tokio::test]
-    async fn can_provide_retries_the_request_on_retriable_errors() {
-        let (server, client) = make_client().await;
-
-        mock_can_provide()
-            .respond_with(ResponseTemplate::new(StatusCode::INTERNAL_SERVER_ERROR))
-            .up_to_n_times(1)
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        mock_can_provide()
-            .respond_with(ResponseTemplate::new(StatusCode::OK))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let ok = client.can_provide(&make_path(), None).await.unwrap();
-
-        assert!(ok);
-    }
-
-    #[tokio::test]
-    async fn can_provide_does_not_retry_the_request_on_non_retriable_errors() {
-        let (server, client) = make_client().await;
-
-        mock_can_provide()
-            .respond_with(ResponseTemplate::new(StatusCode::GATEWAY_TIMEOUT))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        client.can_provide(&make_path(), None).await.unwrap_err();
     }
 
     #[tokio::test]
@@ -447,8 +238,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let content = client
-            .cat_stream(&make_path(), None)
+        let bytes = client
+            .cat_stream(&make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -459,7 +250,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(content.as_ref(), b"some data");
+        assert_eq!(bytes.as_ref(), b"some data");
     }
 
     #[tokio::test]
@@ -472,13 +263,15 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = client.cat_stream(&make_path(), Some(ms(300))).await;
+        let result = client
+            .cat_stream(&make_path(), Some(ms(300)), RetryPolicy::None)
+            .await;
 
         assert!(matches!(result, Err(_)));
     }
 
     #[tokio::test]
-    async fn cat_stream_retries_the_request_on_retriable_errors() {
+    async fn cat_stream_retries_the_request_on_non_deterministic_errors() {
         let (server, client) = make_client().await;
 
         mock_cat()
@@ -494,22 +287,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let _stream = client.cat_stream(&make_path(), None).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn cat_stream_does_not_retry_the_request_on_non_retriable_errors() {
-        let (server, client) = make_client().await;
-
-        mock_cat()
-            .respond_with(ResponseTemplate::new(StatusCode::GATEWAY_TIMEOUT))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let result = client.cat_stream(&make_path(), None).await;
-
-        assert!(matches!(result, Err(_)));
+        let _stream = client
+            .cat_stream(&make_path(), None, RetryPolicy::NonDeterministic)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -522,9 +303,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let content = client.cat(&make_path(), usize::MAX, None).await.unwrap();
+        let bytes = client
+            .cat(&make_path(), usize::MAX, None, RetryPolicy::None)
+            .await
+            .unwrap();
 
-        assert_eq!(content.as_ref(), b"some data");
+        assert_eq!(bytes.as_ref(), b"some data");
     }
 
     #[tokio::test]
@@ -539,9 +323,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let content = client.cat(&make_path(), data.len(), None).await.unwrap();
+        let bytes = client
+            .cat(&make_path(), data.len(), None, RetryPolicy::None)
+            .await
+            .unwrap();
 
-        assert_eq!(content.as_ref(), data);
+        assert_eq!(bytes.as_ref(), data);
     }
 
     #[tokio::test]
@@ -557,7 +344,7 @@ mod tests {
             .await;
 
         client
-            .cat(&make_path(), data.len() - 1, None)
+            .cat(&make_path(), data.len() - 1, None, RetryPolicy::None)
             .await
             .unwrap_err();
     }
@@ -573,13 +360,13 @@ mod tests {
             .await;
 
         client
-            .cat(&make_path(), usize::MAX, Some(ms(300)))
+            .cat(&make_path(), usize::MAX, Some(ms(300)), RetryPolicy::None)
             .await
             .unwrap_err();
     }
 
     #[tokio::test]
-    async fn cat_retries_the_request_on_retriable_errors() {
+    async fn cat_retries_the_request_on_non_deterministic_errors() {
         let (server, client) = make_client().await;
 
         mock_cat()
@@ -595,25 +382,17 @@ mod tests {
             .mount(&server)
             .await;
 
-        let content = client.cat(&make_path(), usize::MAX, None).await.unwrap();
-
-        assert_eq!(content.as_ref(), b"some data");
-    }
-
-    #[tokio::test]
-    async fn cat_does_not_retry_the_request_on_non_retriable_errors() {
-        let (server, client) = make_client().await;
-
-        mock_cat()
-            .respond_with(ResponseTemplate::new(StatusCode::GATEWAY_TIMEOUT))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        client
-            .cat(&make_path(), usize::MAX, None)
+        let bytes = client
+            .cat(
+                &make_path(),
+                usize::MAX,
+                None,
+                RetryPolicy::NonDeterministic,
+            )
             .await
-            .unwrap_err();
+            .unwrap();
+
+        assert_eq!(bytes.as_ref(), b"some data");
     }
 
     #[tokio::test]
@@ -626,9 +405,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let block = client.get_block(&make_path(), None).await.unwrap();
+        let bytes = client
+            .get_block(&make_path(), None, RetryPolicy::None)
+            .await
+            .unwrap();
 
-        assert_eq!(block.as_ref(), b"some data");
+        assert_eq!(bytes.as_ref(), b"some data");
     }
 
     #[tokio::test]
@@ -642,13 +424,13 @@ mod tests {
             .await;
 
         client
-            .get_block(&make_path(), Some(ms(300)))
+            .get_block(&make_path(), Some(ms(300)), RetryPolicy::None)
             .await
             .unwrap_err();
     }
 
     #[tokio::test]
-    async fn get_block_retries_the_request_on_retriable_errors() {
+    async fn get_block_retries_the_request_on_non_deterministic_errors() {
         let (server, client) = make_client().await;
 
         mock_get_block()
@@ -664,21 +446,11 @@ mod tests {
             .mount(&server)
             .await;
 
-        let block = client.get_block(&make_path(), None).await.unwrap();
+        let bytes = client
+            .get_block(&make_path(), None, RetryPolicy::NonDeterministic)
+            .await
+            .unwrap();
 
-        assert_eq!(block.as_ref(), b"some data");
-    }
-
-    #[tokio::test]
-    async fn get_block_does_not_retry_the_request_on_non_retriable_errors() {
-        let (server, client) = make_client().await;
-
-        mock_get_block()
-            .respond_with(ResponseTemplate::new(StatusCode::GATEWAY_TIMEOUT))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        client.get_block(&make_path(), None).await.unwrap_err();
+        assert_eq!(bytes.as_ref(), b"some data");
     }
 }

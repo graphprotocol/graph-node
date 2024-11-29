@@ -591,23 +591,6 @@ impl<S: Store> IndexNodeResolver<S> {
                 )
                 .await?
             }
-            BlockchainKind::Starknet => {
-                let unvalidated_subgraph_manifest =
-                    UnvalidatedSubgraphManifest::<graph_chain_starknet::Chain>::resolve(
-                        deployment_hash.clone(),
-                        raw_yaml,
-                        &self.link_resolver,
-                        &self.logger,
-                        max_spec_version,
-                    )
-                    .await?;
-
-                Self::validate_and_extract_features(
-                    &self.store.subgraph_store(),
-                    unvalidated_subgraph_manifest,
-                )
-                .await?
-            }
         };
 
         Ok(result)
@@ -717,7 +700,6 @@ impl<S: Store> IndexNodeResolver<S> {
         try_resolve_for_chain!(graph_chain_arweave::Chain);
         try_resolve_for_chain!(graph_chain_cosmos::Chain);
         try_resolve_for_chain!(graph_chain_near::Chain);
-        try_resolve_for_chain!(graph_chain_starknet::Chain);
 
         // If you're adding support for a new chain and this `match` clause just
         // gave you a compiler error, then this message is for you! You need to
@@ -729,8 +711,7 @@ impl<S: Store> IndexNodeResolver<S> {
             | BlockchainKind::Arweave
             | BlockchainKind::Ethereum
             | BlockchainKind::Cosmos
-            | BlockchainKind::Near
-            | BlockchainKind::Starknet => (),
+            | BlockchainKind::Near => (),
         }
 
         // The given network does not exist.
