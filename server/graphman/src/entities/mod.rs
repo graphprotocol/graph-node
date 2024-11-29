@@ -9,8 +9,8 @@ mod deployment_version_selector;
 mod empty_response;
 mod execution;
 mod execution_id;
-mod response;
 mod subgraph_health;
+mod warning_response;
 
 pub use self::block_hash::BlockHash;
 pub use self::block_number::BlockNumber;
@@ -23,5 +23,5 @@ pub use self::deployment_version_selector::DeploymentVersionSelector;
 pub use self::empty_response::EmptyResponse;
 pub use self::execution::Execution;
 pub use self::execution_id::ExecutionId;
-pub use self::response::Response;
 pub use self::subgraph_health::SubgraphHealth;
+pub use self::warning_response::CompletedWithWarnings;

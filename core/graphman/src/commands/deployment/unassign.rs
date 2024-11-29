@@ -51,10 +51,9 @@ pub fn load_assigned_deployment(
         .map_err(GraphmanError::from)?
     {
         Some(_) => Ok(AssignedDeployment { site }),
-        None => Err(UnassignDeploymentError::AlreadyUnassigned(format!(
-            "{}",
-            deployment.as_str()
-        ))),
+        None => Err(UnassignDeploymentError::AlreadyUnassigned(
+            locator.to_string(),
+        )),
     }
 }
 

@@ -82,7 +82,7 @@ pub fn reassign_deployment(
 
     if changes.is_empty() {
         return Err(ReassignDeploymentError::AlreadyAssigned(
-            deployment.locator.hash.to_string(),
+            deployment.locator.to_string(),
             node.to_string(),
         ));
     }
