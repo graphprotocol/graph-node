@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use prometheus::IntGauge;
 use prometheus::{labels, Histogram, IntCounterVec};
+use slog::info;
+use slog::warn;
 
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
 use crate::prelude::Collector;
@@ -166,6 +169,39 @@ impl MetricsRegistry {
                 );
             }
         };
+    }
+
+    pub fn register_or_replace<T>(&self, name: &str, c: Box<T>)
+    where
+        T: Collector + Clone + 'static,
+    {
+        match self.registry.register(c.clone()) {
+            Ok(()) => {
+                info!(self.logger, "metric [{}] successfully registered", name);
+                self.registered_metrics.inc();
+            }
+            Err(PrometheusError::AlreadyReg) => {
+                warn!(
+                    self.logger,
+                    "metric [{}] is already registered; \
+                     the previous registration will be dropped so that the new metric can be used",
+                    name,
+                );
+
+                // Since the current metric is a duplicate,
+                // we can use it to unregister the previous registration.
+                self.unregister(c.clone());
+
+                self.register(name, c);
+            }
+            Err(err) => {
+                error!(
+                    self.logger,
+                    "registering metric [{}] failed: {:#}", name, err,
+                );
+                self.register_errors.inc();
+            }
+        }
     }
 
     pub fn global_counter(
@@ -509,6 +545,23 @@ impl MetricsRegistry {
         )?);
         self.register(name, histograms.clone());
         Ok(histograms)
+    }
+
+    pub fn new_int_gauge(
+        &self,
+        name: impl AsRef<str>,
+        help: impl AsRef<str>,
+        const_labels: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Result<IntGauge, PrometheusError> {
+        let opts = Opts::new(name.as_ref(), help.as_ref()).const_labels(
+            const_labels
+                .into_iter()
+                .map(|(a, b)| (a.into(), b.into()))
+                .collect(),
+        );
+        let gauge = IntGauge::with_opts(opts)?;
+        self.register_or_replace(name.as_ref(), Box::new(gauge.clone()));
+        Ok(gauge)
     }
 }
 

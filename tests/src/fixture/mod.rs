@@ -209,6 +209,10 @@ impl TestContext {
         let (logger, deployment, raw) = self.get_runner_context().await;
         let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
 
+        let deployment_status_metric = self
+            .instance_manager
+            .new_deployment_status_metric(&deployment);
+
         self.instance_manager
             .build_subgraph_runner(
                 logger,
@@ -217,6 +221,7 @@ impl TestContext {
                 raw,
                 Some(stop_block.block_number()),
                 tp,
+                deployment_status_metric,
             )
             .await
             .unwrap()
@@ -234,6 +239,10 @@ impl TestContext {
             graph_chain_substreams::TriggerProcessor::new(deployment.clone()),
         );
 
+        let deployment_status_metric = self
+            .instance_manager
+            .new_deployment_status_metric(&deployment);
+
         self.instance_manager
             .build_subgraph_runner(
                 logger,
@@ -242,6 +251,7 @@ impl TestContext {
                 raw,
                 Some(stop_block.block_number()),
                 tp,
+                deployment_status_metric,
             )
             .await
             .unwrap()
