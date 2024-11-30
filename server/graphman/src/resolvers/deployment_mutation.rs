@@ -1,10 +1,15 @@
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use async_graphql::Context;
 use async_graphql::Object;
 use async_graphql::Result;
+use async_graphql::Union;
+use graph::prelude::NodeId;
+use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::graphman::GraphmanStore;
 
+use crate::entities::CompletedWithWarnings;
 use crate::entities::DeploymentSelector;
 use crate::entities::EmptyResponse;
 use crate::entities::ExecutionId;
@@ -12,11 +17,18 @@ use crate::resolvers::context::GraphmanContext;
 
 mod create;
 mod pause;
+mod reassign;
 mod remove;
 mod restart;
 mod resume;
-
+mod unassign;
 pub struct DeploymentMutation;
+
+#[derive(Clone, Debug, Union)]
+pub enum ReassignResponse {
+    EmptyResponse(EmptyResponse),
+    CompletedWithWarnings(CompletedWithWarnings),
+}
 
 /// Mutations related to one or multiple deployments.
 #[Object]
@@ -80,5 +92,43 @@ impl DeploymentMutation {
         let ctx = GraphmanContext::new(ctx)?;
         remove::run(&ctx, &name)?;
         Ok(EmptyResponse::new())
+    }
+
+    /// Unassign a deployment
+    pub async fn unassign(
+        &self,
+        ctx: &Context<'_>,
+        deployment: DeploymentSelector,
+    ) -> Result<EmptyResponse> {
+        let ctx = GraphmanContext::new(ctx)?;
+        let deployment = deployment.try_into()?;
+
+        unassign::run(&ctx, &deployment)?;
+
+        Ok(EmptyResponse::new())
+    }
+
+    /// Assign or reassign a deployment
+    pub async fn reassign(
+        &self,
+        ctx: &Context<'_>,
+        deployment: DeploymentSelector,
+        node: String,
+    ) -> Result<ReassignResponse> {
+        let ctx = GraphmanContext::new(ctx)?;
+        let deployment = deployment.try_into()?;
+        let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
+        reassign::run(&ctx, &deployment, &node)?;
+
+        let mirror = catalog::Mirror::primary_only(ctx.primary_pool);
+        let count = mirror.assignments(&node)?.len();
+        if count == 1 {
+            let warning_msg = format!("warning: this is the only deployment assigned to '{}'. Are you sure it is spelled correctly?",node.as_str());
+            Ok(ReassignResponse::CompletedWithWarnings(
+                CompletedWithWarnings::new(vec![warning_msg]),
+            ))
+        } else {
+            Ok(ReassignResponse::EmptyResponse(EmptyResponse::new()))
+        }
     }
 }
