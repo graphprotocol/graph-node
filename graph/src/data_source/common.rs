@@ -115,20 +115,31 @@ pub struct CallDecl {
 }
 
 impl CallDecl {
+    pub fn validate_args(&self) -> Result<(), Error> {
+        self.expr.validate_args()
+    }
+
     pub fn address(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
         let address = match &self.expr.address {
-            CallArg::Address => log.address,
             CallArg::HexAddress(address) => *address,
-            CallArg::Param(name) => {
-                let value = params
-                    .iter()
-                    .find(|param| &param.name == name.as_str())
-                    .ok_or_else(|| anyhow!("unknown param {name}"))?
-                    .value
-                    .clone();
-                value
-                    .into_address()
-                    .ok_or_else(|| anyhow!("param {name} is not an address"))?
+            CallArg::Ethereum(arg) => match arg {
+                EthereumArg::Address => log.address,
+                EthereumArg::Param(name) => {
+                    let value = params
+                        .iter()
+                        .find(|param| &param.name == name.as_str())
+                        .ok_or_else(|| anyhow!("unknown param {name}"))?
+                        .value
+                        .clone();
+                    value
+                        .into_address()
+                        .ok_or_else(|| anyhow!("param {name} is not an address"))?
+                }
+            },
+            CallArg::Subgraph(_) => {
+                return Err(anyhow!(
+                    "Subgraph params are not supported for when declaring calls for event handlers"
+                ))
             }
         };
         Ok(address)
@@ -139,17 +150,22 @@ impl CallDecl {
             .args
             .iter()
             .map(|arg| match arg {
-                CallArg::Address => Ok(Token::Address(log.address)),
                 CallArg::HexAddress(address) => Ok(Token::Address(*address)),
-                CallArg::Param(name) => {
-                    let value = params
-                        .iter()
-                        .find(|param| &param.name == name.as_str())
-                        .ok_or_else(|| anyhow!("unknown param {name}"))?
-                        .value
-                        .clone();
-                    Ok(value)
-                }
+                CallArg::Ethereum(arg) => match arg {
+                    EthereumArg::Address => Ok(Token::Address(log.address)),
+                    EthereumArg::Param(name) => {
+                        let value = params
+                            .iter()
+                            .find(|param| &param.name == name.as_str())
+                            .ok_or_else(|| anyhow!("unknown param {name}"))?
+                            .value
+                            .clone();
+                        Ok(value)
+                    }
+                },
+                CallArg::Subgraph(_) => Err(anyhow!(
+                    "Subgraph params are not supported for when declaring calls for event handlers"
+                )),
             })
             .collect()
     }
@@ -190,6 +206,30 @@ pub struct CallExpr {
     readonly: (),
 }
 
+impl CallExpr {
+    fn validate_args(&self) -> Result<(), anyhow::Error> {
+        // Consider address along with args for checking Ethereum/Subgraph mixing
+        let has_ethereum = matches!(self.address, CallArg::Ethereum(_))
+            || self
+                .args
+                .iter()
+                .any(|arg| matches!(arg, CallArg::Ethereum(_)));
+
+        let has_subgraph = matches!(self.address, CallArg::Subgraph(_))
+            || self
+                .args
+                .iter()
+                .any(|arg| matches!(arg, CallArg::Subgraph(_)));
+
+        if has_ethereum && has_subgraph {
+            return Err(anyhow!(
+                "Cannot mix Ethereum and Subgraph args in the same call expression"
+            ));
+        }
+
+        Ok(())
+    }
+}
 /// Parse expressions of the form `Contract[address].function(arg1, arg2,
 /// ...)` where the `address` and the args are either `event.address` or
 /// `event.params.<name>`.
@@ -227,21 +267,41 @@ impl FromStr for CallExpr {
             .filter(|s| !s.is_empty())
             .map(|s| s.trim().parse::<CallArg>())
             .collect::<Result<_, _>>()?;
-        Ok(CallExpr {
+
+        let call_expr = CallExpr {
             abi,
             address,
             func,
             args,
             readonly: (),
-        })
+        };
+
+        // Validate the arguments after constructing the CallExpr
+        call_expr.validate_args()?;
+
+        Ok(call_expr)
     }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum CallArg {
+    // Hard-coded hex address
     HexAddress(Address),
+    // Ethereum-specific variants
+    Ethereum(EthereumArg),
+    // Subgraph datasource specific variants
+    Subgraph(SubgraphArg),
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum EthereumArg {
     Address,
     Param(Word),
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum SubgraphArg {
+    EntityParam(Word),
 }
 
 lazy_static! {
@@ -261,8 +321,13 @@ impl FromStr for CallArg {
 
         let mut parts = s.split('.');
         match (parts.next(), parts.next(), parts.next()) {
-            (Some("event"), Some("address"), None) => Ok(CallArg::Address),
-            (Some("event"), Some("params"), Some(param)) => Ok(CallArg::Param(Word::from(param))),
+            (Some("event"), Some("address"), None) => Ok(CallArg::Ethereum(EthereumArg::Address)),
+            (Some("event"), Some("params"), Some(param)) => {
+                Ok(CallArg::Ethereum(EthereumArg::Param(Word::from(param))))
+            }
+            (Some("entity"), Some(param), None) => Ok(CallArg::Subgraph(SubgraphArg::EntityParam(
+                Word::from(param),
+            ))),
             _ => Err(anyhow!("invalid call argument `{}`", s)),
         }
     }
@@ -272,43 +337,129 @@ pub trait FindMappingABI {
     fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error>;
 }
 
-#[test]
-fn test_call_expr() {
-    let expr: CallExpr = "ERC20[event.address].balanceOf(event.params.token)"
-        .parse()
-        .unwrap();
-    assert_eq!(expr.abi, "ERC20");
-    assert_eq!(expr.address, CallArg::Address);
-    assert_eq!(expr.func, "balanceOf");
-    assert_eq!(expr.args, vec![CallArg::Param("token".into())]);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let expr: CallExpr = "Pool[event.params.pool].fees(event.params.token0, event.params.token1)"
-        .parse()
-        .unwrap();
-    assert_eq!(expr.abi, "Pool");
-    assert_eq!(expr.address, CallArg::Param("pool".into()));
-    assert_eq!(expr.func, "fees");
-    assert_eq!(
-        expr.args,
-        vec![
-            CallArg::Param("token0".into()),
-            CallArg::Param("token1".into())
-        ]
-    );
+    #[test]
+    fn test_ethereum_call_expr() {
+        let expr: CallExpr = "ERC20[event.address].balanceOf(event.params.token)"
+            .parse()
+            .unwrap();
+        assert_eq!(expr.abi, "ERC20");
+        assert_eq!(expr.address, CallArg::Ethereum(EthereumArg::Address));
+        assert_eq!(expr.func, "balanceOf");
+        assert_eq!(
+            expr.args,
+            vec![CallArg::Ethereum(EthereumArg::Param("token".into()))]
+        );
 
-    let expr: CallExpr = "Pool[event.address].growth()".parse().unwrap();
-    assert_eq!(expr.abi, "Pool");
-    assert_eq!(expr.address, CallArg::Address);
-    assert_eq!(expr.func, "growth");
-    assert_eq!(expr.args, vec![]);
+        let expr: CallExpr =
+            "Pool[event.params.pool].fees(event.params.token0, event.params.token1)"
+                .parse()
+                .unwrap();
+        assert_eq!(expr.abi, "Pool");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::Param("pool".into()))
+        );
+        assert_eq!(expr.func, "fees");
+        assert_eq!(
+            expr.args,
+            vec![
+                CallArg::Ethereum(EthereumArg::Param("token0".into())),
+                CallArg::Ethereum(EthereumArg::Param("token1".into()))
+            ]
+        );
+    }
 
-    let expr: CallExpr = "Pool[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].growth(0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF)"
-        .parse()
-        .unwrap();
-    let call_arg =
-        CallArg::HexAddress(H160::from_str("0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF").unwrap());
-    assert_eq!(expr.abi, "Pool");
-    assert_eq!(expr.address, call_arg);
-    assert_eq!(expr.func, "growth");
-    assert_eq!(expr.args, vec![call_arg]);
+    #[test]
+    fn test_subgraph_call_expr() {
+        let expr: CallExpr = "Token[entity.id].symbol()".parse().unwrap();
+        assert_eq!(expr.abi, "Token");
+        assert_eq!(
+            expr.address,
+            CallArg::Subgraph(SubgraphArg::EntityParam("id".into()))
+        );
+        assert_eq!(expr.func, "symbol");
+        assert_eq!(expr.args, vec![]);
+
+        let expr: CallExpr = "Pair[entity.pair].getReserves(entity.token0)"
+            .parse()
+            .unwrap();
+        assert_eq!(expr.abi, "Pair");
+        assert_eq!(
+            expr.address,
+            CallArg::Subgraph(SubgraphArg::EntityParam("pair".into()))
+        );
+        assert_eq!(expr.func, "getReserves");
+        assert_eq!(
+            expr.args,
+            vec![CallArg::Subgraph(SubgraphArg::EntityParam("token0".into()))]
+        );
+    }
+
+    #[test]
+    fn test_hex_address_call_expr() {
+        let addr = "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF";
+        let hex_address = CallArg::HexAddress(web3::types::H160::from_str(addr).unwrap());
+
+        // Test HexAddress in address position
+        let expr: CallExpr = format!("Pool[{}].growth()", addr).parse().unwrap();
+        assert_eq!(expr.abi, "Pool");
+        assert_eq!(expr.address, hex_address.clone());
+        assert_eq!(expr.func, "growth");
+        assert_eq!(expr.args, vec![]);
+
+        // Test HexAddress in argument position
+        let expr: CallExpr = format!("Pool[event.address].approve({}, event.params.amount)", addr)
+            .parse()
+            .unwrap();
+        assert_eq!(expr.abi, "Pool");
+        assert_eq!(expr.address, CallArg::Ethereum(EthereumArg::Address));
+        assert_eq!(expr.func, "approve");
+        assert_eq!(expr.args.len(), 2);
+        assert_eq!(expr.args[0], hex_address);
+    }
+
+    #[test]
+    fn test_invalid_call_args() {
+        // Invalid hex address
+        assert!("Pool[0xinvalid].test()".parse::<CallExpr>().is_err());
+
+        // Invalid event path
+        assert!("Pool[event.invalid].test()".parse::<CallExpr>().is_err());
+
+        // Invalid entity path
+        assert!("Pool[entity].test()".parse::<CallExpr>().is_err());
+
+        // Empty address
+        assert!("Pool[].test()".parse::<CallExpr>().is_err());
+
+        // Invalid parameter format
+        assert!("Pool[event.params].test()".parse::<CallExpr>().is_err());
+    }
+
+    #[test]
+    fn test_from_str() {
+        // Test valid hex address
+        let addr = "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF";
+        let arg = CallArg::from_str(addr).unwrap();
+        assert!(matches!(arg, CallArg::HexAddress(_)));
+
+        // Test Ethereum Address
+        let arg = CallArg::from_str("event.address").unwrap();
+        assert!(matches!(arg, CallArg::Ethereum(EthereumArg::Address)));
+
+        // Test Ethereum Param
+        let arg = CallArg::from_str("event.params.token").unwrap();
+        assert!(matches!(arg, CallArg::Ethereum(EthereumArg::Param(_))));
+
+        // Test Subgraph EntityParam
+        let arg = CallArg::from_str("entity.token").unwrap();
+        assert!(matches!(
+            arg,
+            CallArg::Subgraph(SubgraphArg::EntityParam(_))
+        ));
+    }
 }
