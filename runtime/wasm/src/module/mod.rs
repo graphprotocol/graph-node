@@ -80,6 +80,16 @@ impl ToAscPtr for subgraph::TriggerData {
     }
 }
 
+impl ToAscPtr for subgraph::MappingEntityTrigger {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, HostExportError> {
+        asc_new(heap, &self.data.entity, gas).map(|ptr| ptr.erase())
+    }
+}
+
 impl<C: Blockchain> ToAscPtr for MappingTrigger<C>
 where
     C::MappingTrigger: ToAscPtr,
