@@ -1,8 +1,9 @@
 use anyhow::Error;
-use ethabi::{Error as ABIError, Function, ParamType, Token};
+use ethabi::{Error as ABIError, ParamType, Token};
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
+use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
@@ -91,16 +92,6 @@ impl EventSignatureWithTopics {
                 topics.get(3).map_or(false, |topic| t3.contains(topic))
             })
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ContractCall {
-    pub contract_name: String,
-    pub address: Address,
-    pub block_ptr: BlockPtr,
-    pub function: Function,
-    pub args: Vec<Token>,
-    pub gas: Option<u32>,
 }
 
 #[derive(Error, Debug)]
