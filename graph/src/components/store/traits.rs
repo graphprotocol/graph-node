@@ -269,27 +269,6 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
     }
 }
 
-pub trait SourceableStore: Send + Sync + 'static {
-    /// Returns all versions of entities of the given entity_type that were
-    /// changed in the given block_range.
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
-}
-
-// This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
-impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
-    fn get_range(
-        &self,
-        entity_type: &EntityType,
-        block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        (**self).get_range(entity_type, block_range)
-    }
-}
-
 pub trait DeploymentCursorTracker: Sync + Send + 'static {
     fn input_schema(&self) -> InputSchema;
 
@@ -313,6 +292,27 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
 
     fn input_schema(&self) -> InputSchema {
         (**self).input_schema()
+    }
+}
+
+pub trait SourceableStore: DeploymentCursorTracker {
+    /// Returns all versions of entities of the given entity_type that were
+    /// changed in the given block_range.
+    fn get_range(
+        &self,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
+}
+
+// This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
+    fn get_range(
+        &self,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+        (**self).get_range(entity_type, block_range)
     }
 }
 

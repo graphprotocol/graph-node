@@ -212,11 +212,11 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         max_spec_version: Version,
         is_runner_test: bool,
     ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn SourceableStore>)>> {
-        let mut writable_stores = Vec::new();
+        let mut sourceable_stores = Vec::new();
         let subgraph_store = self.subgraph_store.clone();
 
         if is_runner_test {
-            return Ok(writable_stores);
+            return Ok(sourceable_stores);
         }
 
         for hash in hashes {
@@ -235,7 +235,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 .active_locator(&hash)?
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
-            let readable_store = subgraph_store
+            let sourceable_store = subgraph_store
                 .clone()
                 .sourceable(
                     logger.clone(),
@@ -244,10 +244,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 )
                 .await?;
 
-            writable_stores.push((loc.hash, readable_store));
+            sourceable_stores.push((loc.hash, sourceable_store));
         }
 
-        Ok(writable_stores)
+        Ok(sourceable_stores)
     }
 
     pub async fn build_subgraph_runner<C>(

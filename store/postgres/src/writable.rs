@@ -1572,19 +1572,19 @@ impl ReadStore for WritableStore {
 pub struct SourceableStore {
     site: Arc<Site>,
     store: Arc<DeploymentStore>,
-    _writable: Arc<dyn store::WritableStore>,
+    writable: Arc<dyn store::WritableStore>,
 }
 
 impl SourceableStore {
     pub fn new(
         site: Arc<Site>,
         store: Arc<DeploymentStore>,
-        _writable: Arc<dyn store::WritableStore>,
+        writable: Arc<dyn store::WritableStore>,
     ) -> Self {
         Self {
             site,
             store,
-            _writable,
+            writable,
         }
     }
 }
@@ -1597,6 +1597,19 @@ impl store::SourceableStore for SourceableStore {
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         self.store
             .get_range(self.site.clone(), entity_type, block_range)
+    }
+}
+impl DeploymentCursorTracker for SourceableStore {
+    fn input_schema(&self) -> InputSchema {
+        ReadStore::input_schema(&self.writable)
+    }
+
+    fn block_ptr(&self) -> Option<BlockPtr> {
+        self.writable.block_ptr()
+    }
+
+    fn firehose_cursor(&self) -> FirehoseCursor {
+        self.writable.firehose_cursor()
     }
 }
 
