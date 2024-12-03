@@ -2,7 +2,7 @@ use slog::Logger;
 
 use crate::ipfs::error::IpfsError;
 use crate::util::futures::retry;
-use crate::util::futures::RetryConfigNoTimeout;
+use crate::util::futures::RetryConfig;
 
 /// This is a safety mechanism to prevent infinite spamming of IPFS servers
 /// in the event of logical or unhandled deterministic errors.
@@ -24,14 +24,11 @@ pub enum RetryPolicy {
 
 impl RetryPolicy {
     /// Creates a retry policy for every request sent to IPFS servers.
-    ///
-    /// Note: It is expected that retries will be wrapped in timeouts
-    ///       when necessary to make them more flexible.
     pub(super) fn create<O: Send + Sync + 'static>(
         self,
         operation_name: impl ToString,
         logger: &Logger,
-    ) -> RetryConfigNoTimeout<O, IpfsError> {
+    ) -> RetryConfig<O, IpfsError> {
         retry(operation_name, logger)
             .limit(DEFAULT_MAX_ATTEMPTS)
             .when(move |result: &Result<O, IpfsError>| match result {
@@ -42,7 +39,6 @@ impl RetryPolicy {
                     Self::NonDeterministic => !err.is_deterministic(),
                 },
             })
-            .no_timeout()
     }
 }
 
@@ -69,6 +65,7 @@ mod tests {
 
         let err = RetryPolicy::None
             .create::<()>("test", &discard())
+            .no_timeout()
             .run({
                 let counter = counter.clone();
                 move || {
@@ -92,6 +89,7 @@ mod tests {
 
         let err = RetryPolicy::Networking
             .create("test", &discard())
+            .no_timeout()
             .run({
                 let counter = counter.clone();
                 move || {
@@ -126,6 +124,7 @@ mod tests {
 
         RetryPolicy::Networking
             .create("test", &discard())
+            .no_timeout()
             .run({
                 let counter = counter.clone();
                 move || {
@@ -159,6 +158,7 @@ mod tests {
 
         let err = RetryPolicy::NonDeterministic
             .create::<()>("test", &discard())
+            .no_timeout()
             .run({
                 let counter = counter.clone();
                 move || {
@@ -190,6 +190,7 @@ mod tests {
 
         RetryPolicy::NonDeterministic
             .create("test", &discard())
+            .no_timeout()
             .run({
                 let counter = counter.clone();
                 move || {
