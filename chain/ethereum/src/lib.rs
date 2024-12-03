@@ -28,8 +28,8 @@ pub mod network;
 pub mod trigger;
 
 pub use crate::adapter::{
-    ContractCall, ContractCallError, EthereumAdapter as EthereumAdapterTrait,
-    ProviderEthRpcMetrics, SubgraphEthRpcMetrics, TriggerFilter,
+    ContractCallError, EthereumAdapter as EthereumAdapterTrait, ProviderEthRpcMetrics,
+    SubgraphEthRpcMetrics, TriggerFilter,
 };
 pub use crate::chain::Chain;
 pub use graph::blockchain::BlockIngestor;
