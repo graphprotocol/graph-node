@@ -3,6 +3,7 @@ use graph::blockchain::TriggerData;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
+use graph::data_source::common::DeclaredCall;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::ethabi::ethereum_types::U128;
@@ -28,7 +29,6 @@ use graph_runtime_wasm::module::ToAscPtr;
 use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
 
-use crate::data_source::DeclaredCall;
 use crate::runtime::abi::AscEthereumBlock;
 use crate::runtime::abi::AscEthereumBlock_0_0_6;
 use crate::runtime::abi::AscEthereumCall;
