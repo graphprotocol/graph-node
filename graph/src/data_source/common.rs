@@ -268,6 +268,10 @@ impl FromStr for CallArg {
     }
 }
 
+pub trait FindMappingABI {
+    fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error>;
+}
+
 #[test]
 fn test_call_expr() {
     let expr: CallExpr = "ERC20[event.address].balanceOf(event.params.token)"
