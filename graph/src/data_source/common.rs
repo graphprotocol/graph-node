@@ -1,3 +1,4 @@
+use crate::prelude::BlockPtr;
 use crate::{components::link_resolver::LinkResolver, data::value::Word, prelude::Link};
 use anyhow::{anyhow, Context, Error};
 use ethabi::{Address, Contract, Function, LogParam, Token};
@@ -335,6 +336,83 @@ impl FromStr for CallArg {
 
 pub trait FindMappingABI {
     fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error>;
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeclaredCall {
+    /// The user-supplied label from the manifest
+    label: String,
+    contract_name: String,
+    address: Address,
+    function: Function,
+    args: Vec<Token>,
+}
+
+impl DeclaredCall {
+    pub fn new(
+        mapping: &dyn FindMappingABI,
+        call_decls: &CallDecls,
+        log: &Log,
+        params: &[LogParam],
+    ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
+        let mut calls = Vec::new();
+        for decl in call_decls.decls.iter() {
+            let contract_name = decl.expr.abi.to_string();
+            let function_name = decl.expr.func.as_str();
+            // Obtain the path to the contract ABI
+            let abi = mapping.find_abi(&contract_name)?;
+            // TODO: Handle overloaded functions
+            let function = {
+                // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
+                // functions this always picks the same overloaded variant, which is incorrect
+                // and may lead to encoding/decoding errors
+                abi.contract.function(function_name).with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime",
+                        contract_name, function_name
+                    )
+                })?
+            };
+
+            let address = decl.address(log, params)?;
+            let args = decl.args(log, params)?;
+
+            let call = DeclaredCall {
+                label: decl.label.clone(),
+                contract_name,
+                address,
+                function: function.clone(),
+                args,
+            };
+            calls.push(call);
+        }
+
+        Ok(calls)
+    }
+
+    pub fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (ContractCall, String) {
+        (
+            ContractCall {
+                contract_name: self.contract_name,
+                address: self.address,
+                block_ptr,
+                function: self.function,
+                args: self.args,
+                gas,
+            },
+            self.label,
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ContractCall {
+    pub contract_name: String,
+    pub address: Address,
+    pub block_ptr: BlockPtr,
+    pub function: Function,
+    pub args: Vec<Token>,
+    pub gas: Option<u32>,
 }
 
 #[cfg(test)]

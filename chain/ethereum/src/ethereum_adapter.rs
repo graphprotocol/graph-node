@@ -9,6 +9,7 @@ use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::data::subgraph::API_VERSION_0_0_7;
+use graph::data_source::common::ContractCall;
 use graph::futures01::stream;
 use graph::futures01::Future;
 use graph::futures01::Stream;
@@ -63,7 +64,7 @@ use crate::NodeCapabilities;
 use crate::TriggerFilter;
 use crate::{
     adapter::{
-        ContractCall, ContractCallError, EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait,
+        ContractCallError, EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait,
         EthereumBlockFilter, EthereumCallFilter, EthereumLogFilter, ProviderEthRpcMetrics,
         SubgraphEthRpcMetrics,
     },
