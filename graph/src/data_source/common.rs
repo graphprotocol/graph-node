@@ -1,9 +1,11 @@
-use crate::prelude::BlockPtr;
+use crate::blockchain::block_stream::EntityWithType;
+use crate::prelude::{BlockPtr, Value};
 use crate::{components::link_resolver::LinkResolver, data::value::Word, prelude::Link};
 use anyhow::{anyhow, Context, Error};
-use ethabi::{Address, Contract, Function, LogParam, Token};
+use ethabi::{Address, Contract, Function, LogParam, ParamType, Token};
 use graph_derive::CheapClone;
 use lazy_static::lazy_static;
+use num_bigint::Sign;
 use regex::Regex;
 use serde::de;
 use serde::Deserialize;
@@ -120,7 +122,7 @@ impl CallDecl {
         self.expr.validate_args()
     }
 
-    pub fn address(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
+    pub fn address_for_log(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
         let address = match &self.expr.address {
             CallArg::HexAddress(address) => *address,
             CallArg::Ethereum(arg) => match arg {
@@ -146,7 +148,7 @@ impl CallDecl {
         Ok(address)
     }
 
-    pub fn args(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
+    pub fn args_for_log(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
         self.expr
             .args
             .iter()
@@ -189,6 +191,167 @@ impl CallDecl {
                     contract_name, function_name
                 )
             })
+    }
+
+    pub fn address_for_entity_handler(&self, entity: &EntityWithType) -> Result<H160, Error> {
+        match &self.expr.address {
+            // Static hex address - just return it directly
+            CallArg::HexAddress(address) => Ok(*address),
+
+            // Ethereum params not allowed here
+            CallArg::Ethereum(_) => Err(anyhow!(
+                "Ethereum params are not supported for entity handler calls"
+            )),
+
+            // Look up address from entity parameter
+            CallArg::Subgraph(SubgraphArg::EntityParam(name)) => {
+                // Get the value for this parameter
+                let value = entity
+                    .entity
+                    .get(name.as_str())
+                    .ok_or_else(|| anyhow!("entity missing required param '{name}'"))?;
+
+                // Make sure it's a bytes value and convert to address
+                match value {
+                    Value::Bytes(bytes) => {
+                        let address = H160::from_slice(bytes.as_slice());
+                        Ok(address)
+                    }
+                    _ => Err(anyhow!("param '{name}' must be an address")),
+                }
+            }
+        }
+    }
+
+    /// Processes arguments for an entity handler, converting them to the expected token types.
+    /// Returns an error if argument count mismatches or if conversion fails.
+    pub fn args_for_entity_handler(
+        &self,
+        entity: &EntityWithType,
+        param_types: Vec<ParamType>,
+    ) -> Result<Vec<Token>, Error> {
+        self.validate_entity_handler_args(&param_types)?;
+
+        self.expr
+            .args
+            .iter()
+            .zip(param_types.into_iter())
+            .map(|(arg, expected_type)| {
+                self.process_entity_handler_arg(arg, &expected_type, entity)
+            })
+            .collect()
+    }
+
+    /// Validates that the number of provided arguments matches the expected parameter types.
+    fn validate_entity_handler_args(&self, param_types: &[ParamType]) -> Result<(), Error> {
+        if self.expr.args.len() != param_types.len() {
+            return Err(anyhow!(
+                "mismatched number of arguments: expected {}, got {}",
+                param_types.len(),
+                self.expr.args.len()
+            ));
+        }
+        Ok(())
+    }
+
+    /// Processes a single entity handler argument based on its type (HexAddress, Ethereum, or Subgraph).
+    /// Returns error for unsupported Ethereum params.
+    fn process_entity_handler_arg(
+        &self,
+        arg: &CallArg,
+        expected_type: &ParamType,
+        entity: &EntityWithType,
+    ) -> Result<Token, Error> {
+        match arg {
+            CallArg::HexAddress(address) => self.process_hex_address(*address, expected_type),
+            CallArg::Ethereum(_) => Err(anyhow!(
+                "Ethereum params are not supported for entity handler calls"
+            )),
+            CallArg::Subgraph(SubgraphArg::EntityParam(name)) => {
+                self.process_entity_param(name, expected_type, entity)
+            }
+        }
+    }
+
+    /// Converts a hex address to a token, ensuring it matches the expected parameter type.
+    fn process_hex_address(
+        &self,
+        address: H160,
+        expected_type: &ParamType,
+    ) -> Result<Token, Error> {
+        match expected_type {
+            ParamType::Address => Ok(Token::Address(address)),
+            _ => Err(anyhow!(
+                "type mismatch: hex address provided for non-address parameter"
+            )),
+        }
+    }
+
+    /// Retrieves and processes an entity parameter, converting it to the expected token type.
+    fn process_entity_param(
+        &self,
+        name: &str,
+        expected_type: &ParamType,
+        entity: &EntityWithType,
+    ) -> Result<Token, Error> {
+        let value = entity
+            .entity
+            .get(name)
+            .ok_or_else(|| anyhow!("entity missing required param '{name}'"))?;
+
+        self.convert_entity_value_to_token(value, expected_type, name)
+    }
+
+    /// Converts a `Value` to the appropriate `Token` type based on the expected parameter type.
+    /// Handles various type conversions including primitives, bytes, and arrays.
+    fn convert_entity_value_to_token(
+        &self,
+        value: &Value,
+        expected_type: &ParamType,
+        param_name: &str,
+    ) -> Result<Token, Error> {
+        match (expected_type, value) {
+            (ParamType::Address, Value::Bytes(b)) => {
+                Ok(Token::Address(H160::from_slice(b.as_slice())))
+            }
+            (ParamType::Bytes, Value::Bytes(b)) => Ok(Token::Bytes(b.as_ref().to_vec())),
+            (ParamType::FixedBytes(size), Value::Bytes(b)) if b.len() == *size => {
+                Ok(Token::FixedBytes(b.as_ref().to_vec()))
+            }
+            (ParamType::String, Value::String(s)) => Ok(Token::String(s.to_string())),
+            (ParamType::Bool, Value::Bool(b)) => Ok(Token::Bool(*b)),
+            (ParamType::Int(_), Value::Int(i)) => Ok(Token::Int((*i).into())),
+            (ParamType::Int(_), Value::Int8(i)) => Ok(Token::Int((*i).into())),
+            (ParamType::Int(_), Value::BigInt(i)) => Ok(Token::Int(i.to_signed_u256())),
+            (ParamType::Uint(_), Value::Int(i)) if *i >= 0 => Ok(Token::Uint((*i).into())),
+            (ParamType::Uint(_), Value::BigInt(i)) if i.sign() == Sign::Plus => {
+                Ok(Token::Uint(i.to_unsigned_u256()))
+            }
+            (ParamType::Array(inner_type), Value::List(values)) => {
+                self.process_entity_array_values(values, inner_type.as_ref(), param_name)
+            }
+            _ => Err(anyhow!(
+                "type mismatch for param '{param_name}': cannot convert {:?} to {:?}",
+                value,
+                expected_type
+            )),
+        }
+    }
+
+    fn process_entity_array_values(
+        &self,
+        values: &[Value],
+        inner_type: &ParamType,
+        param_name: &str,
+    ) -> Result<Token, Error> {
+        let tokens: Result<Vec<Token>, Error> = values
+            .iter()
+            .enumerate()
+            .map(|(idx, v)| {
+                self.convert_entity_value_to_token(v, inner_type, &format!("{param_name}[{idx}]"))
+            })
+            .collect();
+        Ok(Token::Array(tokens?))
     }
 }
 
@@ -369,14 +532,41 @@ pub struct DeclaredCall {
 }
 
 impl DeclaredCall {
-    pub fn new(
+    pub fn from_log_trigger(
         mapping: &dyn FindMappingABI,
         call_decls: &CallDecls,
         log: &Log,
         params: &[LogParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         Self::create_calls(mapping, call_decls, |decl, _| {
-            Ok((decl.address(log, params)?, decl.args(log, params)?))
+            Ok((
+                decl.address_for_log(log, params)?,
+                decl.args_for_log(log, params)?,
+            ))
+        })
+    }
+
+    pub fn from_entity_trigger(
+        mapping: &dyn FindMappingABI,
+        call_decls: &CallDecls,
+        entity: &EntityWithType,
+    ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
+        Self::create_calls(mapping, call_decls, |decl, function| {
+            let param_types = function
+                .inputs
+                .iter()
+                .map(|param| param.kind.clone())
+                .collect::<Vec<_>>();
+
+            Ok((
+                decl.address_for_entity_handler(entity)?,
+                decl.args_for_entity_handler(entity, param_types)
+                    .context(format!(
+                        "Failed to parse arguments for call to function \"{}\" of contract \"{}\"",
+                        decl.expr.func.as_str(),
+                        decl.expr.abi.to_string()
+                    ))?,
+            ))
         })
     }
 
