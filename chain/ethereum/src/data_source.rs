@@ -5,7 +5,7 @@ use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
-use graph::data_source::common::{CallDecls, MappingABI, UnresolvedMappingABI};
+use graph::data_source::common::{CallDecls, FindMappingABI, MappingABI, UnresolvedMappingABI};
 use graph::data_source::CausalityRegion;
 use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
@@ -798,7 +798,7 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
-                let calls = DeclaredCall::new(&self.mapping, &event_handler, &log, &params)?;
+                let calls = DeclaredCall::new(&self.mapping, &event_handler.calls, &log, &params)?;
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
@@ -941,13 +941,13 @@ pub struct DeclaredCall {
 
 impl DeclaredCall {
     fn new(
-        mapping: &Mapping,
-        handler: &MappingEventHandler,
+        mapping: &dyn FindMappingABI,
+        call_decls: &CallDecls,
         log: &Log,
         params: &[LogParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         let mut calls = Vec::new();
-        for decl in handler.calls.decls.iter() {
+        for decl in call_decls.decls.iter() {
             let contract_name = decl.expr.abi.to_string();
             let function_name = decl.expr.func.as_str();
             // Obtain the path to the contract ABI
@@ -1368,8 +1368,10 @@ impl Mapping {
             .iter()
             .any(|handler| matches!(handler.filter, Some(BlockHandlerFilter::Call)))
     }
+}
 
-    pub fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
+impl FindMappingABI for Mapping {
+    fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
         Ok(self
             .abis
             .iter()

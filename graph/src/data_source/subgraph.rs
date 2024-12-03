@@ -6,16 +6,16 @@ use crate::{
         value::Word,
     },
     data_source,
-    prelude::{DataSourceContext, DeploymentHash, Link},
+    prelude::{CheapClone, DataSourceContext, DeploymentHash, Link},
 };
-use anyhow::{Context, Error};
+use anyhow::{anyhow, Context, Error};
 use futures03::{stream::FuturesOrdered, TryStreamExt};
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::{fmt, sync::Arc};
 
 use super::{
-    common::{MappingABI, UnresolvedMappingABI},
+    common::{FindMappingABI, MappingABI, UnresolvedMappingABI},
     DataSourceTemplateInfo, TriggerWithHandler,
 };
 
@@ -139,6 +139,17 @@ pub struct Mapping {
 impl Mapping {
     pub fn requires_archive(&self) -> anyhow::Result<bool> {
         calls_host_fn(&self.runtime, "ethereum.call")
+    }
+}
+
+impl FindMappingABI for Mapping {
+    fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
+        Ok(self
+            .abis
+            .iter()
+            .find(|abi| abi.name == abi_name)
+            .ok_or_else(|| anyhow!("No ABI entry with name `{}` found", abi_name))?
+            .cheap_clone())
     }
 }
 
