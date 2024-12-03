@@ -80,6 +80,8 @@ impl IpfsGatewayClient {
 
         let fut = RetryPolicy::NonDeterministic
             .create("IPFS.Gateway.send_test_request", &self.logger)
+            .no_logging()
+            .no_timeout()
             .run(move || {
                 let req = req.try_clone().expect("request can be cloned");
 
