@@ -170,6 +170,26 @@ impl CallDecl {
             })
             .collect()
     }
+
+    pub fn get_function(&self, mapping: &dyn FindMappingABI) -> Result<Function, anyhow::Error> {
+        let contract_name = self.expr.abi.to_string();
+        let function_name = self.expr.func.as_str();
+        let abi = mapping.find_abi(&contract_name)?;
+
+        // TODO: Handle overloaded functions
+        // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
+        // functions this always picks the same overloaded variant, which is incorrect
+        // and may lead to encoding/decoding errors
+        abi.contract
+            .function(function_name)
+            .cloned()
+            .with_context(|| {
+                format!(
+                    "Unknown function \"{}::{}\" called from WASM runtime",
+                    contract_name, function_name
+                )
+            })
+    }
 }
 
 impl<'de> de::Deserialize<'de> for CallDecls {
@@ -355,38 +375,33 @@ impl DeclaredCall {
         log: &Log,
         params: &[LogParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
+        Self::create_calls(mapping, call_decls, |decl, _| {
+            Ok((decl.address(log, params)?, decl.args(log, params)?))
+        })
+    }
+
+    fn create_calls<F>(
+        mapping: &dyn FindMappingABI,
+        call_decls: &CallDecls,
+        get_address_and_args: F,
+    ) -> Result<Vec<DeclaredCall>, anyhow::Error>
+    where
+        F: Fn(&CallDecl, &Function) -> Result<(Address, Vec<Token>), anyhow::Error>,
+    {
         let mut calls = Vec::new();
         for decl in call_decls.decls.iter() {
             let contract_name = decl.expr.abi.to_string();
-            let function_name = decl.expr.func.as_str();
-            // Obtain the path to the contract ABI
-            let abi = mapping.find_abi(&contract_name)?;
-            // TODO: Handle overloaded functions
-            let function = {
-                // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
-                // functions this always picks the same overloaded variant, which is incorrect
-                // and may lead to encoding/decoding errors
-                abi.contract.function(function_name).with_context(|| {
-                    format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime",
-                        contract_name, function_name
-                    )
-                })?
-            };
+            let function = decl.get_function(mapping)?;
+            let (address, args) = get_address_and_args(decl, &function)?;
 
-            let address = decl.address(log, params)?;
-            let args = decl.args(log, params)?;
-
-            let call = DeclaredCall {
+            calls.push(DeclaredCall {
                 label: decl.label.clone(),
                 contract_name,
                 address,
                 function: function.clone(),
                 args,
-            };
-            calls.push(call);
+            });
         }
-
         Ok(calls)
     }
 
@@ -404,7 +419,6 @@ impl DeclaredCall {
         )
     }
 }
-
 #[derive(Clone, Debug)]
 pub struct ContractCall {
     pub contract_name: String,
