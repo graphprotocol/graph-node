@@ -7,7 +7,7 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
-use graph::components::store::{DeploymentCursorTracker, ReadStore};
+use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
@@ -121,7 +121,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

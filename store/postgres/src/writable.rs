@@ -1572,11 +1572,20 @@ impl ReadStore for WritableStore {
 pub struct SourceableStore {
     site: Arc<Site>,
     store: Arc<DeploymentStore>,
+    _writable: Arc<dyn store::WritableStore>,
 }
 
 impl SourceableStore {
-    pub fn new(site: Arc<Site>, store: Arc<DeploymentStore>) -> Self {
-        Self { site, store }
+    pub fn new(
+        site: Arc<Site>,
+        store: Arc<DeploymentStore>,
+        _writable: Arc<dyn store::WritableStore>,
+    ) -> Self {
+        Self {
+            site,
+            store,
+            _writable,
+        }
     }
 }
 

@@ -20,7 +20,7 @@ use graph::cheap_clone::CheapClone;
 use graph::components::adapter::ChainId;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
-use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache, ReadStore};
+use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache, SourceableStore};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
@@ -723,7 +723,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
@@ -798,7 +798,7 @@ where
         _chain: &C,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
         subgraph_current_block: Option<graph::blockchain::BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,

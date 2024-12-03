@@ -16,7 +16,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         adapter::ChainId,
-        store::{DeploymentCursorTracker, DeploymentLocator, ReadStore},
+        store::{DeploymentCursorTracker, DeploymentLocator, SourceableStore},
     },
     data::subgraph::UnifiedMappingApiVersion,
     env::EnvVars,
@@ -116,7 +116,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -240,7 +240,7 @@ impl BlockStreamBuilder<Chain> for StarknetStreamBuilder {
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,

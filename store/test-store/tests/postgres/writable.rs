@@ -113,7 +113,7 @@ where
             .expect("we can get a writable store");
         let sourceable = store
             .subgraph_store()
-            .sourceable(deployment.id)
+            .sourceable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
             .await
             .expect("we can get a writable store");
 

@@ -9,7 +9,7 @@ use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
-use graph::components::store::ReadStore;
+use graph::components::store::SourceableStore;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data::value::Word;
@@ -211,7 +211,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         hashes: Vec<DeploymentHash>,
         max_spec_version: Version,
         is_runner_test: bool,
-    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn ReadStore>)>> {
+    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn SourceableStore>)>> {
         let mut writable_stores = Vec::new();
         let subgraph_store = self.subgraph_store.clone();
 
@@ -237,7 +237,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
             let readable_store = subgraph_store
                 .clone()
-                .readable(
+                .sourceable(
                     logger.clone(),
                     loc.id.clone(),
                     Arc::new(manifest.template_idx_and_name().collect()),
