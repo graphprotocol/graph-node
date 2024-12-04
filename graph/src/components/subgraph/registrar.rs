@@ -48,6 +48,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
     ) -> Result<DeploymentLocator, SubgraphRegistrarError>;
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError>;
+    async fn remove_deployment(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError>;
 
     async fn reassign_subgraph(
         &self,
