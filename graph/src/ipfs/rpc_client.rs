@@ -69,6 +69,8 @@ impl IpfsRpcClient {
     async fn send_test_request(&self) -> anyhow::Result<()> {
         let fut = RetryPolicy::NonDeterministic
             .create("IPFS.RPC.send_test_request", &self.logger)
+            .no_logging()
+            .no_timeout()
             .run({
                 let client = self.to_owned();
 
