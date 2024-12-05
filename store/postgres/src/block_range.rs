@@ -148,7 +148,7 @@ impl EntityBlockRange {
         let start: Bound<BlockNumber> = Bound::Included(block_range.start);
         let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
         let block_range: BlockRange = BlockRange(start, end);
-        if table.immutable {
+        if immutable {
             Self::Immutable(block_range)
         } else {
             Self::Mutable((block_range, is_uppper_range))
