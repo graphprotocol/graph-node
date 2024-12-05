@@ -299,7 +299,8 @@ pub trait SourceableStore: Sync + Send + 'static {
     /// changed in the given block_range.
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
 
@@ -314,10 +315,11 @@ pub trait SourceableStore: Sync + Send + 'static {
 impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        (**self).get_range(entity_type, block_range)
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+        (**self).get_range(entity_types, causality_region, block_range)
     }
 
     fn input_schema(&self) -> InputSchema {

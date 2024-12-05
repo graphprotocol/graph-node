@@ -1590,11 +1590,16 @@ impl SourceableStore {
 impl store::SourceableStore for SourceableStore {
     fn get_range(
         &self,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        self.store
-            .get_range(self.site.clone(), entity_type, block_range)
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+        self.store.get_range(
+            self.site.clone(),
+            entity_types,
+            causality_region,
+            block_range,
+        )
     }
 
     fn input_schema(&self) -> InputSchema {
