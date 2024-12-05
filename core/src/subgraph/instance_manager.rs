@@ -16,7 +16,6 @@ use graph::data::value::Word;
 use graph::data_source::causality_region::CausalityRegionSeq;
 use graph::env::EnvVars;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
-use graph::semver::Version;
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -206,10 +205,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
     pub async fn hashes_to_read_store<C: Blockchain>(
         &self,
-        logger: &Logger,
-        link_resolver: &Arc<dyn LinkResolver>,
         hashes: Vec<DeploymentHash>,
-        max_spec_version: Version,
         is_runner_test: bool,
     ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn SourceableStore>)>> {
         let mut sourceable_stores = Vec::new();
@@ -220,29 +216,11 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         }
 
         for hash in hashes {
-            let file_bytes = link_resolver
-                .cat(logger, &hash.to_ipfs_link())
-                .await
-                .map_err(SubgraphAssignmentProviderError::ResolveError)?;
-            let raw: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes)
-                .map_err(|e| SubgraphAssignmentProviderError::ResolveError(e.into()))?;
-            let manifest = UnresolvedSubgraphManifest::<C>::parse(hash.cheap_clone(), raw)?;
-            let manifest = manifest
-                .resolve(&link_resolver, &logger, max_spec_version.clone())
-                .await?;
-
             let loc = subgraph_store
                 .active_locator(&hash)?
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
-            let sourceable_store = subgraph_store
-                .clone()
-                .sourceable(
-                    logger.clone(),
-                    loc.id.clone(),
-                    Arc::new(manifest.template_idx_and_name().collect()),
-                )
-                .await?;
+            let sourceable_store = subgraph_store.clone().sourceable(loc.id.clone()).await?;
 
             sourceable_stores.push((loc.hash, sourceable_store));
         }
@@ -492,13 +470,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let decoder = Box::new(Decoder::new(decoder_hook));
 
         let subgraph_data_source_read_stores = self
-            .hashes_to_read_store::<C>(
-                &logger,
-                &link_resolver,
-                subgraph_ds_source_deployments,
-                manifest.spec_version.clone(),
-                is_runner_test,
-            )
+            .hashes_to_read_store::<C>(subgraph_ds_source_deployments, is_runner_test)
             .await?;
 
         let triggers_adapter = Arc::new(TriggersAdapterWrapper::new(

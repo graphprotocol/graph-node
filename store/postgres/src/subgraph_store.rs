@@ -1539,18 +1539,21 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn sourceable(
         self: Arc<Self>,
-        logger: Logger,
         deployment: graph::components::store::DeploymentId,
-        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn store::SourceableStore>, StoreError> {
-        let writable = self
-            .clone()
-            .writable(logger, deployment, manifest_idx_and_name)
-            .await?;
         let deployment = deployment.into();
         let site = self.find_site(deployment)?;
         let store = self.for_site(&site)?;
-        let s = Arc::new(SourceableStore::new(site, store.clone(), writable));
+        let input_schema = self.input_schema(&site.deployment)?;
+        let block_ptr = store.block_ptr(site.clone()).await?;
+        let block_cursor = store.block_cursor(site.clone()).await?;
+        let s = Arc::new(SourceableStore::new(
+            site,
+            store.clone(),
+            block_ptr,
+            block_cursor,
+            input_schema,
+        ));
         Ok(s as Arc<dyn store::SourceableStore>)
     }
 

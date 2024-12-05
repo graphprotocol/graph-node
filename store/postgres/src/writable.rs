@@ -1572,19 +1572,25 @@ impl ReadStore for WritableStore {
 pub struct SourceableStore {
     site: Arc<Site>,
     store: Arc<DeploymentStore>,
-    writable: Arc<dyn store::WritableStore>,
+    block_ptr: Option<BlockPtr>,
+    block_cursor: FirehoseCursor,
+    input_schema: InputSchema,
 }
 
 impl SourceableStore {
     pub fn new(
         site: Arc<Site>,
         store: Arc<DeploymentStore>,
-        writable: Arc<dyn store::WritableStore>,
+        block_ptr: Option<BlockPtr>,
+        block_cursor: FirehoseCursor,
+        input_schema: InputSchema,
     ) -> Self {
         Self {
             site,
             store,
-            writable,
+            block_ptr,
+            block_cursor,
+            input_schema,
         }
     }
 }
@@ -1601,15 +1607,15 @@ impl store::SourceableStore for SourceableStore {
 }
 impl DeploymentCursorTracker for SourceableStore {
     fn input_schema(&self) -> InputSchema {
-        ReadStore::input_schema(&self.writable)
+        self.input_schema.cheap_clone()
     }
 
     fn block_ptr(&self) -> Option<BlockPtr> {
-        self.writable.block_ptr()
+        self.block_ptr.clone()
     }
 
     fn firehose_cursor(&self) -> FirehoseCursor {
-        self.writable.firehose_cursor()
+        self.block_cursor.clone()
     }
 }
 

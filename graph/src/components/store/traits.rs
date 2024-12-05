@@ -188,9 +188,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     async fn sourceable(
         self: Arc<Self>,
-        logger: Logger,
         deployment: DeploymentId,
-        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn SourceableStore>, StoreError>;
 
     /// Initiate a graceful shutdown of the writable that a previous call to
