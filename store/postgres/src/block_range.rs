@@ -50,7 +50,7 @@ lazy_static! {
 
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct BlockRange(Bound<BlockNumber>, Bound<BlockNumber>);
 
 pub(crate) fn first_block_in_range(
@@ -129,6 +129,66 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
         out.push_bind_param::<Integer, _>(&self.block)?;
 
         Ok(())
+    }
+}
+
+/// Helper for generating SQL fragments for selecting entities in a specific block range
+#[derive(Debug, Clone, Copy)]
+pub enum EntityBlockRange {
+    Mutable(BlockRange), // TODO: check if this is a proper type here (maybe Range<BlockNumber>?)
+    Immutable(BlockRange),
+}
+
+impl EntityBlockRange {
+    pub fn new(table: &Table, block_range: std::ops::Range<BlockNumber>) -> Self {
+        let start: Bound<BlockNumber> = Bound::Included(block_range.start);
+        let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
+        let block_range: BlockRange = BlockRange(start, end);
+        if table.immutable {
+            Self::Immutable(block_range)
+        } else {
+            Self::Mutable(block_range)
+        }
+    }
+
+    /// Output SQL that matches only rows whose block range contains `block`.
+    pub fn contains<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        let block_range = match self {
+            EntityBlockRange::Mutable(br) => br,
+            EntityBlockRange::Immutable(br) => br,
+        };
+        let BlockRange(start, finish) = block_range;
+
+        self.compare_column(out);
+        out.push_sql(" >= ");
+        match start {
+            Bound::Included(block) => out.push_bind_param::<Integer, _>(block)?,
+            Bound::Excluded(block) => {
+                out.push_bind_param::<Integer, _>(block)?;
+                out.push_sql("+1");
+            }
+            Bound::Unbounded => unimplemented!(),
+        };
+        out.push_sql(" AND ");
+        self.compare_column(out);
+        out.push_sql(" <= ");
+        match finish {
+            Bound::Included(block) => {
+                out.push_bind_param::<Integer, _>(block)?;
+                out.push_sql("+1");
+            }
+            Bound::Excluded(block) => out.push_bind_param::<Integer, _>(block)?,
+            Bound::Unbounded => unimplemented!(),
+        };
+        Ok(())
+    }
+
+    pub fn compare_column(&self, out: &mut AstPass<Pg>) {
+        match self {
+            EntityBlockRange::Mutable(_) => out.push_sql(" lower(block_range) "),
+            EntityBlockRange::Immutable(_) => out.push_sql(" block$ "),
+        }
     }
 }
 
