@@ -114,7 +114,8 @@ fn count_key(id: &str) -> EntityKey {
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
-        count: count as i32
+        count: count as i32,
+        vid: count as i64,
     };
     let entity_op = EntityOperation::Set {
         key: count_key(&data.get("id").unwrap().to_string()),
@@ -245,7 +246,7 @@ fn restart() {
         // Cause an error by leaving out the non-nullable `count` attribute
         let entity_ops = vec![EntityOperation::Set {
             key: count_key("1"),
-            data: entity! { schema => id: "1" },
+            data: entity! { schema => id: "1", vid: 0i64 },
         }];
         transact_entity_operations(
             &subgraph_store,
@@ -269,7 +270,7 @@ fn restart() {
         // Retry our write with correct data
         let entity_ops = vec![EntityOperation::Set {
             key: count_key("1"),
-            data: entity! { schema => id: "1", count: 1 },
+            data: entity! { schema => id: "1", count: 1, vid: 0i64 },
         }];
         // `SubgraphStore` caches the correct writable so that this call
         // uses the restarted writable, and is equivalent to using

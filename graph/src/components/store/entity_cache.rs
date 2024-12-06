@@ -471,6 +471,7 @@ impl EntityCache {
         for (key, update) in self.updates {
             use EntityModification::*;
 
+            let is_poi = key.entity_type.is_poi();
             let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
                 // Entity was created
@@ -479,11 +480,13 @@ impl EntityCache {
                     updates.remove_null_fields();
                     let data = Arc::new(updates);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
+                    let vid = if is_poi { 0 } else { data.vid() };
                     Some(Insert {
                         key,
                         data,
                         block,
                         end: None,
+                        vid,
                     })
                 }
                 // Entity may have been changed
@@ -494,11 +497,13 @@ impl EntityCache {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {
+                        let vid = if is_poi { 0 } else { data.vid() };
                         Some(Overwrite {
                             key,
                             data,
                             block,
                             end: None,
+                            vid,
                         })
                     } else {
                         None
@@ -509,11 +514,13 @@ impl EntityCache {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
+                        let vid = if is_poi { 0 } else { data.vid() };
                         Some(Overwrite {
                             key,
                             data,
                             block,
                             end: None,
+                            vid,
                         })
                     } else {
                         None
