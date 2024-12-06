@@ -302,7 +302,7 @@ pub trait SourceableStore: Sync + Send + 'static {
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError>;
 
     fn input_schema(&self) -> InputSchema;
 
