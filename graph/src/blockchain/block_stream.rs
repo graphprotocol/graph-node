@@ -546,13 +546,16 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             return self.adapter.chain_head_ptr().await;
         }
 
-        let ptr = self
-            .source_subgraph_stores
-            .iter()
-            .filter_map(|(_, store)| store.block_ptr())
-            .min_by_key(|ptr| ptr.number);
+        let ptrs = futures03::future::try_join_all(
+            self.source_subgraph_stores
+                .iter()
+                .map(|(_, store)| store.block_ptr()),
+        )
+        .await?;
 
-        Ok(ptr)
+        let min_ptr = ptrs.into_iter().flatten().min_by_key(|ptr| ptr.number);
+
+        Ok(min_ptr)
     }
 }
 
