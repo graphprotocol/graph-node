@@ -5,6 +5,7 @@ use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
+use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
@@ -1572,29 +1573,20 @@ impl ReadStore for WritableStore {
 pub struct SourceableStore {
     site: Arc<Site>,
     store: Arc<DeploymentStore>,
-    block_ptr: Option<BlockPtr>,
-    block_cursor: FirehoseCursor,
     input_schema: InputSchema,
 }
 
 impl SourceableStore {
-    pub fn new(
-        site: Arc<Site>,
-        store: Arc<DeploymentStore>,
-        block_ptr: Option<BlockPtr>,
-        block_cursor: FirehoseCursor,
-        input_schema: InputSchema,
-    ) -> Self {
+    pub fn new(site: Arc<Site>, store: Arc<DeploymentStore>, input_schema: InputSchema) -> Self {
         Self {
             site,
             store,
-            block_ptr,
-            block_cursor,
             input_schema,
         }
     }
 }
 
+#[async_trait]
 impl store::SourceableStore for SourceableStore {
     fn get_range(
         &self,
@@ -1604,18 +1596,13 @@ impl store::SourceableStore for SourceableStore {
         self.store
             .get_range(self.site.clone(), entity_type, block_range)
     }
-}
-impl DeploymentCursorTracker for SourceableStore {
+
     fn input_schema(&self) -> InputSchema {
         self.input_schema.cheap_clone()
     }
 
-    fn block_ptr(&self) -> Option<BlockPtr> {
-        self.block_ptr.clone()
-    }
-
-    fn firehose_cursor(&self) -> FirehoseCursor {
-        self.block_cursor.clone()
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        self.store.block_ptr(self.site.cheap_clone()).await
     }
 }
 

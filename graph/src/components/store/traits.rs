@@ -293,7 +293,8 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
     }
 }
 
-pub trait SourceableStore: DeploymentCursorTracker {
+#[async_trait]
+pub trait SourceableStore: Sync + Send + 'static {
     /// Returns all versions of entities of the given entity_type that were
     /// changed in the given block_range.
     fn get_range(
@@ -301,9 +302,15 @@ pub trait SourceableStore: DeploymentCursorTracker {
         entity_type: &EntityType,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError>;
+
+    fn input_schema(&self) -> InputSchema;
+
+    /// Get a pointer to the most recently processed block in the subgraph.
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+#[async_trait]
 impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
     fn get_range(
         &self,
@@ -311,6 +318,14 @@ impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
         (**self).get_range(entity_type, block_range)
+    }
+
+    fn input_schema(&self) -> InputSchema {
+        (**self).input_schema()
+    }
+
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        (**self).block_ptr().await
     }
 }
 

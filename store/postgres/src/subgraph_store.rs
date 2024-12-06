@@ -1545,16 +1545,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment)?;
         let store = self.for_site(&site)?;
         let input_schema = self.input_schema(&site.deployment)?;
-        let block_ptr = store.block_ptr(site.clone()).await?;
-        let block_cursor = store.block_cursor(site.clone()).await?;
-        let s = Arc::new(SourceableStore::new(
+
+        Ok(Arc::new(SourceableStore::new(
             site,
             store.clone(),
-            block_ptr,
-            block_cursor,
             input_schema,
-        ));
-        Ok(s as Arc<dyn store::SourceableStore>)
+        )))
     }
 
     async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {
