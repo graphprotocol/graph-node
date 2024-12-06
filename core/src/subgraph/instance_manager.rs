@@ -3,7 +3,7 @@ use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::Decoder;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
@@ -207,8 +207,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         &self,
         hashes: Vec<DeploymentHash>,
         is_runner_test: bool,
-    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn SourceableStore>)>> {
-        let mut sourceable_stores = Vec::new();
+    ) -> anyhow::Result<HashMap<DeploymentHash, Arc<dyn SourceableStore>>> {
+        let mut sourceable_stores = HashMap::new();
         let subgraph_store = self.subgraph_store.clone();
 
         if is_runner_test {
@@ -222,7 +222,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
             let sourceable_store = subgraph_store.clone().sourceable(loc.id.clone()).await?;
 
-            sourceable_stores.push((loc.hash, sourceable_store));
+            sourceable_stores.insert(hash, sourceable_store);
         }
 
         Ok(sourceable_stores)
