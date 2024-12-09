@@ -71,7 +71,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
-use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
 use crate::{catalog, deployment};
@@ -530,14 +530,27 @@ impl Layout {
             et_map.insert(et.to_string(), Arc::new(et));
         }
         let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
-        let lower_vec = FindRangeQuery::new(&tables, causality_region, false, block_range.clone())
-            .get_results::<EntityDataExt>(conn)
-            .optional()?
-            .unwrap_or_default();
-        let upper_vec = FindRangeQuery::new(&tables, causality_region, true, block_range)
-            .get_results::<EntityDataExt>(conn)
-            .optional()?
-            .unwrap_or_default();
+
+        // collect all entities that have their 'lower(block_range)' attribute in the
+        // interval of blocks defined by the variable block_range. For the immutable
+        // entities the respective attribute is 'block$'.
+        let lower_vec = FindRangeQuery::new(
+            &tables,
+            causality_region,
+            BoundSide::Lower,
+            block_range.clone(),
+        )
+        .get_results::<EntityDataExt>(conn)
+        .optional()?
+        .unwrap_or_default();
+        // collect all entities that have their 'upper(block_range)' attribute in the
+        // interval of blocks defined by the variable block_range. For the immutable
+        // entities no entries are returned.
+        let upper_vec =
+            FindRangeQuery::new(&tables, causality_region, BoundSide::Upper, block_range)
+                .get_results::<EntityDataExt>(conn)
+                .optional()?
+                .unwrap_or_default();
         let mut lower_iter = lower_vec.iter().fuse().peekable();
         let mut upper_iter = upper_vec.iter().fuse().peekable();
         let mut lower_now = lower_iter.next();
@@ -560,27 +573,36 @@ impl Layout {
             };
             Ok((ewt, block))
         };
+
+        // The algorithm advances simultaneously entities from both lower_vec and upper_vec and tries
+        // to match entities that have entries in both vectors for a particular block. The match is
+        // successfull if an entry in one array has same values for the number of the block, entity
+        // name and the entity id. The comparison operation over the EntityDataExt fullfils that check.
+        // In addition to that, it also helps to order the elements so the algorith can detect if one
+        // side of the range exists and the other is missing. That way a creation and deletion are
+        // deduced. For immutable entities the entries in upper_vec are missing hence they are considered
+        // having a lower bound at particular block and upper bound at infinity.
         while lower_now.is_some() || upper_now.is_some() {
             let (ewt, block) = if lower_now.is_some() {
                 if upper_now.is_some() {
                     if lower > upper {
                         // we have upper bound at this block, but no lower bounds at the same block so it's deletion
                         let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
-                        // advance upper
+                        // advance upper_vec pointer
                         upper_now = upper_iter.next();
                         upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
                         (ewt, block)
                     } else if lower < upper {
                         // we have lower bound at this block but no upper bound at the same block so its creation
                         let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
-                        // advance lower
+                        // advance lower_vec pointer
                         lower_now = lower_iter.next();
                         lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
                         (ewt, block)
                     } else {
                         assert!(upper == lower);
                         let (ewt, block) = transform(lower, EntitySubgraphOperation::Modify)?;
-                        // advance both
+                        // advance both lower_vec and upper_vec pointers
                         lower_now = lower_iter.next();
                         lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
                         upper_now = upper_iter.next();
@@ -590,7 +612,7 @@ impl Layout {
                 } else {
                     // we have lower bound at this block but no upper bound at the same block so its creation
                     let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
-                    // advance lower
+                    // advance lower_vec pointer
                     lower_now = lower_iter.next();
                     lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
                     (ewt, block)
@@ -599,7 +621,7 @@ impl Layout {
                 // we have upper bound at this block, but no lower bounds at all so it's deletion
                 assert!(upper_now.is_some());
                 let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
-                // advance upper
+                // advance upper_vec pointer
                 upper_now = upper_iter.next();
                 upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
                 (ewt, block)

@@ -455,12 +455,12 @@ async fn get_entities_for_range(
     from: BlockNumber,
     to: BlockNumber,
 ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, Error> {
-    let mut entity_types = vec![];
-    for entity_name in &filter.entities {
-        let entity_type = schema.entity_type(entity_name)?;
-        entity_types.push(entity_type);
-    }
-    Ok(store.get_range(entity_types, CausalityRegion::ONCHAIN, from..to)?)
+    let entity_types: Result<Vec<EntityType>> = filter
+        .entities
+        .iter()
+        .map(|name| schema.entity_type(name))
+        .collect();
+    Ok(store.get_range(entity_types?, CausalityRegion::ONCHAIN, from..to)?)
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {

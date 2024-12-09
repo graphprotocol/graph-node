@@ -132,10 +132,16 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum BoundSide {
+    Lower,
+    Upper,
+}
+
 /// Helper for generating SQL fragments for selecting entities in a specific block range
 #[derive(Debug, Clone, Copy)]
 pub enum EntityBlockRange {
-    Mutable((BlockRange, bool)),
+    Mutable((BlockRange, BoundSide)),
     Immutable(BlockRange),
 }
 
@@ -143,7 +149,7 @@ impl EntityBlockRange {
     pub fn new(
         immutable: bool,
         block_range: std::ops::Range<BlockNumber>,
-        is_uppper_range: bool,
+        bound_side: BoundSide,
     ) -> Self {
         let start: Bound<BlockNumber> = Bound::Included(block_range.start);
         let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
@@ -151,11 +157,17 @@ impl EntityBlockRange {
         if immutable {
             Self::Immutable(block_range)
         } else {
-            Self::Mutable((block_range, is_uppper_range))
+            Self::Mutable((block_range, bound_side))
         }
     }
 
-    /// Output SQL that matches only rows whose block range contains `block`.
+    /// Outputs SQL that matches only rows whose entities would trigger a change
+    /// event (Create, Modify, Delete) in a given interval of blocks. Otherwise said
+    /// a block_range border is contained in an interval of blocks. For instance
+    /// one of the following:
+    /// lower(block_range) >= $1 and lower(block_range) <= $2
+    /// upper(block_range) >= $1 and upper(block_range) <= $2
+    /// block$ >= $1 and block$ <= $2
     pub fn contains<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         let block_range = match self {
@@ -190,13 +202,10 @@ impl EntityBlockRange {
 
     pub fn compare_column(&self, out: &mut AstPass<Pg>) {
         match self {
-            EntityBlockRange::Mutable((_, is_upper_range)) => {
-                if *is_upper_range {
-                    out.push_sql(" upper(block_range) ")
-                } else {
-                    out.push_sql(" lower(block_range) ")
-                }
-            }
+            EntityBlockRange::Mutable((_, bound_side)) => match bound_side {
+                BoundSide::Lower => out.push_sql(" lower(block_range) "),
+                BoundSide::Upper => out.push_sql(" upper(block_range) "),
+            },
             EntityBlockRange::Immutable(_) => out.push_sql(" block$ "),
         }
     }

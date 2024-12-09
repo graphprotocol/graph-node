@@ -35,7 +35,7 @@ use std::ops::Range;
 use std::str::FromStr;
 use std::string::ToString;
 
-use crate::block_range::EntityBlockRange;
+use crate::block_range::{BoundSide, EntityBlockRange};
 use crate::relational::{
     Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
@@ -2025,7 +2025,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 pub struct FindRangeQuery<'a> {
     tables: &'a Vec<&'a Table>,
     causality_region: CausalityRegion,
-    is_upper_range: bool,
+    bound_side: BoundSide,
     imm_range: EntityBlockRange,
     mut_range: EntityBlockRange,
 }
@@ -2034,15 +2034,15 @@ impl<'a> FindRangeQuery<'a> {
     pub fn new(
         tables: &'a Vec<&Table>,
         causality_region: CausalityRegion,
-        is_upper_range: bool,
+        bound_side: BoundSide,
         block_range: Range<BlockNumber>,
     ) -> Self {
-        let imm_range = EntityBlockRange::new(true, block_range.clone(), false);
-        let mut_range = EntityBlockRange::new(false, block_range, is_upper_range);
+        let imm_range = EntityBlockRange::new(true, block_range.clone(), bound_side);
+        let mut_range = EntityBlockRange::new(false, block_range, bound_side);
         Self {
             tables,
             causality_region,
-            is_upper_range,
+            bound_side,
             imm_range,
             mut_range,
         }
@@ -2056,7 +2056,7 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
 
         for table in self.tables.iter() {
             // the immutable entities don't have upper range and also can't be modified or deleted
-            if !(self.is_upper_range && table.immutable) {
+            if matches!(self.bound_side, BoundSide::Lower) || !table.immutable {
                 if first {
                     first = false;
                 } else {
