@@ -194,7 +194,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
     pub fn matches_by_address<'a>(
         &'a self,
         address: Option<&[u8]>,
-    ) -> Box<dyn Iterator<Item = &T::Host> + Send + 'a> {
+    ) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a> {
         let Some(address) = address else {
             return Box::new(self.by_block.values().flatten().map(|host| host.as_ref()));
         };
