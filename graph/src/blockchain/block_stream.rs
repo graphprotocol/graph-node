@@ -326,9 +326,13 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         adapter: Arc<dyn TriggersAdapter<C>>,
         source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
     ) -> Self {
+        let stores_map: HashMap<_, _> = source_subgraph_stores
+            .iter()
+            .map(|store| (store.input_schema().id().clone(), store.clone()))
+            .collect();
         Self {
             adapter,
-            source_subgraph_stores,
+            source_subgraph_stores: stores_map,
         }
     }
 

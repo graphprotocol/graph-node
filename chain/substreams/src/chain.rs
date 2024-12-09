@@ -23,7 +23,6 @@ use graph::{
     slog::Logger,
 };
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 // ParsedChanges are an internal representation of the equivalent operations defined on the

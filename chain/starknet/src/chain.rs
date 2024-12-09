@@ -30,10 +30,7 @@ use graph::{
     slog::o,
 };
 use prost::Message;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     adapter::TriggerFilter,

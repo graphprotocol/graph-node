@@ -4,7 +4,7 @@ use graph::components::adapter::ChainId;
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::sync::Arc;
 

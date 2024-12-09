@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use graph::{
     blockchain::{

@@ -37,7 +37,7 @@ use graph::{
     },
 };
 use prost::Message;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Duration;
