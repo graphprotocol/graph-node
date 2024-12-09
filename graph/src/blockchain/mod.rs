@@ -191,7 +191,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;

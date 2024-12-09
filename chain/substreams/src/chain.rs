@@ -9,9 +9,7 @@ use graph::blockchain::{
 use graph::components::adapter::ChainId;
 use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::env::EnvVars;
-use graph::prelude::{
-    BlockHash, CheapClone, DeploymentHash, Entity, LoggerFactory, MetricsRegistry,
-};
+use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
 use graph::schema::EntityKey;
 use graph::{
     blockchain::{
@@ -142,7 +140,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

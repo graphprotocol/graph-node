@@ -11,7 +11,7 @@ use graph::{
     },
     components::store::{DeploymentLocator, SourceableStore},
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{async_trait, BlockNumber, BlockPtr, DeploymentHash},
+    prelude::{async_trait, BlockNumber, BlockPtr},
     schema::InputSchema,
     slog::o,
 };
@@ -104,7 +104,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,

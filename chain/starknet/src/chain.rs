@@ -23,8 +23,8 @@ use graph::{
     firehose::{self, FirehoseEndpoint, ForkStep},
     futures03::future::TryFutureExt,
     prelude::{
-        async_trait, BlockHash, BlockNumber, ChainStore, DeploymentHash, Error, Logger,
-        LoggerFactory, MetricsRegistry,
+        async_trait, BlockHash, BlockNumber, ChainStore, Error, Logger, LoggerFactory,
+        MetricsRegistry,
     },
     schema::InputSchema,
     slog::o,
@@ -116,7 +116,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -240,7 +240,7 @@ impl BlockStreamBuilder<Chain> for StarknetStreamBuilder {
         _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: Arc<TriggerFilterWrapper<Chain>>,
         _unified_api_version: UnifiedMappingApiVersion,

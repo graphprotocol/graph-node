@@ -11,7 +11,7 @@ use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
-use graph::prelude::{DeploymentHash, MetricsRegistry};
+use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -121,7 +121,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

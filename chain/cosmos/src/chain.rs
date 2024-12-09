@@ -2,7 +2,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{BlockIngestor, NoopDecoderHook, TriggerFilterWrapper};
 use graph::components::adapter::ChainId;
 use graph::env::EnvVars;
-use graph::prelude::{DeploymentHash, MetricsRegistry};
+use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -114,7 +114,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

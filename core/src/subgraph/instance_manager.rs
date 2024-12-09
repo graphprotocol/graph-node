@@ -203,17 +203,17 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         }
     }
 
-    pub async fn hashes_to_read_store<C: Blockchain>(
+    pub async fn get_sourceable_stores<C: Blockchain>(
         &self,
         hashes: Vec<DeploymentHash>,
         is_runner_test: bool,
-    ) -> anyhow::Result<Vec<(DeploymentHash, Arc<dyn SourceableStore>)>> {
+    ) -> anyhow::Result<Vec<Arc<dyn SourceableStore>>> {
+        if is_runner_test {
+            return Ok(Vec::new());
+        }
+
         let mut sourceable_stores = Vec::new();
         let subgraph_store = self.subgraph_store.clone();
-
-        if is_runner_test {
-            return Ok(sourceable_stores);
-        }
 
         for hash in hashes {
             let loc = subgraph_store
@@ -221,8 +221,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
             let sourceable_store = subgraph_store.clone().sourceable(loc.id.clone()).await?;
-
-            sourceable_stores.push((loc.hash, sourceable_store));
+            sourceable_stores.push(sourceable_store);
         }
 
         Ok(sourceable_stores)
@@ -469,13 +468,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let decoder = Box::new(Decoder::new(decoder_hook));
 
-        let subgraph_data_source_read_stores = self
-            .hashes_to_read_store::<C>(subgraph_ds_source_deployments, is_runner_test)
+        let subgraph_data_source_stores = self
+            .get_sourceable_stores::<C>(subgraph_ds_source_deployments, is_runner_test)
             .await?;
 
         let triggers_adapter = Arc::new(TriggersAdapterWrapper::new(
             triggers_adapter,
-            subgraph_data_source_read_stores.clone(),
+            subgraph_data_source_stores.clone(),
         ));
 
         let inputs = IndexingInputs {
@@ -483,7 +482,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             features,
             start_blocks,
             end_blocks,
-            source_subgraph_stores: subgraph_data_source_read_stores,
+            source_subgraph_stores: subgraph_data_source_stores,
             stop_block,
             store,
             debug_fork,

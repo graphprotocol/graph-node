@@ -149,7 +149,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -160,7 +160,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -320,13 +320,13 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 /// logic for each chain, increasing code repetition.
 pub struct TriggersAdapterWrapper<C: Blockchain> {
     pub adapter: Arc<dyn TriggersAdapter<C>>,
-    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+    pub source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
     pub fn new(
         adapter: Arc<dyn TriggersAdapter<C>>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn SourceableStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
     ) -> Self {
         Self {
             adapter,
