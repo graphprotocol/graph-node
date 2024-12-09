@@ -583,33 +583,37 @@ impl Layout {
         // deduced. For immutable entities the entries in upper_vec are missing hence they are considered
         // having a lower bound at particular block and upper bound at infinity.
         while lower_now.is_some() || upper_now.is_some() {
-            let (ewt, block) = if lower_now.is_some() {
-                if upper_now.is_some() {
-                    if lower > upper {
-                        // we have upper bound at this block, but no lower bounds at the same block so it's deletion
-                        let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
-                        // advance upper_vec pointer
-                        upper_now = upper_iter.next();
-                        upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
-                        (ewt, block)
-                    } else if lower < upper {
-                        // we have lower bound at this block but no upper bound at the same block so its creation
-                        let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
-                        // advance lower_vec pointer
-                        lower_now = lower_iter.next();
-                        lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
-                        (ewt, block)
-                    } else {
-                        assert!(upper == lower);
-                        let (ewt, block) = transform(lower, EntitySubgraphOperation::Modify)?;
-                        // advance both lower_vec and upper_vec pointers
-                        lower_now = lower_iter.next();
-                        lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
-                        upper_now = upper_iter.next();
-                        upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
-                        (ewt, block)
+            let (ewt, block) = match (lower_now.is_some(), upper_now.is_some()) {
+                (true, true) => {
+                    match lower.cmp(&upper) {
+                        std::cmp::Ordering::Greater => {
+                            // we have upper bound at this block, but no lower bounds at the same block so it's deletion
+                            let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                            // advance upper_vec pointer
+                            upper_now = upper_iter.next();
+                            upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+                            (ewt, block)
+                        }
+                        std::cmp::Ordering::Less => {
+                            // we have lower bound at this block but no upper bound at the same block so its creation
+                            let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                            // advance lower_vec pointer
+                            lower_now = lower_iter.next();
+                            lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
+                            (ewt, block)
+                        }
+                        std::cmp::Ordering::Equal => {
+                            let (ewt, block) = transform(lower, EntitySubgraphOperation::Modify)?;
+                            // advance both lower_vec and upper_vec pointers
+                            lower_now = lower_iter.next();
+                            lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
+                            upper_now = upper_iter.next();
+                            upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+                            (ewt, block)
+                        }
                     }
-                } else {
+                }
+                (true, false) => {
                     // we have lower bound at this block but no upper bound at the same block so its creation
                     let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
                     // advance lower_vec pointer
@@ -617,14 +621,15 @@ impl Layout {
                     lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
                     (ewt, block)
                 }
-            } else {
-                // we have upper bound at this block, but no lower bounds at all so it's deletion
-                assert!(upper_now.is_some());
-                let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
-                // advance upper_vec pointer
-                upper_now = upper_iter.next();
-                upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
-                (ewt, block)
+                (false, have_upper) => {
+                    // we have upper bound at this block, but no lower bounds at all so it's deletion
+                    assert!(have_upper);
+                    let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                    // advance upper_vec pointer
+                    upper_now = upper_iter.next();
+                    upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+                    (ewt, block)
+                }
             };
 
             match entities.get_mut(&block) {
