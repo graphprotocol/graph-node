@@ -360,10 +360,10 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                 entities: ent,
             }) = filter.subgraph_filter.first()
             {
-                if let Some((dh2, store)) = self.source_subgraph_stores.first() {
+                if let Some(store) = self.source_subgraph_stores.first() {
+                    let schema = store.input_schema();
+                    let dh2 = schema.id();
                     if dh == dh2 {
-                        let schema =
-                            <dyn crate::components::store::SourceableStore>::input_schema(store);
                         if let Some(entity_type) = ent.first() {
                             let et = schema.entity_type(entity_type).unwrap();
 
