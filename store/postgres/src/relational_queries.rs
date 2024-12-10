@@ -2064,8 +2064,10 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
                 }
 
                 // Generate
-                //    select '..' as entity, to_jsonb(e.*) as data, block$ as block_number
-                //      from schema.table e where id = $1
+                //    select '..' as entity, to_jsonb(e.*) as data, {BLOCK_STATEMENT} as block_number
+                //      from schema.table e where ...
+                // Here the {BLOCK_STATEMENT} is 'block$' for immutable tables and either 'lower(block_range)'
+                // or 'upper(block_range)' depending on the bound_side variable.
                 out.push_sql("select ");
                 out.push_bind_param::<Text, _>(table.object.as_str())?;
                 out.push_sql(" as entity, to_jsonb(e.*) as data,");
