@@ -2,8 +2,8 @@ use std::{sync::Arc, time::Instant};
 
 use crate::adapter::EthereumRpcError;
 use crate::{
-    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCall,
-    ContractCallError, EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
+    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCallError,
+    EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
 };
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
@@ -13,7 +13,7 @@ use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::data_source;
-use graph::data_source::common::MappingABI;
+use graph::data_source::common::{ContractCall, MappingABI};
 use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
