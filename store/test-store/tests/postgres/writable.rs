@@ -137,14 +137,14 @@ async fn insert_count(
     deployment: &DeploymentLocator,
     block: u8,
     count: u8,
-    immutable: bool,
+    immutable_only: bool,
 ) {
     let count_key_local = |counter_type: &EntityType, id: &str| counter_type.parse_key(id).unwrap();
     let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
         count: count as i32
     };
-    let entity_op = if (block != 3 && block != 5 && block != 7) || !immutable {
+    let entity_op = if block != 3 && block != 5 && block != 7 {
         EntityOperation::Set {
             key: count_key_local(&COUNTER_TYPE, &data.get("id").unwrap().to_string()),
             data,
@@ -154,8 +154,12 @@ async fn insert_count(
             key: count_key_local(&COUNTER_TYPE, &data.get("id").unwrap().to_string()),
         }
     };
-    let mut ops = vec![entity_op];
-    if immutable && block < 6 {
+    let mut ops = if immutable_only {
+        vec![]
+    } else {
+        vec![entity_op]
+    };
+    if block < 6 {
         let data = entity! { TEST_SUBGRAPH_SCHEMA =>
             id: &block.to_string(),
             count :count as i32,
@@ -349,7 +353,7 @@ fn read_range_test() {
         writable.deployment_synced().unwrap();
 
         for count in 1..=5 {
-            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+            insert_count(&subgraph_store, &deployment, count, 2 * count, false).await;
         }
         writable.flush().await.unwrap();
         writable.deployment_synced().unwrap();
@@ -366,7 +370,7 @@ fn read_range_test() {
             assert_eq!(a, format!("{:?}", en));
         }
         for count in 6..=7 {
-            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+            insert_count(&subgraph_store, &deployment, count, 2 * count, false).await;
         }
         writable.flush().await.unwrap();
         writable.deployment_synced().unwrap();
@@ -379,5 +383,25 @@ fn read_range_test() {
             let a = result_entities[index as usize];
             assert_eq!(a, format!("{:?}", en));
         }
+    })
+}
+
+#[test]
+fn read_immutable_only_range_test() {
+    run_test(|store, writable, sourceable, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+        writable.deployment_synced().unwrap();
+
+        for count in 1..=4 {
+            insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
+        }
+        writable.flush().await.unwrap();
+        writable.deployment_synced().unwrap();
+        let br: Range<BlockNumber> = 0..18;
+        let entity_types = vec![COUNTER2_TYPE.clone()];
+        let e: BTreeMap<i32, Vec<EntityWithType>> = sourceable
+            .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .unwrap();
+        assert_eq!(e.len(), 4);
     })
 }

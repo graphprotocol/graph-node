@@ -578,7 +578,6 @@ impl Ord for EntityDataExt {
         if ord != Ordering::Equal {
             ord
         } else {
-            // TODO: check if this and the next cmp for string match postgress C localle
             let ord = self.entity.cmp(&other.entity);
             if ord != Ordering::Equal {
                 ord
@@ -2096,8 +2095,9 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
 
         if first {
             // In case we have only immutable entities, the upper range will not create any
-            // select statement. So here we have to generate an empty SQL statement.
-            out.push_sql("select 1");
+            // select statement. So here we have to generate an SQL statement thet returns
+            // empty result.
+            out.push_sql("select 'dummy_entity' as entity, to_jsonb(1) as data, 1 as block_number, 1 as id, 1 as vid where false");
         } else {
             out.push_sql("\norder by block_number, entity, id");
         }

@@ -524,10 +524,8 @@ impl Layout {
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
         let mut tables = vec![];
-        let mut et_map: HashMap<String, Arc<EntityType>> = HashMap::new();
         for et in entity_types {
             tables.push(self.table_for_entity(&et)?.as_ref());
-            et_map.insert(et.to_string(), Arc::new(et));
         }
         let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
 
@@ -557,6 +555,7 @@ impl Layout {
         let mut upper_now = upper_iter.next();
         let mut lower = lower_now.unwrap_or(&EntityDataExt::default()).clone();
         let mut upper = upper_now.unwrap_or(&EntityDataExt::default()).clone();
+        // A closure to convert the entity data from the database into entity operation.
         let transform = |ede: EntityDataExt,
                          entity_op: EntitySubgraphOperation|
          -> Result<(EntityWithType, BlockNumber), StoreError> {
