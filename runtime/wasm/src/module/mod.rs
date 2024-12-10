@@ -76,7 +76,7 @@ impl ToAscPtr for subgraph::TriggerData {
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        asc_new(heap, &self.entity.sorted_ref(), gas).map(|ptr| ptr.erase())
+        asc_new(heap, &self.entity, gas).map(|ptr| ptr.erase())
     }
 }
 

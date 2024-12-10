@@ -563,6 +563,42 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     )
     .await?;
 
+    let expected_response = json!({
+        "mirrorBlock": { "id": "TEST", "number": "1", "testMessage": "Created at block 1" },
+    });
+
+    query_succeeds(
+        "Blocks should be right",
+        &subgraph,
+        "{ mirrorBlock(id: \"TEST\", block: {number: 1}) { id, number, testMessage } }",
+        expected_response,
+    )
+    .await?;
+
+    let expected_response = json!({
+        "mirrorBlock": { "id": "TEST", "number": "1", "testMessage": "Updated at block 2" },
+    });
+
+    query_succeeds(
+        "Blocks should be right",
+        &subgraph,
+        "{ mirrorBlock(id: \"TEST\", block: {number: 2}) { id, number, testMessage } }",
+        expected_response,
+    )
+    .await?;
+
+    let expected_response = json!({
+        "mirrorBlock": null,
+    });
+
+    query_succeeds(
+        "Blocks should be right",
+        &subgraph,
+        "{ mirrorBlock(id: \"TEST\", block: {number: 3}) { id, number, testMessage } }",
+        expected_response,
+    )
+    .await?;
+
     Ok(())
 }
 
