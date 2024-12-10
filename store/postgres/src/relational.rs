@@ -24,7 +24,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
-use graph::blockchain::block_stream::{EntitySubgraphOperation, EntityWithType};
+use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
@@ -522,12 +522,12 @@ impl Layout {
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
         let mut tables = vec![];
         for et in entity_types {
             tables.push(self.table_for_entity(&et)?.as_ref());
         }
-        let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
+        let mut entities: BTreeMap<BlockNumber, Vec<EntitySourceOperation>> = BTreeMap::new();
 
         // Collect all entities that have their 'lower(block_range)' attribute in the
         // interval of blocks defined by the variable block_range. For the immutable
@@ -559,15 +559,15 @@ impl Layout {
         let mut lower_now = lower_iter.next();
         let mut upper_now = upper_iter.next();
         // A closure to convert the entity data from the database into entity operation.
-        let transform = |ede: &EntityDataExt,
-                         entity_op: EntitySubgraphOperation|
-         -> Result<(EntityWithType, BlockNumber), StoreError> {
-            let e = EntityData::new(ede.entity.clone(), ede.data.clone());
+        let transform = |ede: EntityDataExt,
+                         entity_op: EntityOperationKind|
+         -> Result<(EntitySourceOperation, BlockNumber), StoreError> {
+            let e = EntityData::new(ede.entity, ede.data);
             let block = ede.block_number;
             let entity_type = e.entity_type(&self.input_schema);
             let entity = e.deserialize_with_layout::<Entity>(self, None)?;
             let vid = ede.vid;
-            let ewt = EntityWithType {
+            let ewt = EntitySourceOperation {
                 entity_op,
                 entity_type,
                 entity,
@@ -592,20 +592,20 @@ impl Layout {
                     match lower.cmp(&upper) {
                         std::cmp::Ordering::Greater => {
                             // we have upper bound at this block, but no lower bounds at the same block so it's deletion
-                            let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                            let (ewt, block) = transform(upper, EntityOperationKind::Delete)?;
                             // advance upper_vec pointer
                             upper_now = upper_iter.next();
                             (ewt, block)
                         }
                         std::cmp::Ordering::Less => {
                             // we have lower bound at this block but no upper bound at the same block so its creation
-                            let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                            let (ewt, block) = transform(lower, EntityOperationKind::Create)?;
                             // advance lower_vec pointer
                             lower_now = lower_iter.next();
                             (ewt, block)
                         }
                         std::cmp::Ordering::Equal => {
-                            let (ewt, block) = transform(lower, EntitySubgraphOperation::Modify)?;
+                            let (ewt, block) = transform(lower, EntityOperationKind::Modify)?;
                             // advance both lower_vec and upper_vec pointers
                             lower_now = lower_iter.next();
                             upper_now = upper_iter.next();
@@ -615,13 +615,14 @@ impl Layout {
                 }
                 (Some(lower), None) => {
                     // we have lower bound at this block but no upper bound at the same block so its creation
-                    let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                    let (ewt, block) = transform(lower, EntityOperationKind::Create)?;
                     // advance lower_vec pointer
                     lower_now = lower_iter.next();
                     (ewt, block)
                 }
                 (None, Some(upper)) => {
-                    let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                    // we have upper bound at this block, but no lower bounds at all so it's deletion
+                    let (ewt, block) = transform(upper, EntityOperationKind::Delete)?;
                     // advance upper_vec pointer
                     upper_now = upper_iter.next();
                     (ewt, block)
