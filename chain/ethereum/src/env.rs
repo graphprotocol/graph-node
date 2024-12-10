@@ -33,6 +33,9 @@ pub struct EnvVars {
     /// Set by the environment variable `ETHEREUM_BLOCK_BATCH_SIZE`. The
     /// default value is 10 blocks.
     pub block_batch_size: usize,
+    /// Set by the environment variable `ETHEREUM_BLOCK_PTR_BATCH_SIZE`. The
+    /// default value is 10 blocks.
+    pub block_ptr_batch_size: usize,
     /// Maximum number of blocks to request in each chunk.
     ///
     /// Set by the environment variable `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
@@ -116,6 +119,7 @@ impl From<Inner> for EnvVars {
             trace_stream_step_size: x.trace_stream_step_size,
             max_event_only_range: x.max_event_only_range,
             block_batch_size: x.block_batch_size,
+            block_ptr_batch_size: x.block_ptr_batch_size,
             max_block_range_size: x.max_block_range_size,
             json_rpc_timeout: Duration::from_secs(x.json_rpc_timeout_in_secs),
             block_receipts_check_timeout: Duration::from_secs(
@@ -160,6 +164,8 @@ struct Inner {
     max_event_only_range: BlockNumber,
     #[envconfig(from = "ETHEREUM_BLOCK_BATCH_SIZE", default = "10")]
     block_batch_size: usize,
+    #[envconfig(from = "ETHEREUM_BLOCK_PTR_BATCH_SIZE", default = "100")]
+    block_ptr_batch_size: usize,
     #[envconfig(from = "GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE", default = "2000")]
     max_block_range_size: BlockNumber,
     #[envconfig(from = "GRAPH_ETHEREUM_JSON_RPC_TIMEOUT", default = "180")]
