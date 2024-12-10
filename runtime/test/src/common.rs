@@ -3,13 +3,12 @@ use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
+use graph::data_source::common::MappingABI;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
 use graph::prelude::*;
-use graph_chain_ethereum::{
-    Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
-};
+use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate, Mapping, TemplateSource};
 use graph_runtime_wasm::host_exports::DataSourceDetails;
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
