@@ -202,10 +202,12 @@ impl EntityBlockRange {
 
     pub fn compare_column(&self, out: &mut AstPass<Pg>) {
         match self {
-            EntityBlockRange::Mutable((_, bound_side)) => match bound_side {
-                BoundSide::Lower => out.push_sql(" lower(block_range) "),
-                BoundSide::Upper => out.push_sql(" upper(block_range) "),
-            },
+            EntityBlockRange::Mutable((_, BoundSide::Lower)) => {
+                out.push_sql(" lower(block_range) ")
+            }
+            EntityBlockRange::Mutable((_, BoundSide::Upper)) => {
+                out.push_sql(" upper(block_range) ")
+            }
             EntityBlockRange::Immutable(_) => out.push_sql(" block$ "),
         }
     }
