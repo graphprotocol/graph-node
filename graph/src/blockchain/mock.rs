@@ -60,7 +60,7 @@ impl Block for MockBlock {
     }
 
     fn timestamp(&self) -> BlockTime {
-        BlockTime::for_test(&self.ptr())
+        BlockTime::since_epoch(self.ptr().number as i64 * 45 * 60, 0)
     }
 }
 
