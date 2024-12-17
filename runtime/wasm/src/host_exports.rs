@@ -18,7 +18,7 @@ use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::subgraph::{
     InstanceDSTemplate, PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
-use graph::data::store::{self, EntityV};
+use graph::data::store::{self};
 use graph::data_source::{CausalityRegion, DataSource, EntityTypeAccess};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
@@ -248,7 +248,6 @@ impl HostExports {
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
-        let vid = state.next_vid(block);
 
         Self::expect_object_type(&entity_type, "set")?;
 
@@ -351,7 +350,7 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
-        state.entity_cache.set(key, EntityV::new(entity, vid))?;
+        state.entity_cache.set(key, entity, block)?;
 
         Ok(())
     }
