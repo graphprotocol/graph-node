@@ -105,6 +105,10 @@ pub struct EntityCache {
     /// generated IDs, the `EntityCache` needs to be newly instantiated for
     /// each block
     seq: u32,
+
+    // Sequence number of the next VID value for this block. The value written
+    // in the database consist of a block number and this SEQ number.
+    pub vid_seq: i32,
 }
 
 impl Debug for EntityCache {
@@ -132,6 +136,7 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
             seq: 0,
+            vid_seq: 0,
         }
     }
 
@@ -152,6 +157,7 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
             seq: 0,
+            vid_seq: 0,
         }
     }
 
@@ -349,9 +355,19 @@ impl EntityCache {
     /// with existing data. The entity will be validated against the
     /// subgraph schema, and any errors will result in an `Err` being
     /// returned.
-    pub fn set(&mut self, key: EntityKey, entity: EntityV) -> Result<(), anyhow::Error> {
+    pub fn set(
+        &mut self,
+        key: EntityKey,
+        entity: Entity,
+        block: BlockNumber,
+    ) -> Result<(), anyhow::Error> {
         // check the validate for derived fields
-        let is_valid = entity.e.validate(&key).is_ok();
+        let is_valid = entity.validate(&key).is_ok();
+
+        //The next VID is based on a block number and a sequence withing the block
+        let vid = ((block as i64) << 32) + self.vid_seq as i64;
+        self.vid_seq += 1;
+        let entity = EntityV::new(entity, vid);
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
 
