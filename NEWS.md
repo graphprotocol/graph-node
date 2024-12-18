@@ -2,6 +2,17 @@
 
 ## v0.36.0
 
+### Note on Firehose Extended Block Details
+
+By default, all Firehose providers are required to support extended block details, as this is the
+safest option for a graph-node operator. Firehose providers that do not support extended block
+details for enabled chains are considered invalid and will not be used.
+
+To disable checks for one or more chains, simply specify their names
+in `GRAPH_NODE_FIREHOSE_DISABLE_EXTENDED_BLOCKS_FOR_CHAINS` as a comma separated list of chain
+names. Graph Node defaults to an empty list, which means that this feature is enabled for all
+chains.
+
 ### What's new
 
 - Add support for substreams using 'index modules', 'block filters', 'store:sum_set'. [(#5463)](https://github.com/graphprotocol/graph-node/pull/5463)
