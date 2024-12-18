@@ -41,7 +41,7 @@ impl<C: Blockchain> ChainClient<C> {
     pub fn rpc(&self) -> anyhow::Result<&C::Client> {
         match self {
             Self::Rpc(rpc) => Ok(rpc),
-            _ => Err(anyhow!("rpc endpoint requested on firehose chain client")),
+            Self::Firehose(_) => Err(anyhow!("rpc endpoint requested on firehose chain client")),
         }
     }
 }
