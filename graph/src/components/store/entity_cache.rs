@@ -364,7 +364,7 @@ impl EntityCache {
         // check the validate for derived fields
         let is_valid = entity.validate(&key).is_ok();
 
-        //The next VID is based on a block number and a sequence withing the block
+        // The next VID is based on a block number and a sequence within the block
         let vid = ((block as i64) << 32) + self.vid_seq as i64;
         self.vid_seq += 1;
         let entity = EntityV::new(entity, vid);
