@@ -6,7 +6,7 @@ use super::{
     test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
     NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
-use graph::blockchain::block_stream::{EntitySubgraphOperation, EntityWithType};
+use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
@@ -167,10 +167,10 @@ pub fn push_test_subgraph_trigger(
     source: DeploymentHash,
     entity: Entity,
     entity_type: EntityType,
-    entity_op: EntitySubgraphOperation,
+    entity_op: EntityOperationKind,
     vid: i64,
 ) {
-    let entity = EntityWithType {
+    let entity = EntitySourceOperation {
         entity: entity,
         entity_type: entity_type,
         entity_op: entity_op,

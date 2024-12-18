@@ -1,4 +1,4 @@
-use crate::blockchain::block_stream::EntityWithType;
+use crate::blockchain::block_stream::EntitySourceOperation;
 use crate::prelude::{BlockPtr, Value};
 use crate::{components::link_resolver::LinkResolver, data::value::Word, prelude::Link};
 use anyhow::{anyhow, Context, Error};
@@ -193,7 +193,10 @@ impl CallDecl {
             })
     }
 
-    pub fn address_for_entity_handler(&self, entity: &EntityWithType) -> Result<H160, Error> {
+    pub fn address_for_entity_handler(
+        &self,
+        entity: &EntitySourceOperation,
+    ) -> Result<H160, Error> {
         match &self.expr.address {
             // Static hex address - just return it directly
             CallArg::HexAddress(address) => Ok(*address),
@@ -227,7 +230,7 @@ impl CallDecl {
     /// Returns an error if argument count mismatches or if conversion fails.
     pub fn args_for_entity_handler(
         &self,
-        entity: &EntityWithType,
+        entity: &EntitySourceOperation,
         param_types: Vec<ParamType>,
     ) -> Result<Vec<Token>, Error> {
         self.validate_entity_handler_args(&param_types)?;
@@ -260,7 +263,7 @@ impl CallDecl {
         &self,
         arg: &CallArg,
         expected_type: &ParamType,
-        entity: &EntityWithType,
+        entity: &EntitySourceOperation,
     ) -> Result<Token, Error> {
         match arg {
             CallArg::HexAddress(address) => self.process_hex_address(*address, expected_type),
@@ -292,7 +295,7 @@ impl CallDecl {
         &self,
         name: &str,
         expected_type: &ParamType,
-        entity: &EntityWithType,
+        entity: &EntitySourceOperation,
     ) -> Result<Token, Error> {
         let value = entity
             .entity
@@ -549,7 +552,7 @@ impl DeclaredCall {
     pub fn from_entity_trigger(
         mapping: &dyn FindMappingABI,
         call_decls: &CallDecls,
-        entity: &EntityWithType,
+        entity: &EntitySourceOperation,
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         Self::create_calls(mapping, call_decls, |decl, function| {
             let param_types = function
