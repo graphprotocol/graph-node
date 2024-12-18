@@ -559,10 +559,10 @@ impl Layout {
         let mut lower_now = lower_iter.next();
         let mut upper_now = upper_iter.next();
         // A closure to convert the entity data from the database into entity operation.
-        let transform = |ede: EntityDataExt,
+        let transform = |ede: &EntityDataExt,
                          entity_op: EntityOperationKind|
          -> Result<(EntitySourceOperation, BlockNumber), StoreError> {
-            let e = EntityData::new(ede.entity, ede.data);
+            let e = EntityData::new(ede.entity.clone(), ede.data.clone());
             let block = ede.block_number;
             let entity_type = e.entity_type(&self.input_schema);
             let entity = e.deserialize_with_layout::<Entity>(self, None)?;

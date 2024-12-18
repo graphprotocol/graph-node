@@ -399,7 +399,7 @@ fn read_immutable_only_range_test() {
         writable.deployment_synced().unwrap();
         let br: Range<BlockNumber> = 0..18;
         let entity_types = vec![COUNTER2_TYPE.clone()];
-        let e: BTreeMap<i32, Vec<EntityWithType>> = sourceable
+        let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
             .unwrap();
         assert_eq!(e.len(), 4);
