@@ -1489,3 +1489,74 @@ dataSources:
         assert_eq!(4, decls.len());
     });
 }
+
+#[test]
+fn parses_eth_call_decls_for_subgraph_datasource() {
+    const YAML: &str = "
+specVersion: 1.3.0
+schema:
+  file:
+    /: /ipfs/Qmschema
+features:
+  - ipfsOnEthereumContracts
+dataSources:
+  - kind: subgraph
+    name: Factory
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSWWT2yrTFDZSL8tRyoHEVrcEKAUsY2hj2TMQDfdDZU8h'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      handlers:
+        - handler: handleEntity
+          entity: User
+          calls:
+            fake1: Factory[entity.address].get(entity.user)
+            fake3: Factory[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].get(entity.address)
+            fake4: Factory[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].get(0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF)
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated: UnvalidatedSubgraphManifest<Chain> = {
+            let mut resolver = TextResolver::default();
+            let id = DeploymentHash::new("Qmmanifest").unwrap();
+            resolver.add(id.as_str(), &YAML);
+            resolver.add("/ipfs/Qmabi", &ABI);
+            resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
+            resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
+
+            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
+            let raw = serde_yaml::from_str(YAML).unwrap();
+            UnvalidatedSubgraphManifest::resolve(
+                id,
+                raw,
+                &resolver,
+                &LOGGER,
+                SPEC_VERSION_1_3_0.clone(),
+            )
+            .await
+            .expect("Parsing simple manifest works")
+        };
+
+        let manifest = unvalidated.validate(store.clone(), true).await.unwrap();
+        let ds = &manifest.data_sources[0].as_subgraph().unwrap();
+        // For more detailed tests of parsing CallDecls see the data_soure
+        // module in chain/ethereum
+        let decls = &ds.mapping.handlers[0].calls.decls;
+        assert_eq!(3, decls.len());
+    });
+}

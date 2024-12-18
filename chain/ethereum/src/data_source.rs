@@ -5,21 +5,19 @@ use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
-use graph::data::value::Word;
-use graph::data_source::common::{MappingABI, UnresolvedMappingABI};
-use graph::data_source::CausalityRegion;
+use graph::data_source::common::{
+    CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedMappingABI,
+};
+use graph::data_source::{CausalityRegion, MappingTrigger as MappingTriggerType};
 use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
 use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::{StateMutability, Token};
-use graph::prelude::lazy_static;
-use graph::prelude::regex::Regex;
+use graph::prelude::ethabi::StateMutability;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
 use itertools::Itertools;
-use serde::de;
 use serde::de::Error as ErrorD;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashSet;
@@ -31,7 +29,6 @@ use tiny_keccak::{keccak256, Keccak};
 
 use graph::{
     blockchain::{self, Blockchain},
-    derive::CheapClone,
     prelude::{
         async_trait,
         ethabi::{Address, Event, Function, LogParam, ParamType, RawLog},
@@ -51,7 +48,7 @@ use crate::adapter::EthereumAdapter as _;
 use crate::chain::Chain;
 use crate::network::EthereumNetworkAdapters;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
-use crate::{ContractCall, NodeCapabilities};
+use crate::NodeCapabilities;
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
@@ -803,7 +800,12 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
-                let calls = DeclaredCall::new(&self.mapping, &event_handler, &log, &params)?;
+                let calls = DeclaredCall::from_log_trigger(
+                    &self.mapping,
+                    &event_handler.calls,
+                    &log,
+                    &params,
+                )?;
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
@@ -934,73 +936,6 @@ impl DataSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct DeclaredCall {
-    /// The user-supplied label from the manifest
-    label: String,
-    contract_name: String,
-    address: Address,
-    function: Function,
-    args: Vec<Token>,
-}
-
-impl DeclaredCall {
-    fn new(
-        mapping: &Mapping,
-        handler: &MappingEventHandler,
-        log: &Log,
-        params: &[LogParam],
-    ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
-        let mut calls = Vec::new();
-        for decl in handler.calls.decls.iter() {
-            let contract_name = decl.expr.abi.to_string();
-            let function_name = decl.expr.func.as_str();
-            // Obtain the path to the contract ABI
-            let abi = mapping.find_abi(&contract_name)?;
-            // TODO: Handle overloaded functions
-            let function = {
-                // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
-                // functions this always picks the same overloaded variant, which is incorrect
-                // and may lead to encoding/decoding errors
-                abi.contract.function(function_name).with_context(|| {
-                    format!(
-                        "Unknown function \"{}::{}\" called from WASM runtime",
-                        contract_name, function_name
-                    )
-                })?
-            };
-
-            let address = decl.address(log, params)?;
-            let args = decl.args(log, params)?;
-
-            let call = DeclaredCall {
-                label: decl.label.clone(),
-                contract_name,
-                address,
-                function: function.clone(),
-                args,
-            };
-            calls.push(call);
-        }
-
-        Ok(calls)
-    }
-
-    fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (ContractCall, String) {
-        (
-            ContractCall {
-                contract_name: self.contract_name,
-                address: self.address,
-                block_ptr,
-                function: self.function,
-                args: self.args,
-                gas,
-            },
-            self.label,
-        )
-    }
-}
-
 pub struct DecoderHook {
     eth_adapters: Arc<EthereumNetworkAdapters>,
     call_cache: Arc<dyn EthereumCallCache>,
@@ -1099,6 +1034,115 @@ impl DecoderHook {
             .collect();
         Ok(labels)
     }
+
+    fn collect_declared_calls<'a>(
+        &self,
+        runnables: &Vec<RunnableTriggers<'a, Chain>>,
+    ) -> Vec<(Arc<HostMetrics>, DeclaredCall)> {
+        // Extract all hosted triggers from runnables
+        let all_triggers = runnables
+            .iter()
+            .flat_map(|runnable| &runnable.hosted_triggers);
+
+        // Collect calls from both onchain and subgraph triggers
+        let mut all_calls = Vec::new();
+
+        for trigger in all_triggers {
+            let host_metrics = trigger.host.host_metrics();
+
+            match &trigger.mapping_trigger.trigger {
+                MappingTriggerType::Onchain(t) => {
+                    if let MappingTrigger::Log { calls, .. } = t {
+                        for call in calls.clone() {
+                            all_calls.push((host_metrics.cheap_clone(), call));
+                        }
+                    }
+                }
+                MappingTriggerType::Subgraph(t) => {
+                    for call in t.calls.clone() {
+                        // Convert subgraph call to the expected DeclaredCall type if needed
+                        // or handle differently based on the types
+                        all_calls.push((host_metrics.cheap_clone(), call));
+                    }
+                }
+                MappingTriggerType::Offchain(_) => {}
+            }
+        }
+
+        all_calls
+    }
+
+    /// Deduplicate calls. Unfortunately, we can't get `DeclaredCall` to
+    /// implement `Hash` or `Ord` easily, so we can only deduplicate by
+    /// comparing the whole call not with a `HashSet` or `BTreeSet`.
+    /// Since that can be inefficient, we don't deduplicate if we have an
+    /// enormous amount of calls; in that case though, things will likely
+    /// blow up because of the amount of I/O that many calls cause.
+    /// Cutting off at 1000 is fairly arbitrary
+    fn deduplicate_calls(
+        &self,
+        calls: Vec<(Arc<HostMetrics>, DeclaredCall)>,
+    ) -> Vec<(Arc<HostMetrics>, DeclaredCall)> {
+        if calls.len() >= 1000 {
+            return calls;
+        }
+
+        let mut uniq_calls = Vec::new();
+        for (metrics, call) in calls {
+            if !uniq_calls.iter().any(|(_, c)| c == &call) {
+                uniq_calls.push((metrics, call));
+            }
+        }
+        uniq_calls
+    }
+
+    /// Log information about failed eth calls. 'Failure' here simply
+    /// means that the call was reverted; outright errors lead to a real
+    /// error. For reverted calls, `self.eth_calls` returns the label
+    /// from the manifest for that call.
+    ///
+    /// One reason why declared calls can fail is if they are attached
+    /// to the wrong handler, or if arguments are specified incorrectly.
+    /// Calls that revert every once in a while might be ok and what the
+    /// user intended, but we want to clearly log so that users can spot
+    /// mistakes in their manifest, which will lead to unnecessary eth
+    /// calls
+    fn log_declared_call_results(
+        logger: &Logger,
+        failures: &[String],
+        calls_count: usize,
+        trigger_count: usize,
+        elapsed: Duration,
+    ) {
+        let fail_count = failures.len();
+
+        if fail_count > 0 {
+            let mut counts: Vec<_> = failures.iter().counts().into_iter().collect();
+            counts.sort_by_key(|(label, _)| *label);
+
+            let failure_summary = counts
+                .into_iter()
+                .map(|(label, count)| {
+                    let times = if count == 1 { "time" } else { "times" };
+                    format!("{label} ({count} {times})")
+                })
+                .join(", ");
+
+            error!(logger, "Declared calls failed";
+                "triggers" => trigger_count,
+                "calls_count" => calls_count,
+                "fail_count" => fail_count,
+                "calls_ms" => elapsed.as_millis(),
+                "failures" => format!("[{}]", failure_summary)
+            );
+        } else {
+            debug!(logger, "Declared calls";
+                "triggers" => trigger_count,
+                "calls_count" => calls_count,
+                "calls_ms" => elapsed.as_millis()
+            );
+        }
+    }
 }
 
 #[async_trait]
@@ -1110,50 +1154,6 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
         runnables: Vec<RunnableTriggers<'a, Chain>>,
         metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
-        /// Log information about failed eth calls. 'Failure' here simply
-        /// means that the call was reverted; outright errors lead to a real
-        /// error. For reverted calls, `self.eth_calls` returns the label
-        /// from the manifest for that call.
-        ///
-        /// One reason why declared calls can fail is if they are attached
-        /// to the wrong handler, or if arguments are specified incorrectly.
-        /// Calls that revert every once in a while might be ok and what the
-        /// user intended, but we want to clearly log so that users can spot
-        /// mistakes in their manifest, which will lead to unnecessary eth
-        /// calls
-        fn log_results(
-            logger: &Logger,
-            failures: &[String],
-            calls_count: usize,
-            trigger_count: usize,
-            elapsed: Duration,
-        ) {
-            let fail_count = failures.len();
-
-            if fail_count > 0 {
-                let mut counts: Vec<_> = failures.iter().counts().into_iter().collect();
-                counts.sort_by_key(|(label, _)| *label);
-                let counts = counts
-                    .into_iter()
-                    .map(|(label, count)| {
-                        let times = if count == 1 { "time" } else { "times" };
-                        format!("{label} ({count} {times})")
-                    })
-                    .join(", ");
-                error!(logger, "Declared calls failed";
-                  "triggers" => trigger_count,
-                  "calls_count" => calls_count,
-                  "fail_count" => fail_count,
-                  "calls_ms" => elapsed.as_millis(),
-                  "failures" => format!("[{}]", counts));
-            } else {
-                debug!(logger, "Declared calls";
-                  "triggers" => trigger_count,
-                  "calls_count" => calls_count,
-                  "calls_ms" => elapsed.as_millis());
-            }
-        }
-
         if ENV_VARS.mappings.disable_declared_calls {
             return Ok(runnables);
         }
@@ -1161,51 +1161,17 @@ impl blockchain::DecoderHook<Chain> for DecoderHook {
         let _section = metrics.stopwatch.start_section("declared_ethereum_call");
 
         let start = Instant::now();
-        let calls: Vec<_> = runnables
-            .iter()
-            .map(|r| &r.hosted_triggers)
-            .flatten()
-            .filter_map(|trigger| {
-                trigger
-                    .mapping_trigger
-                    .trigger
-                    .as_onchain()
-                    .map(|t| (trigger.host.host_metrics(), t))
-            })
-            .filter_map(|(metrics, trigger)| match trigger {
-                MappingTrigger::Log { calls, .. } => Some(
-                    calls
-                        .clone()
-                        .into_iter()
-                        .map(move |call| (metrics.cheap_clone(), call)),
-                ),
-                MappingTrigger::Block { .. } | MappingTrigger::Call { .. } => None,
-            })
-            .flatten()
-            .collect();
+        // Collect and process declared calls
+        let calls = self.collect_declared_calls(&runnables);
+        let deduplicated_calls = self.deduplicate_calls(calls);
 
-        // Deduplicate calls. Unfortunately, we can't get `DeclaredCall` to
-        // implement `Hash` or `Ord` easily, so we can only deduplicate by
-        // comparing the whole call not with a `HashSet` or `BTreeSet`.
-        // Since that can be inefficient, we don't deduplicate if we have an
-        // enormous amount of calls; in that case though, things will likely
-        // blow up because of the amount of I/O that many calls cause.
-        // Cutting off at 1000 is fairly arbitrary
-        let calls = if calls.len() < 1000 {
-            let mut uniq_calls = Vec::new();
-            for (metrics, call) in calls {
-                if !uniq_calls.iter().any(|(_, c)| c == &call) {
-                    uniq_calls.push((metrics, call));
-                }
-            }
-            uniq_calls
-        } else {
-            calls
-        };
+        // Execute calls and log results
+        let calls_count = deduplicated_calls.len();
+        let results = self
+            .eth_calls(logger, block_ptr, deduplicated_calls)
+            .await?;
 
-        let calls_count = calls.len();
-        let results = self.eth_calls(logger, block_ptr, calls).await?;
-        log_results(
+        Self::log_declared_call_results(
             logger,
             &results,
             calls_count,
@@ -1373,8 +1339,10 @@ impl Mapping {
             .iter()
             .any(|handler| matches!(handler.filter, Some(BlockHandlerFilter::Call)))
     }
+}
 
-    pub fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
+impl FindMappingABI for Mapping {
+    fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
         Ok(self
             .abis
             .iter()
@@ -1568,226 +1536,4 @@ fn string_to_h256(s: &str) -> H256 {
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct TemplateSource {
     pub abi: String,
-}
-
-/// Internal representation of declared calls. In the manifest that's
-/// written as part of an event handler as
-/// ```yaml
-/// calls:
-///   - myCall1: Contract[address].function(arg1, arg2, ...)
-///   - ..
-/// ```
-///
-/// The `address` and `arg` fields can be either `event.address` or
-/// `event.params.<name>`. Each entry under `calls` gets turned into a
-/// `CallDcl`
-#[derive(Clone, CheapClone, Debug, Default, Hash, Eq, PartialEq)]
-pub struct CallDecls {
-    pub decls: Arc<Vec<CallDecl>>,
-    readonly: (),
-}
-
-/// A single call declaration, like `myCall1:
-/// Contract[address].function(arg1, arg2, ...)`
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct CallDecl {
-    /// A user-defined label
-    pub label: String,
-    /// The call expression
-    pub expr: CallExpr,
-    readonly: (),
-}
-impl CallDecl {
-    fn address(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
-        let address = match &self.expr.address {
-            CallArg::Address => log.address,
-            CallArg::HexAddress(address) => *address,
-            CallArg::Param(name) => {
-                let value = params
-                    .iter()
-                    .find(|param| &param.name == name.as_str())
-                    .ok_or_else(|| anyhow!("unknown param {name}"))?
-                    .value
-                    .clone();
-                value
-                    .into_address()
-                    .ok_or_else(|| anyhow!("param {name} is not an address"))?
-            }
-        };
-        Ok(address)
-    }
-
-    fn args(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
-        self.expr
-            .args
-            .iter()
-            .map(|arg| match arg {
-                CallArg::Address => Ok(Token::Address(log.address)),
-                CallArg::HexAddress(address) => Ok(Token::Address(*address)),
-                CallArg::Param(name) => {
-                    let value = params
-                        .iter()
-                        .find(|param| &param.name == name.as_str())
-                        .ok_or_else(|| anyhow!("unknown param {name}"))?
-                        .value
-                        .clone();
-                    Ok(value)
-                }
-            })
-            .collect()
-    }
-}
-
-impl<'de> de::Deserialize<'de> for CallDecls {
-    fn deserialize<D>(deserializer: D) -> Result<CallDecls, D::Error>
-    where
-        D: de::Deserializer<'de>,
-    {
-        let decls: std::collections::HashMap<String, String> =
-            de::Deserialize::deserialize(deserializer)?;
-        let decls = decls
-            .into_iter()
-            .map(|(name, expr)| {
-                expr.parse::<CallExpr>().map(|expr| CallDecl {
-                    label: name,
-                    expr,
-                    readonly: (),
-                })
-            })
-            .collect::<Result<_, _>>()
-            .map(|decls| Arc::new(decls))
-            .map_err(de::Error::custom)?;
-        Ok(CallDecls {
-            decls,
-            readonly: (),
-        })
-    }
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub struct CallExpr {
-    pub abi: Word,
-    pub address: CallArg,
-    pub func: Word,
-    pub args: Vec<CallArg>,
-    readonly: (),
-}
-
-/// Parse expressions of the form `Contract[address].function(arg1, arg2,
-/// ...)` where the `address` and the args are either `event.address` or
-/// `event.params.<name>`.
-///
-/// The parser is pretty awful as it generates error messages that aren't
-/// very helpful. We should replace all this with a real parser, most likely
-/// `combine` which is what `graphql_parser` uses
-impl FromStr for CallExpr {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(
-                r"(?x)
-                (?P<abi>[a-zA-Z0-9_]+)\[
-                    (?P<address>[^]]+)\]
-                \.
-                (?P<func>[a-zA-Z0-9_]+)\(
-                    (?P<args>[^)]*)
-                \)"
-            )
-            .unwrap();
-        }
-        let x = RE
-            .captures(s)
-            .ok_or_else(|| anyhow!("invalid call expression `{s}`"))?;
-        let abi = Word::from(x.name("abi").unwrap().as_str());
-        let address = x.name("address").unwrap().as_str().parse()?;
-        let func = Word::from(x.name("func").unwrap().as_str());
-        let args: Vec<CallArg> = x
-            .name("args")
-            .unwrap()
-            .as_str()
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(|s| s.trim().parse::<CallArg>())
-            .collect::<Result<_, _>>()?;
-        Ok(CallExpr {
-            abi,
-            address,
-            func,
-            args,
-            readonly: (),
-        })
-    }
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub enum CallArg {
-    HexAddress(Address),
-    Address,
-    Param(Word),
-}
-
-lazy_static! {
-    // Matches a 40-character hexadecimal string prefixed with '0x', typical for Ethereum addresses
-    static ref ADDR_RE: Regex = Regex::new(r"^0x[0-9a-fA-F]{40}$").unwrap();
-}
-
-impl FromStr for CallArg {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if ADDR_RE.is_match(s) {
-            if let Ok(parsed_address) = Address::from_str(s) {
-                return Ok(CallArg::HexAddress(parsed_address));
-            }
-        }
-
-        let mut parts = s.split('.');
-        match (parts.next(), parts.next(), parts.next()) {
-            (Some("event"), Some("address"), None) => Ok(CallArg::Address),
-            (Some("event"), Some("params"), Some(param)) => Ok(CallArg::Param(Word::from(param))),
-            _ => Err(anyhow!("invalid call argument `{}`", s)),
-        }
-    }
-}
-
-#[test]
-fn test_call_expr() {
-    let expr: CallExpr = "ERC20[event.address].balanceOf(event.params.token)"
-        .parse()
-        .unwrap();
-    assert_eq!(expr.abi, "ERC20");
-    assert_eq!(expr.address, CallArg::Address);
-    assert_eq!(expr.func, "balanceOf");
-    assert_eq!(expr.args, vec![CallArg::Param("token".into())]);
-
-    let expr: CallExpr = "Pool[event.params.pool].fees(event.params.token0, event.params.token1)"
-        .parse()
-        .unwrap();
-    assert_eq!(expr.abi, "Pool");
-    assert_eq!(expr.address, CallArg::Param("pool".into()));
-    assert_eq!(expr.func, "fees");
-    assert_eq!(
-        expr.args,
-        vec![
-            CallArg::Param("token0".into()),
-            CallArg::Param("token1".into())
-        ]
-    );
-
-    let expr: CallExpr = "Pool[event.address].growth()".parse().unwrap();
-    assert_eq!(expr.abi, "Pool");
-    assert_eq!(expr.address, CallArg::Address);
-    assert_eq!(expr.func, "growth");
-    assert_eq!(expr.args, vec![]);
-
-    let expr: CallExpr = "Pool[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].growth(0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF)"
-        .parse()
-        .unwrap();
-    let call_arg =
-        CallArg::HexAddress(H160::from_str("0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF").unwrap());
-    assert_eq!(expr.abi, "Pool");
-    assert_eq!(expr.address, call_arg);
-    assert_eq!(expr.func, "growth");
-    assert_eq!(expr.args, vec![call_arg]);
 }
