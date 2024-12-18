@@ -2,4 +2,5 @@ type MirrorBlock @entity {
   id: String!
   number: BigInt!
   hash: Bytes!
+  testMessage: String
 }
