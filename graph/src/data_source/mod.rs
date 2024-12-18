@@ -1,4 +1,5 @@
 pub mod causality_region;
+pub mod common;
 pub mod offchain;
 pub mod subgraph;
 
@@ -18,8 +19,7 @@ use crate::{
         link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
     },
-    data_source::offchain::OFFCHAIN_KINDS,
-    data_source::subgraph::SUBGRAPH_DS_KIND,
+    data_source::{offchain::OFFCHAIN_KINDS, subgraph::SUBGRAPH_DS_KIND},
     prelude::{CheapClone as _, DataSourceContext},
     schema::{EntityType, InputSchema},
 };

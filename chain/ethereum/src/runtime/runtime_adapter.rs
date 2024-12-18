@@ -1,10 +1,9 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::adapter::EthereumRpcError;
-use crate::data_source::MappingABI;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCall,
-    ContractCallError, DataSource, EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
+    ContractCallError, EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
 };
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
@@ -13,6 +12,8 @@ use graph::components::subgraph::HostMetrics;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
+use graph::data_source;
+use graph::data_source::common::MappingABI;
 use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
@@ -80,58 +81,93 @@ pub fn eth_call_gas(chain_identifier: &ChainIdentifier) -> Option<u32> {
 }
 
 impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
-    fn host_fns(&self, ds: &DataSource) -> Result<Vec<HostFn>, Error> {
-        let abis = ds.mapping.abis.clone();
-        let call_cache = self.call_cache.cheap_clone();
-        let eth_adapters = self.eth_adapters.cheap_clone();
-        let archive = ds.mapping.requires_archive()?;
-        let eth_call_gas = eth_call_gas(&self.chain_identifier);
+    fn host_fns(&self, ds: &data_source::DataSource<Chain>) -> Result<Vec<HostFn>, Error> {
+        fn create_host_fns(
+            abis: Arc<Vec<Arc<MappingABI>>>, // Use Arc to ensure `'static` lifetimes.
+            archive: bool,
+            call_cache: Arc<dyn EthereumCallCache>,
+            eth_adapters: Arc<EthereumNetworkAdapters>,
+            eth_call_gas: Option<u32>,
+        ) -> Vec<HostFn> {
+            vec![
+                HostFn {
+                    name: "ethereum.call",
+                    func: Arc::new({
+                        let eth_adapters = eth_adapters.clone();
+                        let call_cache = call_cache.clone();
+                        let abis = abis.clone();
+                        move |ctx, wasm_ptr| {
+                            let eth_adapter =
+                                eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
+                                    archive,
+                                    traces: false,
+                                }))?;
+                            ethereum_call(
+                                &eth_adapter,
+                                call_cache.clone(),
+                                ctx,
+                                wasm_ptr,
+                                &abis,
+                                eth_call_gas,
+                            )
+                            .map(|ptr| ptr.wasm_ptr())
+                        }
+                    }),
+                },
+                HostFn {
+                    name: "ethereum.getBalance",
+                    func: Arc::new({
+                        let eth_adapters = eth_adapters.clone();
+                        move |ctx, wasm_ptr| {
+                            let eth_adapter =
+                                eth_adapters.unverified_cheapest_with(&NodeCapabilities {
+                                    archive,
+                                    traces: false,
+                                })?;
+                            eth_get_balance(&eth_adapter, ctx, wasm_ptr).map(|ptr| ptr.wasm_ptr())
+                        }
+                    }),
+                },
+                HostFn {
+                    name: "ethereum.hasCode",
+                    func: Arc::new({
+                        let eth_adapters = eth_adapters.clone();
+                        move |ctx, wasm_ptr| {
+                            let eth_adapter =
+                                eth_adapters.unverified_cheapest_with(&NodeCapabilities {
+                                    archive,
+                                    traces: false,
+                                })?;
+                            eth_has_code(&eth_adapter, ctx, wasm_ptr).map(|ptr| ptr.wasm_ptr())
+                        }
+                    }),
+                },
+            ]
+        }
 
-        let ethereum_call = HostFn {
-            name: "ethereum.call",
-            func: Arc::new(move |ctx, wasm_ptr| {
-                // Ethereum calls should prioritise call-only adapters if one is available.
-                let eth_adapter = eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
-                    archive,
-                    traces: false,
-                }))?;
-                ethereum_call(
-                    &eth_adapter,
-                    call_cache.cheap_clone(),
-                    ctx,
-                    wasm_ptr,
-                    &abis,
-                    eth_call_gas,
-                )
-                .map(|ptr| ptr.wasm_ptr())
-            }),
+        let host_fns = match ds {
+            data_source::DataSource::Onchain(onchain_ds) => {
+                let abis = Arc::new(onchain_ds.mapping.abis.clone());
+                let archive = onchain_ds.mapping.requires_archive()?;
+                let call_cache = self.call_cache.cheap_clone();
+                let eth_adapters = self.eth_adapters.cheap_clone();
+                let eth_call_gas = eth_call_gas(&self.chain_identifier);
+
+                create_host_fns(abis, archive, call_cache, eth_adapters, eth_call_gas)
+            }
+            data_source::DataSource::Subgraph(subgraph_ds) => {
+                let abis = Arc::new(subgraph_ds.mapping.abis.clone());
+                let archive = subgraph_ds.mapping.requires_archive()?;
+                let call_cache = self.call_cache.cheap_clone();
+                let eth_adapters = self.eth_adapters.cheap_clone();
+                let eth_call_gas = eth_call_gas(&self.chain_identifier);
+
+                create_host_fns(abis, archive, call_cache, eth_adapters, eth_call_gas)
+            }
+            data_source::DataSource::Offchain(_) => vec![],
         };
 
-        let eth_adapters = self.eth_adapters.cheap_clone();
-        let ethereum_get_balance = HostFn {
-            name: "ethereum.getBalance",
-            func: Arc::new(move |ctx, wasm_ptr| {
-                let eth_adapter = eth_adapters.unverified_cheapest_with(&NodeCapabilities {
-                    archive,
-                    traces: false,
-                })?;
-                eth_get_balance(&eth_adapter, ctx, wasm_ptr).map(|ptr| ptr.wasm_ptr())
-            }),
-        };
-
-        let eth_adapters = self.eth_adapters.cheap_clone();
-        let ethereum_get_code = HostFn {
-            name: "ethereum.hasCode",
-            func: Arc::new(move |ctx, wasm_ptr| {
-                let eth_adapter = eth_adapters.unverified_cheapest_with(&NodeCapabilities {
-                    archive,
-                    traces: false,
-                })?;
-                eth_has_code(&eth_adapter, ctx, wasm_ptr).map(|ptr| ptr.wasm_ptr())
-            }),
-        };
-
-        Ok(vec![ethereum_call, ethereum_get_balance, ethereum_get_code])
+        Ok(host_fns)
     }
 }
 
