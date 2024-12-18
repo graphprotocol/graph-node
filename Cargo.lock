@@ -1791,7 +1791,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "atomic_refcell",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bigdecimal 0.1.2",
  "bs58 0.5.1",
  "bytes",
