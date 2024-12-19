@@ -7,7 +7,7 @@ use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
 use prost_types::Any;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
@@ -357,7 +357,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             SubgraphTriggerScanRange::Range(from, to) => {
                 let hash_to_entities = self.fetch_entities_for_filters(filters, from, to).await?;
 
-                let block_numbers: HashSet<BlockNumber> = hash_to_entities
+                let block_numbers: BTreeSet<BlockNumber> = hash_to_entities
                     .iter()
                     .flat_map(|(_, entities)| entities.keys().copied())
                     .chain(std::iter::once(to))
@@ -628,7 +628,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn load_block_ptrs_by_numbers(
         &self,
         logger: Logger,
-        block_numbers: HashSet<BlockNumber>,
+        block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<C::Block>>;
 }
 
