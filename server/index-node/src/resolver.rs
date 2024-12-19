@@ -768,7 +768,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
                     .push(key.entity_id);
             }
             EntityOperation::Set { key, data } => {
-                updates.entry(key.entity_type).or_default().push(data);
+                updates.entry(key.entity_type).or_default().push(data.e);
             }
         }
     }

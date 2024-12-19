@@ -1,6 +1,6 @@
 use ethabi;
 
-use graph::blockchain::block_stream::{EntitySubgraphOperation, EntityWithType};
+use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::data::store::scalar::Timestamp;
 use graph::data::value::Word;
 use graph::prelude::{BigDecimal, BigInt};
@@ -482,16 +482,16 @@ pub struct AscEntityTrigger {
     pub vid: i64,
 }
 
-impl ToAscObj<AscEntityTrigger> for EntityWithType {
+impl ToAscObj<AscEntityTrigger> for EntitySourceOperation {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEntityTrigger, HostExportError> {
         let entity_op = match self.entity_op {
-            EntitySubgraphOperation::Create => AscSubgraphEntityOp::Create,
-            EntitySubgraphOperation::Modify => AscSubgraphEntityOp::Modify,
-            EntitySubgraphOperation::Delete => AscSubgraphEntityOp::Delete,
+            EntityOperationKind::Create => AscSubgraphEntityOp::Create,
+            EntityOperationKind::Modify => AscSubgraphEntityOp::Modify,
+            EntityOperationKind::Delete => AscSubgraphEntityOp::Delete,
         };
 
         Ok(AscEntityTrigger {

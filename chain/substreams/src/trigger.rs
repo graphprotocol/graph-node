@@ -16,7 +16,7 @@ use graph::{
 };
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
 
@@ -139,7 +139,7 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
-        _block_numbers: HashSet<BlockNumber>,
+        _block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<Block>, Error> {
         unimplemented!()
     }
@@ -237,7 +237,7 @@ where
                         logger,
                     );
 
-                    state.entity_cache.set(key, entity)?;
+                    state.entity_cache.set(key, entity, block.number)?;
                 }
                 ParsedChanges::Delete(entity_key) => {
                     let entity_type = entity_key.entity_type.cheap_clone();

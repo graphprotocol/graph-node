@@ -39,7 +39,7 @@ use graph::{
     },
 };
 use prost::Message;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::future::Future;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -747,7 +747,7 @@ pub struct TriggersAdapter {
 async fn fetch_unique_blocks_from_cache(
     logger: &Logger,
     chain_store: Arc<dyn ChainStore>,
-    block_numbers: HashSet<BlockNumber>,
+    block_numbers: BTreeSet<BlockNumber>,
 ) -> (Vec<Arc<ExtendedBlockPtr>>, Vec<i32>) {
     // Load blocks from the cache
     let blocks_map = chain_store
@@ -795,7 +795,7 @@ async fn fetch_unique_blocks_from_cache(
 async fn load_blocks<F, Fut>(
     logger: &Logger,
     chain_store: Arc<dyn ChainStore>,
-    block_numbers: HashSet<BlockNumber>,
+    block_numbers: BTreeSet<BlockNumber>,
     fetch_missing: F,
 ) -> Result<Vec<BlockFinality>>
 where
@@ -843,7 +843,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn load_block_ptrs_by_numbers(
         &self,
         logger: Logger,
-        block_numbers: HashSet<BlockNumber>,
+        block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<BlockFinality>> {
         match &*self.chain_client {
             ChainClient::Firehose(endpoints) => {
@@ -1200,7 +1200,6 @@ mod tests {
     use graph::{slog, tokio};
 
     use super::*;
-    use std::collections::HashSet;
     use std::sync::Arc;
 
     // Helper function to create test blocks
@@ -1224,7 +1223,7 @@ mod tests {
         let block = create_test_block(1, "block1");
         chain_store.blocks.insert(1, vec![block.clone()]);
 
-        let block_numbers: HashSet<_> = vec![1].into_iter().collect();
+        let block_numbers: BTreeSet<_> = vec![1].into_iter().collect();
 
         let (blocks, missing) =
             fetch_unique_blocks_from_cache(&logger, Arc::new(chain_store), block_numbers).await;
@@ -1246,7 +1245,7 @@ mod tests {
             .blocks
             .insert(1, vec![block1.clone(), block2.clone()]);
 
-        let block_numbers: HashSet<_> = vec![1].into_iter().collect();
+        let block_numbers: BTreeSet<_> = vec![1].into_iter().collect();
 
         let (blocks, missing) =
             fetch_unique_blocks_from_cache(&logger, Arc::new(chain_store), block_numbers).await;
@@ -1266,7 +1265,7 @@ mod tests {
         let block = create_test_block(1, "block1");
         chain_store.blocks.insert(1, vec![block.clone()]);
 
-        let block_numbers: HashSet<_> = vec![1, 2].into_iter().collect();
+        let block_numbers: BTreeSet<_> = vec![1, 2].into_iter().collect();
 
         let (blocks, missing) =
             fetch_unique_blocks_from_cache(&logger, Arc::new(chain_store), block_numbers).await;
@@ -1287,7 +1286,7 @@ mod tests {
         chain_store.blocks.insert(1, vec![block1.clone()]);
         chain_store.blocks.insert(2, vec![block2.clone()]);
 
-        let block_numbers: HashSet<_> = vec![1, 2].into_iter().collect();
+        let block_numbers: BTreeSet<_> = vec![1, 2].into_iter().collect();
 
         let (blocks, missing) =
             fetch_unique_blocks_from_cache(&logger, Arc::new(chain_store), block_numbers).await;
@@ -1316,7 +1315,7 @@ mod tests {
             .blocks
             .insert(2, vec![block2a.clone(), block2b.clone()]);
 
-        let block_numbers: HashSet<_> = vec![1, 2, 3].into_iter().collect();
+        let block_numbers: BTreeSet<_> = vec![1, 2, 3].into_iter().collect();
 
         let (blocks, missing) =
             fetch_unique_blocks_from_cache(&logger, Arc::new(chain_store), block_numbers).await;
