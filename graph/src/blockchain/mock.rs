@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use slog::Logger;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
     sync::Arc,
 };
@@ -243,9 +243,14 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
-        _block_numbers: HashSet<BlockNumber>,
+        block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<MockBlock>> {
-        unimplemented!()
+        Ok(block_numbers
+            .into_iter()
+            .map(|number| MockBlock {
+                number: number as u64,
+            })
+            .collect())
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
