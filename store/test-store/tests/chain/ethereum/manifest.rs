@@ -215,6 +215,78 @@ specVersion: 1.3.0
 }
 
 #[tokio::test]
+async fn multiple_subgraph_ds_manifest() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource1
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSWWT2yrTFDZSL8tRyoHEVrcEKAUsY2hj2TMQDfdDZU8h'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: User
+  - name: SubgraphSource2
+    kind: subgraph
+    entities:
+        - Profile
+    network: mainnet
+    source:
+      address: 'QmT8B2R7J9yzbZXkqRefmZPkXmE8pCsRKmMj3rGN1Qoe4k'
+      startBlock: 9562500
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity2
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleProfile
+          entity: Profile
+specVersion: 1.3.0
+";
+
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+
+    assert_eq!("Qmmanifest", manifest.id.as_str());
+    assert_eq!(manifest.data_sources.len(), 2);
+
+    // Validate first data source
+    match &manifest.data_sources[0] {
+        DataSourceEnum::Subgraph(ds) => {
+            assert_eq!(ds.name, "SubgraphSource1");
+            assert_eq!(ds.kind, "subgraph");
+            assert_eq!(ds.source.start_block, 9562480);
+        }
+        _ => panic!("Expected a subgraph data source"),
+    }
+
+    // Validate second data source
+    match &manifest.data_sources[1] {
+        DataSourceEnum::Subgraph(ds) => {
+            assert_eq!(ds.name, "SubgraphSource2");
+            assert_eq!(ds.kind, "subgraph");
+            assert_eq!(ds.source.start_block, 9562500);
+        }
+        _ => panic!("Expected a subgraph data source"),
+    }
+}
+
+#[tokio::test]
 async fn graft_manifest() {
     const YAML: &str = "
 dataSources: []
