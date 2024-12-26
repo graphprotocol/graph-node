@@ -575,7 +575,7 @@ fn graphql_warns_reassign_on_wrong_node_id() {
             "data": {
                 "deployment": {
                     "reassign": {
-                        "warnings": ["warning: this is the only deployment assigned to 'invalid_node'. Are you sure it is spelled correctly?"],
+                        "warnings": ["This is the only deployment assigned to 'invalid_node'. Please make sure that the node ID is spelled correctly."],
                     }
                 }
             }
