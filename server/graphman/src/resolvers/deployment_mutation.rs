@@ -124,7 +124,7 @@ impl DeploymentMutation {
         let mirror = catalog::Mirror::primary_only(ctx.primary_pool);
         let count = mirror.assignments(&node)?.len();
         if count == 1 {
-            let warning_msg = format!("warning: this is the only deployment assigned to '{}'. Are you sure it is spelled correctly?",node.as_str());
+            let warning_msg = format!("This is the only deployment assigned to '{}'. Please make sure that the node ID is spelled correctly.",node.as_str());
             Ok(ReassignResponse::CompletedWithWarnings(
                 CompletedWithWarnings::new(vec![warning_msg]),
             ))

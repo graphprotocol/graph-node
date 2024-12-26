@@ -423,7 +423,7 @@ fn graphql_can_unassign_deployments() {
 
         let subgraph_node_id = send_graphql_request(
             json!({
-                "query": r#"query Deployment {
+                "query": r#"{
                     deployment {
                         info(deployment: { hash: "subgraph_1" }) {
                             nodeId

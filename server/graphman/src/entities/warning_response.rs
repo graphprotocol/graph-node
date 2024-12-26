@@ -6,8 +6,7 @@ pub struct CompletedWithWarnings {
 }
 
 impl CompletedWithWarnings {
-    /// Returns a response with success & message.
-    pub fn new(msg: Vec<String>) -> Self {
-        Self { warnings: msg }
+    pub fn new(warnings: Vec<String>) -> Self {
+        Self { warnings }
     }
 }
