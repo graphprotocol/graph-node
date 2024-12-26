@@ -85,14 +85,14 @@ impl DeploymentMutation {
     pub async fn create(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
         let ctx = GraphmanContext::new(ctx)?;
         create::run(&ctx, &name)?;
-        Ok(EmptyResponse::new(None))
+        Ok(EmptyResponse::new())
     }
 
     /// Remove a subgraph
     pub async fn remove(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
         let ctx = GraphmanContext::new(ctx)?;
         remove::run(&ctx, &name)?;
-        Ok(EmptyResponse::new(None))
+        Ok(EmptyResponse::new())
     }
 
     /// Unassign a deployment
