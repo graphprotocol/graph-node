@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use graph::components::store::DeploymentLocator;
 use graph::components::store::StoreEvent;
 use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::command_support::catalog::Site;
@@ -13,7 +14,14 @@ use crate::deployment::DeploymentVersionSelector;
 use crate::GraphmanError;
 
 pub struct AssignedDeployment {
+    locator: DeploymentLocator,
     site: Site,
+}
+
+impl AssignedDeployment {
+    pub fn locator(&self) -> &DeploymentLocator {
+        &self.locator
+    }
 }
 
 #[derive(Debug, Error)]
@@ -50,7 +58,7 @@ pub fn load_assigned_deployment(
         .assigned_node(&site)
         .map_err(GraphmanError::from)?
     {
-        Some(_) => Ok(AssignedDeployment { site }),
+        Some(_) => Ok(AssignedDeployment { locator, site }),
         None => Err(UnassignDeploymentError::AlreadyUnassigned(
             locator.to_string(),
         )),

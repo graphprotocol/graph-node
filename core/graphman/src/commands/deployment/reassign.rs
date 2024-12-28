@@ -15,9 +15,15 @@ use crate::deployment::DeploymentSelector;
 use crate::deployment::DeploymentVersionSelector;
 use crate::GraphmanError;
 
-pub struct ActiveDeployment {
+pub struct Deployment {
     locator: DeploymentLocator,
     site: Site,
+}
+
+impl Deployment {
+    pub fn locator(&self) -> &DeploymentLocator {
+        &self.locator
+    }
 }
 
 #[derive(Debug, Error)]
@@ -29,10 +35,16 @@ pub enum ReassignDeploymentError {
     Common(#[from] GraphmanError),
 }
 
+#[derive(Clone, Debug)]
+pub enum ReassignResult {
+    EmptyResponse,
+    CompletedWithWarnings(Vec<String>),
+}
+
 pub fn load_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
-) -> Result<ActiveDeployment, ReassignDeploymentError> {
+) -> Result<Deployment, ReassignDeploymentError> {
     let mut primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
@@ -50,15 +62,15 @@ pub fn load_deployment(
             GraphmanError::Store(anyhow!("deployment site not found for '{locator}'"))
         })?;
 
-    Ok(ActiveDeployment { locator, site })
+    Ok(Deployment { locator, site })
 }
 
 pub fn reassign_deployment(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
-    deployment: ActiveDeployment,
+    deployment: &Deployment,
     node: &NodeId,
-) -> Result<(), ReassignDeploymentError> {
+) -> Result<ReassignResult, ReassignDeploymentError> {
     let primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
@@ -91,5 +103,15 @@ pub fn reassign_deployment(
         .send_store_event(&notification_sender, &StoreEvent::new(changes))
         .map_err(GraphmanError::from)?;
 
-    Ok(())
+    let mirror = catalog::Mirror::primary_only(primary_pool);
+    let count = mirror
+        .assignments(&node)
+        .map_err(GraphmanError::from)?
+        .len();
+    if count == 1 {
+        let warning_msg = format!("This is the only deployment assigned to '{}'. Please make sure that the node ID is spelled correctly.",node.as_str());
+        Ok(ReassignResult::CompletedWithWarnings(vec![warning_msg]))
+    } else {
+        Ok(ReassignResult::EmptyResponse)
+    }
 }

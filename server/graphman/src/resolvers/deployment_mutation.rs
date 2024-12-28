@@ -6,8 +6,8 @@ use async_graphql::Object;
 use async_graphql::Result;
 use async_graphql::Union;
 use graph::prelude::NodeId;
-use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::graphman::GraphmanStore;
+use graphman::commands::deployment::reassign::ReassignResult;
 
 use crate::entities::CompletedWithWarnings;
 use crate::entities::DeploymentSelector;
@@ -119,17 +119,14 @@ impl DeploymentMutation {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
         let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
-        reassign::run(&ctx, &deployment, &node)?;
-
-        let mirror = catalog::Mirror::primary_only(ctx.primary_pool);
-        let count = mirror.assignments(&node)?.len();
-        if count == 1 {
-            let warning_msg = format!("This is the only deployment assigned to '{}'. Please make sure that the node ID is spelled correctly.",node.as_str());
-            Ok(ReassignResponse::CompletedWithWarnings(
-                CompletedWithWarnings::new(vec![warning_msg]),
-            ))
-        } else {
-            Ok(ReassignResponse::EmptyResponse(EmptyResponse::new()))
+        let reassign_result = reassign::run(&ctx, &deployment, &node)?;
+        match reassign_result {
+            ReassignResult::CompletedWithWarnings(warnings) => Ok(
+                ReassignResponse::CompletedWithWarnings(CompletedWithWarnings::new(warnings)),
+            ),
+            ReassignResult::EmptyResponse => {
+                Ok(ReassignResponse::EmptyResponse(EmptyResponse::new()))
+            }
         }
     }
 }
