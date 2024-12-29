@@ -1084,7 +1084,8 @@ impl HostExports {
 
         if level == slog::Level::Critical {
             return Err(DeterministicHostError::from(anyhow!(
-                "Critical error logged in mapping"
+                "Critical error logged in mapping with log message: {}",
+                msg
             )));
         }
         Ok(())
