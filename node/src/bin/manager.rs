@@ -351,7 +351,7 @@ pub enum Command {
         force: bool,
     },
 
-    // Deploy a subgraph
+    /// Deploy a subgraph
     Deploy {
         name: DeploymentSearch,
         deployment: DeploymentSearch,
