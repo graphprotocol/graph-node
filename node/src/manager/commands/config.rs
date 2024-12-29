@@ -66,6 +66,9 @@ pub fn check(config: &Config, print: bool) -> Result<(), Error> {
 }
 
 pub fn pools(config: &Config, nodes: Vec<String>, shard: bool) -> Result<(), Error> {
+    if nodes.is_empty() {
+        bail!("Please specify at least one node");
+    }
     // Quietly replace `-` with `_` in node names to make passing in pod names
     // from k8s less annoying
     let nodes: Vec<_> = nodes
