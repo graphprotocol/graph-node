@@ -19,9 +19,9 @@ use graph::{
 use graph_chain_ethereum as ethereum;
 use graph_chain_ethereum::NodeCapabilities;
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
+use serde::Serialize;
 
 use graph::http::{HeaderMap, Uri};
-use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,

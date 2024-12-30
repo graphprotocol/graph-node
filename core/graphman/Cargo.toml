@@ -12,3 +12,7 @@ graphman-store = { workspace = true }
 itertools = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+graph-chain-ethereum = { path = "../../chain/ethereum" }
+serde = { workspace = true }
+url = "2.5.2"
+shellexpand = "3.1.0"

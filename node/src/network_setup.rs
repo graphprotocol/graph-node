@@ -185,7 +185,7 @@ impl Networks {
 
     pub async fn from_config(
         logger: Logger,
-        config: &crate::config::Config,
+        config: &graphman::config::Config,
         registry: Arc<MetricsRegistry>,
         endpoint_metrics: Arc<EndpointMetrics>,
         provider_checks: &[Arc<dyn ProviderCheck>],

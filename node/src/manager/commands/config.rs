@@ -16,7 +16,8 @@ use graph::{
 use graph_chain_ethereum::NodeCapabilities;
 use graph_store_postgres::DeploymentPlacer;
 
-use crate::{config::Config, network_setup::Networks};
+use crate::network_setup::Networks;
+use graphman::config::Config;
 
 pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result<(), Error> {
     match placer.place(name, network).map_err(|s| anyhow!(s))? {

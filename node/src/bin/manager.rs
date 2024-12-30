@@ -19,7 +19,6 @@ use graph::{
 };
 use graph_chain_ethereum::EthereumAdapter;
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::color::Terminal;
 use graph_node::manager::commands;
 use graph_node::network_setup::Networks;
@@ -34,6 +33,7 @@ use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
     SubscriptionManager, PRIMARY_SHARD,
 };
+use graphman::config::{self, Config as Cfg};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::str::FromStr;
@@ -1184,7 +1184,7 @@ async fn main() -> anyhow::Result<()> {
                 Place { name, network } => {
                     commands::config::place(&ctx.config.deployment, &name, &network)
                 }
-                Check { print } => commands::config::check(&ctx.config, print),
+                Check { print } => commands::config_cmd::check::run(&ctx.config, print),
                 Pools { nodes, shard } => commands::config::pools(&ctx.config, nodes, shard),
                 Provider { features, network } => {
                     let logger = ctx.logger.clone();

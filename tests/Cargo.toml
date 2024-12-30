@@ -9,16 +9,20 @@ assert-json-diff = "2.0.2"
 async-stream = "0.3.5"
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
-graph-chain-substreams= {path = "../chain/substreams"}
+graph-chain-substreams = { path = "../chain/substreams" }
 graph-node = { path = "../node" }
 graph-core = { path = "../core" }
 graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
 graph-server-index-node = { path = "../server/index-node" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
+graphman = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+slog = { version = "2.7.0", features = [
+    "release_max_level_trace",
+    "max_level_trace",
+] }
 tokio = { version = "1.38.0", features = ["rt", "macros", "process"] }
 # Once graph upgrades to web3 0.19, we don't need this anymore. The version
 # here needs to be kept in sync with the web3 version that the graph crate

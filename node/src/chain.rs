@@ -1,4 +1,3 @@
-use crate::config::{Config, ProviderDetails};
 use crate::network_setup::{
     AdapterConfiguration, EthAdapterConfig, FirehoseAdapterConfig, Networks,
 };
@@ -31,6 +30,7 @@ use graph::tokio::time::timeout;
 use graph::url::Url;
 use graph_chain_ethereum::{self as ethereum, Transport};
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
+use graphman::config::{Config, ProviderDetails};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -240,7 +240,7 @@ pub async fn create_ethereum_networks_for_chain(
             "capabilities" => capabilities
         );
 
-        use crate::config::Transport::*;
+        use graphman::config::Transport::*;
 
         let transport = match web3.transport {
             Rpc => Transport::new_rpc(
@@ -553,13 +553,13 @@ pub async fn networks_as_chains(
 
 #[cfg(test)]
 mod test {
-    use crate::config::{Config, Opt};
     use crate::network_setup::{AdapterConfiguration, Networks};
     use graph::components::network_provider::ChainName;
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};
     use graph_chain_ethereum::NodeCapabilities;
+    use graphman::config::{Config, Opt};
     use std::sync::Arc;
 
     #[tokio::test]

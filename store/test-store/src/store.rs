@@ -23,7 +23,6 @@ use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
 use graph_graphql::test_support::GraphQLMetrics;
-use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
@@ -31,6 +30,7 @@ use graph_store_postgres::{
     BlockStore as DieselBlockStore, DeploymentPlacer, SubgraphStore as DieselSubgraphStore,
     PRIMARY_SHARD,
 };
+use graphman::config::{Config, Opt};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
