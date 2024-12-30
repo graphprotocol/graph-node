@@ -1055,15 +1055,18 @@ where
                     .stream
                     .stopwatch
                     .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
-                self.handle_process_wasm_block(
-                    block_ptr,
-                    block_time,
-                    data,
-                    handler,
-                    cursor,
-                    cancel_handle,
-                )
-                .await?
+                let res = self
+                    .handle_process_wasm_block(
+                        block_ptr.clone(),
+                        block_time,
+                        data,
+                        handler,
+                        cursor,
+                        cancel_handle,
+                    )
+                    .await;
+                let start = Instant::now();
+                self.handle_action(start, block_ptr, res).await?
             }
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
                 let _section = self
@@ -1221,7 +1224,7 @@ trait StreamEventHandler<C: Blockchain> {
         handler: String,
         cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
-    ) -> Result<Action, Error>;
+    ) -> Result<Action, BlockProcessingError>;
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
@@ -1255,7 +1258,7 @@ where
         handler: String,
         cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
-    ) -> Result<Action, Error> {
+    ) -> Result<Action, BlockProcessingError> {
         let logger = self.logger.new(o!(
                 "block_number" => format!("{:?}", block_ptr.number),
                 "block_hash" => format!("{}", block_ptr.hash)
