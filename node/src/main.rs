@@ -21,7 +21,6 @@ use graph_core::{
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::network_setup::Networks;
-use graph_node::opt;
 use graph_node::store_builder::StoreBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
@@ -32,6 +31,7 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::Store;
 use graph_store_postgres::{register_jobs as register_store_jobs, NotificationSender};
 use graphman::config::Config;
+use graphman::opt;
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
 use std::io::{BufRead, BufReader};

@@ -11,6 +11,7 @@ pub mod commands;
 pub mod config;
 pub mod deployment;
 pub mod execution_tracker;
+pub mod opt;
 
 pub use self::error::GraphmanError;
 pub use self::execution_tracker::GraphmanExecutionTracker;

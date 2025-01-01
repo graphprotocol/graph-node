@@ -1,5 +1,6 @@
 use async_graphql::Object;
 
+use crate::resolvers::ConfigQuery;
 use crate::resolvers::DeploymentQuery;
 use crate::resolvers::ExecutionQuery;
 
@@ -11,6 +12,11 @@ impl QueryRoot {
     /// Queries related to one or multiple deployments.
     pub async fn deployment(&self) -> DeploymentQuery {
         DeploymentQuery {}
+    }
+
+    /// Queries related to Config.
+    pub async fn config(&self) -> ConfigQuery {
+        ConfigQuery {}
     }
 
     /// Queries related to command executions.

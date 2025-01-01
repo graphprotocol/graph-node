@@ -5,11 +5,15 @@ edition.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+async-graphql = { workspace = true }
+clap = { workspace = true }
 diesel = { workspace = true }
+git-testament = "0.2"
 graph = { workspace = true }
 graph-store-postgres = { workspace = true }
 graphman-store = { workspace = true }
 itertools = { workspace = true }
+lazy_static = "1.5.0"
 thiserror = { workspace = true }
 tokio = { workspace = true }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
