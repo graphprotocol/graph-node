@@ -1,0 +1,11 @@
+[[setting]]
+match = { name = ".*" }
+history_blocks = 10000
+
+[[setting]]
+match = { name = "xxxxx" }
+history_blocks = 10000
+
+[[setting]]
+match = { name = ".*!$" }
+history_blocks = 10000
