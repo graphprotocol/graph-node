@@ -3,8 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::NotificationSender;
-use graphman::commands::deployment::pause::load_active_deployment;
-use graphman::commands::deployment::pause::pause_active_deployment;
+use graphman::commands::deployment::pause::{
+    load_active_deployment, pause_active_deployment, PauseDeploymentError,
+};
 use graphman::deployment::DeploymentSelector;
 
 pub fn run(
@@ -12,11 +13,22 @@ pub fn run(
     notification_sender: Arc<NotificationSender>,
     deployment: DeploymentSelector,
 ) -> Result<()> {
-    let active_deployment = load_active_deployment(primary_pool.clone(), &deployment)?;
+    let active_deployment = load_active_deployment(primary_pool.clone(), &deployment);
 
-    println!("Pausing deployment {} ...", active_deployment.locator());
-
-    pause_active_deployment(primary_pool, notification_sender, active_deployment)?;
+    match active_deployment {
+        Ok(active_deployment) => {
+            println!("Pausing deployment {} ...", active_deployment.locator());
+            pause_active_deployment(primary_pool, notification_sender, active_deployment)?;
+        }
+        Err(PauseDeploymentError::AlreadyPaused(locator)) => {
+            println!("Deployment {} is already paused", locator);
+            return Ok(());
+        }
+        Err(PauseDeploymentError::Common(e)) => {
+            println!("Failed to load active deployment: {}", e);
+            return Err(e.into());
+        }
+    }
 
     Ok(())
 }
