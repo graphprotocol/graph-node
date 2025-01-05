@@ -1182,7 +1182,7 @@ async fn main() -> anyhow::Result<()> {
                     Ok(())
                 }
                 Place { name, network } => {
-                    commands::config::place(&ctx.config.deployment, &name, &network)
+                    commands::config_cmd::place::run(&ctx.config.deployment, &name, &network)
                 }
                 Check { print } => commands::config_cmd::check::run(&ctx.config, print),
                 Pools { nodes, shard } => commands::config::pools(&ctx.config, nodes, shard),
