@@ -1,5 +1,5 @@
 import { Entity, log, store, BigInt, EntityTrigger, EntityOp } from '@graphprotocol/graph-ts';
-import { Block } from '../generated/subgraph-Qmaqf8cRxfxbduZppSHKG9DMuX5JZPMoGuwGb2DQuo48sq';
+import { Block } from '../generated/subgraph-QmQCiSBooPHZTrqxJknG9W1YJ8EZXj8c8baFs24eY9pXM8';
 import { MirrorBlock } from '../generated/schema';
 
 export function handleEntity(trigger: EntityTrigger<Block>): void {
