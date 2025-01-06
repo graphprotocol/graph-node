@@ -190,6 +190,7 @@ async fn test_triggers_adapter_with_entities() {
         subgraph: id,
         start_block: 0,
         entities: vec!["User".to_string()], // Only monitoring User entities
+        manifest_idx: 0,
     };
 
     let logger = Logger::root(slog::Discard, slog::o!());

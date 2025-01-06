@@ -1122,6 +1122,7 @@ async fn subgraph_data_sources() {
             entity_type,
             EntityOperationKind::Create,
             1,
+            0,
         );
 
         let block_2 = empty_block(block_1.ptr(), test_ptr(2));

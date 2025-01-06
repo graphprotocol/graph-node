@@ -266,6 +266,7 @@ pub struct SubgraphFilter {
     pub subgraph: DeploymentHash,
     pub start_block: BlockNumber,
     pub entities: Vec<String>,
+    pub manifest_idx: u32,
 }
 
 impl<C: Blockchain> TriggerFilterWrapper<C> {
@@ -467,7 +468,7 @@ where
             (Trigger::Chain(data1), Trigger::Chain(data2)) => data1.cmp(data2),
             (Trigger::Subgraph(_), Trigger::Chain(_)) => std::cmp::Ordering::Greater,
             (Trigger::Chain(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Less,
-            (Trigger::Subgraph(t1), Trigger::Subgraph(t2)) => t1.entity.vid.cmp(&t2.entity.vid),
+            (Trigger::Subgraph(t1), Trigger::Subgraph(t2)) => t1.cmp(t2),
         }
     }
 }
