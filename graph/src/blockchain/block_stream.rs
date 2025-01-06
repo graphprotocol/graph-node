@@ -357,10 +357,14 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             SubgraphTriggerScanRange::Range(from, to) => {
                 let hash_to_entities = self.fetch_entities_for_filters(filters, from, to).await?;
 
-                let block_numbers = hash_to_entities
+                // Get block numbers that have entities
+                let mut block_numbers: BTreeSet<_> = hash_to_entities
                     .iter()
                     .flat_map(|(_, entities, _)| entities.keys().copied())
-                    .collect::<BTreeSet<_>>();
+                    .collect();
+
+                // Always include the last block in the range
+                block_numbers.insert(to);
 
                 let blocks = self
                     .adapter

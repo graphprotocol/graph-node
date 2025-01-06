@@ -201,7 +201,11 @@ async fn test_triggers_adapter_with_entities() {
     assert!(result.is_ok(), "Failed to get triggers: {:?}", result.err());
     let blocks = result.unwrap();
 
-    assert_eq!(blocks.len(), 3, "Should have found three blocks");
+    assert_eq!(
+        blocks.len(),
+        3,
+        "Should have found blocks with entities plus the last block"
+    );
 
     let block1 = &blocks[0];
     assert_eq!(block1.block.number(), 1, "First block should be number 1");
@@ -248,4 +252,13 @@ async fn test_triggers_adapter_with_entities() {
     } else {
         panic!("Expected subgraph trigger");
     }
+
+    let block3 = &blocks[2];
+    assert_eq!(block3.block.number(), 3, "Third block should be number 3");
+    let triggers3 = &block3.trigger_data;
+    assert_eq!(
+        triggers3.len(),
+        0,
+        "Block 3 should have no triggers but be included as it's the last block"
+    );
 }
