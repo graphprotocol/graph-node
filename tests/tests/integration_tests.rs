@@ -139,6 +139,28 @@ impl TestCase {
         }
     }
 
+    fn new_with_multiple_source_subgraphs<T>(
+        name: &str,
+        test: fn(TestContext) -> T,
+        source_subgraphs: Vec<&str>,
+    ) -> Self
+    where
+        T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+    {
+        fn force_boxed<T>(f: fn(TestContext) -> T) -> TestFn
+        where
+            T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+        {
+            Box::new(move |ctx| Box::pin(f(ctx)))
+        }
+
+        Self {
+            name: name.to_string(),
+            test: force_boxed(test),
+            source_subgraph: Some(source_subgraphs.join(",")),
+        }
+    }
+
     async fn deploy_and_wait(
         &self,
         subgraph_name: &str,
@@ -172,25 +194,15 @@ impl TestCase {
     }
 
     async fn run(self, contracts: &[Contract]) -> TestResult {
-        // If a subgraph has a subgraph datasource, then deploy the source subgraph first
-        if let Some(source_subgraph) = &self.source_subgraph {
-            let subgraph = self.deploy_and_wait(source_subgraph, contracts).await;
-            match subgraph {
-                Ok(subgraph) => {
-                    status!(
-                        source_subgraph,
-                        "source subgraph deployed with hash {}",
-                        subgraph.deployment
-                    );
-                }
-                Err(e) => {
-                    error!(source_subgraph, "source subgraph deployment failed");
-                    return TestResult {
-                        name: self.name.clone(),
-                        subgraph: None,
-                        status: TestStatus::Err(e),
-                    };
-                }
+        // If a subgraph has subgraph datasources, deploy them first
+        if let Some(_subgraphs) = &self.source_subgraph {
+            if let Err(e) = self.deploy_multiple_sources(contracts).await {
+                error!(&self.name, "source subgraph deployment failed");
+                return TestResult {
+                    name: self.name.clone(),
+                    subgraph: None,
+                    status: TestStatus::Err(e),
+                };
             }
         }
 
@@ -251,6 +263,20 @@ impl TestCase {
             subgraph: Some(subgraph2),
             status,
         }
+    }
+
+    async fn deploy_multiple_sources(&self, contracts: &[Contract]) -> Result<()> {
+        if let Some(sources) = &self.source_subgraph {
+            for source in sources.split(",") {
+                let subgraph = self.deploy_and_wait(source, contracts).await?;
+                status!(
+                    source,
+                    "source subgraph deployed with hash {}",
+                    subgraph.deployment
+                );
+            }
+        }
+        Ok(())
     }
 }
 
@@ -932,6 +958,32 @@ async fn test_missing(_sg: Subgraph) -> anyhow::Result<()> {
     Err(anyhow!("This test is missing"))
 }
 
+async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<()> {
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+
+    // Test querying data aggregated from multiple sources
+    let exp = json!({
+        "aggregatedDatas": [
+            {
+                "id": "1",
+                "sourceA": "from source A",
+                "sourceB": "from source B",
+            }
+        ]
+    });
+
+    query_succeeds(
+        "should aggregate data from multiple sources",
+        &subgraph,
+        "{ aggregatedDatas(first: 1) { id sourceA sourceB } }",
+        exp,
+    )
+    .await?;
+
+    Ok(())
+}
+
 /// The main test entrypoint.
 #[tokio::test]
 async fn integration_tests() -> anyhow::Result<()> {
@@ -957,6 +1009,11 @@ async fn integration_tests() -> anyhow::Result<()> {
             "subgraph-data-sources",
             subgraph_data_sources,
             "source-subgraph",
+        ),
+        TestCase::new_with_multiple_source_subgraphs(
+            "multiple-subgraph-datasources",
+            test_multiple_subgraph_datasources,
+            vec!["source-subgraph-a", "source-subgraph-b"],
         ),
     ];
 

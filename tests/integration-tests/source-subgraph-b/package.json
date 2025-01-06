@@ -1,16 +1,16 @@
 {
-  "name": "source-subgraph",
+  "name": "source-subgraph-b",
   "version": "0.1.0",
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen --skip-migrations",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
-    "create:test": "graph create test/source-subgraph --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/source-subgraph --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "create:test": "graph create test/source-subgraph-b --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/source-subgraph-b --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "0.91.0-alpha-20241129215038-b75cda9",
-    "@graphprotocol/graph-ts": "0.36.0-alpha-20241129215038-b75cda9",
+    "@graphprotocol/graph-cli": "0.69.0",
+    "@graphprotocol/graph-ts": "0.34.0",
     "solc": "^0.8.2"
   },
   "dependencies": {
@@ -22,4 +22,4 @@
     "gluegun": "^4.6.1",
     "truffle": "^5.2"
   }
-}
+} 
