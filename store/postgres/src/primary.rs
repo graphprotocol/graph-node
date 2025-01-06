@@ -1765,10 +1765,10 @@ impl<'a> Connection<'a> {
 
         Ok(s::table
             .inner_join(
-                v::table.on(v::subgraph
+                v::table.on(v::id
                     .nullable()
                     .eq(s::current_version)
-                    .or(v::subgraph.nullable().eq(s::pending_version))),
+                    .or(v::id.nullable().eq(s::pending_version))),
             )
             .filter(v::deployment.eq(site.deployment.as_str()))
             .select(s::name)
