@@ -180,7 +180,11 @@ pub fn push_test_subgraph_trigger(
 
     block
         .trigger_data
-        .push(Trigger::Subgraph(subgraph::TriggerData { source, entity, source_idx }));
+        .push(Trigger::Subgraph(subgraph::TriggerData {
+            source,
+            entity,
+            source_idx,
+        }));
 }
 
 pub fn push_test_command(
