@@ -103,16 +103,9 @@ impl TestCase {
     where
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
-        fn force_boxed<T>(f: fn(TestContext) -> T) -> TestFn
-        where
-            T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
-        {
-            Box::new(move |ctx| Box::pin(f(ctx)))
-        }
-
         Self {
             name: name.to_string(),
-            test: force_boxed(test),
+            test: Box::new(move |ctx| Box::pin(test(ctx))),
             source_subgraph: None,
         }
     }
@@ -125,18 +118,9 @@ impl TestCase {
     where
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
-        fn force_boxed<T>(f: fn(TestContext) -> T) -> TestFn
-        where
-            T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
-        {
-            Box::new(move |ctx| Box::pin(f(ctx)))
-        }
-
-        Self {
-            name: name.to_string(),
-            test: force_boxed(test),
-            source_subgraph: Some(source_subgraph.to_string()),
-        }
+        let mut test_case = Self::new(name, test);
+        test_case.source_subgraph = Some(source_subgraph.to_string());
+        test_case
     }
 
     fn new_with_multiple_source_subgraphs<T>(
@@ -147,18 +131,9 @@ impl TestCase {
     where
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
-        fn force_boxed<T>(f: fn(TestContext) -> T) -> TestFn
-        where
-            T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
-        {
-            Box::new(move |ctx| Box::pin(f(ctx)))
-        }
-
-        Self {
-            name: name.to_string(),
-            test: force_boxed(test),
-            source_subgraph: Some(source_subgraphs.join(",")),
-        }
+        let mut test_case = Self::new(name, test);
+        test_case.source_subgraph = Some(source_subgraphs.join(","));
+        test_case
     }
 
     async fn deploy_and_wait(
@@ -966,17 +941,18 @@ async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<
     let exp = json!({
         "aggregatedDatas": [
             {
-                "id": "1",
+                "id": "0",
                 "sourceA": "from source A",
                 "sourceB": "from source B",
-            }
+                "first": "sourceA"
+            },
         ]
     });
 
     query_succeeds(
         "should aggregate data from multiple sources",
         &subgraph,
-        "{ aggregatedDatas(first: 1) { id sourceA sourceB } }",
+        "{ aggregatedDatas(first: 1) { id sourceA sourceB first } }",
         exp,
     )
     .await?;

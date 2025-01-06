@@ -1,5 +1,5 @@
 type SourceAData @entity {
   id: ID!
   data: String!
-  timestamp: BigInt!
+  blockNumber: BigInt!
 } 
