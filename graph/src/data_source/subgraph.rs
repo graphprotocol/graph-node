@@ -443,15 +443,31 @@ pub struct MappingEntityTrigger {
 pub struct TriggerData {
     pub source: DeploymentHash,
     pub entity: EntitySourceOperation,
+    pub source_idx: u32,
 }
 
 impl TriggerData {
-    pub fn new(source: DeploymentHash, entity: EntitySourceOperation) -> Self {
-        Self { source, entity }
+    pub fn new(source: DeploymentHash, entity: EntitySourceOperation, source_idx: u32) -> Self {
+        Self { source, entity, source_idx }
     }
 
     pub fn entity_type(&self) -> &str {
         self.entity.entity_type.as_str()
+    }
+}
+
+impl Ord for TriggerData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.source_idx.cmp(&other.source_idx) {
+            std::cmp::Ordering::Equal => self.entity.vid.cmp(&other.entity.vid),
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for TriggerData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

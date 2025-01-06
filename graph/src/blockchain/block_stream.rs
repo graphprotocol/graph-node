@@ -357,11 +357,10 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             SubgraphTriggerScanRange::Range(from, to) => {
                 let hash_to_entities = self.fetch_entities_for_filters(filters, from, to).await?;
 
-                let block_numbers: BTreeSet<BlockNumber> = hash_to_entities
+                let block_numbers = hash_to_entities
                     .iter()
-                    .flat_map(|(_, entities)| entities.keys().copied())
-                    .chain(std::iter::once(to))
-                    .collect();
+                    .flat_map(|(_, entities, _)| entities.keys().copied())
+                    .collect::<BTreeSet<_>>();
 
                 let blocks = self
                     .adapter
@@ -384,6 +383,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         Vec<(
             DeploymentHash,
             BTreeMap<BlockNumber, Vec<EntitySourceOperation>>,
+            u32,
         )>,
         Error,
     > {
@@ -399,7 +399,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
                         async move {
                             let entities =
                                 get_entities_for_range(&store, filter, &schema, from, to).await?;
-                            Ok::<_, Error>((filter.subgraph.clone(), entities))
+                            Ok::<_, Error>((filter.subgraph.clone(), entities, filter.manifest_idx))
                         }
                     })
             })
@@ -416,12 +416,14 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 fn create_subgraph_trigger_from_entities(
     subgraph: &DeploymentHash,
     entities: Vec<EntitySourceOperation>,
+    manifest_idx: u32,
 ) -> Vec<subgraph::TriggerData> {
     entities
         .into_iter()
         .map(|entity| subgraph::TriggerData {
             source: subgraph.clone(),
             entity,
+            source_idx: manifest_idx,
         })
         .collect()
 }
@@ -432,6 +434,7 @@ async fn create_subgraph_triggers<C: Blockchain>(
     subgraph_data: Vec<(
         DeploymentHash,
         BTreeMap<BlockNumber, Vec<EntitySourceOperation>>,
+        u32,
     )>,
 ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
     let logger_clone = logger.cheap_clone();
@@ -441,10 +444,13 @@ async fn create_subgraph_triggers<C: Blockchain>(
             let block_number = block.number();
             let mut all_trigger_data = Vec::new();
 
-            for (hash, entities) in subgraph_data.iter() {
+            for (hash, entities, manifest_idx) in subgraph_data.iter() {
                 if let Some(block_entities) = entities.get(&block_number) {
-                    let trigger_data =
-                        create_subgraph_trigger_from_entities(hash, block_entities.clone());
+                    let trigger_data = create_subgraph_trigger_from_entities(
+                        hash,
+                        block_entities.clone(),
+                        *manifest_idx,
+                    );
                     all_trigger_data.extend(trigger_data);
                 }
             }
