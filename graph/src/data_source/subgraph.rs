@@ -448,7 +448,11 @@ pub struct TriggerData {
 
 impl TriggerData {
     pub fn new(source: DeploymentHash, entity: EntitySourceOperation, source_idx: u32) -> Self {
-        Self { source, entity, source_idx }
+        Self {
+            source,
+            entity,
+            source_idx,
+        }
     }
 
     pub fn entity_type(&self) -> &str {
