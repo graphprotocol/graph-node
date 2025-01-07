@@ -99,3 +99,79 @@ fn graphql_can_return_config_as_json_string() {
         );
     });
 }
+
+#[test]
+fn graphql_can_check_how_specific_subgraph_would_be_placed() {
+    run_test(|| async {
+        let curr_dir = std::env::current_dir()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let config_dir = format!("{}/tests/test_config.toml", curr_dir);
+        std::env::set_var("GRAPH_NODE_CONFIG", config_dir);
+
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"{
+                    config {
+                        place(subgraph: "subgraph_1", network: "bsc") {
+                            subgraph
+                            network
+                            shards
+                            nodes
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "config": {
+                    "place": {
+                        "subgraph": String::from("subgraph_1"),
+                        "network": String::from("bsc"),
+                        "shards": vec!["primary".to_string(),"shard_a".to_string()],
+                        "nodes": vec!["index_node_1_a".to_string(),"index_node_2_a".to_string(),"index_node_3_a".to_string()],
+                    }
+                }
+            }
+        });
+
+        let resp_custom = send_graphql_request(
+            json!({
+                "query": r#"{
+                    config {
+                        place(subgraph: "custom/subgraph_1", network: "bsc") {
+                            subgraph
+                            network
+                            shards
+                            nodes
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp_custom = json!({
+            "data": {
+                "config": {
+                    "place": {
+                        "subgraph": String::from("custom/subgraph_1"),
+                        "network": String::from("bsc"),
+                        "shards": vec!["primary".to_string()],
+                        "nodes": vec!["index_custom_0".to_string()],
+                    }
+                }
+            }
+        });
+
+        assert_eq!(resp, expected_resp);
+        assert_eq!(resp_custom, expected_resp_custom);
+    });
+}
