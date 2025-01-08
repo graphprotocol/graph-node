@@ -1185,7 +1185,9 @@ async fn main() -> anyhow::Result<()> {
                     commands::config_cmd::place::run(&ctx.config.deployment, &name, &network)
                 }
                 Check { print } => commands::config_cmd::check::run(&ctx.config, print),
-                Pools { nodes, shard } => commands::config::pools(&ctx.config, nodes, shard),
+                Pools { nodes, shard } => {
+                    commands::config_cmd::pools::run(&ctx.config, nodes, shard)
+                }
                 Provider { features, network } => {
                     let logger = ctx.logger.clone();
                     let registry = ctx.registry.clone();

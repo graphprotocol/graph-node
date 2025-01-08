@@ -11,6 +11,7 @@ mod empty_response;
 mod execution;
 mod execution_id;
 mod place_response;
+mod pools;
 mod subgraph_health;
 
 pub use self::block_hash::BlockHash;
@@ -26,4 +27,5 @@ pub use self::empty_response::EmptyResponse;
 pub use self::execution::Execution;
 pub use self::execution_id::ExecutionId;
 pub use self::place_response::PlaceResponse;
+pub use self::pools::PoolsResponse;
 pub use self::subgraph_health::SubgraphHealth;
