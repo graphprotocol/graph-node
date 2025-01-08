@@ -33,6 +33,10 @@ use self::primary::Chain;
 #[cfg(debug_assertions)]
 pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
 
+// Highest version of the database that the executable supports.
+// To be incremented on each breaking change to the database.
+const SUPPORTED_DB_VERSION: i64 = 3;
+
 /// The status of a chain: whether we can only read from the chain, or
 /// whether it is ok to ingest from it, too
 #[derive(Copy, Clone)]
@@ -531,6 +535,18 @@ impl BlockStore {
                 .set(dbv::version.eq(3))
                 .execute(&mut conn)?;
         };
+        if version < SUPPORTED_DB_VERSION {
+            // Bump it to make sure that all executables are working with the same DB format
+            diesel::update(dbv::table)
+                .set(dbv::version.eq(SUPPORTED_DB_VERSION))
+                .execute(&mut conn)?;
+        };
+        if version > SUPPORTED_DB_VERSION {
+            panic!(
+                "The executable is too old and doesn't support the database version: {}",
+                version
+            )
+        }
         Ok(())
     }
 
