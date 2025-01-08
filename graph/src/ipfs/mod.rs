@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use futures03::future::BoxFuture;
+use futures03::stream::FuturesUnordered;
+use futures03::stream::StreamExt;
 use slog::info;
 use slog::Logger;
 
@@ -55,40 +58,7 @@ where
             SafeDisplay(server_address)
         );
 
-        match IpfsGatewayClient::new(server_address, logger).await {
-            Ok(client) => {
-                info!(
-                    logger,
-                    "Successfully connected to IPFS gateway at: '{}'",
-                    SafeDisplay(server_address)
-                );
-
-                clients.push(Arc::new(client));
-                continue;
-            }
-            Err(err) if err.is_invalid_server() => {}
-            Err(err) => return Err(err),
-        };
-
-        match IpfsRpcClient::new(server_address, logger).await {
-            Ok(client) => {
-                info!(
-                    logger,
-                    "Successfully connected to IPFS RPC API at: '{}'",
-                    SafeDisplay(server_address)
-                );
-
-                clients.push(Arc::new(client));
-                continue;
-            }
-            Err(err) if err.is_invalid_server() => {}
-            Err(err) => return Err(err),
-        };
-
-        return Err(IpfsError::InvalidServer {
-            server_address: server_address.parse()?,
-            reason: anyhow!("unknown server kind"),
-        });
+        clients.push(use_first_valid_api(server_address, logger).await?);
     }
 
     match clients.len() {
@@ -105,4 +75,52 @@ where
             Ok(Arc::new(pool))
         }
     }
+}
+
+async fn use_first_valid_api(
+    server_address: &str,
+    logger: &Logger,
+) -> IpfsResult<Arc<dyn IpfsClient>> {
+    let supported_apis: Vec<BoxFuture<IpfsResult<Arc<dyn IpfsClient>>>> = vec![
+        Box::pin(async {
+            IpfsGatewayClient::new(server_address, logger)
+                .await
+                .map(|client| {
+                    info!(
+                        logger,
+                        "Successfully connected to IPFS gateway at: '{}'",
+                        SafeDisplay(server_address)
+                    );
+
+                    Arc::new(client) as Arc<dyn IpfsClient>
+                })
+        }),
+        Box::pin(async {
+            IpfsRpcClient::new(server_address, logger)
+                .await
+                .map(|client| {
+                    info!(
+                        logger,
+                        "Successfully connected to IPFS RPC API at: '{}'",
+                        SafeDisplay(server_address)
+                    );
+
+                    Arc::new(client) as Arc<dyn IpfsClient>
+                })
+        }),
+    ];
+
+    let mut stream = supported_apis.into_iter().collect::<FuturesUnordered<_>>();
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(client) => return Ok(client),
+            Err(err) if err.is_invalid_server() => {}
+            Err(err) => return Err(err),
+        };
+    }
+
+    Err(IpfsError::InvalidServer {
+        server_address: server_address.parse()?,
+        reason: anyhow!("unknown server kind"),
+    })
 }
