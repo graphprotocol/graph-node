@@ -175,3 +175,109 @@ fn graphql_can_check_how_specific_subgraph_would_be_placed() {
         assert_eq!(resp_custom, expected_resp_custom);
     });
 }
+
+#[test]
+fn graphql_can_fetch_info_about_size_of_database_pools() {
+    run_test(|| async {
+        let curr_dir = std::env::current_dir()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let config_dir = format!("{}/tests/test_config.toml", curr_dir);
+        std::env::set_var("GRAPH_NODE_CONFIG", config_dir);
+
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"{
+                    config {
+                        pools(nodes: ["index_node_1_a", "index_node_2_a", "index_node_3_a"]) {
+                            pools {
+                                shards
+                                node
+                            }
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "config": {
+                    "pools": {
+                        "pools": [
+                            {
+                                "shards": {
+                                    "primary": 2,
+                                    "shard_a": 2
+                                },
+                                "node": "index_node_1_a"
+                            },
+                            {
+                                "shards": {
+                                    "primary": 10,
+                                    "shard_a": 10
+                                },
+                                "node": "index_node_2_a"
+                            },
+                            {
+                                "shards": {
+                                    "primary": 10,
+                                    "shard_a": 10
+                                },
+                                "node": "index_node_3_a"
+                            }
+                        ]
+                    }
+                }
+            }
+        });
+
+        assert_eq!(resp, expected_resp);
+    });
+}
+
+#[test]
+fn graphql_can_fetch_connections_by_shard() {
+    run_test(|| async {
+        let curr_dir = std::env::current_dir()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let config_dir = format!("{}/tests/test_config.toml", curr_dir);
+        std::env::set_var("GRAPH_NODE_CONFIG", config_dir);
+
+        let resp = send_graphql_request(
+            json!({
+                "query": r#"{
+                    config {
+                        pools(nodes: ["index_node_1_a", "index_node_2_a", "index_node_3_a"]) {
+                            shards
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "config": {
+                    "pools": {
+                        "shards": {
+                            "primary": 22,
+                            "shard_a": 22
+                        }
+                    }
+                }
+            }
+        });
+
+        assert_eq!(resp, expected_resp);
+    });
+}
