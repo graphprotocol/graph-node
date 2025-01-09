@@ -108,7 +108,7 @@ pub struct EntityCache {
 
     // Sequence number of the next VID value for this block. The value written
     // in the database consist of a block number and this SEQ number.
-    pub vid_seq: i32,
+    pub vid_seq: u32,
 }
 
 impl Debug for EntityCache {
