@@ -9,7 +9,7 @@ use graph::components::store::{
     DeploymentLocator, EntityOrder, EntityQuery, PruneReporter, PruneRequest, PruningStrategy,
     VersionStats,
 };
-use graph::data::store::{scalar, Id};
+use graph::data::store::{scalar, EntityV, Id};
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::semver::Version;
@@ -175,6 +175,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         184.4,
         false,
         None,
+        0,
     );
     transact_entity_operations(&store, &deployment, BLOCKS[0].clone(), vec![test_entity_1])
         .await
@@ -189,6 +190,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         159.1,
         true,
         Some("red"),
+        1,
     );
     let test_entity_3_1 = create_test_entity(
         "3",
@@ -199,6 +201,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         111.7,
         false,
         Some("blue"),
+        2,
     );
     transact_entity_operations(
         &store,
@@ -218,6 +221,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         111.7,
         false,
         None,
+        3,
     );
     transact_entity_operations(
         &store,
@@ -241,6 +245,7 @@ fn create_test_entity(
     weight: f64,
     coffee: bool,
     favorite_color: Option<&str>,
+    vid: i64,
 ) -> EntityOperation {
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
     let test_entity = entity! { TEST_SUBGRAPH_SCHEMA =>
@@ -258,7 +263,7 @@ fn create_test_entity(
     let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(entity_type).unwrap();
     EntityOperation::Set {
         key: entity_type.parse_key(id).unwrap(),
-        data: test_entity,
+        data: EntityV::new(test_entity, vid),
     }
 }
 
@@ -326,7 +331,7 @@ async fn check_graft(
     shaq.set("email", "shaq@gmail.com").unwrap();
     let op = EntityOperation::Set {
         key: user_type.parse_key("3").unwrap(),
-        data: shaq,
+        data: EntityV::new(shaq, 3),
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
         .await
@@ -601,6 +606,7 @@ fn prune() {
                 157.1,
                 true,
                 Some("red"),
+                4,
             );
             transact_and_wait(&store, &src, BLOCKS[5].clone(), vec![user2])
                 .await

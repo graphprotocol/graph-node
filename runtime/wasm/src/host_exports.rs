@@ -350,7 +350,7 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
-        state.entity_cache.set(key, entity)?;
+        state.entity_cache.set(key, entity, block)?;
 
         Ok(())
     }
