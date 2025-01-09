@@ -167,6 +167,13 @@ const THINGS_GQL: &str = r#"
         id: Bytes!,
         name: String!
     }
+
+    # For testing handling of enums and enum arrays
+    type Spectrum @entity {
+        id: ID!,
+        main: Color!
+        all: [Color!]!
+    }
 "#;
 
 lazy_static! {
@@ -736,6 +743,41 @@ fn serialize_bigdecimal() {
                 .unwrap();
             assert_entity_eq!(entity, actual);
         }
+    });
+}
+
+#[test]
+fn enum_arrays() {
+    // We had an issue where we would read an array of enums back as a
+    // single string; for this test, we would get back the string
+    // "{yellow,red,BLUE}" instead of the array ["yellow", "red", "BLUE"]
+    run_test(|conn, layout| {
+        let spectrum = entity! { THINGS_SCHEMA =>
+            id: "rainbow",
+            main: "yellow",
+            all: vec!["yellow", "red", "BLUE"]
+        };
+
+        insert_entity(
+            conn,
+            layout,
+            &THINGS_SCHEMA.entity_type("Spectrum").unwrap(),
+            vec![spectrum.clone()],
+        );
+
+        let actual = layout
+            .find(
+                conn,
+                &THINGS_SCHEMA
+                    .entity_type("Spectrum")
+                    .unwrap()
+                    .parse_key("rainbow")
+                    .unwrap(),
+                BLOCK_NUMBER_MAX,
+            )
+            .expect("Failed to read Spectrum[rainbow]")
+            .unwrap();
+        assert_entity_eq!(spectrum, actual);
     });
 }
 

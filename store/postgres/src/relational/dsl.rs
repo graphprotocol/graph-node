@@ -322,7 +322,8 @@ impl<'a> Table<'a> {
             table: &'b Table<'b>,
             column: &'b RelColumn,
         ) {
-            let name = format!("{}.{}::text", table.alias.as_str(), &column.name);
+            let cast = if column.is_list() { "text[]" } else { "text" };
+            let name = format!("{}.{}::{}", table.alias.as_str(), &column.name, cast);
 
             match (column.is_list(), column.is_nullable()) {
                 (true, true) => select.add_field(sql::<Nullable<Array<Text>>>(&name)),
