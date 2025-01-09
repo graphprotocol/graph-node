@@ -435,9 +435,3 @@ impl ToSql<Timestamptz, Pg> for BlockTime {
         <Timestamp as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
     }
 }
-
-impl FromSql<Timestamptz, Pg> for BlockTime {
-    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
-        <Timestamp as FromSql<Timestamptz, Pg>>::from_sql(bytes).map(|ts| Self(ts))
-    }
-}

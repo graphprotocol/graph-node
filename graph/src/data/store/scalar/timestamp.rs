@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use diesel::serialize::ToSql;
-use diesel::sql_types::Timestamptz;
 use serde::{self, Deserialize, Serialize};
 use stable_hash::StableHash;
 
@@ -94,12 +93,12 @@ impl Display for Timestamp {
     }
 }
 
-impl ToSql<Timestamptz, diesel::pg::Pg> for Timestamp {
+impl ToSql<diesel::sql_types::Timestamptz, diesel::pg::Pg> for Timestamp {
     fn to_sql<'b>(
         &'b self,
         out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
     ) -> diesel::serialize::Result {
-        <_ as ToSql<Timestamptz, _>>::to_sql(&self.0, &mut out.reborrow())
+        <_ as ToSql<diesel::sql_types::Timestamptz, _>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 

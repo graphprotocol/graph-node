@@ -60,7 +60,7 @@ use std::sync::Arc;
 
 use diesel::{sql_query, PgConnection, RunQueryDsl as _};
 
-use diesel::sql_types::{Integer, Nullable, Timestamptz};
+use diesel::sql_types::{Integer, Timestamptz};
 use graph::blockchain::BlockTime;
 use graph::components::store::{BlockNumber, StoreError};
 use graph::constraint_violation;
@@ -70,7 +70,6 @@ use graph::schema::{
 };
 use graph::sqlparser::ast as p;
 use graph::sqlparser::parser::ParserError;
-use itertools::Itertools;
 
 use crate::relational::Table;
 
@@ -230,10 +229,6 @@ pub(crate) struct Rollup {
     #[allow(dead_code)]
     agg_table: Arc<Table>,
     insert_sql: String,
-    /// A query that determines the last time a rollup was done. The query
-    /// finds the latest timestamp in the aggregation table and adds the
-    /// length of the aggregation interval to deduce the last rollup time
-    last_rollup_sql: String,
 }
 
 impl Rollup {
@@ -261,12 +256,10 @@ impl Rollup {
         );
         let mut insert_sql = String::new();
         sql.insert(&mut insert_sql)?;
-        let last_rollup_sql = sql.last_rollup();
         Ok(Self {
             interval,
             agg_table,
             insert_sql,
-            last_rollup_sql,
         })
     }
 
@@ -281,32 +274,6 @@ impl Rollup {
             .bind::<Timestamptz, _>(bucket.end)
             .bind::<Integer, _>(block);
         query.execute(conn)
-    }
-
-    pub(crate) fn last_rollup(
-        rollups: &[Rollup],
-        conn: &mut PgConnection,
-    ) -> Result<Option<BlockTime>, StoreError> {
-        #[derive(QueryableByName)]
-        #[diesel(check_for_backend(diesel::pg::Pg))]
-        struct BlockTimeRes {
-            #[diesel(sql_type = Nullable<Timestamptz>)]
-            last_rollup: Option<BlockTime>,
-        }
-
-        if rollups.is_empty() {
-            return Ok(None);
-        }
-
-        let union_all = rollups
-            .iter()
-            .map(|rollup| &rollup.last_rollup_sql)
-            .join(" union all ");
-        let query = format!("select max(last_rollup) as last_rollup from ({union_all}) as a");
-        let last_rollup = sql_query(&query)
-            .get_result::<BlockTimeRes>(conn)
-            .map(|res| res.last_rollup)?;
-        Ok(last_rollup)
     }
 }
 
@@ -511,19 +478,6 @@ impl<'a> RollupSql<'a> {
         } else {
             self.insert_bucket(w)
         }
-    }
-
-    /// Generate a query that selects the timestamp of the last rollup
-    fn last_rollup(&self) -> String {
-        // The timestamp column contains the timestamp of the start of the
-        // last bucket. The last rollup was therefore at least
-        // `self.interval` after that. We add 1 second to make sure we are
-        // well within the next bucket
-        let secs = self.interval.as_duration().as_secs() + 1;
-        format!(
-            "select max(timestamp) + '{} s'::interval as last_rollup from {}",
-            secs, self.agg_table.qualified_name
-        )
     }
 }
 

@@ -1,14 +1,10 @@
 pub mod util;
 
-use graph::components::store::{QueryStoreManager, SubgraphStore};
 use graph::data::subgraph::DeploymentHash;
-use graph::prelude::QueryTarget;
-
 use serde_json::json;
 use test_store::store::create_test_subgraph;
 use test_store::store::NETWORK_NAME;
-use test_store::STORE;
-use test_store::SUBGRAPH_STORE;
+use test_store::store::NODE_ID;
 
 use self::util::client::send_graphql_request;
 use self::util::run_test;
@@ -58,15 +54,6 @@ fn graphql_returns_deployment_info() {
         .await;
 
         let namespace = format!("sgd{}", locator.id);
-        let node = SUBGRAPH_STORE.assigned_node(&locator).unwrap().unwrap();
-        let qs = STORE
-            .query_store(
-                QueryTarget::Deployment(locator.hash.clone(), Default::default()),
-                false,
-            )
-            .await
-            .expect("could get a query store");
-        let shard = qs.shard();
 
         let expected_resp = json!({
             "data": {
@@ -76,8 +63,8 @@ fn graphql_returns_deployment_info() {
                             "hash": "subgraph_1",
                             "namespace": namespace,
                             "name": "subgraph_1",
-                            "nodeId": node.to_string(),
-                            "shard": shard,
+                            "nodeId": NODE_ID.to_string(),
+                            "shard": "primary",
                             "chain": NETWORK_NAME,
                             "versionStatus": "current",
                             "isActive": true,
