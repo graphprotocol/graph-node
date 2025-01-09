@@ -115,24 +115,6 @@ impl PartialEq<&str> for Word {
     }
 }
 
-impl PartialEq<str> for Word {
-    fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
-    }
-}
-
-impl PartialEq<String> for Word {
-    fn eq(&self, other: &String) -> bool {
-        self.as_str() == other
-    }
-}
-
-impl PartialEq<Word> for String {
-    fn eq(&self, other: &Word) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
 impl PartialEq<Word> for &str {
     fn eq(&self, other: &Word) -> bool {
         self == &other.as_str()

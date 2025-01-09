@@ -1,6 +1,6 @@
 use diesel::deserialize::FromSqlRow;
 use diesel::expression::AsExpression;
-use num_bigint::{self, ToBigInt};
+use num_bigint;
 use num_traits::FromPrimitive;
 use serde::{self, Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash};
@@ -10,8 +10,8 @@ use std::fmt::{self, Display, Formatter};
 use std::ops::{Add, Div, Mul, Sub};
 use std::str::FromStr;
 
-use crate::anyhow::anyhow;
 use crate::runtime::gas::{Gas, GasSizeOf};
+
 use old_bigdecimal::BigDecimal as OldBigDecimal;
 pub use old_bigdecimal::ToPrimitive;
 
@@ -58,26 +58,6 @@ impl BigDecimal {
 
     pub fn as_bigint_and_exponent(&self) -> (num_bigint::BigInt, i64) {
         self.0.as_bigint_and_exponent()
-    }
-
-    pub fn is_integer(&self) -> bool {
-        self.0.is_integer()
-    }
-
-    /// Convert this `BigDecimal` to a `BigInt` if it is an integer, and
-    /// return an error if it is not. Also return an error if the integer
-    /// would use too many digits as definied by `BigInt::new`
-    pub fn to_bigint(&self) -> Result<BigInt, anyhow::Error> {
-        if !self.is_integer() {
-            return Err(anyhow!(
-                "Cannot convert non-integer `BigDecimal` to `BigInt`: {:?}",
-                self
-            ));
-        }
-        let bi = self.0.to_bigint().ok_or_else(|| {
-            anyhow!("The implementation of `to_bigint` for `OldBigDecimal` always returns `Some`")
-        })?;
-        BigInt::new(bi)
     }
 
     pub fn digits(&self) -> u64 {

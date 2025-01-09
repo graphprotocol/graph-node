@@ -14,20 +14,16 @@ mod ddl_tests;
 #[cfg(test)]
 mod query_tests;
 
-pub(crate) mod dsl;
 pub(crate) mod index;
 mod prune;
 mod rollup;
-pub(crate) mod value;
 
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{connection::SimpleConnection, Connection};
-use diesel::{
-    debug_query, sql_query, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
-};
+use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
@@ -54,7 +50,6 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational::value::{FromOidRow, OidRow};
 use crate::relational_queries::{
     ConflictingEntitiesData, ConflictingEntitiesQuery, FindChangesQuery, FindDerivedQuery,
     FindPossibleDeletionsQuery, ReturnedEntityData,
@@ -63,10 +58,10 @@ use crate::{
     primary::{Namespace, Site},
     relational_queries::{
         ClampRangeQuery, EntityData, EntityDeletion, FilterCollection, FilterQuery, FindManyQuery,
-        InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
-use graph::components::store::{AttributeNames, DerivedEntityQuery};
+use graph::components::store::DerivedEntityQuery;
 use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
@@ -177,12 +172,6 @@ impl From<String> for SqlName {
     }
 }
 
-impl From<SqlName> for Word {
-    fn from(name: SqlName) -> Self {
-        Word::from(name.0)
-    }
-}
-
 impl fmt::Display for SqlName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
@@ -192,12 +181,6 @@ impl fmt::Display for SqlName {
 impl Borrow<str> for &SqlName {
     fn borrow(&self) -> &str {
         self.as_str()
-    }
-}
-
-impl PartialEq<str> for SqlName {
-    fn eq(&self, other: &str) -> bool {
-        self.0 == other
     }
 }
 
@@ -378,11 +361,9 @@ impl Layout {
         }
 
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
-        let nsp = catalog.site.namespace.clone();
         Table {
             object: poi_type.to_owned(),
             qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
-            nsp,
             name: table_name,
             columns,
             // The position of this table in all the tables for this layout; this
@@ -488,19 +469,11 @@ impl Layout {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?.dsl_table();
-        let columns = table.selected_columns::<Entity>(&AttributeNames::All, None)?;
-
-        let query = table
-            .select_cols(&columns)
-            .filter(table.id_eq(&key.entity_id))
-            .filter(table.at_block(block))
-            .filter(table.belongs_to_causality_region(key.causality_region));
-
-        query
-            .get_result::<OidRow>(conn)
+        let table = self.table_for_entity(&key.entity_type)?;
+        FindQuery::new(table.as_ref(), key, block)
+            .get_result::<EntityData>(conn)
             .optional()?
-            .map(|row| Entity::from_oid_row(row, &self.input_schema, &columns))
+            .map(|entity_data| entity_data.deserialize_with_layout(self, None))
             .transpose()
     }
 
@@ -1389,21 +1362,6 @@ impl Column {
         })
     }
 
-    pub fn pseudo_column(name: &str, column_type: ColumnType) -> Column {
-        let field_type = q::Type::NamedType(column_type.to_string());
-        let name = SqlName::verbatim(name.to_string());
-        let field = Word::from(name.as_str());
-        Column {
-            name,
-            field,
-            field_type,
-            column_type,
-            fulltext_fields: None,
-            is_reference: false,
-            use_prefix_comparison: false,
-        }
-    }
-
     fn new_fulltext(def: &FulltextDefinition) -> Result<Column, StoreError> {
         SqlName::check_valid_identifier(&def.name, "attribute")?;
         let sql_name = SqlName::from(def.name.as_str());
@@ -1496,9 +1454,6 @@ pub struct Table {
     /// `Stats_hour`, not the overall aggregation type `Stats`.
     pub object: EntityType,
 
-    /// The namespace in which the table lives
-    nsp: Namespace,
-
     /// The name of the database table for this type ('thing'), snakecased
     /// version of `object`
     pub name: SqlName,
@@ -1553,11 +1508,10 @@ impl Table {
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let immutable = defn.is_immutable();
-        let nsp = catalog.site.namespace.clone();
+
         let table = Table {
             object: defn.cheap_clone(),
             name: table_name,
-            nsp,
             qualified_name,
             // Default `is_account_like` to `false`; the caller should call
             // `refresh` after constructing the layout, but that requires a
@@ -1576,7 +1530,6 @@ impl Table {
     pub fn new_like(&self, namespace: &Namespace, name: &SqlName) -> Arc<Table> {
         let other = Table {
             object: self.object.clone(),
-            nsp: self.nsp.clone(),
             name: name.clone(),
             qualified_name: SqlName::qualified_name(namespace, name),
             columns: self.columns.clone(),
@@ -1650,10 +1603,6 @@ impl Table {
         } else {
             &crate::block_range::BLOCK_RANGE_COLUMN_SQL
         }
-    }
-
-    pub fn dsl_table(&self) -> dsl::Table<'_> {
-        dsl::Table::new(self)
     }
 }
 

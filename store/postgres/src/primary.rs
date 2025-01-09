@@ -296,12 +296,6 @@ impl Borrow<str> for Namespace {
     }
 }
 
-impl Borrow<str> for &Namespace {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
 /// A marker that an `i32` references a deployment. Values of this type hold
 /// the primary key from the `deployment_schemas` table
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
