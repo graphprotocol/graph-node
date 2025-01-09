@@ -51,10 +51,11 @@ use graph_core::{
     SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
 };
 use graph_node::manager::PanicSubscriptionManager;
-use graph_node::{config::Config, store_builder::StoreBuilder};
+use graph_node::store_builder::StoreBuilder;
 use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
+use graphman::config::Config;
 use serde::Deserialize;
 use slog::{crit, debug, info, o, Discard, Logger};
 use std::env::VarError;
