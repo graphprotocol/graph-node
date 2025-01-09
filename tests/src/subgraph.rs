@@ -1,4 +1,5 @@
 use std::{
+    fs,
     io::{Read as _, Write as _},
     time::{Duration, Instant},
 };
@@ -7,6 +8,7 @@ use anyhow::anyhow;
 
 use graph::prelude::serde_json::{self, Value};
 use serde::Deserialize;
+use serde_yaml;
 use tokio::{process::Command, time::sleep};
 
 use crate::{
@@ -52,12 +54,24 @@ impl Subgraph {
 
         Self::patch(&dir, contracts).await?;
 
+        // Check if subgraph has subgraph datasources
+        let yaml_content = fs::read_to_string(dir.path.join("subgraph.yaml.patched"))?;
+        let yaml: serde_yaml::Value = serde_yaml::from_str(&yaml_content)?;
+        let has_subgraph_datasource = yaml["dataSources"]
+            .as_sequence()
+            .and_then(|ds| ds.iter().find(|d| d["kind"].as_str() == Some("subgraph")))
+            .is_some();
+
         // graph codegen subgraph.yaml
         let mut prog = Command::new(&CONFIG.graph_cli);
-        let cmd = prog
-            .arg("codegen")
-            .arg("subgraph.yaml.patched")
-            .current_dir(&dir.path);
+        let mut cmd = prog.arg("codegen").arg("subgraph.yaml.patched");
+
+        if has_subgraph_datasource {
+            cmd = cmd.arg(format!("--ipfs={}", CONFIG.graph_node.ipfs_uri));
+        }
+
+        cmd = cmd.current_dir(&dir.path);
+
         run_checked(cmd).await?;
 
         // graph create --node <node> <name>
