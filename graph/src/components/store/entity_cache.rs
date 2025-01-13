@@ -17,6 +17,10 @@ use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
 
 pub type EntityLfuCache = LfuCache<EntityKey, Option<Arc<Entity>>>;
 
+// Number of VIDs that are reserved ourside of the generated ones here.
+// Currently only 1 for POIs is used, but lets reserve a few more.
+const RESERVED_VIDS: u32 = 100;
+
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
     /// Get from all previously stored entities in the store
@@ -136,7 +140,7 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
             seq: 0,
-            vid_seq: 0,
+            vid_seq: RESERVED_VIDS,
         }
     }
 
@@ -157,7 +161,7 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
             seq: 0,
-            vid_seq: 0,
+            vid_seq: RESERVED_VIDS,
         }
     }
 

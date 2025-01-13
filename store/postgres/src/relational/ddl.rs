@@ -116,7 +116,7 @@ impl Table {
             Ok(cols)
         }
 
-        let vid_type = if self.object.is_poi() || !self.object.is_object_type() {
+        let vid_type = if !self.object.is_object_type() {
             "bigserial"
         } else {
             "bigint"

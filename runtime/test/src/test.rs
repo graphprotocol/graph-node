@@ -552,8 +552,8 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     let subgraph_id = "ipfsMap";
 
     // Try it with two valid objects
-    let (str1, thing1) = make_thing("one", "eins", 0);
-    let (str2, thing2) = make_thing("two", "zwei", 0);
+    let (str1, thing1) = make_thing("one", "eins", 100);
+    let (str2, thing2) = make_thing("two", "zwei", 100);
     let ops = run_ipfs_map(
         ipfs.clone(),
         subgraph_id,

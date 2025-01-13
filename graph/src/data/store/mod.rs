@@ -927,7 +927,7 @@ impl Entity {
     #[cfg(debug_assertions)]
     pub fn vid_or_default(&self) -> i64 {
         self.get("vid")
-            .unwrap_or(&Value::Int8(0))
+            .unwrap_or(&Value::Int8(100))
             .as_int8()
             .expect("the vid is set to a valid value")
     }

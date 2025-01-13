@@ -2541,8 +2541,6 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
-        let not_poi = !self.table.object.is_poi();
-
         // Construct a query
         //   insert into schema.table(column, ...)
         //   values
@@ -2568,9 +2566,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
 
-        if not_poi {
-            out.push_sql(", vid");
-        }
+        out.push_sql(", vid");
         out.push_sql(") values\n");
 
         for (i, row) in self.rows.iter().enumerate() {
@@ -2588,10 +2584,8 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.causality_region)?;
             };
-            if not_poi {
-                out.push_sql(", ");
-                out.push_bind_param::<BigInt, _>(&row.vid)?;
-            }
+            out.push_sql(", ");
+            out.push_bind_param::<BigInt, _>(&row.vid)?;
             out.push_sql(")");
         }
 
@@ -5089,8 +5083,6 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let not_poi = !self.dst.object.is_poi();
-
         // Construct a query
         //   insert into {dst}({columns})
         //   select {columns} from {src}
@@ -5111,9 +5103,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_sql(", ");
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
-        if not_poi {
-            out.push_sql(", vid");
-        }
+        out.push_sql(", vid");
 
         out.push_sql(")\nselect ");
         for column in &self.columns {
@@ -5179,9 +5169,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 ));
             }
         }
-        if not_poi {
-            out.push_sql(", vid");
-        }
+        out.push_sql(", vid");
 
         out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
