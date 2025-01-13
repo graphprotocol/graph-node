@@ -13,7 +13,7 @@ message Block {
   uint64 size = 4;
   BlockHeader header = 5;
 
-  // Uncles represents block produced with a valid solution but were not actually choosen
+  // Uncles represents block produced with a valid solution but were not actually chosen
   // as the canonical block for the given height so they are mostly "forked" blocks.
   //
   // If the Block has been produced using the Proof of Stake consensus algorithm, this
@@ -285,7 +285,7 @@ message Log {
   bytes data = 3;
 
   // Index is the index of the log relative to the transaction. This index
-  // is always populated regardless of the state revertion of the the call
+  // is always populated regardless of the state reversion of the call
   // that emitted this log.
   uint32 index = 4;
 
@@ -294,7 +294,7 @@ message Log {
   // An **important** notice is that this field will be 0 when the call
   // that emitted the log has been reverted by the chain.
   //
-  // Currently, there is two locations where a Log can be obtained:
+  // Currently, there are two locations where a Log can be obtained:
   // - block.transaction_traces[].receipt.logs[]
   // - block.transaction_traces[].calls[].logs[]
   //
@@ -341,7 +341,7 @@ message Call {
   reserved 29;
 
   // In Ethereum, a call can be either:
-  // - Successfull, execution passes without any problem encountered
+  // - Successful, execution passes without any problem encountered
   // - Failed, execution failed, and remaining gas should be consumed
   // - Reverted, execution failed, but only gas consumed so far is billed, remaining gas is refunded
   //
@@ -355,7 +355,7 @@ message Call {
   // see above for details about those flags.
   string failure_reason = 11;
 
-  // This field represents wheter or not the state changes performed
+  // This field represents whether or not the state changes performed
   // by this call were correctly recorded by the blockchain.
   //
   // On Ethereum, a transaction can record state changes even if some
@@ -412,7 +412,7 @@ message BalanceChange {
   BigInt new_value = 3;
   Reason reason = 4;
 
-  // Obtain all balanche change reasons under deep mind repository:
+  // Obtain all balance change reasons under deep mind repository:
   //
   // ```shell
   // ack -ho 'BalanceChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
@@ -466,7 +466,7 @@ message CodeChange {
 // The gas is computed per actual op codes. Doing them completely might prove
 // overwhelming in most cases.
 //
-// Hence, we only index some of them, those that are costy like all the calls
+// Hence, we only index some of them, those that are costly like all the calls
 // one, log events, return data, etc.
 message GasChange {
   uint64 old_value = 1;
