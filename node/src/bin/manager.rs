@@ -698,7 +698,7 @@ pub enum IndexCommand {
     Create {
         /// The deployment (see `help info`).
         #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
-        deployment: DeploymentSearch,
+        deployment: String,
         /// The Entity name.
         ///
         /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
@@ -1529,6 +1529,7 @@ async fn main() -> anyhow::Result<()> {
                     method,
                     after,
                 } => {
+                    let deployment = DeploymentSearch::from_str(&deployment)?;
                     commands::index::create(
                         subgraph_store,
                         primary_pool,
