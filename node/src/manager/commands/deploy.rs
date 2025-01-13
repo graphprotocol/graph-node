@@ -80,20 +80,22 @@ pub async fn run(
         _ => bail!("The `name` must be a valid subgraph name"),
     };
 
-    if create {
+    let subgraph_name =
+        SubgraphName::new(name.clone()).map_err(|_| anyhow!("Invalid subgraph name"))?;
+
+    let exists = subgraph_store.subgraph_exists(&subgraph_name)?;
+
+    if create && !exists {
         println!("Creating subgraph `{}`", name);
-        let subgraph_name =
-            SubgraphName::new(name.clone()).map_err(|_| anyhow!("Invalid subgraph name"))?;
-
-        let exists = subgraph_store.subgraph_exists(&subgraph_name)?;
-
-        if exists {
-            bail!("Subgraph with name `{}` already exists", name);
-        }
 
         // Send the subgraph_create request
         send_create_request(&name, &url).await?;
         println!("Subgraph `{}` created", name);
+    } else if !create && !exists {
+        bail!(
+            "Subgraph with name `{}` does not exist. Use the `--create` flag to create it",
+            name
+        );
     }
 
     // Send the subgraph_deploy request
