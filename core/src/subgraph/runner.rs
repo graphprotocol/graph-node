@@ -146,6 +146,7 @@ where
                     .iter()
                     .map(|handler| handler.entity.clone())
                     .collect(),
+                manifest_idx: ds.manifest_idx,
             })
             .collect::<Vec<_>>();
 

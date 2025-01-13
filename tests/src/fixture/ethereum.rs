@@ -169,6 +169,7 @@ pub fn push_test_subgraph_trigger(
     entity_type: EntityType,
     entity_op: EntityOperationKind,
     vid: i64,
+    source_idx: u32,
 ) {
     let entity = EntitySourceOperation {
         entity: entity,
@@ -179,7 +180,11 @@ pub fn push_test_subgraph_trigger(
 
     block
         .trigger_data
-        .push(Trigger::Subgraph(subgraph::TriggerData { source, entity }));
+        .push(Trigger::Subgraph(subgraph::TriggerData {
+            source,
+            entity,
+            source_idx,
+        }));
 }
 
 pub fn push_test_command(
