@@ -2503,6 +2503,7 @@ impl<'a> InsertQuery<'a> {
                 count += 1
             }
         }
+        count += 1; // Take into account the vid column
         POSTGRES_MAX_PARAMETERS / count
     }
 }
