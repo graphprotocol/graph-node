@@ -30,7 +30,7 @@ use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::constraint_violation;
 use crate::data::store::scalar::Bytes;
-use crate::data::store::{Id, IdList, Value};
+use crate::data::store::{EntityV, Id, IdList, Value};
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::derive::CheapClone;
@@ -829,7 +829,7 @@ where
 pub enum EntityOperation {
     /// Locates the entity specified by `key` and sets its attributes according to the contents of
     /// `data`.  If no entity exists with this key, creates a new entity.
-    Set { key: EntityKey, data: Entity },
+    Set { key: EntityKey, data: EntityV },
 
     /// Removes an entity with the specified key, if one exists.
     Remove { key: EntityKey },

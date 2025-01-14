@@ -116,12 +116,18 @@ impl Table {
             Ok(cols)
         }
 
+        let vid_type = if !self.object.is_object_type() {
+            "bigserial"
+        } else {
+            "bigint"
+        };
+
         if self.immutable {
             writeln!(
                 out,
                 "
     create table {qname} (
-        {vid}                  bigserial primary key,
+        {vid}                  {vid_type} primary key,
         {block}                int not null,\n\
         {cols},
         unique({id})
@@ -129,6 +135,7 @@ impl Table {
                 qname = self.qualified_name,
                 cols = columns_ddl(self)?,
                 vid = VID_COLUMN,
+                vid_type = vid_type,
                 block = BLOCK_COLUMN,
                 id = self.primary_key().name
             )
@@ -137,13 +144,14 @@ impl Table {
                 out,
                 r#"
     create table {qname} (
-        {vid}                  bigserial primary key,
+        {vid}                  {vid_type} primary key,
         {block_range}          int4range not null,
         {cols}
     );"#,
                 qname = self.qualified_name,
                 cols = columns_ddl(self)?,
                 vid = VID_COLUMN,
+                vid_type = vid_type,
                 block_range = BLOCK_RANGE_COLUMN
             )?;
 
