@@ -573,7 +573,6 @@ where
 #[derive(Clone)]
 pub struct BlockStreamMetrics {
     pub deployment_head: Box<Gauge>,
-    pub deployment_failed: Box<Gauge>,
     pub reverted_blocks: Gauge,
     pub stopwatch: StopwatchMetrics,
 }
@@ -605,16 +604,8 @@ impl BlockStreamMetrics {
                 labels.clone(),
             )
             .expect("failed to create `deployment_head` gauge");
-        let deployment_failed = registry
-            .new_gauge(
-                "deployment_failed",
-                "Boolean gauge to indicate whether the deployment has failed (1 == failed)",
-                labels,
-            )
-            .expect("failed to create `deployment_failed` gauge");
         Self {
             deployment_head,
-            deployment_failed,
             reverted_blocks,
             stopwatch,
         }

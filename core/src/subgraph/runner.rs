@@ -244,6 +244,8 @@ where
 
             debug!(self.logger, "Starting block stream");
 
+            self.metrics.subgraph.deployment_status.running();
+
             // Process events from the stream as long as no restart is needed
             loop {
                 let event = {
@@ -876,7 +878,7 @@ where
                     self.state.should_try_unfail_non_deterministic = false;
 
                     if let UnfailOutcome::Unfailed = outcome {
-                        self.metrics.stream.deployment_failed.set(0.0);
+                        self.metrics.subgraph.deployment_status.running();
                         self.state.backoff.reset();
                     }
                 }
@@ -909,7 +911,7 @@ where
 
             // Handle unexpected stream errors by marking the subgraph as failed.
             Err(e) => {
-                self.metrics.stream.deployment_failed.set(1.0);
+                self.metrics.subgraph.deployment_status.failed();
                 let last_good_block = self
                     .inputs
                     .store
