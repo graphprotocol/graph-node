@@ -735,9 +735,6 @@ where
 lazy_static! {
     /// The name of the id attribute, `"id"`
     pub static ref ID: Word = Word::from("id");
-
-    /// The name of the vid attribute, `"vid"`
-    pub static ref VID: Word = Word::from("vid");
 }
 
 /// An entity is represented as a map of attribute names to values.
@@ -922,14 +919,18 @@ impl Entity {
             .expect("the vid is set to a valid value")
     }
 
-    /// This version of the function returns 0 if the VID is not set. It should be
-    /// used only in the testing code for more lenient definition of entities.
+    /// Sets the VID of the entity. The previous one is returned.
+    pub fn set_vid(&mut self, value: i64) -> Result<Option<Value>, InternError> {
+        self.0.insert("vid", value.into())
+    }
+
+    /// Sets the VID if not set. Should be used only for tests.
     #[cfg(debug_assertions)]
-    pub fn vid_or_default(&self) -> i64 {
-        self.get("vid")
-            .unwrap_or(&Value::Int8(100))
-            .as_int8()
-            .expect("the vid is set to a valid value")
+    pub fn set_vid_if_empty(&mut self) {
+        let vid = self.get("vid");
+        if vid.is_none() {
+            let _ = self.set_vid(100).expect("the vid should be set");
+        }
     }
 
     /// Merges an entity update `update` into this entity.
@@ -946,8 +947,8 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: EntityV) -> Result<(), InternError> {
-        for (key, value) in update.e.0.into_iter() {
+    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
+        for (key, value) in update.into_iter() {
             match value {
                 Value::Null => self.0.remove(&key),
                 _ => self.0.insert(&key, value)?,
@@ -1095,19 +1096,6 @@ impl std::fmt::Debug for Entity {
             ds.field(k, v);
         }
         ds.finish()
-    }
-}
-
-/// An entity wrapper that has VID too.
-#[derive(Debug, Clone, CacheWeight, PartialEq, Eq, Serialize)]
-pub struct EntityV {
-    pub e: Entity,
-    pub vid: i64,
-}
-
-impl EntityV {
-    pub fn new(e: Entity, vid: i64) -> Self {
-        Self { e, vid }
     }
 }
 

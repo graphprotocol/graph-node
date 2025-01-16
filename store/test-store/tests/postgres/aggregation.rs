@@ -1,7 +1,6 @@
 use std::fmt::Write;
 use std::{future::Future, sync::Arc};
 
-use graph::data::store::EntityV;
 use graph::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     components::{
@@ -80,14 +79,11 @@ pub async fn insert(
     let schema = ReadStore::input_schema(store);
     let ops = entities
         .into_iter()
-        .map(|data| {
+        .map(|mut data| {
             let data_type = schema.entity_type("Data").unwrap();
             let key = data_type.key(data.id());
-            let vid = data.vid_or_default();
-            EntityOperation::Set {
-                data: EntityV::new(data, vid),
-                key,
-            }
+            let _ = data.set_vid_if_empty();
+            EntityOperation::Set { data, key }
         })
         .collect();
 
@@ -178,10 +174,10 @@ fn stats_hour(schema: &InputSchema) -> Vec<Vec<Entity>> {
     let block2 = vec![
         entity! { schema => id: 11i64, timestamp: ts2, token: TOKEN1.clone(),
         sum: bd(3), sum_sq: bd(5), max: bd(10), first: bd(10), last: bd(2),
-        value: bd(14), totalValue: bd(14) },
+        value: bd(14), totalValue: bd(14), vid: 1i64 },
         entity! { schema => id: 12i64, timestamp: ts2, token: TOKEN2.clone(),
         sum: bd(3), sum_sq: bd(5), max: bd(20), first: bd(1),  last: bd(20),
-        value: bd(41), totalValue: bd(41) },
+        value: bd(41), totalValue: bd(41), vid: 2i64 },
     ];
 
     let ts3 = BlockTime::since_epoch(3600, 0);
@@ -191,10 +187,10 @@ fn stats_hour(schema: &InputSchema) -> Vec<Vec<Entity>> {
         let mut v2 = vec![
             entity! { schema => id: 21i64, timestamp: ts3, token: TOKEN1.clone(),
             sum: bd(3), sum_sq: bd(9), max: bd(30), first: bd(30), last: bd(30),
-            value: bd(90), totalValue: bd(104) },
+            value: bd(90), totalValue: bd(104), vid: 3i64 },
             entity! { schema => id: 22i64, timestamp: ts3, token: TOKEN2.clone(),
             sum: bd(3), sum_sq: bd(9), max: bd(3),  first: bd(3), last: bd(3),
-            value: bd(9), totalValue: bd(50)},
+            value: bd(9), totalValue: bd(50), vid: 4i64 },
         ];
         v1.append(&mut v2);
         v1

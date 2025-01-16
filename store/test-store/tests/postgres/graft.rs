@@ -9,7 +9,7 @@ use graph::components::store::{
     DeploymentLocator, EntityOrder, EntityQuery, PruneReporter, PruneRequest, PruningStrategy,
     VersionStats,
 };
-use graph::data::store::{scalar, EntityV, Id};
+use graph::data::store::{scalar, Id};
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::semver::Version;
@@ -257,13 +257,14 @@ fn create_test_entity(
         seconds_age: age * 31557600,
         weight: Value::BigDecimal(weight.into()),
         coffee: coffee,
-        favorite_color: favorite_color
+        favorite_color: favorite_color,
+        vid: vid,
     };
 
     let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(entity_type).unwrap();
     EntityOperation::Set {
         key: entity_type.parse_key(id).unwrap(),
-        data: EntityV::new(test_entity, vid),
+        data: test_entity,
     }
 }
 
@@ -329,9 +330,10 @@ async fn check_graft(
 
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com").unwrap();
+    let _ = shaq.set_vid(3);
     let op = EntityOperation::Set {
         key: user_type.parse_key("3").unwrap(),
-        data: EntityV::new(shaq, 3),
+        data: shaq,
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
         .await

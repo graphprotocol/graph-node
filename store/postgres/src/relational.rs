@@ -64,7 +64,7 @@ use crate::{
     },
 };
 use graph::components::store::DerivedEntityQuery;
-use graph::data::store::{EntityV, Id, IdList, IdType, BYTES_SCALAR};
+use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
@@ -697,10 +697,9 @@ impl Layout {
             let entity_id = data.id();
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
-            let vid = data.vid();
             changes.push(EntityOperation::Set {
                 key: entity_type.key_in(entity_id, CausalityRegion::from_entity(&data)),
-                data: EntityV::new(data, vid),
+                data,
             });
         }
 

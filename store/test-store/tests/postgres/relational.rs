@@ -205,11 +205,13 @@ lazy_static! {
             bigInt: big_int.clone(),
             bigIntArray: vec![big_int.clone(), (big_int + 1.into())],
             color: "yellow",
+            vid: 0i64,
         }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
         entity! { THINGS_SCHEMA =>
             id: "one",
+            vid: 0i64,
         }
     };
     static ref SCALAR_TYPE: EntityType = THINGS_SCHEMA.entity_type("Scalar").unwrap();
@@ -495,7 +497,6 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
 fn scrub(entity: &Entity) -> Entity {
     let mut scrubbed = entity.clone();
     scrubbed.remove_null_fields();
-    scrubbed.remove("vid");
     scrubbed
 }
 
@@ -756,7 +757,6 @@ fn serialize_bigdecimal() {
                 )
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
-            entity.remove("vid");
             assert_entity_eq!(entity, actual);
         }
     });
@@ -918,7 +918,6 @@ fn conflicting_entity() {
                             data: fred,
                             block: 2,
                             end: None,
-                            vid: 0,
                         },
                         2,
                     )

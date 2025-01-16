@@ -4,7 +4,7 @@ use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
     StoredDynamicDataSource, WritableStore,
 };
-use graph::data::store::{EntityV, Id};
+use graph::data::store::Id;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::schema::{EntityKey, EntityType, InputSchema};
@@ -207,24 +207,27 @@ fn insert_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai" };
+    let mut mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai" };
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0)
         .unwrap();
 
-    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
+    let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0)
         .unwrap();
 
+    mogwai_data.set_vid(100).unwrap();
+    sigurros_data.set_vid(101).unwrap();
+
     let result = cache.as_modifications(0);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
-            EntityModification::insert(mogwai_key, mogwai_data, 0, 100),
-            EntityModification::insert(sigurros_key, sigurros_data, 0, 101)
+            EntityModification::insert(mogwai_key, mogwai_data, 0),
+            EntityModification::insert(sigurros_key, sigurros_data, 0)
         ])
     );
 }
@@ -253,24 +256,27 @@ fn overwrite_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 };
+    let mut mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 };
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0)
         .unwrap();
 
-    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994 };
+    let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994};
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0)
         .unwrap();
 
+    mogwai_data.set_vid(100).unwrap();
+    sigurros_data.set_vid(101).unwrap();
+
     let result = cache.as_modifications(0);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
-            EntityModification::overwrite(mogwai_key, mogwai_data, 0, 100),
-            EntityModification::overwrite(sigurros_key, sigurros_data, 0, 101)
+            EntityModification::overwrite(mogwai_key, mogwai_data, 0),
+            EntityModification::overwrite(sigurros_key, sigurros_data, 0)
         ])
     );
 }
@@ -307,9 +313,8 @@ fn consecutive_modifications() {
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::overwrite(
             update_key,
-            entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 },
+            entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995, vid: 101i64 },
             0,
-            100
         )])
     );
 }
@@ -465,20 +470,26 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
 fn create_account_entity(id: &str, name: &str, email: &str, age: i32, vid: i64) -> EntityOperation {
     let test_entity =
-        entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age };
+        entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age, vid: vid};
 
     EntityOperation::Set {
         key: ACCOUNT_TYPE.parse_key(id).unwrap(),
-        data: EntityV::new(test_entity, vid),
+        data: test_entity,
     }
 }
 
-fn create_wallet_entity(id: &str, account_id: &Id, balance: i32) -> Entity {
+fn create_wallet_entity(id: &str, account_id: &Id, balance: i32, vid: i64) -> Entity {
     let account_id = Value::from(account_id.clone());
-    entity! { LOAD_RELATED_SUBGRAPH => id: id, account: account_id, balance: balance }
+    entity! { LOAD_RELATED_SUBGRAPH => id: id, account: account_id, balance: balance, vid: vid}
 }
+
+fn create_wallet_entity_no_vid(id: &str, account_id: &Id, balance: i32) -> Entity {
+    let account_id = Value::from(account_id.clone());
+    entity! { LOAD_RELATED_SUBGRAPH => id: id, account: account_id, balance: balance}
+}
+
 fn create_wallet_operation(id: &str, account_id: &Id, balance: i32, vid: i64) -> EntityOperation {
-    let test_wallet = EntityV::new(create_wallet_entity(id, account_id, balance), vid);
+    let test_wallet = create_wallet_entity(id, account_id, balance, vid);
     EntityOperation::Set {
         key: WALLET_TYPE.parse_key(id).unwrap(),
         data: test_wallet,
@@ -496,9 +507,9 @@ fn check_for_account_with_multiple_wallets() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("1", &account_id, 67_i32);
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32);
+        let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
+        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
+        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -516,7 +527,7 @@ fn check_for_account_with_single_wallet() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32);
+        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
         let expeted_vec = vec![wallet_1];
 
         assert_eq!(result, expeted_vec);
@@ -600,9 +611,9 @@ fn check_for_insert_async_store() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32);
-        let wallet_2 = create_wallet_entity("5", &account_id, 79_i32);
-        let wallet_3 = create_wallet_entity("6", &account_id, 200_i32);
+        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
+        let wallet_2 = create_wallet_entity("5", &account_id, 79_i32, 12);
+        let wallet_3 = create_wallet_entity("6", &account_id, 200_i32, 13);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -632,9 +643,9 @@ fn check_for_insert_async_not_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("1", &account_id, 67_i32);
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32);
+        let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
+        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
+        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -652,7 +663,7 @@ fn check_for_update_async_related() {
             EntityOperation::Set { ref data, .. } => data.clone(),
             _ => unreachable!(),
         };
-        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data.e);
+        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
         // insert a new wallet
         transact_entity_operations(
             &store,
@@ -670,9 +681,9 @@ fn check_for_update_async_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32);
-        let expeted_vec = vec![new_data.e, wallet_2, wallet_3];
+        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
+        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
+        let expeted_vec = vec![new_data, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
     });
@@ -700,8 +711,8 @@ fn check_for_delete_async_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32);
+        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
+        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -713,26 +724,30 @@ fn scoped_get() {
         // Key for an existing entity that is in the store
         let account1 = ACCOUNT_TYPE.parse_id("1").unwrap();
         let key1 = WALLET_TYPE.parse_key("1").unwrap();
-        let wallet1 = create_wallet_entity("1", &account1, 67);
+        let wallet1 = create_wallet_entity_no_vid("1", &account1, 67);
 
         // Create a new entity that is not in the store
         let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
-        let wallet5 = create_wallet_entity("5", &account5, 100);
+        let mut wallet5 = create_wallet_entity_no_vid("5", &account5, 100);
         let key5 = WALLET_TYPE.parse_key("5").unwrap();
         cache.set(key5.clone(), wallet5.clone(), 0).unwrap();
 
+        wallet5.set_vid(100).unwrap();
         // For the new entity, we can retrieve it with either scope
         let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
         let act5 = cache.get(&key5, GetScope::Store).unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
 
+        let mut wallet1a = wallet1.clone();
+        wallet1a.set_vid(1).unwrap();
         // For an entity in the store, we can not get it `InBlock` but with
         // `Store`
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
         assert_eq!(None, act1);
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
+
         // Even after reading from the store, the entity is not visible with
         // `InBlock`
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
@@ -741,10 +756,12 @@ fn scoped_get() {
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
         cache.set(key1.clone(), wallet1.clone(), 0).unwrap();
+        wallet1a = wallet1;
+        wallet1a.set_vid(101).unwrap();
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
     })
 }
 

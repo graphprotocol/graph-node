@@ -482,11 +482,11 @@ fn make_thing(id: &str, value: &str, vid: i64) -> (String, EntityModification) {
         static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
-    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA};
+    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA, vid: vid };
     let key = THING_TYPE.parse_key(id).unwrap();
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
-        EntityModification::insert(key, data, 0, vid),
+        EntityModification::insert(key, data, 0),
     )
 }
 

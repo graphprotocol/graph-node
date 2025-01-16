@@ -1,7 +1,6 @@
 use graph::blockchain::{Block, BlockTime};
 use graph::data::query::Trace;
 use graph::data::store::scalar::Timestamp;
-use graph::data::store::EntityV;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::LATEST_VERSION;
 use graph::entity;
@@ -425,11 +424,11 @@ async fn insert_test_entities(
             .into_iter()
             .map(|(typename, entities)| {
                 let entity_type = schema.entity_type(typename).unwrap();
-                entities.into_iter().map(move |data| {
-                    let vid = data.vid_or_default();
+                entities.into_iter().map(move |mut data| {
+                    data.set_vid_if_empty();
                     EntityOperation::Set {
                         key: entity_type.key(data.id()),
-                        data: EntityV::new(data, vid),
+                        data,
                     }
                 })
             })
