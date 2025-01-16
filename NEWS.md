@@ -1,5 +1,24 @@
 # NEWS
 
+## v0.36.1
+
+### What's new
+
+- A new `deployment_status` metric is added [(#5720)](https://github.com/graphprotocol/graph-node/pull/5720) with the
+  following behavior:
+    - Once graph-node has figured out that it should index a deployment, `deployment_status` is set to `1` _(starting)_;
+    - When the block stream is created and blocks are ready to be processed, `deployment_status` is set to `2` _(
+      running)_;
+    - When a deployment is unassigned, `deployment_status` is set to `3` _(stopped)_;
+    - If a temporary or permanent failure occurs, `deployment_status` is set to `4` _(failed)_;
+        - If indexing manages to recover from a temporary failure, the `deployment_status` is set back to `2` _(
+          running)_;
+
+### Breaking changes
+
+- The `deployment_failed` metric is removed and the failures are reported by the new `deployment_status`
+  metric. [(#5720)](https://github.com/graphprotocol/graph-node/pull/5720)
+
 ## v0.36.0
 
 ### Note on Firehose Extended Block Details
