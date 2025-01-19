@@ -1017,30 +1017,29 @@ mod test {
 
             let value = value.clone();
             let key = THING_TYPE.parse_key("one").unwrap();
-            let vid = 0i64;
             match value {
                 Ins(block) => EntityModification::Insert {
                     key,
-                    data: Arc::new(entity! { SCHEMA => id: "one", count: block, vid: vid }),
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: None,
                 },
                 Ovw(block) => EntityModification::Overwrite {
                     key,
-                    data: Arc::new(entity! { SCHEMA => id: "one", count: block, vid: vid }),
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: None,
                 },
                 Rem(block) => EntityModification::Remove { key, block },
                 InsC(block, end) => EntityModification::Insert {
                     key,
-                    data: Arc::new(entity! { SCHEMA => id: "one", count: block, vid: vid }),
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: Some(end),
                 },
                 OvwC(block, end) => EntityModification::Overwrite {
                     key,
-                    data: Arc::new(entity! { SCHEMA => id: "one", count: block, vid: vid }),
+                    data: Arc::new(entity! { SCHEMA => id: "one", count: block }),
                     block,
                     end: Some(end),
                 },

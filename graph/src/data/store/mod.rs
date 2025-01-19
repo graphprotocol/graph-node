@@ -924,7 +924,7 @@ impl Entity {
         self.0.insert("vid", value.into())
     }
 
-    /// Sets the VID if not set. Should be used only for tests.
+    /// Sets the VID if it's not already set. Should be used only for tests.
     #[cfg(debug_assertions)]
     pub fn set_vid_if_empty(&mut self) {
         let vid = self.get("vid");
@@ -948,7 +948,7 @@ impl Entity {
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
     pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
-        for (key, value) in update.into_iter() {
+        for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.0.remove(&key),
                 _ => self.0.insert(&key, value)?,

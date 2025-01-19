@@ -202,8 +202,8 @@ async fn reference_interface_derived() {
     let query = "query { events { id transaction { id } } }";
 
     let buy = ("BuyEvent", entity! { schema => id: "buy", vid: 0i64 });
-    let sell1 = ("SellEvent", entity! { schema => id: "sell1", vid: 0i64 });
-    let sell2 = ("SellEvent", entity! { schema => id: "sell2", vid: 1i64 });
+    let sell1 = ("SellEvent", entity! { schema => id: "sell1", vid: 1i64 });
+    let sell2 = ("SellEvent", entity! { schema => id: "sell2", vid: 2i64 });
     let gift = (
         "GiftEvent",
         entity! { schema => id: "gift", transaction: "txn" },

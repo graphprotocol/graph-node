@@ -540,7 +540,7 @@ impl EntityData {
                     // block_range that `select *` pulls in but that we
                     // don't care about here
                     if key == "vid" {
-                        // VID is not in the input schema but we need it so deserialize it too
+                        // VID is not in the input schema but we need it, so deserialize it too
                         match T::Value::from_column_value(&ColumnType::Int8, json) {
                             Ok(value) if value.is_null() => None,
                             Ok(value) => Some(Ok((Word::from("vid"), value))),

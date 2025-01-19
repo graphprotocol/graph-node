@@ -82,7 +82,7 @@ pub async fn insert(
         .map(|mut data| {
             let data_type = schema.entity_type("Data").unwrap();
             let key = data_type.key(data.id());
-            let _ = data.set_vid_if_empty();
+            data.set_vid_if_empty();
             EntityOperation::Set { data, key }
         })
         .collect();

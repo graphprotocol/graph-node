@@ -416,7 +416,7 @@ specVersion: 0.0.2
             msg
         );
 
-        let thing = entity! { schema => id: "datthing", vid: 1i64 };
+        let thing = entity! { schema => id: "datthing" };
         test_store::insert_entities(
             &deployment,
             vec![(schema.entity_type("Thing").unwrap(), thing)],

@@ -157,12 +157,6 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
         .expect("Failed to create relational schema")
 }
 
-fn scrub(entity: &Entity) -> Entity {
-    let mut scrubbed = entity.clone();
-    scrubbed.remove_null_fields();
-    scrubbed
-}
-
 macro_rules! assert_entity_eq {
     ($left:expr, $right:expr) => {{
         let (left, right) = (&($left), &($right));
@@ -271,7 +265,7 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = find_entity(conn, layout, ID).unwrap();
-        assert_entity_eq!(scrub(&BEEF_ENTITY), entity);
+        assert_entity_eq!(BEEF_ENTITY.clone(), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
@@ -336,7 +330,7 @@ fn update() {
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 
-        assert_entity_eq!(scrub(&entity), actual);
+        assert_entity_eq!(entity, actual);
     });
 }
 
