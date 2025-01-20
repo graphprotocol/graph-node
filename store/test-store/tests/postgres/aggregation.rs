@@ -24,6 +24,8 @@ use graph::{
 use graph_store_postgres::{Store as DieselStore, SubgraphStore};
 use test_store::{create_test_subgraph, run_test_sequentially, BLOCKS, LOGGER, METRICS_REGISTRY};
 
+use crate::postgres::relational::scrub;
+
 const SCHEMA: &str = r#"
 type Data @entity(timeseries: true) {
     id: Int8!
@@ -82,7 +84,7 @@ pub async fn insert(
         .map(|mut data| {
             let data_type = schema.entity_type("Data").unwrap();
             let key = data_type.key(data.id());
-            data.set_vid_if_empty();
+            data.set_vid_if_empty(100);
             EntityOperation::Set { data, key }
         })
         .collect();
@@ -294,11 +296,12 @@ fn simple() {
         let exp = stats_hour(&env.writable.input_schema());
         for i in 0..4 {
             let act = env.all_entities("Stats_hour", BLOCKS[i].number);
-            let diff = entity_diff(&exp[i], &act).unwrap();
+            let scrubbed = exp[i].iter().map(|it| scrub(it)).collect::<Vec<Entity>>();
+            let diff = entity_diff(&scrubbed, &act).unwrap();
             if !diff.is_empty() {
                 panic!("entities for BLOCKS[{}] differ:\n{}", i, diff);
             }
-            assert_eq!(exp[i], act, "entities for BLOCKS[{}] are the same", i);
+            assert_eq!(scrubbed, act, "entities for BLOCKS[{}] are the same", i);
         }
     })
 }

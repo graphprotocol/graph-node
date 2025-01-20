@@ -27,6 +27,8 @@ use graph_store_postgres::{
 
 use test_store::*;
 
+use crate::postgres::relational::scrub;
+
 const THINGS_GQL: &str = "
     type Thing @entity {
         id: Bytes!
@@ -265,7 +267,7 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = find_entity(conn, layout, ID).unwrap();
-        assert_entity_eq!(BEEF_ENTITY.clone(), entity);
+        assert_entity_eq!(scrub(&BEEF_ENTITY), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
@@ -330,7 +332,7 @@ fn update() {
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 
-        assert_entity_eq!(entity, actual);
+        assert_entity_eq!(scrub(&entity), actual);
     });
 }
 

@@ -103,6 +103,7 @@ lazy_static! {
             .into();
         [GENESIS_PTR.clone(), BLOCK_ONE.clone(), two, three]
     };
+    static ref vid_seq: Mutex<i64> = Mutex::new(200i64);
 }
 
 /// Run the `test` after performing `setup`. The result of `setup` is passed
@@ -423,7 +424,8 @@ pub async fn insert_entities(
     entities: Vec<(EntityType, Entity)>,
 ) -> Result<(), StoreError> {
     let insert_ops = entities.into_iter().map(|(entity_type, mut data)| {
-        data.set_vid_if_empty();
+        let _ = data.set_vid(*vid_seq.lock().unwrap());
+        *vid_seq.lock().unwrap() += 1;
         EntityOperation::Set {
             key: entity_type.key(data.id()),
             data,

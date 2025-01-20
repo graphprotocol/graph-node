@@ -539,14 +539,7 @@ impl EntityData {
                     // table column; those will be things like the
                     // block_range that `select *` pulls in but that we
                     // don't care about here
-                    if key == "vid" {
-                        // VID is not in the input schema but we need it, so deserialize it too
-                        match T::Value::from_column_value(&ColumnType::Int8, json) {
-                            Ok(value) if value.is_null() => None,
-                            Ok(value) => Some(Ok((Word::from("vid"), value))),
-                            Err(e) => Some(Err(e)),
-                        }
-                    } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
+                    if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         match T::Value::from_column_value(&column.column_type, json) {
                             Ok(value) if value.is_null() => None,
                             Ok(value) => Some(Ok((Word::from(column.field.to_string()), value))),

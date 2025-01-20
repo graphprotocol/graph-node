@@ -494,9 +494,10 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
         .expect("Failed to create relational schema")
 }
 
-fn scrub(entity: &Entity) -> Entity {
+pub fn scrub(entity: &Entity) -> Entity {
     let mut scrubbed = entity.clone();
     scrubbed.remove_null_fields();
+    scrubbed.remove("vid");
     scrubbed
 }
 
@@ -757,7 +758,7 @@ fn serialize_bigdecimal() {
                 )
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
-            assert_entity_eq!(entity, actual);
+            assert_entity_eq!(scrub(&entity), actual);
         }
     });
 }

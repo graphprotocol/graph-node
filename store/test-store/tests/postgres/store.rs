@@ -357,8 +357,7 @@ fn get_entity_1() {
             age: 67_i32,
             seconds_age: Value::BigInt(BigInt::from(2114359200)),
             weight: Value::BigDecimal(184.4.into()),
-            coffee: false,
-            vid: 0i64
+            coffee: false
         };
         // "favorite_color" was set to `Null` earlier and should be absent
 
@@ -384,7 +383,6 @@ fn get_entity_3() {
            seconds_age: Value::BigInt(BigInt::from(883612800)),
            weight: Value::BigDecimal(111.7.into()),
            coffee: false,
-           vid: 3_i64,
         };
         // "favorite_color" was set to `Null` earlier and should be absent
 
@@ -1319,7 +1317,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
                 .iter()
                 .map(|(id, data)| {
                     let mut data = data.clone();
-                    data.set_vid_if_empty();
+                    data.set_vid_if_empty(100);
                     EntityOperation::Set {
                         key: USER_TYPE.parse_key(id.as_str()).unwrap(),
                         data,

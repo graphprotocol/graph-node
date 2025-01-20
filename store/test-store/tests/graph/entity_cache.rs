@@ -507,9 +507,9 @@ fn check_for_account_with_multiple_wallets() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
+        let wallet_1 = create_wallet_entity_no_vid("1", &account_id, 67_i32);
+        let wallet_2 = create_wallet_entity_no_vid("2", &account_id, 92_i32);
+        let wallet_3 = create_wallet_entity_no_vid("3", &account_id, 192_i32);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -527,7 +527,7 @@ fn check_for_account_with_single_wallet() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
+        let wallet_1 = create_wallet_entity_no_vid("4", &account_id, 32_i32);
         let expeted_vec = vec![wallet_1];
 
         assert_eq!(result, expeted_vec);
@@ -611,7 +611,7 @@ fn check_for_insert_async_store() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
+        let wallet_1 = create_wallet_entity_no_vid("4", &account_id, 32_i32);
         let wallet_2 = create_wallet_entity("5", &account_id, 79_i32, 12);
         let wallet_3 = create_wallet_entity("6", &account_id, 200_i32, 13);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
@@ -643,9 +643,9 @@ fn check_for_insert_async_not_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
+        let wallet_1 = create_wallet_entity_no_vid("1", &account_id, 67_i32);
+        let wallet_2 = create_wallet_entity_no_vid("2", &account_id, 92_i32);
+        let wallet_3 = create_wallet_entity_no_vid("3", &account_id, 192_i32);
         let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -681,8 +681,8 @@ fn check_for_update_async_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
+        let wallet_2 = create_wallet_entity_no_vid("2", &account_id, 92_i32);
+        let wallet_3 = create_wallet_entity_no_vid("3", &account_id, 192_i32);
         let expeted_vec = vec![new_data, wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -711,8 +711,8 @@ fn check_for_delete_async_related() {
             causality_region: CausalityRegion::ONCHAIN,
         };
         let result = cache.load_related(&request).unwrap();
-        let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
-        let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
+        let wallet_2 = create_wallet_entity_no_vid("2", &account_id, 92_i32);
+        let wallet_3 = create_wallet_entity_no_vid("3", &account_id, 192_i32);
         let expeted_vec = vec![wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
@@ -739,14 +739,12 @@ fn scoped_get() {
         let act5 = cache.get(&key5, GetScope::Store).unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
 
-        let mut wallet1a = wallet1.clone();
-        wallet1a.set_vid(1).unwrap();
         // For an entity in the store, we can not get it `InBlock` but with
         // `Store`
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
         assert_eq!(None, act1);
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
 
         // Even after reading from the store, the entity is not visible with
         // `InBlock`
@@ -756,12 +754,11 @@ fn scoped_get() {
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
         cache.set(key1.clone(), wallet1.clone(), 0).unwrap();
-        wallet1a = wallet1;
-        wallet1a.set_vid(101).unwrap();
+        wallet1.set_vid(101).unwrap();
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
-        assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
+        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
     })
 }
 

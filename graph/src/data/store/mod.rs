@@ -926,10 +926,10 @@ impl Entity {
 
     /// Sets the VID if it's not already set. Should be used only for tests.
     #[cfg(debug_assertions)]
-    pub fn set_vid_if_empty(&mut self) {
-        let vid = self.get("vid");
-        if vid.is_none() {
-            let _ = self.set_vid(100).expect("the vid should be set");
+    pub fn set_vid_if_empty(&mut self, vid: i64) {
+        let old_vid = self.get("vid");
+        if old_vid.is_none() {
+            let _ = self.set_vid(vid).expect("the vid should be set");
         }
     }
 
