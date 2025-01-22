@@ -443,12 +443,13 @@ impl Layout {
         Ok(())
     }
 
-    /// Find the table with the provided `name`. The name must exactly match
-    /// the name of an existing table. No conversions of the name are done
-    pub fn table(&self, name: &SqlName) -> Option<&Table> {
+    /// Find the table with the provided `sql_name`. The name must exactly
+    /// match the name of an existing table. No conversions of the name are
+    /// done
+    pub fn table(&self, sql_name: &str) -> Option<&Table> {
         self.tables
             .values()
-            .find(|table| &table.name == name)
+            .find(|table| &table.name == sql_name)
             .map(|rc| rc.as_ref())
     }
 
