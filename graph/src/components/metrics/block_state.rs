@@ -10,7 +10,7 @@ use url::Url;
 use crate::{
     blockchain::BlockPtr,
     components::store::{DeploymentId, Entity},
-    data::store::Id,
+    data::{store::Id, value::Word},
     env::ENV_VARS,
     runtime::gas::Gas,
     schema::EntityType,
@@ -23,6 +23,7 @@ pub struct BlockStateMetrics {
     pub op_counter: HashMap<CounterKey, u64>,
     pub read_bytes_counter: HashMap<CounterKey, u64>,
     pub write_bytes_counter: HashMap<CounterKey, u64>,
+    pub entity_count_changes: HashMap<CounterKey, u64>,
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone)]
@@ -44,6 +45,7 @@ impl BlockStateMetrics {
             write_bytes_counter: HashMap::new(),
             gas_counter: HashMap::new(),
             op_counter: HashMap::new(),
+            entity_count_changes: HashMap::new(),
         }
     }
 
@@ -63,6 +65,10 @@ impl BlockStateMetrics {
         for (key, value) in other.op_counter {
             *self.op_counter.entry(key).or_insert(0) += value;
         }
+
+        for (key, value) in other.entity_count_changes {
+            *self.entity_count_changes.entry(key).or_insert(0) = value;
+        }
     }
 
     fn serialize_to_csv<T: Serialize, U: Serialize, I: IntoIterator<Item = T>>(
@@ -80,6 +86,25 @@ impl BlockStateMetrics {
 
     pub fn counter_to_csv(
         data: &HashMap<CounterKey, u64>,
+        column_names: Vec<&str>,
+    ) -> Result<String> {
+        Self::serialize_to_csv(
+            data.iter().map(|(key, value)| match key {
+                CounterKey::Entity(typename, id) => {
+                    vec![
+                        typename.typename().to_string(),
+                        id.to_string(),
+                        value.to_string(),
+                    ]
+                }
+                CounterKey::String(key) => vec![key.to_string(), value.to_string()],
+            }),
+            column_names,
+        )
+    }
+
+    pub fn counter_to_csv_i32(
+        data: &HashMap<CounterKey, i32>,
         column_names: Vec<&str>,
     ) -> Result<String> {
         Self::serialize_to_csv(
@@ -158,6 +183,18 @@ impl BlockStateMetrics {
         }
     }
 
+    pub fn track_entity_count_change(&mut self, entity_type: &EntityType, change: i32) {
+        if ENV_VARS.enable_dips_metrics {
+            let key = CounterKey::Entity(entity_type.clone(), Id::String(Word::from("total")));
+            let counter = self.entity_count_changes.entry(key).or_insert(0);
+            if change < 0 {
+                *counter = counter.saturating_sub((-change) as u64);
+            } else {
+                *counter = counter.saturating_add(change as u64);
+            }
+        }
+    }
+
     pub fn flush_metrics_to_store(
         &self,
         logger: &Logger,
@@ -180,6 +217,7 @@ impl BlockStateMetrics {
         let op_counter = self.op_counter.clone();
         let read_bytes_counter = self.read_bytes_counter.clone();
         let write_bytes_counter = self.write_bytes_counter.clone();
+        let entity_count_changes = self.entity_count_changes.clone();
 
         // Spawn the async task
         crate::spawn(async move {
@@ -201,6 +239,11 @@ impl BlockStateMetrics {
                 (
                     "write_bytes",
                     Self::counter_to_csv(&write_bytes_counter, vec!["entity", "id", "bytes"])
+                        .unwrap(),
+                ),
+                (
+                    "entity_changes",
+                    Self::counter_to_csv(&entity_count_changes, vec!["entity", "id", "count"])
                         .unwrap(),
                 ),
             ];
