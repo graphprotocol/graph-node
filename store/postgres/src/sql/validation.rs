@@ -2,7 +2,9 @@ use sqlparser::ast::{Expr, ObjectName, Query, SetExpr, Statement, TableFactor, V
 use std::result::Result;
 use std::{collections::HashSet, ops::ControlFlow};
 
-use super::{constants::ALLOWED_FUNCTIONS, Schema};
+use crate::relational::Layout;
+
+use super::constants::ALLOWED_FUNCTIONS;
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
@@ -17,14 +19,14 @@ pub enum Error {
 }
 
 pub struct Validator<'a> {
-    schema: &'a Schema,
+    layout: &'a Layout,
     ctes: HashSet<String>,
 }
 
 impl<'a> Validator<'a> {
-    pub fn new(schema: &'a Schema) -> Self {
+    pub fn new(layout: &'a Layout) -> Self {
         Self {
-            schema,
+            layout,
             ctes: Default::default(),
         }
     }
@@ -54,9 +56,9 @@ impl<'a> Validator<'a> {
 
     fn validate_table_name(&mut self, name: &ObjectName) -> ControlFlow<Error> {
         if let Some(table_name) = name.0.last() {
-            let table_name = table_name.to_string().to_lowercase();
-            if !self.schema.contains_key(&table_name) && !self.ctes.contains(&table_name) {
-                return ControlFlow::Break(Error::UnknownTable(table_name));
+            let name = &table_name.value;
+            if !self.layout.table(name).is_some() && !self.ctes.contains(name) {
+                return ControlFlow::Break(Error::UnknownTable(name.to_string()));
             }
         }
         ControlFlow::Continue(())
@@ -114,38 +116,35 @@ impl Visitor for Validator<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::sql::constants::SQL_DIALECT;
-    use std::collections::{HashMap, HashSet};
+    use crate::sql::{constants::SQL_DIALECT, test::make_layout};
 
     fn validate(sql: &str) -> Result<(), Error> {
         let statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql).unwrap();
 
-        let schema: Schema = HashMap::from([(
-            "swap".to_owned(),
-            HashSet::from([
-                "vid".to_owned(),
-                "block$".to_owned(),
-                "id".to_owned(),
-                "sender".to_owned(),
-                "input_amount".to_owned(),
-                "input_token".to_owned(),
-                "amount_out".to_owned(),
-                "output_token".to_owned(),
-                "slippage".to_owned(),
-                "referral_code".to_owned(),
-                "block_number".to_owned(),
-                "block_timestamp".to_owned(),
-                "transaction_hash".to_owned(),
-            ]),
-        )]);
+        const GQL: &str = "
+            type Swap @entity {
+                id: ID!
+                sender: Bytes!
+                inputAmount: BigDecimal!
+                inputToken: Bytes!
+                amountOut: BigDecimal!
+                outputToken: Bytes!
+                slippage: BigDecimal!
+                referralCode: String
+                blockNumber: Int!
+                blockTimestamp: Timestamp!
+                transactionHash: Bytes!
+            }";
 
-        let mut validator = Validator::new(&schema);
+        let layout = make_layout(GQL);
+
+        let mut validator = Validator::new(&layout);
 
         validator.validate_statements(&statements)
     }
 
     #[test]
-    fn test_function_blacklisted() {
+    fn test_function_disallowed() {
         let result = validate(
             "
             SELECT
@@ -161,7 +160,7 @@ mod test {
     }
 
     #[test]
-    fn test_table_function_blacklisted() {
+    fn test_table_function_disallowed() {
         let result = validate(
             "
         SELECT
@@ -181,7 +180,7 @@ mod test {
     }
 
     #[test]
-    fn test_function_blacklisted_without_paranthesis() {
+    fn test_function_disallowed_without_paranthesis() {
         let result = validate(
             "
             SELECT
@@ -195,7 +194,7 @@ mod test {
     }
 
     #[test]
-    fn test_function_whitelisted() {
+    fn test_function_allowed() {
         let result = validate(
             "
             SELECT

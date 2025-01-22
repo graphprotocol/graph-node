@@ -52,39 +52,23 @@ pub fn generate_table_prelude_from_layout(layout: &Layout) -> String {
 }
 
 pub struct Parser {
-    schema: super::Schema,
+    layout: Arc<Layout>,
     prelude: String,
 }
 
 impl Parser {
     pub fn new(layout: Arc<Layout>) -> Self {
-        Self {
-            schema: layout
-                .tables
-                .iter()
-                .filter(|(entity, _)| !entity.is_poi())
-                .map(|(_, table)| {
-                    (
-                        table.name.to_string(),
-                        table
-                            .columns
-                            .iter()
-                            .map(|column| column.name.to_string())
-                            .collect(),
-                    )
-                })
-                .collect(),
-            prelude: generate_table_prelude_from_layout(&layout),
-        }
+        let prelude = generate_table_prelude_from_layout(&layout);
+        Self { layout, prelude }
     }
 
     pub fn parse_and_validate(&self, sql: &str) -> Result<String> {
         let mut statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql)?;
 
-        let mut validator = Validator::new(&self.schema);
+        let mut validator = Validator::new(&self.layout);
         validator.validate_statements(&statements)?;
 
-        let mut formatter = Formatter::new(&self.prelude, &self.schema);
+        let mut formatter = Formatter::new(&self.prelude, &self.layout);
 
         let statement = statements
             .get_mut(0)
