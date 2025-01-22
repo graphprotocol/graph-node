@@ -1,16 +1,16 @@
 use sqlparser::ast::{ObjectName, Statement, TableFactor, VisitMut, VisitorMut};
 use std::ops::ControlFlow;
 
-use super::Schema;
+use crate::relational::{Layout, SqlName};
 
 pub struct Formatter<'a> {
     prelude: &'a str,
-    schema: &'a Schema,
+    layout: &'a Layout,
 }
 
 impl<'a> Formatter<'a> {
-    pub fn new(prelude: &'a str, schema: &'a Schema) -> Self {
-        Self { prelude, schema }
+    pub fn new(prelude: &'a str, layout: &'a Layout) -> Self {
+        Self { prelude, layout }
     }
 
     fn prepend_prefix_to_object_name_mut(&self, name: &mut ObjectName) {
@@ -20,7 +20,8 @@ impl<'a> Formatter<'a> {
 
         // Ensure schema tables has quotation to match up with prelude generated cte.
         if let Some(table_name) = table_identifier.last_mut() {
-            if self.schema.contains_key(&table_name.value) {
+            let sql_name = SqlName::verbatim(table_name.to_string());
+            if self.layout.table(&sql_name).is_some() {
                 table_name.quote_style = Some('"');
             }
         }
@@ -52,10 +53,19 @@ impl VisitorMut for Formatter<'_> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
     use super::*;
-    use crate::sql::constants::SQL_DIALECT;
+    use crate::sql::{constants::SQL_DIALECT, test::make_layout};
+
+    const GQL: &str = "
+    type Swap @entity {
+        id: ID!
+        amountIn: BigDecimal!
+        amountOut: BigDecimal!
+        tokenIn: Bytes!
+        tokenOut: Bytes!
+    }
+    ";
+
     const CTE_PREFIX: &str = "WITH \"swap\" AS (
             SELECT
             id,
@@ -69,17 +79,9 @@ mod test {
 
     #[test]
     fn format_sql() {
-        let mut schema = Schema::new();
-        schema.insert(
-            "swap".to_string(),
-            HashSet::from_iter(
-                ["id", "amount_in", "amount_out", "token_in", "token_out"]
-                    .into_iter()
-                    .map(|s| s.to_string()),
-            ),
-        );
+        let layout = make_layout(GQL);
 
-        let mut formatter = Formatter::new(CTE_PREFIX, &schema);
+        let mut formatter = Formatter::new(CTE_PREFIX, &layout);
 
         let sql = "SELECT token_in, SUM(amount_in) AS amount FROM unknown.swap GROUP BY token_in";
 
