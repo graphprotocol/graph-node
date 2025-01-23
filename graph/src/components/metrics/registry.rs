@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use prometheus::IntGauge;
 use prometheus::{labels, Histogram, IntCounterVec};
 use slog::info;
-use slog::warn;
 
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
 use crate::prelude::Collector;
@@ -123,82 +122,33 @@ impl MetricsRegistry {
         }
     }
 
-    pub fn register(&self, name: &str, c: Box<dyn Collector>) {
-        let err = match self.registry.register(c).err() {
-            None => {
-                self.registered_metrics.inc();
-                return;
-            }
-            Some(err) => {
-                self.register_errors.inc();
-                err
-            }
-        };
-        match err {
-            PrometheusError::AlreadyReg => {
-                error!(
-                    self.logger,
-                    "registering metric [{}] failed because it was already registered", name,
-                );
-            }
-            PrometheusError::InconsistentCardinality { expect, got } => {
-                error!(
-                    self.logger,
-                    "registering metric [{}] failed due to inconsistent caridinality, expected = {} got = {}",
-                    name,
-                    expect,
-                    got,
-                );
-            }
-            PrometheusError::Msg(msg) => {
-                error!(
-                    self.logger,
-                    "registering metric [{}] failed because: {}", name, msg,
-                );
-            }
-            PrometheusError::Io(err) => {
-                error!(
-                    self.logger,
-                    "registering metric [{}] failed due to io error: {}", name, err,
-                );
-            }
-            PrometheusError::Protobuf(err) => {
-                error!(
-                    self.logger,
-                    "registering metric [{}] failed due to protobuf error: {}", name, err
-                );
-            }
-        };
-    }
-
-    pub fn register_or_replace<T>(&self, name: &str, c: Box<T>)
+    /// Adds the metric to the registry.
+    ///
+    /// If the metric is a duplicate, it replaces a previous registration.
+    fn register<T>(&self, name: &str, collector: Box<T>)
     where
         T: Collector + Clone + 'static,
     {
-        match self.registry.register(c.clone()) {
+        let logger = self.logger.new(o!("metric_name" => name.to_string()));
+        let mut result = self.registry.register(collector.clone());
+
+        if matches!(result, Err(PrometheusError::AlreadyReg)) {
+            info!(logger, "Resolving duplicate metric registration");
+
+            // Since the current metric is a duplicate,
+            // we can use it to unregister the previous registration.
+            self.unregister(collector.clone());
+
+            result = self.registry.register(collector);
+        }
+
+        match result {
             Ok(()) => {
-                info!(self.logger, "metric [{}] successfully registered", name);
+                info!(logger, "Successfully registered a new metric");
                 self.registered_metrics.inc();
             }
-            Err(PrometheusError::AlreadyReg) => {
-                warn!(
-                    self.logger,
-                    "metric [{}] is already registered; \
-                     the previous registration will be dropped so that the new metric can be used",
-                    name,
-                );
-
-                // Since the current metric is a duplicate,
-                // we can use it to unregister the previous registration.
-                self.unregister(c.clone());
-
-                self.register(name, c);
-            }
             Err(err) => {
-                error!(
-                    self.logger,
-                    "registering metric [{}] failed: {:#}", name, err,
-                );
+                error!(logger, "Failed to register a new metric"; "error" => format!("{err:#}"));
                 self.register_errors.inc();
             }
         }
@@ -560,7 +510,7 @@ impl MetricsRegistry {
                 .collect(),
         );
         let gauge = IntGauge::with_opts(opts)?;
-        self.register_or_replace(name.as_ref(), Box::new(gauge.clone()));
+        self.register(name.as_ref(), Box::new(gauge.clone()));
         Ok(gauge)
     }
 }
