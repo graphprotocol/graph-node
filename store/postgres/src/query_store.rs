@@ -30,7 +30,7 @@ impl QueryStore {
     ) -> Self {
         let sql_parser = store
             .find_layout(site.clone())
-            .map(|layout| Parser::new(layout));
+            .map(|layout| Parser::new(layout, BLOCK_NUMBER_MAX));
         QueryStore {
             site,
             replica_id,
