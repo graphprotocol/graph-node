@@ -1,21 +1,23 @@
 use super::{constants::SQL_DIALECT, validation::Validator};
 use crate::relational::Layout;
 use anyhow::{anyhow, Ok, Result};
+use graph::prelude::BlockNumber;
 use std::sync::Arc;
 
 pub struct Parser {
     layout: Arc<Layout>,
+    block: BlockNumber,
 }
 
 impl Parser {
-    pub fn new(layout: Arc<Layout>) -> Self {
-        Self { layout }
+    pub fn new(layout: Arc<Layout>, block: BlockNumber) -> Self {
+        Self { layout, block }
     }
 
     pub fn parse_and_validate(&self, sql: &str) -> Result<String> {
         let mut statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql)?;
 
-        let mut validator = Validator::new(&self.layout);
+        let mut validator = Validator::new(&self.layout, self.block);
         validator.validate_statements(&mut statements)?;
 
         let statement = statements
@@ -32,6 +34,8 @@ impl Parser {
 
 #[cfg(test)]
 mod test {
+
+    use graph::prelude::BLOCK_NUMBER_MAX;
 
     use crate::sql::test::make_layout;
 
@@ -93,7 +97,7 @@ mod test {
         ";
 
     fn parse_and_validate(sql: &str) -> Result<String, anyhow::Error> {
-        let parser = Parser::new(Arc::new(make_layout(TEST_GQL)));
+        let parser = Parser::new(Arc::new(make_layout(TEST_GQL)), BLOCK_NUMBER_MAX);
 
         parser.parse_and_validate(sql)
     }
@@ -114,6 +118,10 @@ mod test {
         let query =
             parse_and_validate("select symbol, address from token where decimals > 10").unwrap();
 
+        assert_eq!(
+            query,
+            r#"select to_jsonb(sub.*) as data from ( SELECT symbol, address FROM (SELECT * FROM "sgd0815"."token" WHERE block_range @> 2147483647) AS token WHERE decimals > 10 ) as sub"#
+        );
         println!("{}", query);
     }
 }
