@@ -1,0 +1,55 @@
+# Test cases for the SQL parser. Each test case has the following fields:
+#   name : an optional name for error messages
+#   sql  : the SQL query to parse
+#   ok   : the expected rewritten query
+#   err  : a part of the error message if parsing should fail
+# Of course, only one of ok and err can be specified
+
+- sql: select symbol, address from token where decimals > 10
+  ok: >
+    select to_jsonb(sub.*) as data from (
+      SELECT symbol, address FROM (
+        SELECT * FROM "sgd0815"."token" WHERE block_range @> 2147483647) AS token
+      WHERE decimals > 10 ) as sub
+- sql: >
+        with tokens as (
+            select * from (values
+            ('0x0000000000000000000000000000000000000000','ETH','Ethereum',18),
+            ('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48','USDC','USD Coin',6)
+            ) as t(address,symbol,name,decimals)
+        )
+
+        select date, t.symbol, SUM(amount)/pow(10,t.decimals) as amount
+          from (select
+                 date(to_timestamp(block_timestamp) at time zone 'utc') as date,
+                 token, amount
+                from swap as sm,
+                     unnest(sm.amounts_in,sm.tokens_in) as smi(amount,token)
+                union all
+                select
+                  date(to_timestamp(block_timestamp) at time zone 'utc') as date,
+                  token, amount
+                from swap as sm,
+                     unnest(sm.amounts_out,sm.tokens_out) as smo(amount,token)) as tp
+        inner join
+          tokens as t on t.address = tp.token
+        group by tp.date, t.symbol, t.decimals
+        order by tp.date desc, amount desc
+  ok: >
+    select to_jsonb(sub.*) as data from (
+      WITH tokens AS (
+        SELECT * FROM (
+          VALUES ('0x0000000000000000000000000000000000000000', 'ETH', 'Ethereum', 18),
+                 ('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 'USDC', 'USD Coin', 6))
+          AS t (address, symbol, name, decimals))
+      SELECT date, t.symbol, SUM(amount) / pow(10, t.decimals) AS amount
+        FROM (SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount
+                FROM (SELECT * FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS sm,
+                     UNNEST(sm.amounts_in, sm.tokens_in) AS smi (amount, token)
+              UNION ALL
+              SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount
+                FROM (SELECT * FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS sm,
+                     UNNEST(sm.amounts_out, sm.tokens_out) AS smo (amount, token)) AS tp
+                  JOIN tokens AS t ON t.address = tp.token
+               GROUP BY tp.date, t.symbol, t.decimals
+               ORDER BY tp.date DESC, amount DESC ) as sub
