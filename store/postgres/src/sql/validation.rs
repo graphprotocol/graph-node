@@ -1,3 +1,4 @@
+use graph::prelude::BlockNumber;
 use sqlparser::ast::{
     Expr, Ident, ObjectName, Query, SetExpr, Statement, TableAlias, TableFactor, VisitMut,
     VisitorMut,
@@ -6,6 +7,7 @@ use sqlparser::parser::Parser;
 use std::result::Result;
 use std::{collections::HashSet, ops::ControlFlow};
 
+use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::relational::Layout;
 
 use super::constants::{ALLOWED_FUNCTIONS, SQL_DIALECT};
@@ -25,13 +27,15 @@ pub enum Error {
 pub struct Validator<'a> {
     layout: &'a Layout,
     ctes: HashSet<String>,
+    block: BlockNumber,
 }
 
 impl<'a> Validator<'a> {
-    pub fn new(layout: &'a Layout) -> Self {
+    pub fn new(layout: &'a Layout, block: BlockNumber) -> Self {
         Self {
             layout,
             ctes: Default::default(),
+            block,
         }
     }
 
@@ -113,7 +117,17 @@ impl VisitorMut for Validator<'_> {
             };
 
             // Change 'from table [as alias]' to 'from (select * from table) as alias'
-            let query = format!("select * from {}", table.qualified_name);
+            let query = if table.immutable {
+                format!(
+                    "select * from {} where {} <= {}",
+                    table.qualified_name, BLOCK_COLUMN, self.block
+                )
+            } else {
+                format!(
+                    "select * from {} where {} @> {}",
+                    table.qualified_name, BLOCK_RANGE_COLUMN, self.block
+                )
+            };
             let Statement::Query(subquery) = Parser::parse_sql(&SQL_DIALECT, &query)
                 .unwrap()
                 .pop()
@@ -147,6 +161,8 @@ impl VisitorMut for Validator<'_> {
 
 #[cfg(test)]
 mod test {
+    use graph::prelude::BLOCK_NUMBER_MAX;
+
     use super::*;
     use crate::sql::{constants::SQL_DIALECT, test::make_layout};
 
@@ -170,7 +186,7 @@ mod test {
 
         let layout = make_layout(GQL);
 
-        let mut validator = Validator::new(&layout);
+        let mut validator = Validator::new(&layout, BLOCK_NUMBER_MAX);
 
         validator.validate_statements(&mut statements)
     }
