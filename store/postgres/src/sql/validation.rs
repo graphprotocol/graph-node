@@ -1,10 +1,14 @@
-use sqlparser::ast::{Expr, ObjectName, Query, SetExpr, Statement, TableFactor, Visit, Visitor};
+use sqlparser::ast::{
+    Expr, Ident, ObjectName, Query, SetExpr, Statement, TableAlias, TableFactor, VisitMut,
+    VisitorMut,
+};
+use sqlparser::parser::Parser;
 use std::result::Result;
 use std::{collections::HashSet, ops::ControlFlow};
 
 use crate::relational::Layout;
 
-use super::constants::ALLOWED_FUNCTIONS;
+use super::constants::{ALLOWED_FUNCTIONS, SQL_DIALECT};
 
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum Error {
@@ -40,7 +44,7 @@ impl<'a> Validator<'a> {
         }
     }
 
-    pub fn validate_statements(&mut self, statements: &Vec<Statement>) -> Result<(), Error> {
+    pub fn validate_statements(&mut self, statements: &mut Vec<Statement>) -> Result<(), Error> {
         self.ctes.clear();
 
         if statements.len() > 1 {
@@ -53,29 +57,19 @@ impl<'a> Validator<'a> {
 
         Ok(())
     }
-
-    fn validate_table_name(&mut self, name: &ObjectName) -> ControlFlow<Error> {
-        if let Some(table_name) = name.0.last() {
-            let name = &table_name.value;
-            if !self.layout.table(name).is_some() && !self.ctes.contains(name) {
-                return ControlFlow::Break(Error::UnknownTable(name.to_string()));
-            }
-        }
-        ControlFlow::Continue(())
-    }
 }
 
-impl Visitor for Validator<'_> {
+impl VisitorMut for Validator<'_> {
     type Break = Error;
 
-    fn pre_visit_statement(&mut self, _statement: &Statement) -> ControlFlow<Self::Break> {
+    fn pre_visit_statement(&mut self, _statement: &mut Statement) -> ControlFlow<Self::Break> {
         match _statement {
             Statement::Query(_) => ControlFlow::Continue(()),
             _ => ControlFlow::Break(Error::NotSelectQuery),
         }
     }
 
-    fn pre_visit_query(&mut self, _query: &Query) -> ControlFlow<Self::Break> {
+    fn pre_visit_query(&mut self, _query: &mut Query) -> ControlFlow<Self::Break> {
         // Add common table expressions to the set of known tables
         if let Some(ref with) = _query.with {
             self.ctes.extend(
@@ -93,19 +87,57 @@ impl Visitor for Validator<'_> {
 
     /// Invoked for any table function in the AST.
     /// See [TableFactor::Table.args](sqlparser::ast::TableFactor::Table::args) for more details identifying a table function
-    fn pre_visit_table_factor(&mut self, table_factor: &TableFactor) -> ControlFlow<Self::Break> {
-        if let TableFactor::Table { name, args, .. } = table_factor {
+    fn post_visit_table_factor(
+        &mut self,
+        table_factor: &mut TableFactor,
+    ) -> ControlFlow<Self::Break> {
+        if let TableFactor::Table {
+            name, args, alias, ..
+        } = table_factor
+        {
             if args.is_some() {
                 return self.validate_function_name(name);
-            } else {
-                return self.validate_table_name(name);
             }
+            let table = if let Some(table_name) = name.0.last() {
+                let name = &table_name.value;
+                let Some(table) = self.layout.table(name) else {
+                    if self.ctes.contains(name) {
+                        return ControlFlow::Continue(());
+                    } else {
+                        return ControlFlow::Break(Error::UnknownTable(name.to_string()));
+                    }
+                };
+                table
+            } else {
+                return ControlFlow::Continue(());
+            };
+
+            // Change 'from table [as alias]' to 'from (select * from table) as alias'
+            let query = format!("select * from {}", table.qualified_name);
+            let Statement::Query(subquery) = Parser::parse_sql(&SQL_DIALECT, &query)
+                .unwrap()
+                .pop()
+                .unwrap()
+            else {
+                unreachable!();
+            };
+            let alias = alias.as_ref().map(|alias| alias.clone()).or_else(|| {
+                Some(TableAlias {
+                    name: Ident::new(table.name.as_str()),
+                    columns: vec![],
+                })
+            });
+            *table_factor = TableFactor::Derived {
+                lateral: false,
+                subquery,
+                alias,
+            };
         }
         ControlFlow::Continue(())
     }
 
     /// Invoked for any function expressions that appear in the AST
-    fn pre_visit_expr(&mut self, _expr: &Expr) -> ControlFlow<Self::Break> {
+    fn pre_visit_expr(&mut self, _expr: &mut Expr) -> ControlFlow<Self::Break> {
         if let Expr::Function(function) = _expr {
             return self.validate_function_name(&function.name);
         }
@@ -119,7 +151,7 @@ mod test {
     use crate::sql::{constants::SQL_DIALECT, test::make_layout};
 
     fn validate(sql: &str) -> Result<(), Error> {
-        let statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql).unwrap();
+        let mut statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql).unwrap();
 
         const GQL: &str = "
             type Swap @entity {
@@ -140,7 +172,7 @@ mod test {
 
         let mut validator = Validator::new(&layout);
 
-        validator.validate_statements(&statements)
+        validator.validate_statements(&mut statements)
     }
 
     #[test]
