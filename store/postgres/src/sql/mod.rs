@@ -1,5 +1,4 @@
 mod constants;
-mod formatter;
 mod parser;
 mod validation;
 
