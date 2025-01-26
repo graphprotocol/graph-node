@@ -12,7 +12,7 @@ use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     prelude::{
-        anyhow::{self, Context as AnyhowContextTrait},
+        anyhow::{self, anyhow, Context as AnyhowContextTrait},
         info, tokio, Logger, NodeId,
     },
     url::Url,
@@ -1198,12 +1198,22 @@ async fn main() -> anyhow::Result<()> {
         Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
-            let sender = ctx.notification_sender();
-            commands::assign::unassign(ctx.primary_pool(), &sender, &deployment).await
+            let notifications_sender = ctx.notification_sender();
+            let primary_pool = ctx.primary_pool();
+            let deployment = make_deployment_selector(deployment);
+            commands::deployment::unassign::run(primary_pool, notifications_sender, deployment)
         }
         Reassign { deployment, node } => {
-            let sender = ctx.notification_sender();
-            commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
+            let notifications_sender = ctx.notification_sender();
+            let primary_pool = ctx.primary_pool();
+            let deployment = make_deployment_selector(deployment);
+            let node = NodeId::new(node).map_err(|node| anyhow!("invalid node id {:?}", node))?;
+            commands::deployment::reassign::run(
+                primary_pool,
+                notifications_sender,
+                deployment,
+                &node,
+            )
         }
         Pause { deployment } => {
             let notifications_sender = ctx.notification_sender();
