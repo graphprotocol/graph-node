@@ -15,6 +15,7 @@ lazy_static = "1.5"
 hex-literal = "0.4"
 diesel = { workspace = true }
 prost-types = { workspace = true }
+graphman = { workspace = true }
 
 [dev-dependencies]
 hex = "0.4.3"
