@@ -144,7 +144,7 @@ should have the 'account-like' optimization turned on.
 
 ### `subgraphs.subgraph_features`
 
-Details about features that a deployment uses, Maintained in the primary.
+Details about features that a deployment uses are maintained in the primary.
 
 | Column         | Type      | Use         |
 |----------------|-----------|-------------|
