@@ -373,7 +373,7 @@ impl HostExports {
     }
 
     pub(crate) fn store_remove(
-        &mut self,
+        &self,
         logger: &Logger,
         state: &mut BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
@@ -1250,7 +1250,7 @@ impl HostExports {
     }
 
     fn remove_entity(
-        &mut self,
+        &self,
         key: &EntityKey,
         state: &mut BlockState,
     ) -> Result<(), HostExportError> {
