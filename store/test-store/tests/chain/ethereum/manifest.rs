@@ -248,7 +248,7 @@ specVersion: 1.3.0
         }
         _ => panic!("Expected a subgraph data source"),
     }
-}̦̦
+}
 
 #[tokio::test]
 async fn subgraph_ds_manifest_aggregations_should_fail() {

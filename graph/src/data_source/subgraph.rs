@@ -193,6 +193,7 @@ pub struct UnresolvedDataSource {
     pub network: String,
     pub source: UnresolvedSource,
     pub mapping: UnresolvedMapping,
+    pub context: Option<DataSourceContext>,
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
@@ -326,7 +327,7 @@ impl UnresolvedDataSource {
             network: self.network,
             source,
             mapping: self.mapping.resolve(resolver, logger).await?,
-            context: Arc::new(None),
+            context: Arc::new(self.context),
             creation_block: None,
         })
     }
