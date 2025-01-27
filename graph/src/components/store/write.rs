@@ -495,6 +495,31 @@ impl RowGroup {
     pub fn ids(&self) -> impl Iterator<Item = &Id> {
         self.rows.iter().map(|emod| emod.id())
     }
+
+    pub fn track_metrics(&self, metrics: &mut BlockStateMetrics) {
+        // Track entity count changes
+        let changes: Vec<i32> = self.rows.iter()
+            .map(|row| row.entity_count_change())
+            .collect();
+        metrics.track_entity_count_change_batch(&self.entity_type, &changes);
+
+        // Track storage changes and writes
+        let (writes, removals): (Vec<_>, Vec<_>) = self.rows.iter()
+            .filter_map(|row| match row {
+                EntityModification::Insert { data, .. } | 
+                EntityModification::Overwrite { data, .. } => Some((data, false)),
+                EntityModification::Remove { .. } => None,
+            })
+            .unzip();
+
+        if !writes.is_empty() {
+            metrics.track_entity_write_batch(&self.entity_type, &writes);
+            metrics.track_storage_size_change_batch(&self.entity_type, &writes, false);
+        }
+        if !removals.is_empty() {
+            metrics.track_storage_size_change_batch(&self.entity_type, &removals, true);
+        }
+    }
 }
 
 struct ClampsByBlockIterator<'a> {
@@ -681,6 +706,11 @@ impl Batch {
 
         for m in raw_mods {
             mods.group_entry(&m.key().entity_type).push(m, block)?;
+        }
+
+        // Track metrics for each group
+        for group in &mods.groups {
+            group.track_metrics(&mut metrics);
         }
 
         let data_sources = DataSources::new(block_ptr.cheap_clone(), data_sources);

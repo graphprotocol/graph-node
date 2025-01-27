@@ -350,6 +350,12 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
+        state.metrics.track_storage_size_change(&entity_type, &entity, false);
+        
+        if !state.entity_cache.contains_key(&key) {
+            state.metrics.track_entity_count_change(&entity_type, 1);
+        }
+
         state
             .entity_cache
             .set(key, entity, Some(&mut state.write_capacity_remaining))?;
@@ -387,6 +393,12 @@ impl HostExports {
             gas::STORE_REMOVE.with_args(complexity::Size, &key),
             "store_remove",
         )?;
+
+        if let Some(entity) = state.entity_cache.get(&key, GetScope::Store)? {
+            state.metrics.track_storage_size_change(&entity_type, &entity, true);
+            
+            state.metrics.track_entity_count_change(&entity_type, -1);
+        }
 
         state.entity_cache.remove(key);
 

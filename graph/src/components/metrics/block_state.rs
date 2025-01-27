@@ -24,6 +24,7 @@ pub struct BlockStateMetrics {
     pub read_bytes_counter: HashMap<CounterKey, u64>,
     pub write_bytes_counter: HashMap<CounterKey, u64>,
     pub entity_count_changes: HashMap<CounterKey, u64>,
+    pub current_storage_size: HashMap<CounterKey, u64>,
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone)]
@@ -46,6 +47,7 @@ impl BlockStateMetrics {
             gas_counter: HashMap::new(),
             op_counter: HashMap::new(),
             entity_count_changes: HashMap::new(),
+            current_storage_size: HashMap::new(),
         }
     }
 
@@ -68,6 +70,10 @@ impl BlockStateMetrics {
 
         for (key, value) in other.entity_count_changes {
             *self.entity_count_changes.entry(key).or_insert(0) = value;
+        }
+
+        for (key, value) in other.current_storage_size {
+            *self.current_storage_size.entry(key).or_insert(0) = value;
         }
     }
 
@@ -195,6 +201,35 @@ impl BlockStateMetrics {
         }
     }
 
+    pub fn track_storage_size_change(&mut self, entity_type: &EntityType, entity: &Entity, is_removal: bool) {
+        if ENV_VARS.enable_dips_metrics {
+            let key = CounterKey::Entity(entity_type.clone(), entity.id());
+            let size = entity.weight() as u64;
+            
+            let storage = self.current_storage_size.entry(key).or_insert(0);
+            if is_removal {
+                *storage = storage.saturating_sub(size);
+            } else {
+                *storage = size;
+            }
+        }
+    }
+
+    pub fn track_storage_size_change_batch(&mut self, entity_type: &EntityType, entities: &[Entity], is_removal: bool) {
+        if ENV_VARS.enable_dips_metrics {
+            for entity in entities {
+                self.track_storage_size_change(entity_type, entity, is_removal);
+            }
+        }
+    }
+
+    pub fn track_entity_count_change_batch(&mut self, entity_type: &EntityType, changes: &[i32]) {
+        if ENV_VARS.enable_dips_metrics {
+            let total_change: i32 = changes.iter().sum();
+            self.track_entity_count_change(entity_type, total_change);
+        }
+    }
+
     pub fn flush_metrics_to_store(
         &self,
         logger: &Logger,
@@ -218,6 +253,7 @@ impl BlockStateMetrics {
         let read_bytes_counter = self.read_bytes_counter.clone();
         let write_bytes_counter = self.write_bytes_counter.clone();
         let entity_count_changes = self.entity_count_changes.clone();
+        let current_storage_size = self.current_storage_size.clone();
 
         // Spawn the async task
         crate::spawn(async move {
@@ -244,6 +280,11 @@ impl BlockStateMetrics {
                 (
                     "entity_changes",
                     Self::counter_to_csv(&entity_count_changes, vec!["entity", "id", "count"])
+                        .unwrap(),
+                ),
+                (
+                    "storage_size",
+                    Self::counter_to_csv(&current_storage_size, vec!["entity", "id", "bytes"])
                         .unwrap(),
                 ),
             ];
