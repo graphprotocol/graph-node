@@ -84,6 +84,10 @@ impl TriggerFilter {
 // TriggerFilter should bypass all triggers and just rely on block since all the data received
 // should already have been processed.
 impl blockchain::TriggerFilter<Chain> for TriggerFilter {
+    fn with_addresses(&mut self, _contracts: impl Iterator<Item = (BlockNumber, String)>) {
+        unreachable!()
+    }
+
     fn extend_with_template(&mut self, _data_source: impl Iterator<Item = NoopDataSourceTemplate>) {
     }
 

@@ -18,6 +18,9 @@ pub struct TriggerFilter {
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
+    fn with_addresses(&mut self, _contracts: impl Iterator<Item = (BlockNumber, String)>) {
+        unreachable!()
+    }
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.event_type_filter
             .extend_from_data_sources(data_sources.clone());

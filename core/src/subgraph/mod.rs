@@ -1,4 +1,5 @@
 mod context;
+mod contract_index;
 mod error;
 mod inputs;
 mod instance_manager;

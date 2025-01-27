@@ -280,6 +280,10 @@ impl MappingTriggerTrait for MockMappingTrigger {
 pub struct MockTriggerFilter;
 
 impl<C: Blockchain> TriggerFilter<C> for MockTriggerFilter {
+    fn with_addresses(&mut self, contracts: impl Iterator<Item = (BlockNumber, String)>) {
+        unimplemented!()
+    }
+
     fn extend<'a>(&mut self, _data_sources: impl Iterator<Item = &'a C::DataSource> + Clone) {
         todo!()
     }

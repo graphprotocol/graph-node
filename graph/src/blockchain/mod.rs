@@ -256,6 +256,8 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
         this
     }
 
+    fn with_addresses(&mut self, contracts: impl Iterator<Item = (BlockNumber, String)>);
+
     fn extend_with_template(&mut self, data_source: impl Iterator<Item = C::DataSourceTemplate>);
 
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a C::DataSource> + Clone);

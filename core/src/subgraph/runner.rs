@@ -8,7 +8,9 @@ use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
-use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
+use graph::components::store::{
+    DeploymentLocator, EmptyStore, GetScope, ReadStore, StoredDynamicDataSource,
+};
 use graph::components::subgraph::InstanceDSTemplate;
 use graph::components::{
     store::ModificationsAndCache,
@@ -28,6 +30,7 @@ use graph::futures03::TryStreamExt;
 use graph::prelude::*;
 use graph::schema::EntityKey;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
+use std::alloc::Layout;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -164,8 +167,82 @@ where
         );
 
         let templates = self.ctx.templates();
-
         filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
+
+        // TODO: Fix this with manifest changes
+        filter.with_addresses(
+            vec![
+                (
+                    12370687,
+                    "0x1c74dde716d3f2a1df5097b7c2543c5d97cfa4d3".to_string(),
+                ),
+                (
+                    12371099,
+                    "0xe8c6c9227491c0a8156a0106a0204d881bb7e531".to_string(),
+                ),
+                (
+                    12371145,
+                    "0x8581788cef3b7ee7313fea15fe279dc2f6c43899".to_string(),
+                ),
+                (
+                    12371220,
+                    "0x14de8287adc90f0f95bf567c0707670de52e3813".to_string(),
+                ),
+                (
+                    12439227,
+                    "0xa788ad489a6825100e6484fcc3b7f9a8d6c9b3f9".to_string(),
+                ),
+                (
+                    12504792,
+                    "0xdcc531a543799e06138af64b20d919f1bba4e805".to_string(),
+                ),
+                (
+                    12744356,
+                    "0x932aec20a46edff07e47b2ac77b99c2824ba4379".to_string(),
+                ),
+                (
+                    12909093,
+                    "0xbce5598171f34e0e936df35157ca033ff8dba98a".to_string(),
+                ),
+                (
+                    13173797,
+                    "0x546a5c1739c005afec87442f5b69198ba0978dd1".to_string(),
+                ),
+                (
+                    13424641,
+                    "0x81489b0e7c7a515799c89374e23ac9295088551d".to_string(),
+                ),
+                (
+                    13543862,
+                    "0xe15e6583425700993bd08f51bf6e7b73cd5da91b".to_string(),
+                ),
+                (
+                    13639719,
+                    "0x39aa14c3adbc173d17ff746d49ca81c9f575b13e".to_string(),
+                ),
+                (
+                    13813433,
+                    "0xb4ecce46b8d4e4abfd03c9b806276a6735c9c092".to_string(),
+                ),
+                (
+                    13819193,
+                    "0x9758f2bf8e6f6ee89bd71fb434d92c699dc89e30".to_string(),
+                ),
+                (
+                    13856597,
+                    "0x98e8bb5321adf5298ccb7674f102dd432ded1feb".to_string(),
+                ),
+                (
+                    13856851,
+                    "0xcde473286561d9b876bead3ac7cc38040f738d3f".to_string(),
+                ),
+                (
+                    13869973,
+                    "0x4006bed7bf103d70a1c6b7f1cef4ad059193dc25".to_string(),
+                ),
+            ]
+            .into_iter(),
+        );
 
         filter
     }
@@ -1076,6 +1153,9 @@ where
                     .stream
                     .stopwatch
                     .start_section(PROCESS_BLOCK_SECTION_NAME);
+                if block.block.number() > 13869973 {
+                    panic!("End block reached!")
+                }
                 self.handle_process_block(block, cursor, cancel_handle)
                     .await?
             }

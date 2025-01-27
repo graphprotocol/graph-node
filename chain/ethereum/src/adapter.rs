@@ -3,6 +3,7 @@ use ethabi::{Error as ABIError, Function, ParamType, Token};
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
+// use graph::data::subgraph::status::EthereumBlock;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
@@ -17,6 +18,7 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::marker::Unpin;
+use std::str::FromStr;
 use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Log, H256};
@@ -265,6 +267,14 @@ impl TriggerFilter {
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
+    fn with_addresses(&mut self, contracts: impl Iterator<Item = (BlockNumber, String)>) {
+        contracts.into_iter().for_each(|(number, addr)| {
+            self.block
+                .contract_addresses
+                .insert((number, H160::from_str(&addr).unwrap()));
+        });
+    }
+
     fn extend<'a>(&mut self, data_sources: impl Iterator<Item = &'a DataSource> + Clone) {
         self.log
             .extend(EthereumLogFilter::from_data_sources(data_sources.clone()));
@@ -285,9 +295,34 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         &mut self,
         data_sources: impl Iterator<Item = <Chain as bc::Blockchain>::DataSourceTemplate>,
     ) {
+        const ADDRESSES: [(BlockNumber, &'static str); 17] = [
+            (12370687, "0x1c74dde716d3f2a1df5097b7c2543c5d97cfa4d3"),
+            (12371099, "0xe8c6c9227491c0a8156a0106a0204d881bb7e531"),
+            (12371145, "0x8581788cef3b7ee7313fea15fe279dc2f6c43899"),
+            (12371220, "0x14de8287adc90f0f95bf567c0707670de52e3813"),
+            (12439227, "0xa788ad489a6825100e6484fcc3b7f9a8d6c9b3f9"),
+            (12504792, "0xdcc531a543799e06138af64b20d919f1bba4e805"),
+            (12744356, "0x932aec20a46edff07e47b2ac77b99c2824ba4379"),
+            (12909093, "0xbce5598171f34e0e936df35157ca033ff8dba98a"),
+            (13173797, "0x546a5c1739c005afec87442f5b69198ba0978dd1"),
+            (13424641, "0x81489b0e7c7a515799c89374e23ac9295088551d"),
+            (13543862, "0xe15e6583425700993bd08f51bf6e7b73cd5da91b"),
+            (13639719, "0x39aa14c3adbc173d17ff746d49ca81c9f575b13e"),
+            (13813433, "0xb4ecce46b8d4e4abfd03c9b806276a6735c9c092"),
+            (13819193, "0x9758f2bf8e6f6ee89bd71fb434d92c699dc89e30"),
+            (13856597, "0x98e8bb5321adf5298ccb7674f102dd432ded1feb"),
+            (13856851, "0xcde473286561d9b876bead3ac7cc38040f738d3f"),
+            (13869973, "0x4006bed7bf103d70a1c6b7f1cef4ad059193dc25"),
+        ];
         for data_source in data_sources {
-            self.log
-                .extend(EthereumLogFilter::from_mapping(&data_source.mapping));
+            self.log.extend(EthereumLogFilter::from_mapping(
+                &data_source.mapping,
+                ADDRESSES
+                    .iter()
+                    .map(|pair| H160::from_str(pair.1).unwrap())
+                    .collect::<Vec<H160>>()
+                    .as_ref(),
+            ));
 
             self.call
                 .extend(EthereumCallFilter::from_mapping(&data_source.mapping));
@@ -340,6 +375,8 @@ pub struct EthereumLogFilter {
     /// Edges are of `bool` type and indicates when a trigger requires a transaction receipt.
     contracts_and_events_graph: GraphMap<LogFilterNode, bool, petgraph::Undirected>,
 
+    addresses: HashSet<Address>,
+
     /// Event sigs with no associated address, matching on all addresses.
     /// Maps to a boolean representing if a trigger requires a transaction receipt.
     wildcard_events: HashMap<EventSignature, bool>,
@@ -350,6 +387,24 @@ pub struct EthereumLogFilter {
 
 impl From<EthereumLogFilter> for Vec<LogFilter> {
     fn from(val: EthereumLogFilter) -> Self {
+        let mut template_filters: Vec<LogFilter> = vec![];
+        if !val.addresses.is_empty() && !val.wildcard_events.is_empty() {
+            let filter = LogFilter {
+                addresses: val
+                    .addresses
+                    .iter()
+                    .map(|addr| addr.to_fixed_bytes().to_vec())
+                    .collect_vec(),
+                event_signatures: val
+                    .wildcard_events
+                    .keys()
+                    .map(|sig| sig.to_fixed_bytes().to_vec())
+                    .collect_vec(),
+            };
+
+            template_filters.push(filter);
+        }
+
         val.eth_get_logs_filters()
             .map(
                 |EthGetLogsFilter {
@@ -367,6 +422,7 @@ impl From<EthereumLogFilter> for Vec<LogFilter> {
                         .collect_vec(),
                 },
             )
+            .chain(template_filters)
             .collect_vec()
     }
 }
@@ -488,10 +544,14 @@ impl EthereumLogFilter {
         this
     }
 
-    pub fn from_mapping(mapping: &Mapping) -> Self {
+    pub fn from_mapping(mapping: &Mapping, sources: &[H160]) -> Self {
         let mut this = EthereumLogFilter::default();
+        if sources.is_empty() {
+            this.addresses.extend(sources.iter());
+        }
         for event_handler in &mapping.event_handlers {
             let signature = event_handler.topic0();
+
             this.wildcard_events
                 .insert(signature, event_handler.receipt);
         }
@@ -509,6 +569,7 @@ impl EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
             events_with_topic_filters,
+            addresses,
         } = other;
         for (s, t, e) in contracts_and_events_graph.all_edges() {
             self.contracts_and_events_graph.add_edge(s, t, *e);
@@ -516,6 +577,7 @@ impl EthereumLogFilter {
         self.wildcard_events.extend(wildcard_events);
         self.events_with_topic_filters
             .extend(events_with_topic_filters);
+        self.addresses.extend(addresses.clone().iter());
     }
 
     /// An empty filter is one that never matches.
@@ -525,10 +587,12 @@ impl EthereumLogFilter {
             contracts_and_events_graph,
             wildcard_events,
             events_with_topic_filters,
+            addresses,
         } = self;
         contracts_and_events_graph.edge_count() == 0
             && wildcard_events.is_empty()
             && events_with_topic_filters.is_empty()
+            && addresses.is_empty()
     }
 
     /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
@@ -537,21 +601,21 @@ impl EthereumLogFilter {
     pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
         let mut filters = Vec::new();
 
-        // Start with the wildcard event filters.
-        filters.extend(
-            self.wildcard_events
-                .into_keys()
-                .map(EthGetLogsFilter::from_event),
-        );
+        if self.addresses.is_empty() {
+            // Start with the wildcard event filters.
+            filters.extend(
+                self.wildcard_events
+                    .into_keys()
+                    .map(EthGetLogsFilter::from_event),
+            );
 
-        // Handle events with topic filters.
-        filters.extend(
-            self.events_with_topic_filters
-                .into_iter()
-                .map(|(event_with_topics, _)| {
+            // Handle events with topic filters.
+            filters.extend(self.events_with_topic_filters.into_iter().map(
+                |(event_with_topics, _)| {
                     EthGetLogsFilter::from_event_with_topics(event_with_topics)
-                }),
-        );
+                },
+            ));
+        }
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
         // of its edges into a filter. This is nice because it is neutral between filtering by
@@ -1305,6 +1369,94 @@ mod tests {
     }
 
     #[test]
+    fn ethereum_trigger_filter_to_firehose_specialise_wildcards_to_addresses() {
+        let address = Address::from_low_u64_be;
+        let sig = H256::from_low_u64_le;
+        let filter = TriggerFilter {
+            log: EthereumLogFilter {
+                contracts_and_events_graph: GraphMap::new(),
+                wildcard_events: HashMap::from_iter(vec![
+                    (sig(1), false),
+                    (sig(2), false),
+                    (sig(3), false),
+                    (sig(4), false),
+                ]),
+                events_with_topic_filters: HashMap::new(),
+                addresses: HashSet::from_iter(vec![
+                    address(900),
+                    address(901),
+                    address(902),
+                    address(903),
+                ]),
+            },
+            call: EthereumCallFilter {
+                contract_addresses_function_signatures: HashMap::default(),
+                wildcard_signatures: HashSet::from_iter(vec![]),
+            },
+            block: EthereumBlockFilter {
+                polling_intervals: HashSet::default(),
+                contract_addresses: HashSet::default(),
+                trigger_every_block: false,
+            },
+        };
+
+        let expected_call_filters: Vec<CallToFilter> = vec![];
+
+        let expected_log_filters = vec![LogFilter {
+            addresses: vec![
+                address(900).to_fixed_bytes().to_vec(),
+                address(901).to_fixed_bytes().to_vec(),
+                address(902).to_fixed_bytes().to_vec(),
+                address(903).to_fixed_bytes().to_vec(),
+            ],
+            event_signatures: vec![
+                sig(1).to_fixed_bytes().to_vec(),
+                sig(2).to_fixed_bytes().to_vec(),
+                sig(3).to_fixed_bytes().to_vec(),
+                sig(4).to_fixed_bytes().to_vec(),
+            ],
+        }];
+
+        let firehose_filter = filter.clone().to_firehose_filter();
+        assert_eq!(1, firehose_filter.len());
+
+        let firehose_filter: HashMap<_, _> = HashMap::from_iter::<Vec<(String, Any)>>(
+            firehose_filter
+                .into_iter()
+                .map(|any| (any.type_url.clone(), any))
+                .collect_vec(),
+        );
+
+        let mut combined_filter = &firehose_filter
+            .get(COMBINED_FILTER_TYPE_URL)
+            .expect("a CombinedFilter")
+            .value[..];
+
+        let combined_filter =
+            CombinedFilter::decode(&mut combined_filter).expect("combined filter to decode");
+
+        let CombinedFilter {
+            log_filters: mut actual_log_filters,
+            call_filters: mut actual_call_filters,
+            send_all_block_headers: actual_send_all_block_headers,
+        } = combined_filter;
+
+        actual_call_filters.sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_call_filters.iter_mut() {
+            filter.signatures.sort();
+        }
+        assert_eq!(expected_call_filters, actual_call_filters);
+
+        actual_log_filters.sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_log_filters.iter_mut() {
+            filter.event_signatures.sort();
+            filter.addresses.sort();
+        }
+        assert_eq!(expected_log_filters, actual_log_filters);
+        assert_eq!(false, actual_send_all_block_headers);
+    }
+
+    #[test]
     fn ethereum_trigger_filter_to_firehose() {
         let address = Address::from_low_u64_be;
         let sig = H256::from_low_u64_le;
@@ -1313,6 +1465,7 @@ mod tests {
                 contracts_and_events_graph: GraphMap::new(),
                 wildcard_events: HashMap::new(),
                 events_with_topic_filters: HashMap::new(),
+                addresses: HashSet::default(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::from_iter(vec![
@@ -1439,6 +1592,7 @@ mod tests {
                 contracts_and_events_graph: GraphMap::new(),
                 wildcard_events: HashMap::new(),
                 events_with_topic_filters: HashMap::new(),
+                addresses: HashSet::default(),
             },
             call: EthereumCallFilter {
                 contract_addresses_function_signatures: HashMap::new(),
@@ -1831,6 +1985,7 @@ fn complete_log_filter() {
                 contracts_and_events_graph,
                 wildcard_events: HashMap::new(),
                 events_with_topic_filters: HashMap::new(),
+                addresses: HashSet::default(),
             }
             .eth_get_logs_filters()
             .collect();
@@ -1926,6 +2081,7 @@ fn log_filter_require_transacion_receipt_method() {
         contracts_and_events_graph,
         wildcard_events,
         events_with_topic_filters,
+        addresses: HashSet::default(),
     };
 
     let empty_vec: Vec<H256> = vec![];
