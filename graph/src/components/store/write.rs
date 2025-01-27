@@ -4,6 +4,7 @@ use std::{collections::HashSet, sync::Arc};
 use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     cheap_clone::CheapClone,
+    components::metrics::block_state::BlockStateMetrics,
     components::subgraph::Entity,
     constraint_violation,
     data::{store::Id, subgraph::schema::SubgraphError},
@@ -498,26 +499,27 @@ impl RowGroup {
 
     pub fn track_metrics(&self, metrics: &mut BlockStateMetrics) {
         // Track entity count changes
-        let changes: Vec<i32> = self.rows.iter()
+        let changes: Vec<i32> = self
+            .rows
+            .iter()
             .map(|row| row.entity_count_change())
             .collect();
         metrics.track_entity_count_change_batch(&self.entity_type, &changes);
 
-        // Track storage changes and writes
-        let (writes, removals): (Vec<_>, Vec<_>) = self.rows.iter()
+        // Track writes only
+        let writes: Vec<Entity> = self
+            .rows
+            .iter()
             .filter_map(|row| match row {
-                EntityModification::Insert { data, .. } | 
-                EntityModification::Overwrite { data, .. } => Some((data, false)),
+                EntityModification::Insert { data, .. }
+                | EntityModification::Overwrite { data, .. } => Some(data.as_ref().clone()),
                 EntityModification::Remove { .. } => None,
             })
-            .unzip();
+            .collect();
 
         if !writes.is_empty() {
             metrics.track_entity_write_batch(&self.entity_type, &writes);
             metrics.track_storage_size_change_batch(&self.entity_type, &writes, false);
-        }
-        if !removals.is_empty() {
-            metrics.track_storage_size_change_batch(&self.entity_type, &removals, true);
         }
     }
 }
@@ -703,6 +705,8 @@ impl Batch {
         });
 
         let mut mods = RowGroups::new();
+
+        let mut metrics = BlockStateMetrics::default();
 
         for m in raw_mods {
             mods.group_entry(&m.key().entity_type).push(m, block)?;

@@ -17,7 +17,7 @@ use crate::{
     util::cache_weight::CacheWeight,
 };
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct BlockStateMetrics {
     pub gas_counter: HashMap<CounterKey, u64>,
     pub op_counter: HashMap<CounterKey, u64>,
@@ -201,11 +201,16 @@ impl BlockStateMetrics {
         }
     }
 
-    pub fn track_storage_size_change(&mut self, entity_type: &EntityType, entity: &Entity, is_removal: bool) {
+    pub fn track_storage_size_change(
+        &mut self,
+        entity_type: &EntityType,
+        entity: &Entity,
+        is_removal: bool,
+    ) {
         if ENV_VARS.enable_dips_metrics {
             let key = CounterKey::Entity(entity_type.clone(), entity.id());
             let size = entity.weight() as u64;
-            
+
             let storage = self.current_storage_size.entry(key).or_insert(0);
             if is_removal {
                 *storage = storage.saturating_sub(size);
@@ -215,7 +220,12 @@ impl BlockStateMetrics {
         }
     }
 
-    pub fn track_storage_size_change_batch(&mut self, entity_type: &EntityType, entities: &[Entity], is_removal: bool) {
+    pub fn track_storage_size_change_batch(
+        &mut self,
+        entity_type: &EntityType,
+        entities: &[Entity],
+        is_removal: bool,
+    ) {
         if ENV_VARS.enable_dips_metrics {
             for entity in entities {
                 self.track_storage_size_change(entity_type, entity, is_removal);
