@@ -9,7 +9,7 @@
   ok: >
     select to_jsonb(sub.*) as data from (
       SELECT symbol, address FROM (
-        SELECT * FROM "sgd0815"."token" WHERE block_range @> 2147483647) AS token
+        SELECT id, address, symbol, name, decimals FROM "sgd0815"."token" WHERE block_range @> 2147483647) AS token
       WHERE decimals > 10 ) as sub
 - sql: >
         with tokens as (
@@ -44,11 +44,13 @@
           AS t (address, symbol, name, decimals))
       SELECT date, t.symbol, SUM(amount) / pow(10, t.decimals) AS amount
         FROM (SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount
-                FROM (SELECT * FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS sm,
+                FROM (SELECT id, timestamp, pool, token_0, token_1, sender, recipient, origin, amount_0, amount_1, amount_usd, sqrt_price_x96, tick, log_index
+                        FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS sm,
                      UNNEST(sm.amounts_in, sm.tokens_in) AS smi (amount, token)
               UNION ALL
               SELECT date(to_timestamp(block_timestamp) AT TIME ZONE 'utc') AS date, token, amount
-                FROM (SELECT * FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS sm,
+                FROM (SELECT id, timestamp, pool, token_0, token_1, sender, recipient, origin, amount_0, amount_1, amount_usd, sqrt_price_x96, tick, log_index
+                        FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS sm,
                      UNNEST(sm.amounts_out, sm.tokens_out) AS smo (amount, token)) AS tp
                   JOIN tokens AS t ON t.address = tp.token
                GROUP BY tp.date, t.symbol, t.decimals
