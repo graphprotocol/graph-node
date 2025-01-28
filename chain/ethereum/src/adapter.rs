@@ -546,7 +546,7 @@ impl EthereumLogFilter {
 
     pub fn from_mapping(mapping: &Mapping, sources: &[H160]) -> Self {
         let mut this = EthereumLogFilter::default();
-        if sources.is_empty() {
+        if !sources.is_empty() {
             this.addresses.extend(sources.iter());
         }
         for event_handler in &mapping.event_handlers {
