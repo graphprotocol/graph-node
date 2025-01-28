@@ -1,7 +1,8 @@
 use serde::de::Deserializer;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
@@ -163,5 +164,28 @@ impl Query {
             trace,
             _force_use_of_new: (),
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SqlQueryMode {
+    Data,
+    Info,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SqlQueryReq {
+    pub deployment: DeploymentHash,
+    pub query: String,
+    pub mode: SqlQueryMode,
+}
+
+impl SqlQueryReq {
+    pub fn query_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.deployment.hash(&mut hasher);
+        self.query.hash(&mut hasher);
+        hasher.finish()
     }
 }

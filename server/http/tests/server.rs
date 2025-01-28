@@ -1,4 +1,7 @@
-use graph::http::StatusCode;
+use graph::{
+    data::{query::SqlQueryReq, store::SqlQueryObject},
+    http::StatusCode,
+};
 use std::time::Duration;
 
 use graph::data::{
@@ -65,6 +68,13 @@ impl GraphQlRunner for TestGraphQlRunner {
 
     fn metrics(&self) -> Arc<dyn GraphQLMetrics> {
         Arc::new(TestGraphQLMetrics)
+    }
+
+    async fn run_sql_query(
+        self: Arc<Self>,
+        _req: SqlQueryReq,
+    ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
+        unimplemented!();
     }
 }
 

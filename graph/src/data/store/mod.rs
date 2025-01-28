@@ -1080,6 +1080,7 @@ pub struct QueryObject {
 }
 
 /// An object that is returned from a SQL query. It wraps an `r::Value`
+#[derive(CacheWeight, Serialize)]
 pub struct SqlQueryObject(pub r::Value);
 
 impl CacheWeight for QueryObject {
