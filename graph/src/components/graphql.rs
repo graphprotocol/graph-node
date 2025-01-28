@@ -1,7 +1,8 @@
-use crate::data::query::QueryResults;
 use crate::data::query::{Query, QueryTarget};
+use crate::data::query::{QueryResults, SqlQueryReq};
+use crate::data::store::SqlQueryObject;
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
-use crate::prelude::DeploymentHash;
+use crate::prelude::{DeploymentHash, QueryExecutionError};
 
 use async_trait::async_trait;
 use futures01::Future;
@@ -41,6 +42,11 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
     fn metrics(&self) -> Arc<dyn GraphQLMetrics>;
+
+    async fn run_sql_query(
+        self: Arc<Self>,
+        req: SqlQueryReq,
+    ) -> Result<Vec<SqlQueryObject>, QueryExecutionError>;
 }
 
 pub trait GraphQLMetrics: Send + Sync + 'static {
