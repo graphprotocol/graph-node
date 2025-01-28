@@ -116,15 +116,21 @@ impl VisitorMut for Validator<'_> {
                 return ControlFlow::Continue(());
             };
 
-            // Change 'from table [as alias]' to 'from (select * from table) as alias'
+            // Change 'from table [as alias]' to 'from (select {columns} from table) as alias'
+            let columns = table
+                .columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             let query = if table.immutable {
                 format!(
-                    "select * from {} where {} <= {}",
+                    "select {columns} from {} where {} <= {}",
                     table.qualified_name, BLOCK_COLUMN, self.block
                 )
             } else {
                 format!(
-                    "select * from {} where {} @> {}",
+                    "select {columns} from {} where {} @> {}",
                     table.qualified_name, BLOCK_RANGE_COLUMN, self.block
                 )
             };
