@@ -292,6 +292,8 @@ impl DeploymentStore {
         conn: &mut PgConnection,
         query: &str,
     ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
+        let query = format!("select to_jsonb(sub.*) as data from ({}) as sub", query);
+
         let query = diesel::sql_query(query);
 
         // Execute the provided SQL query
