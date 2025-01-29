@@ -21,14 +21,10 @@ impl Parser {
         validator.validate_statements(&mut statements)?;
 
         let statement = statements
-            .get_mut(0)
+            .get(0)
             .ok_or_else(|| anyhow!("No SQL statements found"))?;
 
-        let sql = format!(
-            "select to_jsonb(sub.*) as data from ( {} ) as sub",
-            statement
-        );
-        Ok(sql)
+        Ok(statement.to_string())
     }
 }
 
