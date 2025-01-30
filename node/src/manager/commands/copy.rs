@@ -154,7 +154,12 @@ pub async fn create(
     Ok(())
 }
 
-pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
+pub fn activate(
+    pools: &HashMap<Shard, ConnectionPool>,
+    store: Arc<SubgraphStore>,
+    deployment: String,
+    shard: String,
+) -> Result<(), Error> {
     let shard = Shard::new(shard)?;
     let deployment =
         DeploymentHash::new(deployment).map_err(|s| anyhow!("illegal deployment hash `{}`", s))?;
@@ -167,8 +172,23 @@ pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) ->
                 shard
             )
         })?;
-    store.activate(&deployment)?;
-    println!("activated copy {}", deployment);
+
+    let (state, _, _) = match CopyState::find(pools, &shard, deployment.id.0)? {
+        Some((state, tables, on_sync)) => (state, tables, on_sync),
+        None => {
+            println!(
+                "copying is queued but has not started or no copy operation for {} exists",
+                deployment.id.0
+            );
+            return Ok(());
+        }
+    };
+    if state.finished_at.is_some() {
+        store.activate(&deployment)?;
+        println!("activated copy {}", deployment);
+    } else {
+        println!("copying is not finished yet");
+    }
     Ok(())
 }
 
