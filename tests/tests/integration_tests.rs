@@ -522,22 +522,43 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
     let expected_response = json!({
         "mirrorBlocks": [
-            { "number": "1" },
-            { "number": "2" },
-            { "number": "3" },
-            { "number": "4" },
-            { "number": "5" },
-            { "number": "6" },
-            { "number": "7" },
-            { "number": "8" },
-            { "number": "9" },
+            { "id": "1-v1", "number": "1" },
+            { "id": "1-v2", "number": "1" },
+            { "id": "1-v3", "number": "1" },
+            { "id": "2-v1", "number": "2" },
+            { "id": "2-v2", "number": "2" },
+            { "id": "2-v3", "number": "2" },
+            { "id": "3-v1", "number": "3" },
+            { "id": "3-v2", "number": "3" },
+            { "id": "3-v3", "number": "3" },
+            { "id": "4-v1", "number": "4" },
+            { "id": "4-v2", "number": "4" },
+            { "id": "4-v3", "number": "4" },
+            { "id": "5-v1", "number": "5" },
+            { "id": "5-v2", "number": "5" },
+            { "id": "5-v3", "number": "5" },
+            { "id": "6-v1", "number": "6" },
+            { "id": "6-v2", "number": "6" },
+            { "id": "6-v3", "number": "6" },
+            { "id": "7-v1", "number": "7" },
+            { "id": "7-v2", "number": "7" },
+            { "id": "7-v3", "number": "7" },
+            { "id": "8-v1", "number": "8" },
+            { "id": "8-v2", "number": "8" },
+            { "id": "8-v3", "number": "8" },
+            { "id": "9-v1", "number": "9" },
+            { "id": "9-v2", "number": "9" },
+            { "id": "9-v3", "number": "9" },
+            { "id": "10-v1", "number": "10" },
+            { "id": "10-v2", "number": "10" },
+            { "id": "10-v3", "number": "10" },
         ]
     });
 
     query_succeeds(
         "Blocks should be right",
         &subgraph,
-        "{ mirrorBlocks(where: {number_lt: 10}, orderBy: number) { number } }",
+        "{ mirrorBlocks(where: {number_lte: 10}, orderBy: number) { id, number } }",
         expected_response,
     )
     .await?;
