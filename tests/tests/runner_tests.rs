@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use assert_json_diff::assert_json_eq;
-use graph::blockchain::block_stream::{BlockWithTriggers, EntitySubgraphOperation};
+use graph::blockchain::block_stream::{BlockWithTriggers, EntityOperationKind};
 use graph::blockchain::{Block, BlockPtr, Blockchain};
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
@@ -1121,7 +1121,7 @@ async fn subgraph_data_sources() {
             DeploymentHash::new("QmRFXhvyvbm4z5Lo7z2mN9Ckmo623uuB2jJYbRmAXgYKXJ").unwrap(),
             entity,
             entity_type,
-            EntitySubgraphOperation::Create,
+            EntityOperationKind::Create,
             1,
         );
 
