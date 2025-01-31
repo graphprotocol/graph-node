@@ -50,7 +50,7 @@ lazy_static! {
 async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),
-        spec_version: Version::new(1, 0, 0),
+        spec_version: Version::new(1, 3, 0),
         features: Default::default(),
         description: None,
         repository: None,

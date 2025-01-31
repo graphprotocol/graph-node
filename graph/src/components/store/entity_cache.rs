@@ -207,9 +207,25 @@ impl EntityCache {
         };
 
         // Always test the cache consistency in debug mode. The test only
-        // makes sense when we were actually asked to read from the store
+        // makes sense when we were actually asked to read from the store.
+        // We need to remove the VID as the one from the DB  might come from
+        // a legacy subgraph that has VID autoincremented while this trait
+        // always creates it in a new style.
         debug_assert!(match scope {
-            GetScope::Store => entity == self.store.get(key).unwrap().map(Arc::new),
+            GetScope::Store => {
+                // Release build will never call this function and hence it's OK
+                // when that implementation is not correct.
+                fn remove_vid(entity: Option<Arc<Entity>>) -> Option<Entity> {
+                    entity.map(|e| {
+                        #[allow(unused_mut)]
+                        let mut entity = (*e).clone();
+                        #[cfg(debug_assertions)]
+                        entity.remove("vid");
+                        entity
+                    })
+                }
+                remove_vid(entity.clone()) == remove_vid(self.store.get(key).unwrap().map(Arc::new))
+            }
             GetScope::InBlock => true,
         });
 

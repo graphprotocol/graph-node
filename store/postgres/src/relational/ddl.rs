@@ -116,8 +116,7 @@ impl Table {
             Ok(cols)
         }
 
-        // Currently the agregations entities don't have VIDs in insertion order
-        let vid_type = if self.object.is_object_type() {
+        let vid_type = if self.object.strict_vid_order() {
             "bigint"
         } else {
             "bigserial"
