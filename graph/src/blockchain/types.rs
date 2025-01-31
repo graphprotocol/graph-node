@@ -31,6 +31,10 @@ impl BlockHash {
         &self.0
     }
 
+    pub fn as_h256(&self) -> H256 {
+        H256::from_slice(self.as_slice())
+    }
+
     /// Encodes the block hash into a hexadecimal string **without** a "0x"
     /// prefix. Hashes are stored in the database in this format when the
     /// schema uses `text` columns, which is a legacy and such columns

@@ -3,15 +3,16 @@ use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
-    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggersAdapterSelector,
+    BlockIngestor, BlockTime, BlockchainKind, ChainIdentifier, TriggerFilterWrapper,
+    TriggersAdapterSelector,
 };
 use graph::components::network_provider::ChainName;
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, ReadStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::{
-    BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
+    BlockHash, ComponentLoggerConfig, DeploymentHash, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
@@ -61,6 +62,7 @@ use crate::{BufferedCallCache, NodeCapabilities};
 use crate::{EthereumAdapter, RuntimeAdapter};
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
+    TriggersAdapterWrapper,
 };
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
@@ -121,24 +123,50 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         unimplemented!()
     }
 
+    async fn build_subgraph_block_stream(
+        &self,
+        chain: &Chain,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<TriggerFilterWrapper<Chain>>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        self.build_polling(
+            chain,
+            deployment,
+            start_blocks,
+            source_subgraph_stores,
+            subgraph_current_block,
+            filter,
+            unified_api_version,
+        )
+        .await
+    }
+
     async fn build_polling(
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+        filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let requirements = filter.node_capabilities();
-        let adapter = chain
-            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
-            .unwrap_or_else(|_| {
-                panic!(
-                    "no adapter for network {} with capabilities {}",
-                    chain.name, requirements
-                )
-            });
+        let requirements = filter.chain_filter.node_capabilities();
+        let adapter = TriggersAdapterWrapper::new(
+            chain
+                .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "no adapter for network {} with capabilities {}",
+                        chain.name, requirements
+                    )
+                }),
+            source_subgraph_stores,
+        );
 
         let logger = chain
             .logger_factory
@@ -172,7 +200,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         Ok(Box::new(PollingBlockStream::new(
             chain_store,
             chain_head_update_stream,
-            adapter,
+            Arc::new(adapter),
             chain.node_id.clone(),
             deployment.hash,
             filter,
@@ -409,10 +437,27 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let current_ptr = store.block_ptr();
+
+        if !filter.subgraph_filter.is_empty() {
+            return self
+                .block_stream_builder
+                .build_subgraph_block_stream(
+                    self,
+                    deployment,
+                    start_blocks,
+                    source_subgraph_stores,
+                    current_ptr,
+                    filter,
+                    unified_api_version,
+                )
+                .await;
+        }
+
         match self.chain_client().as_ref() {
             ChainClient::Rpc(_) => {
                 self.block_stream_builder
@@ -420,6 +465,7 @@ impl Blockchain for Chain {
                         self,
                         deployment,
                         start_blocks,
+                        source_subgraph_stores,
                         current_ptr,
                         filter,
                         unified_api_version,
@@ -434,7 +480,7 @@ impl Blockchain for Chain {
                         store.firehose_cursor(),
                         start_blocks,
                         current_ptr,
-                        filter,
+                        filter.chain_filter.clone(),
                         unified_api_version,
                     )
                     .await
@@ -687,6 +733,35 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             self.unified_api_version.clone(),
         )
         .await
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        logger: Logger,
+        block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<BlockFinality>> {
+        use graph::futures01::stream::Stream;
+
+        let adapter = self
+            .chain_client
+            .rpc()?
+            .cheapest_with(&self.capabilities)
+            .await?;
+
+        let blocks = adapter
+            .load_blocks_by_numbers(logger, self.chain_store.clone(), block_numbers)
+            .await
+            .map(|block| BlockFinality::Final(block))
+            .collect()
+            .compat()
+            .await?;
+
+        Ok(blocks)
+    }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        let chain_store = self.chain_store.clone();
+        chain_store.chain_head_ptr().await
     }
 
     async fn triggers_in_block(

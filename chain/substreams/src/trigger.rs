@@ -16,7 +16,7 @@ use graph::{
 };
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
 
@@ -133,6 +133,18 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         _offset: BlockNumber,
         _root: Option<BlockHash>,
     ) -> Result<Option<Block>, Error> {
+        unimplemented!()
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<Block>, Error> {
+        unimplemented!()
+    }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
 

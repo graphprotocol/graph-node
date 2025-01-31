@@ -7,11 +7,12 @@ use super::{
     NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
+use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
+use graph::data_source::subgraph;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
+use graph::prelude::{ethabi, tiny_keccak, DeploymentHash, Entity, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
@@ -81,7 +82,10 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
             number: Some(U64::from(ptr.number)),
             ..Default::default()
         })),
-        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End)],
+        trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
+            ptr,
+            EthereumBlockTriggerType::End,
+        ))],
     }
 }
 
@@ -128,7 +132,10 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
             transactions,
             ..Default::default()
         })),
-        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End)],
+        trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
+            ptr,
+            EthereumBlockTriggerType::End,
+        ))],
     }
 }
 
@@ -148,7 +155,24 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
     });
     block
         .trigger_data
-        .push(EthereumTrigger::Log(LogRef::FullLog(log, None)))
+        .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
+            log, None,
+        ))))
+}
+
+pub fn push_test_subgraph_trigger(
+    block: &mut BlockWithTriggers<Chain>,
+    source: DeploymentHash,
+    entity: Entity,
+    entity_type: &str,
+) {
+    block
+        .trigger_data
+        .push(Trigger::Subgraph(subgraph::TriggerData {
+            source,
+            entity: entity,
+            entity_type: entity_type.to_string(),
+        }));
 }
 
 pub fn push_test_command(
@@ -175,12 +199,16 @@ pub fn push_test_command(
     });
     block
         .trigger_data
-        .push(EthereumTrigger::Log(LogRef::FullLog(log, None)))
+        .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
+            log, None,
+        ))))
 }
 
 pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>) {
-    block.trigger_data.push(EthereumTrigger::Block(
-        block.ptr(),
-        EthereumBlockTriggerType::End,
-    ))
+    block
+        .trigger_data
+        .push(Trigger::Chain(EthereumTrigger::Block(
+            block.ptr(),
+            EthereumBlockTriggerType::End,
+        )))
 }
