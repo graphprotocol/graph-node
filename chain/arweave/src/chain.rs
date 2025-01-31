@@ -269,7 +269,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         }))
     }
 
-    async fn load_blocks_by_numbers(
+    async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
         _block_numbers: HashSet<BlockNumber>,

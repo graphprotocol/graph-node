@@ -7,7 +7,7 @@ use web3::types::{Address, H256};
 
 use super::*;
 use crate::blockchain::block_stream::{EntityWithType, FirehoseCursor};
-use crate::blockchain::{BlockTime, ChainIdentifier};
+use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
@@ -523,10 +523,10 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Returns the blocks present in the store for the given block numbers.
-    async fn blocks_by_numbers(
+    async fn block_ptrs_by_numbers(
         self: Arc<Self>,
         numbers: Vec<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<serde_json::Value>>, Error>;
+    ) -> Result<BTreeMap<BlockNumber, Vec<ExtendedBlockPtr>>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. If `root` is passed, short-circuit upon finding
