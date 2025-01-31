@@ -18,7 +18,6 @@ use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
-use graph::prelude::regex::Regex;
 use graph::prelude::{
     anyhow, r, serde_json, BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter,
     EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
@@ -28,6 +27,7 @@ use graph::schema::{EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
@@ -36,7 +36,7 @@ use std::ops::Range;
 use std::str::FromStr;
 use std::string::ToString;
 
-use crate::block_range::EntityBlockRange;
+use crate::block_range::{BoundSide, EntityBlockRange};
 use crate::relational::dsl::AtBlock;
 use crate::relational::{
     dsl, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
@@ -454,40 +454,12 @@ pub struct EntityData {
 }
 
 impl EntityData {
-    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
-        schema.entity_type(&self.entity).unwrap()
+    pub fn new(entity: String, data: serde_json::Value) -> EntityData {
+        EntityData { entity, data }
     }
 
-    pub fn deserialize_block_number<T: FromEntityData>(self) -> Result<BlockNumber, StoreError> {
-        use serde_json::Value as j;
-        match self.data {
-            j::Object(map) => {
-                let mut entries = map.into_iter().filter_map(move |(key, json)| {
-                    if key == "block_range" {
-                        let r = json.as_str().unwrap();
-                        let rx = Regex::new("\\[(?P<start>[0-9]+),([0-9]+)?\\)").unwrap();
-                        let cap = rx.captures(r).unwrap();
-                        let start = cap
-                            .name("start")
-                            .map(|mtch| mtch.as_str().to_string())
-                            .unwrap();
-                        let n = start.parse::<i32>().unwrap();
-                        Some(n)
-                    } else if key == "block$" {
-                        let block = json.as_i64().unwrap() as i32;
-                        Some(block)
-                    } else {
-                        None
-                    }
-                });
-                let en = entries.next().unwrap();
-                assert!(entries.next().is_none()); // there should be just one block_range field
-                Ok(en)
-            }
-            _ => unreachable!(
-                "we use `to_json` in our queries, and will therefore always get an object back"
-            ),
-        }
+    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
+        schema.entity_type(&self.entity).unwrap()
     }
 
     /// Map the `EntityData` using the schema information in `Layout`
@@ -559,6 +531,48 @@ impl EntityData {
                 "we use `to_json` in our queries, and will therefore always get an object back"
             ),
         }
+    }
+}
+
+#[derive(QueryableByName, Clone, Debug, Default, Eq)]
+pub struct EntityDataExt {
+    #[diesel(sql_type = Text)]
+    pub entity: String,
+    #[diesel(sql_type = Jsonb)]
+    pub data: serde_json::Value,
+    #[diesel(sql_type = Integer)]
+    pub block_number: i32,
+    #[diesel(sql_type = Text)]
+    pub id: String,
+    #[diesel(sql_type = BigInt)]
+    pub vid: i64,
+}
+
+impl Ord for EntityDataExt {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let ord = self.block_number.cmp(&other.block_number);
+        if ord != Ordering::Equal {
+            ord
+        } else {
+            let ord = self.entity.cmp(&other.entity);
+            if ord != Ordering::Equal {
+                ord
+            } else {
+                self.id.cmp(&other.id)
+            }
+        }
+    }
+}
+
+impl PartialOrd for EntityDataExt {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for EntityDataExt {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
     }
 }
 
@@ -1839,37 +1853,87 @@ impl<'a> QueryFragment<Pg> for Filter<'a> {
 
 #[derive(Debug, Clone)]
 pub struct FindRangeQuery<'a> {
-    table: &'a Table,
-    eb_range: EntityBlockRange,
+    tables: &'a Vec<&'a Table>,
+    causality_region: CausalityRegion,
+    bound_side: BoundSide,
+    imm_range: EntityBlockRange,
+    mut_range: EntityBlockRange,
 }
 
 impl<'a> FindRangeQuery<'a> {
-    pub fn new(table: &'a Table, block_range: Range<BlockNumber>) -> Self {
-        let eb_range = EntityBlockRange::new(&table, block_range);
-        Self { table, eb_range }
+    pub fn new(
+        tables: &'a Vec<&Table>,
+        causality_region: CausalityRegion,
+        bound_side: BoundSide,
+        block_range: Range<BlockNumber>,
+    ) -> Self {
+        let imm_range = EntityBlockRange::new(true, block_range.clone(), bound_side);
+        let mut_range = EntityBlockRange::new(false, block_range, bound_side);
+        Self {
+            tables,
+            causality_region,
+            bound_side,
+            imm_range,
+            mut_range,
+        }
     }
 }
 
 impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
+        let mut first = true;
 
-        // Generate
-        //    select '..' as entity, to_jsonb(e.*) as data
-        //      from schema.table e where id = $1
-        out.push_sql("select ");
-        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
-        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
-        out.push_sql("  from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" e\n where ");
-        // TODO: do we need to care about it?
-        // if self.table.has_causality_region {
-        //     out.push_sql("causality_region = ");
-        //     out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
-        //     out.push_sql(" and ");
-        // }
-        self.eb_range.contains(&mut out)
+        for table in self.tables.iter() {
+            // the immutable entities don't have upper range and also can't be modified or deleted
+            if matches!(self.bound_side, BoundSide::Lower) || !table.immutable {
+                if first {
+                    first = false;
+                } else {
+                    out.push_sql("\nunion all\n");
+                }
+
+                // Generate
+                //    select '..' as entity, to_jsonb(e.*) as data, {BLOCK_STATEMENT} as block_number
+                //      from schema.table e where ...
+                // Here the {BLOCK_STATEMENT} is 'block$' for immutable tables and either 'lower(block_range)'
+                // or 'upper(block_range)' depending on the bound_side variable.
+                out.push_sql("select ");
+                out.push_bind_param::<Text, _>(table.object.as_str())?;
+                out.push_sql(" as entity, to_jsonb(e.*) as data,");
+                if table.immutable {
+                    self.imm_range.compare_column(&mut out)
+                } else {
+                    self.mut_range.compare_column(&mut out)
+                }
+                out.push_sql("as block_number, id, vid\n");
+                out.push_sql("  from ");
+                out.push_sql(table.qualified_name.as_str());
+                out.push_sql(" e\n  where");
+                // add casuality region to the query
+                if table.has_causality_region {
+                    out.push_sql("causality_region = ");
+                    out.push_bind_param::<Integer, _>(&self.causality_region)?;
+                    out.push_sql(" and ");
+                }
+                if table.immutable {
+                    self.imm_range.contains(&mut out)?;
+                } else {
+                    self.mut_range.contains(&mut out)?;
+                }
+            }
+        }
+
+        if first {
+            // In case we have only immutable entities, the upper range will not create any
+            // select statement. So here we have to generate an SQL statement thet returns
+            // empty result.
+            out.push_sql("select 'dummy_entity' as entity, to_jsonb(1) as data, 1 as block_number, 1 as id, 1 as vid where false");
+        } else {
+            out.push_sql("\norder by block_number, entity, id");
+        }
+
+        Ok(())
     }
 }
 
