@@ -19,13 +19,13 @@ use crate::{
     cheap_clone::CheapClone,
     components::{
         metrics::subgraph::SubgraphInstanceMetrics,
-        store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
+        store::{DeploymentCursorTracker, DeploymentLocator, ReadStore, StoredDynamicDataSource},
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
         trigger_processor::RunnableTriggers,
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
-    data_source::{self, DataSourceTemplateInfo},
-    prelude::DataSourceContext,
+    data_source::{self, subgraph, DataSourceTemplateInfo},
+    prelude::{DataSourceContext, DeploymentHash},
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
@@ -189,7 +189,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
@@ -244,6 +245,42 @@ pub enum IngestorError {
 impl From<web3::Error> for IngestorError {
     fn from(e: web3::Error) -> Self {
         IngestorError::Unknown(anyhow::anyhow!(e))
+    }
+}
+
+/// The `TriggerFilterWrapper` is a higher-level wrapper around the chain-specific `TriggerFilter`,
+/// enabling subgraph-based trigger filtering for subgraph datasources. This abstraction is necessary
+/// because subgraph filtering operates at a higher level than chain-based filtering. By using this wrapper,
+/// we reduce code duplication, allowing subgraph-based filtering to be implemented once, instead of
+/// duplicating it across different chains.
+#[derive(Debug)]
+pub struct TriggerFilterWrapper<C: Blockchain> {
+    pub chain_filter: Arc<C::TriggerFilter>,
+    pub subgraph_filter: Vec<SubgraphFilter>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubgraphFilter {
+    pub subgraph: DeploymentHash,
+    pub start_block: BlockNumber,
+    pub entities: Vec<String>,
+}
+
+impl<C: Blockchain> TriggerFilterWrapper<C> {
+    pub fn new(filter: C::TriggerFilter, subgraph_filter: Vec<SubgraphFilter>) -> Self {
+        Self {
+            chain_filter: Arc::new(filter),
+            subgraph_filter,
+        }
+    }
+}
+
+impl<C: Blockchain> Clone for TriggerFilterWrapper<C> {
+    fn clone(&self) -> Self {
+        Self {
+            chain_filter: self.chain_filter.cheap_clone(),
+            subgraph_filter: self.subgraph_filter.clone(),
+        }
     }
 }
 
@@ -370,6 +407,76 @@ pub trait UnresolvedDataSource<C: Blockchain>:
     ) -> Result<C::DataSource, anyhow::Error>;
 }
 
+#[derive(Debug)]
+pub enum Trigger<C: Blockchain> {
+    Chain(C::TriggerData),
+    Subgraph(subgraph::TriggerData),
+}
+
+impl<C: Blockchain> Trigger<C> {
+    pub fn as_chain(&self) -> Option<&C::TriggerData> {
+        match self {
+            Trigger::Chain(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    pub fn as_subgraph(&self) -> Option<&subgraph::TriggerData> {
+        match self {
+            Trigger::Subgraph(data) => Some(data),
+            _ => None,
+        }
+    }
+}
+
+impl<C: Blockchain> Eq for Trigger<C> where C::TriggerData: Eq {}
+
+impl<C: Blockchain> PartialEq for Trigger<C>
+where
+    C::TriggerData: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Trigger::Chain(data1), Trigger::Chain(data2)) => data1 == data2,
+            (Trigger::Subgraph(a), Trigger::Subgraph(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl<C: Blockchain> Clone for Trigger<C>
+where
+    C::TriggerData: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Trigger::Chain(data) => Trigger::Chain(data.clone()),
+            Trigger::Subgraph(data) => Trigger::Subgraph(data.clone()),
+        }
+    }
+}
+
+// TODO(krishna): Proper ordering for triggers
+impl<C: Blockchain> Ord for Trigger<C>
+where
+    C::TriggerData: Ord,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Trigger::Chain(data1), Trigger::Chain(data2)) => data1.cmp(data2),
+            (Trigger::Subgraph(_), Trigger::Chain(_)) => std::cmp::Ordering::Greater,
+            (Trigger::Chain(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Less,
+            (Trigger::Subgraph(_), Trigger::Subgraph(_)) => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+impl<C: Blockchain> PartialOrd for Trigger<C> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 pub trait TriggerData {
     /// If there is an error when processing this trigger, this will called to add relevant context.
     /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
@@ -485,6 +592,7 @@ impl FromStr for BlockchainKind {
             "near" => Ok(BlockchainKind::Near),
             "cosmos" => Ok(BlockchainKind::Cosmos),
             "substreams" => Ok(BlockchainKind::Substreams),
+            "subgraph" => Ok(BlockchainKind::Ethereum), // TODO(krishna): We should detect the blockchain kind from the source subgraph
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

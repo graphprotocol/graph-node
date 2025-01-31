@@ -19,11 +19,12 @@ use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::Address;
 use graph::prelude::{
-    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
+    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore, Value,
 };
+use graph::schema::InputSchema;
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
-    push_test_polling_trigger,
+    push_test_polling_trigger, push_test_subgraph_trigger,
 };
 
 use graph_tests::fixture::substreams::chain as substreams_chain;
@@ -501,10 +502,19 @@ async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
     let runner = ctx.runner_substreams(test_ptr(0)).await;
     let filter = runner.build_filter_for_test();
 
-    assert_eq!(filter.module_name(), "graph_out");
-    assert_eq!(filter.modules().as_ref().unwrap().modules.len(), 2);
-    assert_eq!(filter.start_block().unwrap(), 0);
-    assert_eq!(filter.data_sources_len(), 1);
+    assert_eq!(filter.chain_filter.module_name(), "graph_out");
+    assert_eq!(
+        filter
+            .chain_filter
+            .modules()
+            .as_ref()
+            .unwrap()
+            .modules
+            .len(),
+        2
+    );
+    assert_eq!(filter.chain_filter.start_block().unwrap(), 0);
+    assert_eq!(filter.chain_filter.data_sources_len(), 1);
     Ok(())
 }
 
@@ -526,7 +536,11 @@ async fn end_block() -> anyhow::Result<()> {
         let runner = ctx.runner(block_ptr.clone()).await;
         let runner = runner.run_for_test(false).await.unwrap();
         let filter = runner.context().filter.as_ref().unwrap();
-        let addresses = filter.log().contract_addresses().collect::<Vec<_>>();
+        let addresses = filter
+            .chain_filter
+            .log()
+            .contract_addresses()
+            .collect::<Vec<_>>();
 
         if should_contain_addr {
             assert!(addresses.contains(&addr));
@@ -1076,6 +1090,49 @@ async fn parse_data_source_context() {
         query_res,
         Some(object! { data: object!{ id: "0", foo: "test", bar: 1 } })
     );
+}
+
+#[tokio::test]
+async fn subgraph_data_sources() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("subgraph-data-sources", "subgraph-data-sources").await;
+
+    let schema = InputSchema::parse_latest(
+        "type User @entity { id: String!, val: String! }",
+        DeploymentHash::new("test").unwrap(),
+    )
+    .unwrap();
+
+    let entity = schema
+        .make_entity(vec![
+            ("id".into(), Value::String("id".to_owned())),
+            ("val".into(), Value::String("DATA".to_owned())),
+        ])
+        .unwrap();
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_subgraph_trigger(
+            &mut block_1,
+            DeploymentHash::new("QmRFXhvyvbm4z5Lo7z2mN9Ckmo623uuB2jJYbRmAXgYKXJ").unwrap(),
+            entity,
+            "User",
+        );
+
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+    let _ = ctx
+        .runner(stop_block)
+        .await
+        .run_for_test(true)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

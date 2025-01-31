@@ -1,9 +1,10 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::{BlockIngestor, NoopDecoderHook};
+use graph::blockchain::{BlockIngestor, NoopDecoderHook, TriggerFilterWrapper};
 use graph::components::network_provider::ChainName;
 use graph::env::EnvVars;
-use graph::prelude::MetricsRegistry;
+use graph::prelude::{DeploymentHash, MetricsRegistry};
 use graph::substreams::Clock;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use graph::blockchain::block_stream::{BlockStreamError, BlockStreamMapper, Fireh
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder, NoopRuntimeAdapter};
 use graph::cheap_clone::CheapClone;
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, ReadStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::{
     blockchain::{
@@ -33,7 +34,7 @@ use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 use crate::trigger::CosmosTrigger;
-use crate::{codec, TriggerFilter};
+use crate::{codec, Block, TriggerFilter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -113,7 +114,8 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
@@ -129,7 +131,10 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            adapter,
+            filter: filter.chain_filter.clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -191,6 +196,18 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _root: Option<BlockHash>,
     ) -> Result<Option<codec::Block>, Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<Block>, Error> {
+        unimplemented!()
+    }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
     }
 
     async fn scan_triggers(
@@ -467,9 +484,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
 #[cfg(test)]
 mod test {
-    use graph::prelude::{
-        slog::{o, Discard, Logger},
-        tokio,
+    use graph::{
+        blockchain::Trigger,
+        prelude::{
+            slog::{o, Discard, Logger},
+            tokio,
+        },
     };
 
     use super::*;
@@ -600,7 +620,10 @@ mod test {
             // they may not be in the same order
             for trigger in expected_triggers {
                 assert!(
-                    triggers.trigger_data.contains(&trigger),
+                    triggers.trigger_data.iter().any(|t| match t {
+                        Trigger::Chain(t) => t == &trigger,
+                        _ => false,
+                    }),
                     "Expected trigger list to contain {:?}, but it only contains: {:?}",
                     trigger,
                     triggers.trigger_data

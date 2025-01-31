@@ -1,3 +1,5 @@
+use crate::data::store::scalar;
+use crate::data_source::subgraph;
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
@@ -5,6 +7,7 @@ use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
 use prost_types::Any;
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
@@ -12,9 +15,11 @@ use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::substreams_block_stream::SubstreamsLogData;
-use super::{Block, BlockPtr, BlockTime, Blockchain};
+use super::{
+    Block, BlockPtr, BlockTime, Blockchain, SubgraphFilter, Trigger, TriggerFilterWrapper,
+};
 use crate::anyhow::Result;
-use crate::components::store::{BlockNumber, DeploymentLocator};
+use crate::components::store::{BlockNumber, DeploymentLocator, ReadStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
 use crate::futures03::stream::StreamExt as _;
@@ -144,10 +149,33 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
         subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<C::TriggerFilter>,
+        filter: Arc<TriggerFilterWrapper<C>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<C>>>;
+
+    async fn build_subgraph_block_stream(
+        &self,
+        chain: &C,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<TriggerFilterWrapper<C>>,
+        unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<C>>> {
+        self.build_polling(
+            chain,
+            deployment,
+            start_blocks,
+            source_subgraph_stores,
+            subgraph_current_block,
+            filter,
+            unified_api_version,
+        )
+        .await
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -198,7 +226,7 @@ impl AsRef<Option<String>> for FirehoseCursor {
 #[derive(Debug)]
 pub struct BlockWithTriggers<C: Blockchain> {
     pub block: C::Block,
-    pub trigger_data: Vec<C::TriggerData>,
+    pub trigger_data: Vec<Trigger<C>>,
 }
 
 impl<C: Blockchain> Clone for BlockWithTriggers<C>
@@ -216,7 +244,31 @@ where
 impl<C: Blockchain> BlockWithTriggers<C> {
     /// Creates a BlockWithTriggers structure, which holds
     /// the trigger data ordered and without any duplicates.
-    pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
+    pub fn new(block: C::Block, trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
+        Self::new_with_triggers(
+            block,
+            trigger_data.into_iter().map(Trigger::Chain).collect(),
+            logger,
+        )
+    }
+
+    pub fn new_with_subgraph_triggers(
+        block: C::Block,
+        trigger_data: Vec<subgraph::TriggerData>,
+        logger: &Logger,
+    ) -> Self {
+        Self::new_with_triggers(
+            block,
+            trigger_data.into_iter().map(Trigger::Subgraph).collect(),
+            logger,
+        )
+    }
+
+    fn new_with_triggers(
+        block: C::Block,
+        mut trigger_data: Vec<Trigger<C>>,
+        logger: &Logger,
+    ) -> Self {
         // This is where triggers get sorted.
         trigger_data.sort();
 
@@ -255,6 +307,147 @@ impl<C: Blockchain> BlockWithTriggers<C> {
 
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         self.block.parent_ptr()
+    }
+
+    pub fn extend_triggers(&mut self, triggers: Vec<Trigger<C>>) {
+        self.trigger_data.extend(triggers);
+        self.trigger_data.sort();
+    }
+}
+
+/// The `TriggersAdapterWrapper` wraps the chain-specific `TriggersAdapter`, enabling chain-agnostic
+/// handling of subgraph datasource triggers. Without this wrapper, we would have to duplicate the same
+/// logic for each chain, increasing code repetition.
+pub struct TriggersAdapterWrapper<C: Blockchain> {
+    pub adapter: Arc<dyn TriggersAdapter<C>>,
+    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+}
+
+impl<C: Blockchain> TriggersAdapterWrapper<C> {
+    pub fn new(
+        adapter: Arc<dyn TriggersAdapter<C>>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+    ) -> Self {
+        Self {
+            adapter,
+            source_subgraph_stores,
+        }
+    }
+}
+
+impl<C: Blockchain> TriggersAdapterWrapper<C> {
+    pub async fn ancestor_block(
+        &self,
+        ptr: BlockPtr,
+        offset: BlockNumber,
+        root: Option<BlockHash>,
+    ) -> Result<Option<C::Block>, Error> {
+        self.adapter.ancestor_block(ptr, offset, root).await
+    }
+
+    // TODO: Do a proper implementation, this is a complete mock implementation
+    pub async fn scan_triggers(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+        filter: &Arc<TriggerFilterWrapper<C>>,
+    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
+        if !filter.subgraph_filter.is_empty() {
+            return self
+                .subgraph_triggers(Logger::root(slog::Discard, o!()), from, to, filter)
+                .await;
+        }
+
+        self.adapter
+            .scan_triggers(from, to, &filter.chain_filter)
+            .await
+    }
+
+    pub async fn triggers_in_block(
+        &self,
+        logger: &Logger,
+        block: C::Block,
+        filter: &C::TriggerFilter,
+    ) -> Result<BlockWithTriggers<C>, Error> {
+        self.adapter.triggers_in_block(logger, block, filter).await
+    }
+
+    pub async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+        self.adapter.is_on_main_chain(ptr).await
+    }
+
+    pub async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
+        self.adapter.parent_ptr(block).await
+    }
+
+    pub async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        self.adapter.chain_head_ptr().await
+    }
+
+    // TODO(krishna): Currently this is a mock implementation of subgraph triggers.
+    // This will be replaced with the actual implementation which will use the filters to
+    // query the database of the source subgraph and return the entity triggers.
+    async fn subgraph_triggers(
+        &self,
+        logger: Logger,
+        from: BlockNumber,
+        to: BlockNumber,
+        filter: &Arc<TriggerFilterWrapper<C>>,
+    ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
+        let logger2 = logger.cheap_clone();
+        let adapter = self.adapter.clone();
+        // let to_ptr = eth.next_existing_ptr_to_number(&logger, to).await?;
+        // let to = to_ptr.block_number();
+
+        let first_filter = filter.subgraph_filter.first().unwrap();
+
+        let blocks = adapter
+            .load_blocks_by_numbers(logger, HashSet::from_iter(from..=to))
+            .await?
+            .into_iter()
+            .map(|block| {
+                let trigger_data = vec![Self::create_mock_subgraph_trigger(first_filter, &block)];
+                BlockWithTriggers::new_with_subgraph_triggers(block, trigger_data, &logger2)
+            })
+            .collect();
+
+        Ok((blocks, to))
+    }
+
+    fn create_mock_subgraph_trigger(
+        filter: &SubgraphFilter,
+        block: &C::Block,
+    ) -> subgraph::TriggerData {
+        let mock_entity = Self::create_mock_entity(block);
+        subgraph::TriggerData {
+            source: filter.subgraph.clone(),
+            entity: mock_entity,
+            entity_type: filter.entities.first().unwrap().clone(),
+        }
+    }
+
+    fn create_mock_entity(block: &C::Block) -> Entity {
+        let id = DeploymentHash::new("test").unwrap();
+        let data_schema = InputSchema::parse_latest(
+            "type Block @entity { id: Bytes!, number: BigInt!, hash: Bytes! }",
+            id.clone(),
+        )
+        .unwrap();
+
+        let block = block.ptr();
+        let hash = Value::Bytes(scalar::Bytes::from(block.hash_slice().to_vec()));
+        let data = data_schema
+            .make_entity(vec![
+                ("id".into(), hash.clone()),
+                (
+                    "number".into(),
+                    Value::BigInt(scalar::BigInt::from(block.block_number())),
+                ),
+                ("hash".into(), hash),
+            ])
+            .unwrap();
+
+        data
     }
 }
 
@@ -298,6 +491,15 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
+
+    /// Get pointer to parent of `block`. This is called when reverting `block`.
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    async fn load_blocks_by_numbers(
+        &self,
+        logger: Logger,
+        block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<C::Block>>;
 }
 
 #[async_trait]

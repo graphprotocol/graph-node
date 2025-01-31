@@ -3,15 +3,15 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{
     BasicBlockchainBuilder, Block, BlockIngestor, BlockchainBuilder, BlockchainKind,
-    EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter,
+    EmptyNodeCapabilities, NoopDecoderHook, NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, ReadStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
-use graph::prelude::MetricsRegistry;
+use graph::prelude::{DeploymentHash, MetricsRegistry};
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -27,11 +27,13 @@ use graph::{
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::trigger::{self, ArweaveTrigger};
+use crate::Block as ArweaveBlock;
 use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -119,7 +121,8 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        filter: Arc<Self::TriggerFilter>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
@@ -135,7 +138,10 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
+        let firehose_mapper = Arc::new(FirehoseMapper {
+            adapter,
+            filter: filter.chain_filter.clone(),
+        });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -199,6 +205,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+
     async fn triggers_in_block(
         &self,
         logger: &Logger,
@@ -257,6 +267,14 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             hash: BlockHash::from(vec![0xff; 48]),
             number: block.number.saturating_sub(1),
         }))
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<ArweaveBlock>, Error> {
+        todo!()
     }
 }
 
