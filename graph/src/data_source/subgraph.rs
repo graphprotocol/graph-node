@@ -5,17 +5,18 @@ use crate::{
         subgraph::{calls_host_fn, SPEC_VERSION_1_3_0},
         value::Word,
     },
-    data_source,
-    prelude::{DataSourceContext, DeploymentHash, Link},
+    data_source::{self, common::DeclaredCall},
+    ensure,
+    prelude::{CheapClone, DataSourceContext, DeploymentHash, Link},
 };
-use anyhow::{Context, Error};
+use anyhow::{anyhow, Context, Error, Result};
 use futures03::{stream::FuturesOrdered, TryStreamExt};
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::{fmt, sync::Arc};
 
 use super::{
-    common::{MappingABI, UnresolvedMappingABI},
+    common::{CallDecls, FindMappingABI, MappingABI, UnresolvedMappingABI},
     DataSourceTemplateInfo, TriggerWithHandler,
 };
 
@@ -74,25 +75,45 @@ impl DataSource {
         &self,
         block: &Arc<C::Block>,
         trigger: &TriggerData,
-    ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
+    ) -> Result<Option<TriggerWithHandler<super::MappingTrigger<C>>>> {
         if self.source.address != trigger.source {
-            return None;
+            return Ok(None);
         }
 
-        let trigger_ref = self.mapping.handlers.iter().find_map(|handler| {
-            if handler.entity != trigger.entity_type() {
-                return None;
-            }
+        let mut matching_handlers: Vec<_> = self
+            .mapping
+            .handlers
+            .iter()
+            .filter(|handler| handler.entity == trigger.entity_type())
+            .collect();
 
-            Some(TriggerWithHandler::new(
-                data_source::MappingTrigger::Subgraph(trigger.clone()),
-                handler.handler.clone(),
-                block.ptr(),
-                block.timestamp(),
-            ))
-        });
+        // Get the matching handler if any
+        let handler = match matching_handlers.pop() {
+            Some(handler) => handler,
+            None => return Ok(None),
+        };
 
-        return trigger_ref;
+        ensure!(
+            matching_handlers.is_empty(),
+            format!(
+                "Multiple handlers defined for entity `{}`, only one is supported",
+                trigger.entity_type()
+            )
+        );
+
+        let calls =
+            DeclaredCall::from_entity_trigger(&self.mapping, &handler.calls, &trigger.entity)?;
+        let mapping_trigger = MappingEntityTrigger {
+            data: trigger.clone(),
+            calls,
+        };
+
+        Ok(Some(TriggerWithHandler::new(
+            data_source::MappingTrigger::Subgraph(mapping_trigger),
+            handler.handler.clone(),
+            block.ptr(),
+            block.timestamp(),
+        )))
     }
 
     pub fn address(&self) -> Option<Vec<u8>> {
@@ -142,10 +163,23 @@ impl Mapping {
     }
 }
 
+impl FindMappingABI for Mapping {
+    fn find_abi(&self, abi_name: &str) -> Result<Arc<MappingABI>, Error> {
+        Ok(self
+            .abis
+            .iter()
+            .find(|abi| abi.name == abi_name)
+            .ok_or_else(|| anyhow!("No ABI entry with name `{}` found", abi_name))?
+            .cheap_clone())
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct EntityHandler {
     pub handler: String,
     pub entity: String,
+    #[serde(default)]
+    pub calls: CallDecls,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
@@ -308,6 +342,12 @@ impl UnresolvedDataSourceTemplate {
             mapping,
         })
     }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct MappingEntityTrigger {
+    pub data: TriggerData,
+    pub calls: Vec<DeclaredCall>,
 }
 
 #[derive(Clone, PartialEq, Eq)]

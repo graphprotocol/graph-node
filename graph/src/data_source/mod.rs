@@ -258,7 +258,7 @@ impl<C: Blockchain> DataSource<C> {
                 Ok(ds.match_and_decode(trigger))
             }
             (Self::Subgraph(ds), TriggerData::Subgraph(trigger)) => {
-                Ok(ds.match_and_decode(block, trigger))
+                ds.match_and_decode(block, trigger)
             }
             (Self::Onchain(_), TriggerData::Offchain(_))
             | (Self::Offchain(_), TriggerData::Onchain(_))
@@ -573,7 +573,7 @@ impl<C: Blockchain> TriggerData<C> {
 pub enum MappingTrigger<C: Blockchain> {
     Onchain(C::MappingTrigger),
     Offchain(offchain::TriggerData),
-    Subgraph(subgraph::TriggerData),
+    Subgraph(subgraph::MappingEntityTrigger),
 }
 
 impl<C: Blockchain> MappingTrigger<C> {
