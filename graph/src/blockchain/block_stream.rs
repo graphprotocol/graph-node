@@ -1,5 +1,5 @@
 use crate::blockchain::SubgraphFilter;
-use crate::data_source::subgraph;
+use crate::data_source::{subgraph, CausalityRegion};
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
@@ -433,9 +433,19 @@ async fn scan_subgraph_triggers<C: Blockchain>(
     }
 }
 
+#[derive(Debug)]
+pub enum EntitySubgraphOperation {
+    Create,
+    Modify,
+    Delete,
+}
+
+#[derive(Debug)]
 pub struct EntityWithType {
+    pub entity_op: EntitySubgraphOperation,
     pub entity_type: EntityType,
     pub entity: Entity,
+    pub vid: i64,
 }
 
 async fn get_entities_for_range(
@@ -445,32 +455,12 @@ async fn get_entities_for_range(
     from: BlockNumber,
     to: BlockNumber,
 ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, Error> {
-    let mut entities_by_block = BTreeMap::new();
-
-    for entity_name in &filter.entities {
-        let entity_type = schema.entity_type(entity_name)?;
-
-        let entity_ranges = store.get_range(&entity_type, from..to)?;
-
-        for (block_number, entity_vec) in entity_ranges {
-            let mut entity_vec = entity_vec
-                .into_iter()
-                .map(|e| EntityWithType {
-                    entity_type: entity_type.clone(),
-                    entity: e,
-                })
-                .collect();
-
-            entities_by_block
-                .entry(block_number)
-                .and_modify(|existing_vec: &mut Vec<EntityWithType>| {
-                    existing_vec.append(&mut entity_vec);
-                })
-                .or_insert(entity_vec);
-        }
-    }
-
-    Ok(entities_by_block)
+    let entity_types: Result<Vec<EntityType>> = filter
+        .entities
+        .iter()
+        .map(|name| schema.entity_type(name))
+        .collect();
+    Ok(store.get_range(entity_types?, CausalityRegion::ONCHAIN, from..to)?)
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
