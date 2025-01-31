@@ -28,6 +28,7 @@ use diesel::{connection::SimpleConnection, Connection};
 use diesel::{
     debug_query, sql_query, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
 };
+use graph::blockchain::block_stream::{EntitySubgraphOperation, EntityWithType};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
@@ -57,8 +58,8 @@ use std::time::{Duration, Instant};
 
 use crate::relational::value::{FromOidRow, OidRow};
 use crate::relational_queries::{
-    ConflictingEntitiesData, ConflictingEntitiesQuery, FindChangesQuery, FindDerivedQuery,
-    FindPossibleDeletionsQuery, ReturnedEntityData,
+    ConflictingEntitiesData, ConflictingEntitiesQuery, EntityDataExt, FindChangesQuery,
+    FindDerivedQuery, FindPossibleDeletionsQuery, ReturnedEntityData,
 };
 use crate::{
     primary::{Namespace, Site},
@@ -75,7 +76,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
-use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
 use crate::{catalog, deployment};
@@ -545,21 +546,129 @@ impl Layout {
     pub fn find_range(
         &self,
         conn: &mut PgConnection,
-        entity_type: &EntityType,
+        entity_types: Vec<EntityType>,
+        causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
-        let table = self.table_for_entity(entity_type)?;
-        let mut entities: BTreeMap<BlockNumber, Vec<Entity>> = BTreeMap::new();
-        if let Some(vec) = FindRangeQuery::new(table.as_ref(), block_range)
-            .get_results::<EntityData>(conn)
-            .optional()?
-        {
-            for e in vec {
-                let block = e.clone().deserialize_block_number::<Entity>()?;
-                let en = e.deserialize_with_layout::<Entity>(self, None)?;
-                entities.entry(block).or_default().push(en);
-            }
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+        let mut tables = vec![];
+        for et in entity_types {
+            tables.push(self.table_for_entity(&et)?.as_ref());
         }
+        let mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>> = BTreeMap::new();
+
+        // Collect all entities that have their 'lower(block_range)' attribute in the
+        // interval of blocks defined by the variable block_range. For the immutable
+        // entities the respective attribute is 'block$'.
+        // Here are all entities that are created or modified in the block_range.
+        let lower_vec = FindRangeQuery::new(
+            &tables,
+            causality_region,
+            BoundSide::Lower,
+            block_range.clone(),
+        )
+        .get_results::<EntityDataExt>(conn)
+        .optional()?
+        .unwrap_or_default();
+        // Collect all entities that have their 'upper(block_range)' attribute in the
+        // interval of blocks defined by the variable block_range. For the immutable
+        // entities no entries are returned.
+        // Here are all entities that are modified or deleted in the block_range,
+        // but will have the previous versions, i.e. in the case of an update, it's
+        // the version before the update, and lower_vec will have a corresponding
+        // entry with the new version.
+        let upper_vec =
+            FindRangeQuery::new(&tables, causality_region, BoundSide::Upper, block_range)
+                .get_results::<EntityDataExt>(conn)
+                .optional()?
+                .unwrap_or_default();
+        let mut lower_iter = lower_vec.iter().fuse().peekable();
+        let mut upper_iter = upper_vec.iter().fuse().peekable();
+        let mut lower_now = lower_iter.next();
+        let mut upper_now = upper_iter.next();
+        // A closure to convert the entity data from the database into entity operation.
+        let transform = |ede: &EntityDataExt,
+                         entity_op: EntitySubgraphOperation|
+         -> Result<(EntityWithType, BlockNumber), StoreError> {
+            let e = EntityData::new(ede.entity.clone(), ede.data.clone());
+            let block = ede.block_number;
+            let entity_type = e.entity_type(&self.input_schema);
+            let entity = e.deserialize_with_layout::<Entity>(self, None)?;
+            let vid = ede.vid;
+            let ewt = EntityWithType {
+                entity_op,
+                entity_type,
+                entity,
+                vid,
+            };
+            Ok((ewt, block))
+        };
+
+        // The algorithm is a similar to merge sort algorithm and it relays on the fact that both vectors
+        // are ordered by (block_number, entity_type, entity_id). It advances simultaneously entities from
+        // both lower_vec and upper_vec and tries to match entities that have entries in both vectors for
+        // a particular block. The match is successful if an entry in one array has the same values in the
+        // other one for the number of the block, entity type and the entity id. The comparison operation
+        // over the EntityDataExt implements that check. If there is a match it’s a modification operation,
+        // since both sides of a range are present for that block, entity type and id. If one side of the
+        // range exists and the other is missing it is a creation or deletion depending on which side is
+        // present. For immutable entities the entries in upper_vec are missing, hence they are considered
+        // having a lower bound at particular block and upper bound at infinity.
+        while lower_now.is_some() || upper_now.is_some() {
+            let (ewt, block) = match (lower_now, upper_now) {
+                (Some(lower), Some(upper)) => {
+                    match lower.cmp(&upper) {
+                        std::cmp::Ordering::Greater => {
+                            // we have upper bound at this block, but no lower bounds at the same block so it's deletion
+                            let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                            // advance upper_vec pointer
+                            upper_now = upper_iter.next();
+                            (ewt, block)
+                        }
+                        std::cmp::Ordering::Less => {
+                            // we have lower bound at this block but no upper bound at the same block so its creation
+                            let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                            // advance lower_vec pointer
+                            lower_now = lower_iter.next();
+                            (ewt, block)
+                        }
+                        std::cmp::Ordering::Equal => {
+                            let (ewt, block) = transform(lower, EntitySubgraphOperation::Modify)?;
+                            // advance both lower_vec and upper_vec pointers
+                            lower_now = lower_iter.next();
+                            upper_now = upper_iter.next();
+                            (ewt, block)
+                        }
+                    }
+                }
+                (Some(lower), None) => {
+                    // we have lower bound at this block but no upper bound at the same block so its creation
+                    let (ewt, block) = transform(lower, EntitySubgraphOperation::Create)?;
+                    // advance lower_vec pointer
+                    lower_now = lower_iter.next();
+                    (ewt, block)
+                }
+                (None, Some(upper)) => {
+                    let (ewt, block) = transform(upper, EntitySubgraphOperation::Delete)?;
+                    // advance upper_vec pointer
+                    upper_now = upper_iter.next();
+                    (ewt, block)
+                }
+                _ => panic!("Imposible case to happen"),
+            };
+
+            match entities.get_mut(&block) {
+                Some(vec) => vec.push(ewt),
+                None => {
+                    let _ = entities.insert(block, vec![ewt]);
+                }
+            };
+        }
+
+        // sort the elements in each blocks bucket by vid
+        for (_, vec) in &mut entities {
+            vec.sort_by(|a, b| a.vid.cmp(&b.vid));
+        }
+
         Ok(entities)
     }
 
