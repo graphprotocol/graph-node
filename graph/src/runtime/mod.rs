@@ -368,7 +368,17 @@ pub enum IndexForAscTypeId {
     // ...
     // LastStarknetType = 4499,
 
-    // Reserved discriminant space for a future blockchain type IDs: [4,500, 5,499]
+    // Reserved discriminant space for YAML type IDs: [4,500, 5,499]
+    YamlValue = 4500,
+    YamlTaggedValue = 4501,
+    YamlTypedMapEntryValueValue = 4502,
+    YamlTypedMapValueValue = 4503,
+    YamlArrayValue = 4504,
+    YamlArrayTypedMapEntryValueValue = 4505,
+    YamlWrappedValue = 4506,
+    YamlResultValueBool = 4507,
+
+    // Reserved discriminant space for a future blockchain type IDs: [5,500, 6,499]
     //
     // Generated with the following shell script:
     //

@@ -468,6 +468,9 @@ impl WasmInstance {
         link!("json.toF64", json_to_f64, ptr);
         link!("json.toBigInt", json_to_big_int, ptr);
 
+        link!("yaml.fromBytes", yaml_from_bytes, ptr);
+        link!("yaml.try_fromBytes", yaml_try_from_bytes, ptr);
+
         link!("crypto.keccak256", crypto_keccak_256, ptr);
 
         link!("bigInt.plus", big_int_plus, x_ptr, y_ptr);

@@ -83,3 +83,10 @@ pub const JSON_FROM_BYTES: GasOp = GasOp {
     base_cost: DEFAULT_BASE_COST,
     size_mult: DEFAULT_GAS_PER_BYTE * 100,
 };
+
+// Deeply nested YAML can take up more than 100 times the memory of the serialized format.
+// Multiplying the size cost by 100 accounts for this.
+pub const YAML_FROM_BYTES: GasOp = GasOp {
+    base_cost: DEFAULT_BASE_COST,
+    size_mult: DEFAULT_GAS_PER_BYTE * 100,
+};
