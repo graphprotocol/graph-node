@@ -355,6 +355,25 @@ where
     }
 }
 
+fn deserialize_block_time<'de, D>(deserializer: D) -> Result<BlockTime, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+
+    if value.starts_with("0x") {
+        let hex_value = value.trim_start_matches("0x");
+
+        i64::from_str_radix(hex_value, 16)
+            .map(|secs| BlockTime::since_epoch(secs, 0))
+            .map_err(serde::de::Error::custom)
+    } else {
+        value
+            .parse::<i64>()
+            .map(|secs| BlockTime::since_epoch(secs, 0))
+            .map_err(serde::de::Error::custom)
+    }
+}
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedBlockPtr {
@@ -362,7 +381,8 @@ pub struct ExtendedBlockPtr {
     #[serde(deserialize_with = "deserialize_block_number")]
     pub number: BlockNumber,
     pub parent_hash: BlockHash,
-    pub timestamp: U256,
+    #[serde(deserialize_with = "deserialize_block_time")]
+    pub timestamp: BlockTime,
 }
 
 impl ExtendedBlockPtr {
@@ -370,7 +390,7 @@ impl ExtendedBlockPtr {
         hash: BlockHash,
         number: BlockNumber,
         parent_hash: BlockHash,
-        timestamp: U256,
+        timestamp: BlockTime,
     ) -> Self {
         Self {
             hash,
@@ -464,7 +484,7 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
     fn try_from(tuple: (Option<H256>, Option<U64>, H256, U256)) -> Result<Self, Self::Error> {
-        let (hash_opt, number_opt, parent_hash, timestamp) = tuple;
+        let (hash_opt, number_opt, parent_hash, timestamp_u256) = tuple;
 
         let hash = hash_opt.ok_or_else(|| anyhow!("Block hash is missing"))?;
         let number = number_opt
@@ -474,11 +494,16 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
         let block_number =
             i32::try_from(number).map_err(|_| anyhow!("Block number out of range"))?;
 
+        // Convert `U256` to `BlockTime`
+        let secs =
+            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
+        let block_time = BlockTime::since_epoch(secs, 0);
+
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
-            timestamp,
+            timestamp: block_time,
         })
     }
 }
@@ -487,13 +512,18 @@ impl TryFrom<(H256, i32, H256, U256)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
     fn try_from(tuple: (H256, i32, H256, U256)) -> Result<Self, Self::Error> {
-        let (hash, block_number, parent_hash, timestamp) = tuple;
+        let (hash, block_number, parent_hash, timestamp_u256) = tuple;
+
+        // Convert `U256` to `BlockTime`
+        let secs =
+            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
+        let block_time = BlockTime::since_epoch(secs, 0);
 
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
-            timestamp,
+            timestamp: block_time,
         })
     }
 }
@@ -543,7 +573,9 @@ impl fmt::Display for ChainIdentifier {
 
 /// The timestamp associated with a block. This is used whenever a time
 /// needs to be connected to data within the block
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, FromSqlRow, AsExpression)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, FromSqlRow, AsExpression, Deserialize,
+)]
 #[diesel(sql_type = Timestamptz)]
 pub struct BlockTime(Timestamp);
 
@@ -625,6 +657,12 @@ impl FromSql<Timestamptz, Pg> for BlockTime {
     }
 }
 
+impl fmt::Display for BlockTime {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.as_microseconds_since_epoch())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -654,8 +692,8 @@ mod tests {
         {
             "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
             "number": "0x2A",
-            "parentHash": "0xabc123",
-            "timestamp": "123456789012345678901234567890"
+            "parentHash": "0xd71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e",
+            "timestamp": "0x673b284f"
         }
         "#;
 
@@ -665,6 +703,15 @@ mod tests {
 
         // Verify the deserialized values
         assert_eq!(block_ptr_ext.number, 42); // 0x2A in hex is 42 in decimal
+        assert_eq!(
+            block_ptr_ext.hash_hex(),
+            "8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac"
+        );
+        assert_eq!(
+            block_ptr_ext.parent_hash_hex(),
+            "d71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e"
+        );
+        assert_eq!(block_ptr_ext.timestamp.0.as_secs_since_epoch(), 1731930191);
     }
 
     #[test]
@@ -673,7 +720,7 @@ mod tests {
         {
             "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
             "number": "invalid_hex_string",
-            "parentHash": "0xabc123",
+            "parentHash": "0xd71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e",
             "timestamp": "123456789012345678901234567890"
         }
         "#;
