@@ -50,6 +50,7 @@ use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::fmt::{self, Write};
+use std::ops::Range;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -63,7 +64,7 @@ use crate::{
     primary::{Namespace, Site},
     relational_queries::{
         ClampRangeQuery, EntityData, EntityDeletion, FilterCollection, FilterQuery, FindManyQuery,
-        InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        FindRangeQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::{AttributeNames, DerivedEntityQuery};
@@ -536,6 +537,27 @@ impl Layout {
                 ));
             } else {
                 entities.insert(key, entity_data);
+            }
+        }
+        Ok(entities)
+    }
+
+    pub fn find_range(
+        &self,
+        conn: &mut PgConnection,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+        let table = self.table_for_entity(entity_type)?;
+        let mut entities: BTreeMap<BlockNumber, Vec<Entity>> = BTreeMap::new();
+        if let Some(vec) = FindRangeQuery::new(table.as_ref(), block_range)
+            .get_results::<EntityData>(conn)
+            .optional()?
+        {
+            for e in vec {
+                let block = e.clone().deserialize_block_number::<Entity>()?;
+                let en = e.deserialize_with_layout::<Entity>(self, None)?;
+                entities.entry(block).or_default().push(en);
             }
         }
         Ok(entities)

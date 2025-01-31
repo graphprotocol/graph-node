@@ -2,7 +2,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{BlockIngestor, NoopDecoderHook, TriggerFilterWrapper};
 use graph::components::network_provider::ChainName;
 use graph::env::EnvVars;
-use graph::prelude::{DeploymentHash, MetricsRegistry};
+use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
 use std::collections::HashSet;
 use std::convert::TryFrom;
@@ -12,7 +12,7 @@ use graph::blockchain::block_stream::{BlockStreamError, BlockStreamMapper, Fireh
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder, NoopRuntimeAdapter};
 use graph::cheap_clone::CheapClone;
-use graph::components::store::{DeploymentCursorTracker, ReadStore};
+use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::{
     blockchain::{
@@ -114,7 +114,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

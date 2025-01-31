@@ -2,11 +2,11 @@ use crate::{
     bail,
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator, ReadStore},
+        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator, SourceableStore},
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{BlockHash, DataSourceTemplateInfo, DeploymentHash},
+    prelude::{BlockHash, DataSourceTemplateInfo},
 };
 use anyhow::{Error, Result};
 use async_trait::async_trait;
@@ -386,7 +386,7 @@ impl Blockchain for MockBlockchain {
         _deployment: DeploymentLocator,
         _store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         _filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
