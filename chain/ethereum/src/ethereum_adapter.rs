@@ -784,50 +784,59 @@ impl EthereumAdapter {
     }
 
     /// Request blocks by number through JSON-RPC.
-    fn load_block_ptrs_by_numbers_rpc(
+    pub fn load_block_ptrs_by_numbers_rpc(
         &self,
         logger: Logger,
         numbers: Vec<BlockNumber>,
-    ) -> impl Stream<Item = Arc<ExtendedBlockPtr>, Error = Error> + Send {
+    ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
         let web3 = self.web3.clone();
 
-        stream::iter_ok::<_, Error>(numbers.into_iter().map(move |number| {
+        futures03::stream::iter(numbers.into_iter().map(move |number| {
             let web3 = web3.clone();
-            retry(format!("load block {}", number), &logger)
-                .limit(ENV_VARS.request_retries)
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    Box::pin(
-                        web3.eth()
-                            .block(BlockId::Number(Web3BlockNumber::Number(number.into()))),
-                    )
-                    .compat()
-                    .from_err::<Error>()
-                    .and_then(move |block| {
-                        block
-                            .map(|block| {
-                                let ptr = ExtendedBlockPtr::try_from((
-                                    block.hash,
-                                    block.number,
-                                    block.parent_hash,
-                                    block.timestamp,
-                                ))
-                                .unwrap();
+            let logger = logger.clone();
 
-                                Arc::new(ptr)
-                            })
-                            .ok_or_else(|| {
-                                anyhow::anyhow!(
+            async move {
+                retry(format!("load block {}", number), &logger)
+                    .limit(ENV_VARS.request_retries)
+                    .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                    .run(move || {
+                        let web3 = web3.clone();
+
+                        async move {
+                            let block_result = web3
+                                .eth()
+                                .block(BlockId::Number(Web3BlockNumber::Number(number.into())))
+                                .await;
+
+                            match block_result {
+                                Ok(Some(block)) => {
+                                    let ptr = ExtendedBlockPtr::try_from((
+                                        block.hash,
+                                        block.number,
+                                        block.parent_hash,
+                                        block.timestamp,
+                                    ))
+                                    .map_err(|e| {
+                                        anyhow::anyhow!("Failed to convert block: {}", e)
+                                    })?;
+                                    Ok(Arc::new(ptr))
+                                }
+                                Ok(None) => Err(anyhow::anyhow!(
                                     "Ethereum node did not find block with number {:?}",
                                     number
-                                )
-                            })
+                                )),
+                                Err(e) => Err(anyhow::anyhow!("Failed to fetch block: {}", e)),
+                            }
+                        }
                     })
-                    .compat()
-                })
-                .boxed()
-                .compat()
-                .from_err()
+                    .await
+                    .map_err(|e| match e {
+                        TimeoutError::Elapsed => {
+                            anyhow::anyhow!("Timeout while fetching block {}", number)
+                        }
+                        TimeoutError::Inner(e) => e,
+                    })
+            }
         }))
         .buffered(ENV_VARS.block_ptr_batch_size)
     }
@@ -1698,59 +1707,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .collect();
 
         Ok(decoded)
-    }
-
-    /// Load Ethereum blocks in bulk by number, returning results as they come back as a Stream.
-    async fn load_block_ptrs_by_numbers(
-        &self,
-        logger: Logger,
-        chain_store: Arc<dyn ChainStore>,
-        block_numbers: HashSet<BlockNumber>,
-    ) -> Box<dyn Stream<Item = Arc<ExtendedBlockPtr>, Error = Error> + Send> {
-        let blocks_map = chain_store
-            .cheap_clone()
-            .block_ptrs_by_numbers(block_numbers.iter().map(|&b| b.into()).collect::<Vec<_>>())
-            .await
-            .map_err(|e| {
-                error!(&logger, "Error accessing block cache {}", e);
-                e
-            })
-            .unwrap_or_default();
-
-        let mut blocks: Vec<Arc<ExtendedBlockPtr>> = blocks_map
-            .into_iter()
-            .filter_map(|(_number, values)| {
-                if values.len() == 1 {
-                    Arc::new(values[0].clone()).into()
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let missing_blocks: Vec<i32> = block_numbers
-            .into_iter()
-            .filter(|&number| !blocks.iter().any(|block| block.block_number() == number))
-            .collect();
-
-        if !missing_blocks.is_empty() {
-            debug!(
-                logger,
-                "Loading {} block(s) not in the block cache",
-                missing_blocks.len()
-            );
-        }
-
-        Box::new(
-            self.load_block_ptrs_by_numbers_rpc(logger.clone(), missing_blocks)
-                .collect()
-                .map(move |new_blocks| {
-                    blocks.extend(new_blocks);
-                    blocks.sort_by_key(|block| block.number);
-                    stream::iter_ok(blocks)
-                })
-                .flatten_stream(),
-        )
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
