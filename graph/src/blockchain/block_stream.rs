@@ -357,7 +357,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
 fn create_subgraph_trigger_from_entities(
     filter: &SubgraphFilter,
-    entities: Vec<EntityWithType>,
+    entities: Vec<EntitySourceOperation>,
 ) -> Vec<subgraph::TriggerData> {
     entities
         .into_iter()
@@ -372,7 +372,7 @@ async fn create_subgraph_triggers<C: Blockchain>(
     logger: Logger,
     blocks: Vec<C::Block>,
     filter: &SubgraphFilter,
-    mut entities: BTreeMap<BlockNumber, Vec<EntityWithType>>,
+    mut entities: BTreeMap<BlockNumber, Vec<EntitySourceOperation>>,
 ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
     let logger_clone = logger.cheap_clone();
 
@@ -428,15 +428,15 @@ async fn scan_subgraph_triggers<C: Blockchain>(
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum EntitySubgraphOperation {
+pub enum EntityOperationKind {
     Create,
     Modify,
     Delete,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct EntityWithType {
-    pub entity_op: EntitySubgraphOperation,
+pub struct EntitySourceOperation {
+    pub entity_op: EntityOperationKind,
     pub entity_type: EntityType,
     pub entity: Entity,
     pub vid: i64,
@@ -448,7 +448,7 @@ async fn get_entities_for_range(
     schema: &InputSchema,
     from: BlockNumber,
     to: BlockNumber,
-) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, Error> {
+) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, Error> {
     let entity_types: Result<Vec<EntityType>> = filter
         .entities
         .iter()
