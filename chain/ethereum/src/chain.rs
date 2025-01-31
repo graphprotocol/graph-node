@@ -7,12 +7,12 @@ use graph::blockchain::{
     TriggersAdapterSelector,
 };
 use graph::components::network_provider::ChainName;
-use graph::components::store::{DeploymentCursorTracker, ReadStore};
+use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::{
-    BlockHash, ComponentLoggerConfig, DeploymentHash, ElasticComponentLoggerConfig, EthereumBlock,
+    BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
@@ -128,7 +128,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -150,7 +150,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         chain: &Chain,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: UnifiedMappingApiVersion,
@@ -437,7 +437,7 @@ impl Blockchain for Chain {
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
         filter: Arc<TriggerFilterWrapper<Self>>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {

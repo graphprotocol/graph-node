@@ -1,12 +1,12 @@
 use graph::{
     blockchain::{block_stream::TriggersAdapterWrapper, Blockchain},
     components::{
-        store::{DeploymentLocator, ReadStore, SubgraphFork, WritableStore},
+        store::{DeploymentLocator, SourceableStore, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,
     },
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
     data_source::DataSourceTemplate,
-    prelude::{BlockNumber, DeploymentHash},
+    prelude::BlockNumber,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub features: BTreeSet<SubgraphFeature>,
     pub start_blocks: Vec<BlockNumber>,
     pub end_blocks: BTreeSet<BlockNumber>,
-    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+    pub source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
     pub stop_block: Option<BlockNumber>,
     pub max_end_block: Option<BlockNumber>,
     pub store: Arc<dyn WritableStore>,
