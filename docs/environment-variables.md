@@ -266,3 +266,9 @@ those.
 - `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`: During the coping of a subgraph
   postponing creation of certain indexes (btree, attribute based ones), would
   speed up syncing
+- `GRAPH_STORE_INSERT_EXTRA_COLS`: Makes it possible to work around bugs in
+  the subgraph writing code that manifest as Postgres errors saying 'number
+  of parameters must be between 0 and 65535' Such errors are always
+  graph-node bugs, but since it is hard to work around them, setting this
+  variable to something like 10 makes it possible to work around such a bug
+  while it is being fixed (default: 0)

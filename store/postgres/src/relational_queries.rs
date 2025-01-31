@@ -2327,7 +2327,7 @@ impl<'a> InsertQuery<'a> {
     /// into the query
     pub fn chunk_size(table: &Table) -> usize {
         // We always have one column for the block number/range
-        let mut count = 1;
+        let mut count = 1 + ENV_VARS.store.insert_extra_cols;
         if table.has_causality_region {
             count += 1;
         }
