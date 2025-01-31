@@ -312,7 +312,7 @@ Not relevant
 
 <!--
 Not Relevant
-* Changes the spelling of History from Hostory by @vishal-sys in https://github.com/graphprotocol/graph-node/pull/4846
+* Changes the spelling of History from History by @vishal-sys in https://github.com/graphprotocol/graph-node/pull/4846
 * Test coverage for bundlr manifest + filename use case by @mangas in https://github.com/graphprotocol/graph-node/pull/4865
 * Revert most of PR 4827 by @lutter in https://github.com/graphprotocol/graph-node/pull/4860
 * Pass polling triggers only after start_block by @incrypto32 in https://github.com/graphprotocol/graph-node/pull/4881
