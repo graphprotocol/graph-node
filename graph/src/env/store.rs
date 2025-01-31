@@ -128,6 +128,11 @@ pub struct EnvVarsStore {
     /// sufficiently, probably after 2024-12-01
     /// Defaults to `false`, i.e. using the new fixed behavior
     pub last_rollup_from_poi: bool,
+    /// Safety switch to increase the number of columns used when
+    /// calculating the chunk size in `InsertQuery::chunk_size`. This can be
+    /// used to work around Postgres errors complaining 'number of
+    /// parameters must be between 0 and 65535' when inserting entities
+    pub insert_extra_cols: usize,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -177,6 +182,7 @@ impl From<InnerStore> for EnvVarsStore {
             use_brin_for_all_query_types: x.use_brin_for_all_query_types,
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
             last_rollup_from_poi: x.last_rollup_from_poi,
+            insert_extra_cols: x.insert_extra_cols,
         }
     }
 }
@@ -240,6 +246,8 @@ pub struct InnerStore {
     disable_block_cache_for_lookup: bool,
     #[envconfig(from = "GRAPH_STORE_LAST_ROLLUP_FROM_POI", default = "false")]
     last_rollup_from_poi: bool,
+    #[envconfig(from = "GRAPH_STORE_INSERT_EXTRA_COLS", default = "0")]
+    insert_extra_cols: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
