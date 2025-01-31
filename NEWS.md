@@ -433,7 +433,7 @@ Not Relevant
 <!--
 Not relevant
 * graph-chain-ethereum: Avoid adapters with errors by @mangas in https://github.com/graphprotocol/graph-node/pull/4468
-* Limit stack depth of asc_get by @leoyvens in https://gitub.com/graphprotocol/graph-node/pull/4576
+* Limit stack depth of asc_get by @leoyvens in https://github.com/graphprotocol/graph-node/pull/4576
 * core: Log how many entries the cache had at each block by @lutter in https://ithub.com/graphprotocol/graph-node/pull/4541
 * store: Remove ability to recount entities by @lutter in https://github.com/graphprotocol/graph-node/pull/4406
 -->
