@@ -2198,7 +2198,11 @@ impl<'a> InsertQuery<'a> {
     /// query, and depends on what columns `table` has and how they get put
     /// into the query
     pub fn chunk_size(table: &Table) -> usize {
+        // We always have one column for the block number/range
         let mut count = 1;
+        if table.has_causality_region {
+            count += 1;
+        }
         for column in table.columns.iter() {
             // This code depends closely on how `walk_ast` and `QueryValue`
             // put values into bind variables
