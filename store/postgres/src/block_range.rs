@@ -132,36 +132,52 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum BoundSide {
+    Lower,
+    Upper,
+}
+
 /// Helper for generating SQL fragments for selecting entities in a specific block range
 #[derive(Debug, Clone, Copy)]
 pub enum EntityBlockRange {
-    Mutable(BlockRange), // TODO: check if this is a proper type here (maybe Range<BlockNumber>?)
+    Mutable((BlockRange, BoundSide)),
     Immutable(BlockRange),
 }
 
 impl EntityBlockRange {
-    pub fn new(table: &Table, block_range: std::ops::Range<BlockNumber>) -> Self {
+    pub fn new(
+        immutable: bool,
+        block_range: std::ops::Range<BlockNumber>,
+        bound_side: BoundSide,
+    ) -> Self {
         let start: Bound<BlockNumber> = Bound::Included(block_range.start);
         let end: Bound<BlockNumber> = Bound::Excluded(block_range.end);
         let block_range: BlockRange = BlockRange(start, end);
-        if table.immutable {
+        if immutable {
             Self::Immutable(block_range)
         } else {
-            Self::Mutable(block_range)
+            Self::Mutable((block_range, bound_side))
         }
     }
 
-    /// Output SQL that matches only rows whose block range contains `block`.
+    /// Outputs SQL that matches only rows whose entities would trigger a change
+    /// event (Create, Modify, Delete) in a given interval of blocks. Otherwise said
+    /// a block_range border is contained in an interval of blocks. For instance
+    /// one of the following:
+    /// lower(block_range) >= $1 and lower(block_range) <= $2
+    /// upper(block_range) >= $1 and upper(block_range) <= $2
+    /// block$ >= $1 and block$ <= $2
     pub fn contains<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         let block_range = match self {
-            EntityBlockRange::Mutable(br) => br,
+            EntityBlockRange::Mutable((br, _)) => br,
             EntityBlockRange::Immutable(br) => br,
         };
         let BlockRange(start, finish) = block_range;
 
         self.compare_column(out);
-        out.push_sql(" >= ");
+        out.push_sql(">= ");
         match start {
             Bound::Included(block) => out.push_bind_param::<Integer, _>(block)?,
             Bound::Excluded(block) => {
@@ -170,9 +186,9 @@ impl EntityBlockRange {
             }
             Bound::Unbounded => unimplemented!(),
         };
-        out.push_sql(" AND ");
+        out.push_sql(" and");
         self.compare_column(out);
-        out.push_sql(" <= ");
+        out.push_sql("<= ");
         match finish {
             Bound::Included(block) => {
                 out.push_bind_param::<Integer, _>(block)?;
@@ -186,7 +202,12 @@ impl EntityBlockRange {
 
     pub fn compare_column(&self, out: &mut AstPass<Pg>) {
         match self {
-            EntityBlockRange::Mutable(_) => out.push_sql(" lower(block_range) "),
+            EntityBlockRange::Mutable((_, BoundSide::Lower)) => {
+                out.push_sql(" lower(block_range) ")
+            }
+            EntityBlockRange::Mutable((_, BoundSide::Upper)) => {
+                out.push_sql(" upper(block_range) ")
+            }
             EntityBlockRange::Immutable(_) => out.push_sql(" block$ "),
         }
     }
