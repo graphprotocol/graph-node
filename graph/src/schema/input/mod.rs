@@ -17,6 +17,7 @@ use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, Va
 use crate::data::store::{
     self, EntityValidationError, IdType, IntoEntityIterator, TryIntoEntityIterator, ValueType, ID,
 };
+use crate::data::subgraph::SPEC_VERSION_1_3_0;
 use crate::data::value::Word;
 use crate::derive::CheapClone;
 use crate::prelude::q::Value;
@@ -955,6 +956,7 @@ pub struct Inner {
     pool: Arc<AtomPool>,
     /// A list of all timeseries types by interval
     agg_mappings: Box<[AggregationMapping]>,
+    spec_version: Version,
 }
 
 impl InputSchema {
@@ -1042,6 +1044,7 @@ impl InputSchema {
                 enum_map,
                 pool,
                 agg_mappings,
+                spec_version: spec_version.clone(),
             }),
         })
     }
@@ -1584,6 +1587,10 @@ impl InputSchema {
             (TypeInfo::Aggregation(_), None) => None,
         }?;
         Some(EntityType::new(self.cheap_clone(), obj_type.name))
+    }
+
+    pub fn strict_vid_order(&self) -> bool {
+        self.inner.spec_version >= SPEC_VERSION_1_3_0
     }
 }
 

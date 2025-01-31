@@ -170,7 +170,7 @@ fn create_subgraph() {
 
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id,
-            spec_version: Version::new(1, 0, 0),
+            spec_version: Version::new(1, 3, 0),
             features: Default::default(),
             description: None,
             repository: None,
@@ -547,7 +547,7 @@ fn subgraph_features() {
         } = get_subgraph_features(id.to_string()).unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
-        assert_eq!("1.0.0", spec_version);
+        assert_eq!("1.3.0", spec_version);
         assert_eq!("1.0.0", api_version.unwrap());
         assert_eq!(NETWORK_NAME, network);
         assert_eq!(

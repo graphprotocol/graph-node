@@ -13,6 +13,7 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
+use graph::semver::Version;
 use graph::{
     blockchain::block_stream::FirehoseCursor,
     data::subgraph::schema::SubgraphError,
@@ -305,11 +306,13 @@ pub fn debug_fork(
 
 pub fn schema(conn: &mut PgConnection, site: &Site) -> Result<(InputSchema, bool), StoreError> {
     use subgraph_manifest as sm;
-    let (s, use_bytea_prefix) = sm::table
-        .select((sm::schema, sm::use_bytea_prefix))
+    let (s, spec_ver, use_bytea_prefix) = sm::table
+        .select((sm::schema, sm::spec_version, sm::use_bytea_prefix))
         .filter(sm::id.eq(site.id))
-        .first::<(String, bool)>(conn)?;
-    InputSchema::parse_latest(s.as_str(), site.deployment.clone())
+        .first::<(String, String, bool)>(conn)?;
+    let spec_version =
+        Version::parse(spec_ver.as_str()).map_err(|err| StoreError::Unknown(err.into()))?;
+    InputSchema::parse(&spec_version, s.as_str(), site.deployment.clone())
         .map_err(StoreError::Unknown)
         .map(|schema| (schema, use_bytea_prefix))
 }
