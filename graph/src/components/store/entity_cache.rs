@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
@@ -16,6 +16,10 @@ use crate::util::lfu_cache::{EvictStats, LfuCache};
 use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
 
 pub type EntityLfuCache = LfuCache<EntityKey, Option<Arc<Entity>>>;
+
+// Number of VIDs that are reserved outside of the generated ones here.
+// Currently none is used, but lets reserve a few more.
+const RESERVED_VIDS: u32 = 100;
 
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
@@ -105,6 +109,10 @@ pub struct EntityCache {
     /// generated IDs, the `EntityCache` needs to be newly instantiated for
     /// each block
     seq: u32,
+
+    // Sequence number of the next VID value for this block. The value written
+    // in the database consist of a block number and this SEQ number.
+    pub vid_seq: u32,
 }
 
 impl Debug for EntityCache {
@@ -132,6 +140,7 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
             seq: 0,
+            vid_seq: RESERVED_VIDS,
         }
     }
 
@@ -152,6 +161,7 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
             seq: 0,
+            vid_seq: RESERVED_VIDS,
         }
     }
 
@@ -353,6 +363,7 @@ impl EntityCache {
         &mut self,
         key: EntityKey,
         entity: Entity,
+        block: BlockNumber,
         write_capacity_remaining: Option<&mut usize>,
     ) -> Result<(), anyhow::Error> {
         // check the validate for derived fields
@@ -360,7 +371,6 @@ impl EntityCache {
 
         if let Some(write_capacity_remaining) = write_capacity_remaining {
             let weight = entity.weight();
-
             if !self.current.contains_key(&key) && weight > *write_capacity_remaining {
                 return Err(anyhow!(
                     "exceeded block write limit when writing entity `{}`",
@@ -369,6 +379,21 @@ impl EntityCache {
             }
 
             *write_capacity_remaining -= weight;
+        }
+
+        // The next VID is based on a block number and a sequence within the block
+        let vid = ((block as i64) << 32) + self.vid_seq as i64;
+        self.vid_seq += 1;
+        let mut entity = entity;
+        let old_vid = entity.set_vid(vid).expect("the vid should be set");
+        // Make sure that there was no VID previously set for this entity.
+        if let Some(ovid) = old_vid {
+            bail!(
+                "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
+                ovid,
+                key.entity_type,
+                entity.id()
+            );
         }
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
@@ -507,7 +532,7 @@ impl EntityCache {
                 // Entity was removed and then updated, so it will be overwritten
                 (Some(current), EntityOp::Overwrite(data)) => {
                     let data = Arc::new(data);
-                    self.current.insert(key.clone(), Some(data.clone()));
+                    self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {
                         Some(Overwrite {
                             key,

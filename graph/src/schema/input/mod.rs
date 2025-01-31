@@ -35,6 +35,7 @@ pub(crate) const POI_OBJECT: &str = "Poi$";
 const POI_DIGEST: &str = "digest";
 /// The name of the PoI attribute for storing the block time
 const POI_BLOCK_TIME: &str = "blockTime";
+pub(crate) const VID_FIELD: &str = "vid";
 
 pub mod kw {
     pub const ENTITY: &str = "entity";
@@ -1596,6 +1597,8 @@ fn atom_pool(document: &s::Document) -> AtomPool {
     pool.intern(POI_OBJECT);
     pool.intern(POI_DIGEST);
     pool.intern(POI_BLOCK_TIME);
+
+    pool.intern(VID_FIELD);
 
     for definition in &document.definitions {
         match definition {
