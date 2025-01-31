@@ -243,6 +243,7 @@ impl TablePair {
 
         let vid_seq = format!("{}_{VID_COLUMN}_seq", self.src.name);
 
+        let old_vid_form = !self.src.object.is_object_type();
         let mut query = String::new();
 
         // What we are about to do would get blocked by autovacuum on our
@@ -254,10 +255,12 @@ impl TablePair {
 
         // Make sure the vid sequence
         // continues from where it was
-        writeln!(
-            query,
-            "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
-        )?;
+        if old_vid_form {
+            writeln!(
+                query,
+                "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
+            )?;
+        }
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;

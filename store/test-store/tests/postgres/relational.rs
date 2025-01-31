@@ -212,11 +212,13 @@ lazy_static! {
             bigInt: big_int.clone(),
             bigIntArray: vec![big_int.clone(), (big_int + 1.into())],
             color: "yellow",
+            vid: 0i64,
         }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
         entity! { THINGS_SCHEMA =>
             id: "one",
+            vid: 0i64,
         }
     };
     static ref SCALAR_TYPE: EntityType = THINGS_SCHEMA.entity_type("Scalar").unwrap();
@@ -325,6 +327,7 @@ fn insert_user_entity(
     drinks: Option<Vec<&str>>,
     visits: i64,
     block: BlockNumber,
+    vid: i64,
 ) {
     let user = make_user(
         &layout.input_schema,
@@ -337,6 +340,7 @@ fn insert_user_entity(
         favorite_color,
         drinks,
         visits,
+        vid,
     );
 
     insert_entity_at(conn, layout, entity_type, vec![user], block);
@@ -353,6 +357,7 @@ fn make_user(
     favorite_color: Option<&str>,
     drinks: Option<Vec<&str>>,
     visits: i64,
+    vid: i64,
 ) -> Entity {
     let favorite_color = favorite_color
         .map(|s| Value::String(s.to_owned()))
@@ -368,7 +373,8 @@ fn make_user(
         weight: BigDecimal::from(weight),
         coffee: coffee,
         favorite_color: favorite_color,
-        visits: visits
+        visits: visits,
+        vid: vid,
     };
     if let Some(drinks) = drinks {
         user.insert("drinks", drinks.into()).unwrap();
@@ -391,6 +397,7 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         None,
         60,
         0,
+        0,
     );
     insert_user_entity(
         conn,
@@ -406,6 +413,7 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         Some(vec!["beer", "wine"]),
         50,
         0,
+        1,
     );
     insert_user_entity(
         conn,
@@ -421,6 +429,7 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         Some(vec!["coffee", "tea"]),
         22,
         0,
+        2,
     );
 }
 
@@ -438,6 +447,7 @@ fn update_user_entity(
     drinks: Option<Vec<&str>>,
     visits: i64,
     block: BlockNumber,
+    vid: i64,
 ) {
     let user = make_user(
         &layout.input_schema,
@@ -450,6 +460,7 @@ fn update_user_entity(
         favorite_color,
         drinks,
         visits,
+        vid,
     );
     update_entity_at(conn, layout, entity_type, vec![user], block);
 }
@@ -461,17 +472,19 @@ fn insert_pet(
     id: &str,
     name: &str,
     block: BlockNumber,
+    vid: i64,
 ) {
     let pet = entity! { layout.input_schema =>
         id: id,
-        name: name
+        name: name,
+        vid: vid,
     };
     insert_entity_at(conn, layout, entity_type, vec![pet], block);
 }
 
 fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
-    insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0);
-    insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0);
+    insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0, 0);
+    insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0, 1);
 }
 
 fn create_schema(conn: &mut PgConnection) -> Layout {
@@ -604,6 +617,7 @@ fn update() {
         entity.set("string", "updated").unwrap();
         entity.remove("strings");
         entity.set("bool", Value::Null).unwrap();
+        entity.set("vid", 1i64).unwrap();
         let key = SCALAR_TYPE.key(entity.id());
 
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
@@ -631,8 +645,10 @@ fn update_many() {
         let mut one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
+        two.set("vid", 1i64).unwrap();
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three").unwrap();
+        three.set("vid", 2i64).unwrap();
         insert_entity(
             conn,
             layout,
@@ -653,6 +669,10 @@ fn update_many() {
         three.set("string", "updated in a different way").unwrap();
         three.remove("strings");
         three.set("color", "red").unwrap();
+
+        one.set("vid", 3i64).unwrap();
+        two.set("vid", 4i64).unwrap();
+        three.set("vid", 5i64).unwrap();
 
         // generate keys
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
@@ -720,10 +740,13 @@ fn serialize_bigdecimal() {
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
+        let mut vid = 1i64;
 
         for d in &["50", "50.00", "5000", "0.5000", "0.050", "0.5", "0.05"] {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d).unwrap();
+            entity.set("vid", vid).unwrap();
+            vid += 1;
 
             let key = SCALAR_TYPE.key(entity.id());
             let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
@@ -803,6 +826,7 @@ fn delete() {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
+        two.set("vid", 1i64).unwrap();
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![two]);
 
         // Delete where nothing is getting deleted
@@ -837,8 +861,10 @@ fn insert_many_and_delete_many() {
         let one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
+        two.set("vid", 1i64).unwrap();
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three").unwrap();
+        three.set("vid", 2i64).unwrap();
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![one, two, three]);
 
         // confidence test: there should be 3 scalar entities in store right now
@@ -919,6 +945,7 @@ fn conflicting_entity() {
         cat: &str,
         dog: &str,
         ferret: &str,
+        vid: i64,
     ) {
         let conflicting =
             |conn: &mut PgConnection, entity_type: &EntityType, types: Vec<&EntityType>| {
@@ -944,7 +971,7 @@ fn conflicting_entity() {
         let dog_type = layout.input_schema.entity_type(dog).unwrap();
         let ferret_type = layout.input_schema.entity_type(ferret).unwrap();
 
-        let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
+        let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone(), vid: vid };
         insert_entity(conn, layout, &cat_type, vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
@@ -958,10 +985,10 @@ fn conflicting_entity() {
 
     run_test(|mut conn, layout| {
         let id = Value::String("fred".to_string());
-        check(&mut conn, layout, id, "Cat", "Dog", "Ferret");
+        check(&mut conn, layout, id, "Cat", "Dog", "Ferret", 0);
 
         let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
-        check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret");
+        check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1);
     })
 }
 
@@ -973,7 +1000,8 @@ fn revert_block() {
         let set_fred = |conn: &mut PgConnection, name, block| {
             let fred = entity! { layout.input_schema =>
                 id: id,
-                name: name
+                name: name,
+                vid: block as i64,
             };
             if block == 0 {
                 insert_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block);
@@ -1013,6 +1041,7 @@ fn revert_block() {
                 let marty = entity! { layout.input_schema =>
                     id: id,
                     order: block,
+                    vid: (block + 10) as i64
                 };
                 insert_entity_at(conn, layout, &*MINK_TYPE, vec![marty], block);
             }
@@ -1091,6 +1120,7 @@ impl<'a> QueryChecker<'a> {
             None,
             23,
             0,
+            3,
         );
         insert_pets(conn, layout);
 
@@ -1203,6 +1233,7 @@ fn check_block_finds() {
             None,
             55,
             1,
+            4,
         );
 
         checker
@@ -1745,10 +1776,10 @@ struct FilterChecker<'a> {
 impl<'a> FilterChecker<'a> {
     fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
-        insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0);
-        insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0);
-        insert_pet(conn, layout, &*FERRET_TYPE, "a2b", &a2b, 0);
-        insert_pet(conn, layout, &*FERRET_TYPE, "a3", &a3, 0);
+        insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0, 0);
+        insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0, 1);
+        insert_pet(conn, layout, &*FERRET_TYPE, "a2b", &a2b, 0, 2);
+        insert_pet(conn, layout, &*FERRET_TYPE, "a3", &a3, 0, 3);
 
         Self { conn, layout }
     }
@@ -1892,7 +1923,8 @@ fn check_filters() {
             &*FERRET_TYPE,
             vec![entity! { layout.input_schema =>
               id: "a1",
-              name: "Test"
+              name: "Test",
+              vid: 5i64
             }],
             1,
         );
