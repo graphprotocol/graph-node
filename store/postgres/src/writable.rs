@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
+use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
@@ -1568,6 +1569,42 @@ impl ReadStore for WritableStore {
 
     fn input_schema(&self) -> InputSchema {
         self.store.input_schema()
+    }
+}
+
+pub struct SourceableStore {
+    site: Arc<Site>,
+    store: Arc<DeploymentStore>,
+    input_schema: InputSchema,
+}
+
+impl SourceableStore {
+    pub fn new(site: Arc<Site>, store: Arc<DeploymentStore>, input_schema: InputSchema) -> Self {
+        Self {
+            site,
+            store,
+            input_schema,
+        }
+    }
+}
+
+#[async_trait]
+impl store::SourceableStore for SourceableStore {
+    fn get_range(
+        &self,
+        entity_type: &EntityType,
+        block_range: Range<BlockNumber>,
+    ) -> Result<BTreeMap<BlockNumber, Vec<Entity>>, StoreError> {
+        self.store
+            .get_range(self.site.clone(), entity_type, block_range)
+    }
+
+    fn input_schema(&self) -> InputSchema {
+        self.input_schema.cheap_clone()
+    }
+
+    async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
+        self.store.block_ptr(self.site.cheap_clone()).await
     }
 }
 
