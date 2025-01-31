@@ -1,5 +1,5 @@
 use crate::{
-    blockchain::{block_stream::EntityWithType, Block, Blockchain},
+    blockchain::{block_stream::EntitySourceOperation, Block, Blockchain},
     components::{link_resolver::LinkResolver, store::BlockNumber},
     data::{
         subgraph::{calls_host_fn, SPEC_VERSION_1_3_0},
@@ -353,11 +353,11 @@ pub struct MappingEntityTrigger {
 #[derive(Clone, PartialEq, Eq)]
 pub struct TriggerData {
     pub source: DeploymentHash,
-    pub entity: EntityWithType,
+    pub entity: EntitySourceOperation,
 }
 
 impl TriggerData {
-    pub fn new(source: DeploymentHash, entity: EntityWithType) -> Self {
+    pub fn new(source: DeploymentHash, entity: EntitySourceOperation) -> Self {
         Self { source, entity }
     }
 

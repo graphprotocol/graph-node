@@ -6,7 +6,7 @@ use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
-use graph::blockchain::block_stream::{EntityWithType, FirehoseCursor};
+use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
@@ -1595,7 +1595,7 @@ impl store::SourceableStore for SourceableStore {
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
         self.store.get_range(
             self.site.clone(),
             entity_types,

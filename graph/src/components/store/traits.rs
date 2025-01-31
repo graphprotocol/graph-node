@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use web3::types::{Address, H256};
 
 use super::*;
-use crate::blockchain::block_stream::{EntityWithType, FirehoseCursor};
+use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
@@ -302,7 +302,7 @@ pub trait SourceableStore: Sync + Send + 'static {
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError>;
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError>;
 
     fn input_schema(&self) -> InputSchema;
 
@@ -318,7 +318,7 @@ impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
-    ) -> Result<BTreeMap<BlockNumber, Vec<EntityWithType>>, StoreError> {
+    ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
         (**self).get_range(entity_types, causality_region, block_range)
     }
 
