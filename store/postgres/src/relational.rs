@@ -603,6 +603,13 @@ impl Layout {
             Ok((ewt, block))
         };
 
+        fn compare_entity_data_ext(a: &EntityDataExt, b: &EntityDataExt) -> std::cmp::Ordering {
+            a.block_number
+                .cmp(&b.block_number)
+                .then_with(|| a.entity.cmp(&b.entity))
+                .then_with(|| a.id.cmp(&b.id))
+        }
+
         // The algorithm is a similar to merge sort algorithm and it relays on the fact that both vectors
         // are ordered by (block_number, entity_type, entity_id). It advances simultaneously entities from
         // both lower_vec and upper_vec and tries to match entities that have entries in both vectors for
@@ -616,7 +623,7 @@ impl Layout {
         while lower_now.is_some() || upper_now.is_some() {
             let (ewt, block) = match (lower_now, upper_now) {
                 (Some(lower), Some(upper)) => {
-                    match lower.cmp(&upper) {
+                    match compare_entity_data_ext(lower, upper) {
                         std::cmp::Ordering::Greater => {
                             // we have upper bound at this block, but no lower bounds at the same block so it's deletion
                             let (ewt, block) = transform(upper, EntityOperationKind::Delete)?;
