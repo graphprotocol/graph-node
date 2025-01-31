@@ -1236,6 +1236,36 @@ impl HostExports {
             .map(|mut tokens| tokens.pop().unwrap())
             .context("Failed to decode")
     }
+
+    pub(crate) fn yaml_from_bytes(
+        &self,
+        bytes: &[u8],
+        gas: &GasCounter,
+        state: &mut BlockState,
+    ) -> Result<serde_yaml::Value, DeterministicHostError> {
+        const YAML_MAX_SIZE_BYTES: usize = 10_000_000;
+
+        Self::track_gas_and_ops(
+            gas,
+            state,
+            gas::YAML_FROM_BYTES.with_args(complexity::Size, bytes),
+            "yaml_from_bytes",
+        )?;
+
+        if bytes.len() > YAML_MAX_SIZE_BYTES {
+            return Err(DeterministicHostError::Other(
+                anyhow!(
+                    "YAML size exceeds max size of {} bytes",
+                    YAML_MAX_SIZE_BYTES
+                )
+                .into(),
+            ));
+        }
+
+        serde_yaml::from_slice(bytes)
+            .context("failed to parse YAML from bytes")
+            .map_err(DeterministicHostError::from)
+    }
 }
 
 fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
