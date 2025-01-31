@@ -2,22 +2,23 @@ use crate::{
     bail,
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator},
+        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator, ReadStore},
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{BlockHash, DataSourceTemplateInfo},
+    prelude::{BlockHash, DataSourceTemplateInfo, DeploymentHash},
 };
-use anyhow::Error;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
+use slog::Logger;
 use std::{collections::HashSet, convert::TryFrom, sync::Arc};
 
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
     client::ChainClient,
     BlockIngestor, BlockTime, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
-    NoopDecoderHook, TriggerWithHandler,
+    NoopDecoderHook, Trigger, TriggerFilterWrapper, TriggerWithHandler,
 };
 
 use super::{
@@ -218,31 +219,49 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> for MockUnresolvedDataSource
 pub struct MockTriggersAdapter;
 
 #[async_trait]
-impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter {
+impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
     async fn ancestor_block(
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<C::Block>, Error> {
+    ) -> Result<Option<MockBlock>, Error> {
         todo!()
+    }
+
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<MockBlock>> {
+        unimplemented!()
+    }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
     }
 
     async fn scan_triggers(
         &self,
-        _from: crate::components::store::BlockNumber,
-        _to: crate::components::store::BlockNumber,
-        _filter: &C::TriggerFilter,
-    ) -> Result<(Vec<block_stream::BlockWithTriggers<C>>, BlockNumber), Error> {
-        todo!()
+        from: crate::components::store::BlockNumber,
+        to: crate::components::store::BlockNumber,
+        filter: &MockTriggerFilter,
+    ) -> Result<
+        (
+            Vec<block_stream::BlockWithTriggers<MockBlockchain>>,
+            BlockNumber,
+        ),
+        Error,
+    > {
+        blocks_with_triggers(from, to, filter).await
     }
 
     async fn triggers_in_block(
         &self,
         _logger: &slog::Logger,
-        _block: C::Block,
-        _filter: &C::TriggerFilter,
-    ) -> Result<BlockWithTriggers<C>, Error> {
+        _block: MockBlock,
+        _filter: &MockTriggerFilter,
+    ) -> Result<BlockWithTriggers<MockBlockchain>, Error> {
         todo!()
     }
 
@@ -253,6 +272,26 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter {
     async fn parent_ptr(&self, _block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         todo!()
     }
+}
+
+async fn blocks_with_triggers(
+    _from: crate::components::store::BlockNumber,
+    to: crate::components::store::BlockNumber,
+    _filter: &MockTriggerFilter,
+) -> Result<
+    (
+        Vec<block_stream::BlockWithTriggers<MockBlockchain>>,
+        BlockNumber,
+    ),
+    Error,
+> {
+    Ok((
+        vec![BlockWithTriggers {
+            block: MockBlock { number: 0 },
+            trigger_data: vec![Trigger::Chain(MockTriggerData)],
+        }],
+        to,
+    ))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -347,7 +386,8 @@ impl Blockchain for MockBlockchain {
         _deployment: DeploymentLocator,
         _store: impl DeploymentCursorTracker,
         _start_blocks: Vec<BlockNumber>,
-        _filter: Arc<Self::TriggerFilter>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        _filter: Arc<TriggerFilterWrapper<Self>>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         todo!()

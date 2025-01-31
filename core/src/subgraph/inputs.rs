@@ -1,12 +1,12 @@
 use graph::{
-    blockchain::{Blockchain, TriggersAdapter},
+    blockchain::{block_stream::TriggersAdapterWrapper, Blockchain},
     components::{
-        store::{DeploymentLocator, SubgraphFork, WritableStore},
+        store::{DeploymentLocator, ReadStore, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,
     },
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
     data_source::DataSourceTemplate,
-    prelude::BlockNumber,
+    prelude::{BlockNumber, DeploymentHash},
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -16,11 +16,12 @@ pub struct IndexingInputs<C: Blockchain> {
     pub features: BTreeSet<SubgraphFeature>,
     pub start_blocks: Vec<BlockNumber>,
     pub end_blocks: BTreeSet<BlockNumber>,
+    pub source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
     pub stop_block: Option<BlockNumber>,
     pub max_end_block: Option<BlockNumber>,
     pub store: Arc<dyn WritableStore>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
-    pub triggers_adapter: Arc<dyn TriggersAdapter<C>>,
+    pub triggers_adapter: Arc<TriggersAdapterWrapper<C>>,
     pub chain: Arc<C>,
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
     pub unified_api_version: UnifiedMappingApiVersion,
@@ -40,6 +41,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             features,
             start_blocks,
             end_blocks,
+            source_subgraph_stores,
             stop_block,
             max_end_block,
             store: _,
@@ -58,6 +60,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             features: features.clone(),
             start_blocks: start_blocks.clone(),
             end_blocks: end_blocks.clone(),
+            source_subgraph_stores: source_subgraph_stores.clone(),
             stop_block: stop_block.clone(),
             max_end_block: max_end_block.clone(),
             store,

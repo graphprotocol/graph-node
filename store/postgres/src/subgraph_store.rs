@@ -268,6 +268,50 @@ impl SubgraphStore {
     pub fn for_site(&self, site: &Site) -> Result<&Arc<DeploymentStore>, StoreError> {
         self.inner.for_site(site)
     }
+
+    async fn get_or_create_writable_store(
+        self: Arc<Self>,
+        logger: Logger,
+        deployment: graph::components::store::DeploymentId,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+    ) -> Result<Arc<WritableStore>, StoreError> {
+        let deployment = deployment.into();
+        // We cache writables to make sure calls to this method are
+        // idempotent and there is ever only one `WritableStore` for any
+        // deployment
+        if let Some(writable) = self.writables.lock().unwrap().get(&deployment) {
+            // A poisoned writable will not write anything anymore; we
+            // discard it and create a new one that is properly initialized
+            // according to the state in the database.
+            if !writable.poisoned() {
+                return Ok(writable.cheap_clone());
+            }
+        }
+
+        // Ideally the lower level functions would be asyncified.
+        let this = self.clone();
+        let site = graph::spawn_blocking_allow_panic(move || -> Result<_, StoreError> {
+            this.find_site(deployment)
+        })
+        .await
+        .unwrap()?; // Propagate panics, there shouldn't be any.
+
+        let writable = Arc::new(
+            WritableStore::new(
+                self.as_ref().clone(),
+                logger,
+                site,
+                manifest_idx_and_name,
+                self.registry.clone(),
+            )
+            .await?,
+        );
+        self.writables
+            .lock()
+            .unwrap()
+            .insert(deployment, writable.cheap_clone());
+        Ok(writable)
+    }
 }
 
 impl std::ops::Deref for SubgraphStore {
@@ -1488,42 +1532,20 @@ impl SubgraphStoreTrait for SubgraphStore {
         deployment: graph::components::store::DeploymentId,
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
-        let deployment = deployment.into();
-        // We cache writables to make sure calls to this method are
-        // idempotent and there is ever only one `WritableStore` for any
-        // deployment
-        if let Some(writable) = self.writables.lock().unwrap().get(&deployment) {
-            // A poisoned writable will not write anything anymore; we
-            // discard it and create a new one that is properly initialized
-            // according to the state in the database.
-            if !writable.poisoned() {
-                return Ok(writable.cheap_clone());
-            }
-        }
+        self.get_or_create_writable_store(logger, deployment, manifest_idx_and_name)
+            .await
+            .map(|store| store as Arc<dyn store::WritableStore>)
+    }
 
-        // Ideally the lower level functions would be asyncified.
-        let this = self.clone();
-        let site = graph::spawn_blocking_allow_panic(move || -> Result<_, StoreError> {
-            this.find_site(deployment)
-        })
-        .await
-        .unwrap()?; // Propagate panics, there shouldn't be any.
-
-        let writable = Arc::new(
-            WritableStore::new(
-                self.as_ref().clone(),
-                logger,
-                site,
-                manifest_idx_and_name,
-                self.registry.clone(),
-            )
-            .await?,
-        );
-        self.writables
-            .lock()
-            .unwrap()
-            .insert(deployment, writable.cheap_clone());
-        Ok(writable)
+    async fn readable(
+        self: Arc<Self>,
+        logger: Logger,
+        deployment: graph::components::store::DeploymentId,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+    ) -> Result<Arc<dyn store::ReadStore>, StoreError> {
+        self.get_or_create_writable_store(logger, deployment, manifest_idx_and_name)
+            .await
+            .map(|store| store as Arc<dyn store::ReadStore>)
     }
 
     async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {

@@ -1,7 +1,7 @@
 pub mod ethereum;
 pub mod substreams;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -14,13 +14,13 @@ use graph::blockchain::block_stream::{
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
-    TriggersAdapter, TriggersAdapterSelector,
+    TriggerFilterWrapper, TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
-use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache};
+use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache, ReadStore};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
@@ -214,7 +214,7 @@ impl TestContext {
             .new_deployment_status_metric(&deployment);
 
         self.instance_manager
-            .build_subgraph_runner(
+            .build_subgraph_runner_inner(
                 logger,
                 self.env_vars.cheap_clone(),
                 deployment,
@@ -222,6 +222,7 @@ impl TestContext {
                 Some(stop_block.block_number()),
                 tp,
                 deployment_status_metric,
+                true,
             )
             .await
             .unwrap()
@@ -244,7 +245,7 @@ impl TestContext {
             .new_deployment_status_metric(&deployment);
 
         self.instance_manager
-            .build_subgraph_runner(
+            .build_subgraph_runner_inner(
                 logger,
                 self.env_vars.cheap_clone(),
                 deployment,
@@ -252,6 +253,7 @@ impl TestContext {
                 Some(stop_block.block_number()),
                 tp,
                 deployment_status_metric,
+                true,
             )
             .await
             .unwrap()
@@ -735,14 +737,27 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
 
     async fn build_polling(
         &self,
-        _chain: &C,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<<C as Blockchain>::TriggerFilter>,
-        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+        chain: &C,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<TriggerFilterWrapper<C>>,
+        unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!("only firehose mode should be used for tests")
+        let builder = self.0.lock().unwrap().clone();
+
+        builder
+            .build_polling(
+                chain,
+                deployment,
+                start_blocks,
+                source_subgraph_stores,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
     }
 }
 
@@ -800,11 +815,22 @@ where
         _chain: &C,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
-        _subgraph_current_block: Option<graph::blockchain::BlockPtr>,
-        _filter: Arc<C::TriggerFilter>,
+        _source_subgraph_stores: Vec<(DeploymentHash, Arc<dyn ReadStore>)>,
+        subgraph_current_block: Option<graph::blockchain::BlockPtr>,
+        _filter: Arc<TriggerFilterWrapper<C>>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!("only firehose mode should be used for tests")
+        let current_idx = subgraph_current_block.map(|current_block| {
+            self.chain
+                .iter()
+                .enumerate()
+                .find(|(_, b)| b.ptr() == current_block)
+                .unwrap()
+                .0
+        });
+        Ok(Box::new(StaticStream {
+            stream: Box::pin(stream_events(self.chain.clone(), current_idx)),
+        }))
     }
 }
 
@@ -969,11 +995,23 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         todo!()
     }
 
+    async fn load_blocks_by_numbers(
+        &self,
+        _logger: Logger,
+        _block_numbers: HashSet<BlockNumber>,
+    ) -> Result<Vec<C::Block>, Error> {
+        unimplemented!()
+    }
+
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        todo!()
+    }
+
     async fn scan_triggers(
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &<C as Blockchain>::TriggerFilter,
+        _filter: &C::TriggerFilter,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
         todo!()
     }
