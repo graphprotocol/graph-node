@@ -1670,6 +1670,7 @@ async fn update_proof_of_indexing(
         key: EntityKey,
         digest: Bytes,
         block_time: BlockTime,
+        block: BlockNumber,
     ) -> Result<(), Error> {
         let digest_name = entity_cache.schema.poi_digest();
         let mut data = vec![
@@ -1684,11 +1685,12 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi, None)
+        entity_cache.set(key, poi, block, None)
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
 
+    let block_number = proof_of_indexing.get_block();
     let mut proof_of_indexing = proof_of_indexing.take();
 
     for (causality_region, stream) in proof_of_indexing.drain() {
@@ -1724,6 +1726,7 @@ async fn update_proof_of_indexing(
             entity_key,
             updated_proof_of_indexing,
             block_time,
+            block_number,
         )?;
     }
 

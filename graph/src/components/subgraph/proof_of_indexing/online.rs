@@ -242,6 +242,10 @@ impl ProofOfIndexing {
     pub fn take(self) -> HashMap<Id, BlockEventStream> {
         self.per_causality_region
     }
+
+    pub fn get_block(&self) -> BlockNumber {
+        self.block_number
+    }
 }
 
 pub struct ProofOfIndexingFinisher {
