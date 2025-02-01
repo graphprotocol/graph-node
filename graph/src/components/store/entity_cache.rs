@@ -288,7 +288,7 @@ impl EntityCache {
         ) -> Result<Option<Entity>, anyhow::Error> {
             match op {
                 EntityOp::Update(entity) | EntityOp::Overwrite(entity)
-                    if query.matches(key, &entity) =>
+                    if query.matches(key, entity) =>
                 {
                     Ok(Some(entity.clone()))
                 }
@@ -383,6 +383,7 @@ impl EntityCache {
 
         // The next VID is based on a block number and a sequence within the block
         let vid = ((block as i64) << 32) + self.vid_seq as i64;
+        self.vid_seq += 1;
         let mut entity = entity;
         let old_vid = entity.set_vid(vid).expect("the vid should be set");
         // Make sure that there was no VID previously set for this entity.
@@ -394,6 +395,8 @@ impl EntityCache {
                 entity.id()
             );
         }
+
+        self.entity_op(key.clone(), EntityOp::Update(entity));
 
         // The updates we were given are not valid by themselves; force a
         // lookup in the database and check again with an entity that merges
