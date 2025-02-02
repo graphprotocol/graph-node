@@ -254,7 +254,10 @@ impl<'a> Table<'a> {
         }
 
         match column_names {
-            AttributeNames::All => cols.extend(self.meta.columns.iter()),
+            AttributeNames::All => {
+                cols.extend(self.meta.columns.iter());
+                cols.push(&*VID_COL);
+            }
             AttributeNames::Select(names) => {
                 let pk = self.meta.primary_key();
                 cols.push(pk);
