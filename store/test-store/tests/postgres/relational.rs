@@ -778,7 +778,8 @@ fn enum_arrays() {
         let spectrum = entity! { THINGS_SCHEMA =>
             id: "rainbow",
             main: "yellow",
-            all: vec!["yellow", "red", "BLUE"]
+            all: vec!["yellow", "red", "BLUE"],
+            vid: 0i64
         };
 
         insert_entity(

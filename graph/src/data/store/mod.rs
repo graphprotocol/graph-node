@@ -914,9 +914,9 @@ impl Entity {
     /// i64 it panics.
     pub fn vid(&self) -> i64 {
         self.get(VID_FIELD)
-            .expect("the vid is set")
+            .expect("the vid must be set")
             .as_int8()
-            .expect("the vid is set to a valid value")
+            .expect("the vid must be set to a valid value")
     }
 
     /// Sets the VID of the entity. The previous one is returned.
