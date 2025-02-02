@@ -150,7 +150,11 @@ impl ForeignServer {
             "\
         create server \"{name}\"
                foreign data wrapper postgres_fdw
-               options (host '{remote_host}', port '{remote_port}', dbname '{remote_db}', updatable 'false');
+               options (host '{remote_host}', \
+                        port '{remote_port}', \
+                        dbname '{remote_db}', \
+                        fetch_size '{fetch_size}', \
+                        updatable 'false');
         create user mapping
                for current_user server \"{name}\"
                options (user '{remote_user}', password '{remote_password}');",
@@ -160,6 +164,7 @@ impl ForeignServer {
             remote_db = self.dbname,
             remote_user = self.user,
             remote_password = self.password,
+            fetch_size = ENV_VARS.store.fdw_fetch_size,
         );
         Ok(conn.batch_execute(&query)?)
     }
@@ -178,17 +183,22 @@ impl ForeignServer {
         let query = format!(
             "\
         alter server \"{name}\"
-              options (set host '{remote_host}', {set_port} port '{remote_port}', set dbname '{remote_db}');
+              options (set host '{remote_host}', \
+                       {set_port} port '{remote_port}', \
+                       set dbname '{remote_db}, \
+                       {set_fetch_size} fetch_size '{fetch_size}');
         alter user mapping
               for current_user server \"{name}\"
               options (set user '{remote_user}', set password '{remote_password}');",
             name = self.name,
             remote_host = self.host,
             set_port = set_or_add("port"),
+            set_fetch_size = set_or_add("fetch_size"),
             remote_port = self.port,
             remote_db = self.dbname,
             remote_user = self.user,
             remote_password = self.password,
+            fetch_size = ENV_VARS.store.fdw_fetch_size,
         );
         Ok(conn.batch_execute(&query)?)
     }

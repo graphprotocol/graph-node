@@ -126,6 +126,9 @@ pub struct EnvVarsStore {
     /// used to work around Postgres errors complaining 'number of
     /// parameters must be between 0 and 65535' when inserting entities
     pub insert_extra_cols: usize,
+    /// The number of rows to fetch from the foreign data wrapper in one go,
+    /// this will be set as the option 'fetch_size' on all foreign servers
+    pub fdw_fetch_size: usize,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -175,6 +178,7 @@ impl From<InnerStore> for EnvVarsStore {
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
             last_rollup_from_poi: x.last_rollup_from_poi,
             insert_extra_cols: x.insert_extra_cols,
+            fdw_fetch_size: x.fdw_fetch_size,
         }
     }
 }
@@ -238,6 +242,8 @@ pub struct InnerStore {
     last_rollup_from_poi: bool,
     #[envconfig(from = "GRAPH_STORE_INSERT_EXTRA_COLS", default = "0")]
     insert_extra_cols: usize,
+    #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "10000")]
+    fdw_fetch_size: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
