@@ -94,7 +94,7 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
-    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+    pub(crate) static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
         .graphql
         .sql_statement_timeout
         .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
