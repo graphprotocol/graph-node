@@ -477,13 +477,13 @@ async fn test_ipfs_block() {
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
+fn make_thing(id: &str, value: &str, vid: i64) -> (String, EntityModification) {
     const DOCUMENT: &str = " type Thing @entity { id: String!, value: String!, extra: String }";
     lazy_static! {
         static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
-    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA };
+    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA, vid: vid };
     let key = THING_TYPE.parse_key(id).unwrap();
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
@@ -553,8 +553,8 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     let subgraph_id = "ipfsMap";
 
     // Try it with two valid objects
-    let (str1, thing1) = make_thing("one", "eins");
-    let (str2, thing2) = make_thing("two", "zwei");
+    let (str1, thing1) = make_thing("one", "eins", 100);
+    let (str2, thing2) = make_thing("two", "zwei", 100);
     let ops = run_ipfs_map(
         subgraph_id,
         format!("{}\n{}", str1, str2),
@@ -1001,8 +1001,8 @@ async fn test_entity_store(api_version: Version) {
 
     let schema = store.input_schema(&deployment.hash).unwrap();
 
-    let alex = entity! { schema => id: "alex", name: "Alex" };
-    let steve = entity! { schema => id: "steve", name: "Steve" };
+    let alex = entity! { schema => id: "alex", name: "Alex", vid: 0i64 };
+    let steve = entity! { schema => id: "steve", name: "Steve", vid: 1i64 };
     let user_type = schema.entity_type("User").unwrap();
     test_store::insert_entities(
         &deployment,

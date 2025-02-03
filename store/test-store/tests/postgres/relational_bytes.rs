@@ -57,6 +57,7 @@ lazy_static! {
     static ref BEEF_ENTITY: Entity = entity! { THINGS_SCHEMA =>
         id: scalar::Bytes::from_str("deadbeef").unwrap(),
         name: "Beef",
+        vid: 0i64
     };
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
     static ref THING_TYPE: EntityType = THINGS_SCHEMA.entity_type("Thing").unwrap();
@@ -128,14 +129,15 @@ fn insert_entity(conn: &mut PgConnection, layout: &Layout, entity_type: &str, en
     layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
 }
 
-fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str) {
+fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, vid: i64) {
     insert_entity(
         conn,
         layout,
         "Thing",
         entity! { layout.input_schema =>
             id: id,
-            name: name
+            name: name,
+            vid: vid,
         },
     );
 }
@@ -153,12 +155,6 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
     );
     Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
         .expect("Failed to create relational schema")
-}
-
-fn scrub(entity: &Entity) -> Entity {
-    let mut scrubbed = entity.clone();
-    scrubbed.remove_null_fields();
-    scrubbed
 }
 
 macro_rules! assert_entity_eq {
@@ -265,11 +261,11 @@ fn find() {
 
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
-        insert_thing(&mut conn, layout, ID, NAME);
+        insert_thing(&mut conn, layout, ID, NAME, 0);
 
         // Happy path: find existing entity
         let entity = find_entity(conn, layout, ID).unwrap();
-        assert_entity_eq!(scrub(&BEEF_ENTITY), entity);
+        assert_entity_eq!(BEEF_ENTITY.clone(), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
@@ -285,8 +281,8 @@ fn find_many() {
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
-        insert_thing(&mut conn, layout, ID, NAME);
-        insert_thing(&mut conn, layout, ID2, NAME2);
+        insert_thing(&mut conn, layout, ID, NAME, 0);
+        insert_thing(&mut conn, layout, ID2, NAME2, 1);
 
         let mut id_map = BTreeMap::default();
         let ids = IdList::try_from_iter(
@@ -318,6 +314,7 @@ fn update() {
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo").unwrap();
+        entity.set("vid", 1i64).unwrap();
         let key = THING_TYPE.key(entity.id());
 
         let entity_id = entity.id();
@@ -345,6 +342,7 @@ fn delete() {
         insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID).unwrap();
+        two.set("vid", 1i64).unwrap();
         insert_entity(&mut conn, layout, "Thing", two);
 
         // Delete where nothing is getting deleted
@@ -392,29 +390,34 @@ fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity,
     let root = entity! { layout.input_schema =>
         id: ROOT,
         name: "root",
-        children: vec!["babe01", "babe02"]
+        children: vec!["babe01", "babe02"],
+        vid: 0i64,
     };
     let child1 = entity! { layout.input_schema =>
         id: CHILD1,
         name: "child1",
         parent: "dead00",
-        children: vec![GRANDCHILD1]
+        children: vec![GRANDCHILD1],
+        vid: 1i64,
     };
     let child2 = entity! { layout.input_schema =>
         id: CHILD2,
         name: "child2",
         parent: "dead00",
-        children: vec![GRANDCHILD1]
+        children: vec![GRANDCHILD1],
+        vid: 2i64,
     };
     let grand_child1 = entity! { layout.input_schema =>
         id: GRANDCHILD1,
         name: "grandchild1",
-        parent: CHILD1
+        parent: CHILD1,
+        vid: 3i64,
     };
     let grand_child2 = entity! { layout.input_schema =>
         id: GRANDCHILD2,
         name: "grandchild2",
-        parent: CHILD2
+        parent: CHILD2,
+        vid: 4i64,
     };
 
     insert_entity(conn, layout, "Thing", root.clone());
