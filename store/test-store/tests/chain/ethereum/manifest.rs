@@ -299,7 +299,7 @@ dataSources:
         - Gravatar
     network: mainnet
     source: 
-      address: 'QmSWWT2yrTFDZSL8tRyoHEVrcEKAUsY2hj2TMQDfdDZU8h'
+      address: 'QmSource'
       startBlock: 9562480
     mapping:
       apiVersion: 0.0.6
@@ -317,7 +317,7 @@ dataSources:
         - Profile
     network: mainnet
     source:
-      address: 'QmT8B2R7J9yzbZXkqRefmZPkXmE8pCsRKmMj3rGN1Qoe4k'
+      address: 'QmSource'
       startBlock: 9562500
     mapping:
       apiVersion: 0.0.6
