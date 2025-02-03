@@ -27,7 +27,6 @@ use graph::schema::{EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
@@ -541,7 +540,7 @@ impl EntityData {
     }
 }
 
-#[derive(QueryableByName, Clone, Debug, Default, Eq)]
+#[derive(QueryableByName, Clone, Debug, Default)]
 pub struct EntityDataExt {
     #[diesel(sql_type = Text)]
     pub entity: String,
@@ -549,38 +548,10 @@ pub struct EntityDataExt {
     pub data: serde_json::Value,
     #[diesel(sql_type = Integer)]
     pub block_number: i32,
-    #[diesel(sql_type = Text)]
-    pub id: String,
+    #[diesel(sql_type = Binary)]
+    pub id: Vec<u8>,
     #[diesel(sql_type = BigInt)]
     pub vid: i64,
-}
-
-impl Ord for EntityDataExt {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let ord = self.block_number.cmp(&other.block_number);
-        if ord != Ordering::Equal {
-            ord
-        } else {
-            let ord = self.entity.cmp(&other.entity);
-            if ord != Ordering::Equal {
-                ord
-            } else {
-                self.id.cmp(&other.id)
-            }
-        }
-    }
-}
-
-impl PartialOrd for EntityDataExt {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for EntityDataExt {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
 }
 
 /// The equivalent of `graph::data::store::Value` but in a form that does
