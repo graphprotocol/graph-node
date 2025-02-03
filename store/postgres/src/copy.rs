@@ -54,6 +54,11 @@ const INITIAL_BATCH_SIZE: i64 = 10_000;
 /// therefore tread lightly in that case
 const INITIAL_BATCH_SIZE_LIST: i64 = 100;
 
+/// If a batch takes less than this time, we might be in a situation where
+/// vids are very sparse and should explicitly query for the next vid we
+/// need to copy so we skip over large gaps
+const MIN_BATCH_DURATION: Duration = Duration::from_secs(5);
+
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
 
 /// If replicas are lagging by more than this, the copying code will pause
@@ -389,7 +394,30 @@ impl BatchCopy {
         // remember how far we got
         self.next_vid = last_vid + 1;
 
-        self.batch_size.adapt(duration);
+        if duration < MIN_BATCH_DURATION {
+            // The last batch was very short, and we might be in a situation
+            // where there are large gaps in the vids. If we adjust the
+            // batch size, we might increase the batch size to enormous
+            // values if that happens repeateadly. Rather than adjust the
+            // batch size, jump to the next actually existing vid
+            let src = self.src.dsl_table();
+            let next_vid = src
+                .select(src.vid_column())
+                .filter(src.vid_column().ge(self.next_vid))
+                .get_result::<i64>(conn)
+                .optional()?;
+            if let Some(next_vid) = next_vid {
+                self.next_vid = next_vid;
+                if next_vid - last_vid > INITIAL_BATCH_SIZE {
+                    // If we skipped over a large gap, we might have to
+                    // adjust the batch size so we don't have too large a
+                    // bach size
+                    self.batch_size.size = INITIAL_BATCH_SIZE;
+                }
+            }
+        } else {
+            self.batch_size.adapt(duration);
+        }
 
         Ok(duration)
     }
