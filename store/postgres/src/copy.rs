@@ -414,7 +414,9 @@ impl TableState {
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
         #[derive(QueryableByName)]
-        struct MaxVid {
+        struct VidRange {
+            #[diesel(sql_type = BigInt)]
+            min_vid: i64,
             #[diesel(sql_type = BigInt)]
             max_vid: i64,
         }
@@ -424,19 +426,21 @@ impl TableState {
         } else {
             "lower(block_range) <= $1"
         };
-        let target_vid = sql_query(format!(
-            "select coalesce(max(vid), -1) as max_vid from {} where {}",
+        let (next_vid, target_vid) = sql_query(format!(
+            "select coalesce(min(vid), 0) as min_vid, \
+                    coalesce(max(vid), -1) as max_vid \
+               from {} where {}",
             src.qualified_name.as_str(),
             max_block_clause
         ))
         .bind::<Integer, _>(&target_block.number)
-        .load::<MaxVid>(conn)?
+        .load::<VidRange>(conn)?
         .first()
-        .map(|v| v.max_vid)
-        .unwrap_or(-1);
+        .map(|v| (v.min_vid, v.max_vid))
+        .unwrap_or((0, -1));
 
         Ok(Self {
-            batch: BatchCopy::new(src, dst, 0, target_vid),
+            batch: BatchCopy::new(src, dst, next_vid, target_vid),
             dst_site,
             duration_ms: 0,
         })
