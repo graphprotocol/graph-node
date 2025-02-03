@@ -37,6 +37,32 @@ const GQL_SCHEMA: &str = r#"
   type TestEntity @entity { id: ID! }
 "#;
 const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
+const SOURCE_SUBGRAPH_MANIFEST: &str = "
+dataSources: []
+schema:
+  file:
+    /: /ipfs/QmSourceSchema
+specVersion: 1.3.0
+";
+
+const SOURCE_SUBGRAPH_SCHEMA: &str = "
+type TestEntity @entity { id: ID! }
+type User @entity { id: ID! }
+type Profile @entity { id: ID! }
+
+type TokenData @entity(timeseries: true) {
+    id: Int8!
+    timestamp: Timestamp!
+    amount: BigDecimal!
+}
+
+type TokenStats @aggregation(intervals: [\"hour\", \"day\"], source: \"TokenData\") {
+    id: Int8!
+    timestamp: Timestamp!
+    totalAmount: BigDecimal! @aggregate(fn: \"sum\", arg: \"amount\")
+}
+";
+
 const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
 const FILE: &str = "{}";
@@ -83,10 +109,10 @@ impl LinkResolverTrait for TextResolver {
     }
 }
 
-async fn resolve_manifest(
+async fn try_resolve_manifest(
     text: &str,
     max_spec_version: Version,
-) -> SubgraphManifest<graph_chain_ethereum::Chain> {
+) -> Result<SubgraphManifest<graph_chain_ethereum::Chain>, anyhow::Error> {
     let mut resolver = TextResolver::default();
     let id = DeploymentHash::new("Qmmanifest").unwrap();
 
@@ -94,12 +120,22 @@ async fn resolve_manifest(
     resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
     resolver.add("/ipfs/Qmabi", &ABI);
     resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
+    resolver.add("/ipfs/QmSource", &SOURCE_SUBGRAPH_MANIFEST);
+    resolver.add("/ipfs/QmSource2", &SOURCE_SUBGRAPH_MANIFEST);
+    resolver.add("/ipfs/QmSourceSchema", &SOURCE_SUBGRAPH_SCHEMA);
     resolver.add(FILE_CID, &FILE);
 
     let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
 
-    let raw = serde_yaml::from_str(text).unwrap();
-    SubgraphManifest::resolve_from_raw(id, raw, &resolver, &LOGGER, max_spec_version)
+    let raw = serde_yaml::from_str(text)?;
+    Ok(SubgraphManifest::resolve_from_raw(id, raw, &resolver, &LOGGER, max_spec_version).await?)
+}
+
+async fn resolve_manifest(
+    text: &str,
+    max_spec_version: Version,
+) -> SubgraphManifest<graph_chain_ethereum::Chain> {
+    try_resolve_manifest(text, max_spec_version)
         .await
         .expect("Parsing simple manifest works")
 }
@@ -184,7 +220,7 @@ dataSources:
         - Gravatar
     network: mainnet
     source: 
-      address: 'QmSWWT2yrTFDZSL8tRyoHEVrcEKAUsY2hj2TMQDfdDZU8h'
+      address: 'QmSource'
       startBlock: 9562480
     mapping:
       apiVersion: 0.0.6
@@ -195,7 +231,7 @@ dataSources:
         /: /ipfs/Qmmapping
       handlers:
         - handler: handleEntity
-          entity: User
+          entity: TestEntity
 specVersion: 1.3.0
 ";
 
@@ -212,6 +248,42 @@ specVersion: 1.3.0
         }
         _ => panic!("Expected a subgraph data source"),
     }
+}
+
+#[tokio::test]
+async fn subgraph_ds_manifest_aggregations_should_fail() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: TokenStats # This is an aggregation and should fail
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("Entity TokenStats is an aggregation and cannot be used as a mapping entity"));
 }
 
 #[tokio::test]
@@ -1506,7 +1578,7 @@ dataSources:
         - Gravatar
     network: mainnet
     source: 
-      address: 'QmSWWT2yrTFDZSL8tRyoHEVrcEKAUsY2hj2TMQDfdDZU8h'
+      address: 'QmSource'
       startBlock: 9562480
     mapping:
       apiVersion: 0.0.6
@@ -1537,6 +1609,8 @@ dataSources:
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
             resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
+            resolver.add("/ipfs/QmSource", &SOURCE_SUBGRAPH_MANIFEST);
+            resolver.add("/ipfs/QmSourceSchema", &SOURCE_SUBGRAPH_SCHEMA);
 
             let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
 
