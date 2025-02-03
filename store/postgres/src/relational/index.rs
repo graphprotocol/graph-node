@@ -734,6 +734,16 @@ pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
 }
 
+pub fn load_indexes_from_table(
+    conn: &mut PgConnection,
+    table: &Arc<Table>,
+    schema_name: &str,
+) -> Result<Vec<CreateIndex>, StoreError> {
+    let table_name = table.name.as_str();
+    let indexes = catalog::indexes_for_table(conn, schema_name, table_name)?;
+    Ok(indexes.into_iter().map(CreateIndex::parse).collect())
+}
+
 impl IndexList {
     pub fn load(
         conn: &mut PgConnection,
@@ -746,10 +756,8 @@ impl IndexList {
         let schema_name = site.namespace.clone();
         let layout = store.layout(conn, site)?;
         for (_, table) in &layout.tables {
-            let table_name = table.name.as_str();
-            let indexes = catalog::indexes_for_table(conn, schema_name.as_str(), table_name)?;
-            let collect: Vec<CreateIndex> = indexes.into_iter().map(CreateIndex::parse).collect();
-            list.indexes.insert(table_name.to_string(), collect);
+            let indexes = load_indexes_from_table(conn, table, schema_name.as_str())?;
+            list.indexes.insert(table.name.to_string(), indexes);
         }
         Ok(list)
     }
