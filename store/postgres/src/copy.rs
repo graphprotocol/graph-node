@@ -525,7 +525,6 @@ impl TableState {
         &mut self,
         conn: &mut PgConnection,
         elapsed: Duration,
-        first_batch: bool,
     ) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
@@ -533,17 +532,17 @@ impl TableState {
         // 300B years
         self.duration_ms += i64::try_from(elapsed.as_millis()).unwrap_or(0);
 
-        if first_batch {
-            // Reset started_at so that finished_at - started_at is an
-            // accurate indication of how long we worked on a table.
-            update(
-                cts::table
-                    .filter(cts::dst.eq(self.dst_site.id))
-                    .filter(cts::entity_type.eq(self.batch.dst.object.as_str())),
-            )
-            .set(cts::started_at.eq(sql("now()")))
-            .execute(conn)?;
-        }
+        // Reset started_at so that finished_at - started_at is an accurate
+        // indication of how long we worked on a table if we haven't worked
+        // on the table yet.
+        update(
+            cts::table
+                .filter(cts::dst.eq(self.dst_site.id))
+                .filter(cts::entity_type.eq(self.batch.dst.object.as_str()))
+                .filter(cts::duration_ms.eq(0)),
+        )
+        .set(cts::started_at.eq(sql("now()")))
+        .execute(conn)?;
         let values = (
             cts::next_vid.eq(self.batch.next_vid),
             cts::batch_size.eq(self.batch.batch_size.size),
@@ -591,11 +590,9 @@ impl TableState {
     }
 
     fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
-        let first_batch = self.batch.next_vid == 0;
-
         let duration = self.batch.run(conn)?;
 
-        self.record_progress(conn, duration, first_batch)?;
+        self.record_progress(conn, duration)?;
 
         if self.finished() {
             self.record_finished(conn)?;
