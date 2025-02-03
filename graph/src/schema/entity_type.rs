@@ -150,6 +150,14 @@ impl EntityType {
     pub fn is_object_type(&self) -> bool {
         self.schema.is_object_type(self.atom)
     }
+
+    // Changes the way the VID field is generated. It used to be autoincrement. Now its
+    // based on block number and the order of the entities in a block. The latter
+    // represents the write order across all entity types in the subgraph.
+    pub fn strict_vid_order(&self) -> bool {
+        // Currently the agregations entities don't have VIDs in insertion order
+        self.schema.strict_vid_order() && self.is_object_type()
+    }
 }
 
 impl fmt::Display for EntityType {

@@ -163,7 +163,7 @@ pub async fn create_subgraph(
 
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
-        spec_version: Version::new(1, 0, 0),
+        spec_version: Version::new(1, 3, 0),
         features: BTreeSet::new(),
         description: Some(format!("manifest for {}", subgraph_id)),
         repository: Some(format!("repo for {}", subgraph_id)),
@@ -227,7 +227,7 @@ pub async fn create_test_subgraph_with_features(
 
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
-        spec_version: Version::new(1, 0, 0),
+        spec_version: Version::new(1, 3, 0),
         features,
         description: Some(format!("manifest for {}", subgraph_id)),
         repository: Some(format!("repo for {}", subgraph_id)),
