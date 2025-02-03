@@ -2,12 +2,16 @@ use crate::{
     blockchain::{block_stream::EntitySourceOperation, Block, Blockchain},
     components::{link_resolver::LinkResolver, store::BlockNumber},
     data::{
-        subgraph::{calls_host_fn, SPEC_VERSION_1_3_0},
+        subgraph::{
+            calls_host_fn, SubgraphManifest, UnresolvedSubgraphManifest, LATEST_VERSION,
+            SPEC_VERSION_1_3_0,
+        },
         value::Word,
     },
     data_source::{self, common::DeclaredCall},
     ensure,
     prelude::{CheapClone, DataSourceContext, DeploymentHash, Link},
+    schema::TypeKind,
 };
 use anyhow::{anyhow, Context, Error, Result};
 use futures03::{stream::FuturesOrdered, TryStreamExt};
@@ -211,8 +215,62 @@ pub struct UnresolvedMapping {
 }
 
 impl UnresolvedDataSource {
+    fn validate_mapping_entities<C: Blockchain>(
+        mapping_entities: &[String],
+        source_manifest: &SubgraphManifest<C>,
+    ) -> Result<(), Error> {
+        for entity in mapping_entities {
+            let type_kind = source_manifest.schema.kind_of_declared_type(&entity);
+
+            match type_kind {
+                Some(TypeKind::Interface) => {
+                    return Err(anyhow!(
+                        "Entity {} is an interface and cannot be used as a mapping entity",
+                        entity
+                    ));
+                }
+                Some(TypeKind::Aggregation) => {
+                    return Err(anyhow!(
+                        "Entity {} is an aggregation and cannot be used as a mapping entity",
+                        entity
+                    ));
+                }
+                None => {
+                    return Err(anyhow!("Entity {} not found in source manifest", entity));
+                }
+                Some(TypeKind::Object) => {}
+            }
+        }
+        Ok(())
+    }
+
+    async fn resolve_source_manifest<C: Blockchain>(
+        &self,
+        resolver: &Arc<dyn LinkResolver>,
+        logger: &Logger,
+    ) -> Result<Arc<SubgraphManifest<C>>, Error> {
+        let source_raw = resolver
+            .cat(logger, &self.source.address.to_ipfs_link())
+            .await
+            .context("Failed to resolve source subgraph manifest")?;
+
+        let source_raw: serde_yaml::Mapping = serde_yaml::from_slice(&source_raw)
+            .context("Failed to parse source subgraph manifest as YAML")?;
+
+        let deployment_hash = self.source.address.clone();
+
+        let source_manifest = UnresolvedSubgraphManifest::<C>::parse(deployment_hash, source_raw)
+            .context("Failed to parse source subgraph manifest")?;
+
+        source_manifest
+            .resolve(resolver, logger, LATEST_VERSION.clone())
+            .await
+            .context("Failed to resolve source subgraph manifest")
+            .map(Arc::new)
+    }
+
     #[allow(dead_code)]
-    pub(super) async fn resolve(
+    pub(super) async fn resolve<C: Blockchain>(
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
@@ -224,7 +282,38 @@ impl UnresolvedDataSource {
             "source" => format_args!("{:?}", &self.source),
         );
 
-        let kind = self.kind;
+        let kind = self.kind.clone();
+        let source_manifest = self.resolve_source_manifest::<C>(resolver, logger).await?;
+        let source_spec_version = &source_manifest.spec_version;
+
+        if source_spec_version < &SPEC_VERSION_1_3_0 {
+            return Err(anyhow!(
+                "Source subgraph manifest spec version {} is not supported, minimum supported version is {}",
+                source_spec_version,
+                SPEC_VERSION_1_3_0
+            ));
+        }
+
+        let pruning_enabled = match source_manifest.indexer_hints.as_ref() {
+            None => false,
+            Some(hints) => hints.prune.is_some(),
+        };
+
+        if pruning_enabled {
+            return Err(anyhow!(
+                "Pruning is enabled for source subgraph, which is not supported"
+            ));
+        }
+
+        let mapping_entities: Vec<String> = self
+            .mapping
+            .handlers
+            .iter()
+            .map(|handler| handler.entity.clone())
+            .collect();
+
+        Self::validate_mapping_entities(&mapping_entities, &source_manifest)?;
+
         let source = Source {
             address: self.source.address,
             start_block: self.source.start_block,
