@@ -1,4 +1,4 @@
-use std::{fmt::Write, sync::Arc};
+use std::{collections::HashMap, fmt::Write, sync::Arc, time::Instant};
 
 use diesel::{
     connection::SimpleConnection,
@@ -58,7 +58,7 @@ impl TablePair {
         } else {
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
-            dst.as_ddl(schema, catalog, None, &mut query)?;
+            dst.as_ddl(schema, catalog, Some(&list), &mut query)?;
         }
         conn.batch_execute(&query)?;
 
