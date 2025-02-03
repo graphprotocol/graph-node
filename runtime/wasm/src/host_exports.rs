@@ -33,6 +33,8 @@ use crate::{error::DeterminismLevel, module::IntoTrap};
 
 use super::module::WasmInstanceData;
 
+use graph::schema::EntityKey;
+
 fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
     poi_event: &ProofOfIndexingEvent,
@@ -351,6 +353,19 @@ impl HostExports {
         state.metrics.track_entity_write(&entity_type, &entity);
 
         state
+            .metrics
+            .track_storage_size_change(&entity_type, &entity, false);
+
+        if state
+            .entity_cache
+            .get(&key, GetScope::Store)
+            .map_err(|e| HostExportError::Deterministic(e.into()))?
+            .is_none()
+        {
+            state.metrics.track_entity_count_change(&entity_type, 1);
+        }
+
+        state
             .entity_cache
             .set(key, entity, Some(&mut state.write_capacity_remaining))?;
 
@@ -388,7 +403,7 @@ impl HostExports {
             "store_remove",
         )?;
 
-        state.entity_cache.remove(key);
+        self.remove_entity(&key, state)?;
 
         Ok(())
     }
@@ -1232,6 +1247,28 @@ impl HostExports {
             // We can't do `tokens[0]` because the value can't be moved out of the `Vec`.
             .map(|mut tokens| tokens.pop().unwrap())
             .context("Failed to decode")
+    }
+
+    fn remove_entity(
+        &self,
+        key: &EntityKey,
+        state: &mut BlockState,
+    ) -> Result<(), HostExportError> {
+        let entity_type = key.entity_type.clone();
+
+        if let Some(entity) = state
+            .entity_cache
+            .get(key, GetScope::Store)
+            .map_err(|e| HostExportError::Deterministic(e.into()))?
+        {
+            state
+                .metrics
+                .track_storage_size_change(&entity_type, &entity, true);
+            state.metrics.track_entity_count_change(&entity_type, -1);
+        }
+
+        state.entity_cache.remove(key.clone());
+        Ok(())
     }
 }
 
