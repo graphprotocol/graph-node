@@ -339,7 +339,7 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                 .await
                 .map(DataSource::Onchain),
             Self::Subgraph(unresolved) => unresolved
-                .resolve(resolver, logger, manifest_idx)
+                .resolve::<C>(resolver, logger, manifest_idx)
                 .await
                 .map(DataSource::Subgraph),
             Self::Offchain(_unresolved) => {

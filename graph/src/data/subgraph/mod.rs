@@ -577,7 +577,7 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
-    prune: Option<Prune>,
+    pub prune: Option<Prune>,
 }
 
 impl IndexerHints {
