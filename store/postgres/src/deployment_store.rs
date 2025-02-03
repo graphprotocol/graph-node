@@ -54,7 +54,7 @@ use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, IndexList, Method};
-use crate::relational::{Layout, LayoutCache, SqlName, Table};
+use crate::relational::{Layout, LayoutCache, SqlName, Table, STATEMENT_TIMEOUT};
 use crate::relational_queries::{FromEntityData, JSONData};
 use crate::{advisory_lock, catalog, retry};
 use crate::{connection_pool::ConnectionPool, detail};
@@ -293,12 +293,17 @@ impl DeploymentStore {
         query: &str,
     ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
         let query = format!("select to_jsonb(sub.*) as data from ({}) as sub", query);
-
         let query = diesel::sql_query(query);
 
-        // Execute the provided SQL query
-        let results = query
-            .load::<JSONData>(conn)
+        let results = conn
+            .transaction(|conn| {
+                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                    conn.batch_execute(timeout_sql)?;
+                }
+
+                // Execute the provided SQL query
+                query.load::<JSONData>(conn)
+            })
             .map_err(|e| QueryExecutionError::SqlError(e.to_string()))?;
 
         Ok(results
