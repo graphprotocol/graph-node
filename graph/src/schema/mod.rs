@@ -21,7 +21,7 @@ pub mod ast;
 mod entity_key;
 mod entity_type;
 mod fulltext;
-mod input;
+pub(crate) mod input;
 
 pub use api::{is_introspection_field, APISchemaError, INTROSPECTION_QUERY_TYPE};
 

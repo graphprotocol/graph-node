@@ -201,6 +201,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         184.4,
         false,
         None,
+        0,
     );
     transact_entity_operations(
         &store,
@@ -220,6 +221,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         159.1,
         true,
         Some("red"),
+        1,
     );
     let test_entity_3_1 = create_test_entity(
         "3",
@@ -230,6 +232,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         111.7,
         false,
         Some("blue"),
+        2,
     );
     transact_entity_operations(
         &store,
@@ -249,6 +252,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         111.7,
         false,
         None,
+        3,
     );
     transact_and_wait(
         &store,
@@ -272,6 +276,7 @@ fn create_test_entity(
     weight: f64,
     coffee: bool,
     favorite_color: Option<&str>,
+    vid: i64,
 ) -> EntityOperation {
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
     let test_entity = entity! { TEST_SUBGRAPH_SCHEMA =>
@@ -284,6 +289,7 @@ fn create_test_entity(
         weight: Value::BigDecimal(weight.into()),
         coffee: coffee,
         favorite_color: favorite_color,
+        vid: vid,
     };
 
     EntityOperation::Set {
@@ -352,6 +358,7 @@ fn get_entity_1() {
             seconds_age: Value::BigInt(BigInt::from(2114359200)),
             weight: Value::BigDecimal(184.4.into()),
             coffee: false,
+            vid: 0i64
         };
         // "favorite_color" was set to `Null` earlier and should be absent
 
@@ -377,6 +384,7 @@ fn get_entity_3() {
            seconds_age: Value::BigInt(BigInt::from(883612800)),
            weight: Value::BigDecimal(111.7.into()),
            coffee: false,
+           vid: 3_i64,
         };
         // "favorite_color" was set to `Null` earlier and should be absent
 
@@ -398,6 +406,7 @@ fn insert_entity() {
             111.7,
             true,
             Some("green"),
+            5,
         );
         let count = get_entity_count(store.clone(), &deployment.hash);
         transact_and_wait(
@@ -429,6 +438,7 @@ fn update_existing() {
             111.7,
             true,
             Some("green"),
+            6,
         );
         let mut new_data = match op {
             EntityOperation::Set { ref data, .. } => data.clone(),
@@ -467,7 +477,8 @@ fn partially_update_existing() {
         let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
-        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
+        let partial_entity =
+            entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 11i64 };
 
         let original_entity = writable
             .get(&entity_key)
@@ -1077,7 +1088,8 @@ fn revert_block_with_partial_update() {
         let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
-        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
+        let partial_entity =
+            entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 5i64 };
 
         let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
 
@@ -1088,7 +1100,7 @@ fn revert_block_with_partial_update() {
             TEST_BLOCK_3_PTR.clone(),
             vec![EntityOperation::Set {
                 key: entity_key.clone(),
-                data: partial_entity.clone(),
+                data: partial_entity,
             }],
         )
         .await
@@ -1172,7 +1184,8 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Create operations to add a user
         let user_key = USER_TYPE.parse_key("1").unwrap();
-        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
+        let partial_entity =
+            entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 5i64 };
 
         // Get the original user for comparisons
         let original_user = writable.get(&user_key).unwrap().expect("missing entity");
@@ -1291,9 +1304,12 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         let added_entities = vec![
             (
                 "1".to_owned(),
-                entity! { schema => id: "1", name: "Johnny Boy" },
+                entity! { schema => id: "1", name: "Johnny Boy", vid: 5i64 },
             ),
-            ("2".to_owned(), entity! { schema => id: "2", name: "Tessa" }),
+            (
+                "2".to_owned(),
+                entity! { schema => id: "2", name: "Tessa", vid: 6i64 },
+            ),
         ];
         transact_and_wait(
             &store.subgraph_store(),
@@ -1301,9 +1317,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             TEST_BLOCK_1_PTR.clone(),
             added_entities
                 .iter()
-                .map(|(id, data)| EntityOperation::Set {
-                    key: USER_TYPE.parse_key(id.as_str()).unwrap(),
-                    data: data.clone(),
+                .map(|(id, data)| {
+                    let mut data = data.clone();
+                    data.set_vid_if_empty();
+                    EntityOperation::Set {
+                        key: USER_TYPE.parse_key(id.as_str()).unwrap(),
+                        data,
+                    }
                 })
                 .collect(),
         )
@@ -1311,7 +1331,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // Update an entity in the store
-        let updated_entity = entity! { schema => id: "1", name: "Johnny" };
+        let updated_entity = entity! { schema => id: "1", name: "Johnny", vid: 7i64 };
         let update_op = EntityOperation::Set {
             key: USER_TYPE.parse_key("1").unwrap(),
             data: updated_entity.clone(),
@@ -1387,6 +1407,7 @@ fn throttle_subscription_delivers() {
             120.7,
             false,
             None,
+            7,
         );
 
         transact_entity_operations(
@@ -1432,6 +1453,7 @@ fn throttle_subscription_throttles() {
             120.7,
             false,
             None,
+            8,
         );
 
         transact_entity_operations(
@@ -1505,8 +1527,9 @@ fn handle_large_string_with_index() {
         name: &str,
         schema: &InputSchema,
         block: BlockNumber,
+        vid: i64,
     ) -> EntityModification {
-        let data = entity! { schema => id: id, name: name };
+        let data = entity! { schema => id: id, name: name, vid: vid };
 
         let key = USER_TYPE.parse_key(id).unwrap();
 
@@ -1539,8 +1562,8 @@ fn handle_large_string_with_index() {
                 BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
-                    make_insert_op(ONE, &long_text, &schema, block),
-                    make_insert_op(TWO, &other_text, &schema, block),
+                    make_insert_op(ONE, &long_text, &schema, block, 11),
+                    make_insert_op(TWO, &other_text, &schema, block, 12),
                 ],
                 &stopwatch_metrics,
                 Vec::new(),
@@ -1551,6 +1574,7 @@ fn handle_large_string_with_index() {
             )
             .await
             .expect("Failed to insert large text");
+
         writable.flush().await.unwrap();
 
         let query = user_query()
@@ -1604,8 +1628,9 @@ fn handle_large_bytea_with_index() {
         name: &[u8],
         schema: &InputSchema,
         block: BlockNumber,
+        vid: i64,
     ) -> EntityModification {
-        let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
+        let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name), vid: vid };
 
         let key = USER_TYPE.parse_key(id).unwrap();
 
@@ -1643,8 +1668,8 @@ fn handle_large_bytea_with_index() {
                 BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
-                    make_insert_op(ONE, &long_bytea, &schema, block),
-                    make_insert_op(TWO, &other_bytea, &schema, block),
+                    make_insert_op(ONE, &long_bytea, &schema, block, 10),
+                    make_insert_op(TWO, &other_bytea, &schema, block, 11),
                 ],
                 &stopwatch_metrics,
                 Vec::new(),
@@ -1812,8 +1837,10 @@ fn window() {
         id: &str,
         color: &str,
         age: i32,
+        vid: i64,
     ) -> EntityOperation {
-        let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
+        let entity =
+            entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color, vid: vid };
 
         EntityOperation::Set {
             key: entity_type.parse_key(id).unwrap(),
@@ -1821,25 +1848,25 @@ fn window() {
         }
     }
 
-    fn make_user(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_and_age(&*USER_TYPE, id, color, age)
+    fn make_user(id: &str, color: &str, age: i32, vid: i64) -> EntityOperation {
+        make_color_and_age(&*USER_TYPE, id, color, age, vid)
     }
 
-    fn make_person(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_and_age(&*PERSON_TYPE, id, color, age)
+    fn make_person(id: &str, color: &str, age: i32, vid: i64) -> EntityOperation {
+        make_color_and_age(&*PERSON_TYPE, id, color, age, vid)
     }
 
     let ops = vec![
-        make_user("4", "green", 34),
-        make_user("5", "green", 17),
-        make_user("6", "green", 41),
-        make_user("7", "red", 25),
-        make_user("8", "red", 45),
-        make_user("9", "yellow", 37),
-        make_user("10", "blue", 27),
-        make_user("11", "blue", 19),
-        make_person("p1", "green", 12),
-        make_person("p2", "red", 15),
+        make_user("4", "green", 34, 11),
+        make_user("5", "green", 17, 12),
+        make_user("6", "green", 41, 13),
+        make_user("7", "red", 25, 14),
+        make_user("8", "red", 45, 15),
+        make_user("9", "yellow", 37, 16),
+        make_user("10", "blue", 27, 17),
+        make_user("11", "blue", 19, 18),
+        make_person("p1", "green", 12, 19),
+        make_person("p2", "red", 15, 20),
     ];
 
     run_test(|store, _, deployment| async move {
@@ -2077,6 +2104,7 @@ fn reorg_tracking() {
         deployment: &DeploymentLocator,
         age: i32,
         block: &BlockPtr,
+        vid: i64,
     ) {
         let test_entity_1 = create_test_entity(
             "1",
@@ -2087,6 +2115,7 @@ fn reorg_tracking() {
             184.4,
             false,
             None,
+            vid,
         );
         transact_and_wait(store, deployment, block.clone(), vec![test_entity_1])
             .await
@@ -2137,15 +2166,15 @@ fn reorg_tracking() {
         check_state!(store, 2, 2, 2);
 
         // Forward to block 3
-        update_john(&subgraph_store, &deployment, 70, &TEST_BLOCK_3_PTR).await;
+        update_john(&subgraph_store, &deployment, 70, &TEST_BLOCK_3_PTR, 5).await;
         check_state!(store, 2, 2, 3);
 
         // Forward to block 4
-        update_john(&subgraph_store, &deployment, 71, &TEST_BLOCK_4_PTR).await;
+        update_john(&subgraph_store, &deployment, 71, &TEST_BLOCK_4_PTR, 6).await;
         check_state!(store, 2, 2, 4);
 
         // Forward to block 5
-        update_john(&subgraph_store, &deployment, 72, &TEST_BLOCK_5_PTR).await;
+        update_john(&subgraph_store, &deployment, 72, &TEST_BLOCK_5_PTR, 7).await;
         check_state!(store, 2, 2, 5);
 
         // Revert all the way back to block 2

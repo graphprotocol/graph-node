@@ -422,12 +422,13 @@ pub async fn insert_entities(
     deployment: &DeploymentLocator,
     entities: Vec<(EntityType, Entity)>,
 ) -> Result<(), StoreError> {
-    let insert_ops = entities
-        .into_iter()
-        .map(|(entity_type, data)| EntityOperation::Set {
+    let insert_ops = entities.into_iter().map(|(entity_type, mut data)| {
+        data.set_vid_if_empty();
+        EntityOperation::Set {
             key: entity_type.key(data.id()),
             data,
-        });
+        }
+    });
 
     transact_entity_operations(
         &SUBGRAPH_STORE,

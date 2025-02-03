@@ -40,7 +40,7 @@ use crate::block_range::{BoundSide, EntityBlockRange};
 use crate::relational::dsl::AtBlock;
 use crate::relational::{
     dsl, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
-    STRING_PREFIX_SIZE,
+    STRING_PREFIX_SIZE, VID_COLUMN,
 };
 use crate::{
     block_range::{
@@ -515,7 +515,14 @@ impl EntityData {
                     // table column; those will be things like the
                     // block_range that `select *` pulls in but that we
                     // don't care about here
-                    if let Some(column) = table.column(&SqlName::verbatim(key)) {
+                    if key == VID_COLUMN {
+                        // VID is not in the input schema but we need it, so deserialize it too
+                        match T::Value::from_column_value(&ColumnType::Int8, json) {
+                            Ok(value) if value.is_null() => None,
+                            Ok(value) => Some(Ok((Word::from(VID_COLUMN), value))),
+                            Err(e) => Some(Err(e)),
+                        }
+                    } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         match T::Value::from_column_value(&column.column_type, json) {
                             Ok(value) if value.is_null() => None,
                             Ok(value) => Some(Ok((Word::from(column.field.to_string()), value))),
@@ -2242,6 +2249,7 @@ struct InsertRow<'a> {
     values: Vec<InsertValue<'a>>,
     br_value: BlockRangeValue,
     causality_region: CausalityRegion,
+    vid: i64,
 }
 
 impl<'a> InsertRow<'a> {
@@ -2278,10 +2286,12 @@ impl<'a> InsertRow<'a> {
         }
         let br_value = BlockRangeValue::new(table, row.block, row.end);
         let causality_region = row.causality_region;
+        let vid = row.entity.vid();
         Ok(Self {
             values,
             br_value,
             causality_region,
+            vid,
         })
     }
 }
@@ -2367,6 +2377,8 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
+        let new_vid_form = self.table.object.is_object_type();
+
         // Construct a query
         //   insert into schema.table(column, ...)
         //   values
@@ -2392,6 +2404,9 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
 
+        if new_vid_form {
+            out.push_sql(", vid");
+        }
         out.push_sql(") values\n");
 
         for (i, row) in self.rows.iter().enumerate() {
@@ -2409,6 +2424,10 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.causality_region)?;
             };
+            if new_vid_form {
+                out.push_sql(", ");
+                out.push_bind_param::<BigInt, _>(&row.vid)?;
+            }
             out.push_sql(")");
         }
 
@@ -4808,6 +4827,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
+        let new_vid_form = self.src.object.is_object_type();
+
         // Construct a query
         //   insert into {dst}({columns})
         //   select {columns} from {src}
@@ -4828,6 +4849,9 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_sql(", ");
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
+        if new_vid_form {
+            out.push_sql(", vid");
+        }
 
         out.push_sql(")\nselect ");
         for column in &self.columns {
@@ -4893,6 +4917,10 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 ));
             }
         }
+        if new_vid_form {
+            out.push_sql(", vid");
+        }
+
         out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
         out.push_sql(" where vid >= ");

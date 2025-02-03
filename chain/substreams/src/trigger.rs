@@ -240,6 +240,7 @@ where
                     state.entity_cache.set(
                         key,
                         entity,
+                        block.number,
                         Some(&mut state.write_capacity_remaining),
                     )?;
                 }
