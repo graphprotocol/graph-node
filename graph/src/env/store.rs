@@ -128,6 +128,9 @@ pub struct EnvVarsStore {
     /// sufficiently, probably after 2024-12-01
     /// Defaults to `false`, i.e. using the new fixed behavior
     pub last_rollup_from_poi: bool,
+    /// The number of rows to fetch from the foreign data wrapper in one go,
+    /// this will be set as the option 'fetch_size' on all foreign servers
+    pub fdw_fetch_size: usize,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -177,6 +180,7 @@ impl From<InnerStore> for EnvVarsStore {
             use_brin_for_all_query_types: x.use_brin_for_all_query_types,
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
             last_rollup_from_poi: x.last_rollup_from_poi,
+            fdw_fetch_size: x.fdw_fetch_size,
         }
     }
 }
@@ -240,6 +244,8 @@ pub struct InnerStore {
     disable_block_cache_for_lookup: bool,
     #[envconfig(from = "GRAPH_STORE_LAST_ROLLUP_FROM_POI", default = "false")]
     last_rollup_from_poi: bool,
+    #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "10000")]
+    fdw_fetch_size: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
