@@ -1,0 +1,5 @@
+type SourceAData @entity {
+  id: ID!
+  data: String!
+  blockNumber: BigInt!
+} 

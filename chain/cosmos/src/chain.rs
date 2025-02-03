@@ -4,7 +4,7 @@ use graph::components::network_provider::ChainName;
 use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
 use graph::substreams::Clock;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
@@ -200,7 +200,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
-        _block_numbers: HashSet<BlockNumber>,
+        _block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<Block>, Error> {
         todo!()
     }
