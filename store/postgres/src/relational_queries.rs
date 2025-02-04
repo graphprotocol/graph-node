@@ -2331,6 +2331,9 @@ impl<'a> InsertQuery<'a> {
         if table.has_causality_region {
             count += 1;
         }
+        if table.object.strict_vid_order() {
+            count += 1;
+        }
         for column in table.columns.iter() {
             // This code depends closely on how `walk_ast` and `QueryValue`
             // put values into bind variables
