@@ -1,0 +1,35 @@
+specVersion: 1.3.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: subgraph
+    name: SourceA
+    network: test
+    source:
+      address: 'QmPWnNsD4m8T9EEF1ec5d8wetFxrMebggLj1efFHzdnZhx'
+      startBlock: 0
+    mapping:
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - AggregatedData
+      handlers:
+        - handler: handleSourceAData
+          entity: SourceAData
+      file: ./src/mapping.ts
+
+  - kind: subgraph
+    name: SourceB
+    network: test
+    source:
+      address: 'Qma4Rk2D1w6mFiP15ZtHHx7eWkqFR426RWswreLiDanxej'
+      startBlock: 0
+    mapping:
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - AggregatedData
+      handlers:
+        - handler: handleSourceBData
+          entity: SourceBData
+      file: ./src/mapping.ts

@@ -1,7 +1,7 @@
 pub mod ethereum;
 pub mod substreams;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -996,7 +996,7 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
-        _block_numbers: HashSet<BlockNumber>,
+        _block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<C::Block>, Error> {
         unimplemented!()
     }

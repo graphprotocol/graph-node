@@ -18,7 +18,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use slog::Logger;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::TryFrom,
     sync::Arc,
 };
@@ -48,15 +48,32 @@ pub struct MockBlock {
 
 impl Block for MockBlock {
     fn ptr(&self) -> BlockPtr {
-        todo!()
+        test_ptr(self.number as i32)
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        todo!()
+        if self.number == 0 {
+            None
+        } else {
+            Some(test_ptr(self.number as i32 - 1))
+        }
     }
 
     fn timestamp(&self) -> BlockTime {
-        todo!()
+        BlockTime::since_epoch(self.ptr().number as i64 * 45 * 60, 0)
+    }
+}
+
+pub fn test_ptr(n: BlockNumber) -> BlockPtr {
+    test_ptr_reorged(n, 0)
+}
+
+pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
+    let mut hash = H256::from_low_u64_be(n as u64);
+    hash[0..4].copy_from_slice(&reorg_n.to_be_bytes());
+    BlockPtr {
+        hash: hash.into(),
+        number: n,
     }
 }
 
@@ -243,9 +260,14 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
-        _block_numbers: HashSet<BlockNumber>,
+        block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<MockBlock>> {
-        unimplemented!()
+        Ok(block_numbers
+            .into_iter()
+            .map(|number| MockBlock {
+                number: number as u64,
+            })
+            .collect())
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {

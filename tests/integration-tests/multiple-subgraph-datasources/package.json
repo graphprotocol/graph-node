@@ -1,15 +1,15 @@
 {
-  "name": "source-subgraph",
+  "name": "multiple-subgraph-datasources",
   "version": "0.1.0",
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
-    "codegen": "graph codegen --skip-migrations",
+    "codegen": "graph codegen subgraph.yaml --skip-migrations",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
-    "create:test": "graph create test/source-subgraph --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/source-subgraph --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "create:test": "graph create test/multiple-subgraph-datasources --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/multiple-subgraph-datasources --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "0.91.0-alpha-20241129215038-b75cda9",
+    "@graphprotocol/graph-cli": "0.93.4-alpha-20250105163501-f401d0c57c4ba1f1af95a928d447efd63a56ecdc",
     "@graphprotocol/graph-ts": "0.36.0-alpha-20241129215038-b75cda9",
     "solc": "^0.8.2"
   },
@@ -22,4 +22,4 @@
     "gluegun": "^4.6.1",
     "truffle": "^5.2"
   }
-}
+} 
