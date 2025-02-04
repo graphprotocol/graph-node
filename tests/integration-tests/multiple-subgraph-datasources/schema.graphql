@@ -1,0 +1,6 @@
+type AggregatedData @entity {
+  id: ID!
+  sourceA: String
+  sourceB: String
+  first: String!
+}

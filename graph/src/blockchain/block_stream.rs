@@ -7,7 +7,7 @@ use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
 use prost_types::Any;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
@@ -339,31 +339,95 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
     pub async fn blocks_with_subgraph_triggers(
         &self,
         logger: &Logger,
-        subgraph_filter: &SubgraphFilter,
+        filters: &[SubgraphFilter],
         range: SubgraphTriggerScanRange<C>,
     ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
-        let store = self
-            .source_subgraph_stores
-            .get(&subgraph_filter.subgraph)
-            .ok_or_else(|| anyhow!("Store not found for subgraph: {}", subgraph_filter.subgraph))?;
+        if filters.is_empty() {
+            return Err(anyhow!("No subgraph filters provided"));
+        }
 
-        let schema = <dyn crate::components::store::SourceableStore>::input_schema(store);
+        let (blocks, hash_to_entities) = match range {
+            SubgraphTriggerScanRange::Single(block) => {
+                let hash_to_entities = self
+                    .fetch_entities_for_filters(filters, block.number(), block.number())
+                    .await?;
 
-        let adapter = self.adapter.clone();
+                (vec![block], hash_to_entities)
+            }
+            SubgraphTriggerScanRange::Range(from, to) => {
+                let hash_to_entities = self.fetch_entities_for_filters(filters, from, to).await?;
 
-        scan_subgraph_triggers::<C>(logger, store, &adapter, &schema, &subgraph_filter, range).await
+                // Get block numbers that have entities
+                let mut block_numbers: BTreeSet<_> = hash_to_entities
+                    .iter()
+                    .flat_map(|(_, entities, _)| entities.keys().copied())
+                    .collect();
+
+                // Always include the last block in the range
+                block_numbers.insert(to);
+
+                let blocks = self
+                    .adapter
+                    .load_block_ptrs_by_numbers(logger.clone(), block_numbers)
+                    .await?;
+
+                (blocks, hash_to_entities)
+            }
+        };
+
+        create_subgraph_triggers::<C>(logger.clone(), blocks, hash_to_entities).await
+    }
+
+    async fn fetch_entities_for_filters(
+        &self,
+        filters: &[SubgraphFilter],
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> Result<
+        Vec<(
+            DeploymentHash,
+            BTreeMap<BlockNumber, Vec<EntitySourceOperation>>,
+            u32,
+        )>,
+        Error,
+    > {
+        let futures = filters
+            .iter()
+            .filter_map(|filter| {
+                self.source_subgraph_stores
+                    .get(&filter.subgraph)
+                    .map(|store| {
+                        let store = store.clone();
+                        let schema = store.input_schema();
+
+                        async move {
+                            let entities =
+                                get_entities_for_range(&store, filter, &schema, from, to).await?;
+                            Ok::<_, Error>((filter.subgraph.clone(), entities, filter.manifest_idx))
+                        }
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        if futures.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        futures03::future::try_join_all(futures).await
     }
 }
 
 fn create_subgraph_trigger_from_entities(
-    filter: &SubgraphFilter,
+    subgraph: &DeploymentHash,
     entities: Vec<EntitySourceOperation>,
+    manifest_idx: u32,
 ) -> Vec<subgraph::TriggerData> {
     entities
         .into_iter()
         .map(|entity| subgraph::TriggerData {
-            source: filter.subgraph.clone(),
+            source: subgraph.clone(),
             entity,
+            source_idx: manifest_idx,
         })
         .collect()
 }
@@ -371,21 +435,31 @@ fn create_subgraph_trigger_from_entities(
 async fn create_subgraph_triggers<C: Blockchain>(
     logger: Logger,
     blocks: Vec<C::Block>,
-    filter: &SubgraphFilter,
-    mut entities: BTreeMap<BlockNumber, Vec<EntitySourceOperation>>,
+    subgraph_data: Vec<(
+        DeploymentHash,
+        BTreeMap<BlockNumber, Vec<EntitySourceOperation>>,
+        u32,
+    )>,
 ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
     let logger_clone = logger.cheap_clone();
-
     let blocks: Vec<BlockWithTriggers<C>> = blocks
         .into_iter()
         .map(|block| {
             let block_number = block.number();
-            let trigger_data = entities
-                .remove(&block_number)
-                .map(|e| create_subgraph_trigger_from_entities(filter, e))
-                .unwrap_or_else(Vec::new);
+            let mut all_trigger_data = Vec::new();
 
-            BlockWithTriggers::new_with_subgraph_triggers(block, trigger_data, &logger_clone)
+            for (hash, entities, manifest_idx) in subgraph_data.iter() {
+                if let Some(block_entities) = entities.get(&block_number) {
+                    let trigger_data = create_subgraph_trigger_from_entities(
+                        hash,
+                        block_entities.clone(),
+                        *manifest_idx,
+                    );
+                    all_trigger_data.extend(trigger_data);
+                }
+            }
+
+            BlockWithTriggers::new_with_subgraph_triggers(block, all_trigger_data, &logger_clone)
         })
         .collect();
 
@@ -395,36 +469,6 @@ async fn create_subgraph_triggers<C: Blockchain>(
 pub enum SubgraphTriggerScanRange<C: Blockchain> {
     Single(C::Block),
     Range(BlockNumber, BlockNumber),
-}
-
-async fn scan_subgraph_triggers<C: Blockchain>(
-    logger: &Logger,
-    store: &Arc<dyn SourceableStore>,
-    adapter: &Arc<dyn TriggersAdapter<C>>,
-    schema: &InputSchema,
-    filter: &SubgraphFilter,
-    range: SubgraphTriggerScanRange<C>,
-) -> Result<Vec<BlockWithTriggers<C>>, Error> {
-    match range {
-        SubgraphTriggerScanRange::Single(block) => {
-            let entities =
-                get_entities_for_range(store, filter, schema, block.number(), block.number())
-                    .await?;
-            create_subgraph_triggers::<C>(logger.clone(), vec![block], filter, entities).await
-        }
-        SubgraphTriggerScanRange::Range(from, to) => {
-            let entities = get_entities_for_range(store, filter, schema, from, to).await?;
-            let mut block_numbers: HashSet<BlockNumber> = entities.keys().cloned().collect();
-            // Ensure the 'to' block is included in the block_numbers
-            block_numbers.insert(to);
-
-            let blocks = adapter
-                .load_block_ptrs_by_numbers(logger.clone(), block_numbers)
-                .await?;
-
-            create_subgraph_triggers::<C>(logger.clone(), blocks, filter, entities).await
-        }
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -474,11 +518,11 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         to: BlockNumber,
         filter: &Arc<TriggerFilterWrapper<C>>,
     ) -> Result<(Vec<BlockWithTriggers<C>>, BlockNumber), Error> {
-        if let Some(subgraph_filter) = filter.subgraph_filter.first() {
+        if !filter.subgraph_filter.is_empty() {
             let blocks_with_triggers = self
                 .blocks_with_subgraph_triggers(
                     logger,
-                    subgraph_filter,
+                    &filter.subgraph_filter,
                     SubgraphTriggerScanRange::Range(from, to),
                 )
                 .await?;
@@ -504,11 +548,11 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             "block_hash" => block.hash().hash_hex(),
         );
 
-        if let Some(subgraph_filter) = filter.subgraph_filter.first() {
+        if !filter.subgraph_filter.is_empty() {
             let blocks_with_triggers = self
                 .blocks_with_subgraph_triggers(
                     logger,
-                    subgraph_filter,
+                    &filter.subgraph_filter,
                     SubgraphTriggerScanRange::Single(block),
                 )
                 .await?;
@@ -594,7 +638,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
     async fn load_block_ptrs_by_numbers(
         &self,
         logger: Logger,
-        block_numbers: HashSet<BlockNumber>,
+        block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<C::Block>>;
 }
 

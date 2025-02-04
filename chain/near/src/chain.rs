@@ -32,7 +32,7 @@ use graph::{
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
@@ -328,7 +328,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
-        _block_numbers: HashSet<BlockNumber>,
+        _block_numbers: BTreeSet<BlockNumber>,
     ) -> Result<Vec<Block>> {
         unimplemented!()
     }

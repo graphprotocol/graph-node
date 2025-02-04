@@ -1,35 +1,23 @@
-import { Entity, log, store } from '@graphprotocol/graph-ts';
+import { Entity, log, store, BigInt, EntityTrigger, EntityOp } from '@graphprotocol/graph-ts';
+import { Block } from '../generated/subgraph-QmVz1Pt7NhgCkz4gfavmNrMhojnMT9hW81QDqVjy56ZMUP';
 import { MirrorBlock } from '../generated/schema';
 
-export class EntityTrigger {
-  constructor(
-    public entityOp: u32,
-    public entityType: string,
-    public entity: Entity,
-    public vid: i64,
-  ) {}
-}
+export function handleEntity(trigger: EntityTrigger<Block>): void {
+  let blockEntity = trigger.data;
+  let id = blockEntity.id;
 
-export function handleEntity(trigger: EntityTrigger): void {
-  let blockEntity = trigger.entity;
-  let blockNumber = blockEntity.getBigInt('number');
-  let blockHash = blockEntity.getBytes('hash');
-  let testMessage = blockEntity.get('testMessage');
-  let id = blockEntity.getString('id');
-
-  log.info('Block number: {}', [blockNumber.toString()]);
-
-  if (trigger.entityOp == 2) {
+  if (trigger.operation === EntityOp.Remove) {
     log.info('Removing block entity with id: {}', [id]);
     store.remove('MirrorBlock', id);
     return;
   }
 
   let block = loadOrCreateMirrorBlock(id);
-  block.number = blockNumber;
-  block.hash = blockHash;
-  if (testMessage) {
-    block.testMessage = testMessage.toString();
+  block.number = blockEntity.number;
+  block.hash = blockEntity.hash;
+  
+  if (blockEntity.testMessage) {
+    block.testMessage = blockEntity.testMessage;
   }
 
   block.save();
@@ -41,6 +29,5 @@ export function loadOrCreateMirrorBlock(id: string): MirrorBlock {
     log.info('Creating new block entity with id: {}', [id]);
     block = new MirrorBlock(id);
   }
-
   return block;
 }
