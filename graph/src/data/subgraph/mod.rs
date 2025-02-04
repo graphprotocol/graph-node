@@ -672,6 +672,56 @@ pub type SubgraphManifest<C> =
 pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);
 
 impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
+    fn validate_subgraph_datasources(
+        data_sources: &[DataSource<C>],
+        spec_version: &Version,
+    ) -> Vec<SubgraphManifestValidationError> {
+        let mut errors = Vec::new();
+
+        // Check spec version support for subgraph datasources
+        if *spec_version < SPEC_VERSION_1_3_0 {
+            if data_sources
+                .iter()
+                .any(|ds| matches!(ds, DataSource::Subgraph(_)))
+            {
+                errors.push(SubgraphManifestValidationError::DataSourceValidation(
+                    "subgraph".to_string(),
+                    anyhow!(
+                        "Subgraph datasources are not supported prior to spec version {}",
+                        SPEC_VERSION_1_3_0
+                    ),
+                ));
+                return errors;
+            }
+        }
+
+        let subgraph_ds_count = data_sources
+            .iter()
+            .filter(|ds| matches!(ds, DataSource::Subgraph(_)))
+            .count();
+
+        if subgraph_ds_count > 1 {
+            errors.push(SubgraphManifestValidationError::DataSourceValidation(
+                "subgraph".to_string(),
+                anyhow!("Cannot have more than one subgraph datasource"),
+            ));
+        }
+
+        let has_subgraph_ds = subgraph_ds_count > 0;
+        let has_onchain_ds = data_sources
+            .iter()
+            .any(|d| matches!(d, DataSource::Onchain(_)));
+
+        if has_subgraph_ds && has_onchain_ds {
+            errors.push(SubgraphManifestValidationError::DataSourceValidation(
+                "subgraph".to_string(),
+                anyhow!("Subgraph datasources cannot be used alongside onchain datasources"),
+            ));
+        }
+
+        errors
+    }
+
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
@@ -741,6 +791,12 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 errors.push(feature_validation_error.into())
             }
         }
+
+        // Validate subgraph datasource constraints
+        errors.extend(Self::validate_subgraph_datasources(
+            &self.0.data_sources,
+            &self.0.spec_version,
+        ));
 
         match errors.is_empty() {
             true => Ok(self.0),
@@ -1003,6 +1059,17 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 "`indexerHints` are not supported prior to {}",
                 SPEC_VERSION_1_0_0
             );
+        }
+
+        // Validate subgraph datasource constraints
+        if let Some(error) = UnvalidatedSubgraphManifest::<C>::validate_subgraph_datasources(
+            &data_sources,
+            &spec_version,
+        )
+        .into_iter()
+        .next()
+        {
+            return Err(anyhow::Error::from(error).into());
         }
 
         // Check the min_spec_version of each data source against the spec version of the subgraph
