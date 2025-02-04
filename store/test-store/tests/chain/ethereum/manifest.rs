@@ -1706,3 +1706,115 @@ dataSources:
         assert_eq!(3, decls.len());
     });
 }
+
+#[tokio::test]
+async fn multiple_subgraph_ds_manifest_should_fail() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource1
+    kind: subgraph
+    entities:
+        - User
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: User
+  - name: SubgraphSource2
+    kind: subgraph
+    entities:
+        - Profile
+    network: mainnet
+    source:
+      address: 'QmSource2'
+      startBlock: 9562500
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleProfile
+          entity: Profile
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("Cannot have more than one subgraph datasource"));
+}
+
+#[tokio::test]
+async fn mixed_subgraph_and_onchain_ds_manifest_should_fail() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - User
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: User
+  - kind: ethereum/contract
+    name: Gravity
+    network: mainnet
+    source:
+      address: '0x2E645469f354BB4F5c8a05B3b30A929361cf77eC'
+      abi: Gravity
+      startBlock: 1
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - Gravatar
+      abis:
+        - name: Gravity
+          file:
+            /: /ipfs/Qmabi
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - event: NewGravatar(uint256,address,string,string)
+          handler: handleNewGravatar
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("Subgraph datasources cannot be used alongside onchain datasources"));
+}
