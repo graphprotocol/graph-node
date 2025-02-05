@@ -22,10 +22,8 @@ use diesel::{
     dsl::sql,
     insert_into,
     r2d2::{ConnectionManager, PooledConnection},
-    select, sql_query,
-    sql_types::{BigInt, Integer},
-    update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
-    RunQueryDsl,
+    select, sql_query, update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection,
+    QueryDsl, RunQueryDsl,
 };
 use graph::{
     constraint_violation,
@@ -39,7 +37,7 @@ use crate::{
     dynds::DataSourcesTable,
     primary::{DeploymentId, Site},
     relational::index::IndexList,
-    vid_batcher::AdaptiveBatchSize,
+    vid_batcher::{VidBatcher, VidRange},
 };
 use crate::{connection_pool::ConnectionPool, relational::Layout};
 use crate::{relational::Table, relational_queries as rq};
@@ -202,6 +200,7 @@ impl CopyState {
                         TableState::init(
                             conn,
                             dst.site.clone(),
+                            &src,
                             src_table.clone(),
                             dst_table.clone(),
                             &target_block,
@@ -217,9 +216,9 @@ impl CopyState {
                 (
                     cts::entity_type.eq(table.batch.dst.object.as_str()),
                     cts::dst.eq(dst.site.id),
-                    cts::next_vid.eq(table.batch.next_vid),
-                    cts::target_vid.eq(table.batch.target_vid),
-                    cts::batch_size.eq(table.batch.batch_size.size),
+                    cts::next_vid.eq(table.batch.next_vid()),
+                    cts::target_vid.eq(table.batch.target_vid()),
+                    cts::batch_size.eq(table.batch.batch_size()),
                 )
             })
             .collect::<Vec<_>>();
@@ -298,49 +297,42 @@ pub(crate) fn source(
 pub(crate) struct BatchCopy {
     src: Arc<Table>,
     dst: Arc<Table>,
-    /// The `vid` of the next entity version that we will copy
-    next_vid: i64,
-    /// The last `vid` that should be copied
-    target_vid: i64,
-    batch_size: AdaptiveBatchSize,
+    batcher: VidBatcher,
 }
 
 impl BatchCopy {
-    pub fn new(src: Arc<Table>, dst: Arc<Table>, first_vid: i64, last_vid: i64) -> Self {
-        let batch_size = AdaptiveBatchSize::new(&dst);
-
-        Self {
-            src,
-            dst,
-            next_vid: first_vid,
-            target_vid: last_vid,
-            batch_size,
-        }
+    pub fn new(batcher: VidBatcher, src: Arc<Table>, dst: Arc<Table>) -> Self {
+        Self { src, dst, batcher }
     }
 
     /// Copy one batch of entities and update internal state so that the
     /// next call to `run` will copy the next batch
     pub fn run(&mut self, conn: &mut PgConnection) -> Result<Duration, StoreError> {
-        let start = Instant::now();
-
-        // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
-        // but do not go over target_vid
-        let last_vid = (self.next_vid + self.batch_size.size - 1).min(self.target_vid);
-        rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, self.next_vid, last_vid)?
-            .execute(conn)?;
-
-        let duration = start.elapsed();
-
-        // remember how far we got
-        self.next_vid = last_vid + 1;
-
-        self.batch_size.adapt(duration);
+        let (duration, _) = self.batcher.step(|start, end| {
+            rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
+                .execute(conn)?;
+            Ok(())
+        })?;
 
         Ok(duration)
     }
 
     pub fn finished(&self) -> bool {
-        self.next_vid > self.target_vid
+        self.batcher.finished()
+    }
+
+    /// The first `vid` that has not been copied yet
+    pub fn next_vid(&self) -> i64 {
+        self.batcher.next_vid()
+    }
+
+    /// The last `vid` that should be copied
+    pub fn target_vid(&self) -> i64 {
+        self.batcher.target_vid()
+    }
+
+    pub fn batch_size(&self) -> i64 {
+        self.batcher.batch_size() as i64
     }
 }
 
@@ -354,38 +346,15 @@ impl TableState {
     fn init(
         conn: &mut PgConnection,
         dst_site: Arc<Site>,
+        src_layout: &Layout,
         src: Arc<Table>,
         dst: Arc<Table>,
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
-        #[derive(QueryableByName)]
-        struct VidRange {
-            #[diesel(sql_type = BigInt)]
-            min_vid: i64,
-            #[diesel(sql_type = BigInt)]
-            max_vid: i64,
-        }
-
-        let max_block_clause = if src.immutable {
-            "block$ <= $1"
-        } else {
-            "lower(block_range) <= $1"
-        };
-        let (next_vid, target_vid) = sql_query(format!(
-            "select coalesce(min(vid), 0) as min_vid, \
-                    coalesce(max(vid), -1) as max_vid \
-               from {} where {}",
-            src.qualified_name.as_str(),
-            max_block_clause
-        ))
-        .bind::<Integer, _>(&target_block.number)
-        .load::<VidRange>(conn)?
-        .first()
-        .map(|v| (v.min_vid, v.max_vid))
-        .unwrap_or((0, -1));
-
+        let vid_range = VidRange::for_copy(conn, &src, target_block)?;
+        let batcher = VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range)?;
         Ok(Self {
-            batch: BatchCopy::new(src, dst, next_vid, target_vid),
+            batch: BatchCopy::new(batcher, src, dst),
             dst_site,
             duration_ms: 0,
         })
@@ -451,10 +420,14 @@ impl TableState {
                     );
                     match (src, dst) {
                         (Ok(src), Ok(dst)) => {
-                            let mut batch = BatchCopy::new(src, dst, current_vid, target_vid);
-                            let batch_size = AdaptiveBatchSize { size };
-
-                            batch.batch_size = batch_size;
+                            let batcher = VidBatcher::load(
+                                conn,
+                                &src_layout.site.namespace,
+                                &src,
+                                VidRange::new(current_vid, target_vid),
+                            )?
+                            .with_batch_size(size as usize);
+                            let batch = BatchCopy::new(batcher, src, dst);
 
                             Ok(TableState {
                                 batch,
@@ -493,8 +466,8 @@ impl TableState {
         .set(cts::started_at.eq(sql("now()")))
         .execute(conn)?;
         let values = (
-            cts::next_vid.eq(self.batch.next_vid),
-            cts::batch_size.eq(self.batch.batch_size.size),
+            cts::next_vid.eq(self.batch.next_vid()),
+            cts::batch_size.eq(self.batch.batch_size()),
             cts::duration_ms.eq(self.duration_ms),
         );
         update(
@@ -566,12 +539,12 @@ impl<'a> CopyProgress<'a> {
         let target_vid: i64 = state
             .tables
             .iter()
-            .map(|table| table.batch.target_vid)
+            .map(|table| table.batch.target_vid())
             .sum();
         let current_vid = state
             .tables
             .iter()
-            .map(|table| table.batch.next_vid.min(table.batch.target_vid))
+            .map(|table| table.batch.next_vid())
             .sum();
         Self {
             logger,
@@ -609,18 +582,18 @@ impl<'a> CopyProgress<'a> {
             info!(
                 self.logger,
                 "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
-                Self::progress_pct(batch.next_vid, batch.target_vid),
+                Self::progress_pct(batch.next_vid(), batch.target_vid()),
                 batch.dst.object,
-                batch.next_vid,
-                batch.target_vid,
-                Self::progress_pct(self.current_vid + batch.next_vid, self.target_vid)
+                batch.next_vid(),
+                batch.target_vid(),
+                Self::progress_pct(self.current_vid + batch.next_vid(), self.target_vid)
             );
             self.last_log = Instant::now();
         }
     }
 
     fn table_finished(&mut self, batch: &BatchCopy) {
-        self.current_vid += batch.next_vid;
+        self.current_vid += batch.next_vid();
     }
 
     fn finished(&self) {

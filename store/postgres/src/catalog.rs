@@ -912,3 +912,31 @@ fn has_minmax_multi_ops(conn: &mut PgConnection) -> Result<bool, StoreError> {
 
     Ok(sql_query(QUERY).get_result::<Ops>(conn)?.has_ops)
 }
+
+pub(crate) fn histogram_bounds(
+    conn: &mut PgConnection,
+    namespace: &Namespace,
+    table: &SqlName,
+    column: &str,
+) -> Result<Vec<i64>, StoreError> {
+    const QUERY: &str = "select histogram_bounds::text::int8[] bounds \
+                           from pg_stats \
+                          where schemaname = $1 \
+                            and tablename = $2 \
+                            and attname = $3";
+
+    #[derive(Queryable, QueryableByName)]
+    struct Bounds {
+        #[diesel(sql_type = Array<BigInt>)]
+        bounds: Vec<i64>,
+    }
+
+    sql_query(QUERY)
+        .bind::<Text, _>(namespace.as_str())
+        .bind::<Text, _>(table.as_str())
+        .bind::<Text, _>(column)
+        .get_result::<Bounds>(conn)
+        .optional()
+        .map(|bounds| bounds.map(|b| b.bounds).unwrap_or_default())
+        .map_err(StoreError::from)
+}

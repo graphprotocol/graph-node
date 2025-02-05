@@ -1,14 +1,24 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use diesel::{
     deserialize::FromSql,
     pg::Pg,
     serialize::{Output, ToSql},
-    sql_types::BigInt,
+    sql_query,
+    sql_types::{BigInt, Integer},
+    PgConnection, RunQueryDsl as _,
 };
-use graph::env::ENV_VARS;
+use graph::{
+    env::ENV_VARS,
+    prelude::{BlockPtr, StoreError},
+    util::ogive::Ogive,
+};
 
-use crate::relational::Table;
+use crate::{
+    catalog,
+    primary::Namespace,
+    relational::{Table, VID_COLUMN},
+};
 
 /// The initial batch size for tables that do not have an array column
 const INITIAL_BATCH_SIZE: i64 = 10_000;
@@ -23,6 +33,7 @@ const INITIAL_BATCH_SIZE_LIST: i64 = 100;
 #[derive(Debug, Queryable)]
 pub(crate) struct AdaptiveBatchSize {
     pub size: i64,
+    pub target: Duration,
 }
 
 impl AdaptiveBatchSize {
@@ -33,19 +44,21 @@ impl AdaptiveBatchSize {
             INITIAL_BATCH_SIZE
         };
 
-        Self { size }
+        Self {
+            size,
+            target: ENV_VARS.store.batch_target_duration,
+        }
     }
 
     // adjust batch size by trying to extrapolate in such a way that we
     // get close to TARGET_DURATION for the time it takes to copy one
     // batch, but don't step up batch_size by more than 2x at once
-    pub fn adapt(&mut self, duration: Duration) {
+    pub fn adapt(&mut self, duration: Duration) -> i64 {
         // Avoid division by zero
         let duration = duration.as_millis().max(1);
-        let new_batch_size = self.size as f64
-            * ENV_VARS.store.batch_target_duration.as_millis() as f64
-            / duration as f64;
+        let new_batch_size = self.size as f64 * self.target.as_millis() as f64 / duration as f64;
         self.size = (2 * self.size).min(new_batch_size.round() as i64);
+        self.size
     }
 }
 
@@ -58,6 +71,346 @@ impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
 impl FromSql<BigInt, Pg> for AdaptiveBatchSize {
     fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let size = <i64 as FromSql<BigInt, Pg>>::from_sql(bytes)?;
-        Ok(AdaptiveBatchSize { size })
+        Ok(AdaptiveBatchSize {
+            size,
+            target: ENV_VARS.store.batch_target_duration,
+        })
+    }
+}
+
+/// A timer that works like `std::time::Instant` in non-test code, but
+/// returns a fake elapsed value in tests
+struct Timer {
+    start: Instant,
+    #[cfg(test)]
+    duration: Duration,
+}
+
+impl Timer {
+    fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            #[cfg(test)]
+            duration: Duration::from_secs(0),
+        }
+    }
+
+    fn start(&mut self) {
+        self.start = Instant::now();
+    }
+
+    #[cfg(test)]
+    fn elapsed(&self) -> Duration {
+        self.duration
+    }
+
+    #[cfg(not(test))]
+    fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
+
+    #[cfg(test)]
+    fn set(&mut self, duration: Duration) {
+        self.duration = duration;
+    }
+}
+
+/// A batcher for moving through a large range of `vid` values in a way such
+/// that each batch takes approximatley the same amount of time. The batcher
+/// takes uneven distributions of `vid` values into account by using the
+/// histogram from `pg_stats` for the table through which we are iterating.
+pub(crate) struct VidBatcher {
+    batch_size: AdaptiveBatchSize,
+    start: i64,
+    end: i64,
+    max_vid: i64,
+
+    ogive: Option<Ogive>,
+
+    step_timer: Timer,
+}
+
+impl VidBatcher {
+    fn histogram_bounds(
+        conn: &mut PgConnection,
+        nsp: &Namespace,
+        table: &Table,
+        range: VidRange,
+    ) -> Result<Vec<i64>, StoreError> {
+        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN)?
+            .into_iter()
+            .filter(|bound| range.min < *bound && range.max > *bound)
+            .chain(vec![range.min, range.max].into_iter())
+            .collect::<Vec<_>>();
+        Ok(bounds)
+    }
+
+    /// Initialize a batcher for batching through entries in `table` with
+    /// `vid` in the given `vid_range`
+    ///
+    /// The `vid_range` is inclusive, i.e., the batcher will iterate over
+    /// all vids `vid_range.0 <= vid <= vid_range.1`; for an empty table,
+    /// the `vid_range` must be set to `(-1, 0)`
+    pub fn load(
+        conn: &mut PgConnection,
+        nsp: &Namespace,
+        table: &Table,
+        vid_range: VidRange,
+    ) -> Result<Self, StoreError> {
+        let bounds = Self::histogram_bounds(conn, nsp, table, vid_range)?;
+        let batch_size = AdaptiveBatchSize::new(table);
+        Self::new(bounds, vid_range, batch_size)
+    }
+
+    fn new(
+        bounds: Vec<i64>,
+        range: VidRange,
+        batch_size: AdaptiveBatchSize,
+    ) -> Result<Self, StoreError> {
+        let start = range.min;
+
+        let mut ogive = if range.is_empty() {
+            None
+        } else {
+            Some(Ogive::from_equi_histogram(bounds, range.size())?)
+        };
+        let end = match ogive.as_mut() {
+            None => start + batch_size.size,
+            Some(ogive) => ogive.next_point(start, batch_size.size as usize)?,
+        };
+
+        Ok(Self {
+            batch_size,
+            start,
+            end,
+            max_vid: range.max,
+            ogive,
+            step_timer: Timer::new(),
+        })
+    }
+
+    /// Explicitly set the batch size
+    pub fn with_batch_size(mut self: VidBatcher, size: usize) -> Self {
+        self.batch_size.size = size as i64;
+        self
+    }
+
+    pub(crate) fn next_vid(&self) -> i64 {
+        self.start
+    }
+
+    pub(crate) fn target_vid(&self) -> i64 {
+        self.max_vid
+    }
+
+    pub fn batch_size(&self) -> usize {
+        self.batch_size.size as usize
+    }
+
+    pub fn finished(&self) -> bool {
+        self.start > self.max_vid
+    }
+
+    /// Perform the work for one batch. The function `f` is called with the
+    /// start and end `vid` for this batch and should perform all the work
+    /// for rows with `start <= vid <= end`, i.e. the start and end values
+    /// are inclusive.
+    ///
+    /// Once `f` returns, the batch size will be adjusted so that the time
+    /// the next batch will take is close to the target duration.
+    ///
+    /// The function returns the time it took to process the batch and the
+    /// result of `f`. If the batcher is finished, `f` will not be called,
+    /// and `None` will be returned as its result.
+    pub fn step<F, T>(&mut self, mut f: F) -> Result<(Duration, Option<T>), StoreError>
+    where
+        F: FnMut(i64, i64) -> Result<T, StoreError>,
+    {
+        if self.finished() {
+            return Ok((Duration::from_secs(0), None));
+        }
+
+        match self.ogive.as_mut() {
+            None => Ok((Duration::from_secs(0), None)),
+            Some(ogive) => {
+                self.step_timer.start();
+
+                let res = f(self.start, self.end)?;
+                let duration = self.step_timer.elapsed();
+
+                let batch_size = self.batch_size.adapt(duration);
+                self.start = self.end + 1;
+                self.end = ogive.next_point(self.start, batch_size as usize)?;
+
+                Ok((duration, Some(res)))
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, QueryableByName)]
+pub(crate) struct VidRange {
+    #[diesel(sql_type = BigInt, column_name = "min_vid")]
+    min: i64,
+    #[diesel(sql_type = BigInt, column_name = "max_vid")]
+    max: i64,
+}
+
+const EMPTY_VID_RANGE: VidRange = VidRange { max: -1, min: 0 };
+
+impl VidRange {
+    pub fn new(min_vid: i64, max_vid: i64) -> Self {
+        Self {
+            min: min_vid,
+            max: max_vid,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.max == -1
+    }
+
+    pub fn size(&self) -> usize {
+        (self.max - self.min + 1) as usize
+    }
+
+    pub fn for_copy(
+        conn: &mut PgConnection,
+        src: &Table,
+        target_block: &BlockPtr,
+    ) -> Result<Self, StoreError> {
+        let max_block_clause = if src.immutable {
+            "block$ <= $1"
+        } else {
+            "lower(block_range) <= $1"
+        };
+        let vid_range = sql_query(format!(
+            "select coalesce(min(vid), 0) as min_vid, \
+                    coalesce(max(vid), -1) as max_vid \
+               from {} where {}",
+            src.qualified_name.as_str(),
+            max_block_clause
+        ))
+        .bind::<Integer, _>(&target_block.number)
+        .load::<VidRange>(conn)?
+        .pop()
+        .unwrap_or(EMPTY_VID_RANGE);
+        Ok(vid_range)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const S001: Duration = Duration::from_secs(1);
+    const S010: Duration = Duration::from_secs(10);
+    const S050: Duration = Duration::from_secs(50);
+    const S100: Duration = Duration::from_secs(100);
+    const S200: Duration = Duration::from_secs(200);
+
+    struct Batcher {
+        vid: VidBatcher,
+    }
+
+    impl Batcher {
+        fn new(bounds: Vec<i64>, size: i64) -> Self {
+            let batch_size = AdaptiveBatchSize { size, target: S100 };
+            let vid_range = VidRange::new(bounds[0], *bounds.last().unwrap());
+            Self {
+                vid: VidBatcher::new(bounds, vid_range, batch_size).unwrap(),
+            }
+        }
+
+        #[track_caller]
+        fn at(&self, start: i64, end: i64, size: i64) {
+            assert_eq!(self.vid.start, start, "at start");
+            assert_eq!(self.vid.end, end, "at end");
+            assert_eq!(self.vid.batch_size.size, size, "at size");
+        }
+
+        #[track_caller]
+        fn step(&mut self, start: i64, end: i64, duration: Duration) {
+            self.vid.step_timer.set(duration);
+
+            match self.vid.step(|s, e| Ok((s, e))).unwrap() {
+                (d, Some((s, e))) => {
+                    // Failing here indicates that our clever Timer is misbehaving
+                    assert_eq!(d, duration, "step duration");
+                    assert_eq!(s, start, "step start");
+                    assert_eq!(e, end, "step end");
+                }
+                (_, None) => {
+                    if start > end {
+                        // Expected, the batcher is exhausted
+                        return;
+                    } else {
+                        panic!("step didn't return start and end")
+                    }
+                }
+            }
+        }
+
+        #[track_caller]
+        fn run(&mut self, start: i64, end: i64, size: i64, duration: Duration) {
+            self.at(start, end, size);
+            self.step(start, end, duration);
+        }
+
+        fn finished(&self) -> bool {
+            self.vid.finished()
+        }
+    }
+
+    #[test]
+    fn simple() {
+        let bounds = vec![10, 20, 30, 40, 49];
+        let mut batcher = Batcher::new(bounds, 5);
+
+        batcher.at(10, 15, 5);
+
+        batcher.step(10, 15, S001);
+        batcher.at(16, 26, 10);
+
+        batcher.step(16, 26, S001);
+        batcher.at(27, 46, 20);
+        assert!(!batcher.finished());
+
+        batcher.step(27, 46, S001);
+        batcher.at(47, 49, 40);
+        assert!(!batcher.finished());
+
+        batcher.step(47, 49, S001);
+        assert!(batcher.finished());
+        batcher.at(50, 49, 80);
+    }
+
+    #[test]
+    fn non_uniform() {
+        // A distribution that is flat in the beginning and then steeper and
+        // linear towards the end. The easiest way to see this is to graph
+        // `(bounds[i], i*40)`
+        let bounds = vec![40, 180, 260, 300, 320, 330, 340, 350, 359];
+        let mut batcher = Batcher::new(bounds, 10);
+
+        // The schedule of how we move through the bounds above in batches,
+        // with varying timings for each batch
+        batcher.run(040, 075, 10, S010);
+        batcher.run(076, 145, 20, S010);
+        batcher.run(146, 240, 40, S200);
+        batcher.run(241, 270, 20, S200);
+        batcher.run(271, 281, 10, S200);
+        batcher.run(282, 287, 05, S050);
+        batcher.run(288, 298, 10, S050);
+        batcher.run(299, 309, 20, S050);
+        batcher.run(310, 325, 40, S100);
+        batcher.run(326, 336, 40, S100);
+        batcher.run(337, 347, 40, S100);
+        batcher.run(348, 357, 40, S100);
+        batcher.run(358, 359, 40, S010);
+        assert!(batcher.finished());
+
+        batcher.at(360, 359, 80);
+        batcher.step(360, 359, S010);
     }
 }
