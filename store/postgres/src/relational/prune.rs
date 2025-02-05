@@ -18,10 +18,9 @@ use graph::{
 use itertools::Itertools;
 
 use crate::{
-    catalog,
-    copy::AdaptiveBatchSize,
-    deployment,
+    catalog, deployment,
     relational::{Table, VID_COLUMN},
+    vid_batcher::AdaptiveBatchSize,
 };
 
 use super::{Catalog, Layout, Namespace};

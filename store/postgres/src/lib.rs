@@ -36,6 +36,7 @@ mod store;
 mod store_events;
 mod subgraph_store;
 pub mod transaction_receipt;
+mod vid_batcher;
 mod writable;
 
 pub mod graphman;
