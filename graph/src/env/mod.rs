@@ -257,7 +257,7 @@ impl EnvVars {
         let reorg_threshold =
             inner
                 .reorg_threshold
-                .unwrap_or_else(|| if cfg!(debug_assertions) { 0 } else { 250 });
+                .unwrap_or_else(|| if cfg!(debug_assertions) { 1 } else { 250 });
 
         Ok(Self {
             graphql,
