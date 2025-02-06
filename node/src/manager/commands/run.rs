@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::network_setup::Networks;
 use crate::store_builder::StoreBuilder;
@@ -26,6 +25,7 @@ use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
+use graphman::config::Config;
 
 fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(hash)?;

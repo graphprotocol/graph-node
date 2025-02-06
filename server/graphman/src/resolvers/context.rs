@@ -17,7 +17,6 @@ impl GraphmanContext {
         let primary_pool = ctx.data::<ConnectionPool>()?.to_owned();
         let notification_sender = ctx.data::<Arc<NotificationSender>>()?.to_owned();
         let store = ctx.data::<Arc<Store>>()?.to_owned();
-
         Ok(GraphmanContext {
             primary_pool,
             notification_sender,
