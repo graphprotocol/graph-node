@@ -546,10 +546,12 @@ pub fn revert_block_ptr(
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
+    // Block numbers can't be negative, so make it >= 0
+    let earliest_block = i32::max(ptr.number - ENV_VARS.reorg_threshold, 0);
     let affected_rows = update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
-            .filter(d::earliest_block_number.le(ptr.number - ENV_VARS.reorg_threshold)),
+            .filter(d::earliest_block_number.le(earliest_block)),
     )
     .set((
         d::latest_ethereum_block_number.eq(sql(&number)),
