@@ -10,7 +10,7 @@ use diesel::{
 };
 use graph::{
     env::ENV_VARS,
-    prelude::{BlockPtr, StoreError},
+    prelude::{BlockNumber, BlockPtr, StoreError},
     util::ogive::Ogive,
 };
 
@@ -251,9 +251,9 @@ impl VidBatcher {
 #[derive(Copy, Clone, QueryableByName)]
 pub(crate) struct VidRange {
     #[diesel(sql_type = BigInt, column_name = "min_vid")]
-    min: i64,
+    pub min: i64,
     #[diesel(sql_type = BigInt, column_name = "max_vid")]
-    max: i64,
+    pub max: i64,
 }
 
 const EMPTY_VID_RANGE: VidRange = VidRange { max: -1, min: 0 };
@@ -299,6 +299,31 @@ impl VidRange {
         .pop()
         .unwrap_or(EMPTY_VID_RANGE);
         Ok(vid_range)
+    }
+
+    /// Return the first and last vid of any entity that is visible in the
+    /// block range from `first_block` (inclusive) to `last_block`
+    /// (exclusive)
+    pub fn for_prune(
+        conn: &mut PgConnection,
+        src: &Table,
+        first_block: BlockNumber,
+        last_block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        sql_query(format!(
+            "/* controller=prune,first={first_block},last={last_block} */ \
+                     select coalesce(min(vid), 0) as min_vid, \
+                            coalesce(max(vid), -1) as max_vid from {src} \
+                      where lower(block_range) <= $2 \
+                        and coalesce(upper(block_range), 2147483647) > $1 \
+                        and coalesce(upper(block_range), 2147483647) <= $2 \
+                        and block_range && int4range($1, $2)",
+            src = src.qualified_name,
+        ))
+        .bind::<Integer, _>(first_block)
+        .bind::<Integer, _>(last_block)
+        .get_result::<VidRange>(conn)
+        .map_err(StoreError::from)
     }
 }
 
