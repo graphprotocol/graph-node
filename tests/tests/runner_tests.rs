@@ -1318,6 +1318,7 @@ async fn build_subgraph_with_yarn_cmd_and_arg(
             .args(&args)
             .env("IPFS_URI", "http://127.0.0.1:5001")
             .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
+            .env("ETHEREUM_REORG_THRESHOLD", "0")
             .current_dir(dir),
     );
 
