@@ -271,9 +271,10 @@ impl VidRange {
     }
 
     pub fn size(&self) -> usize {
-        (self.max - self.min + 1) as usize
+        (self.max - self.min) as usize + 1
     }
 
+    /// Return the full range of `vid` values in the table `src`
     pub fn for_copy(
         conn: &mut PgConnection,
         src: &Table,
@@ -285,11 +286,13 @@ impl VidRange {
             "lower(block_range) <= $1"
         };
         let vid_range = sql_query(format!(
-            "select coalesce(min(vid), 0) as min_vid, \
+            "/* controller=copy,target={target_number} */ \
+             select coalesce(min(vid), 0) as min_vid, \
                     coalesce(max(vid), -1) as max_vid \
-               from {} where {}",
-            src.qualified_name.as_str(),
-            max_block_clause
+               from {src_name} where {max_block_clause}",
+            target_number = target_block.number,
+            src_name = src.qualified_name.as_str(),
+            max_block_clause = max_block_clause
         ))
         .bind::<Integer, _>(&target_block.number)
         .load::<VidRange>(conn)?
