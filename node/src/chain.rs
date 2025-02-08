@@ -16,7 +16,7 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
-use graph::components::store::{BlockStore as _, ChainStore};
+use graph::components::store::{BlockStore as _, ChainHeadStore};
 use graph::data::store::NodeId;
 use graph::endpoint::EndpointMetrics;
 use graph::env::{EnvVars, ENV_VARS};
@@ -407,7 +407,7 @@ pub async fn networks_as_chains(
             chain_id: ChainName,
             blockchain_map: &mut BlockchainMap,
             logger_factory: LoggerFactory,
-            chain_store: Arc<dyn ChainStore>,
+            chain_head_store: Arc<dyn ChainHeadStore>,
             metrics_registry: Arc<MetricsRegistry>,
         ) {
             let substreams_endpoints = networks.substreams_endpoints(chain_id.clone());
@@ -421,7 +421,7 @@ pub async fn networks_as_chains(
                     BasicBlockchainBuilder {
                         logger_factory: logger_factory.clone(),
                         name: chain_id.clone(),
-                        chain_store,
+                        chain_head_store,
                         metrics_registry: metrics_registry.clone(),
                         firehose_endpoints: substreams_endpoints,
                     }
@@ -502,7 +502,7 @@ pub async fn networks_as_chains(
                         BasicBlockchainBuilder {
                             logger_factory: logger_factory.clone(),
                             name: chain_id.clone(),
-                            chain_store: chain_store.cheap_clone(),
+                            chain_head_store: chain_store.cheap_clone(),
                             firehose_endpoints,
                             metrics_registry: metrics_registry.clone(),
                         }
@@ -530,7 +530,7 @@ pub async fn networks_as_chains(
                         BasicBlockchainBuilder {
                             logger_factory: logger_factory.clone(),
                             name: chain_id.clone(),
-                            chain_store,
+                            chain_head_store: chain_store,
                             metrics_registry: metrics_registry.clone(),
                             firehose_endpoints: substreams_endpoints,
                         }

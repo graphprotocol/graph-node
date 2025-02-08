@@ -8,7 +8,7 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
-use graph::components::store::{DeploymentCursorTracker, SourceableStore};
+use graph::components::store::{ChainHeadStore, DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
@@ -29,7 +29,7 @@ use graph::{
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
-    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
+    prelude::{async_trait, o, BlockNumber, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 use std::collections::BTreeSet;
@@ -165,7 +165,7 @@ pub struct Chain {
     logger_factory: LoggerFactory,
     name: ChainName,
     client: Arc<ChainClient<Self>>,
-    chain_store: Arc<dyn ChainStore>,
+    chain_head_store: Arc<dyn ChainHeadStore>,
     metrics_registry: Arc<MetricsRegistry>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     prefer_substreams: bool,
@@ -183,7 +183,7 @@ impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
         Chain {
             logger_factory: self.logger_factory,
             name: self.name,
-            chain_store: self.chain_store,
+            chain_head_store: self.chain_head_store,
             client: Arc::new(ChainClient::new_firehose(self.firehose_endpoints)),
             metrics_registry: self.metrics_registry,
             block_stream_builder: Arc::new(NearStreamBuilder {}),
@@ -276,7 +276,7 @@ impl Blockchain for Chain {
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        self.chain_store.cheap_clone().chain_head_ptr().await
+        self.chain_head_store.cheap_clone().chain_head_ptr().await
     }
 
     async fn block_pointer_from_number(
@@ -302,7 +302,7 @@ impl Blockchain for Chain {
 
     async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         let ingestor = FirehoseBlockIngestor::<crate::HeaderOnlyBlock, Self>::new(
-            self.chain_store.cheap_clone(),
+            self.chain_head_store.cheap_clone(),
             self.chain_client(),
             self.logger_factory
                 .component_logger("NearFirehoseBlockIngestor", None),

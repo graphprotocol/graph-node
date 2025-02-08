@@ -15,7 +15,10 @@ use graph::prelude::{serde_json as json, EthereumBlock};
 use graph::prelude::{BlockNumber, QueryStoreManager, QueryTarget};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};
-use graph::{components::store::ChainStore as _, prelude::EthereumCallCache as _};
+use graph::{
+    components::store::ChainHeadStore as _, components::store::ChainStore as _,
+    prelude::EthereumCallCache as _,
+};
 use graph_store_postgres::Store as DieselStore;
 use graph_store_postgres::{layout_for_tests::FAKE_NETWORK_SHARED, ChainStore as DieselChainStore};
 

@@ -585,7 +585,7 @@ impl Blockchain for Chain {
         let ingestor: Box<dyn BlockIngestor> = match self.chain_client().as_ref() {
             ChainClient::Firehose(_) => {
                 let ingestor = FirehoseBlockIngestor::<HeaderOnlyBlock, Self>::new(
-                    self.chain_store.cheap_clone(),
+                    self.chain_store.cheap_clone().as_head_store(),
                     self.chain_client(),
                     self.logger_factory
                         .component_logger("EthereumFirehoseBlockIngestor", None),

@@ -4,6 +4,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
 use graph::derive::CheapClone;
 use graph::env::ENV_VARS;
@@ -1972,6 +1973,100 @@ fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPt
 
     Ok(ptr)
 }
+
+#[async_trait]
+impl ChainHeadStore for ChainStore {
+    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
+        use public::ethereum_networks::dsl::*;
+
+        Ok(self
+            .cheap_clone()
+            .pool
+            .with_conn(move |conn, _| {
+                ethereum_networks
+                    .select((head_block_hash, head_block_number))
+                    .filter(name.eq(&self.chain))
+                    .load::<(Option<String>, Option<i64>)>(conn)
+                    .map(|rows| {
+                        rows.first()
+                            .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+                                (Some(hash), Some(number)) => Some(
+                                    (
+                                        // FIXME:
+                                        //
+                                        // workaround for arweave
+                                        H256::from_slice(&hex::decode(hash).unwrap()[..32]),
+                                        *number,
+                                    )
+                                        .into(),
+                                ),
+                                (None, None) => None,
+                                _ => unreachable!(),
+                            })
+                            .and_then(|opt: Option<BlockPtr>| opt)
+                    })
+                    .map_err(|e| CancelableError::from(StoreError::from(e)))
+            })
+            .await?)
+    }
+
+    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
+        use public::ethereum_networks::dsl::*;
+
+        ethereum_networks
+            .select(head_block_cursor)
+            .filter(name.eq(&self.chain))
+            .load::<Option<String>>(&mut self.get_conn()?)
+            .map(|rows| {
+                rows.first()
+                    .map(|cursor_opt| cursor_opt.as_ref().cloned())
+                    .and_then(|opt| opt)
+            })
+            .map_err(Error::from)
+    }
+
+    async fn set_chain_head(
+        self: Arc<Self>,
+        block: Arc<dyn Block>,
+        cursor: String,
+    ) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let pool = self.pool.clone();
+        let network = self.chain.clone();
+        let storage = self.storage.clone();
+
+        let ptr = block.ptr();
+        let hash = ptr.hash_hex();
+        let number = ptr.number as i64; //block height
+
+        //this will send an update via postgres, channel: chain_head_updates
+        self.chain_head_update_sender.send(&hash, number)?;
+
+        pool.with_conn(move |conn, _| {
+            conn.transaction(|conn| -> Result<(), StoreError> {
+                storage
+                    .upsert_block(conn, &network, block.as_ref(), true)
+                    .map_err(CancelableError::from)?;
+
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set((
+                        n::head_block_hash.eq(&hash),
+                        n::head_block_number.eq(number),
+                        n::head_block_cursor.eq(cursor),
+                    ))
+                    .execute(conn)?;
+
+                Ok(())
+            })
+            .map_err(CancelableError::from)
+        })
+        .await?;
+
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ChainStoreTrait for ChainStore {
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
@@ -2073,96 +2168,6 @@ impl ChainStoreTrait for ChainStore {
         }
 
         Ok(missing)
-    }
-
-    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
-        use public::ethereum_networks::dsl::*;
-
-        Ok(self
-            .cheap_clone()
-            .pool
-            .with_conn(move |conn, _| {
-                ethereum_networks
-                    .select((head_block_hash, head_block_number))
-                    .filter(name.eq(&self.chain))
-                    .load::<(Option<String>, Option<i64>)>(conn)
-                    .map(|rows| {
-                        rows.first()
-                            .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                                (Some(hash), Some(number)) => Some(
-                                    (
-                                        // FIXME:
-                                        //
-                                        // workaround for arweave
-                                        H256::from_slice(&hex::decode(hash).unwrap()[..32]),
-                                        *number,
-                                    )
-                                        .into(),
-                                ),
-                                (None, None) => None,
-                                _ => unreachable!(),
-                            })
-                            .and_then(|opt: Option<BlockPtr>| opt)
-                    })
-                    .map_err(|e| CancelableError::from(StoreError::from(e)))
-            })
-            .await?)
-    }
-
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
-        use public::ethereum_networks::dsl::*;
-
-        ethereum_networks
-            .select(head_block_cursor)
-            .filter(name.eq(&self.chain))
-            .load::<Option<String>>(&mut self.get_conn()?)
-            .map(|rows| {
-                rows.first()
-                    .map(|cursor_opt| cursor_opt.as_ref().cloned())
-                    .and_then(|opt| opt)
-            })
-            .map_err(Error::from)
-    }
-
-    async fn set_chain_head(
-        self: Arc<Self>,
-        block: Arc<dyn Block>,
-        cursor: String,
-    ) -> Result<(), Error> {
-        use public::ethereum_networks as n;
-
-        let pool = self.pool.clone();
-        let network = self.chain.clone();
-        let storage = self.storage.clone();
-
-        let ptr = block.ptr();
-        let hash = ptr.hash_hex();
-        let number = ptr.number as i64; //block height
-
-        //this will send an update via postgres, channel: chain_head_updates
-        self.chain_head_update_sender.send(&hash, number)?;
-
-        pool.with_conn(move |conn, _| {
-            conn.transaction(|conn| -> Result<(), StoreError> {
-                storage
-                    .upsert_block(conn, &network, block.as_ref(), true)
-                    .map_err(CancelableError::from)?;
-
-                update(n::table.filter(n::name.eq(&self.chain)))
-                    .set((
-                        n::head_block_hash.eq(&hash),
-                        n::head_block_number.eq(number),
-                        n::head_block_cursor.eq(cursor),
-                    ))
-                    .execute(conn)?;
-
-                Ok(())
-            })
-            .map_err(CancelableError::from)
-        })
-        .await?;
-
-        Ok(())
     }
 
     async fn block_ptrs_by_numbers(
@@ -2525,6 +2530,10 @@ impl ChainStoreTrait for ChainStore {
             net_version,
             genesis_block_hash,
         })
+    }
+
+    fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore> {
+        self.clone()
     }
 }
 

@@ -7,7 +7,7 @@ use graph::blockchain::{
     NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::components::network_provider::ChainName;
-use graph::components::store::{DeploymentCursorTracker, SourceableStore};
+use graph::components::store::{ChainHeadStore, DeploymentCursorTracker, SourceableStore};
 use graph::env::EnvVars;
 use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
 use graph::schema::EntityKey;
@@ -19,7 +19,7 @@ use graph::{
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{async_trait, BlockNumber, ChainStore},
+    prelude::{async_trait, BlockNumber},
     slog::Logger,
 };
 
@@ -65,7 +65,7 @@ impl blockchain::Block for Block {
 }
 
 pub struct Chain {
-    chain_store: Arc<dyn ChainStore>,
+    chain_head_store: Arc<dyn ChainHeadStore>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     chain_id: ChainName,
 
@@ -79,7 +79,7 @@ impl Chain {
         logger_factory: LoggerFactory,
         chain_client: Arc<ChainClient<Self>>,
         metrics_registry: Arc<MetricsRegistry>,
-        chain_store: Arc<dyn ChainStore>,
+        chain_store: Arc<dyn ChainHeadStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
         chain_id: ChainName,
     ) -> Self {
@@ -87,7 +87,7 @@ impl Chain {
             logger_factory,
             client: chain_client,
             metrics_registry,
-            chain_store,
+            chain_head_store: chain_store,
             block_stream_builder,
             chain_id,
         }
@@ -168,7 +168,7 @@ impl Blockchain for Chain {
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
-        self.chain_store.cheap_clone().chain_head_ptr().await
+        self.chain_head_store.cheap_clone().chain_head_ptr().await
     }
 
     async fn block_pointer_from_number(
@@ -195,7 +195,7 @@ impl Blockchain for Chain {
 
     async fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         Ok(Box::new(SubstreamsBlockIngestor::new(
-            self.chain_store.cheap_clone(),
+            self.chain_head_store.cheap_clone(),
             self.client.cheap_clone(),
             self.logger_factory
                 .component_logger("SubstreamsBlockIngestor", None),
@@ -211,13 +211,13 @@ impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
         let BasicBlockchainBuilder {
             logger_factory,
             name,
-            chain_store,
+            chain_head_store,
             firehose_endpoints,
             metrics_registry,
         } = self;
 
         Chain {
-            chain_store,
+            chain_head_store,
             block_stream_builder: Arc::new(crate::BlockStreamBuilder::new()),
             logger_factory,
             client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
