@@ -10,7 +10,7 @@ use crate::MetricsContext;
 use graph::anyhow::bail;
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
-use graph::components::network_provider::ChainIdentifierStore;
+use graph::components::network_provider::ChainIdentifierValidator;
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::Settings;
 use graph::endpoint::EndpointMetrics;
@@ -98,7 +98,7 @@ pub async fn run(
         Vec::new();
 
     if env_vars.genesis_validation_enabled {
-        let store: Arc<dyn ChainIdentifierStore> = network_store.block_store();
+        let store: Arc<dyn ChainIdentifierValidator> = network_store.block_store();
 
         provider_checks.push(Arc::new(
             graph::components::network_provider::GenesisHashCheck::new(store),

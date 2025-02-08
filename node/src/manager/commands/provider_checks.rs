@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use graph::components::network_provider::ChainIdentifierStore;
+use graph::components::network_provider::ChainIdentifierValidator;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::ExtendedBlocksCheck;
 use graph::components::network_provider::GenesisHashCheck;
@@ -107,7 +107,7 @@ async fn run_checks(
     logger: &Logger,
     chain_name: &ChainName,
     adapter: &dyn NetworkDetails,
-    store: Arc<dyn ChainIdentifierStore>,
+    store: Arc<dyn ChainIdentifierValidator>,
 ) -> Vec<String> {
     let provider_name = adapter.provider_name();
 

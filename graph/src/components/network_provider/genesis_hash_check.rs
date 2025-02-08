@@ -6,8 +6,8 @@ use slog::error;
 use slog::warn;
 use slog::Logger;
 
-use crate::components::network_provider::ChainIdentifierStore;
-use crate::components::network_provider::ChainIdentifierStoreError;
+use crate::components::network_provider::ChainIdentifierValidationError;
+use crate::components::network_provider::ChainIdentifierValidator;
 use crate::components::network_provider::ChainName;
 use crate::components::network_provider::NetworkDetails;
 use crate::components::network_provider::ProviderCheck;
@@ -17,11 +17,11 @@ use crate::components::network_provider::ProviderName;
 /// Requires providers to have the same network version and genesis hash as one
 /// previously stored in the database.
 pub struct GenesisHashCheck {
-    chain_identifier_store: Arc<dyn ChainIdentifierStore>,
+    chain_identifier_store: Arc<dyn ChainIdentifierValidator>,
 }
 
 impl GenesisHashCheck {
-    pub fn new(chain_identifier_store: Arc<dyn ChainIdentifierStore>) -> Self {
+    pub fn new(chain_identifier_store: Arc<dyn ChainIdentifierValidator>) -> Self {
         Self {
             chain_identifier_store,
         }
@@ -62,7 +62,7 @@ impl ProviderCheck for GenesisHashCheck {
             .chain_identifier_store
             .validate_identifier(chain_name, &chain_identifier);
 
-        use ChainIdentifierStoreError::*;
+        use ChainIdentifierValidationError::*;
 
         match check_result {
             Ok(()) => ProviderCheckStatus::Valid,
@@ -154,16 +154,16 @@ mod tests {
 
     #[derive(Default)]
     struct TestChainIdentifierStore {
-        validate_identifier_calls: Mutex<Vec<Result<(), ChainIdentifierStoreError>>>,
-        update_identifier_calls: Mutex<Vec<Result<(), ChainIdentifierStoreError>>>,
+        validate_identifier_calls: Mutex<Vec<Result<(), ChainIdentifierValidationError>>>,
+        update_identifier_calls: Mutex<Vec<Result<(), ChainIdentifierValidationError>>>,
     }
 
     impl TestChainIdentifierStore {
-        fn validate_identifier_call(&self, x: Result<(), ChainIdentifierStoreError>) {
+        fn validate_identifier_call(&self, x: Result<(), ChainIdentifierValidationError>) {
             self.validate_identifier_calls.lock().unwrap().push(x)
         }
 
-        fn update_identifier_call(&self, x: Result<(), ChainIdentifierStoreError>) {
+        fn update_identifier_call(&self, x: Result<(), ChainIdentifierValidationError>) {
             self.update_identifier_calls.lock().unwrap().push(x)
         }
     }
@@ -181,12 +181,12 @@ mod tests {
     }
 
     #[async_trait]
-    impl ChainIdentifierStore for TestChainIdentifierStore {
+    impl ChainIdentifierValidator for TestChainIdentifierStore {
         fn validate_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,
-        ) -> Result<(), ChainIdentifierStoreError> {
+        ) -> Result<(), ChainIdentifierValidationError> {
             self.validate_identifier_calls.lock().unwrap().remove(0)
         }
 
@@ -194,7 +194,7 @@ mod tests {
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,
-        ) -> Result<(), ChainIdentifierStoreError> {
+        ) -> Result<(), ChainIdentifierValidationError> {
             self.update_identifier_calls.lock().unwrap().remove(0)
         }
     }
@@ -288,10 +288,10 @@ mod tests {
     #[tokio::test]
     async fn check_temporary_failure_on_initial_chain_identifier_update_error() {
         let store = Arc::new(TestChainIdentifierStore::default());
-        store.validate_identifier_call(Err(ChainIdentifierStoreError::IdentifierNotSet(
+        store.validate_identifier_call(Err(ChainIdentifierValidationError::IdentifierNotSet(
             "chain-1".into(),
         )));
-        store.update_identifier_call(Err(ChainIdentifierStoreError::Store(anyhow!("error"))));
+        store.update_identifier_call(Err(ChainIdentifierValidationError::Store(anyhow!("error"))));
 
         let check = GenesisHashCheck::new(store);
 
@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn check_valid_on_initial_chain_identifier_update() {
         let store = Arc::new(TestChainIdentifierStore::default());
-        store.validate_identifier_call(Err(ChainIdentifierStoreError::IdentifierNotSet(
+        store.validate_identifier_call(Err(ChainIdentifierValidationError::IdentifierNotSet(
             "chain-1".into(),
         )));
         store.update_identifier_call(Ok(()));
@@ -351,7 +351,7 @@ mod tests {
     #[tokio::test]
     async fn check_valid_when_stored_identifier_network_version_is_zero() {
         let store = Arc::new(TestChainIdentifierStore::default());
-        store.validate_identifier_call(Err(ChainIdentifierStoreError::NetVersionMismatch {
+        store.validate_identifier_call(Err(ChainIdentifierValidationError::NetVersionMismatch {
             chain_name: "chain-1".into(),
             store_net_version: "0".to_owned(),
             chain_net_version: "1".to_owned(),
@@ -382,7 +382,7 @@ mod tests {
     #[tokio::test]
     async fn check_fails_on_identifier_network_version_mismatch() {
         let store = Arc::new(TestChainIdentifierStore::default());
-        store.validate_identifier_call(Err(ChainIdentifierStoreError::NetVersionMismatch {
+        store.validate_identifier_call(Err(ChainIdentifierValidationError::NetVersionMismatch {
             chain_name: "chain-1".into(),
             store_net_version: "2".to_owned(),
             chain_net_version: "1".to_owned(),
@@ -413,11 +413,13 @@ mod tests {
     #[tokio::test]
     async fn check_fails_on_identifier_genesis_hash_mismatch() {
         let store = Arc::new(TestChainIdentifierStore::default());
-        store.validate_identifier_call(Err(ChainIdentifierStoreError::GenesisBlockHashMismatch {
-            chain_name: "chain-1".into(),
-            store_genesis_block_hash: vec![2].into(),
-            chain_genesis_block_hash: vec![1].into(),
-        }));
+        store.validate_identifier_call(Err(
+            ChainIdentifierValidationError::GenesisBlockHashMismatch {
+                chain_name: "chain-1".into(),
+                store_genesis_block_hash: vec![2].into(),
+                chain_genesis_block_hash: vec![1].into(),
+            },
+        ));
 
         let check = GenesisHashCheck::new(store);
 
@@ -444,7 +446,8 @@ mod tests {
     #[tokio::test]
     async fn check_temporary_failure_on_store_errors() {
         let store = Arc::new(TestChainIdentifierStore::default());
-        store.validate_identifier_call(Err(ChainIdentifierStoreError::Store(anyhow!("error"))));
+        store
+            .validate_identifier_call(Err(ChainIdentifierValidationError::Store(anyhow!("error"))));
 
         let check = GenesisHashCheck::new(store);
 
