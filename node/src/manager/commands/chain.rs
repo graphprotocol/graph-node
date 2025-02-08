@@ -15,7 +15,10 @@ use graph::prelude::ChainStore as _;
 use graph::prelude::LightEthereumBlockExt;
 use graph::prelude::{anyhow, anyhow::bail};
 use graph::slog::Logger;
-use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
+use graph::{
+    components::store::BlockStore as _, components::store::ChainHeadStore as _,
+    prelude::anyhow::Error,
+};
 use graph_chain_ethereum::chain::BlockFinality;
 use graph_chain_ethereum::EthereumAdapter;
 use graph_chain_ethereum::EthereumAdapterTrait as _;

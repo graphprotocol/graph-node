@@ -2,8 +2,11 @@ use tonic::async_trait;
 
 use super::Blockchain;
 use crate::{
-    components::store::ChainStore, data::value::Word, env::EnvVars, firehose::FirehoseEndpoints,
-    prelude::LoggerFactory, prelude::MetricsRegistry,
+    components::store::ChainHeadStore,
+    data::value::Word,
+    env::EnvVars,
+    firehose::FirehoseEndpoints,
+    prelude::{LoggerFactory, MetricsRegistry},
 };
 use std::sync::Arc;
 
@@ -12,7 +15,7 @@ use std::sync::Arc;
 pub struct BasicBlockchainBuilder {
     pub logger_factory: LoggerFactory,
     pub name: Word,
-    pub chain_store: Arc<dyn ChainStore>,
+    pub chain_head_store: Arc<dyn ChainHeadStore>,
     pub firehose_endpoints: FirehoseEndpoints,
     pub metrics_registry: Arc<MetricsRegistry>,
 }
