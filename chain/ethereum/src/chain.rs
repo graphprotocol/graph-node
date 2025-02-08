@@ -25,7 +25,6 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        polling_block_stream::PollingBlockStream,
         Block, BlockPtr, Blockchain, ChainHeadUpdateListener, IngestorError,
         RuntimeAdapter as RuntimeAdapterTrait, TriggerFilter as _,
     },
@@ -49,6 +48,7 @@ use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
 use crate::network::EthereumNetworkAdapters;
+use crate::polling_block_stream::PollingBlockStream;
 use crate::runtime::runtime_adapter::eth_call_gas;
 use crate::{
     adapter::EthereumAdapter as _,

@@ -1,5 +1,5 @@
-use anyhow::Error;
-use futures03::{stream::Stream, Future, FutureExt};
+use anyhow::{anyhow, Error};
+use graph::tokio;
 use std::cmp;
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -7,15 +7,17 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use super::block_stream::{
+use graph::blockchain::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
     FirehoseCursor, TriggersAdapterWrapper, BUFFERED_BLOCK_STREAM_SIZE,
 };
-use super::{Block, BlockPtr, Blockchain, TriggerFilterWrapper};
+use graph::blockchain::{Block, BlockPtr, Blockchain, TriggerFilterWrapper};
+use graph::futures03::{stream::Stream, Future, FutureExt};
+use graph::prelude::{ChainStore, CheapClone, DeploymentHash, NodeId, BLOCK_NUMBER_MAX};
+use graph::slog::{debug, info, trace, warn, Logger};
 
-use crate::components::store::BlockNumber;
-use crate::data::subgraph::UnifiedMappingApiVersion;
-use crate::prelude::*;
+use graph::components::store::BlockNumber;
+use graph::data::subgraph::UnifiedMappingApiVersion;
 
 // A high number here forces a slow start.
 const STARTING_PREVIOUS_TRIGGERS_PER_BLOCK: f64 = 1_000_000.0;
