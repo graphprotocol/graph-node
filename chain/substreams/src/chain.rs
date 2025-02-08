@@ -167,8 +167,8 @@ impl Blockchain for Chain {
         unimplemented!("This chain does not support Dynamic Data Sources. is_refetch_block_required always returns false, this shouldn't be called.")
     }
 
-    fn chain_store(&self) -> Arc<dyn ChainStore> {
-        self.chain_store.clone()
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        self.chain_store.cheap_clone().chain_head_ptr().await
     }
 
     async fn block_pointer_from_number(

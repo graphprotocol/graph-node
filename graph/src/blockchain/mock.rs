@@ -438,7 +438,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn chain_store(&self) -> std::sync::Arc<dyn crate::components::store::ChainStore> {
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         todo!()
     }
 

@@ -13,7 +13,7 @@ use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
     retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
-    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
+    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry, StoreError,
 };
 use graph::schema::InputSchema;
 use graph::slog::{debug, error, trace, warn};
@@ -175,7 +175,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             .logger_factory
             .subgraph_logger(&deployment)
             .new(o!("component" => "BlockStream"));
-        let chain_store = chain.chain_store();
+        let chain_store = chain.chain_store.cheap_clone();
         let chain_head_update_stream = chain
             .chain_head_update_listener
             .subscribe(chain.name.to_string(), logger.clone());
@@ -403,6 +403,13 @@ impl Chain {
         self.call_cache.clone()
     }
 
+    pub async fn block_number(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+        self.chain_store.block_number(hash).await
+    }
+
     // TODO: This is only used to build the block stream which could prolly
     // be moved to the chain itself and return a block stream future that the
     // caller can spawn.
@@ -507,8 +514,8 @@ impl Blockchain for Chain {
         }
     }
 
-    fn chain_store(&self) -> Arc<dyn ChainStore> {
-        self.chain_store.clone()
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        self.chain_store.cheap_clone().chain_head_ptr().await
     }
 
     async fn block_pointer_from_number(
@@ -615,7 +622,7 @@ impl Blockchain for Chain {
                     logger,
                     graph::env::ENV_VARS.reorg_threshold(),
                     self.chain_client(),
-                    self.chain_store().cheap_clone(),
+                    self.chain_store.cheap_clone(),
                     self.polling_ingestor_interval,
                     self.name.clone(),
                 )?)
