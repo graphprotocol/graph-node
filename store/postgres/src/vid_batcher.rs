@@ -1,9 +1,6 @@
 use std::time::{Duration, Instant};
 
 use diesel::{
-    deserialize::FromSql,
-    pg::Pg,
-    serialize::{Output, ToSql},
     sql_query,
     sql_types::{BigInt, Integer},
     PgConnection, RunQueryDsl as _,
@@ -59,22 +56,6 @@ impl AdaptiveBatchSize {
         let new_batch_size = self.size as f64 * self.target.as_millis() as f64 / duration as f64;
         self.size = (2 * self.size).min(new_batch_size.round() as i64);
         self.size
-    }
-}
-
-impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
-        <i64 as ToSql<BigInt, Pg>>::to_sql(&self.size, out)
-    }
-}
-
-impl FromSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
-        let size = <i64 as FromSql<BigInt, Pg>>::from_sql(bytes)?;
-        Ok(AdaptiveBatchSize {
-            size,
-            target: ENV_VARS.store.batch_target_duration,
-        })
     }
 }
 
