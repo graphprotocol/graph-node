@@ -1141,7 +1141,7 @@ where
         if cached_head_ptr.is_none()
             || close_to_chain_head(&block_ptr, &cached_head_ptr, CAUGHT_UP_DISTANCE)
         {
-            self.state.cached_head_ptr = self.inputs.chain.chain_store().chain_head_ptr().await?;
+            self.state.cached_head_ptr = self.inputs.chain.chain_head_ptr().await?;
         }
         let is_caught_up =
             close_to_chain_head(&block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
@@ -1463,7 +1463,7 @@ where
             && !self.inputs.store.is_deployment_synced()
             && !close_to_chain_head(
                 &block_ptr,
-                &self.inputs.chain.chain_store().chain_head_ptr().await?,
+                &self.inputs.chain.chain_head_ptr().await?,
                 // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
                 // behind the chain head.
                 1000,

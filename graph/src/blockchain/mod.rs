@@ -31,7 +31,7 @@ use crate::{
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
-    components::store::{BlockNumber, ChainStore},
+    components::store::BlockNumber,
     prelude::{thiserror::Error, LinkResolver},
 };
 use anyhow::{anyhow, Context, Error};
@@ -196,7 +196,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
 
-    fn chain_store(&self) -> Arc<dyn ChainStore>;
+    /// Return the pointer for the latest block that we are aware of
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
 
     async fn block_pointer_from_number(
         &self,

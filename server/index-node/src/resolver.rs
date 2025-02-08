@@ -279,10 +279,9 @@ impl<S: Store> IndexNodeResolver<S> {
             );
             return Ok(r::Value::Null);
         };
-        let chain_store = chain.chain_store();
         let call_cache = chain.call_cache();
 
-        let (block_number, timestamp) = match chain_store.block_number(&block_hash).await {
+        let (block_number, timestamp) = match chain.block_number(&block_hash).await {
             Ok(Some((_, n, timestamp, _))) => (n, timestamp),
             Ok(None) => {
                 error!(
