@@ -7,7 +7,7 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
 use graph::blockchain::ChainIdentifier;
 use graph::cheap_clone::CheapClone;
-use graph::components::network_provider::ChainIdentifierStore;
+use graph::components::network_provider::ChainIdentifierValidator;
 use graph::components::network_provider::ChainName;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;

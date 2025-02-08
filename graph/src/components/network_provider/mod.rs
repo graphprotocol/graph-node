@@ -1,12 +1,12 @@
-mod chain_identifier_store;
+mod chain_identifier_validator;
 mod extended_blocks_check;
 mod genesis_hash_check;
 mod network_details;
 mod provider_check;
 mod provider_manager;
 
-pub use self::chain_identifier_store::ChainIdentifierStore;
-pub use self::chain_identifier_store::ChainIdentifierStoreError;
+pub use self::chain_identifier_validator::ChainIdentifierValidationError;
+pub use self::chain_identifier_validator::ChainIdentifierValidator;
 pub use self::extended_blocks_check::ExtendedBlocksCheck;
 pub use self::genesis_hash_check::GenesisHashCheck;
 pub use self::network_details::NetworkDetails;
