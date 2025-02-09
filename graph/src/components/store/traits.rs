@@ -447,11 +447,6 @@ pub trait QueryStoreManager: Send + Sync + 'static {
 pub trait BlockStore: ChainIdStore + Send + Sync + 'static {
     type ChainStore: ChainStore;
 
-    fn create_chain_store(
-        &self,
-        network: &str,
-        ident: ChainIdentifier,
-    ) -> anyhow::Result<Arc<Self::ChainStore>>;
     fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
 }
 

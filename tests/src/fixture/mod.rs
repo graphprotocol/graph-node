@@ -20,7 +20,7 @@ use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
-use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache, SourceableStore};
+use graph::components::store::{DeploymentLocator, EthereumCallCache, SourceableStore};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
