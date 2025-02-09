@@ -1,11 +1,11 @@
-use anyhow::anyhow;
+use std::sync::Arc;
+
 use thiserror::Error;
 
 use crate::blockchain::BlockHash;
 use crate::blockchain::ChainIdentifier;
 use crate::components::network_provider::ChainName;
-use crate::components::store::BlockStore;
-use crate::components::store::ChainStore;
+use crate::components::store::ChainIdStore;
 
 /// Additional requirements for stores that are necessary for provider checks.
 pub trait ChainIdentifierValidator: Send + Sync + 'static {
@@ -51,24 +51,29 @@ pub enum ChainIdentifierValidationError {
     Store(#[source] anyhow::Error),
 }
 
-impl<C, B> ChainIdentifierValidator for B
-where
-    C: ChainStore,
-    B: BlockStore<ChainStore = C>,
-{
+pub fn chain_id_validator(store: Arc<dyn ChainIdStore>) -> Arc<dyn ChainIdentifierValidator> {
+    Arc::new(ChainIdentifierStore::new(store))
+}
+
+pub(crate) struct ChainIdentifierStore {
+    store: Arc<dyn ChainIdStore>,
+}
+
+impl ChainIdentifierStore {
+    pub fn new(store: Arc<dyn ChainIdStore>) -> Self {
+        Self { store }
+    }
+}
+
+impl ChainIdentifierValidator for ChainIdentifierStore {
     fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
     ) -> Result<(), ChainIdentifierValidationError> {
-        let chain_store = self.chain_store(&chain_name).ok_or_else(|| {
-            ChainIdentifierValidationError::Store(anyhow!(
-                "unable to get store for chain '{chain_name}'"
-            ))
-        })?;
-
-        let store_identifier = chain_store
-            .chain_identifier()
+        let store_identifier = self
+            .store
+            .chain_identifier(chain_name)
             .map_err(|err| ChainIdentifierValidationError::Store(err))?;
 
         if store_identifier.is_default() {
@@ -108,14 +113,8 @@ where
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
     ) -> Result<(), ChainIdentifierValidationError> {
-        let chain_store = self.chain_store(&chain_name).ok_or_else(|| {
-            ChainIdentifierValidationError::Store(anyhow!(
-                "unable to get store for chain '{chain_name}'"
-            ))
-        })?;
-
-        chain_store
-            .set_chain_identifier(chain_identifier)
+        self.store
+            .set_chain_identifier(chain_name, chain_identifier)
             .map_err(|err| ChainIdentifierValidationError::Store(err))
     }
 }

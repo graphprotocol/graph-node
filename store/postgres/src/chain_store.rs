@@ -1850,6 +1850,26 @@ impl ChainStore {
         )
     }
 
+    pub(crate) fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let mut conn = self.pool.get()?;
+
+        diesel::update(n::table.filter(n::name.eq(&self.chain)))
+            .set((
+                n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                n::net_version.eq(&ident.net_version),
+            ))
+            .execute(&mut conn)?;
+
+        Ok(())
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn set_chain_identifier_for_tests(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+        self.set_chain_identifier(ident)
+    }
+
     /// Store the given chain as the blocks for the `network` set the
     /// network's genesis block to `genesis_hash`, and head block to
     /// `null`
@@ -2501,21 +2521,6 @@ impl ChainStoreTrait for ChainStore {
                 .map_err(|e| StoreError::from(e).into())
         })
         .await
-    }
-
-    fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error> {
-        use public::ethereum_networks as n;
-
-        let mut conn = self.pool.get()?;
-
-        diesel::update(n::table.filter(n::name.eq(&self.chain)))
-            .set((
-                n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
-                n::net_version.eq(&ident.net_version),
-            ))
-            .execute(&mut conn)?;
-
-        Ok(())
     }
 
     fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {

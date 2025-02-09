@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use graph::components::network_provider::chain_id_validator;
 use graph::components::network_provider::ChainIdentifierValidator;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::ExtendedBlocksCheck;
@@ -36,9 +37,10 @@ pub async fn execute(
             .providers_unchecked(chain_name)
             .unique_by(|x| x.provider_name())
         {
+            let validator = chain_id_validator(store.clone());
             match tokio::time::timeout(
                 timeout,
-                run_checks(logger, chain_name, adapter, store.clone()),
+                run_checks(logger, chain_name, adapter, validator.clone()),
             )
             .await
             {
@@ -56,11 +58,9 @@ pub async fn execute(
             .providers_unchecked(chain_name)
             .unique_by(|x| x.provider_name())
         {
-            match tokio::time::timeout(
-                timeout,
-                run_checks(logger, chain_name, adapter, store.clone()),
-            )
-            .await
+            let validator = chain_id_validator(store.clone());
+            match tokio::time::timeout(timeout, run_checks(logger, chain_name, adapter, validator))
+                .await
             {
                 Ok(result) => {
                     errors.extend(result);
@@ -76,9 +76,10 @@ pub async fn execute(
             .providers_unchecked(chain_name)
             .unique_by(|x| x.provider_name())
         {
+            let validator = chain_id_validator(store.clone());
             match tokio::time::timeout(
                 timeout,
-                run_checks(logger, chain_name, adapter, store.clone()),
+                run_checks(logger, chain_name, adapter, validator.clone()),
             )
             .await
             {

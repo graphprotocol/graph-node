@@ -636,7 +636,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
             );
             match store.block_store().chain_store(NETWORK_NAME) {
                 Some(cs) => {
-                    cs.set_chain_identifier(&ChainIdentifier {
+                    cs.set_chain_identifier_for_tests(&ChainIdentifier {
                         net_version: NETWORK_VERSION.to_string(),
                         genesis_block_hash: GENESIS_PTR.hash.clone(),
                     })

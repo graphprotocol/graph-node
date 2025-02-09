@@ -290,7 +290,7 @@ async fn main_inner() {
         let mut provider_checks: Vec<Arc<dyn network_provider::ProviderCheck>> = Vec::new();
 
         if env_vars.genesis_validation_enabled {
-            provider_checks.push(Arc::new(network_provider::GenesisHashCheck::new(
+            provider_checks.push(Arc::new(network_provider::GenesisHashCheck::from_id_store(
                 block_store.clone(),
             )));
         }

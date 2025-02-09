@@ -9,6 +9,7 @@ use super::*;
 use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
+use crate::components::network_provider::ChainName;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
@@ -443,7 +444,7 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }
 
-pub trait BlockStore: Send + Sync + 'static {
+pub trait BlockStore: ChainIdStore + Send + Sync + 'static {
     type ChainStore: ChainStore;
 
     fn create_chain_store(
@@ -478,6 +479,19 @@ pub trait ChainHeadStore: Send + Sync {
         self: Arc<Self>,
         block: Arc<dyn Block>,
         cursor: String,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+pub trait ChainIdStore: Send + Sync + 'static {
+    /// Return the chain identifier for this store.
+    fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
+
+    /// Update the chain identifier for this store.
+    fn set_chain_identifier(
+        &self,
+        chain_name: &ChainName,
+        ident: &ChainIdentifier,
     ) -> Result<(), Error>;
 }
 
@@ -589,9 +603,6 @@ pub trait ChainStore: ChainHeadStore {
 
     /// Return the chain identifier for this store.
     fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
-
-    /// Update the chain identifier for this store.
-    fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error>;
 
     /// Workaround for Rust issue #65991 that keeps us from using an
     /// `Arc<dyn ChainStore>` as an `Arc<dyn ChainHeadStore>`
