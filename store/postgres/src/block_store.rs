@@ -570,20 +570,11 @@ impl BlockStore {
 
         Ok(())
     }
-}
-
-impl BlockStoreTrait for BlockStore {
-    type ChainStore = ChainStore;
-
-    fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>> {
-        self.store(network)
-    }
-
-    fn create_chain_store(
+    pub fn create_chain_store(
         &self,
         network: &str,
         ident: ChainIdentifier,
-    ) -> anyhow::Result<Arc<Self::ChainStore>> {
+    ) -> anyhow::Result<Arc<ChainStore>> {
         match self.store(network) {
             Some(chain_store) => {
                 return Ok(chain_store);
@@ -606,6 +597,14 @@ impl BlockStoreTrait for BlockStore {
         let chain = primary::add_chain(&mut conn, &network, &shard, ident)?;
         self.add_chain_store(&chain, ChainStatus::Ingestible, true)
             .map_err(anyhow::Error::from)
+    }
+}
+
+impl BlockStoreTrait for BlockStore {
+    type ChainStore = ChainStore;
+
+    fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>> {
+        self.store(network)
     }
 }
 
