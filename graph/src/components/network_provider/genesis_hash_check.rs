@@ -6,6 +6,7 @@ use slog::error;
 use slog::warn;
 use slog::Logger;
 
+use crate::components::network_provider::chain_id_validator;
 use crate::components::network_provider::ChainIdentifierValidationError;
 use crate::components::network_provider::ChainIdentifierValidator;
 use crate::components::network_provider::ChainName;
@@ -13,6 +14,7 @@ use crate::components::network_provider::NetworkDetails;
 use crate::components::network_provider::ProviderCheck;
 use crate::components::network_provider::ProviderCheckStatus;
 use crate::components::network_provider::ProviderName;
+use crate::components::store::ChainIdStore;
 
 /// Requires providers to have the same network version and genesis hash as one
 /// previously stored in the database.
@@ -24,6 +26,12 @@ impl GenesisHashCheck {
     pub fn new(chain_identifier_store: Arc<dyn ChainIdentifierValidator>) -> Self {
         Self {
             chain_identifier_store,
+        }
+    }
+
+    pub fn from_id_store(id_store: Arc<dyn ChainIdStore>) -> Self {
+        Self {
+            chain_identifier_store: chain_id_validator(id_store),
         }
     }
 }

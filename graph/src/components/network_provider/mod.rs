@@ -5,6 +5,7 @@ mod network_details;
 mod provider_check;
 mod provider_manager;
 
+pub use self::chain_identifier_validator::chain_id_validator;
 pub use self::chain_identifier_validator::ChainIdentifierValidationError;
 pub use self::chain_identifier_validator::ChainIdentifierValidator;
 pub use self::extended_blocks_check::ExtendedBlocksCheck;

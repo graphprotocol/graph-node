@@ -7,8 +7,8 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
 use graph::blockchain::ChainIdentifier;
 use graph::cheap_clone::CheapClone;
-use graph::components::network_provider::ChainIdentifierValidator;
 use graph::components::network_provider::ChainName;
+use graph::components::store::ChainIdStore;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
@@ -164,7 +164,7 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
 pub async fn update_chain_genesis(
     networks: &Networks,
     coord: Arc<PoolCoordinator>,
-    store: Arc<BlockStore>,
+    store: Arc<dyn ChainIdStore>,
     logger: &Logger,
     chain_id: ChainName,
     genesis_hash: BlockHash,
@@ -188,17 +188,13 @@ pub async fn update_chain_genesis(
     // Update the local shard's genesis, whether or not it is the primary.
     // The chains table is replicated from the primary and keeps another genesis hash.
     // To keep those in sync we need to update the primary and then refresh the shard tables.
-    store.update_identifier(
+    store.set_chain_identifier(
         &chain_id,
         &ChainIdentifier {
             net_version: ident.net_version.clone(),
             genesis_block_hash: genesis_hash,
         },
     )?;
-
-    // Update the primary public.chains
-    println!("Updating primary public.chains");
-    store.set_chain_identifier(chain_id, &ident)?;
 
     // Refresh the new values
     println!("Refresh mappings");

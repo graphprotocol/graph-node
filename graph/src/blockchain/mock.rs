@@ -2,8 +2,9 @@ use crate::{
     bail,
     components::{
         link_resolver::LinkResolver,
+        network_provider::ChainName,
         store::{
-            BlockNumber, ChainHeadStore, DeploymentCursorTracker, DeploymentLocator,
+            BlockNumber, ChainHeadStore, ChainIdStore, DeploymentCursorTracker, DeploymentLocator,
             SourceableStore,
         },
         subgraph::InstanceDSTemplateInfo,
@@ -569,10 +570,20 @@ impl ChainStore for MockChainStore {
     fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
-    fn set_chain_identifier(&self, _ident: &ChainIdentifier) -> Result<(), Error> {
-        unimplemented!()
-    }
     fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore> {
         self.clone()
+    }
+}
+
+impl ChainIdStore for MockChainStore {
+    fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
+        unimplemented!()
+    }
+    fn set_chain_identifier(
+        &self,
+        _name: &ChainName,
+        _ident: &ChainIdentifier,
+    ) -> Result<(), Error> {
+        unimplemented!()
     }
 }

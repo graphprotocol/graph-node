@@ -10,12 +10,15 @@ use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     sql_query, ExpressionMethods as _, PgConnection, RunQueryDsl,
 };
-use graph::components::network_provider::ChainName;
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
     prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
     slog::o,
+};
+use graph::{
+    components::{network_provider::ChainName, store::ChainIdStore},
+    prelude::ChainStore as _,
 };
 use graph::{internal_error, prelude::CheapClone};
 use graph::{prelude::StoreError, util::timed_cache::TimedCache};
@@ -603,5 +606,43 @@ impl BlockStoreTrait for BlockStore {
         let chain = primary::add_chain(&mut conn, &network, &shard, ident)?;
         self.add_chain_store(&chain, ChainStatus::Ingestible, true)
             .map_err(anyhow::Error::from)
+    }
+}
+
+impl ChainIdStore for BlockStore {
+    fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, anyhow::Error> {
+        let chain_store = self
+            .chain_store(&chain_name)
+            .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
+
+        chain_store.chain_identifier()
+    }
+
+    fn set_chain_identifier(
+        &self,
+        chain_name: &ChainName,
+        ident: &ChainIdentifier,
+    ) -> Result<(), anyhow::Error> {
+        use primary::chains as c;
+
+        // Update the block shard first since that contains a copy from the primary
+        let chain_store = self
+            .chain_store(&chain_name)
+            .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
+
+        chain_store.set_chain_identifier(ident)?;
+
+        // Update the master copy in the primary
+        let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
+        let mut conn = primary_pool.get()?;
+
+        diesel::update(c::table.filter(c::name.eq(chain_name.as_str())))
+            .set((
+                c::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                c::net_version.eq(&ident.net_version),
+            ))
+            .execute(&mut conn)?;
+
+        Ok(())
     }
 }
