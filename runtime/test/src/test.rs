@@ -1698,3 +1698,71 @@ async fn test_store_ts() {
         "Cannot get entity of type `Stats`. The type must be an @entity type",
     );
 }
+
+async fn test_yaml_parsing(api_version: Version, gas_used: u64) {
+    let mut module = test_module(
+        "yamlParsing",
+        mock_data_source(
+            &wasm_file_path("yaml_parsing.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
+        api_version,
+    )
+    .await;
+
+    let mut test = |input: &str, expected: &str| {
+        let ptr: AscPtr<AscString> = module.invoke_export1("handleYaml", input.as_bytes());
+        let resp: String = module.asc_get(ptr).unwrap();
+        assert_eq!(resp, expected, "failed on input: {input}");
+    };
+
+    // Test invalid YAML;
+    test("{a: 1, - b: 2}", "error");
+
+    // Test size limit;
+    test(&"x".repeat(10_000_0001), "error");
+
+    // Test nulls;
+    test("null", "(0) null");
+
+    // Test booleans;
+    test("false", "(1) false");
+    test("true", "(1) true");
+
+    // Test numbers;
+    test("12345", "(2) 12345");
+    test("12345.6789", "(2) 12345.6789");
+
+    // Test strings;
+    test("aa bb cc", "(3) aa bb cc");
+    test("\"aa bb cc\"", "(3) aa bb cc");
+
+    // Test arrays;
+    test("[1, 2, 3, 4]", "(4) [(2) 1, (2) 2, (2) 3, (2) 4]");
+    test("- 1\n- 2\n- 3\n- 4", "(4) [(2) 1, (2) 2, (2) 3, (2) 4]");
+
+    // Test objects;
+    test("{a: 1, b: 2, c: 3}", "(5) {a: (2) 1, b: (2) 2, c: (2) 3}");
+    test("a: 1\nb: 2\nc: 3", "(5) {a: (2) 1, b: (2) 2, c: (2) 3}");
+
+    // Test tagged values;
+    test("!AA bb cc", "(6) !AA (3) bb cc");
+
+    // Test nesting;
+    test(
+        "aa:\n  bb:\n    - cc: !DD ee",
+        "(5) {aa: (5) {bb: (4) [(5) {cc: (6) !DD (3) ee}]}}",
+    );
+
+    assert_eq!(module.gas_used(), gas_used, "gas used");
+}
+
+#[tokio::test]
+async fn yaml_parsing_v0_0_4() {
+    test_yaml_parsing(API_VERSION_0_0_4, 10462217077171).await;
+}
+
+#[tokio::test]
+async fn yaml_parsing_v0_0_5() {
+    test_yaml_parsing(API_VERSION_0_0_5, 10462245390665).await;
+}
