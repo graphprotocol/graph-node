@@ -1,7 +1,7 @@
 # Getting Started
 > **Note:**  This project is heavily a WIP, and until it reaches v1.0, the API is subject to change in breaking ways without notice.
 
-## 0 Introduction
+## 0. Introduction
 
 This page explains everything you need to know to run a local Graph Node, including links to other reference pages. First, we describe what The Graph is and then explain how to get started.
 
@@ -70,7 +70,7 @@ Below, we outline the required steps to build a subgraph from scratch, which wil
 
 Now, let's dig in!
 
-## 1 Define the Subgraph
+## 1. Define the Subgraph
 When we refer to a subgraph, we reference the entire project that is indexing a chosen set of data.
 
 To start, create a repository for this project.
@@ -290,7 +290,7 @@ Note, we are using an ERC721 class generated from the ABI, which we call bind on
 
 The class is imported from the ABI's TypeScript file generated via `yarn codegen`.
 
-## 2 Deploy the Subgraph
+## 2. Deploy the Subgraph
 
 ### 2.1 Start Up an IPFS Node
 To deploy the subgraph to the Graph Node, the subgraph will first need to be built and stored on IPFS, along with all linked files.
@@ -414,7 +414,7 @@ The `watch` flag allows the subgraph to continually restart every time you save 
 
 Depending on how many events have been emitted by your smart contracts, it could take less than a minute to get fully caught up. If it is a large contract, it could take hours. For example, ENS takes about 12 to 14 hours to register every single ENS domain.
 
-## 3 Query the Local Graph Node
+## 3. Query the Local Graph Node
 With the subgraph deployed to the locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [GraphiQL](https://github.com/graphql/graphiql) interface where you can explore the deployed GraphQL API for the subgraph by issuing queries and viewing the schema.
 
 We provide a few simple examples below, but please see the [Query API](https://github.com/graphprotocol/docs/blob/main/pages/en/querying/graphql-api.mdx#queries) for a complete reference on how to query the subgraph's entities.
@@ -452,11 +452,11 @@ You can also sort, filter, or paginate query results. The query below would orga
 
 GraphQL provides a ton of functionality. Once again, check out the [Query API](graphql-api.md#1-queries) to find out how to use all supported query features.
 
-## 4 Changing the Schema, Mappings, and Manifest, and Launching a New Subgraph
+## 4. Changing the Schema, Mappings, and Manifest, and Launching a New Subgraph
 
 When you first start building the subgraph, it is likely that you will make a few changes to the manifest, mappings, or schema. If you update any of them, rerun `yarn codegen` and `yarn deploy`. This will post the new files on IPFS and deploy the new subgraph. Note that the Graph Node can track multiple subgraphs, so you can do this as many times as you like.
 
-## 5 Common Patterns for Building Subgraphs
+## 5. Common Patterns for Building Subgraphs
 
 ### 5.1 Removing Elements of an Array in a Subgraph
 
@@ -466,7 +466,7 @@ Using the AssemblyScript built-in functions for arrays is the way to go. Find th
 
 If you have launched multiple versions of your smart contracts onto Ethereum, it is very easy to source data from all of them. This simply requires you to add all versions of the contracts to the `subgraph.yaml` file and handle the events from each contract. Design your schema to consider both versions, and handle any changes to the event signatures that are emitted from each version. See the [0x Subgraph](https://github.com/graphprotocol/0x-subgraph/tree/master/src/mappings) for an implementation of multiple versions of smart contracts being ingested by a subgraph.
 
-## 5 Example Subgraphs
+## 6. Example Subgraphs
 
 Here is a list of current subgraphs that we have open sourced:
 * https://github.com/graphprotocol/ens-subgraph
