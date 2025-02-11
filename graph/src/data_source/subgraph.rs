@@ -287,6 +287,16 @@ impl UnresolvedDataSource {
         let source_manifest = self.resolve_source_manifest::<C>(resolver, logger).await?;
         let source_spec_version = &source_manifest.spec_version;
 
+        if source_manifest
+            .data_sources
+            .iter()
+            .any(|ds| matches!(ds, crate::data_source::DataSource::Subgraph(_)))
+        {
+            return Err(anyhow!(
+                "Nested subgraph data sources are not supported."
+            ));
+        }
+
         if source_spec_version < &SPEC_VERSION_1_3_0 {
             return Err(anyhow!(
                 "Source subgraph manifest spec version {} is not supported, minimum supported version is {}",

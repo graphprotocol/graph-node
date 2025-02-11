@@ -20,7 +20,8 @@ use graph::env::ENV_VARS;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, Logger,
-    SubgraphManifest, SubgraphManifestValidationError, SubgraphStore, UnvalidatedSubgraphManifest,
+    SubgraphManifest, SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
+    UnvalidatedSubgraphManifest,
 };
 use graph::{
     blockchain::NodeCapabilities as _,
@@ -1817,4 +1818,96 @@ specVersion: 1.3.0
     assert!(err
         .to_string()
         .contains("Subgraph datasources cannot be used alongside onchain datasources"));
+}
+
+#[test]
+fn nested_subgraph_ds_manifest_should_fail() {
+    let yaml = r#"
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+- name: SubgraphSource
+  kind: subgraph
+  entities:
+      - User
+  network: mainnet
+  source: 
+    address: 'QmNestedSource'
+    startBlock: 9562480
+  mapping:
+    apiVersion: 0.0.6
+    language: wasm/assemblyscript
+    entities:
+      - TestEntity
+    file:
+      /: /ipfs/Qmmapping
+    handlers:
+      - handler: handleEntity
+        entity: User
+specVersion: 1.3.0
+"#;
+
+    // First modify SOURCE_SUBGRAPH_MANIFEST to include a subgraph datasource
+    const NESTED_SOURCE_MANIFEST: &str = r#"
+schema:
+  file:
+    /: /ipfs/QmSourceSchema
+dataSources:
+- kind: subgraph
+  name: NestedSource
+  network: mainnet
+  entities:
+      - User
+  source:
+    address: 'QmSource'
+    startBlock: 1
+  mapping:
+    apiVersion: 0.0.6
+    language: wasm/assemblyscript
+    entities:
+      - User
+    file:
+      /: /ipfs/Qmmapping
+    handlers:
+      - handler: handleNested
+        entity: User
+specVersion: 1.3.0
+"#;
+
+    let mut resolver = TextResolver::default();
+    let id = DeploymentHash::new("Qmmanifest").unwrap();
+
+    resolver.add(id.as_str(), &yaml);
+    resolver.add("/ipfs/Qmabi", &ABI);
+    resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
+    resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
+    resolver.add("/ipfs/QmNestedSource", &NESTED_SOURCE_MANIFEST);
+    resolver.add("/ipfs/QmSource", &SOURCE_SUBGRAPH_MANIFEST);
+    resolver.add("/ipfs/QmSourceSchema", &SOURCE_SUBGRAPH_SCHEMA);
+
+    let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+
+    let raw = serde_yaml::from_str(yaml).unwrap();
+    test_store::run_test_sequentially(|_| async move {
+        let result: Result<UnvalidatedSubgraphManifest<Chain>, _> =
+            UnvalidatedSubgraphManifest::resolve(
+                id,
+                raw,
+                &resolver,
+                &LOGGER,
+                SPEC_VERSION_1_3_0.clone(),
+            )
+            .await;
+
+        match result {
+            Ok(_) => panic!("Expected resolution to fail"),
+            Err(e) => {
+                assert!(matches!(e, SubgraphManifestResolveError::ResolveError(_)));
+                let error_msg = e.to_string();
+                println!("{}", error_msg);
+                assert!(error_msg.contains("Nested subgraph data sources are not supported."));
+            }
+        }
+    })
 }
