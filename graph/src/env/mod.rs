@@ -5,6 +5,7 @@ mod store;
 use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
+use std::sync::Mutex;
 use std::{collections::HashSet, env::VarError, fmt, str::FromStr, time::Duration};
 
 use self::graphql::*;
@@ -17,6 +18,7 @@ use crate::{
 
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
+    pub static ref TEST_WITH_NO_REORG: Mutex<bool> = Mutex::new(false);
 }
 
 /// Panics if:
@@ -181,7 +183,7 @@ pub struct EnvVars {
     pub static_filters_threshold: usize,
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
-    pub reorg_threshold: BlockNumber,
+    reorg_threshold: BlockNumber,
     /// The time to wait between polls when using polling block ingestor.
     /// The value is set by `ETHERUM_POLLING_INTERVAL` in millis and the
     /// default is 1000.
@@ -361,6 +363,13 @@ impl EnvVars {
             .map(|x| x.trim().to_string())
             .filter(|x| !x.is_empty())
             .collect()
+    }
+    pub fn reorg_threshold(&self) -> i32 {
+        if *TEST_WITH_NO_REORG.lock().unwrap() {
+            0
+        } else {
+            self.reorg_threshold
+        }
     }
 }
 
