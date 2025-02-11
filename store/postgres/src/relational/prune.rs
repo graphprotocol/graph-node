@@ -56,6 +56,12 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
+            let mut list = IndexList {
+                indexes: HashMap::new(),
+            };
+            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?;
+            list.indexes.insert(src.name.to_string(), indexes);
+
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
             dst.as_ddl(schema, catalog, Some(&list), &mut query)?;
