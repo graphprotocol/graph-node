@@ -292,9 +292,7 @@ impl UnresolvedDataSource {
             .iter()
             .any(|ds| matches!(ds, crate::data_source::DataSource::Subgraph(_)))
         {
-            return Err(anyhow!(
-                "Nested subgraph data sources are not supported."
-            ));
+            return Err(anyhow!("Nested subgraph data sources are not supported."));
         }
 
         if source_spec_version < &SPEC_VERSION_1_3_0 {

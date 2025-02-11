@@ -719,6 +719,23 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             ));
         }
 
+        // Check for duplicate source subgraphs
+        let mut seen_sources = std::collections::HashSet::new();
+        for ds in data_sources.iter() {
+            if let DataSource::Subgraph(ds) = ds {
+                let source_id = ds.source.address();
+                if !seen_sources.insert(source_id.clone()) {
+                    errors.push(SubgraphManifestValidationError::DataSourceValidation(
+                        "subgraph".to_string(),
+                        anyhow!(
+                            "Multiple subgraph datasources cannot use the same source subgraph {}",
+                            source_id
+                        ),
+                    ));
+                }
+            }
+        }
+
         errors
     }
 
