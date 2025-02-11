@@ -700,10 +700,10 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .filter(|ds| matches!(ds, DataSource::Subgraph(_)))
             .count();
 
-        if subgraph_ds_count > 1 {
+        if subgraph_ds_count > 5 {
             errors.push(SubgraphManifestValidationError::DataSourceValidation(
                 "subgraph".to_string(),
-                anyhow!("Cannot have more than one subgraph datasource"),
+                anyhow!("Cannot have more than 5 subgraph datasources"),
             ));
         }
 
