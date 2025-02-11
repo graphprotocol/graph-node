@@ -318,7 +318,7 @@ dataSources:
         - Profile
     network: mainnet
     source:
-      address: 'QmSource'
+      address: 'QmSource2'
       startBlock: 9562500
     mapping:
       apiVersion: 0.0.6
@@ -1706,60 +1706,6 @@ dataSources:
         let decls = &ds.mapping.handlers[0].calls.decls;
         assert_eq!(3, decls.len());
     });
-}
-
-#[tokio::test]
-async fn multiple_subgraph_ds_manifest_should_fail() {
-    let yaml = "
-schema:
-  file:
-    /: /ipfs/Qmschema
-dataSources:
-  - name: SubgraphSource1
-    kind: subgraph
-    entities:
-        - User
-    network: mainnet
-    source: 
-      address: 'QmSource'
-      startBlock: 9562480
-    mapping:
-      apiVersion: 0.0.6
-      language: wasm/assemblyscript
-      entities:
-        - TestEntity
-      file:
-        /: /ipfs/Qmmapping
-      handlers:
-        - handler: handleEntity
-          entity: User
-  - name: SubgraphSource2
-    kind: subgraph
-    entities:
-        - Profile
-    network: mainnet
-    source:
-      address: 'QmSource2'
-      startBlock: 9562500
-    mapping:
-      apiVersion: 0.0.6
-      language: wasm/assemblyscript
-      entities:
-        - TestEntity
-      file:
-        /: /ipfs/Qmmapping
-      handlers:
-        - handler: handleProfile
-          entity: Profile
-specVersion: 1.3.0
-";
-
-    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("Cannot have more than one subgraph datasource"));
 }
 
 #[tokio::test]
