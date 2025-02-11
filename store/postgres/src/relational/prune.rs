@@ -100,7 +100,7 @@ impl TablePair {
             let mut list = IndexList {
                 indexes: HashMap::new(),
             };
-            let indexes = load_indexes_from_table(conn, &src, dst_nsp.as_str())?;
+            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?;
             list.indexes.insert(src.name.to_string(), indexes);
 
             // In case of pruning we don't do delayed creation of indexes,
