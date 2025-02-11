@@ -371,7 +371,17 @@ pub enum IndexForAscTypeId {
     // Subgraph Data Source types
     AscEntityTrigger = 4500,
 
-    // Reserved discriminant space for a future blockchain type IDs: [4,500, 5,499]
+    // Reserved discriminant space for YAML type IDs: [5,500, 6,499]
+    YamlValue = 5500,
+    YamlTaggedValue = 5501,
+    YamlTypedMapEntryValueValue = 5502,
+    YamlTypedMapValueValue = 5503,
+    YamlArrayValue = 5504,
+    YamlArrayTypedMapEntryValueValue = 5505,
+    YamlWrappedValue = 5506,
+    YamlResultValueBool = 5507,
+
+    // Reserved discriminant space for a future blockchain type IDs: [6,500, 7,499]
     //
     // Generated with the following shell script:
     //

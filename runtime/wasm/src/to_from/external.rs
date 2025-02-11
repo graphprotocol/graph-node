@@ -506,3 +506,54 @@ impl ToAscObj<AscEntityTrigger> for EntitySourceOperation {
 impl AscIndexId for AscEntityTrigger {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::AscEntityTrigger;
 }
+
+impl ToAscObj<AscEnum<YamlValueKind>> for serde_yaml::Value {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEnum<YamlValueKind>, HostExportError> {
+        use serde_yaml::Value;
+
+        let payload = match self {
+            Value::Null => EnumPayload(0),
+            Value::Bool(val) => EnumPayload::from(*val),
+            Value::Number(val) => asc_new(heap, &val.to_string(), gas)?.into(),
+            Value::String(val) => asc_new(heap, val, gas)?.into(),
+            Value::Sequence(val) => asc_new(heap, val.as_slice(), gas)?.into(),
+            Value::Mapping(val) => asc_new(heap, val, gas)?.into(),
+            Value::Tagged(val) => asc_new(heap, val.as_ref(), gas)?.into(),
+        };
+
+        Ok(AscEnum {
+            kind: YamlValueKind::get_kind(self),
+            _padding: 0,
+            payload,
+        })
+    }
+}
+
+impl ToAscObj<AscTypedMap<AscEnum<YamlValueKind>, AscEnum<YamlValueKind>>> for serde_yaml::Mapping {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscTypedMap<AscEnum<YamlValueKind>, AscEnum<YamlValueKind>>, HostExportError> {
+        Ok(AscTypedMap {
+            entries: asc_new(heap, &*self.iter().collect::<Vec<_>>(), gas)?,
+        })
+    }
+}
+
+impl ToAscObj<AscYamlTaggedValue> for serde_yaml::value::TaggedValue {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscYamlTaggedValue, HostExportError> {
+        Ok(AscYamlTaggedValue {
+            tag: asc_new(heap, &self.tag.to_string(), gas)?,
+            value: asc_new(heap, &self.value, gas)?,
+        })
+    }
+}

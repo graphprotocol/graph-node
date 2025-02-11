@@ -398,6 +398,17 @@ impl AscIndexId for Array<AscPtr<AscBigDecimal>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayBigDecimal;
 }
 
+impl AscIndexId for Array<AscPtr<AscEnum<YamlValueKind>>> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlArrayValue;
+}
+
+impl AscIndexId
+    for Array<AscPtr<AscTypedMapEntry<AscEnum<YamlValueKind>, AscEnum<YamlValueKind>>>>
+{
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId =
+        IndexForAscTypeId::YamlArrayTypedMapEntryValueValue;
+}
+
 /// Represents any `AscValue` since they all fit in 64 bits.
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
@@ -503,6 +514,10 @@ impl AscIndexId for AscEnum<StoreValueKind> {
 
 impl AscIndexId for AscEnum<JsonValueKind> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::JsonValue;
+}
+
+impl AscIndexId for AscEnum<YamlValueKind> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlValue;
 }
 
 pub type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
@@ -613,6 +628,10 @@ impl AscIndexId for AscTypedMapEntry<AscString, AscEnum<JsonValueKind>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TypedMapEntryStringJsonValue;
 }
 
+impl AscIndexId for AscTypedMapEntry<AscEnum<YamlValueKind>, AscEnum<YamlValueKind>> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlTypedMapEntryValueValue;
+}
+
 pub(crate) type AscTypedMapEntryArray<K, V> = Array<AscPtr<AscTypedMapEntry<K, V>>>;
 
 #[repr(C)]
@@ -636,6 +655,10 @@ impl AscIndexId for AscTypedMap<AscString, AscEnum<JsonValueKind>> {
 impl AscIndexId for AscTypedMap<AscString, AscTypedMap<AscString, AscEnum<JsonValueKind>>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId =
         IndexForAscTypeId::TypedMapStringTypedMapStringJsonValue;
+}
+
+impl AscIndexId for AscTypedMap<AscEnum<YamlValueKind>, AscEnum<YamlValueKind>> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlTypedMapValueValue;
 }
 
 pub type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
@@ -725,6 +748,10 @@ impl AscIndexId for AscResult<AscPtr<AscEnum<JsonValueKind>>, bool> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ResultJsonValueBool;
 }
 
+impl AscIndexId for AscResult<AscPtr<AscEnum<YamlValueKind>>, bool> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlResultValueBool;
+}
+
 #[repr(C)]
 #[derive(AscType, Copy, Clone)]
 pub struct AscWrapped<V: AscValue> {
@@ -741,4 +768,55 @@ impl AscIndexId for AscWrapped<bool> {
 
 impl AscIndexId for AscWrapped<AscPtr<AscEnum<JsonValueKind>>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::WrappedJsonValue;
+}
+
+impl AscIndexId for AscWrapped<AscPtr<AscEnum<YamlValueKind>>> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlWrappedValue;
+}
+
+#[repr(u32)]
+#[derive(AscType, Clone, Copy)]
+pub enum YamlValueKind {
+    Null,
+    Bool,
+    Number,
+    String,
+    Array,
+    Object,
+    Tagged,
+}
+
+impl Default for YamlValueKind {
+    fn default() -> Self {
+        YamlValueKind::Null
+    }
+}
+
+impl AscValue for YamlValueKind {}
+
+impl YamlValueKind {
+    pub(crate) fn get_kind(value: &serde_yaml::Value) -> Self {
+        use serde_yaml::Value;
+
+        match value {
+            Value::Null => Self::Null,
+            Value::Bool(_) => Self::Bool,
+            Value::Number(_) => Self::Number,
+            Value::String(_) => Self::String,
+            Value::Sequence(_) => Self::Array,
+            Value::Mapping(_) => Self::Object,
+            Value::Tagged(_) => Self::Tagged,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(AscType)]
+pub struct AscYamlTaggedValue {
+    pub tag: AscPtr<AscString>,
+    pub value: AscPtr<AscEnum<YamlValueKind>>,
+}
+
+impl AscIndexId for AscYamlTaggedValue {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::YamlTaggedValue;
 }

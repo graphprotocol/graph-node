@@ -1188,4 +1188,64 @@ impl WasmInstanceContext<'_> {
             "`box.profile` has been removed."
         )))
     }
+
+    /// function yaml.fromBytes(bytes: Bytes): YAMLValue
+    pub fn yaml_from_bytes(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<YamlValueKind>>, HostExportError> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let yaml_value = host_exports
+            .yaml_from_bytes(&bytes, gas, &mut ctx.state)
+            .inspect_err(|_| {
+                debug!(
+                    &self.as_ref().ctx.logger,
+                    "Failed to parse YAML from byte array";
+                    "bytes" => truncate_yaml_bytes_for_logging(&bytes),
+                );
+            })?;
+
+        asc_new(self, &yaml_value, gas)
+    }
+
+    /// function yaml.try_fromBytes(bytes: Bytes): Result<YAMLValue, bool>
+    pub fn yaml_try_from_bytes(
+        &mut self,
+        gas: &GasCounter,
+        bytes_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<YamlValueKind>>, bool>>, HostExportError> {
+        let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let result = host_exports
+            .yaml_from_bytes(&bytes, gas, &mut ctx.state)
+            .map_err(|err| {
+                warn!(
+                    &self.as_ref().ctx.logger,
+                    "Failed to parse YAML from byte array";
+                    "bytes" => truncate_yaml_bytes_for_logging(&bytes),
+                    "error" => format!("{:#}", err),
+                );
+
+                true
+            });
+
+        asc_new(self, &result, gas)
+    }
+}
+
+/// For debugging, it might be useful to know exactly which bytes could not be parsed as YAML, but
+/// since we can parse large YAML documents, even one bad mapping could produce terabytes of logs.
+/// To avoid this, we only log the first 1024 bytes of the failed YAML source.
+fn truncate_yaml_bytes_for_logging(bytes: &[u8]) -> String {
+    if bytes.len() > 1024 {
+        return format!("(truncated) 0x{}", hex::encode(&bytes[..1024]));
+    }
+
+    format!("0x{}", hex::encode(bytes))
 }
