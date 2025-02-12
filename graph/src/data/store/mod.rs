@@ -735,6 +735,8 @@ where
 lazy_static! {
     /// The name of the id attribute, `"id"`
     pub static ref ID: Word = Word::from("id");
+    /// The name of the vid attribute, `"vid"`
+    pub static ref VID: Word = Word::from("vid");
 }
 
 /// An entity is represented as a map of attribute names to values.

@@ -22,7 +22,7 @@ use diesel::sql_types::{
 use diesel::{AppearsOnTable, Expression, QueryDsl, QueryResult, SelectableExpression};
 use diesel_dynamic_schema::DynamicSelectClause;
 use graph::components::store::{AttributeNames, BlockNumber, StoreError, BLOCK_NUMBER_MAX};
-use graph::data::store::{Id, IdType, ID};
+use graph::data::store::{Id, IdType, ID, VID};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{lazy_static, ENV_VARS};
 
@@ -260,7 +260,10 @@ impl<'a> Table<'a> {
             AttributeNames::Select(names) => {
                 let pk = self.meta.primary_key();
                 cols.push(pk);
-                let mut names: Vec<_> = names.iter().filter(|name| *name != &*ID).collect();
+                let mut names: Vec<_> = names
+                    .iter()
+                    .filter(|name| *name != &*ID && *name != &*VID)
+                    .collect();
                 names.sort();
                 for name in names {
                     let column = self.meta.column_for_field(&name)?;
@@ -283,6 +286,7 @@ impl<'a> Table<'a> {
         }
 
         cols.push(&*VID_COL);
+
         if T::WITH_SYSTEM_COLUMNS {
             if self.meta.immutable {
                 cols.push(&*BLOCK_COL);
