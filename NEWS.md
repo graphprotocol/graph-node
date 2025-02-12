@@ -1,6 +1,19 @@
 # NEWS
 
-## v0.36.1
+## v0.38.0
+
+### What's new
+
+- A new `deployment_synced` metric is added [(#5816)](https://github.com/graphprotocol/graph-node/pull/5816)
+  that indicates whether a deployment has reached the chain head since it was deployed.
+
+  **Possible values for the metric:**
+    - `0` - means that the deployment is not synced;
+    - `1` - means that the deployment is synced;
+
+  _If a deployment is not running, the metric reports no value for that deployment._
+
+## v0.37.0
 
 ### What's new
 
