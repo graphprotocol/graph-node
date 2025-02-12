@@ -1570,13 +1570,10 @@ impl DeploymentStore {
                     .number
                     .checked_add(1)
                     .expect("block numbers fit into an i32");
-                dst.revert_block(conn, block_to_revert)?;
-                info!(logger, "Rewound subgraph to block {}", block.number;
-                      "time_ms" => start.elapsed().as_millis());
+                let (_, count) = dst.revert_block(conn, block_to_revert)?;
+                deployment::update_entity_count(conn, &dst.site, count)?;
 
-                let start = Instant::now();
-                deployment::set_entity_count(conn, &dst.site, &dst.count_query)?;
-                info!(logger, "Counted the entities";
+                info!(logger, "Rewound subgraph to block {}", block.number;
                       "time_ms" => start.elapsed().as_millis());
 
                 deployment::set_history_blocks(
