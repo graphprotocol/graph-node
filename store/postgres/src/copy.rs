@@ -33,7 +33,7 @@ use graph::{
 use itertools::Itertools;
 
 use crate::{
-    advisory_lock, catalog,
+    advisory_lock, catalog, deployment,
     dynds::DataSourcesTable,
     primary::{DeploymentId, Site},
     relational::index::IndexList,
@@ -475,11 +475,17 @@ impl TableState {
     }
 
     fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
-        let (duration, _) = self.batcher.step(|start, end| {
-            rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
-                .execute(conn)?;
-            Ok(())
+        let (duration, count) = self.batcher.step(|start, end| {
+            let count = rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
+                .count_current()
+                .get_result::<i64>(conn)
+                .optional()?;
+            Ok(count.unwrap_or(0) as i32)
         })?;
+
+        let count = count.unwrap_or(0);
+
+        deployment::update_entity_count(conn, &self.dst_site, count)?;
 
         self.record_progress(conn, duration)?;
 
