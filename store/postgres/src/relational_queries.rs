@@ -2331,7 +2331,7 @@ impl<'a> InsertQuery<'a> {
         if table.has_causality_region {
             count += 1;
         }
-        if table.object.strict_vid_order() {
+        if table.object.has_vid_seq() {
             count += 1;
         }
         for column in table.columns.iter() {
@@ -2355,7 +2355,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
-        let strict_vid_order = self.table.object.strict_vid_order();
+        let strict_vid_order = self.table.object.has_vid_seq();
 
         // Construct a query
         //   insert into schema.table(column, ...)
@@ -4805,7 +4805,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let strict_vid_order = self.src.object.strict_vid_order();
+        let strict_vid_order = self.src.object.has_vid_seq();
 
         // Construct a query
         //   insert into {dst}({columns})
