@@ -18,6 +18,7 @@ pub struct SubgraphInstanceMetrics {
     pub firehose_connection_errors: Counter,
     pub stopwatch: StopwatchMetrics,
     pub deployment_status: DeploymentStatusMetric,
+    pub deployment_synced: DeploymentSyncedMetric,
 
     trigger_processing_duration: Box<Histogram>,
     blocks_processed_secs: Box<Counter>,
@@ -91,6 +92,8 @@ impl SubgraphInstanceMetrics {
             )
             .expect("failed to create blocks_processed_count counter");
 
+        let deployment_synced = DeploymentSyncedMetric::register(&registry, subgraph_hash);
+
         Self {
             block_trigger_count,
             block_processing_duration,
@@ -98,6 +101,7 @@ impl SubgraphInstanceMetrics {
             firehose_connection_errors,
             stopwatch,
             deployment_status,
+            deployment_synced,
             trigger_processing_duration,
             blocks_processed_secs,
             blocks_processed_count,
@@ -120,6 +124,7 @@ impl SubgraphInstanceMetrics {
         registry.unregister(self.block_trigger_count.clone());
         registry.unregister(self.trigger_processing_duration.clone());
         registry.unregister(self.block_ops_transaction_duration.clone());
+        registry.unregister(Box::new(self.deployment_synced.inner.clone()));
     }
 }
 
@@ -211,5 +216,54 @@ impl DeploymentStatusMetric {
     /// Records that the indexing failed.
     pub fn failed(&self) {
         self.inner.set(Self::STATUS_FAILED);
+    }
+}
+
+/// Indicates whether a deployment has reached the chain head since it was deployed.
+pub struct DeploymentSyncedMetric {
+    inner: IntGauge,
+
+    // If, for some reason, a deployment reports that it is synced, and then reports that it is not
+    // synced during an execution, this prevents the metric from reverting to the not synced state.
+    previously_synced: std::sync::OnceLock<()>,
+}
+
+impl DeploymentSyncedMetric {
+    const NOT_SYNCED: i64 = 0;
+    const SYNCED: i64 = 1;
+
+    /// Registers the metric.
+    pub fn register(registry: &MetricsRegistry, deployment_hash: &str) -> Self {
+        let metric = registry
+            .new_int_gauge(
+                "deployment_synced",
+                "Indicates whether a deployment has reached the chain head since it was deployed.\n\
+                 Possible values:\n\
+                 0 - deployment is not synced;\n\
+                 1 - deployment is synced;",
+                [("deployment", deployment_hash)],
+            )
+            .expect("failed to register `deployment_synced` gauge");
+
+        Self {
+            inner: metric,
+            previously_synced: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// Records the current sync status of the deployment.
+    /// Will ignore all values after the first `true` is received.
+    pub fn record(&self, synced: bool) {
+        if self.previously_synced.get().is_some() {
+            return;
+        }
+
+        if synced {
+            self.inner.set(Self::SYNCED);
+            let _ = self.previously_synced.set(());
+            return;
+        }
+
+        self.inner.set(Self::NOT_SYNCED);
     }
 }

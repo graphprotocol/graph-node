@@ -205,6 +205,8 @@ where
     }
 
     async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
+        self.update_deployment_synced_metric();
+
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
@@ -292,6 +294,8 @@ where
                             .observe_block_processed(block_start.elapsed(), res.block_finished());
                         res
                     })?;
+
+                self.update_deployment_synced_metric();
 
                 // It is possible that the subgraph was unassigned, but the runner was in
                 // a retry delay state and did not observe the cancel signal.
@@ -1230,6 +1234,13 @@ where
         }
 
         Ok((mods, processed_data_sources, persisted_data_sources))
+    }
+
+    fn update_deployment_synced_metric(&self) {
+        self.metrics
+            .subgraph
+            .deployment_synced
+            .record(self.inputs.store.is_deployment_synced());
     }
 }
 
