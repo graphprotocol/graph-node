@@ -1037,6 +1037,9 @@ impl Layout {
     /// numbers. After this operation, only entity versions inserted or
     /// updated at blocks with numbers strictly lower than `block` will
     /// remain
+    ///
+    /// The `i32` that is returned is the amount by which the entity count
+    /// for the subgraph needs to be adjusted
     pub fn revert_block(
         &self,
         conn: &mut PgConnection,
