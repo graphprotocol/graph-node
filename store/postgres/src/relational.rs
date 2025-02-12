@@ -38,7 +38,7 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::prelude::{q, EntityChange, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };
@@ -72,8 +72,8 @@ use graph::components::store::{AttributeNames, DerivedEntityQuery};
 use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
-    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
-    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityOperation, Logger,
+    QueryExecutionError, StoreError, StoreEvent, ValueType,
 };
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -231,8 +231,6 @@ pub struct Layout {
     pub tables: HashMap<EntityType, Arc<Table>>,
     /// The database schema for this subgraph
     pub catalog: Catalog,
-    /// The query to count all entities
-    pub count_query: String,
     /// How many blocks of history the subgraph should keep
     pub history_blocks: BlockNumber,
 
@@ -290,25 +288,6 @@ impl Layout {
             ))
         }
 
-        let count_query = tables
-            .iter()
-            .map(|table| {
-                if table.immutable {
-                    format!(
-                        "select count(*) from \"{}\".\"{}\"",
-                        &catalog.site.namespace, table.name
-                    )
-                } else {
-                    format!(
-                        "select count(*) from \"{}\".\"{}\" where block_range @> {}",
-                        &catalog.site.namespace, table.name, BLOCK_NUMBER_MAX
-                    )
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\nunion all\n");
-        let count_query = format!("select sum(e.count) from ({}) e", count_query);
-
         let tables: HashMap<_, _> = tables
             .into_iter()
             .fold(HashMap::new(), |mut tables, table| {
@@ -322,7 +301,6 @@ impl Layout {
             site,
             catalog,
             tables,
-            count_query,
             history_blocks: i32::MAX,
             input_schema: schema.cheap_clone(),
             rollups,
