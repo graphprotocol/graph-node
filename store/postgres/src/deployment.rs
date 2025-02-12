@@ -1249,17 +1249,12 @@ pub fn update_entity_count(
     Ok(())
 }
 
-/// Set the deployment's entity count to whatever `full_count_query` produces
-pub fn set_entity_count(
-    conn: &mut PgConnection,
-    site: &Site,
-    full_count_query: &str,
-) -> Result<(), StoreError> {
+/// Set the deployment's entity count back to `0`
+pub fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    let full_count_query = format!("({})", full_count_query);
     update(d::table.filter(d::id.eq(site.id)))
-        .set(d::entity_count.eq(sql(&full_count_query)))
+        .set(d::entity_count.eq(BigDecimal::from(0)))
         .execute(conn)?;
     Ok(())
 }

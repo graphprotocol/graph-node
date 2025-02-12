@@ -1306,7 +1306,8 @@ impl DeploymentStore {
                 let layout = self.layout(conn, site.clone())?;
 
                 if truncate {
-                    deployment::set_entity_count(conn, site.as_ref(), layout.count_query.as_str())?;
+                    layout.truncate_tables(conn)?;
+                    deployment::clear_entity_count(conn, site.as_ref())?;
                 } else {
                     let count = layout.revert_block(conn, block)?;
                     deployment::update_entity_count(conn, site.as_ref(), count)?;
@@ -1570,7 +1571,7 @@ impl DeploymentStore {
                     .number
                     .checked_add(1)
                     .expect("block numbers fit into an i32");
-                let (_, count) = dst.revert_block(conn, block_to_revert)?;
+                let count = dst.revert_block(conn, block_to_revert)?;
                 deployment::update_entity_count(conn, &dst.site, count)?;
 
                 info!(logger, "Rewound subgraph to block {}", block.number;
