@@ -256,7 +256,6 @@ impl<'a> Table<'a> {
         match column_names {
             AttributeNames::All => {
                 cols.extend(self.meta.columns.iter());
-                cols.push(&*VID_COL);
             }
             AttributeNames::Select(names) => {
                 let pk = self.meta.primary_key();
@@ -283,8 +282,8 @@ impl<'a> Table<'a> {
             }
         }
 
+        cols.push(&*VID_COL);
         if T::WITH_SYSTEM_COLUMNS {
-            cols.push(&*VID_COL);
             if self.meta.immutable {
                 cols.push(&*BLOCK_COL);
             } else {
