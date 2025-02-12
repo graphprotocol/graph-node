@@ -1313,7 +1313,7 @@ impl DeploymentStore {
 
                 let event = if truncate {
                     let event = layout.truncate_tables(conn)?;
-                    deployment::set_entity_count(conn, site.as_ref(), layout.count_query.as_str())?;
+                    deployment::clear_entity_count(conn, site.as_ref())?;
                     event
                 } else {
                     let (event, count) = layout.revert_block(conn, block)?;
