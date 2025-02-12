@@ -208,17 +208,17 @@ impl CopyState {
                     })
             })
             .collect::<Result<_, _>>()?;
-        tables.sort_by_key(|table| table.batch.dst.object.to_string());
+        tables.sort_by_key(|table| table.dst.object.to_string());
 
         let values = tables
             .iter()
             .map(|table| {
                 (
-                    cts::entity_type.eq(table.batch.dst.object.as_str()),
+                    cts::entity_type.eq(table.dst.object.as_str()),
                     cts::dst.eq(dst.site.id),
-                    cts::next_vid.eq(table.batch.next_vid()),
-                    cts::target_vid.eq(table.batch.target_vid()),
-                    cts::batch_size.eq(table.batch.batch_size()),
+                    cts::next_vid.eq(table.batcher.next_vid()),
+                    cts::target_vid.eq(table.batcher.target_vid()),
+                    cts::batch_size.eq(table.batcher.batch_size() as i64),
                 )
             })
             .collect::<Vec<_>>();
@@ -294,51 +294,11 @@ pub(crate) fn source(
 /// so that we can copy rows from one to the other with very little
 /// transformation. See `CopyEntityBatchQuery` for the details of what
 /// exactly that means
-pub(crate) struct BatchCopy {
+struct TableState {
     src: Arc<Table>,
     dst: Arc<Table>,
-    batcher: VidBatcher,
-}
-
-impl BatchCopy {
-    pub fn new(batcher: VidBatcher, src: Arc<Table>, dst: Arc<Table>) -> Self {
-        Self { src, dst, batcher }
-    }
-
-    /// Copy one batch of entities and update internal state so that the
-    /// next call to `run` will copy the next batch
-    pub fn run(&mut self, conn: &mut PgConnection) -> Result<Duration, StoreError> {
-        let (duration, _) = self.batcher.step(|start, end| {
-            rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
-                .execute(conn)?;
-            Ok(())
-        })?;
-
-        Ok(duration)
-    }
-
-    pub fn finished(&self) -> bool {
-        self.batcher.finished()
-    }
-
-    /// The first `vid` that has not been copied yet
-    pub fn next_vid(&self) -> i64 {
-        self.batcher.next_vid()
-    }
-
-    /// The last `vid` that should be copied
-    pub fn target_vid(&self) -> i64 {
-        self.batcher.target_vid()
-    }
-
-    pub fn batch_size(&self) -> i64 {
-        self.batcher.batch_size() as i64
-    }
-}
-
-struct TableState {
-    batch: BatchCopy,
     dst_site: Arc<Site>,
+    batcher: VidBatcher,
     duration_ms: i64,
 }
 
@@ -354,14 +314,16 @@ impl TableState {
         let vid_range = VidRange::for_copy(conn, &src, target_block)?;
         let batcher = VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range)?;
         Ok(Self {
-            batch: BatchCopy::new(batcher, src, dst),
+            src,
+            dst,
             dst_site,
+            batcher,
             duration_ms: 0,
         })
     }
 
     fn finished(&self) -> bool {
-        self.batch.finished()
+        self.batcher.finished()
     }
 
     fn load(
@@ -427,11 +389,12 @@ impl TableState {
                                 VidRange::new(current_vid, target_vid),
                             )?
                             .with_batch_size(size as usize);
-                            let batch = BatchCopy::new(batcher, src, dst);
 
                             Ok(TableState {
-                                batch,
+                                src,
+                                dst,
                                 dst_site: dst_layout.site.clone(),
+                                batcher,
                                 duration_ms,
                             })
                         }
@@ -460,20 +423,20 @@ impl TableState {
         update(
             cts::table
                 .filter(cts::dst.eq(self.dst_site.id))
-                .filter(cts::entity_type.eq(self.batch.dst.object.as_str()))
+                .filter(cts::entity_type.eq(self.dst.object.as_str()))
                 .filter(cts::duration_ms.eq(0)),
         )
         .set(cts::started_at.eq(sql("now()")))
         .execute(conn)?;
         let values = (
-            cts::next_vid.eq(self.batch.next_vid()),
-            cts::batch_size.eq(self.batch.batch_size()),
+            cts::next_vid.eq(self.batcher.next_vid()),
+            cts::batch_size.eq(self.batcher.batch_size() as i64),
             cts::duration_ms.eq(self.duration_ms),
         );
         update(
             cts::table
                 .filter(cts::dst.eq(self.dst_site.id))
-                .filter(cts::entity_type.eq(self.batch.dst.object.as_str())),
+                .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(values)
         .execute(conn)?;
@@ -486,7 +449,7 @@ impl TableState {
         update(
             cts::table
                 .filter(cts::dst.eq(self.dst_site.id))
-                .filter(cts::entity_type.eq(self.batch.dst.object.as_str())),
+                .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(cts::finished_at.eq(sql("now()")))
         .execute(conn)?;
@@ -512,7 +475,11 @@ impl TableState {
     }
 
     fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
-        let duration = self.batch.run(conn)?;
+        let (duration, _) = self.batcher.step(|start, end| {
+            rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
+                .execute(conn)?;
+            Ok(())
+        })?;
 
         self.record_progress(conn, duration)?;
 
@@ -539,12 +506,12 @@ impl<'a> CopyProgress<'a> {
         let target_vid: i64 = state
             .tables
             .iter()
-            .map(|table| table.batch.target_vid())
+            .map(|table| table.batcher.target_vid())
             .sum();
         let current_vid = state
             .tables
             .iter()
-            .map(|table| table.batch.next_vid())
+            .map(|table| table.batcher.next_vid())
             .sum();
         Self {
             logger,
@@ -577,23 +544,23 @@ impl<'a> CopyProgress<'a> {
         }
     }
 
-    fn update(&mut self, batch: &BatchCopy) {
+    fn update(&mut self, entity_type: &EntityType, batcher: &VidBatcher) {
         if self.last_log.elapsed() > LOG_INTERVAL {
             info!(
                 self.logger,
                 "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
-                Self::progress_pct(batch.next_vid(), batch.target_vid()),
-                batch.dst.object,
-                batch.next_vid(),
-                batch.target_vid(),
-                Self::progress_pct(self.current_vid + batch.next_vid(), self.target_vid)
+                Self::progress_pct(batcher.next_vid(), batcher.target_vid()),
+                entity_type,
+                batcher.next_vid(),
+                batcher.target_vid(),
+                Self::progress_pct(self.current_vid + batcher.next_vid(), self.target_vid)
             );
             self.last_log = Instant::now();
         }
     }
 
-    fn table_finished(&mut self, batch: &BatchCopy) {
-        self.current_vid += batch.next_vid();
+    fn table_finished(&mut self, batcher: &VidBatcher) {
+        self.current_vid += batcher.next_vid();
     }
 
     fn finished(&self) {
@@ -728,9 +695,9 @@ impl Connection {
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
-                progress.update(&table.batch);
+                progress.update(&table.dst.object, &table.batcher);
             }
-            progress.table_finished(&table.batch);
+            progress.table_finished(&table.batcher);
         }
 
         // Create indexes for all the attributes that were postponed at the start of
@@ -740,8 +707,8 @@ impl Connection {
         for table in state.tables.iter() {
             let arr = index_list.indexes_for_table(
                 &self.dst.site.namespace,
-                &table.batch.src.name.to_string(),
-                &table.batch.dst,
+                &table.src.name.to_string(),
+                &table.dst,
                 true,
                 true,
             )?;
@@ -756,18 +723,12 @@ impl Connection {
         // Here we need to skip those created in the first step for the old fields.
         for table in state.tables.iter() {
             let orig_colums = table
-                .batch
                 .src
                 .columns
                 .iter()
                 .map(|c| c.name.to_string())
                 .collect_vec();
-            for sql in table
-                .batch
-                .dst
-                .create_postponed_indexes(orig_colums)
-                .into_iter()
-            {
+            for sql in table.dst.create_postponed_indexes(orig_colums).into_iter() {
                 let query = sql_query(sql);
                 query.execute(conn)?;
             }
