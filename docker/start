@@ -71,11 +71,18 @@ run_graph_node() {
         echo "Waiting for Postgres ($postgres_host:$postgres_port)"
         wait_for "$postgres_host:$postgres_port" -t 120
         sleep 5
+	# split $ethereum by comma and make a full rpc param.
+        rpcs=""
+        IFS=',' read -r -a ethereum_array <<< "$ethereum"
+        for i in "${ethereum_array[@]}"
+        do
+                rpcs="$rpcs --ethereum-rpc $i"
+        done
 
         exec graph-node \
             --node-id "$node_id" \
             --postgres-url "$postgres_url" \
-            --ethereum-rpc $ethereum \
+	    $rpcs \
             --ipfs "$ipfs" \
             ${fork_base:+ --fork-base "$fork_base"}
     fi
