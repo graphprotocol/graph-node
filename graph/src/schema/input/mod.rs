@@ -1589,6 +1589,10 @@ impl InputSchema {
         Some(EntityType::new(self.cheap_clone(), obj_type.name))
     }
 
+    /// How the values for the VID field are generated.
+    /// When this is `false`, this subgraph uses the old way of autoincrementing `vid` in the database.
+    /// When it is `true`, `graph-node` sets the `vid` explicitly to a number based on block number
+    /// and the order in which entities are written, and comparing by `vid` will order entities by that order.
     pub fn strict_vid_order(&self) -> bool {
         self.inner.spec_version >= SPEC_VERSION_1_3_0
     }

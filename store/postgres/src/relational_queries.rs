@@ -2331,7 +2331,7 @@ impl<'a> InsertQuery<'a> {
         if table.has_causality_region {
             count += 1;
         }
-        if table.object.strict_vid_order() {
+        if table.object.has_vid_seq() {
             count += 1;
         }
         for column in table.columns.iter() {
@@ -2355,7 +2355,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
-        let strict_vid_order = self.table.object.strict_vid_order();
+        let has_vid_seq = self.table.object.has_vid_seq();
 
         // Construct a query
         //   insert into schema.table(column, ...)
@@ -2382,7 +2382,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
 
-        if strict_vid_order {
+        if has_vid_seq {
             out.push_sql(", vid");
         }
         out.push_sql(") values\n");
@@ -2402,7 +2402,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.causality_region)?;
             };
-            if strict_vid_order {
+            if has_vid_seq {
                 out.push_sql(", ");
                 out.push_bind_param::<BigInt, _>(&row.vid)?;
             }
@@ -4805,7 +4805,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let strict_vid_order = self.src.object.strict_vid_order();
+        let has_vid_seq = self.src.object.has_vid_seq();
 
         // Construct a query
         //   insert into {dst}({columns})
@@ -4827,7 +4827,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
             out.push_sql(", ");
             out.push_sql(CAUSALITY_REGION_COLUMN);
         };
-        if strict_vid_order {
+        if has_vid_seq {
             out.push_sql(", vid");
         }
 
@@ -4895,7 +4895,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 ));
             }
         }
-        if strict_vid_order {
+        if has_vid_seq {
             out.push_sql(", vid");
         }
 

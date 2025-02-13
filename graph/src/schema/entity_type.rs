@@ -151,10 +151,9 @@ impl EntityType {
         self.schema.is_object_type(self.atom)
     }
 
-    // Changes the way the VID field is generated. It used to be autoincrement. Now its
-    // based on block number and the order of the entities in a block. The latter
-    // represents the write order across all entity types in the subgraph.
-    pub fn strict_vid_order(&self) -> bool {
+    /// Whether the table for this entity type uses a sequence for the `vid` or whether
+    /// `graph-node` sets them explicitly. See  also [`InputSchema.strict_vid_order()`]
+    pub fn has_vid_seq(&self) -> bool {
         // Currently the agregations entities don't have VIDs in insertion order
         self.schema.strict_vid_order() && self.is_object_type()
     }

@@ -205,7 +205,7 @@ impl TablePair {
 
         // Make sure the vid sequence continues from where it was in case
         // that we use autoincrementing order of the DB
-        if !self.src.object.strict_vid_order() {
+        if !self.src.object.has_vid_seq() {
             writeln!(
                 query,
                 "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"

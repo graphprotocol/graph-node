@@ -116,7 +116,7 @@ impl Table {
             Ok(cols)
         }
 
-        let vid_type = if self.object.strict_vid_order() {
+        let vid_type = if self.object.has_vid_seq() {
             "bigint"
         } else {
             "bigserial"
