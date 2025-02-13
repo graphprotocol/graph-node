@@ -206,22 +206,31 @@ impl ForeignServer {
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
     fn map_metadata(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+        const MAP_TABLES: [(&str, &[&str]); 2] = [
+            ("public", &["ethereum_networks"]),
+            (
+                "subgraphs",
+                &[
+                    "copy_state",
+                    "copy_table_state",
+                    "dynamic_ethereum_contract_data_source",
+                    "subgraph_deployment",
+                    "subgraph_error",
+                    "subgraph_features",
+                    "subgraph_manifest",
+                    "table_stats",
+                ],
+            ),
+        ];
         let nsp = Self::metadata_schema(&self.shard);
         catalog::recreate_schema(conn, &nsp)?;
         let mut query = String::new();
-        for table_name in [
-            "subgraph_error",
-            "dynamic_ethereum_contract_data_source",
-            "table_stats",
-            "subgraph_deployment_assignment",
-            "subgraph",
-            "subgraph_version",
-            "subgraph_deployment",
-            "subgraph_manifest",
-        ] {
-            let create_stmt =
-                catalog::create_foreign_table(conn, "subgraphs", table_name, &nsp, &self.name)?;
-            write!(query, "{}", create_stmt)?;
+        for (src_nsp, src_tables) in MAP_TABLES {
+            for src_table in src_tables {
+                let create_stmt =
+                    catalog::create_foreign_table(conn, src_nsp, src_table, &nsp, &self.name)?;
+                write!(query, "{}", create_stmt)?;
+            }
         }
         Ok(conn.batch_execute(&query)?)
     }
