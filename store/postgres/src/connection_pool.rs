@@ -1015,12 +1015,12 @@ impl PoolInner {
         // in the database instead of just in memory
         let result = pool
             .configure_fdw(coord.servers.as_ref())
-            .and_then(|()| migrate_schema(&pool.logger, &mut conn))
-            .and_then(|count| coord.propagate(&pool, count));
+            .and_then(|()| migrate_schema(&pool.logger, &mut conn));
         debug!(&pool.logger, "Release migration lock");
         advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
         });
+        let result = result.and_then(|count| coord.propagate(&pool, count));
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
 
         // Locale check
@@ -1233,6 +1233,10 @@ impl PoolCoordinator {
     /// other pools will then recreate any tables that they imported from
     /// `shard`. If `pool` is a new shard, we also map all other shards into
     /// it.
+    ///
+    /// This tries to take the migration lock and must therefore be run from
+    /// code that does _not_ hold the migration lock as it will otherwise
+    /// deadlock
     fn propagate(&self, pool: &PoolInner, count: MigrationCount) -> Result<(), StoreError> {
         // pool is a new shard, map all other shards into it
         if count.is_new() {
@@ -1244,7 +1248,14 @@ impl PoolCoordinator {
         if count.had_migrations() {
             let server = self.server(&pool.shard)?;
             for pool in self.pools.lock().unwrap().values() {
-                if let Err(e) = pool.remap(server) {
+                let mut conn = pool.get()?;
+                let remap_res = {
+                    advisory_lock::lock_migration(&mut conn)?;
+                    let res = pool.remap(server);
+                    advisory_lock::unlock_migration(&mut conn)?;
+                    res
+                };
+                if let Err(e) = remap_res {
                     error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
                     return Err(e);
                 }
