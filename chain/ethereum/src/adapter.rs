@@ -1,5 +1,5 @@
 use anyhow::Error;
-use ethabi::{Error as ABIError, ParamType, Token};
+use graph::abi;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
@@ -101,13 +101,12 @@ pub enum EthereumRpcError {
 
 #[derive(Error, Debug)]
 pub enum ContractCallError {
-    #[error("ABI error: {0}")]
-    ABIError(#[from] ABIError),
-    /// `Token` is not of expected `ParamType`
-    #[error("type mismatch, token {0:?} is not of kind {1:?}")]
-    TypeError(Token, ParamType),
-    #[error("error encoding input call data: {0}")]
-    EncodingError(ethabi::Error),
+    #[error("ABI error: {0:#}")]
+    ABIError(anyhow::Error),
+    #[error("type mismatch, decoded value {0:?} is not of kind {1:?}")]
+    TypeError(abi::DynSolValue, abi::DynSolType),
+    #[error("error encoding input call data: {0:#}")]
+    EncodingError(anyhow::Error),
     #[error("call error: {0}")]
     Web3Error(web3::Error),
     #[error("ethereum node took too long to perform call")]
@@ -1157,7 +1156,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError>;
+    ) -> Result<(Option<Vec<abi::DynSolValue>>, call::Source), ContractCallError>;
 
     /// Make multiple contract calls in a single batch. The returned `Vec`
     /// has results in the same order as the calls in `calls` on input. The
@@ -1167,7 +1166,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError>;
+    ) -> Result<Vec<(Option<Vec<abi::DynSolValue>>, call::Source)>, ContractCallError>;
 
     async fn get_balance(
         &self,
@@ -1196,9 +1195,9 @@ mod tests {
     use graph::blockchain::TriggerFilter as _;
     use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
-    use graph::prelude::ethabi::ethereum_types::H256;
     use graph::prelude::web3::types::Address;
     use graph::prelude::web3::types::Bytes;
+    use graph::prelude::web3::types::H256;
     use graph::prelude::EthereumCall;
     use hex::ToHex;
     use itertools::Itertools;

@@ -7,6 +7,8 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
+use graph::abi;
+use graph::abi::DynSolValueExt;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::HostMetrics;
 use graph::data::store::ethereum::call;
@@ -14,6 +16,7 @@ use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::data_source;
 use graph::data_source::common::{ContractCall, MappingABI};
+use graph::prelude::web3::types::Address;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
@@ -21,10 +24,7 @@ use graph::slog::debug;
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{
-        ethabi::{self, Address, Token},
-        EthereumCallCache,
-    },
+    prelude::EthereumCallCache,
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::Logger,
@@ -283,20 +283,7 @@ fn eth_call(
     abis: &[Arc<MappingABI>],
     eth_call_gas: Option<u32>,
     metrics: Arc<HostMetrics>,
-) -> Result<Option<Vec<Token>>, HostExportError> {
-    // Helpers to log the result of the call at the end
-    fn tokens_as_string(tokens: &[Token]) -> String {
-        tokens.iter().map(|arg| arg.to_string()).join(", ")
-    }
-
-    fn result_as_string(result: &Result<Option<Vec<Token>>, HostExportError>) -> String {
-        match result {
-            Ok(Some(tokens)) => format!("({})", tokens_as_string(&tokens)),
-            Ok(None) => "none".to_string(),
-            Err(_) => "error".to_string(),
-        }
-    }
-
+) -> Result<Option<Vec<abi::DynSolValue>>, HostExportError> {
     let start_time = Instant::now();
 
     // Obtain the path to the contract ABI
@@ -375,16 +362,26 @@ fn eth_call(
         );
     }
 
-    debug!(logger, "Contract call finished";
-              "address" => format!("0x{:x}", &unresolved_call.contract_address),
-              "contract" => &unresolved_call.contract_name,
-              "signature" => &unresolved_call.function_signature,
-              "args" => format!("[{}]", tokens_as_string(&unresolved_call.function_args)),
-              "time_ms" => format!("{}ms", elapsed.as_millis()),
-              "result" => result_as_string(&result),
-              "block_hash" => block_ptr.hash_hex(),
-              "block_number" => block_ptr.block_number(),
-              "source" => source.to_string());
+    let args_as_string = format!("[{}]", values_to_string(&unresolved_call.function_args));
+
+    let result_as_string = match &result {
+        Ok(Some(values)) => format!("({})", values_to_string(values)),
+        Ok(None) => "none".to_owned(),
+        Err(_err) => "error".to_owned(),
+    };
+
+    debug!(
+        logger, "Contract call finished";
+        "address" => format!("0x{:x}", &unresolved_call.contract_address),
+        "contract" => &unresolved_call.contract_name,
+        "signature" => &unresolved_call.function_signature,
+        "args" => args_as_string,
+        "time_ms" => format!("{}ms", elapsed.as_millis()),
+        "result" => result_as_string,
+        "block_hash" => block_ptr.hash_hex(),
+        "block_number" => block_ptr.block_number(),
+        "source" => source.to_string(),
+    );
 
     result
 }
@@ -395,9 +392,18 @@ pub struct UnresolvedContractCall {
     pub contract_address: Address,
     pub function_name: String,
     pub function_signature: Option<String>,
-    pub function_args: Vec<ethabi::Token>,
+    pub function_args: Vec<abi::DynSolValue>,
 }
 
 impl AscIndexId for AscUnresolvedContractCall {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::SmartContractCall;
+}
+
+#[inline]
+fn values_to_string(values: &[abi::DynSolValue]) -> String {
+    values
+        .iter()
+        .map(|x| x.to_string())
+        .collect_vec()
+        .join(", ")
 }

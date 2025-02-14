@@ -1,4 +1,3 @@
-use ethabi::Contract;
 use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::SharedProofOfIndexing;
@@ -83,7 +82,7 @@ fn mock_host_exports(
 fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
-        contract: Contract::load(
+        contract: serde_json::from_str(
             r#"[
             {
                 "inputs": [
@@ -94,8 +93,7 @@ fn mock_abi() -> MappingABI {
                 ],
                 "type": "constructor"
             }
-        ]"#
-            .as_bytes(),
+        ]"#,
         )
         .unwrap(),
     }
