@@ -1,5 +1,4 @@
-use ethabi;
-
+use graph::abi;
 use graph::{
     data::store::{self, scalar::Timestamp},
     runtime::{
@@ -535,21 +534,25 @@ pub enum EthereumValueKind {
     FixedArray,
     Array,
     Tuple,
+    Function,
 }
 
 impl EthereumValueKind {
-    pub(crate) fn get_kind(token: &ethabi::Token) -> Self {
-        match token {
-            ethabi::Token::Address(_) => EthereumValueKind::Address,
-            ethabi::Token::FixedBytes(_) => EthereumValueKind::FixedBytes,
-            ethabi::Token::Bytes(_) => EthereumValueKind::Bytes,
-            ethabi::Token::Int(_) => EthereumValueKind::Int,
-            ethabi::Token::Uint(_) => EthereumValueKind::Uint,
-            ethabi::Token::Bool(_) => EthereumValueKind::Bool,
-            ethabi::Token::String(_) => EthereumValueKind::String,
-            ethabi::Token::FixedArray(_) => EthereumValueKind::FixedArray,
-            ethabi::Token::Array(_) => EthereumValueKind::Array,
-            ethabi::Token::Tuple(_) => EthereumValueKind::Tuple,
+    pub(crate) fn get_kind(value: &abi::DynSolValue) -> Self {
+        use graph::abi::DynSolValue;
+
+        match value {
+            DynSolValue::Bool(_) => Self::Bool,
+            DynSolValue::Int(_, _) => Self::Int,
+            DynSolValue::Uint(_, _) => Self::Uint,
+            DynSolValue::FixedBytes(_, _) => Self::FixedBytes,
+            DynSolValue::Address(_) => Self::Address,
+            DynSolValue::Function(_) => Self::Function,
+            DynSolValue::Bytes(_) => Self::Bytes,
+            DynSolValue::String(_) => Self::String,
+            DynSolValue::Array(_) => Self::Array,
+            DynSolValue::FixedArray(_) => Self::FixedArray,
+            DynSolValue::Tuple(_) => Self::Tuple,
         }
     }
 }
