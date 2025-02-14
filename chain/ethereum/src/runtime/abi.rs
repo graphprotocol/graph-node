@@ -2,9 +2,9 @@ use super::runtime_adapter::UnresolvedContractCall;
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
+use graph::abi;
 use graph::{
     prelude::{
-        ethabi,
         web3::types::{Log, TransactionReceipt, H256},
         BigInt,
     },
@@ -37,7 +37,7 @@ impl AscType for AscLogParamArray {
     }
 }
 
-impl ToAscObj<AscLogParamArray> for Vec<ethabi::LogParam> {
+impl ToAscObj<AscLogParamArray> for Vec<abi::DynSolParam> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -519,7 +519,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value), gas)?,
             gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price), gas)?,
-            input: asc_new(heap, &*self.input, gas)?,
+            input: asc_new(heap, &self.input, gas)?,
         })
     }
 }
@@ -541,7 +541,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value), gas)?,
             gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
             gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price), gas)?,
-            input: asc_new(heap, &*self.input, gas)?,
+            input: asc_new(heap, &self.input, gas)?,
             nonce: asc_new(heap, &BigInt::from_unsigned_u256(&self.nonce), gas)?,
         })
     }
@@ -771,7 +771,7 @@ impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlo
     }
 }
 
-impl ToAscObj<AscLogParam> for ethabi::LogParam {
+impl ToAscObj<AscLogParam> for abi::DynSolParam {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
