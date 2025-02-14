@@ -15,7 +15,6 @@ use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,
     components::store::{BlockStore as _, EntityFilter, EntityOrder, EntityQuery, StatusStore},
-    prelude::ethabi::Contract,
 };
 use graph::{data::store::scalar, semver::Version};
 use graph::{entity, prelude::*};
@@ -1059,19 +1058,18 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
 fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
-        contract: Contract::load(
+        contract: serde_json::from_str(
             r#"[
-            {
-                "inputs": [
-                    {
-                        "name": "a",
-                        "type": "address"
-                    }
-                ],
-                "type": "constructor"
-            }
-        ]"#
-            .as_bytes(),
+                {
+                    "inputs": [
+                        {
+                            "name": "a",
+                            "type": "address"
+                        }
+                    ],
+                    "type": "constructor"
+                }
+            ]"#,
         )
         .unwrap(),
     }

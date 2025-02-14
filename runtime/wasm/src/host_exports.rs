@@ -11,6 +11,7 @@ use never::Never;
 use semver::Version;
 use web3::types::H160;
 
+use graph::abi;
 use graph::blockchain::BlockTime;
 use graph::blockchain::Blockchain;
 use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
@@ -20,8 +21,6 @@ use graph::components::subgraph::{
 use graph::data::store::{self};
 use graph::data_source::{CausalityRegion, DataSource, EntityTypeAccess};
 use graph::ensure;
-use graph::prelude::ethabi::param_type::Reader;
-use graph::prelude::ethabi::{decode, encode, Token};
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
@@ -1181,11 +1180,11 @@ impl HostExports {
 
     pub(crate) fn ethereum_encode(
         &self,
-        token: Token,
+        value: abi::DynSolValue,
         gas: &GasCounter,
         state: &mut BlockState,
     ) -> Result<Vec<u8>, DeterministicHostError> {
-        let encoded = encode(&[token]);
+        let encoded = value.abi_encode();
 
         Self::track_gas_and_ops(
             gas,
@@ -1203,7 +1202,7 @@ impl HostExports {
         data: Vec<u8>,
         gas: &GasCounter,
         state: &mut BlockState,
-    ) -> Result<Token, anyhow::Error> {
+    ) -> Result<abi::DynSolValue, anyhow::Error> {
         Self::track_gas_and_ops(
             gas,
             state,
@@ -1211,15 +1210,9 @@ impl HostExports {
             "ethereum_decode",
         )?;
 
-        let param_types =
-            Reader::read(&types).map_err(|e| anyhow::anyhow!("Failed to read types: {}", e))?;
+        let ty: abi::DynSolType = types.parse().context("Failed to read types")?;
 
-        decode(&[param_types], &data)
-            // The `.pop().unwrap()` here is ok because we're always only passing one
-            // `param_types` to `decode`, so the returned `Vec` has always size of one.
-            // We can't do `tokens[0]` because the value can't be moved out of the `Vec`.
-            .map(|mut tokens| tokens.pop().unwrap())
-            .context("Failed to decode")
+        ty.abi_decode(&data).context("Failed to decode")
     }
 
     pub(crate) fn yaml_from_bytes(
