@@ -37,6 +37,23 @@ use crate::primary::{self, NAMESPACE_PUBLIC};
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
+const SHARDED_TABLES: [(&str, &[&str]); 2] = [
+    ("public", &["ethereum_networks"]),
+    (
+        "subgraphs",
+        &[
+            "copy_state",
+            "copy_table_state",
+            "dynamic_ethereum_contract_data_source",
+            "subgraph_deployment",
+            "subgraph_error",
+            "subgraph_features",
+            "subgraph_manifest",
+            "table_stats",
+        ],
+    ),
+];
+
 pub struct ForeignServer {
     pub name: String,
     pub shard: Shard,
@@ -49,6 +66,7 @@ pub struct ForeignServer {
 
 impl ForeignServer {
     pub(crate) const PRIMARY_PUBLIC: &'static str = "primary_public";
+    pub(crate) const CROSS_SHARD_NSP: &'static str = "sharded";
 
     /// The name of the foreign server under which data for `shard` is
     /// accessible
@@ -206,26 +224,10 @@ impl ForeignServer {
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
     fn map_metadata(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
-        const MAP_TABLES: [(&str, &[&str]); 2] = [
-            ("public", &["ethereum_networks"]),
-            (
-                "subgraphs",
-                &[
-                    "copy_state",
-                    "copy_table_state",
-                    "dynamic_ethereum_contract_data_source",
-                    "subgraph_deployment",
-                    "subgraph_error",
-                    "subgraph_features",
-                    "subgraph_manifest",
-                    "table_stats",
-                ],
-            ),
-        ];
         let nsp = Self::metadata_schema(&self.shard);
         catalog::recreate_schema(conn, &nsp)?;
         let mut query = String::new();
-        for (src_nsp, src_tables) in MAP_TABLES {
+        for (src_nsp, src_tables) in SHARDED_TABLES {
             for src_table in src_tables {
                 let create_stmt =
                     catalog::create_foreign_table(conn, src_nsp, src_table, &nsp, &self.name)?;
@@ -1024,7 +1026,12 @@ impl PoolInner {
         // in the database instead of just in memory
         let result = pool
             .configure_fdw(coord.servers.as_ref())
-            .and_then(|()| migrate_schema(&pool.logger, &mut conn));
+            .and_then(|()| pool.drop_cross_shard_views())
+            .and_then(|()| migrate_schema(&pool.logger, &mut conn))
+            .and_then(|count| {
+                pool.create_cross_shard_views(coord.servers.as_ref())
+                    .map(|()| count)
+            });
         debug!(&pool.logger, "Release migration lock");
         advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
@@ -1071,6 +1078,76 @@ impl PoolInner {
                     server.update(conn)?;
                 } else {
                     server.create(conn)?;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
+    fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
+        if self.shard != *PRIMARY_SHARD {
+            return Ok(());
+        }
+
+        info!(&self.logger, "Dropping cross-shard views");
+        let mut conn = self.get()?;
+        conn.transaction(|conn| {
+            let query = format!(
+                "drop schema if exists {} cascade",
+                ForeignServer::CROSS_SHARD_NSP
+            );
+            conn.batch_execute(&query)?;
+            Ok(())
+        })
+    }
+
+    /// If this is the primary shard, create the namespace `CROSS_SHARD_NSP`
+    /// and populate it with tables that union various imported tables
+    fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+        fn shard_nsp_pairs<'a>(
+            current: &Shard,
+            local_nsp: &str,
+            servers: &'a [ForeignServer],
+        ) -> Vec<(&'a str, String)> {
+            servers
+                .into_iter()
+                .map(|server| {
+                    let nsp = if &server.shard == current {
+                        local_nsp.to_string()
+                    } else {
+                        ForeignServer::metadata_schema(&server.shard)
+                    };
+                    (server.shard.as_str(), nsp)
+                })
+                .collect::<Vec<_>>()
+        }
+
+        if self.shard != *PRIMARY_SHARD {
+            return Ok(());
+        }
+
+        info!(&self.logger, "Creating cross-shard views");
+        let mut conn = self.get()?;
+
+        conn.transaction(|conn| {
+            let query = format!(
+                "create schema if not exists {}",
+                ForeignServer::CROSS_SHARD_NSP
+            );
+            conn.batch_execute(&query)?;
+            for (src_nsp, src_tables) in SHARDED_TABLES {
+                // Pairs of (shard, nsp) for all servers
+                let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
+                for src_table in src_tables {
+                    let create_view = catalog::create_cross_shard_view(
+                        conn,
+                        src_nsp,
+                        src_table,
+                        ForeignServer::CROSS_SHARD_NSP,
+                        &nsps,
+                    )?;
+                    conn.batch_execute(&create_view)?;
                 }
             }
             Ok(())

@@ -626,6 +626,58 @@ pub fn create_foreign_table(
     Ok(query)
 }
 
+/// Create a SQL statement unioning imported tables from all shards,
+/// something like
+///
+/// ```sql
+/// create view "dst_nsp"."src_table" as
+/// select 'shard1' as shard, "col1", "col2" from "shard_shard1_subgraphs"."table_name"
+/// union all
+/// ...
+/// ````
+///
+/// The list `shard_nsps` consists of pairs `(name, namespace)` where `name`
+/// is the name of the shard and `namespace` is the namespace where the
+/// `src_table` is mapped
+pub fn create_cross_shard_view(
+    conn: &mut PgConnection,
+    src_nsp: &str,
+    src_table: &str,
+    dst_nsp: &str,
+    shard_nsps: &[(&str, String)],
+) -> Result<String, StoreError> {
+    fn build_query(
+        columns: &[table_schema::Column],
+        table_name: &str,
+        dst_nsp: &str,
+        shard_nsps: &[(&str, String)],
+    ) -> Result<String, std::fmt::Error> {
+        let mut query = String::new();
+        write!(query, "create view \"{}\".\"{}\" as ", dst_nsp, table_name)?;
+        for (idx, (name, nsp)) in shard_nsps.into_iter().enumerate() {
+            if idx > 0 {
+                write!(query, " union all ")?;
+            }
+            write!(query, "select '{name}' as shard")?;
+            for column in columns {
+                write!(query, ", \"{}\"", column.column_name)?;
+            }
+            writeln!(query, " from \"{}\".\"{}\"", nsp, table_name)?;
+        }
+        Ok(query)
+    }
+
+    let columns = table_schema::columns(conn, src_nsp, src_table)?;
+    let query = build_query(&columns, src_table, dst_nsp, shard_nsps).map_err(|_| {
+        anyhow!(
+            "failed to generate 'create foreign table' query for {}.{}",
+            dst_nsp,
+            src_table
+        )
+    })?;
+    Ok(query)
+}
+
 /// Checks in the database if a given index is valid.
 pub(crate) fn check_index_is_valid(
     conn: &mut PgConnection,
