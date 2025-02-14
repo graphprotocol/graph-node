@@ -11,6 +11,14 @@ extern crate diesel_migrations;
 #[macro_use]
 extern crate diesel_derive_enum;
 
+use graph::components::tracing::TracingControl;
+use graph::data::query::Trace;
+use graph::prelude::lazy_static;
+
+lazy_static! {
+    pub static ref TRACING_CONTROL: TracingControl<Trace> = TracingControl::default();
+}
+
 mod advisory_lock;
 mod block_range;
 mod block_store;

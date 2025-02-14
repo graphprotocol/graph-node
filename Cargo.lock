@@ -643,9 +643,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.6.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "514de17de45fdb8dc022b1a7975556c53c86f9f0aa5f534b98977b171857c2c9"
+checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
 dependencies = [
  "serde",
 ]
@@ -2017,6 +2017,7 @@ dependencies = [
  "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
+ "graph-server-grpc",
  "graph-server-http",
  "graph-server-index-node",
  "graph-server-json-rpc",
@@ -2077,6 +2078,16 @@ dependencies = [
  "uuid",
  "wasm-instrument",
  "wasmtime",
+]
+
+[[package]]
+name = "graph-server-grpc"
+version = "0.36.0"
+dependencies = [
+ "graph",
+ "graph-store-postgres",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]
@@ -2606,9 +2617,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.6"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ab92f4f49ee4fb4f997c784b7a2e0fa70050211e0b6a287f898c3c9785ca956"
+checksum = "df2dcfbe0677734ab2f3ffa7fa7bfd4706bfdc1ef393f2ee30184aed67e631b4"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -2619,7 +2630,6 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio",
- "tower 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "tower-service 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
