@@ -156,6 +156,13 @@ pub struct Opt {
     pub metrics_port: u16,
     #[clap(
         long,
+        default_value = "8060",
+        value_name = "PORT",
+        help = "Port for the query tracing GRPC Server"
+    )]
+    pub grpc_port: u16,
+    #[clap(
+        long,
         default_value = "default",
         value_name = "NODE_ID",
         env = "GRAPH_NODE_ID",

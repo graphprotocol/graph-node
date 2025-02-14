@@ -14,7 +14,7 @@ lazy_static! {
     pub static ref TRACE_NONE: Arc<Trace> = Arc::new(Trace::None);
 }
 
-#[derive(Debug, CacheWeight)]
+#[derive(Debug, CacheWeight, Clone)]
 pub struct TraceWithCacheStatus {
     pub trace: Arc<Trace>,
     pub cache_status: CacheStatus,
@@ -35,7 +35,7 @@ impl HttpTrace {
     }
 }
 
-#[derive(Debug, CacheWeight)]
+#[derive(Debug, CacheWeight, Clone)]
 pub enum Trace {
     None,
     Root {

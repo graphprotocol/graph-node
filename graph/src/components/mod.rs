@@ -60,6 +60,8 @@ pub mod metrics;
 /// Components dealing with versioning
 pub mod versions;
 
+pub mod tracing;
+
 /// A component that receives events of type `T`.
 pub trait EventConsumer<E> {
     /// Get the event sink.

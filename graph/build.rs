@@ -25,4 +25,10 @@ fn main() {
         .out_dir("src/substreams_rpc")
         .compile(&["proto/substreams-rpc.proto"], &["proto"])
         .expect("Failed to compile Substreams RPC proto(s)");
+
+    tonic_build::configure()
+        .out_dir("src/grpc/pb")
+        .include_file("mod.rs")
+        .compile(&["proto/tracing.proto"], &["proto"])
+        .expect("Failed to compile Tracing proto(s)");
 }

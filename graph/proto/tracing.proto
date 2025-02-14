@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package graph.tracing.v1;
+
+service Stream { rpc QueryTrace(Request) returns (stream Response); }
+
+message Request { int32 deployment_id = 1; }
+
+message Response { repeated Trace traces = 1; }
+
+message Trace {
+  int32 deployment_id = 1;
+  string query = 2;
+  uint64 duration_millis = 3;
+  uint32 children = 4;
+  optional uint64 conn_wait_millis = 5;
+  optional uint64 permit_wait_millis = 6;
+  optional uint64 entity_count = 7;
+}
