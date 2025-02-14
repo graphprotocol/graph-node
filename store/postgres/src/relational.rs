@@ -33,7 +33,6 @@ use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
 use graph::components::subgraph::PoICausalityRegion;
-use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
@@ -43,6 +42,7 @@ use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };
 use graph::slog::warn;
+use graph::{constraint_violation, tokio};
 use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;
@@ -54,6 +54,7 @@ use std::fmt::{self, Write};
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::relational::value::{FromOidRow, OidRow};
@@ -79,7 +80,7 @@ use graph::prelude::{
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
-use crate::{catalog, deployment};
+use crate::{catalog, deployment, TRACING_CONTROL};
 
 use self::rollup::Rollup;
 
@@ -824,11 +825,12 @@ impl Layout {
             elapsed: Duration,
             entity_count: usize,
             trace: bool,
+            trace_sender: Option<graph::tokio::sync::mpsc::Sender<Trace>>,
         ) -> Trace {
             // 20kB
             const MAXLEN: usize = 20_480;
 
-            if !ENV_VARS.log_sql_timing() && !trace {
+            if !ENV_VARS.log_sql_timing() && !trace && trace_sender.is_none() {
                 return Trace::None;
             }
 
@@ -839,6 +841,16 @@ impl Layout {
             } else {
                 Trace::None
             };
+
+            match (&trace, trace_sender) {
+                (Trace::None, Some(sender)) => {
+                    let _ = sender.try_send(Trace::query(&text, elapsed, entity_count));
+                }
+                (trace, Some(sender)) => {
+                    let _ = sender.try_send(trace.clone());
+                }
+                (_, None) => {}
+            }
 
             if ENV_VARS.log_sql_timing() {
                 // If the query + bind variables is more than MAXLEN, truncate it;
@@ -910,7 +922,18 @@ impl Layout {
                     )),
                 }
             })?;
-        let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len(), trace);
+
+        let id = self.site.id.into();
+        let trace_sender = TRACING_CONTROL.producer(id);
+
+        let trace = log_query_timing(
+            logger,
+            &query_clone,
+            start.elapsed(),
+            values.len(),
+            trace,
+            trace_sender,
+        );
 
         let parent_type = filter_collection.parent_type()?.map(ColumnType::from);
         values
