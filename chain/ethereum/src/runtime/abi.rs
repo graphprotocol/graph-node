@@ -2,9 +2,9 @@ use super::runtime_adapter::UnresolvedContractCall;
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
+use graph::abi;
 use graph::{
     prelude::{
-        ethabi,
         web3::types::{Log, TransactionReceipt, H256},
         BigInt,
     },
@@ -37,7 +37,7 @@ impl AscType for AscLogParamArray {
     }
 }
 
-impl ToAscObj<AscLogParamArray> for &[ethabi::LogParam] {
+impl ToAscObj<AscLogParamArray> for &[abi::DynSolParam] {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -778,7 +778,7 @@ impl<'a> ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereu
     }
 }
 
-impl ToAscObj<AscLogParam> for ethabi::LogParam {
+impl ToAscObj<AscLogParam> for abi::DynSolParam {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
