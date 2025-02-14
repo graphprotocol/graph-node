@@ -1,4 +1,5 @@
-use graph::prelude::{ethabi::Token, web3::types::U256};
+use graph::abi;
+use graph::prelude::web3::types::U256;
 use graph_runtime_wasm::asc_abi::class::{
     ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
 };
@@ -178,9 +179,9 @@ async fn abi_bytes_and_fixed_bytes_v0_0_5() {
     test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_5).await;
 }
 
-async fn test_abi_ethabi_token_identity(api_version: Version) {
+async fn test_abi_alloy_token_identity(api_version: Version) {
     let mut instance = test_module(
-        "abiEthabiTokenIdentity",
+        "abiAlloyTokenIdentity",
         mock_data_source(
             &wasm_file_path("abi_token.wasm", api_version.clone()),
             api_version.clone(),
@@ -190,8 +191,8 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     .await;
 
     // Token::Address
-    let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
-    let token_address = Token::Address(address);
+    let address = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+    let token_address = abi::DynSolValue::Address(address.into());
 
     let new_address_obj: AscPtr<AscAddress> =
         instance.invoke_export1("token_to_address", &token_address);
@@ -202,7 +203,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     assert_eq!(token_address, new_token);
 
     // Token::Bytes
-    let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
+    let token_bytes = abi::DynSolValue::Bytes(vec![42, 45, 7, 245, 45]);
     let new_bytes_obj: AscPtr<ArrayBuffer> =
         instance.invoke_export1("token_to_bytes", &token_bytes);
     let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj);
@@ -211,7 +212,8 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     assert_eq!(token_bytes, new_token);
 
     // Token::Int
-    let int_token = Token::Int(U256([256, 453452345, 0, 42]));
+    let int = abi::I256::from_limbs([256, 453452345, 0, 42]);
+    let int_token = abi::DynSolValue::Int(int, int.bits() as usize);
     let new_int_obj: AscPtr<ArrayBuffer> = instance.invoke_export1("token_to_int", &int_token);
 
     let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_int", new_int_obj);
@@ -220,7 +222,8 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     assert_eq!(int_token, new_token);
 
     // Token::Uint
-    let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
+    let uint = abi::U256::from_limbs([256, 453452345, 0, 42]);
+    let uint_token = abi::DynSolValue::Uint(uint, uint.bit_len());
 
     let new_uint_obj: AscPtr<ArrayBuffer> = instance.invoke_export1("token_to_uint", &uint_token);
     let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_uint", new_uint_obj);
@@ -230,7 +233,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     assert_ne!(uint_token, int_token);
 
     // Token::Bool
-    let token_bool = Token::Bool(true);
+    let token_bool = abi::DynSolValue::Bool(true);
 
     let token_bool_ptr = instance.asc_new(&token_bool).unwrap();
     let func = instance
@@ -251,7 +254,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     assert_eq!(token_bool, new_token);
 
     // Token::String
-    let token_string = Token::String("漢字Go🇧🇷".into());
+    let token_string = abi::DynSolValue::String("漢字Go🇧🇷".into());
     let new_string_obj: AscPtr<AscString> =
         instance.invoke_export1("token_to_string", &token_string);
     let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_string", new_string_obj);
@@ -260,13 +263,13 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     assert_eq!(token_string, new_token);
 
     // Token::Array
-    let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
-    let token_array_nested = Token::Array(vec![token_string, token_array]);
+    let token_array = abi::DynSolValue::Array(vec![token_address, token_bytes, token_bool]);
+    let token_array_nested = abi::DynSolValue::Array(vec![token_string, token_array]);
     let new_array_obj: AscEnumArray<EthereumValueKind> =
         instance.invoke_export1("token_to_array", &token_array_nested);
 
     let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_array", new_array_obj);
-    let new_token: Token = instance.asc_get(new_token_ptr).unwrap();
+    let new_token: abi::DynSolValue = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(new_token, token_array_nested);
 }
@@ -274,15 +277,15 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
 /// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
 /// and assert the final token is the same as the starting one.
 #[tokio::test]
-async fn abi_ethabi_token_identity_v0_0_4() {
-    test_abi_ethabi_token_identity(API_VERSION_0_0_4).await;
+async fn abi_alloy_token_identity_v0_0_4() {
+    test_abi_alloy_token_identity(API_VERSION_0_0_4).await;
 }
 
 /// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
 /// and assert the final token is the same as the starting one.
 #[tokio::test]
-async fn abi_ethabi_token_identity_v0_0_5() {
-    test_abi_ethabi_token_identity(API_VERSION_0_0_5).await;
+async fn abi_alloy_token_identity_v0_0_5() {
+    test_abi_alloy_token_identity(API_VERSION_0_0_5).await;
 }
 
 async fn test_abi_store_value(api_version: Version) {

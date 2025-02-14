@@ -19,3 +19,4 @@ prost-types = { workspace = true }
 [dev-dependencies]
 hex = "0.4.3"
 pretty_assertions = "1.4.0"
+serde_json = { workspace = true }

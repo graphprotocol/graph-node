@@ -1262,7 +1262,7 @@ pub struct CachedEthereumCall {
     pub block_ptr: BlockPtr,
 
     /// The address to the called contract.
-    pub contract_address: ethabi::Address,
+    pub contract_address: web3::types::Address,
 
     /// The encoded return value of this call.
     pub return_value: Vec<u8>,

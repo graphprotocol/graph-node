@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 async-trait = "0.1.50"
-ethabi = "17.2"
 hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"
