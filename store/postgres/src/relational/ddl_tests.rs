@@ -26,9 +26,7 @@ fn test_layout(gql: &str) -> Layout {
 #[test]
 fn table_is_sane() {
     let layout = test_layout(THING_GQL);
-    let table = layout
-        .table(&"thing".into())
-        .expect("failed to get 'thing' table");
+    let table = layout.table("thing").expect("failed to get 'thing' table");
     assert_eq!(SqlName::from("thing"), table.name);
     assert_eq!("Thing", table.object.as_str());
 
