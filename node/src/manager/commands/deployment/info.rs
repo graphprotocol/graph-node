@@ -1,4 +1,6 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::io;
 use std::sync::Arc;
 
 use anyhow::bail;
@@ -12,7 +14,8 @@ use graphman::deployment::Deployment;
 use graphman::deployment::DeploymentSelector;
 use graphman::deployment::DeploymentVersionSelector;
 
-use crate::manager::display::List;
+use crate::manager::display::Columns;
+use crate::manager::display::Row;
 
 pub struct Context {
     pub primary_pool: ConnectionPool,
@@ -26,6 +29,8 @@ pub struct Args {
     pub status: bool,
     pub used: bool,
     pub all: bool,
+    pub brief: bool,
+    pub no_name: bool,
 }
 
 pub fn run(ctx: Context, args: Args) -> Result<()> {
@@ -41,6 +46,8 @@ pub fn run(ctx: Context, args: Args) -> Result<()> {
         status,
         used,
         all,
+        brief,
+        no_name,
     } = args;
 
     let deployment = match deployment {
@@ -65,8 +72,7 @@ pub fn run(ctx: Context, args: Args) -> Result<()> {
         None
     };
 
-    print_info(deployments, statuses);
-
+    render(brief, no_name, deployments, statuses);
     Ok(())
 }
 
@@ -85,77 +91,86 @@ fn make_deployment_version_selector(
     }
 }
 
-fn print_info(deployments: Vec<Deployment>, statuses: Option<HashMap<i32, DeploymentStatus>>) {
-    let mut headers = vec![
-        "Name",
-        "Status",
-        "Hash",
-        "Namespace",
-        "Shard",
-        "Active",
-        "Chain",
-        "Node ID",
-    ];
+const NONE: &str = "---";
 
-    if statuses.is_some() {
-        headers.extend(vec![
-            "Paused",
-            "Synced",
-            "Health",
-            "Earliest Block",
-            "Latest Block",
-            "Chain Head Block",
-        ]);
+fn optional(s: Option<impl ToString>) -> String {
+    s.map(|x| x.to_string()).unwrap_or(NONE.to_owned())
+}
+
+fn render(
+    brief: bool,
+    no_name: bool,
+    deployments: Vec<Deployment>,
+    statuses: Option<HashMap<i32, DeploymentStatus>>,
+) {
+    fn name_and_status(deployment: &Deployment) -> String {
+        format!("{} ({})", deployment.name, deployment.version_status)
     }
 
-    let mut list = List::new(headers);
-
-    const NONE: &str = "---";
-
-    fn optional(s: Option<impl ToString>) -> String {
-        s.map(|x| x.to_string()).unwrap_or(NONE.to_owned())
+    fn number(n: Option<i32>) -> String {
+        n.map(|x| format!("{x}")).unwrap_or(NONE.to_owned())
     }
 
+    let mut table = Columns::default();
+
+    let mut combined: BTreeMap<_, Vec<_>> = BTreeMap::new();
     for deployment in deployments {
-        let mut row = vec![
-            deployment.name,
-            deployment.version_status,
-            deployment.hash,
-            deployment.namespace,
-            deployment.shard,
-            deployment.is_active.to_string(),
-            deployment.chain,
-            optional(deployment.node_id),
-        ];
-
-        let status = statuses.as_ref().map(|x| x.get(&deployment.id));
-
-        match status {
-            Some(Some(status)) => {
-                row.extend(vec![
-                    optional(status.is_paused),
-                    status.is_synced.to_string(),
-                    status.health.as_str().to_string(),
-                    status.earliest_block_number.to_string(),
-                    optional(status.latest_block.as_ref().map(|x| x.number)),
-                    optional(status.chain_head_block.as_ref().map(|x| x.number)),
-                ]);
-            }
-            Some(None) => {
-                row.extend(vec![
-                    NONE.to_owned(),
-                    NONE.to_owned(),
-                    NONE.to_owned(),
-                    NONE.to_owned(),
-                    NONE.to_owned(),
-                    NONE.to_owned(),
-                ]);
-            }
-            None => {}
-        }
-
-        list.append(row);
+        let status = statuses.as_ref().and_then(|x| x.get(&deployment.id));
+        combined
+            .entry(deployment.id)
+            .or_default()
+            .push((deployment, status));
     }
 
-    list.render();
+    let mut first = true;
+    for (_, deployments) in combined {
+        let deployment = &deployments[0].0;
+        if first {
+            first = false;
+        } else {
+            table.push_row(Row::separator());
+        }
+        table.push_row([
+            "Namespace",
+            &format!("{} [{}]", deployment.namespace, deployment.shard),
+        ]);
+        table.push_row(["Hash", &deployment.hash]);
+        if !no_name && (!brief || deployment.is_active) {
+            if deployments.len() > 1 {
+                table.push_row(["Versions", &name_and_status(deployment)]);
+                for (d, _) in &deployments[1..] {
+                    table.push_row(["", &name_and_status(d)]);
+                }
+            } else {
+                table.push_row(["Version", &name_and_status(deployment)]);
+            }
+            table.push_row(["Chain", &deployment.chain]);
+        }
+        table.push_row(["Node ID", &optional(deployment.node_id.as_ref())]);
+        table.push_row(["Active", &deployment.is_active.to_string()]);
+        if let Some((_, status)) = deployments.get(0) {
+            if let Some(status) = status {
+                table.push_row(["Paused", &optional(status.is_paused)]);
+                table.push_row(["Synced", &status.is_synced.to_string()]);
+                table.push_row(["Health", status.health.as_str()]);
+
+                let earliest = status.earliest_block_number;
+                let latest = status.latest_block.as_ref().map(|x| x.number);
+                let chain_head = status.chain_head_block.as_ref().map(|x| x.number);
+                let behind = match (latest, chain_head) {
+                    (Some(latest), Some(chain_head)) => Some(chain_head - latest),
+                    _ => None,
+                };
+
+                table.push_row(["Earliest Block", &earliest.to_string()]);
+                table.push_row(["Latest Block", &number(latest)]);
+                table.push_row(["Chain Head Block", &number(chain_head)]);
+                if let Some(behind) = behind {
+                    table.push_row(["   Blocks behind", &behind.to_string()]);
+                }
+            }
+        }
+    }
+
+    table.render(&mut io::stdout()).ok();
 }

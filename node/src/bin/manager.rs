@@ -143,6 +143,12 @@ pub enum Command {
         /// List only used (current and pending) versions
         #[clap(long, short)]
         used: bool,
+        /// List names only for the active deployment
+        #[clap(long, short)]
+        brief: bool,
+        /// Do not print subgraph names
+        #[clap(long, short = 'N')]
+        no_name: bool,
     },
     /// Manage unused deployments
     ///
@@ -1127,6 +1133,8 @@ async fn main() -> anyhow::Result<()> {
             status,
             used,
             all,
+            brief,
+            no_name,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
 
@@ -1142,6 +1150,8 @@ async fn main() -> anyhow::Result<()> {
                 status,
                 used,
                 all,
+                brief,
+                no_name,
             };
 
             commands::deployment::info::run(ctx, args)
