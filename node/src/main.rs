@@ -1,5 +1,6 @@
 use clap::Parser as _;
 use git_testament::{git_testament, render_testament};
+use graph::components::store::DeploymentId;
 use graph::futures01::Future as _;
 use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
@@ -30,8 +31,8 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::connection_pool::ConnectionPool;
-use graph_store_postgres::Store;
 use graph_store_postgres::{register_jobs as register_store_jobs, NotificationSender};
+use graph_store_postgres::{Store, TRACING_CONTROL};
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
 use std::io::{BufRead, BufReader};
@@ -517,6 +518,10 @@ async fn main() {
         graph::spawn(async move { index_node_server.start(index_node_port).await });
 
         graph::spawn(async move {
+            graph_server_grpc::start(8888).await.unwrap();
+        });
+
+        graph::spawn(async move {
             metrics_server
                 .start(metrics_port)
                 .await
@@ -558,6 +563,19 @@ async fn main() {
             }
         }
     });
+
+    let mut rx = TRACING_CONTROL.subscribe(DeploymentId(1)).await;
+    loop {
+        let trace = rx.recv().await;
+        match trace {
+            Some(trace) => {
+                info!(&logger, "#### trace: {:?}", trace);
+            }
+            None => {
+                break;
+            }
+        }
+    }
 
     graph::futures03::future::pending::<()>().await;
 }

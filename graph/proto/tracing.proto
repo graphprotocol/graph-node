@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package graph.tracing.v1;
+
+service Stream {
+  rpc QueryTrace(Request) returns (stream Trace);
+}
+
+message Request {
+    int32 deployment_id = 1;
+}
+
+message Trace {
+    int32 deployment_id = 1;
+    string query = 2;
+    uint64 duration_millis = 3;
+}
