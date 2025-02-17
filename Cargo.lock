@@ -1196,9 +1196,9 @@ dependencies = [
 
 [[package]]
 name = "diesel"
-version = "2.2.4"
+version = "2.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "158fe8e2e68695bd615d7e4f3227c0727b151330d3e253b525086c348d055d5e"
+checksum = "04001f23ba8843dc315804fa324000376084dfb1c30794ff68dd279e6e5696d5"
 dependencies = [
  "bigdecimal 0.3.1",
  "bitflags 2.6.0",
@@ -1212,7 +1212,6 @@ dependencies = [
  "pq-sys",
  "r2d2",
  "serde_json",
- "uuid",
 ]
 
 [[package]]
@@ -1229,18 +1228,18 @@ dependencies = [
 
 [[package]]
 name = "diesel-dynamic-schema"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71eda9b13a55533594231b0763c36bc21058ccb82ed17eaeb41b3cbb897c1bb1"
+checksum = "061bbe2d02508364c50153226524b7fc224f56031a5e927b0bc5f1f2b48de6a6"
 dependencies = [
  "diesel",
 ]
 
 [[package]]
 name = "diesel_derives"
-version = "2.2.1"
+version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59de76a222c2b8059f789cbe07afbfd8deb8c31dd0bc2a21f85e256c1def8259"
+checksum = "e7f2c3de51e2ba6bf2a648285696137aaf0f5f487bcbea93972fe8a364e131a4"
 dependencies = [
  "diesel_table_macro_syntax",
  "dsl_auto_type",
