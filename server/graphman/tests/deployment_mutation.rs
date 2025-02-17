@@ -390,3 +390,197 @@ fn graphql_cannot_remove_subgraph_with_invalid_name() {
         assert_ne!(resp, success_resp);
     });
 }
+
+#[test]
+fn graphql_can_unassign_deployments() {
+    run_test(|| async {
+        let deployment_hash = DeploymentHash::new("subgraph_1").unwrap();
+        create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
+
+        let unassign_req = send_graphql_request(
+            json!({
+                "query": r#"mutation {
+                    deployment {
+                        unassign(deployment: { hash: "subgraph_1" }){
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "deployment": {
+                    "unassign": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        let subgraph_node_id = send_graphql_request(
+            json!({
+                "query": r#"{
+                    deployment {
+                        info(deployment: { hash: "subgraph_1" }) {
+                            nodeId
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let is_node_null = subgraph_node_id["data"]["deployment"]["info"][0]["nodeId"].is_null();
+
+        assert_eq!(unassign_req, expected_resp);
+        assert_eq!(is_node_null, true);
+    });
+}
+
+#[test]
+fn graphql_cannot_unassign_deployments_twice() {
+    run_test(|| async {
+        let deployment_hash = DeploymentHash::new("subgraph_1").unwrap();
+        create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
+
+        send_graphql_request(
+            json!({
+                "query": r#"mutation {
+                    deployment {
+                        unassign(deployment: { hash: "subgraph_1" }){
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let unassign_again = send_graphql_request(
+            json!({
+                "query": r#"mutation {
+                    deployment {
+                        unassign(deployment: { hash: "subgraph_1" }){
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "deployment": {
+                    "unassign": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        assert_ne!(unassign_again, expected_resp);
+    });
+}
+
+#[test]
+fn graphql_can_reassign_deployment() {
+    run_test(|| async {
+        let deployment_hash = DeploymentHash::new("subgraph_1").unwrap();
+        create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
+
+        let deployment_hash = DeploymentHash::new("subgraph_2").unwrap();
+        create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
+
+        send_graphql_request(
+            json!({
+                "query": r#"mutation {
+                    deployment {
+                        unassign(deployment: { hash: "subgraph_1" }){
+                            success
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let reassign = send_graphql_request(
+            json!({
+                "query": r#"mutation {
+                    deployment {
+                        reassign(deployment: { hash: "subgraph_1" }, node: "test") {
+                            ... on EmptyResponse {
+                                success
+                            }
+                            ... on CompletedWithWarnings {
+                                warnings
+                            }
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "deployment": {
+                    "reassign": {
+                        "success": true,
+                    }
+                }
+            }
+        });
+
+        assert_eq!(reassign, expected_resp);
+    });
+}
+
+#[test]
+fn graphql_warns_reassign_on_wrong_node_id() {
+    run_test(|| async {
+        let deployment_hash = DeploymentHash::new("subgraph_1").unwrap();
+        create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
+
+        let reassign = send_graphql_request(
+            json!({
+                "query": r#"mutation {
+                    deployment {
+                        reassign(deployment: { hash: "subgraph_1" }, node: "invalid_node") {
+                            ... on EmptyResponse {
+                                success
+                            }
+                            ... on CompletedWithWarnings {
+                                warnings
+                            }
+                        }
+                    }
+                }"#
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let expected_resp = json!({
+            "data": {
+                "deployment": {
+                    "reassign": {
+                        "warnings": ["This is the only deployment assigned to 'invalid_node'. Please make sure that the node ID is spelled correctly."],
+                    }
+                }
+            }
+        });
+
+        assert_eq!(reassign, expected_resp);
+    });
+}
