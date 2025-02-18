@@ -1923,7 +1923,6 @@ dependencies = [
  "serde",
  "tiny-keccak 1.5.0",
  "tonic-build",
- "uuid",
 ]
 
 [[package]]
@@ -1979,7 +1978,6 @@ dependencies = [
  "serde_yaml",
  "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
- "uuid",
  "wiremock",
 ]
 
@@ -2071,7 +2069,6 @@ dependencies = [
  "parity-wasm",
  "semver",
  "serde_yaml",
- "uuid",
  "wasm-instrument",
  "wasmtime",
 ]
