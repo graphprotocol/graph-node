@@ -713,8 +713,8 @@ impl<'a> Loader<'a> {
             // that causes unnecessary work in the database
             query.order = EntityOrder::Unordered;
         }
-        // Aggregations are always ordered by (timestamp, id)
-        if child_type.is_aggregation() {
+        // Apply default timestamp ordering for aggregations if no custom order is specified
+        if child_type.is_aggregation() && matches!(query.order, EntityOrder::Default) {
             let ts = child_type.field(kw::TIMESTAMP).unwrap();
             query.order = EntityOrder::Descending(ts.name.to_string(), ts.value_type);
         }

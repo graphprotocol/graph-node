@@ -824,7 +824,7 @@ impl Aggregate {
 
     /// The field needed for the finalised aggregation for hourly/daily
     /// values
-    fn as_agg_field(&self) -> Field {
+    pub fn as_agg_field(&self) -> Field {
         Field {
             name: self.name.clone(),
             field_type: self.field_type.clone(),
