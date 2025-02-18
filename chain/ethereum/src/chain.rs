@@ -13,7 +13,7 @@ use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
-    BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
+    retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
@@ -1019,15 +1019,30 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let block = match self.chain_client.as_ref() {
             ChainClient::Firehose(endpoints) => {
                 let endpoint = endpoints.endpoint().await?;
-                let block = endpoint
-                    .get_block_by_ptr::<codec::Block>(block, &self.logger)
-                    .await
-                    .context(format!(
-                        "Failed to fetch block by ptr {} from firehose, backtrace: {}",
-                        block,
-                        std::backtrace::Backtrace::force_capture()
-                    ))?;
-                block.parent_ptr()
+                let logger = self.logger.clone();
+                let retry_log_message =
+                    format!("get_block_by_ptr for block {} with firehose", block);
+                let block = block.clone();
+
+                retry(retry_log_message, &logger)
+                    .limit(ENV_VARS.request_retries)
+                    .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                    .run(move || {
+                        let endpoint = endpoint.cheap_clone();
+                        let logger = logger.cheap_clone();
+                        let block = block.clone();
+                        async move {
+                            endpoint
+                                .get_block_by_ptr::<codec::Block>(&block, &logger)
+                                .await
+                                .context(format!(
+                                    "Failed to fetch block by ptr {} from firehose",
+                                    block
+                                ))
+                        }
+                    })
+                    .await?
+                    .parent_ptr()
             }
             ChainClient::Rpc(adapters) => {
                 let blocks = adapters
