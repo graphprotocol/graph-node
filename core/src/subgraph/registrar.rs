@@ -157,17 +157,8 @@ where
             .subscribe()
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
-                let assignments = event
-                    .changes
-                    .iter()
-                    .map(|change| match change {
-                        EntityChange::Assignment {
-                            deployment,
-                            operation,
-                        } => (deployment.clone(), operation.clone()),
-                    })
-                    .collect::<Vec<_>>();
-                stream::iter_ok(assignments)
+                let changes: Vec<_> = event.changes.iter().cloned().map(AssignmentChange::into_parts).collect();
+                stream::iter_ok(changes)
             })
             .flatten()
             .and_then(
@@ -178,7 +169,7 @@ where
                                 );
 
                     match operation {
-                        EntityChangeOperation::Set => {
+                        AssignmentOperation::Set => {
                             store
                                 .assignment_status(&deployment)
                                 .map_err(|e| {
@@ -215,7 +206,7 @@ where
                                     }
                                 })
                         }
-                        EntityChangeOperation::Removed => {
+                        AssignmentOperation::Removed => {
                             // Send remove event without checking node ID.
                             // If node ID does not match, then this is a no-op when handled in
                             // assignment provider.
