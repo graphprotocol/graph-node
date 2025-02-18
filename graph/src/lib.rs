@@ -127,8 +127,8 @@ pub mod prelude {
     };
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
-        write::EntityModification, AttributeNames, BlockNumber, CachedEthereumCall, ChainStore,
-        Child, ChildMultiplicity, EntityCache, EntityChange, EntityChangeOperation,
+        write::EntityModification, AssignmentChange, AssignmentOperation, AttributeNames,
+        BlockNumber, CachedEthereumCall, ChainStore, Child, ChildMultiplicity, EntityCache,
         EntityCollection, EntityFilter, EntityLink, EntityOperation, EntityOrder,
         EntityOrderByChild, EntityOrderByChildInfo, EntityQuery, EntityRange, EntityWindow,
         EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats, QueryStore,

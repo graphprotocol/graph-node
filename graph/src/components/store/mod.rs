@@ -537,31 +537,41 @@ impl EntityQuery {
     }
 }
 
-/// Operation types that lead to entity changes.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+/// Operation types that lead to changes in assignments
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
-pub enum EntityChangeOperation {
-    /// An entity was added or updated
+pub enum AssignmentOperation {
+    /// An assignment was added or updated
     Set,
-    /// An existing entity was removed.
+    /// An assignment was removed.
     Removed,
 }
 
-/// Entity change events emitted by [Store](trait.Store.html) implementations.
+/// Assignment change events emitted by [Store](trait.Store.html) implementations.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum EntityChange {
-    Assignment {
-        deployment: DeploymentLocator,
-        operation: EntityChangeOperation,
-    },
+pub struct AssignmentChange {
+    deployment: DeploymentLocator,
+    operation: AssignmentOperation,
 }
 
-impl EntityChange {
-    pub fn for_assignment(deployment: DeploymentLocator, operation: EntityChangeOperation) -> Self {
-        Self::Assignment {
+impl AssignmentChange {
+    fn new(deployment: DeploymentLocator, operation: AssignmentOperation) -> Self {
+        Self {
             deployment,
             operation,
         }
+    }
+
+    pub fn set(deployment: DeploymentLocator) -> Self {
+        Self::new(deployment, AssignmentOperation::Set)
+    }
+
+    pub fn removed(deployment: DeploymentLocator) -> Self {
+        Self::new(deployment, AssignmentOperation::Removed)
+    }
+
+    pub fn into_parts(self) -> (DeploymentLocator, AssignmentOperation) {
+        (self.deployment, self.operation)
     }
 }
 
@@ -578,16 +588,16 @@ pub struct StoreEvent {
     // The tag is only there to make it easier to track StoreEvents in the
     // logs as they flow through the system
     pub tag: usize,
-    pub changes: HashSet<EntityChange>,
+    pub changes: HashSet<AssignmentChange>,
 }
 
 impl StoreEvent {
-    pub fn new(changes: Vec<EntityChange>) -> StoreEvent {
+    pub fn new(changes: Vec<AssignmentChange>) -> StoreEvent {
         let changes = changes.into_iter().collect();
         StoreEvent::from_set(changes)
     }
 
-    fn from_set(changes: HashSet<EntityChange>) -> StoreEvent {
+    fn from_set(changes: HashSet<AssignmentChange>) -> StoreEvent {
         static NEXT_TAG: AtomicUsize = AtomicUsize::new(0);
 
         let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
