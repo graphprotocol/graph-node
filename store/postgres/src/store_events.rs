@@ -6,7 +6,6 @@ use graph::tokio_stream::wrappers::ReceiverStream;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
-use uuid::Uuid;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
 use graph::components::store::SubscriptionManager as SubscriptionManagerTrait;
@@ -89,7 +88,7 @@ impl StoreEventListener {
 /// Manage subscriptions to the `StoreEvent` stream. Keep a list of
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
-    subscriptions: Arc<RwLock<HashMap<String, Sender<Arc<StoreEvent>>>>>,
+    subscriptions: Arc<RwLock<HashMap<usize, Sender<Arc<StoreEvent>>>>>,
 
     /// Keep the notification listener alive
     listener: StoreEventListener,
@@ -180,7 +179,8 @@ impl SubscriptionManager {
 
 impl SubscriptionManagerTrait for SubscriptionManager {
     fn subscribe(&self) -> StoreEventStreamBox {
-        let id = Uuid::new_v4().to_string();
+        static SUBSCRIPTION_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let id = SUBSCRIPTION_COUNTER.fetch_add(1, Ordering::SeqCst);
 
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
