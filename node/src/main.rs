@@ -28,7 +28,6 @@ use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
-use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::Store;
 use graph_store_postgres::{register_jobs as register_store_jobs, NotificationSender};
@@ -362,8 +361,6 @@ async fn main() {
             graphql_metrics_registry,
         ));
         let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
-        let subscription_server =
-            GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 
         let index_node_server = IndexNodeServer::new(
             &logger_factory,
@@ -509,9 +506,6 @@ async fn main() {
 
         // Serve GraphQL queries over HTTP
         graph::spawn(async move { graphql_server.start(http_port, ws_port).await });
-
-        // Serve GraphQL subscriptions over WebSockets
-        graph::spawn(subscription_server.serve(ws_port));
 
         // Run the index node server
         graph::spawn(async move { index_node_server.start(index_node_port).await });
