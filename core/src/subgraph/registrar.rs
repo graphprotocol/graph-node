@@ -165,7 +165,6 @@ where
                     .iter()
                     .filter(|change| filter.matches(change))
                     .map(|change| match change {
-                        EntityChange::Data { .. } => unreachable!(),
                         EntityChange::Assignment {
                             deployment,
                             operation,

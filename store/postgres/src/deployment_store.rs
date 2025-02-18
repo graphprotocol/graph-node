@@ -42,7 +42,7 @@ use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
     DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
-    StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value, ENV_VARS,
+    StopwatchMetrics, StoreError, UnfailOutcome, Value, ENV_VARS,
 };
 use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
 use web3::types::Address;
@@ -1119,17 +1119,11 @@ impl DeploymentStore {
         last_rollup: Option<BlockTime>,
         stopwatch: &StopwatchMetrics,
         manifest_idx_and_name: &[(u32, String)],
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(), StoreError> {
         let mut conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
             self.get_conn()?
         };
-
-        // Emit a store event for the changes we are about to make. We
-        // wait with sending it until we have done all our other work
-        // so that we do not hold a lock on the notification queue
-        // for longer than we have to
-        let event: StoreEvent = batch.store_event(&site.deployment);
 
         let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
@@ -1205,7 +1199,7 @@ impl DeploymentStore {
             )?;
         }
 
-        Ok(event)
+        Ok(())
     }
 
     fn spawn_prune(
@@ -1294,9 +1288,9 @@ impl DeploymentStore {
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
         truncate: bool,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(), StoreError> {
         let logger = self.logger.cheap_clone();
-        let event = deployment::with_lock(conn, &site, |conn| {
+        deployment::with_lock(conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // The revert functions want the number of the first block that we need to get rid of
                 let block = block_ptr_to.number + 1;
@@ -1311,15 +1305,12 @@ impl DeploymentStore {
                 // Revert the data
                 let layout = self.layout(conn, site.clone())?;
 
-                let event = if truncate {
-                    let event = layout.truncate_tables(conn)?;
+                if truncate {
                     deployment::set_entity_count(conn, site.as_ref(), layout.count_query.as_str())?;
-                    event
                 } else {
-                    let (event, count) = layout.revert_block(conn, block)?;
+                    let count = layout.revert_block(conn, block)?;
                     deployment::update_entity_count(conn, site.as_ref(), count)?;
-                    event
-                };
+                }
 
                 // Revert the meta data changes that correspond to this subgraph.
                 // Only certain meta data changes need to be reverted, most
@@ -1328,18 +1319,16 @@ impl DeploymentStore {
                 // changes that might need to be reverted
                 Layout::revert_metadata(&logger, conn, &site, block)?;
 
-                Ok(event)
+                Ok(())
             })
-        })?;
-
-        Ok(event)
+        })
     }
 
     pub(crate) fn truncate(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?;
@@ -1365,11 +1354,7 @@ impl DeploymentStore {
         )
     }
 
-    pub(crate) fn rewind(
-        &self,
-        site: Arc<Site>,
-        block_ptr_to: BlockPtr,
-    ) -> Result<StoreEvent, StoreError> {
+    pub(crate) fn rewind(&self, site: Arc<Site>, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?;
@@ -1400,7 +1385,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
-    ) -> Result<StoreEvent, StoreError> {
+    ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
         let deployment_head = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?.unwrap();

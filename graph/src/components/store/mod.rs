@@ -552,11 +552,6 @@ pub enum EntityChangeOperation {
 /// Entity change events emitted by [Store](trait.Store.html) implementations.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum EntityChange {
-    Data {
-        subgraph_id: DeploymentHash,
-        /// Entity type name of the changed entity.
-        entity_type: String,
-    },
     Assignment {
         deployment: DeploymentLocator,
         operation: EntityChangeOperation,
@@ -564,32 +559,10 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
-        Self::Data {
-            subgraph_id,
-            entity_type: key.entity_type.to_string(),
-        }
-    }
-
     pub fn for_assignment(deployment: DeploymentLocator, operation: EntityChangeOperation) -> Self {
         Self::Assignment {
             deployment,
             operation,
-        }
-    }
-
-    pub fn as_filter(&self, schema: &InputSchema) -> SubscriptionFilter {
-        use EntityChange::*;
-        match self {
-            Data {
-                subgraph_id,
-                entity_type,
-                ..
-            } => SubscriptionFilter::Entities(
-                subgraph_id.clone(),
-                schema.entity_type(entity_type).unwrap(),
-            ),
-            Assignment { .. } => SubscriptionFilter::Assignment,
         }
     }
 }
@@ -621,37 +594,6 @@ impl StoreEvent {
 
         let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
         StoreEvent { tag, changes }
-    }
-
-    pub fn from_mods<'a, I: IntoIterator<Item = &'a EntityModification>>(
-        subgraph_id: &DeploymentHash,
-        mods: I,
-    ) -> Self {
-        let changes: Vec<_> = mods
-            .into_iter()
-            .map(|op| {
-                use EntityModification::*;
-                match op {
-                    Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => {
-                        EntityChange::for_data(subgraph_id.clone(), key.clone())
-                    }
-                }
-            })
-            .collect();
-        StoreEvent::new(changes)
-    }
-
-    pub fn from_types(deployment: &DeploymentHash, entity_types: HashSet<EntityType>) -> Self {
-        let changes =
-            HashSet::from_iter(
-                entity_types
-                    .into_iter()
-                    .map(|entity_type| EntityChange::Data {
-                        subgraph_id: deployment.clone(),
-                        entity_type: entity_type.to_string(),
-                    }),
-            );
-        Self::from_set(changes)
     }
 
     /// Extend `ev1` with `ev2`. If `ev1` is `None`, just set it to `ev2`

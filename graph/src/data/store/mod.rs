@@ -49,14 +49,6 @@ pub enum SubscriptionFilter {
 impl SubscriptionFilter {
     pub fn matches(&self, change: &EntityChange) -> bool {
         match (self, change) {
-            (
-                Self::Entities(eid, etype),
-                EntityChange::Data {
-                    subgraph_id,
-                    entity_type,
-                    ..
-                },
-            ) => subgraph_id == eid && entity_type == etype.typename(),
             (Self::Assignment, EntityChange::Assignment { .. }) => true,
             _ => false,
         }
