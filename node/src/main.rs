@@ -356,7 +356,6 @@ async fn main() {
         let graphql_runner = Arc::new(GraphQlRunner::new(
             &logger,
             network_store.clone(),
-            subscription_manager.clone(),
             load_manager,
             graphql_metrics_registry,
         ));

@@ -1,6 +1,6 @@
 use crate::data::query::QueryResults;
 use crate::data::query::{Query, QueryTarget};
-use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
+use crate::data::subscription::{SubscriptionError, SubscriptionResult};
 use crate::prelude::DeploymentHash;
 
 use async_trait::async_trait;
@@ -32,13 +32,6 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         max_first: Option<u32>,
         max_skip: Option<u32>,
     ) -> QueryResults;
-
-    /// Runs a GraphQL subscription and returns a stream of results.
-    async fn run_subscription(
-        self: Arc<Self>,
-        subscription: Subscription,
-        target: QueryTarget,
-    ) -> Result<SubscriptionResult, SubscriptionError>;
 
     fn metrics(&self) -> Arc<dyn GraphQLMetrics>;
 }

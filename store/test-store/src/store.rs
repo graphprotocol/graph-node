@@ -68,7 +68,6 @@ lazy_static! {
     pub static ref PRIMARY_POOL: ConnectionPool = STORE_POOL_CONFIG.1.clone();
     pub static ref STORE: Arc<Store> = STORE_POOL_CONFIG.0.clone();
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
-    pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();
     pub static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
     pub static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
     static ref BLOCK_STORE: Arc<DieselBlockStore> = STORE.block_store();
@@ -544,7 +543,6 @@ async fn execute_subgraph_query_internal(
                 &logger,
                 store.clone(),
                 &state,
-                SUBSCRIPTION_MANAGER.clone(),
                 ptr,
                 error_policy,
                 query.schema.id().clone(),
