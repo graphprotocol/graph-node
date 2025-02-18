@@ -485,6 +485,12 @@ fn add_types_for_aggregation_types(
     input_schema: &InputSchema,
 ) -> Result<(), APISchemaError> {
     for (name, agg_type) in input_schema.aggregation_types() {
+        // Combine regular fields and aggregate fields for ordering
+        let mut all_fields = agg_type.fields.to_vec();
+        for agg in agg_type.aggregates.iter() {
+            all_fields.push(agg.as_agg_field());
+        }
+        add_order_by_type(&mut api.document, name, &all_fields)?;
         add_aggregation_filter_type(api, name, agg_type)?;
     }
     Ok(())
@@ -678,13 +684,25 @@ impl FilterOps {
                     s::Type::NamedType("OrderDirection".to_string()),
                 ),
             ],
-            FilterOps::Aggregation => vec![input_value(
-                "interval",
-                "",
-                s::Type::NonNullType(Box::new(s::Type::NamedType(
-                    "Aggregation_interval".to_string(),
-                ))),
-            )],
+            FilterOps::Aggregation => vec![
+                input_value(
+                    "interval",
+                    "",
+                    s::Type::NonNullType(Box::new(s::Type::NamedType(
+                        "Aggregation_interval".to_string(),
+                    ))),
+                ),
+                input_value(
+                    "orderBy",
+                    "",
+                    s::Type::NamedType(format!("{}_orderBy", type_name)),
+                ),
+                input_value(
+                    "orderDirection",
+                    "",
+                    s::Type::NamedType("OrderDirection".to_string()),
+                ),
+            ],
         };
 
         let mut args = vec![skip, first];
