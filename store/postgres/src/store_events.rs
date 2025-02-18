@@ -2,19 +2,17 @@ use graph::futures01::Stream;
 use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::TryStreamExt;
-use graph::parking_lot::Mutex;
 use graph::tokio_stream::wrappers::ReceiverStream;
 use std::collections::BTreeSet;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
-use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
-use graph::components::store::{SubscriptionManager as SubscriptionManagerTrait, UnitStream};
+use graph::components::store::SubscriptionManager as SubscriptionManagerTrait;
 use graph::prelude::serde_json;
-use graph::{prelude::*, tokio_stream};
+use graph::prelude::*;
 
 pub struct StoreEventListener {
     notification_listener: NotificationListener,
@@ -89,44 +87,9 @@ impl StoreEventListener {
     }
 }
 
-struct Watcher<T> {
-    sender: Arc<watch::Sender<T>>,
-    receiver: watch::Receiver<T>,
-}
-
-impl<T: Clone + Debug + Send + Sync + 'static> Watcher<T> {
-    fn new(init: T) -> Self {
-        let (sender, receiver) = watch::channel(init);
-        Watcher {
-            sender: Arc::new(sender),
-            receiver,
-        }
-    }
-
-    fn send(&self, v: T) {
-        // Unwrap: `self` holds a receiver.
-        self.sender.send(v).unwrap()
-    }
-
-    fn stream(&self) -> Box<dyn graph::futures03::Stream<Item = T> + Unpin + Send + Sync> {
-        Box::new(tokio_stream::wrappers::WatchStream::new(
-            self.receiver.clone(),
-        ))
-    }
-
-    /// Outstanding receivers returned from `Self::stream`.
-    fn receiver_count(&self) -> usize {
-        // Do not count the internal receiver.
-        self.sender.receiver_count() - 1
-    }
-}
-
 /// Manage subscriptions to the `StoreEvent` stream. Keep a list of
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
-    // These are more efficient since only one entry is stored per filter.
-    subscriptions_no_payload: Arc<Mutex<HashMap<BTreeSet<SubscriptionFilter>, Watcher<()>>>>,
-
     subscriptions:
         Arc<RwLock<HashMap<String, (Arc<BTreeSet<SubscriptionFilter>>, Sender<Arc<StoreEvent>>)>>>,
 
@@ -139,7 +102,6 @@ impl SubscriptionManager {
         let (listener, store_events) = StoreEventListener::new(logger, postgres_url, registry);
 
         let mut manager = SubscriptionManager {
-            subscriptions_no_payload: Arc::new(Mutex::new(HashMap::new())),
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             listener,
         };
@@ -161,7 +123,6 @@ impl SubscriptionManager {
         store_events: Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>,
     ) {
         let subscriptions = self.subscriptions.cheap_clone();
-        let subscriptions_no_payload = self.subscriptions_no_payload.cheap_clone();
         let mut store_events = store_events.compat();
 
         // This channel is constantly receiving things and there are locks involved,
@@ -186,24 +147,12 @@ impl SubscriptionManager {
                         }
                     }
                 }
-
-                // Send to `subscriptions_no_payload`.
-                {
-                    let watchers = subscriptions_no_payload.lock();
-
-                    // Write change to all matching subscription streams
-                    for (_, watcher) in watchers.iter().filter(|(filter, _)| event.matches(filter))
-                    {
-                        watcher.send(());
-                    }
-                }
             }
         });
     }
 
     fn periodically_clean_up_stale_subscriptions(&self) {
         let subscriptions = self.subscriptions.cheap_clone();
-        let subscriptions_no_payload = self.subscriptions_no_payload.cheap_clone();
 
         // Clean up stale subscriptions every 5s
         graph::spawn(async move {
@@ -219,25 +168,6 @@ impl SubscriptionManager {
                     let stale_ids = subscriptions
                         .iter_mut()
                         .filter_map(|(id, (_, sender))| match sender.is_closed() {
-                            true => Some(id.clone()),
-                            false => None,
-                        })
-                        .collect::<Vec<_>>();
-
-                    // Remove all stale subscriptions
-                    for id in stale_ids {
-                        subscriptions.remove(&id);
-                    }
-                }
-
-                // Cleanup `subscriptions_no_payload`.
-                {
-                    let mut subscriptions = subscriptions_no_payload.lock();
-
-                    // Obtain IDs of subscriptions whose receiving end has gone
-                    let stale_ids = subscriptions
-                        .iter_mut()
-                        .filter_map(|(id, watcher)| match watcher.receiver_count() == 0 {
                             true => Some(id.clone()),
                             false => None,
                         })
@@ -269,13 +199,5 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
             .filter_by_entities(entities)
-    }
-
-    fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream {
-        self.subscriptions_no_payload
-            .lock()
-            .entry(entities)
-            .or_insert_with(|| Watcher::new(()))
-            .stream()
     }
 }
