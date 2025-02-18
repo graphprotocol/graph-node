@@ -461,14 +461,8 @@ pub enum ConfigCommand {
 pub enum ListenCommand {
     /// Listen only to assignment events
     Assignments,
-    /// Listen to events for entities in a specific deployment
-    Entities {
-        /// The deployment (see `help info`).
-        deployment: DeploymentSearch,
-        /// The entity types for which to print change notifications
-        entity_types: Vec<String>,
-    },
 }
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum CopyCommand {
     /// Create a copy of an existing subgraph
@@ -924,13 +918,6 @@ impl Context {
         ))
     }
 
-    fn primary_and_subscription_manager(self) -> (ConnectionPool, Arc<SubscriptionManager>) {
-        let mgr = self.subscription_manager();
-        let primary_pool = self.primary_pool();
-
-        (primary_pool, mgr)
-    }
-
     fn store(&self) -> Arc<Store> {
         let (store, _) = self.store_and_pools();
         store
@@ -1300,13 +1287,6 @@ async fn main() -> anyhow::Result<()> {
             use ListenCommand::*;
             match cmd {
                 Assignments => commands::listen::assignments(ctx.subscription_manager()).await,
-                Entities {
-                    deployment,
-                    entity_types,
-                } => {
-                    let (primary, mgr) = ctx.primary_and_subscription_manager();
-                    commands::listen::entities(primary, mgr, &deployment, entity_types).await
-                }
             }
         }
         Copy(cmd) => {
