@@ -2,10 +2,12 @@ pub mod util;
 
 use std::time::Duration;
 
+use graph::components::store::SubgraphStore;
 use graph::prelude::DeploymentHash;
 use serde::Deserialize;
 use serde_json::json;
 use test_store::create_test_subgraph;
+use test_store::SUBGRAPH_STORE;
 use tokio::time::sleep;
 
 use self::util::client::send_graphql_request;
@@ -497,7 +499,7 @@ fn graphql_can_reassign_deployment() {
         create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
 
         let deployment_hash = DeploymentHash::new("subgraph_2").unwrap();
-        create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
+        let locator = create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
 
         send_graphql_request(
             json!({
@@ -513,20 +515,26 @@ fn graphql_can_reassign_deployment() {
         )
         .await;
 
+        let node = SUBGRAPH_STORE.assigned_node(&locator).unwrap().unwrap();
+
         let reassign = send_graphql_request(
             json!({
-                "query": r#"mutation {
+                "query": r#"mutation ReassignDeployment($node: String!) {
                     deployment {
-                        reassign(deployment: { hash: "subgraph_1" }, node: "test") {
+                        reassign(deployment: { hash: "subgraph_1" }, node: $node) {
                             ... on EmptyResponse {
                                 success
                             }
                             ... on CompletedWithWarnings {
+                                success
                                 warnings
                             }
                         }
                     }
-                }"#
+                }"#,
+                "variables": {
+                    "node": node.to_string(),
+                }
             }),
             VALID_TOKEN,
         )
@@ -561,6 +569,7 @@ fn graphql_warns_reassign_on_wrong_node_id() {
                                 success
                             }
                             ... on CompletedWithWarnings {
+                                success
                                 warnings
                             }
                         }
@@ -575,6 +584,7 @@ fn graphql_warns_reassign_on_wrong_node_id() {
             "data": {
                 "deployment": {
                     "reassign": {
+                        "success": true,
                         "warnings": ["This is the only deployment assigned to 'invalid_node'. Please make sure that the node ID is spelled correctly."],
                     }
                 }
