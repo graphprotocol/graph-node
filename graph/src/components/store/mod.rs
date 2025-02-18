@@ -4,8 +4,7 @@ mod traits;
 pub mod write;
 
 pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
-use futures03::future::{FutureExt, TryFutureExt};
-use slog::{trace, Logger};
+use slog::Logger;
 
 pub use super::subgraph::Entity;
 pub use err::StoreError;
@@ -14,8 +13,7 @@ use strum_macros::Display;
 pub use traits::*;
 pub use write::Batch;
 
-use futures01::stream::poll_fn;
-use futures01::{Async, Poll, Stream};
+use futures01::{Async, Stream};
 use serde::{Deserialize, Serialize};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -596,17 +594,6 @@ impl StoreEvent {
         StoreEvent { tag, changes }
     }
 
-    /// Extend `ev1` with `ev2`. If `ev1` is `None`, just set it to `ev2`
-    fn accumulate(logger: &Logger, ev1: &mut Option<StoreEvent>, ev2: StoreEvent) {
-        if let Some(e) = ev1 {
-            trace!(logger, "Adding changes to event";
-                           "from" => ev2.tag, "to" => e.tag);
-            e.changes.extend(ev2.changes);
-        } else {
-            *ev1 = Some(ev2);
-        }
-    }
-
     pub fn extend(mut self, other: StoreEvent) -> Self {
         self.changes.extend(other.changes);
         self
@@ -677,92 +664,6 @@ where
         let source = self.source.filter(move |event| event.matches(&filters));
 
         StoreEventStream::new(Box::new(source))
-    }
-
-    /// Reduce the frequency with which events are generated while a
-    /// subgraph deployment is syncing. While the given `deployment` is not
-    /// synced yet, events from `source` are reported at most every
-    /// `interval`. At the same time, no event is held for longer than
-    /// `interval`. The `StoreEvents` that arrive during an interval appear
-    /// on the returned stream as a single `StoreEvent`; the events are
-    /// combined by using the maximum of all sources and the concatenation
-    /// of the changes of the `StoreEvents` received during the interval.
-    //
-    // Currently unused, needs to be made compatible with `subscribe_no_payload`.
-    pub async fn throttle_while_syncing(
-        self,
-        logger: &Logger,
-        store: Arc<dyn QueryStore>,
-        interval: Duration,
-    ) -> StoreEventStreamBox {
-        // Check whether a deployment is marked as synced in the store. Note that in the moment a
-        // subgraph becomes synced any existing subscriptions will continue to be throttled since
-        // this is not re-checked.
-        let synced = store.is_deployment_synced().await.unwrap_or(false);
-
-        let mut pending_event: Option<StoreEvent> = None;
-        let mut source = self.source.fuse();
-        let mut had_err = false;
-        let mut delay = tokio::time::sleep(interval).unit_error().boxed().compat();
-        let logger = logger.clone();
-
-        let source = Box::new(poll_fn(move || -> Poll<Option<Arc<StoreEvent>>, ()> {
-            if had_err {
-                // We had an error the last time through, but returned the pending
-                // event first. Indicate the error now
-                had_err = false;
-                return Err(());
-            }
-
-            if synced {
-                return source.poll();
-            }
-
-            // Check if interval has passed since the last time we sent something.
-            // If it has, start a new delay timer
-            let should_send = match futures01::future::Future::poll(&mut delay) {
-                Ok(Async::NotReady) => false,
-                // Timer errors are harmless. Treat them as if the timer had
-                // become ready.
-                Ok(Async::Ready(())) | Err(_) => {
-                    delay = tokio::time::sleep(interval).unit_error().boxed().compat();
-                    true
-                }
-            };
-
-            // Get as many events as we can off of the source stream
-            loop {
-                match source.poll() {
-                    Ok(Async::NotReady) => {
-                        if should_send && pending_event.is_some() {
-                            let event = pending_event.take().map(Arc::new);
-                            return Ok(Async::Ready(event));
-                        } else {
-                            return Ok(Async::NotReady);
-                        }
-                    }
-                    Ok(Async::Ready(None)) => {
-                        let event = pending_event.take().map(Arc::new);
-                        return Ok(Async::Ready(event));
-                    }
-                    Ok(Async::Ready(Some(event))) => {
-                        StoreEvent::accumulate(&logger, &mut pending_event, (*event).clone());
-                    }
-                    Err(()) => {
-                        // Before we report the error, deliver what we have accumulated so far.
-                        // We will report the error the next time poll() is called
-                        if pending_event.is_some() {
-                            had_err = true;
-                            let event = pending_event.take().map(Arc::new);
-                            return Ok(Async::Ready(event));
-                        } else {
-                            return Err(());
-                        }
-                    }
-                };
-            }
-        }));
-        StoreEventStream::new(source)
     }
 }
 
