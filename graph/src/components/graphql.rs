@@ -1,16 +1,10 @@
 use crate::data::query::QueryResults;
 use crate::data::query::{Query, QueryTarget};
-use crate::data::subscription::{SubscriptionError, SubscriptionResult};
 use crate::prelude::DeploymentHash;
 
 use async_trait::async_trait;
-use futures01::Future;
 use std::sync::Arc;
 use std::time::Duration;
-
-/// Future for subscription results.
-pub type SubscriptionResultFuture =
-    Box<dyn Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
 
 pub enum GraphQlTarget {
     SubgraphName(String),

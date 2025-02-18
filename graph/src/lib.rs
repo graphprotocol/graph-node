@@ -117,7 +117,7 @@ pub mod prelude {
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
         LightEthereumBlockExt,
     };
-    pub use crate::components::graphql::{GraphQLMetrics, GraphQlRunner, SubscriptionResultFuture};
+    pub use crate::components::graphql::{GraphQLMetrics, GraphQlRunner};
     pub use crate::components::link_resolver::{
         IpfsResolver, JsonStreamValue, JsonValueStream, LinkResolver,
     };
@@ -162,9 +162,6 @@ pub mod prelude {
         SubgraphAssignmentProviderError, SubgraphManifest, SubgraphManifestResolveError,
         SubgraphManifestValidationError, SubgraphName, SubgraphRegistrarError,
         UnvalidatedSubgraphManifest,
-    };
-    pub use crate::data::subscription::{
-        QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
     pub use crate::data_source::DataSourceTemplateInfo;
     pub use crate::ext::futures::{
