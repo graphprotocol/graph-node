@@ -1018,6 +1018,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
         let block = match self.chain_client.as_ref() {
             ChainClient::Firehose(endpoints) => {
+                let chain_store = self.chain_store.cheap_clone();
+                // First try to get the block from the store
+                if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
+                    if let Some(block) = blocks.first() {
+                        if let Ok(block) = json::from_value::<LightEthereumBlock>(block.clone()) {
+                            return Ok(block.parent_ptr());
+                        }
+                    }
+                }
+
+                // If not in store, fetch from Firehose
                 let endpoint = endpoints.endpoint().await?;
                 let logger = self.logger.clone();
                 let retry_log_message =
