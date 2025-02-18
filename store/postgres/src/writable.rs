@@ -190,19 +190,6 @@ impl SyncStore {
             last_rollup,
         })
     }
-
-    /// Try to send a `StoreEvent`; if sending fails, log the error but
-    /// return `Ok(())`
-    fn try_send_store_event(&self, event: StoreEvent) -> Result<(), StoreError> {
-        if !ENV_VARS.store.disable_subscription_notifications {
-            let _ = self.store.send_store_event(&event).map_err(
-                |e| error!(self.logger, "Could not send store event"; "error" => e.to_string()),
-            );
-            Ok(())
-        } else {
-            Ok(())
-        }
-    }
 }
 
 // Methods that mirror `WritableStoreTrait`
@@ -245,7 +232,7 @@ impl SyncStore {
         firehose_cursor: &FirehoseCursor,
     ) -> Result<(), StoreError> {
         retry::forever(&self.logger, "revert_block_operations", || {
-            let event = self.writable.revert_block_operations(
+            self.writable.revert_block_operations(
                 self.site.clone(),
                 block_ptr_to.clone(),
                 firehose_cursor,
@@ -254,9 +241,7 @@ impl SyncStore {
             let block_time = self
                 .writable
                 .block_time(self.site.cheap_clone(), block_ptr_to.number)?;
-            self.last_rollup.set(block_time)?;
-
-            self.try_send_store_event(event)
+            self.last_rollup.set(block_time)
         })
     }
 
@@ -315,7 +300,7 @@ impl SyncStore {
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
         retry::forever(&self.logger, "transact_block_operations", move || {
-            let event = self.writable.transact_block_operations(
+            self.writable.transact_block_operations(
                 &self.logger,
                 self.site.clone(),
                 batch,
@@ -326,9 +311,6 @@ impl SyncStore {
             // unwrap: batch.block_times is never empty
             let last_block_time = batch.block_times.last().unwrap().1;
             self.last_rollup.set(Some(last_block_time))?;
-
-            let _section = stopwatch.start_section("send_store_event");
-            self.try_send_store_event(event)?;
             Ok(())
         })
     }

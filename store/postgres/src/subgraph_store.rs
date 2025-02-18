@@ -1046,14 +1046,12 @@ impl SubgraphStoreInner {
 
     pub fn rewind(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        let event = store.rewind(site, block_ptr_to)?;
-        self.send_store_event(&event)
+        store.rewind(site, block_ptr_to)
     }
 
     pub fn truncate(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        let event = store.truncate(site, block_ptr_to)?;
-        self.send_store_event(&event)
+        store.truncate(site, block_ptr_to)
     }
 
     pub(crate) async fn get_proof_of_indexing(
