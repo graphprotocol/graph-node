@@ -325,7 +325,6 @@ mod tests {
         url::Url,
     };
     use std::sync::Arc;
-    use uuid::Uuid;
 
     use crate::{EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport};
 
@@ -679,18 +678,14 @@ mod tests {
     #[tokio::test]
     async fn eth_adapter_selection_multiple_adapters() {
         let logger = Logger::root(Discard, o!());
-        let unavailable_provider = Uuid::new_v4().to_string();
-        let error_provider = Uuid::new_v4().to_string();
-        let no_error_provider = Uuid::new_v4().to_string();
+        let unavailable_provider = "unavailable-provider";
+        let error_provider = "error-provider";
+        let no_error_provider = "no-error-provider";
 
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let metrics = Arc::new(EndpointMetrics::new(
             logger,
-            &[
-                unavailable_provider.clone(),
-                error_provider.clone(),
-                no_error_provider.clone(),
-            ],
+            &[unavailable_provider, error_provider, no_error_provider],
             mock_registry.clone(),
         ));
         let logger = graph::log::logger(true);
@@ -718,7 +713,7 @@ mod tests {
         ];
 
         // Set errors
-        metrics.report_for_test(&ProviderName::from(error_provider.clone()), false);
+        metrics.report_for_test(&ProviderName::from(error_provider), false);
 
         let mut no_retest_adapters = vec![];
         let mut always_retest_adapters = vec![];
@@ -796,18 +791,14 @@ mod tests {
     #[tokio::test]
     async fn eth_adapter_selection_single_adapter() {
         let logger = Logger::root(Discard, o!());
-        let unavailable_provider = Uuid::new_v4().to_string();
-        let error_provider = Uuid::new_v4().to_string();
-        let no_error_provider = Uuid::new_v4().to_string();
+        let unavailable_provider = "unavailable-provider";
+        let error_provider = "error-provider";
+        let no_error_provider = "no-error-provider";
 
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let metrics = Arc::new(EndpointMetrics::new(
             logger,
-            &[
-                unavailable_provider,
-                error_provider.clone(),
-                no_error_provider.clone(),
-            ],
+            &[unavailable_provider, error_provider, no_error_provider],
             mock_registry.clone(),
         ));
         let chain_id: Word = "chain_id".into();
@@ -815,7 +806,7 @@ mod tests {
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
         // Set errors
-        metrics.report_for_test(&ProviderName::from(error_provider.clone()), false);
+        metrics.report_for_test(&ProviderName::from(error_provider), false);
 
         let mut no_retest_adapters = vec![];
         no_retest_adapters.push(EthereumNetworkAdapter {
