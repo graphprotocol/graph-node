@@ -11,7 +11,6 @@ fn main() {
         //     "graph_chain_ethereum::codec::pbcodec",
         // )
         // .extern_path(".sf.arweave.type.v1", "graph_chain_arweave::codec::pbcodec")
-        // .extern_path(".sf.cosmos.type.v1", "graph_chain_cosmos::codec")
         .out_dir("src/pb")
         .compile(&["proto/receipts.proto"], &["proto"])
         .expect("Failed to compile Substreams entity proto(s)");
