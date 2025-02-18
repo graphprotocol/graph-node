@@ -63,14 +63,6 @@ impl GraphQlRunner for TestGraphQlRunner {
         .into()
     }
 
-    async fn run_subscription(
-        self: Arc<Self>,
-        _subscription: Subscription,
-        _target: QueryTarget,
-    ) -> Result<SubscriptionResult, SubscriptionError> {
-        unreachable!();
-    }
-
     fn metrics(&self) -> Arc<dyn GraphQLMetrics> {
         Arc::new(TestGraphQLMetrics)
     }

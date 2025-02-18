@@ -2,18 +2,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::metrics::GraphQLMetrics;
-use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
+use crate::prelude::{QueryExecutionOptions, StoreResolver};
 use crate::query::execute_query;
-use crate::subscription::execute_prepared_subscription;
 use graph::futures03::future;
 use graph::prelude::MetricsRegistry;
-use graph::{
-    components::store::SubscriptionManager,
-    prelude::{
-        async_trait, o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
-        GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, Subscription,
-        SubscriptionError, SubscriptionResult, ENV_VARS,
-    },
+use graph::prelude::{
+    async_trait, o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
+    GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, ENV_VARS,
 };
 use graph::{data::graphql::load_manager::LoadManager, prelude::QueryStoreManager};
 use graph::{
@@ -22,10 +17,9 @@ use graph::{
 };
 
 /// GraphQL runner implementation for The Graph.
-pub struct GraphQlRunner<S, SM> {
+pub struct GraphQlRunner<S> {
     logger: Logger,
     store: Arc<S>,
-    subscription_manager: Arc<SM>,
     load_manager: Arc<LoadManager>,
     graphql_metrics: Arc<GraphQLMetrics>,
 }
@@ -36,16 +30,14 @@ lazy_static::lazy_static! {
     pub static ref INITIAL_DEPLOYMENT_STATE_FOR_TESTS: std::sync::Mutex<Option<DeploymentState>> = std::sync::Mutex::new(None);
 }
 
-impl<S, SM> GraphQlRunner<S, SM>
+impl<S> GraphQlRunner<S>
 where
     S: QueryStoreManager,
-    SM: SubscriptionManager,
 {
     /// Creates a new query runner.
     pub fn new(
         logger: &Logger,
         store: Arc<S>,
-        subscription_manager: Arc<SM>,
         load_manager: Arc<LoadManager>,
         registry: Arc<MetricsRegistry>,
     ) -> Self {
@@ -54,7 +46,6 @@ where
         GraphQlRunner {
             logger,
             store,
-            subscription_manager,
             load_manager,
             graphql_metrics,
         }
@@ -173,7 +164,6 @@ where
                 &self.logger,
                 store.cheap_clone(),
                 &state,
-                self.subscription_manager.cheap_clone(),
                 ptr,
                 error_policy,
                 query.schema.id().clone(),
@@ -220,10 +210,9 @@ where
 }
 
 #[async_trait]
-impl<S, SM> GraphQlRunnerTrait for GraphQlRunner<S, SM>
+impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
 where
     S: QueryStoreManager,
-    SM: SubscriptionManager,
 {
     async fn run_query(self: Arc<Self>, query: Query, target: QueryTarget) -> QueryResults {
         self.run_query_with_complexity(
@@ -257,56 +246,6 @@ where
         )
         .await
         .unwrap_or_else(|e| e)
-    }
-
-    async fn run_subscription(
-        self: Arc<Self>,
-        subscription: Subscription,
-        target: QueryTarget,
-    ) -> Result<SubscriptionResult, SubscriptionError> {
-        let store = self.store.query_store(target.clone(), true).await?;
-        let schema = store.api_schema()?;
-        let network = store.network_name().to_string();
-
-        let query = crate::execution::Query::new(
-            &self.logger,
-            schema,
-            Some(network),
-            subscription.query,
-            ENV_VARS.graphql.max_complexity,
-            ENV_VARS.graphql.max_depth,
-            self.graphql_metrics.cheap_clone(),
-        )?;
-
-        if let Err(err) = self
-            .load_manager
-            .decide(
-                &store.wait_stats().map_err(QueryExecutionError::from)?,
-                store.shard(),
-                store.deployment_id(),
-                query.shape_hash,
-                query.query_text.as_ref(),
-            )
-            .to_result()
-        {
-            return Err(SubscriptionError::GraphQLError(vec![err]));
-        }
-
-        execute_prepared_subscription(
-            query,
-            SubscriptionExecutionOptions {
-                logger: self.logger.clone(),
-                store,
-                subscription_manager: self.subscription_manager.cheap_clone(),
-                timeout: ENV_VARS.graphql.query_timeout,
-                max_complexity: ENV_VARS.graphql.max_complexity,
-                max_depth: ENV_VARS.graphql.max_depth,
-                max_first: ENV_VARS.graphql.max_first,
-                max_skip: ENV_VARS.graphql.max_skip,
-                graphql_metrics: self.graphql_metrics.clone(),
-                load_manager: self.load_manager.cheap_clone(),
-            },
-        )
     }
 
     fn metrics(&self) -> Arc<dyn GraphQLMetricsTrait> {

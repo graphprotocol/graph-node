@@ -80,7 +80,7 @@ pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
     }
 }
 
-type GraphQlRunner = graph_graphql::prelude::GraphQlRunner<Store, PanicSubscriptionManager>;
+type GraphQlRunner = graph_graphql::prelude::GraphQlRunner<Store>;
 
 struct CommonChainConfig {
     logger_factory: LoggerFactory,
@@ -521,12 +521,10 @@ pub async fn setup<C: Blockchain>(
     );
 
     // Graphql runner
-    let subscription_manager = Arc::new(PanicSubscriptionManager {});
     let load_manager = LoadManager::new(&logger, Vec::new(), Vec::new(), mock_registry.clone());
     let graphql_runner = Arc::new(GraphQlRunner::new(
         &logger,
         stores.network_store.clone(),
-        subscription_manager.clone(),
         Arc::new(load_manager),
         mock_registry.clone(),
     ));

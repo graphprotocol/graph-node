@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
-use std::result;
 use std::sync::Arc;
 
 use graph::components::graphql::GraphQLMetrics as _;
-use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
+use graph::components::store::QueryPermit;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::{CacheStatus, QueryResults, Trace};
@@ -12,8 +11,8 @@ use graph::data::value::{Object, Word};
 use graph::derive::CheapClone;
 use graph::prelude::*;
 use graph::schema::{
-    ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
-    META_FIELD_NAME, META_FIELD_TYPE,
+    ast as sast, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME, META_FIELD_NAME,
+    META_FIELD_TYPE,
 };
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
@@ -21,7 +20,6 @@ use crate::execution::{ast as a, Query};
 use crate::metrics::GraphQLMetrics;
 use crate::prelude::{ExecutionContext, Resolver};
 use crate::query::ext::BlockConstraint;
-use crate::store::query::collect_entities_from_query_field;
 
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone, CheapClone)]
@@ -29,7 +27,6 @@ pub struct StoreResolver {
     #[allow(dead_code)]
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
-    subscription_manager: Arc<dyn SubscriptionManager>,
     pub(crate) block_ptr: Option<BlockPtr>,
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
@@ -39,33 +36,6 @@ pub struct StoreResolver {
 }
 
 impl StoreResolver {
-    /// Create a resolver that looks up entities at whatever block is the
-    /// latest when the query is run. That means that multiple calls to find
-    /// entities into this resolver might return entities from different
-    /// blocks
-    pub fn for_subscription(
-        logger: &Logger,
-        deployment: DeploymentHash,
-        store: Arc<dyn QueryStore>,
-        subscription_manager: Arc<dyn SubscriptionManager>,
-        graphql_metrics: Arc<GraphQLMetrics>,
-        load_manager: Arc<LoadManager>,
-    ) -> Self {
-        StoreResolver {
-            logger: logger.new(o!("component" => "StoreResolver")),
-            store,
-            subscription_manager,
-            block_ptr: None,
-            deployment,
-
-            // Checking for non-fatal errors does not work with subscriptions.
-            has_non_fatal_errors: false,
-            error_policy: ErrorPolicy::Deny,
-            graphql_metrics,
-            load_manager,
-        }
-    }
-
     /// Create a resolver that looks up entities at the block specified
     /// by `bc`. Any calls to find objects will always return entities as
     /// of that block. Note that if `bc` is `BlockConstraint::Latest` we use
@@ -75,7 +45,6 @@ impl StoreResolver {
         logger: &Logger,
         store: Arc<dyn QueryStore>,
         state: &DeploymentState,
-        subscription_manager: Arc<dyn SubscriptionManager>,
         block_ptr: BlockPtr,
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
@@ -90,7 +59,6 @@ impl StoreResolver {
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
             store,
-            subscription_manager,
             block_ptr: Some(block_ptr),
             deployment,
             has_non_fatal_errors,
@@ -378,22 +346,6 @@ impl Resolver for StoreResolver {
                 &field.name,
             )));
         }
-    }
-
-    fn resolve_field_stream(
-        &self,
-        schema: &ApiSchema,
-        object_type: &s::ObjectType,
-        field: &a::Field,
-    ) -> result::Result<UnitStream, QueryExecutionError> {
-        // Collect all entities involved in the query field
-        let object_type = schema.object_type(object_type).into();
-        let input_schema = self.store.input_schema()?;
-        let entities =
-            collect_entities_from_query_field(&input_schema, schema, object_type, field)?;
-
-        // Subscribe to the store and return the entity change stream
-        Ok(self.subscription_manager.subscribe_no_payload(entities))
     }
 
     fn post_process(&self, result: &mut QueryResult) -> Result<(), anyhow::Error> {

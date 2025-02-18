@@ -1,17 +1,12 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::data::graphql::ext::TypeDefinitionExt;
-use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data_source::common::MappingABI;
-use graph::futures01::{future, Stream};
-use graph::futures03::compat::Future01CompatExt;
 use graph::schema::{EntityType, InputSchema};
 use graph_chain_ethereum::Mapping;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::time::Duration;
-use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
@@ -19,10 +14,7 @@ use graph::components::store::{DeploymentLocator, ReadStore, WritableStore};
 use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,
-    components::store::{
-        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, StatusStore,
-        SubscriptionManager as _,
-    },
+    components::store::{BlockStore as _, EntityFilter, EntityOrder, EntityQuery, StatusStore},
     prelude::ethabi::Contract,
 };
 use graph::{data::store::scalar, semver::Version};
@@ -912,78 +904,7 @@ fn find() {
     });
 }
 
-fn make_entity_change(entity_type: &EntityType) -> EntityChange {
-    EntityChange::Data {
-        subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_string(),
-    }
-}
-
-// Get as events until we've seen all the expected events or we time out waiting
-async fn check_events(
-    stream: StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send>,
-    expected: Vec<StoreEvent>,
-) {
-    fn as_set(events: Vec<Arc<StoreEvent>>) -> HashSet<EntityChange> {
-        events.into_iter().fold(HashSet::new(), |mut set, event| {
-            set.extend(event.changes.iter().cloned());
-            set
-        })
-    }
-
-    let expected = Mutex::new(as_set(expected.into_iter().map(Arc::new).collect()));
-    // Capture extra changes here; this is only needed for debugging, really.
-    // It's permissible that we get more changes than we expected because of
-    // how store events group changes together
-    let extra: Mutex<HashSet<EntityChange>> = Mutex::new(HashSet::new());
-    // Get events from the store until we've either seen all the changes we
-    // expected or we timed out waiting for them
-    stream
-        .take_while(|event| {
-            let mut expected = expected.lock().unwrap();
-            for change in &event.changes {
-                if !expected.remove(change) {
-                    extra.lock().unwrap().insert(change.clone());
-                }
-            }
-            future::ok(!expected.is_empty())
-        })
-        .collect()
-        .compat()
-        .timeout(Duration::from_secs(3))
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "timed out waiting for events\n  still waiting for {:?}\n  got extra events {:?}",
-                expected.lock().unwrap().clone(),
-                extra.lock().unwrap().clone()
-            )
-        })
-        .expect("something went wrong getting events");
-    // Check again that we really got everything
-    assert_eq!(HashSet::new(), expected.lock().unwrap().clone());
-}
-
-// Subscribe to store events
-fn subscribe(
-    subgraph: &DeploymentHash,
-    entity_type: &EntityType,
-) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
-    let subscription =
-        SUBSCRIPTION_MANAGER.subscribe(FromIterator::from_iter([SubscriptionFilter::Entities(
-            subgraph.clone(),
-            entity_type.to_owned(),
-        )]));
-
-    StoreEventStream::new(subscription)
-}
-
-async fn check_basic_revert(
-    store: Arc<DieselStore>,
-    expected: StoreEvent,
-    deployment: &DeploymentLocator,
-    entity_type: &EntityType,
-) {
+async fn check_basic_revert(store: Arc<DieselStore>, deployment: &DeploymentLocator) {
     let this_query = user_query()
         .filter(EntityFilter::Equal(
             "name".to_owned(),
@@ -991,7 +912,6 @@ async fn check_basic_revert(
         ))
         .desc("name");
 
-    let subscription = subscribe(&deployment.hash, entity_type);
     let state = deployment_state(store.as_ref(), &deployment.hash).await;
     assert_eq!(&deployment.hash, &state.id);
 
@@ -1014,17 +934,13 @@ async fn check_basic_revert(
 
     let state = deployment_state(store.as_ref(), &deployment.hash).await;
     assert_eq!(&deployment.hash, &state.id);
-
-    check_events(subscription, vec![expected]).await
 }
 
 #[test]
 fn revert_block_basic_user() {
     run_test(|store, _, deployment| async move {
-        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
-
         let count = get_entity_count(store.clone(), &deployment.hash);
-        check_basic_revert(store.clone(), expected, &deployment, &*USER_TYPE).await;
+        check_basic_revert(store.clone(), &deployment).await;
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
     })
 }
@@ -1052,8 +968,6 @@ fn revert_block_with_delete() {
         .await
         .unwrap();
 
-        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
-
         // Revert deletion
         let count = get_entity_count(store.clone(), &deployment.hash);
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
@@ -1073,12 +987,6 @@ fn revert_block_with_delete() {
         let test_value = Value::String("dinici@email.com".to_owned());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());
-
-        // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
-
-        // The last event is the one for the reversion
-        check_events(subscription, vec![expected]).await
     })
 }
 
@@ -1106,8 +1014,6 @@ fn revert_block_with_partial_update() {
         .await
         .unwrap();
 
-        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
-
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &deployment.hash);
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
@@ -1118,11 +1024,6 @@ fn revert_block_with_partial_update() {
 
         // Verify that the entity has been returned to its original state
         assert_eq!(reverted_entity, original_entity);
-
-        // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
-
-        check_events(subscription, vec![expected]).await
     })
 }
 
@@ -1229,8 +1130,6 @@ fn revert_block_with_dynamic_data_source_operations() {
             **loaded_dds[0].param.as_ref().unwrap()
         );
 
-        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
-
         // Revert block that added the user and the dynamic data source
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
 
@@ -1246,233 +1145,6 @@ fn revert_block_with_dynamic_data_source_operations() {
             .await
             .unwrap();
         assert_eq!(0, loaded_dds.len());
-
-        // Verify that the right change events were emitted for the reversion
-        let expected_events = vec![StoreEvent {
-            tag: 3,
-            changes: HashSet::from_iter(
-                vec![EntityChange::Data {
-                    subgraph_id: DeploymentHash::new("testsubgraph").unwrap(),
-                    entity_type: USER_TYPE.to_string(),
-                }]
-                .into_iter(),
-            ),
-        }];
-        check_events(subscription, expected_events).await
-    })
-}
-
-#[test]
-fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
-    run_test(|store, _, _| async move {
-        let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
-        let schema = InputSchema::parse_latest(USER_GQL, subgraph_id.clone())
-            .expect("Failed to parse user schema");
-        let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
-            id: subgraph_id.clone(),
-            spec_version: Version::new(1, 3, 0),
-            features: Default::default(),
-            description: None,
-            repository: None,
-            schema: schema.clone(),
-            data_sources: vec![],
-            graft: None,
-            templates: vec![],
-            chain: PhantomData,
-            indexer_hints: None,
-        };
-
-        let deployment =
-            DeploymentCreate::new(String::new(), &manifest, Some(TEST_BLOCK_0_PTR.clone()));
-        let name = SubgraphName::new("test/entity-changes-are-fired").unwrap();
-        let node_id = NodeId::new("test").unwrap();
-        let deployment = store
-            .subgraph_store()
-            .create_subgraph_deployment(
-                name,
-                &schema,
-                deployment,
-                node_id,
-                NETWORK_NAME.to_string(),
-                SubgraphVersionSwitchingMode::Instant,
-            )
-            .unwrap();
-
-        let subscription = subscribe(&subgraph_id, &*USER_TYPE);
-
-        // Add two entities to the store
-        let added_entities = vec![
-            (
-                "1".to_owned(),
-                entity! { schema => id: "1", name: "Johnny Boy", vid: 5i64 },
-            ),
-            (
-                "2".to_owned(),
-                entity! { schema => id: "2", name: "Tessa", vid: 6i64 },
-            ),
-        ];
-        transact_and_wait(
-            &store.subgraph_store(),
-            &deployment,
-            TEST_BLOCK_1_PTR.clone(),
-            added_entities
-                .iter()
-                .map(|(id, data)| {
-                    let mut data = data.clone();
-                    data.set_vid_if_empty();
-                    EntityOperation::Set {
-                        key: USER_TYPE.parse_key(id.as_str()).unwrap(),
-                        data,
-                    }
-                })
-                .collect(),
-        )
-        .await
-        .unwrap();
-
-        // Update an entity in the store
-        let updated_entity = entity! { schema => id: "1", name: "Johnny", vid: 7i64 };
-        let update_op = EntityOperation::Set {
-            key: USER_TYPE.parse_key("1").unwrap(),
-            data: updated_entity.clone(),
-        };
-
-        // Delete an entity in the store
-        let delete_op = EntityOperation::Remove {
-            key: USER_TYPE.parse_key("2").unwrap(),
-        };
-
-        // Commit update & delete ops
-        transact_and_wait(
-            &store.subgraph_store(),
-            &deployment,
-            TEST_BLOCK_2_PTR.clone(),
-            vec![update_op, delete_op],
-        )
-        .await
-        .unwrap();
-
-        // We're expecting two events to be written to the subscription stream
-        let expected = vec![
-            StoreEvent::new(vec![
-                EntityChange::Data {
-                    subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.to_string(),
-                },
-                EntityChange::Data {
-                    subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.to_string(),
-                },
-            ]),
-            StoreEvent::new(vec![
-                EntityChange::Data {
-                    subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.to_string(),
-                },
-                EntityChange::Data {
-                    subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.to_string(),
-                },
-            ]),
-        ];
-
-        check_events(subscription, expected).await
-    })
-}
-
-#[test]
-fn throttle_subscription_delivers() {
-    run_test(|store, _, deployment| async move {
-        let subscription = subscribe(&deployment.hash, &*USER_TYPE)
-            .throttle_while_syncing(
-                &LOGGER,
-                store
-                    .clone()
-                    .query_store(
-                        QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-                        true,
-                    )
-                    .await
-                    .unwrap(),
-                Duration::from_millis(500),
-            )
-            .await;
-
-        let user4 = create_test_entity(
-            "4",
-            &*USER_TYPE,
-            "Steve",
-            "nieve@email.com",
-            72_i32,
-            120.7,
-            false,
-            None,
-            7,
-        );
-
-        transact_entity_operations(
-            &store.subgraph_store(),
-            &deployment,
-            TEST_BLOCK_3_PTR.clone(),
-            vec![user4],
-        )
-        .await
-        .unwrap();
-
-        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
-
-        check_events(subscription, vec![expected]).await
-    })
-}
-
-#[test]
-fn throttle_subscription_throttles() {
-    run_test(|store, _, deployment| async move {
-        // Throttle for a very long time (30s)
-        let subscription = subscribe(&deployment.hash, &*USER_TYPE)
-            .throttle_while_syncing(
-                &LOGGER,
-                store
-                    .clone()
-                    .query_store(
-                        QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-                        true,
-                    )
-                    .await
-                    .unwrap(),
-                Duration::from_secs(30),
-            )
-            .await;
-
-        let user4 = create_test_entity(
-            "4",
-            &*USER_TYPE,
-            "Steve",
-            "nieve@email.com",
-            72_i32,
-            120.7,
-            false,
-            None,
-            8,
-        );
-
-        transact_entity_operations(
-            &store.subgraph_store(),
-            &deployment,
-            TEST_BLOCK_3_PTR.clone(),
-            vec![user4],
-        )
-        .await
-        .unwrap();
-
-        // Make sure we time out waiting for the subscription
-        let res = subscription
-            .take(1)
-            .collect()
-            .compat()
-            .timeout(Duration::from_millis(500))
-            .await;
-        assert!(res.is_err());
     })
 }
 

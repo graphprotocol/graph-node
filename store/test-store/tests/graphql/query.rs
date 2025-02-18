@@ -4,12 +4,12 @@ use graph::data::store::scalar::Timestamp;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::LATEST_VERSION;
 use graph::entity;
-use graph::prelude::{SubscriptionResult, Value};
+use graph::prelude::Value;
 use graph::schema::InputSchema;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
@@ -18,7 +18,6 @@ use test_store::block_store::{
     FakeBlock, BLOCK_FOUR, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
 };
 
-use graph::futures03::stream::StreamExt;
 use graph::{
     components::store::DeploymentLocator,
     data::graphql::{object, object_value},
@@ -28,17 +27,16 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        lazy_static, o, q, r, serde_json, slog, BlockPtr, DeploymentHash, Entity, EntityOperation,
-        FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError,
-        QueryExecutionError, QueryResult, QueryStoreManager, QueryVariables, SubgraphManifest,
-        SubgraphName, SubgraphStore, SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
+        lazy_static, q, r, serde_json, BlockPtr, DeploymentHash, Entity, EntityOperation,
+        GraphQlRunner as _, NodeId, Query, QueryError, QueryExecutionError, QueryResult,
+        QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,
+        SubgraphVersionSwitchingMode,
     },
 };
-use graph_graphql::{prelude::*, subscription::execute_subscription};
+use graph_graphql::prelude::*;
 use test_store::{
-    deployment_state, execute_subgraph_query, execute_subgraph_query_with_deadline,
-    graphql_metrics, revert_block, run_test_sequentially, transact_errors, Store, LOAD_MANAGER,
-    LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
+    deployment_state, execute_subgraph_query, execute_subgraph_query_with_deadline, revert_block,
+    run_test_sequentially, transact_errors, Store, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE,
 };
 
 /// Ids for the various entities that we create in `insert_entities` and
@@ -615,7 +613,6 @@ async fn execute_query_document_with_variables(
     let runner = Arc::new(GraphQlRunner::new(
         &LOGGER,
         STORE.clone(),
-        SUBSCRIPTION_MANAGER.clone(),
         LOAD_MANAGER.clone(),
         METRICS_REGISTRY.clone(),
     ));
@@ -726,7 +723,6 @@ where
                 let runner = Arc::new(GraphQlRunner::new(
                     &LOGGER,
                     STORE.clone(),
-                    SUBSCRIPTION_MANAGER.clone(),
                     LOAD_MANAGER.clone(),
                     METRICS_REGISTRY.clone(),
                 ));
@@ -743,43 +739,6 @@ where
             test(result, id_type);
         }
     })
-}
-
-/// Helper to run a subscription
-async fn run_subscription(
-    store: &Arc<Store>,
-    query: &str,
-    max_complexity: Option<u64>,
-) -> Result<SubscriptionResult, SubscriptionError> {
-    let deployment = setup_readonly(store.as_ref()).await;
-    let logger = Logger::root(slog::Discard, o!());
-    let query_store = store
-        .query_store(
-            QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-            true,
-        )
-        .await
-        .unwrap();
-
-    let query = Query::new(q::parse_query(query).unwrap().into_static(), None, false);
-    let options = SubscriptionExecutionOptions {
-        logger: logger.clone(),
-        store: query_store.clone(),
-        subscription_manager: SUBSCRIPTION_MANAGER.clone(),
-        timeout: None,
-        max_complexity,
-        max_depth: 100,
-        max_first: std::u32::MAX,
-        max_skip: std::u32::MAX,
-        graphql_metrics: graphql_metrics(),
-        load_manager: LOAD_MANAGER.clone(),
-    };
-    let schema = STORE
-        .subgraph_store()
-        .api_schema(&deployment.hash, &Default::default())
-        .unwrap();
-
-    execute_subscription(Subscription { query }, schema, options)
 }
 
 #[test]
@@ -1859,58 +1818,6 @@ fn query_complexity() {
 }
 
 #[test]
-fn query_complexity_subscriptions() {
-    run_test_sequentially(|store| async move {
-        const QUERY1: &str = "subscription {
-                musicians(orderBy: id) {
-                    name
-                    bands(first: 100, orderBy: id) {
-                        name
-                        members(first: 100, orderBy: id) {
-                            name
-                        }
-                    }
-                }
-            }";
-        let max_complexity = Some(1_010_100);
-
-        // This query is exactly at the maximum complexity.
-        // FIXME: Not collecting the stream because that will hang the test.
-        let _ignore_stream = run_subscription(&store, QUERY1, max_complexity)
-            .await
-            .unwrap();
-
-        const QUERY2: &str = "subscription {
-                musicians(orderBy: id) {
-                    name
-                    t1: bands(first: 100, orderBy: id) {
-                        name
-                        members(first: 100, orderBy: id) {
-                            name
-                        }
-                    }
-                    t2: bands(first: 200, orderBy: id) {
-                      name
-                      members(first: 100, orderBy: id) {
-                          name
-                      }
-                  }
-                }
-            }";
-
-        let result = run_subscription(&store, QUERY2, max_complexity).await;
-
-        match result {
-            Err(SubscriptionError::GraphQLError(e)) => match &e[0] {
-                QueryExecutionError::TooComplex(3_030_100, _) => (), // Expected
-                e => panic!("did not catch complexity: {:?}", e),
-            },
-            _ => panic!("did not catch complexity"),
-        }
-    })
-}
-
-#[test]
 fn instant_timeout() {
     run_test_sequentially(|store| async move {
         let deployment = setup_readonly(store.as_ref()).await;
@@ -2135,38 +2042,6 @@ fn cannot_filter_by_derved_relationship_fields() {
             }
             e => panic!("expected a runtime/validation error, got {:?}", e),
         };
-    })
-}
-
-#[test]
-fn subscription_gets_result_even_without_events() {
-    run_test_sequentially(|store| async move {
-        const QUERY: &str = "subscription {
-            musicians(orderBy: id, first: 2) {
-              name
-            }
-          }";
-
-        // Execute the subscription and expect at least one result to be
-        // available in the result stream
-        let stream = run_subscription(&store, QUERY, None).await.unwrap();
-        let results: Vec<_> = stream
-            .take(1)
-            .collect()
-            .timeout(Duration::from_secs(3))
-            .await
-            .unwrap();
-
-        assert_eq!(results.len(), 1);
-        let result = Arc::try_unwrap(results.into_iter().next().unwrap()).unwrap();
-        let data = extract_data!(result).unwrap();
-        let exp = object! {
-            musicians: vec![
-                object! { name: "John" },
-                object! { name: "Lisa" }
-            ]
-        };
-        assert_eq!(data, exp);
     })
 }
 

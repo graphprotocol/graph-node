@@ -24,9 +24,7 @@ use graph_node::manager::color::Terminal;
 use graph_node::manager::commands;
 use graph_node::network_setup::Networks;
 use graph_node::{
-    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
-    store_builder::StoreBuilder,
-    MetricsContext,
+    manager::deployment::DeploymentSearch, store_builder::StoreBuilder, MetricsContext,
 };
 use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
@@ -998,22 +996,15 @@ impl Context {
         (store.block_store(), primary.clone())
     }
 
-    fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
+    fn graphql_runner(self) -> Arc<GraphQlRunner<Store>> {
         let logger = self.logger.clone();
         let registry = self.registry.clone();
 
         let store = self.store();
 
-        let subscription_manager = Arc::new(PanicSubscriptionManager);
         let load_manager = Arc::new(LoadManager::new(&logger, vec![], vec![], registry.clone()));
 
-        Arc::new(GraphQlRunner::new(
-            &logger,
-            store,
-            subscription_manager,
-            load_manager,
-            registry,
-        ))
+        Arc::new(GraphQlRunner::new(&logger, store, load_manager, registry))
     }
 
     async fn networks(&self) -> anyhow::Result<Networks> {
