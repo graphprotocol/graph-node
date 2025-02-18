@@ -1983,7 +1983,6 @@ dependencies = [
  "serde_yaml",
  "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
- "uuid",
  "wiremock",
 ]
 
