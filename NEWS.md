@@ -236,7 +236,7 @@ Not relevant
 * Log the progress of substreams by @zorancv in https://github.com/graphprotocol/graph-node/pull/4935
 - Add more labels to `deployment_sync_secs` by @zorancv in https://github.com/graphprotocol/graph-node/pull/4965
 * Label the specific method in eth_call metrics by @incrypto32 in https://github.com/graphprotocol/graph-node/pull/5017
-* perf(store): Avoid the BRIN index for queries that filter by id by @leoyvens in https://github.com/graphprotocol/graph-node/pull/5010
+* perf(store): Avoid the BRINGG index for queries that filter by id by @leoyvens in https://github.com/graphprotocol/graph-node/pull/5010
 * Make `function not found` a deterministic by @incrypto32 in https://github.com/graphprotocol/graph-node/pull/5038
 * Make ABI errors in `eth_call` deterministic by @YaroShkvorets in https://github.com/graphprotocol/graph-node/pull/5046
 
@@ -312,7 +312,7 @@ Not relevant
 
 <!--
 Not Relevant
-* Changes the spelling of History from Hostory by @vishal-sys in https://github.com/graphprotocol/graph-node/pull/4846
+* Changes the spelling of History from History by @vishal-sys in https://github.com/graphprotocol/graph-node/pull/4846
 * Test coverage for bundlr manifest + filename use case by @mangas in https://github.com/graphprotocol/graph-node/pull/4865
 * Revert most of PR 4827 by @lutter in https://github.com/graphprotocol/graph-node/pull/4860
 * Pass polling triggers only after start_block by @incrypto32 in https://github.com/graphprotocol/graph-node/pull/4881
@@ -433,7 +433,7 @@ Not Relevant
 <!--
 Not relevant
 * graph-chain-ethereum: Avoid adapters with errors by @mangas in https://github.com/graphprotocol/graph-node/pull/4468
-* Limit stack depth of asc_get by @leoyvens in https://gitub.com/graphprotocol/graph-node/pull/4576
+* Limit stack depth of asc_get by @leoyvens in https://github.com/graphprotocol/graph-node/pull/4576
 * core: Log how many entries the cache had at each block by @lutter in https://ithub.com/graphprotocol/graph-node/pull/4541
 * store: Remove ability to recount entities by @lutter in https://github.com/graphprotocol/graph-node/pull/4406
 -->
@@ -1142,7 +1142,7 @@ storage](./docs/config.md) and spread subgraph deployments, and the load
 coming from indexing and querying them across multiple independent Postgres
 databases.
 
-**This feature is considered experimenatal. We encourage users to try this
+**This feature is considered experimental. We encourage users to try this
 out in a test environment, but do not recommend it yet for production use**
 In particular, the details of how sharding is configured may change in
 backwards-incompatible ways in the future.
@@ -1338,7 +1338,7 @@ The `features` section of the manifest requires depending on the graph-cli maste
 - Refactor chain head and store event listeners (#1693).
 - Properly escape single quotes in strings for SQL queries (#1695).
 - Revamp how Graph Node Docker image is built (#1644).
-- Add BRIN indexes to speed up revert handling (#1683).
+- Add BRINGG indexes to speed up revert handling (#1683).
 - Don't store chain head block in `SubgraphDeployment` entity (#1673).
 - Allow varying block constraints across different GraphQL query fields (#1685).
 - Handle database tables that have `text` columns where they should have enums (#1681).
