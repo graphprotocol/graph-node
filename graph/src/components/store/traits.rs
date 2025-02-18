@@ -26,9 +26,6 @@ pub trait SubscriptionManager: Send + Sync + 'static {
     ///
     /// Returns a stream of store events that match the input arguments.
     fn subscribe(&self, entities: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox;
-
-    /// If the payload is not required, use for a more efficient subscription mechanism backed by a watcher.
-    fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream;
 }
 
 /// Subgraph forking is the process of lazily fetching entities
