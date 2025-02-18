@@ -338,9 +338,6 @@ impl Networks {
                 BlockchainKind::Near => {
                     block_ingestor::<graph_chain_near::Chain>(logger, id, chain, &mut res).await?
                 }
-                BlockchainKind::Cosmos => {
-                    block_ingestor::<graph_chain_cosmos::Chain>(logger, id, chain, &mut res).await?
-                }
                 BlockchainKind::Substreams => {}
             }
         }

@@ -124,21 +124,6 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
 
                         self.start_subgraph_inner(logger, loc, runner).await
                     }
-                    BlockchainKind::Cosmos => {
-                        let runner = instance_manager
-                            .build_subgraph_runner::<graph_chain_cosmos::Chain>(
-                                logger.clone(),
-                                self.env_vars.cheap_clone(),
-                                loc.clone(),
-                                manifest,
-                                stop_block,
-                                Box::new(SubgraphTriggerProcessor {}),
-                                deployment_status_metric,
-                            )
-                            .await?;
-
-                        self.start_subgraph_inner(logger, loc, runner).await
-                    }
                     BlockchainKind::Substreams => {
                         let runner = instance_manager
                             .build_subgraph_runner::<graph_chain_substreams::Chain>(

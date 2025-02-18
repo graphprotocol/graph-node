@@ -1890,22 +1890,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-cosmos"
-version = "0.36.0"
-dependencies = [
- "anyhow",
- "graph",
- "graph-chain-common",
- "graph-runtime-derive",
- "graph-runtime-wasm",
- "prost 0.12.6",
- "prost-types 0.12.6",
- "semver",
- "serde",
- "tonic-build",
-]
-
-[[package]]
 name = "graph-chain-ethereum"
 version = "0.36.0"
 dependencies = [
@@ -1972,7 +1956,6 @@ dependencies = [
  "cid",
  "graph",
  "graph-chain-arweave",
- "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-substreams",
@@ -2010,7 +1993,6 @@ dependencies = [
  "git-testament",
  "graph",
  "graph-chain-arweave",
- "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-substreams",
@@ -2095,7 +2077,6 @@ dependencies = [
  "git-testament",
  "graph",
  "graph-chain-arweave",
- "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-substreams",
