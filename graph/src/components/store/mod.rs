@@ -33,7 +33,7 @@ use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
-use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
+use crate::prelude::{s, Attribute, DeploymentHash, ValueType};
 use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
 use crate::util::stats::MovingStats;
 
@@ -598,12 +598,6 @@ impl StoreEvent {
         self.changes.extend(other.changes);
         self
     }
-
-    pub fn matches(&self, filters: &BTreeSet<SubscriptionFilter>) -> bool {
-        self.changes
-            .iter()
-            .any(|change| filters.iter().any(|filter| filter.matches(change)))
-    }
 }
 
 impl fmt::Display for StoreEvent {
@@ -655,15 +649,6 @@ where
     // Create a new `StoreEventStream` from another such stream
     pub fn new(source: S) -> Self {
         StoreEventStream { source }
-    }
-
-    /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
-    /// at least one change to one of the given (subgraph, entity) combinations
-    /// will be delivered by the filtered stream.
-    pub fn filter_by_entities(self, filters: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
-        let source = self.source.filter(move |event| event.matches(&filters));
-
-        StoreEventStream::new(Box::new(source))
     }
 }
 
