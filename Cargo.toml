@@ -4,7 +4,11 @@ members = [
     "core",
     "core/graphman",
     "core/graphman_store",
-    "chain/*",
+    "chain/arweave",
+    "chain/common",
+    "chain/ethereum",
+    "chain/near",
+    "chain/substreams",
     "graphql",
     "node",
     "runtime/derive",
@@ -43,7 +47,15 @@ bs58 = "0.5.1"
 chrono = "0.4.38"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 derivative = "2.2.0"
-diesel = { version = "2.2.4", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono", "uuid", "i-implement-a-third-party-backend-and-opt-into-breaking-changes"] }
+diesel = { version = "2.2.4", features = [
+    "postgres",
+    "serde_json",
+    "numeric",
+    "r2d2",
+    "chrono",
+    "uuid",
+    "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
+] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.1", features = ["postgres"] }
 diesel_derives = "2.1.4"
@@ -65,7 +77,10 @@ serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_regex = "1.1.0"
 serde_yaml = "0.9.21"
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+slog = { version = "2.7.0", features = [
+    "release_max_level_trace",
+    "max_level_trace",
+] }
 sqlparser = "0.46.0"
 strum = { version = "0.26", features = ["derive"] }
 syn = { version = "2.0.87", features = ["full"] }
