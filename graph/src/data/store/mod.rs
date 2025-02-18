@@ -1,4 +1,3 @@
-use crate::prelude::EntityChange;
 use crate::{
     components::store::DeploymentLocator,
     derive::CacheWeight,
@@ -35,21 +34,6 @@ pub mod ethereum;
 
 /// Conversion of values to/from SQL
 pub mod sql;
-
-/// Filter subscriptions
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum SubscriptionFilter {
-    /// Subscripe to changes in deployment assignments
-    Assignment,
-}
-
-impl SubscriptionFilter {
-    pub fn matches(&self, change: &EntityChange) -> bool {
-        match (self, change) {
-            (Self::Assignment, EntityChange::Assignment { .. }) => true,
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);

@@ -3,7 +3,6 @@ use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::TryStreamExt;
 use graph::tokio_stream::wrappers::ReceiverStream;
-use std::collections::BTreeSet;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
@@ -90,8 +89,7 @@ impl StoreEventListener {
 /// Manage subscriptions to the `StoreEvent` stream. Keep a list of
 /// currently active subscribers and forward new events to each of them
 pub struct SubscriptionManager {
-    subscriptions:
-        Arc<RwLock<HashMap<String, (Arc<BTreeSet<SubscriptionFilter>>, Sender<Arc<StoreEvent>>)>>>,
+    subscriptions: Arc<RwLock<HashMap<String, Sender<Arc<StoreEvent>>>>>,
 
     /// Keep the notification listener alive
     listener: StoreEventListener,
@@ -137,13 +135,10 @@ impl SubscriptionManager {
 
                     // Write change to all matching subscription streams; remove subscriptions
                     // whose receiving end has been dropped
-                    for (id, (_, sender)) in senders
-                        .iter()
-                        .filter(|(_, (filter, _))| event.matches(filter))
-                    {
+                    for (id, sender) in senders {
                         if sender.send(event.cheap_clone()).await.is_err() {
                             // Receiver was dropped
-                            subscriptions.write().unwrap().remove(id);
+                            subscriptions.write().unwrap().remove(&id);
                         }
                     }
                 }
@@ -167,7 +162,7 @@ impl SubscriptionManager {
                     // Obtain IDs of subscriptions whose receiving end has gone
                     let stale_ids = subscriptions
                         .iter_mut()
-                        .filter_map(|(id, (_, sender))| match sender.is_closed() {
+                        .filter_map(|(id, sender)| match sender.is_closed() {
                             true => Some(id.clone()),
                             false => None,
                         })
@@ -184,20 +179,16 @@ impl SubscriptionManager {
 }
 
 impl SubscriptionManagerTrait for SubscriptionManager {
-    fn subscribe(&self, entities: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
+    fn subscribe(&self) -> StoreEventStreamBox {
         let id = Uuid::new_v4().to_string();
 
         // Prepare the new subscription by creating a channel and a subscription object
         let (sender, receiver) = channel(100);
 
         // Add the new subscription
-        self.subscriptions
-            .write()
-            .unwrap()
-            .insert(id, (Arc::new(entities.clone()), sender));
+        self.subscriptions.write().unwrap().insert(id, sender);
 
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
-            .filter_by_entities(entities)
     }
 }

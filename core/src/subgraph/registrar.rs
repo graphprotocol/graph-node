@@ -154,16 +154,12 @@ where
         let logger = self.logger.clone();
 
         self.subscription_manager
-            .subscribe(FromIterator::from_iter([SubscriptionFilter::Assignment]))
+            .subscribe()
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
-                // We're only interested in the SubgraphDeploymentAssignment change; we
-                // know that there is at least one, as that is what we subscribed to
-                let filter = SubscriptionFilter::Assignment;
                 let assignments = event
                     .changes
                     .iter()
-                    .filter(|change| filter.matches(change))
                     .map(|change| match change {
                         EntityChange::Assignment {
                             deployment,
