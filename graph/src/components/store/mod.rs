@@ -628,8 +628,6 @@ pub struct StoreEventStream<S> {
 pub type StoreEventStreamBox =
     StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>>;
 
-pub type UnitStream = Box<dyn futures03::Stream<Item = ()> + Unpin + Send + Sync>;
-
 impl<S> Stream for StoreEventStream<S>
 where
     S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send,
