@@ -2075,7 +2075,6 @@ dependencies = [
  "parity-wasm",
  "semver",
  "serde_yaml",
- "uuid",
  "wasm-instrument",
  "wasmtime",
 ]

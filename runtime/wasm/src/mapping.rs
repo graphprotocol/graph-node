@@ -12,6 +12,7 @@ use graph::runtime::gas::Gas;
 use parity_wasm::elements::ExportEntry;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{panic, thread};
 
@@ -28,6 +29,8 @@ pub fn spawn_module<C: Blockchain>(
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
+    static THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
     let valid_module = Arc::new(ValidModule::new(&logger, raw_module, timeout)?);
 
     // Create channel for event handling requests
@@ -39,8 +42,8 @@ where
     // In case of failure, this thread may panic or simply terminate,
     // dropping the `mapping_request_receiver` which ultimately causes the
     // subgraph to fail the next time it tries to handle an event.
-    let conf =
-        thread::Builder::new().name(format!("mapping-{}-{}", &subgraph_id, uuid::Uuid::new_v4()));
+    let next_id = THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
+    let conf = thread::Builder::new().name(format!("mapping-{}-{:0>4}", &subgraph_id, next_id));
     conf.spawn(move || {
         let _runtime_guard = runtime.enter();
 
