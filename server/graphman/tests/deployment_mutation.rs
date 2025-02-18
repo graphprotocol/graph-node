@@ -517,7 +517,7 @@ fn graphql_can_reassign_deployment() {
             json!({
                 "query": r#"mutation {
                     deployment {
-                        reassign(deployment: { hash: "subgraph_1" }, node: "test") {
+                        reassign(deployment: { hash: "subgraph_1" }, node: "testGraphQLAssignment") {
                             ... on EmptyResponse {
                                 success
                             }
@@ -536,7 +536,7 @@ fn graphql_can_reassign_deployment() {
             "data": {
                 "deployment": {
                     "reassign": {
-                        "success": true,
+                        "warnings": ["This is the only deployment assigned to 'testGraphQLAssignment'. Please make sure that the node ID is spelled correctly."],
                     }
                 }
             }
