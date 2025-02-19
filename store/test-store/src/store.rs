@@ -530,7 +530,7 @@ async fn execute_subgraph_query_internal(
     let deployment = query.schema.id().clone();
     let store = STORE
         .clone()
-        .query_store(QueryTarget::Deployment(deployment, version.clone()), false)
+        .query_store(QueryTarget::Deployment(deployment, version.clone()))
         .await
         .unwrap();
     let state = store.deployment_state().await.unwrap();
@@ -571,10 +571,10 @@ async fn execute_subgraph_query_internal(
 
 pub async fn deployment_state(store: &Store, subgraph_id: &DeploymentHash) -> DeploymentState {
     store
-        .query_store(
-            QueryTarget::Deployment(subgraph_id.clone(), Default::default()),
-            false,
-        )
+        .query_store(QueryTarget::Deployment(
+            subgraph_id.clone(),
+            Default::default(),
+        ))
         .await
         .expect("could get a query store")
         .deployment_state()

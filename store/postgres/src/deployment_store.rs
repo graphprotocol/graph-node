@@ -1434,23 +1434,16 @@ impl DeploymentStore {
         Ok(())
     }
 
-    pub(crate) fn replica_for_query(
-        &self,
-        for_subscription: bool,
-    ) -> Result<ReplicaId, StoreError> {
+    pub(crate) fn replica_for_query(&self) -> Result<ReplicaId, StoreError> {
         use std::sync::atomic::Ordering;
 
-        let replica_id = match for_subscription {
-            // Pick a weighted ReplicaId. `replica_order` contains a list of
-            // replicas with repetitions according to their weight
-            false => {
-                let weights_count = self.replica_order.len();
-                let index =
-                    self.conn_round_robin_counter.fetch_add(1, Ordering::SeqCst) % weights_count;
-                *self.replica_order.get(index).unwrap()
-            }
-            // Subscriptions always go to the main replica.
-            true => ReplicaId::Main,
+        // Pick a weighted ReplicaId. `replica_order` contains a list of
+        // replicas with repetitions according to their weight
+        let replica_id = {
+            let weights_count = self.replica_order.len();
+            let index =
+                self.conn_round_robin_counter.fetch_add(1, Ordering::SeqCst) % weights_count;
+            *self.replica_order.get(index).unwrap()
         };
 
         Ok(replica_id)

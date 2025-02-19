@@ -811,7 +811,6 @@ impl SubgraphStoreInner {
     pub(crate) fn replica_for_query(
         &self,
         target: QueryTarget,
-        for_subscription: bool,
     ) -> Result<(Arc<DeploymentStore>, Arc<Site>, ReplicaId), StoreError> {
         let id = match target {
             QueryTarget::Name(name, _) => self.mirror.current_deployment_for_subgraph(&name)?,
@@ -819,7 +818,7 @@ impl SubgraphStoreInner {
         };
 
         let (store, site) = self.store(&id)?;
-        let replica = store.replica_for_query(for_subscription)?;
+        let replica = store.replica_for_query()?;
 
         Ok((store.clone(), site, replica))
     }

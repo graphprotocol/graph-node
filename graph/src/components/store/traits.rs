@@ -439,12 +439,9 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     /// which deployment will be queried. It is not possible to use the id of the
     /// metadata subgraph, though the resulting store can be used to query
     /// metadata about the deployment `id` (but not metadata about other deployments).
-    ///
-    /// If `for_subscription` is true, the main replica will always be used.
     async fn query_store(
         &self,
         target: QueryTarget,
-        for_subscription: bool,
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }
 
