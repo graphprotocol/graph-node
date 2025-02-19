@@ -134,14 +134,6 @@ pub struct Opt {
     pub index_node_port: u16,
     #[clap(
         long,
-        default_value = "8001",
-        value_name = "PORT",
-        help = "Port for the GraphQL WebSocket server",
-        env = "GRAPH_GRAPHQL_WS_PORT"
-    )]
-    pub ws_port: u16,
-    #[clap(
-        long,
         default_value = "8020",
         value_name = "PORT",
         help = "Port for the JSON-RPC admin server"

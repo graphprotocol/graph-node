@@ -32,7 +32,7 @@ impl<Q: GraphQlRunner> GraphQLServer<Q> {
         }
     }
 
-    pub async fn start(&self, port: u16, ws_port: u16) -> Result<ServerHandle, anyhow::Error> {
+    pub async fn start(&self, port: u16) -> Result<ServerHandle, anyhow::Error> {
         let logger = self.logger.clone();
 
         info!(
@@ -42,7 +42,7 @@ impl<Q: GraphQlRunner> GraphQLServer<Q> {
 
         let graphql_runner = self.graphql_runner.clone();
 
-        let service = Arc::new(GraphQLService::new(logger.clone(), graphql_runner, ws_port));
+        let service = Arc::new(GraphQLService::new(logger.clone(), graphql_runner));
 
         start(logger, port, move |req| {
             let service = service.cheap_clone();

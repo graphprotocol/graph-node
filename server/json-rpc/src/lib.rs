@@ -21,7 +21,6 @@ impl JsonRpcServer {
     pub async fn serve<R>(
         port: u16,
         http_port: u16,
-        ws_port: u16,
         registrar: Arc<R>,
         node_id: NodeId,
         logger: Logger,
@@ -39,7 +38,6 @@ impl JsonRpcServer {
         let state = ServerState {
             registrar,
             http_port,
-            ws_port,
             node_id,
             logger,
         };
@@ -87,7 +85,6 @@ impl JsonRpcServer {
 struct ServerState<R> {
     registrar: Arc<R>,
     http_port: u16,
-    ws_port: u16,
     node_id: NodeId,
     logger: Logger,
 }
@@ -123,7 +120,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
         info!(&self.logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
 
         let node_id = params.node_id.clone().unwrap_or(self.node_id.clone());
-        let routes = subgraph_routes(&params.name, self.http_port, self.ws_port);
+        let routes = subgraph_routes(&params.name, self.http_port);
         match self
             .registrar
             .create_subgraph_version(
@@ -243,15 +240,11 @@ fn json_rpc_error(
     )))
 }
 
-fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> JsonValue {
+fn subgraph_routes(name: &SubgraphName, http_port: u16) -> JsonValue {
     let http_base_url = ENV_VARS
         .external_http_base_url
         .clone()
         .unwrap_or_else(|| format!(":{}", http_port));
-    let ws_base_url = ENV_VARS
-        .external_ws_base_url
-        .clone()
-        .unwrap_or_else(|| format!(":{}", ws_port));
 
     let mut map = BTreeMap::new();
     map.insert(
@@ -261,10 +254,6 @@ fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> JsonVal
     map.insert(
         "queries",
         format!("{}/subgraphs/name/{}", http_base_url, name),
-    );
-    map.insert(
-        "subscriptions",
-        format!("{}/subgraphs/name/{}", ws_base_url, name),
     );
 
     serde_json::to_value(map).expect("invalid subgraph routes")

@@ -165,7 +165,7 @@ mod test {
         let query_runner = Arc::new(TestGraphQlRunner);
         let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
-            .start(8007, 8008)
+            .start(8007)
             .await
             .expect("Failed to start GraphQL server");
         while !server_handle.accepting.load(Ordering::SeqCst) {
@@ -197,7 +197,7 @@ mod test {
         let query_runner = Arc::new(TestGraphQlRunner);
         let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
-            .start(8002, 8003)
+            .start(8002)
             .await
             .expect("Failed to start GraphQL server");
         while !server_handle.accepting.load(Ordering::SeqCst) {
@@ -269,7 +269,7 @@ mod test {
         let query_runner = Arc::new(TestGraphQlRunner);
         let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
-            .start(8003, 8004)
+            .start(8003)
             .await
             .expect("Failed to start GraphQL server");
         while !server_handle.accepting.load(Ordering::SeqCst) {
@@ -306,7 +306,7 @@ mod test {
         let query_runner = Arc::new(TestGraphQlRunner);
         let server = HyperGraphQLServer::new(&logger_factory, query_runner);
         let server_handle = server
-            .start(8005, 8006)
+            .start(8005)
             .await
             .expect("Failed to start GraphQL server");
         while !server_handle.accepting.load(Ordering::SeqCst) {

@@ -141,7 +141,6 @@ async fn main() {
 
     // Obtain ports to use for the GraphQL server(s)
     let http_port = opt.http_port;
-    let ws_port = opt.ws_port;
 
     // Obtain JSON-RPC server port
     let json_rpc_port = opt.admin_port;
@@ -442,7 +441,6 @@ async fn main() {
         let json_rpc_server = JsonRpcServer::serve(
             json_rpc_port,
             http_port,
-            ws_port,
             subgraph_registrar.clone(),
             node_id.clone(),
             logger.clone(),
@@ -504,7 +502,7 @@ async fn main() {
         }
 
         // Serve GraphQL queries over HTTP
-        graph::spawn(async move { graphql_server.start(http_port, ws_port).await });
+        graph::spawn(async move { graphql_server.start(http_port).await });
 
         // Run the index node server
         graph::spawn(async move { index_node_server.start(index_node_port).await });
