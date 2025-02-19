@@ -48,7 +48,6 @@ fn client_error(msg: impl Into<String>) -> ServerResponse {
 pub struct GraphQLService<Q> {
     logger: Logger,
     graphql_runner: Arc<Q>,
-    ws_port: u16,
 }
 
 impl<Q> GraphQLService<Q>
@@ -56,17 +55,15 @@ where
     Q: GraphQlRunner,
 {
     /// Creates a new GraphQL service.
-    pub fn new(logger: Logger, graphql_runner: Arc<Q>, ws_port: u16) -> Self {
+    pub fn new(logger: Logger, graphql_runner: Arc<Q>) -> Self {
         GraphQLService {
             logger,
             graphql_runner,
-            ws_port,
         }
     }
 
     fn graphiql_html(&self) -> String {
-        include_str!("../assets/index.html")
-            .replace("__WS_PORT__", format!("{}", self.ws_port).as_str())
+        include_str!("../assets/index.html").to_string()
     }
 
     async fn index(&self) -> ServerResult {
@@ -459,7 +456,7 @@ mod tests {
         let logger = Logger::root(slog::Discard, o!());
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let service = GraphQLService::new(logger, graphql_runner, 8001);
+        let service = GraphQLService::new(logger, graphql_runner);
 
         let request: Request<Full<Bytes>> = Request::builder()
             .method(Method::GET)
@@ -491,7 +488,7 @@ mod tests {
         let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let service = GraphQLService::new(logger, graphql_runner, 8001);
+        let service = GraphQLService::new(logger, graphql_runner);
 
         let request: Request<Full<Bytes>> = Request::builder()
             .method(Method::POST)
@@ -523,7 +520,7 @@ mod tests {
         let subgraph_id = USERS.clone();
         let graphql_runner = Arc::new(TestGraphQlRunner);
 
-        let service = GraphQLService::new(logger, graphql_runner, 8001);
+        let service = GraphQLService::new(logger, graphql_runner);
 
         let request: Request<Full<Bytes>> = Request::builder()
             .method(Method::POST)
