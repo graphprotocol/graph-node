@@ -696,10 +696,10 @@ fn fatal_vs_non_fatal() {
     run_test_sequentially(|store| async move {
         let deployment = setup().await;
         let query_store = store
-            .query_store(
-                QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-                false,
-            )
+            .query_store(QueryTarget::Deployment(
+                deployment.hash.clone(),
+                Default::default(),
+            ))
             .await
             .unwrap();
 
@@ -757,10 +757,10 @@ fn fail_unfail_deterministic_error() {
         let deployment = setup().await;
 
         let query_store = store
-            .query_store(
-                QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-                false,
-            )
+            .query_store(QueryTarget::Deployment(
+                deployment.hash.clone(),
+                Default::default(),
+            ))
             .await
             .unwrap();
 

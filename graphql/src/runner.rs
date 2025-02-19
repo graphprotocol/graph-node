@@ -103,7 +103,7 @@ where
         // point, and everything needs to go through the `store` we are
         // setting up here
 
-        let store = self.store.query_store(target.clone(), false).await?;
+        let store = self.store.query_store(target.clone()).await?;
         let state = store.deployment_state().await?;
         let network = Some(store.network_name().to_string());
         let schema = store.api_schema()?;

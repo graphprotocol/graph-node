@@ -60,10 +60,10 @@ fn graphql_returns_deployment_info() {
         let namespace = format!("sgd{}", locator.id);
         let node = SUBGRAPH_STORE.assigned_node(&locator).unwrap().unwrap();
         let qs = STORE
-            .query_store(
-                QueryTarget::Deployment(locator.hash.clone(), Default::default()),
-                false,
-            )
+            .query_store(QueryTarget::Deployment(
+                locator.hash.clone(),
+                Default::default(),
+            ))
             .await
             .expect("could get a query store");
         let shard = qs.shard();

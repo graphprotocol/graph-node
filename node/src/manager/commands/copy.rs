@@ -106,10 +106,10 @@ pub async fn create(
     let subgraph_store = store.subgraph_store();
     let src = src.locate_unique(&primary)?;
     let query_store = store
-        .query_store(
-            QueryTarget::Deployment(src.hash.clone(), Default::default()),
-            true,
-        )
+        .query_store(QueryTarget::Deployment(
+            src.hash.clone(),
+            Default::default(),
+        ))
         .await?;
     let network = query_store.network_name();
 
