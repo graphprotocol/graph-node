@@ -35,7 +35,6 @@ lazy_static! {
             vec![
                 Box::new(UniqueOperationNames::new()),
                 Box::new(LoneAnonymousOperation::new()),
-                Box::new(SingleFieldSubscriptions::new()),
                 Box::new(KnownTypeNames::new()),
                 Box::new(FragmentsOnCompositeTypes::new()),
                 Box::new(VariablesAreInputTypes::new()),
@@ -67,12 +66,6 @@ pub enum ComplexityError {
     Overflow,
     Invalid,
     CyclicalFragment(String),
-}
-
-#[derive(Copy, Clone)]
-enum Kind {
-    Query,
-    Subscription,
 }
 
 /// Helper to log the fields in a `SelectionSet` without cloning. Writes
@@ -129,8 +122,6 @@ pub struct Query {
     pub logger: Logger,
 
     start: Instant,
-
-    kind: Kind,
 
     /// Used only for logging; if logging is configured off, these will
     /// have dummy values
@@ -226,14 +217,14 @@ impl Query {
         let operation = operation.ok_or(QueryExecutionError::OperationNameRequired)?;
 
         let variables = coerce_variables(schema.as_ref(), &operation, query.variables)?;
-        let (kind, selection_set) = match operation {
-            q::OperationDefinition::Query(q::Query { selection_set, .. }) => {
-                (Kind::Query, selection_set)
-            }
+        let selection_set = match operation {
+            q::OperationDefinition::Query(q::Query { selection_set, .. }) => selection_set,
             // Queries can be run by just sending a selection set
-            q::OperationDefinition::SelectionSet(selection_set) => (Kind::Query, selection_set),
-            q::OperationDefinition::Subscription(q::Subscription { selection_set, .. }) => {
-                (Kind::Subscription, selection_set)
+            q::OperationDefinition::SelectionSet(selection_set) => selection_set,
+            q::OperationDefinition::Subscription(_) => {
+                return Err(vec![QueryExecutionError::NotSupported(
+                    "Subscriptions are not supported".to_owned(),
+                )])
             }
             q::OperationDefinition::Mutation(_) => {
                 return Err(vec![QueryExecutionError::NotSupported(
@@ -243,10 +234,8 @@ impl Query {
         };
 
         let start = Instant::now();
-        let root_type = match kind {
-            Kind::Query => schema.query_type.as_ref(),
-            Kind::Subscription => schema.subscription_type.as_ref().unwrap(),
-        };
+        let root_type = schema.query_type.as_ref();
+
         // Use an intermediate struct so we can modify the query before
         // enclosing it in an Arc
         let raw_query = RawQuery {
@@ -269,7 +258,6 @@ impl Query {
             schema,
             selection_set: Arc::new(selection_set),
             shape_hash: query.shape_hash,
-            kind,
             network,
             logger,
             start,
@@ -343,23 +331,6 @@ impl Query {
             prev_bc = next_bc;
         }
         Ok(bcs)
-    }
-
-    /// Return `true` if this is a query, and not a subscription or
-    /// mutation
-    pub fn is_query(&self) -> bool {
-        match self.kind {
-            Kind::Query => true,
-            Kind::Subscription => false,
-        }
-    }
-
-    /// Return `true` if this is a subscription, not a query or a mutation
-    pub fn is_subscription(&self) -> bool {
-        match self.kind {
-            Kind::Subscription => true,
-            Kind::Query => false,
-        }
     }
 
     /// Log details about the overall execution of the query

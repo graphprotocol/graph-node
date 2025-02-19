@@ -1,6 +1,6 @@
 use graph::{
     data::query::CacheStatus,
-    prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult},
+    prelude::{BlockPtr, CheapClone, QueryResult},
 };
 use std::sync::Arc;
 use std::time::Instant;
@@ -54,14 +54,6 @@ where
         trace: options.trace,
     });
 
-    if !query.is_query() {
-        return (
-            Arc::new(
-                QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
-            ),
-            CacheStatus::default(),
-        );
-    }
     let selection_set = selection_set
         .map(Arc::new)
         .unwrap_or_else(|| query.selection_set.cheap_clone());

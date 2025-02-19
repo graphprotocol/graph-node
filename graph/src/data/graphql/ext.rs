@@ -52,8 +52,6 @@ pub trait DocumentExt {
 
     fn get_root_query_type(&self) -> Option<&ObjectType>;
 
-    fn get_root_subscription_type(&self) -> Option<&ObjectType>;
-
     fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>>;
 
     fn get_named_type(&self, name: &str) -> Option<&TypeDefinition>;
@@ -151,21 +149,6 @@ impl DocumentExt for Document {
             .iter()
             .filter_map(|d| match d {
                 Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => {
-                    Some(t)
-                }
-                _ => None,
-            })
-            .peekable()
-            .next()
-    }
-
-    fn get_root_subscription_type(&self) -> Option<&ObjectType> {
-        self.definitions
-            .iter()
-            .filter_map(|d| match d {
-                Definition::TypeDefinition(TypeDefinition::Object(t))
-                    if t.name == "Subscription" =>
-                {
                     Some(t)
                 }
                 _ => None,

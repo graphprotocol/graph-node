@@ -90,8 +90,8 @@ impl TryFrom<&r::Value> for ErrorPolicy {
 ///
 /// (2) By parsing an appropriate GraphQL schema from text and calling
 /// `from_graphql_schema`. In that case, it's the caller's responsibility to
-/// make sure that the schema has all the types needed for querying, like
-/// `Query` and `Subscription`
+/// make sure that the schema has all the types needed for querying, in
+/// particular `Query`
 ///
 /// Because of the second point, once constructed, it can not be assumed
 /// that an `ApiSchema` is based on an `InputSchema` and it can only be used
@@ -102,7 +102,6 @@ pub struct ApiSchema {
 
     // Root types for the api schema.
     pub query_type: Arc<s::ObjectType>,
-    pub subscription_type: Option<Arc<s::ObjectType>>,
     object_types: HashMap<String, Arc<s::ObjectType>>,
 }
 
@@ -121,11 +120,6 @@ impl ApiSchema {
             .get_root_query_type()
             .context("no root `Query` in the schema")?
             .clone();
-        let subscription_type = schema
-            .document
-            .get_root_subscription_type()
-            .cloned()
-            .map(Arc::new);
 
         let object_types = HashMap::from_iter(
             schema
@@ -138,7 +132,6 @@ impl ApiSchema {
         Ok(Self {
             schema,
             query_type: Arc::new(query_type),
-            subscription_type,
             object_types,
         })
     }
@@ -360,7 +353,6 @@ pub(in crate::schema) fn api_schema(
     add_types_for_interface_types(&mut api, input_schema)?;
     add_types_for_aggregation_types(&mut api, input_schema)?;
     add_query_type(&mut api.document, input_schema)?;
-    add_subscription_type(&mut api.document, input_schema)?;
     Ok(api.document)
 }
 
@@ -1133,44 +1125,6 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
         )))), // included entity type name
         directives: vec![fulltext.clone()],
     })
-}
-
-/// Adds a root `Subscription` object type to the schema.
-fn add_subscription_type(
-    api: &mut s::Document,
-    input_schema: &InputSchema,
-) -> Result<(), APISchemaError> {
-    let type_name = String::from("Subscription");
-
-    if api.get_named_type(&type_name).is_some() {
-        return Err(APISchemaError::TypeExists(type_name));
-    }
-
-    let mut fields: Vec<s::Field> = input_schema
-        .object_types()
-        .map(|(name, _)| name)
-        .chain(input_schema.interface_types().map(|(name, _)| name))
-        .flat_map(|name| query_fields_for_type(name, FilterOps::Object))
-        .collect();
-    let mut agg_fields = input_schema
-        .aggregation_types()
-        .map(|(name, _)| name)
-        .flat_map(query_fields_for_agg_type)
-        .collect::<Vec<s::Field>>();
-    fields.append(&mut agg_fields);
-    fields.push(meta_field());
-
-    let typedef = s::TypeDefinition::Object(s::ObjectType {
-        position: Pos::default(),
-        description: None,
-        name: type_name,
-        implements_interfaces: vec![],
-        directives: vec![],
-        fields,
-    });
-    let def = s::Definition::TypeDefinition(typedef);
-    api.definitions.push(def);
-    Ok(())
 }
 
 fn block_argument() -> s::InputValue {
