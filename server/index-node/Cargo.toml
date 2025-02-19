@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-blake3 = "1.5"
+blake3 = "1.6"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graph-chain-arweave = { path = "../../chain/arweave" }
