@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use slog::{o, Logger };
+use futures03::TryFutureExt;
+use slog::{o, Logger};
 use tokio::sync::{mpsc, watch::Receiver, RwLock};
+
+use crate::prelude::LoggerFactory;
 
 use super::store::DeploymentId;
 
@@ -30,49 +33,58 @@ pub struct TracingControl<T> {
     default_buffer_size: usize,
 }
 
-impl<T: Send + Clone + 'static> Default for TracingControl<T> {
-    fn default() -> Self {
-        let subscriptions = Subscriptions::default();
-        let subs = subscriptions.clone();
-        let watcher = std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            runtime.block_on(indexer_watcher::new_watcher(
-                #[cfg(test)]
-                Duration::from_millis(100),
-                #[cfg(not(test))]
-                Duration::from_secs(30),
-                move || {
-                    let subs = subs.clone();
+// impl<T: Send + Clone + 'static> Default for TracingControl<T> {
+// fn default() -> Self {
+//     let subscriptions = Subscriptions::default();
+//     let subs = subscriptions.clone();
+//     let watcher = std::thread::spawn(move || {
+//         let runtime = tokio::runtime::Builder::new_multi_thread()
+//             .enable_all()
+//             .build()
+//             .unwrap();
+//         runtime.block_on()
+//     })
+//     .join()
+//     .unwrap()
+//     .unwrap();
 
-                    async move {
-                        Logger::root(StdLog{}, o!())
-                        Ok(subs.inner.read().await.clone())
-                    }
-                },
-            ))
-        })
-        .join()
-        .unwrap()
-        .unwrap();
-
-        Self {
-            subscriptions,
-            default_buffer_size: DEFAULT_BUFFER_SIZE,
-            watcher,
-        }
-    }
-}
+//     Self {
+//         subscriptions,
+//         default_buffer_size: DEFAULT_BUFFER_SIZE,
+//         watcher,
+//     }
+// }
+// }
 
 impl<T: Send + Clone + 'static> TracingControl<T> {
-    pub fn new(default_buffer_size: Option<usize>) -> Self {
+    pub async fn start() -> Self {
+        let subscriptions = Subscriptions::default();
+        let subs = subscriptions.clone();
+        let watcher = indexer_watcher::new_watcher(
+            #[cfg(test)]
+            Duration::from_millis(100),
+            #[cfg(not(test))]
+            Duration::from_secs(30),
+            move || {
+                let subs = subs.clone();
+
+                async move { Ok(subs.inner.read().await.clone()) }
+            },
+        )
+        .await
+        .unwrap();
         Self {
-            default_buffer_size: default_buffer_size.unwrap_or(DEFAULT_BUFFER_SIZE),
-            ..Default::default()
+            watcher,
+            subscriptions,
+            default_buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
+    // pub fn new(default_buffer_size: Option<usize>) -> Self {
+    //     Self {
+    //         default_buffer_size: default_buffer_size.unwrap_or(DEFAULT_BUFFER_SIZE),
+    //         ..Default::default()
+    //     }
+    // }
 
     pub fn producer(&self, key: DeploymentId) -> Option<mpsc::Sender<T>> {
         self.watcher
@@ -113,7 +125,7 @@ mod test {
 
     #[tokio::test]
     async fn test_tracing_control() {
-        let control: TracingControl<()> = TracingControl::default();
+        let control: TracingControl<()> = TracingControl::start().await;
         let control = Arc::new(control);
 
         // produce before subscription
@@ -136,7 +148,6 @@ mod test {
                 }
             }
         })
-        .into_future()
         .await
         .unwrap();
         assert!(!tx.is_closed());
