@@ -240,6 +240,13 @@ pub struct EnvVars {
     pub firehose_disable_extended_blocks_for_chains: Vec<String>,
 
     pub block_write_capacity: usize,
+
+    /// Set by the environment variable `GRAPH_FIREHOSE_FETCH_BLOCK_RETRY_LIMIT`.
+    /// The default value is 10.
+    pub firehose_block_fetch_retry_limit: usize,
+    /// Set by the environment variable `GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS`.
+    /// The default value is 60 seconds.
+    pub firehose_block_fetch_timeout: u64,
 }
 
 impl EnvVars {
@@ -330,6 +337,8 @@ impl EnvVars {
                     inner.firehose_disable_extended_blocks_for_chains,
                 ),
             block_write_capacity: inner.block_write_capacity.0,
+            firehose_block_fetch_retry_limit: inner.firehose_block_fetch_retry_limit,
+            firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
         })
     }
 
@@ -493,6 +502,10 @@ struct Inner {
     firehose_disable_extended_blocks_for_chains: Option<String>,
     #[envconfig(from = "GRAPH_NODE_BLOCK_WRITE_CAPACITY", default = "4_000_000_000")]
     block_write_capacity: NoUnderscores<usize>,
+    #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_RETRY_LIMIT", default = "10")]
+    firehose_block_fetch_retry_limit: usize,
+    #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS", default = "60")]
+    firehose_block_fetch_timeout: u64,
 }
 
 #[derive(Clone, Debug)]
