@@ -25,7 +25,7 @@ use crate::{
 };
 
 use super::{
-    index::{load_indexes_from_table, IndexList},
+    index::{load_indexes_from_table, CreateIndex, IndexList},
     Catalog, Layout, Namespace,
 };
 
@@ -100,7 +100,10 @@ impl TablePair {
             let mut list = IndexList {
                 indexes: HashMap::new(),
             };
-            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?;
+            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?
+                .into_iter()
+                .map(|index| index.with_nsp(dst_nsp.to_string()))
+                .collect::<Result<Vec<CreateIndex>, _>>()?;
             list.indexes.insert(src.name.to_string(), indexes);
 
             // In case of pruning we don't do delayed creation of indexes,
