@@ -440,7 +440,7 @@ impl CreateIndex {
         }
     }
 
-    fn with_nsp(&self, nsp2: String) -> Result<Self, Error> {
+    pub fn with_nsp(&self, nsp2: String) -> Result<Self, Error> {
         let s = self.clone();
         match s {
             CreateIndex::Unknown { defn: _ } => Err(anyhow!("Failed to parse the index")),
