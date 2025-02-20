@@ -73,6 +73,7 @@ impl<T: Send + Clone + 'static> TracingControl<T> {
         )
         .await
         .unwrap();
+
         Self {
             watcher,
             subscriptions,
@@ -118,10 +119,37 @@ impl<T: Send + Clone + 'static> TracingControl<T> {
 mod test {
 
     use anyhow::anyhow;
+    use tokio::time::{self, Instant};
     use tokio_retry::Retry;
 
     use super::*;
-    use std::{future::IntoFuture, sync::Arc};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_watcher() {
+        let x = time::Instant::now();
+        let x = indexer_watcher::new_watcher(Duration::from_millis(10), move || {
+            let x = x.clone();
+
+            async move {
+                let now = Instant::now();
+                Ok(now.duration_since(x))
+            }
+        })
+        .await
+        .unwrap();
+
+        Retry::spawn(vec![Duration::from_secs(10); 3].into_iter(), move || {
+            let x = x.clone();
+            async move {
+                let count = x.borrow().clone();
+                println!("{}", count.as_millis());
+                Err::<Duration, anyhow::Error>(anyhow!("millis: {}", count.as_millis()))
+            }
+        })
+        .await
+        .unwrap();
+    }
 
     #[tokio::test]
     async fn test_tracing_control() {
