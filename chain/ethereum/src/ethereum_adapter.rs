@@ -403,6 +403,7 @@ impl EthereumAdapter {
             "503 Service Unavailable",   // Alchemy
             "ServerError(-32000)",       // Alchemy
             "Try with this block range", // zKSync era
+            "block range too large",     // Monad
         ];
 
         if from > to {
