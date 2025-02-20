@@ -1715,7 +1715,7 @@ impl Table {
     pub fn new_like(&self, namespace: &Namespace, name: &SqlName) -> Arc<Table> {
         let other = Table {
             object: self.object.clone(),
-            nsp: self.nsp.clone(),
+            nsp: namespace.clone(),
             name: name.clone(),
             qualified_name: SqlName::qualified_name(namespace, name),
             columns: self.columns.clone(),
