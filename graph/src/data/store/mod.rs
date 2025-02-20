@@ -883,13 +883,17 @@ impl Entity {
 
     // This collects the entity into an ordered vector so that it can be iterated deterministically.
     pub fn sorted(self) -> Vec<(Word, Value)> {
-        let mut v: Vec<_> = self.0.into_iter().map(|(k, v)| (k, v)).collect();
+        let mut v: Vec<_> = self
+            .0
+            .into_iter()
+            .filter(|(k, _)| !k.eq(VID_FIELD))
+            .collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
     }
 
     pub fn sorted_ref(&self) -> Vec<(&str, &Value)> {
-        let mut v: Vec<_> = self.0.iter().collect();
+        let mut v: Vec<_> = self.0.iter().filter(|(k, _)| !k.eq(&VID_FIELD)).collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
     }
