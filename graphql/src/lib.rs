@@ -7,9 +7,6 @@ mod execution;
 /// Utilities for executing GraphQL queries and working with query ASTs.
 pub mod query;
 
-/// Utilities for executing GraphQL subscriptions.
-pub mod subscription;
-
 /// Utilities for working with GraphQL values.
 mod values;
 
@@ -28,7 +25,6 @@ pub mod prelude {
     pub use super::introspection::IntrospectionResolver;
     pub use super::query::{execute_query, ext::BlockConstraint, QueryExecutionOptions};
     pub use super::store::StoreResolver;
-    pub use super::subscription::SubscriptionExecutionOptions;
     pub use super::values::MaybeCoercible;
 
     pub use super::metrics::GraphQLMetrics;

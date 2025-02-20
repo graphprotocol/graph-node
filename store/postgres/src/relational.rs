@@ -72,7 +72,7 @@ use graph::components::store::{AttributeNames, DerivedEntityQuery};
 use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
-    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
+    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityOperation, Logger,
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
@@ -1041,8 +1041,7 @@ impl Layout {
         &self,
         conn: &mut PgConnection,
         block: BlockNumber,
-    ) -> Result<(StoreEvent, i32), StoreError> {
-        let mut changes: Vec<EntityChange> = Vec::new();
+    ) -> Result<i32, StoreError> {
         let mut count: i32 = 0;
 
         for table in self.tables.values() {
@@ -1071,23 +1070,8 @@ impl Layout {
             let deleted = removed.difference(&unclamped).count() as i32;
             let inserted = unclamped.difference(&removed).count() as i32;
             count += inserted - deleted;
-            // EntityChange for versions we just deleted
-            let deleted = removed
-                .into_iter()
-                .filter(|id| !unclamped.contains(id))
-                .map(|_| EntityChange::Data {
-                    subgraph_id: self.site.deployment.clone(),
-                    entity_type: table.object.to_string(),
-                });
-            changes.extend(deleted);
-            // EntityChange for versions that we just updated or inserted
-            let set = unclamped.into_iter().map(|_| EntityChange::Data {
-                subgraph_id: self.site.deployment.clone(),
-                entity_type: table.object.to_string(),
-            });
-            changes.extend(set);
         }
-        Ok((StoreEvent::new(changes), count))
+        Ok(count)
     }
 
     /// Revert the metadata (dynamic data sources and related entities) for

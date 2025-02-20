@@ -39,8 +39,8 @@ use graph::{
     prelude::{
         anyhow,
         chrono::{DateTime, Utc},
-        serde_json, DeploymentHash, EntityChange, EntityChangeOperation, NodeId, StoreError,
-        SubgraphName, SubgraphVersionSwitchingMode,
+        serde_json, AssignmentChange, DeploymentHash, NodeId, StoreError, SubgraphName,
+        SubgraphVersionSwitchingMode,
     },
 };
 use graph::{
@@ -790,7 +790,7 @@ impl<'a> Connection<'a> {
 
     /// Delete all assignments for deployments that are neither the current nor the
     /// pending version of a subgraph and return the deployment id's
-    fn remove_unused_assignments(&mut self) -> Result<Vec<EntityChange>, StoreError> {
+    fn remove_unused_assignments(&mut self) -> Result<Vec<AssignmentChange>, StoreError> {
         use deployment_schemas as ds;
         use subgraph as s;
         use subgraph_deployment_assignment as a;
@@ -827,12 +827,7 @@ impl<'a> Connection<'a> {
             .into_iter()
             .map(|(id, hash)| {
                 DeploymentHash::new(hash)
-                    .map(|hash| {
-                        EntityChange::for_assignment(
-                            DeploymentLocator::new(id.into(), hash),
-                            EntityChangeOperation::Removed,
-                        )
-                    })
+                    .map(|hash| AssignmentChange::removed(DeploymentLocator::new(id.into(), hash)))
                     .map_err(|id| {
                         StoreError::ConstraintViolation(format!(
                             "invalid id `{}` for deployment assignment",
@@ -851,7 +846,7 @@ impl<'a> Connection<'a> {
     pub fn promote_deployment(
         &mut self,
         id: &DeploymentHash,
-    ) -> Result<Vec<EntityChange>, StoreError> {
+    ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
 
@@ -926,7 +921,7 @@ impl<'a> Connection<'a> {
         node_id: NodeId,
         mode: SubgraphVersionSwitchingMode,
         exists_and_synced: F,
-    ) -> Result<Vec<EntityChange>, StoreError>
+    ) -> Result<Vec<AssignmentChange>, StoreError>
     where
         F: Fn(&DeploymentHash) -> Result<bool, StoreError>,
     {
@@ -1034,13 +1029,16 @@ impl<'a> Connection<'a> {
         // Clean up any assignments we might have displaced
         let mut changes = self.remove_unused_assignments()?;
         if new_assignment {
-            let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
+            let change = AssignmentChange::set(site.into());
             changes.push(change);
         }
         Ok(changes)
     }
 
-    pub fn remove_subgraph(&mut self, name: SubgraphName) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn remove_subgraph(
+        &mut self,
+        name: SubgraphName,
+    ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
 
@@ -1062,7 +1060,7 @@ impl<'a> Connection<'a> {
         }
     }
 
-    pub fn pause_subgraph(&mut self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn pause_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.conn.as_mut();
@@ -1073,8 +1071,7 @@ impl<'a> Connection<'a> {
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
-                let change =
-                    EntityChange::for_assignment(site.into(), EntityChangeOperation::Removed);
+                let change = AssignmentChange::removed(site.into());
                 Ok(vec![change])
             }
             _ => {
@@ -1085,7 +1082,7 @@ impl<'a> Connection<'a> {
         }
     }
 
-    pub fn resume_subgraph(&mut self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn resume_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.conn.as_mut();
@@ -1096,7 +1093,7 @@ impl<'a> Connection<'a> {
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
-                let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
+                let change = AssignmentChange::set(site.into());
                 Ok(vec![change])
             }
             _ => {
@@ -1111,7 +1108,7 @@ impl<'a> Connection<'a> {
         &mut self,
         site: &Site,
         node: &NodeId,
-    ) -> Result<Vec<EntityChange>, StoreError> {
+    ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.conn.as_mut();
@@ -1121,7 +1118,7 @@ impl<'a> Connection<'a> {
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
-                let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
+                let change = AssignmentChange::set(site.into());
                 Ok(vec![change])
             }
             _ => {
@@ -1248,7 +1245,7 @@ impl<'a> Connection<'a> {
         &mut self,
         site: &Site,
         node: &NodeId,
-    ) -> Result<Vec<EntityChange>, StoreError> {
+    ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.conn.as_mut();
@@ -1256,11 +1253,11 @@ impl<'a> Connection<'a> {
             .values((a::id.eq(site.id), a::node_id.eq(node.as_str())))
             .execute(conn)?;
 
-        let change = EntityChange::for_assignment(site.into(), EntityChangeOperation::Set);
+        let change = AssignmentChange::set(site.into());
         Ok(vec![change])
     }
 
-    pub fn unassign_subgraph(&mut self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn unassign_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.conn.as_mut();
@@ -1271,8 +1268,7 @@ impl<'a> Connection<'a> {
         match delete_count {
             0 => Ok(vec![]),
             1 => {
-                let change =
-                    EntityChange::for_assignment(site.into(), EntityChangeOperation::Removed);
+                let change = AssignmentChange::removed(site.into());
                 Ok(vec![change])
             }
             _ => {

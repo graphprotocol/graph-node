@@ -86,9 +86,6 @@ pub struct EnvVarsGraphQl {
     /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
     /// default value is [`usize::MAX`].
     pub error_result_size: usize,
-    /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`.
-    /// Defaults to 1000.
-    pub max_operations_per_connection: usize,
     /// Set by the flag `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`. Off by default.
     /// Disables AND/OR filters
     pub disable_bool_filters: bool,
@@ -144,7 +141,6 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             allow_deployment_change: x.allow_deployment_change.0,
             warn_result_size: x.warn_result_size.0 .0,
             error_result_size: x.error_result_size.0 .0,
-            max_operations_per_connection: x.max_operations_per_connection,
             disable_bool_filters: x.disable_bool_filters.0,
             disable_child_sorting: x.disable_child_sorting.0,
             query_trace_token: x.query_trace_token,
@@ -192,8 +188,6 @@ pub struct InnerGraphQl {
     warn_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_ERROR_RESULT_SIZE", default = "")]
     error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
-    #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION", default = "1000")]
-    max_operations_per_connection: usize,
     #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS", default = "false")]
     pub disable_bool_filters: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_CHILD_SORTING", default = "false")]

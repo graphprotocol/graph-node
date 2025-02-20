@@ -61,7 +61,6 @@ impl EthConfig {
 pub struct GraphNodePorts {
     pub http: u16,
     pub index: u16,
-    pub ws: u16,
     pub admin: u16,
     pub metrics: u16,
 }
@@ -70,7 +69,6 @@ impl Default for GraphNodePorts {
     fn default() -> Self {
         Self {
             http: 3030,
-            ws: 3031,
             admin: 3032,
             index: 3033,
             metrics: 3034,
@@ -160,8 +158,6 @@ impl Config {
             &ports.http.to_string(),
             "--index-node-port",
             &ports.index.to_string(),
-            "--ws-port",
-            &ports.ws.to_string(),
             "--admin-port",
             &ports.admin.to_string(),
             "--metrics-port",

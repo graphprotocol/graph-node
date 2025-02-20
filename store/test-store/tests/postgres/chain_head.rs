@@ -219,10 +219,10 @@ fn test_get_block_number() {
             create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }").await;
 
             let query_store = subgraph_store
-                .query_store(
-                    QueryTarget::Deployment(subgraph.cheap_clone(), Default::default()),
-                    false,
-                )
+                .query_store(QueryTarget::Deployment(
+                    subgraph.cheap_clone(),
+                    Default::default(),
+                ))
                 .await
                 .unwrap();
 

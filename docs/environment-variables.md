@@ -112,18 +112,10 @@ those.
   result is checked while the response is being constructed, so that
   execution does not take more memory than what is configured. The default
   value for both is unlimited.
-- `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
-  operations per WebSocket connection. Any operation created after the limit
-  will return an error to the client. Default: 1000.
 - `GRAPH_GRAPHQL_HTTP_PORT` : Port for the GraphQL HTTP server
-- `GRAPH_GRAPHQL_WS_PORT` : Port for the GraphQL WebSocket server
 - `GRAPH_SQL_STATEMENT_TIMEOUT`: the maximum number of seconds an
   individual SQL query is allowed to take during GraphQL
   execution. Default: unlimited
-- `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS`: disables the internal
-  mechanism that is used to trigger updates on GraphQL subscriptions. When
-  this variable is set to any value, `graph-node` will still accept GraphQL
-  subscriptions, but they won't receive any updates.
 - `ENABLE_GRAPHQL_VALIDATIONS`: enables GraphQL validations, based on the GraphQL specification.
   This will validate and ensure every query executes follows the execution
   rules. Default: `false`
@@ -185,11 +177,10 @@ those.
   query, and the `query_id` of the GraphQL query that caused the SQL
   query. These SQL queries are marked with `component: GraphQlRunner` There
   are additional SQL queries that get logged when `sql` is given. These are
-  queries caused by mappings when processing blocks for a subgraph, and
-  queries caused by subscriptions. If `cache` is present in addition to
-  `gql`, also logs information for each toplevel GraphQL query field
-  whether that could be retrieved from cache or not. Defaults to no
-  logging.
+  queries caused by mappings when processing blocks for a subgraph. If
+  `cache` is present in addition to `gql`, also logs information for each
+  toplevel GraphQL query field whether that could be retrieved from cache
+  or not. Defaults to no logging.
 - `GRAPH_LOG_TIME_FORMAT`: Custom log time format.Default value is `%b %d %H:%M:%S%.3f`. More information [here](https://docs.rs/chrono/latest/chrono/#formatting-and-parsing).
 - `STORE_CONNECTION_POOL_SIZE`: How many simultaneous connections to allow to the store.
   Due to implementation details, this value may not be strictly adhered to. Defaults to 10.
