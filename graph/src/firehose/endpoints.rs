@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use futures03::StreamExt;
 use http0::uri::{Scheme, Uri};
 use itertools::Itertools;
-use slog::{error, info, Logger};
+use slog::{error, info, trace, Logger};
 use std::{collections::HashMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
 use tokio::sync::OnceCell;
 use tonic::codegen::InterceptedService;
@@ -33,6 +33,7 @@ use crate::components::network_provider::NetworkDetails;
 use crate::components::network_provider::ProviderCheckStrategy;
 use crate::components::network_provider::ProviderManager;
 use crate::components::network_provider::ProviderName;
+use crate::prelude::retry;
 
 /// This is constant because we found this magic number of connections after
 /// which the grpc connections start to hang.
@@ -425,7 +426,7 @@ impl FirehoseEndpoint {
     }
 
     pub async fn load_blocks_by_numbers<M>(
-        &self,
+        self: Arc<Self>,
         numbers: Vec<u64>,
         logger: &Logger,
     ) -> Result<Vec<M>, anyhow::Error>
@@ -435,21 +436,39 @@ impl FirehoseEndpoint {
         let mut blocks = Vec::with_capacity(numbers.len());
 
         for number in numbers {
-            debug!(
+            let provider_name = self.provider.as_str();
+
+            trace!(
                 logger,
                 "Loading block for block number {}", number;
-                "provider" => self.provider.as_str(),
+                "provider" => provider_name,
             );
 
-            match self.get_block_by_number::<M>(number, logger).await {
+            let retry_log_message = format!("get_block_by_number for block {}", number);
+            let endpoint_for_retry = self.cheap_clone();
+
+            let logger_for_retry = logger.clone();
+            let logger_for_error = logger.clone();
+
+            let block = retry(retry_log_message, &logger_for_retry)
+                .limit(ENV_VARS.firehose_block_fetch_retry_limit)
+                .timeout_secs(ENV_VARS.firehose_block_fetch_timeout)
+                .run(move || {
+                    let e = endpoint_for_retry.cheap_clone();
+                    let l = logger_for_retry.clone();
+                    async move { e.get_block_by_number::<M>(number, &l).await }
+                })
+                .await;
+
+            match block {
                 Ok(block) => {
                     blocks.push(block);
                 }
                 Err(e) => {
                     error!(
-                        logger,
+                        logger_for_error,
                         "Failed to load block number {}: {}", number, e;
-                        "provider" => self.provider.as_str(),
+                        "provider" => provider_name,
                     );
                     return Err(anyhow::format_err!(
                         "failed to load block number {}: {}",
