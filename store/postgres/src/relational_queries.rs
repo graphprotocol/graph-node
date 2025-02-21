@@ -4799,6 +4799,10 @@ impl<'a> CopyEntityBatchQuery<'a> {
             last_vid,
         })
     }
+
+    pub fn count_current(self) -> CountCurrentVersionsQuery<'a> {
+        CountCurrentVersionsQuery::new(self)
+    }
 }
 
 impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
@@ -4810,6 +4814,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         // Construct a query
         //   insert into {dst}({columns})
         //   select {columns} from {src}
+        //    where vid >= {first_vid} and vid <= {last_vid}
+        //   returning {upper_inf(block_range)|true}
         out.push_sql("insert into ");
         out.push_sql(self.dst.qualified_name.as_str());
         out.push_sql("(");
@@ -4905,6 +4911,12 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         out.push_bind_param::<BigInt, _>(&self.first_vid)?;
         out.push_sql(" and vid <= ");
         out.push_bind_param::<BigInt, _>(&self.last_vid)?;
+        out.push_sql("\n returning ");
+        if self.dst.immutable {
+            out.push_sql("true");
+        } else {
+            out.push_sql(BLOCK_RANGE_CURRENT);
+        }
         Ok(())
     }
 }
@@ -4916,6 +4928,40 @@ impl<'a> QueryId for CopyEntityBatchQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityBatchQuery<'a> {}
+
+#[derive(Debug, Clone)]
+pub struct CountCurrentVersionsQuery<'a> {
+    copy: CopyEntityBatchQuery<'a>,
+}
+
+impl<'a> CountCurrentVersionsQuery<'a> {
+    pub fn new(copy: CopyEntityBatchQuery<'a>) -> Self {
+        Self { copy }
+    }
+}
+impl<'a> QueryFragment<Pg> for CountCurrentVersionsQuery<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        // Generate a query
+        // with copy_cte as ( {copy} )
+        // select count(*) from copy_cte where {block_range_current}
+        out.push_sql("with copy_cte(current) as (");
+        self.copy.walk_ast(out.reborrow())?;
+        out.push_sql(")\nselect count(*) from copy_cte where current");
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for CountCurrentVersionsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> Query for CountCurrentVersionsQuery<'a> {
+    type SqlType = BigInt;
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for CountCurrentVersionsQuery<'a> {}
 
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
