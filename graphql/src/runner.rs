@@ -5,8 +5,10 @@ use crate::metrics::GraphQLMetrics;
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
+use graph::data::query::{CacheStatus, SqlQueryReq};
+use graph::data::store::SqlQueryObject;
 use graph::futures03::future;
-use graph::prelude::MetricsRegistry;
+use graph::prelude::{ApiVersion, MetricsRegistry};
 use graph::{
     components::store::SubscriptionManager,
     prelude::{
@@ -311,5 +313,44 @@ where
 
     fn metrics(&self) -> Arc<dyn GraphQLMetricsTrait> {
         self.graphql_metrics.clone()
+    }
+
+    async fn run_sql_query(
+        self: Arc<Self>,
+        req: SqlQueryReq,
+    ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
+        let store = self
+            .store
+            .query_store(
+                QueryTarget::Deployment(req.deployment.clone(), ApiVersion::default()),
+                false,
+            )
+            .await?;
+
+        let query_hash = req.query_hash();
+        self.load_manager
+            .decide(
+                &store.wait_stats().map_err(QueryExecutionError::from)?,
+                store.shard(),
+                store.deployment_id(),
+                query_hash,
+                &req.query,
+            )
+            .to_result()?;
+
+        let query_start = Instant::now();
+        let result = store
+            .execute_sql(&req.query)
+            .map_err(|e| QueryExecutionError::from(e));
+
+        self.load_manager.record_work(
+            store.shard(),
+            store.deployment_id(),
+            query_hash,
+            query_start.elapsed(),
+            CacheStatus::Miss,
+        );
+
+        result
     }
 }
