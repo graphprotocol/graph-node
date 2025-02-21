@@ -1,4 +1,3 @@
-use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 
 use graph::cheap_clone::CheapClone;
@@ -8,12 +7,12 @@ use graph::components::store::{
 };
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::QueryExecutionError;
-use graph::data::store::{Attribute, SubscriptionFilter, Value, ValueType};
+use graph::data::store::{Attribute, Value, ValueType};
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
-use graph::prelude::{r, s, TryFromValue, ENV_VARS};
+use graph::prelude::{r, TryFromValue, ENV_VARS};
 use graph::schema::ast::{self as sast, FilterOp};
-use graph::schema::{ApiSchema, EntityType, InputSchema, ObjectOrInterface};
+use graph::schema::{EntityType, InputSchema, ObjectOrInterface};
 
 use crate::execution::ast as a;
 
@@ -650,58 +649,6 @@ fn build_order_direction(field: &a::Field) -> Result<OrderDirection, QueryExecut
             _ => OrderDirection::Ascending,
         })
         .unwrap_or(OrderDirection::Ascending))
-}
-
-/// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
-pub(crate) fn collect_entities_from_query_field(
-    input_schema: &InputSchema,
-    schema: &ApiSchema,
-    object_type: sast::ObjectType,
-    field: &a::Field,
-) -> Result<BTreeSet<SubscriptionFilter>, QueryExecutionError> {
-    // Output entities
-    let mut entities = HashSet::new();
-
-    // List of objects/fields to visit next
-    let mut queue = VecDeque::new();
-    queue.push_back((object_type, field));
-
-    while let Some((object_type, field)) = queue.pop_front() {
-        // Check if the field exists on the object type
-        if let Some(field_type) = sast::get_field(&object_type, &field.name) {
-            // Check if the field type corresponds to a type definition (in a valid schema,
-            // this should always be the case)
-            if let Some(type_definition) = schema.get_type_definition_from_field(field_type) {
-                // If the field's type definition is an object type, extract that type
-                if let s::TypeDefinition::Object(object_type) = type_definition {
-                    // Only collect whether the field's type has an @entity directive
-                    if sast::get_object_type_directive(object_type, String::from("entity"))
-                        .is_some()
-                    {
-                        entities
-                            .insert((input_schema.id().cheap_clone(), object_type.name.clone()));
-                    }
-
-                    // If the query field has a non-empty selection set, this means we
-                    // need to recursively process it
-                    let object_type = schema.object_type(object_type).into();
-                    for sub_field in field.selection_set.fields_for(&object_type)? {
-                        queue.push_back((object_type.cheap_clone(), sub_field))
-                    }
-                }
-            }
-        }
-    }
-
-    entities
-        .into_iter()
-        .map(|(id, entity_type)| {
-            input_schema
-                .entity_type(&entity_type)
-                .map(|entity_type| SubscriptionFilter::Entities(id, entity_type))
-        })
-        .collect::<Result<_, _>>()
-        .map_err(Into::into)
 }
 
 #[cfg(test)]

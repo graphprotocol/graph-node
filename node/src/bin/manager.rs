@@ -24,9 +24,7 @@ use graph_node::manager::color::Terminal;
 use graph_node::manager::commands;
 use graph_node::network_setup::Networks;
 use graph_node::{
-    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
-    store_builder::StoreBuilder,
-    MetricsContext,
+    manager::deployment::DeploymentSearch, store_builder::StoreBuilder, MetricsContext,
 };
 use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
@@ -469,14 +467,8 @@ pub enum ConfigCommand {
 pub enum ListenCommand {
     /// Listen only to assignment events
     Assignments,
-    /// Listen to events for entities in a specific deployment
-    Entities {
-        /// The deployment (see `help info`).
-        deployment: DeploymentSearch,
-        /// The entity types for which to print change notifications
-        entity_types: Vec<String>,
-    },
 }
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum CopyCommand {
     /// Create a copy of an existing subgraph
@@ -932,13 +924,6 @@ impl Context {
         ))
     }
 
-    fn primary_and_subscription_manager(self) -> (ConnectionPool, Arc<SubscriptionManager>) {
-        let mgr = self.subscription_manager();
-        let primary_pool = self.primary_pool();
-
-        (primary_pool, mgr)
-    }
-
     fn store(&self) -> Arc<Store> {
         let (store, _) = self.store_and_pools();
         store
@@ -998,22 +983,15 @@ impl Context {
         (store.block_store(), primary.clone())
     }
 
-    fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
+    fn graphql_runner(self) -> Arc<GraphQlRunner<Store>> {
         let logger = self.logger.clone();
         let registry = self.registry.clone();
 
         let store = self.store();
 
-        let subscription_manager = Arc::new(PanicSubscriptionManager);
         let load_manager = Arc::new(LoadManager::new(&logger, vec![], vec![], registry.clone()));
 
-        Arc::new(GraphQlRunner::new(
-            &logger,
-            store,
-            subscription_manager,
-            load_manager,
-            registry,
-        ))
+        Arc::new(GraphQlRunner::new(&logger, store, load_manager, registry))
     }
 
     async fn networks(&self) -> anyhow::Result<Networks> {
@@ -1319,13 +1297,6 @@ async fn main() -> anyhow::Result<()> {
             use ListenCommand::*;
             match cmd {
                 Assignments => commands::listen::assignments(ctx.subscription_manager()).await,
-                Entities {
-                    deployment,
-                    entity_types,
-                } => {
-                    let (primary, mgr) = ctx.primary_and_subscription_manager();
-                    commands::listen::entities(primary, mgr, &deployment, entity_types).await
-                }
             }
         }
         Copy(cmd) => {

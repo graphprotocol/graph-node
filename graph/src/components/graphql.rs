@@ -1,16 +1,10 @@
 use crate::data::query::QueryResults;
 use crate::data::query::{Query, QueryTarget};
-use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
 use crate::prelude::DeploymentHash;
 
 use async_trait::async_trait;
-use futures01::Future;
 use std::sync::Arc;
 use std::time::Duration;
-
-/// Future for subscription results.
-pub type SubscriptionResultFuture =
-    Box<dyn Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
 
 pub enum GraphQlTarget {
     SubgraphName(String),
@@ -32,13 +26,6 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         max_first: Option<u32>,
         max_skip: Option<u32>,
     ) -> QueryResults;
-
-    /// Runs a GraphQL subscription and returns a stream of results.
-    async fn run_subscription(
-        self: Arc<Self>,
-        subscription: Subscription,
-        target: QueryTarget,
-    ) -> Result<SubscriptionResult, SubscriptionError>;
 
     fn metrics(&self) -> Arc<dyn GraphQLMetrics>;
 }

@@ -9,11 +9,10 @@ use crate::{
     data::{store::Id, subgraph::schema::SubgraphError},
     data_source::CausalityRegion,
     derive::CacheWeight,
-    prelude::DeploymentHash,
     util::cache_weight::CacheWeight,
 };
 
-use super::{BlockNumber, EntityKey, EntityType, StoreError, StoreEvent, StoredDynamicDataSource};
+use super::{BlockNumber, EntityKey, EntityType, StoreError, StoredDynamicDataSource};
 
 /// A data structure similar to `EntityModification`, but tagged with a
 /// block. We might eventually replace `EntityModification` with this, but
@@ -777,17 +776,6 @@ impl Batch {
                     .iter()
                     .any(|(_, entries)| entries.contains(ds))
             })
-    }
-
-    /// Generate a store event for all the changes that this batch makes
-    pub fn store_event(&self, deployment: &DeploymentHash) -> StoreEvent {
-        let entity_types = HashSet::from_iter(
-            self.mods
-                .groups
-                .iter()
-                .map(|group| group.entity_type.clone()),
-        );
-        StoreEvent::from_types(deployment, entity_types)
     }
 
     pub fn groups<'a>(&'a self) -> impl Iterator<Item = &'a RowGroup> {

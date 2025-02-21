@@ -10,9 +10,8 @@ use graph::{
         schema::{DeploymentCreate, SubgraphError},
         DeploymentFeatures,
     },
+    prelude::AssignmentChange,
     prelude::BlockPtr,
-    prelude::EntityChange,
-    prelude::EntityChangeOperation,
     prelude::QueryStoreManager,
     prelude::StoreEvent,
     prelude::SubgraphManifest,
@@ -59,18 +58,12 @@ const SUBGRAPH_FEATURES_GQL: &str = "
     }
 ";
 
-fn assigned(deployment: &DeploymentLocator) -> EntityChange {
-    EntityChange::Assignment {
-        deployment: deployment.clone(),
-        operation: EntityChangeOperation::Set,
-    }
+fn assigned(deployment: &DeploymentLocator) -> AssignmentChange {
+    AssignmentChange::set(deployment.clone())
 }
 
-fn unassigned(deployment: &DeploymentLocator) -> EntityChange {
-    EntityChange::Assignment {
-        deployment: deployment.clone(),
-        operation: EntityChangeOperation::Removed,
-    }
+fn unassigned(deployment: &DeploymentLocator) -> AssignmentChange {
+    AssignmentChange::removed(deployment.clone())
 }
 
 fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
@@ -163,7 +156,7 @@ fn create_subgraph() {
         store: &SubgraphStore,
         id: &str,
         mode: SubgraphVersionSwitchingMode,
-    ) -> (DeploymentLocator, HashSet<EntityChange>) {
+    ) -> (DeploymentLocator, HashSet<AssignmentChange>) {
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let id = DeploymentHash::new(id.to_string()).unwrap();
         let schema = InputSchema::parse_latest(SUBGRAPH_GQL, id.clone()).unwrap();
@@ -203,7 +196,7 @@ fn create_subgraph() {
         (deployment, events)
     }
 
-    fn deploy_event(deployment: &DeploymentLocator) -> HashSet<EntityChange> {
+    fn deploy_event(deployment: &DeploymentLocator) -> HashSet<AssignmentChange> {
         let mut changes = HashSet::new();
         changes.insert(assigned(deployment));
         changes
@@ -703,10 +696,10 @@ fn fatal_vs_non_fatal() {
     run_test_sequentially(|store| async move {
         let deployment = setup().await;
         let query_store = store
-            .query_store(
-                QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-                false,
-            )
+            .query_store(QueryTarget::Deployment(
+                deployment.hash.clone(),
+                Default::default(),
+            ))
             .await
             .unwrap();
 
@@ -764,10 +757,10 @@ fn fail_unfail_deterministic_error() {
         let deployment = setup().await;
 
         let query_store = store
-            .query_store(
-                QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
-                false,
-            )
+            .query_store(QueryTarget::Deployment(
+                deployment.hash.clone(),
+                Default::default(),
+            ))
             .await
             .unwrap();
 

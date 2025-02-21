@@ -3,11 +3,10 @@ use crate::{
     derive::CacheWeight,
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
-    schema::{input::VID_FIELD, EntityKey, EntityType},
+    schema::{input::VID_FIELD, EntityKey},
     util::intern::{self, AtomPool},
     util::intern::{Error as InternError, NullValue, Object},
 };
-use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
 use itertools::Itertools;
 use serde::de;
@@ -35,33 +34,6 @@ pub mod ethereum;
 
 /// Conversion of values to/from SQL
 pub mod sql;
-
-/// Filter subscriptions
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum SubscriptionFilter {
-    /// Receive updates about all entities from the given deployment of the
-    /// given type
-    Entities(DeploymentHash, EntityType),
-    /// Subscripe to changes in deployment assignments
-    Assignment,
-}
-
-impl SubscriptionFilter {
-    pub fn matches(&self, change: &EntityChange) -> bool {
-        match (self, change) {
-            (
-                Self::Entities(eid, etype),
-                EntityChange::Data {
-                    subgraph_id,
-                    entity_type,
-                    ..
-                },
-            ) => subgraph_id == eid && entity_type == etype.typename(),
-            (Self::Assignment, EntityChange::Assignment { .. }) => true,
-            _ => false,
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
@@ -1149,6 +1121,8 @@ fn value_bigint() {
 
 #[test]
 fn entity_validation() {
+    use crate::data::subgraph::DeploymentHash;
+    use crate::schema::EntityType;
     use crate::schema::InputSchema;
 
     const DOCUMENT: &str = "

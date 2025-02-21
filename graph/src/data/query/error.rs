@@ -26,7 +26,6 @@ pub enum QueryExecutionError {
     OperationNameRequired,
     OperationNotFound(String),
     NotSupported(String),
-    NoRootSubscriptionObjectType,
     NonNullError(Pos, String),
     ListValueError(Pos, String),
     NamedTypeError(String),
@@ -42,7 +41,6 @@ pub enum QueryExecutionError {
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
-    MultipleSubscriptionFields,
     SubgraphDeploymentIdError(String),
     RangeArgumentsError(&'static str, u32, i64),
     InvalidFilterError,
@@ -67,7 +65,6 @@ pub enum QueryExecutionError {
     Throttled,
     UndefinedFragment(String),
     Panic(String),
-    EventStreamError,
     FulltextQueryRequiresFilter,
     FulltextQueryInvalidSyntax(String),
     DeploymentReverted,
@@ -87,7 +84,6 @@ impl QueryExecutionError {
             OperationNameRequired
             | OperationNotFound(_)
             | NotSupported(_)
-            | NoRootSubscriptionObjectType
             | NonNullError(_, _)
             | NamedTypeError(_)
             | AbstractTypeError(_)
@@ -101,7 +97,6 @@ impl QueryExecutionError {
             | ChildFilterNestingNotSupportedError(_, _)
             | UnknownField(_, _, _)
             | EmptyQuery
-            | MultipleSubscriptionFields
             | SubgraphDeploymentIdError(_)
             | InvalidFilterError
             | EntityFieldError(_, _)
@@ -127,7 +122,6 @@ impl QueryExecutionError {
             | TooComplex(_, _)
             | TooDeep(_)
             | Panic(_)
-            | EventStreamError
             | TooExpensive
             | Throttled
             | DeploymentReverted
@@ -166,9 +160,6 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "{}", message)
             }
             NotSupported(s) => write!(f, "Not supported: {}", s),
-            NoRootSubscriptionObjectType => {
-                write!(f, "No root Subscription type defined in the schema")
-            }
             NonNullError(_, s) => {
                 write!(f, "Null value resolved for non-null field `{}`", s)
             }
@@ -212,10 +203,6 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "Type `{}` has no field `{}`", t, s)
             }
             EmptyQuery => write!(f, "The query is empty"),
-            MultipleSubscriptionFields => write!(
-                f,
-                "Only a single top-level field is allowed in subscriptions"
-            ),
             SubgraphDeploymentIdError(s) => {
                 write!(f, "Failed to get subgraph ID from type: `{}`", s)
             }
@@ -276,7 +263,6 @@ impl fmt::Display for QueryExecutionError {
             CyclicalFragment(name) =>write!(f, "query has fragment cycle including `{}`", name),
             UndefinedFragment(frag_name) => write!(f, "fragment `{}` is not defined", frag_name),
             Panic(msg) => write!(f, "panic processing query: {}", msg),
-            EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
             FulltextQueryInvalidSyntax(msg) => write!(f, "Invalid fulltext search query syntax. Error: {}. Hint: Search terms with spaces need to be enclosed in single quotes", msg),
             TooExpensive => write!(f, "query is too expensive"),

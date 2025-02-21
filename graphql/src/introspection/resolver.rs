@@ -332,10 +332,7 @@ impl IntrospectionResolver {
                 self.type_objects
                     .get(&String::from("Query"))
                     .cloned(),
-            subscriptionType:
-                self.type_objects
-                    .get(&String::from("Subscription"))
-                    .cloned(),
+            subscriptionType: r::Value::Null,
             mutationType: r::Value::Null,
             types: self.type_objects.values().cloned().collect::<Vec<_>>(),
             directives: self.directives.clone(),

@@ -49,13 +49,6 @@ pub struct EnvVarsStore {
     /// only as an emergency setting for the hosted service. Remove after
     /// 2022-07-01 if hosted service had no issues with it being `true`
     pub order_by_block_range: bool,
-    /// Whether to disable the notifications that feed GraphQL
-    /// subscriptions. When the flag is set, no updates
-    /// about entity changes will be sent to query nodes.
-    ///
-    /// Set by the flag `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS`. Not set
-    /// by default.
-    pub disable_subscription_notifications: bool,
     /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
     /// (expressed in minutes). The default value is 360 minutes.
     pub remove_unused_interval: chrono::Duration,
@@ -163,7 +156,6 @@ impl From<InnerStore> for EnvVarsStore {
             typea_batch_size: x.typea_batch_size,
             typed_children_set_size: x.typed_children_set_size,
             order_by_block_range: x.order_by_block_range.0,
-            disable_subscription_notifications: x.disable_subscription_notifications.0,
             remove_unused_interval: chrono::Duration::minutes(
                 x.remove_unused_interval_in_minutes as i64,
             ),
@@ -207,8 +199,6 @@ pub struct InnerStore {
     typed_children_set_size: usize,
     #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "true")]
     order_by_block_range: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
-    disable_subscription_notifications: EnvVarBoolean,
     #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
     remove_unused_interval_in_minutes: u64,
     #[envconfig(from = "GRAPH_STORE_RECENT_BLOCKS_CACHE_CAPACITY", default = "10")]
