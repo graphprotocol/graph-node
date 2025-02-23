@@ -19,7 +19,8 @@ services:
       postgres_pass: let-me-in
       postgres_db: graph-node
       ipfs: 'ipfs:5001'
-      ethereum: 'mainnet:http://host.docker.internal:8545'
+      #ethereum: 'mainnet:http://host.docker.internal:8545'
+      ethereum: "local:http://host.docker.internal:50101"  # Point to Anvil
       GRAPH_LOG: info
   ipfs:
     image: ipfs/kubo:v0.17.0
