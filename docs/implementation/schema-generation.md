@@ -98,13 +98,13 @@ We generate the following indexes for each table:
 - for mutable entity types
   - an exclusion index over `(id, block_range)` that ensures that the
     versions for the same entity `id` have disjoint block ranges
-  - a BRIN index on `(lower(block_range), COALESCE(upper(block_range),
+  - a BRING index on `(lower(block_range), COALESCE(upper(block_range),
 2147483647), vid)` that helps speed up some operations, especially
     reversion, in tables that have good data locality, for example, tables
     where entities are never updated or deleted
 - for immutable and timeseries entity types
   - a unique index on `id`
-  - a BRIN index on `(block$, vid)`
+  - a BRING index on `(block$, vid)`
 - for each attribute, an index called `attr_N_M_..` where `N` is the number
   of the entity type in the GraphQL schema, and `M` is the number of the
   attribute within that type. For attributes of a primitive type, the index
