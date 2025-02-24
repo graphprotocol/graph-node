@@ -247,6 +247,8 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS`.
     /// The default value is 60 seconds.
     pub firehose_block_fetch_timeout: u64,
+    /// Set by the environment variable `GRAPH_ENABLE_TRACING_GRPC_SERVER`.
+    pub enable_tracing_grpc_server: bool,
 }
 
 impl EnvVars {
@@ -339,6 +341,7 @@ impl EnvVars {
             block_write_capacity: inner.block_write_capacity.0,
             firehose_block_fetch_retry_limit: inner.firehose_block_fetch_retry_limit,
             firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
+            enable_tracing_grpc_server: inner.enable_tracing_grpc_server.0,
         })
     }
 
@@ -506,6 +509,8 @@ struct Inner {
     firehose_block_fetch_retry_limit: usize,
     #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS", default = "60")]
     firehose_block_fetch_timeout: u64,
+    #[envconfig(from = "GRAPH_NODE_ENABLE_QUERY_TRACING_GRPC", default = "false")]
+    enable_tracing_grpc_server: EnvVarBoolean,
 }
 
 #[derive(Clone, Debug)]
