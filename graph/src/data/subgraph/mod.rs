@@ -370,7 +370,7 @@ pub enum SubgraphManifestResolveError {
     NonUtf8,
     #[error("subgraph is not valid YAML")]
     InvalidFormat,
-    #[error("resolve error: {0}")]
+    #[error("resolve error: {0:#}")]
     ResolveError(#[from] anyhow::Error),
 }
 
