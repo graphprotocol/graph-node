@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
-use crate::data::store::{EntityValidationError, Id, IdType, IntoEntityIterator};
+use crate::data::store::{EntityV, EntityValidationError, Id, IdType, IntoEntityIterator};
 use crate::prelude::{CacheWeight, ENV_VARS};
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
@@ -33,8 +33,8 @@ pub enum GetScope {
 #[derive(Debug, Clone)]
 enum EntityOp {
     Remove,
-    Update(Entity),
-    Overwrite(Entity),
+    Update(EntityV),
+    Overwrite(EntityV),
 }
 
 impl EntityOp {
@@ -45,10 +45,10 @@ impl EntityOp {
         use EntityOp::*;
         match (self, entity) {
             (Remove, _) => Ok(None),
-            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new)),
+            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new.e)),
             (Update(updates), Some(entity)) => {
                 let mut e = entity.borrow().clone();
-                e.merge_remove_null_fields(updates)?;
+                e.merge_remove_null_fields(updates.e)?;
                 Ok(Some(e))
             }
         }
@@ -69,7 +69,7 @@ impl EntityOp {
         match self {
             // This is how `Overwrite` is constructed, by accumulating `Update` onto `Remove`.
             Remove => *self = Overwrite(update),
-            Update(current) | Overwrite(current) => current.merge(update),
+            Update(current) | Overwrite(current) => current.e.merge(update.e),
         }
     }
 }
@@ -304,9 +304,9 @@ impl EntityCache {
         ) -> Result<Option<Entity>, anyhow::Error> {
             match op {
                 EntityOp::Update(entity) | EntityOp::Overwrite(entity)
-                    if query.matches(key, entity) =>
+                    if query.matches(key, &entity.e) =>
                 {
-                    Ok(Some(entity.clone()))
+                    Ok(Some(entity.e.clone()))
                 }
                 EntityOp::Remove => Ok(None),
                 _ => Ok(None),
@@ -400,19 +400,19 @@ impl EntityCache {
         // The next VID is based on a block number and a sequence within the block
         let vid = ((block as i64) << 32) + self.vid_seq as i64;
         self.vid_seq += 1;
-        let mut entity = entity;
-        let old_vid = entity.set_vid(vid).expect("the vid should be set");
-        // Make sure that there was no VID previously set for this entity.
-        if let Some(ovid) = old_vid {
-            bail!(
-                "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
-                ovid,
-                key.entity_type,
-                entity.id()
-            );
-        }
+        // let mut entity = entity;
+        // let old_vid = entity.set_vid(vid).expect("the vid should be set");
+        // // Make sure that there was no VID previously set for this entity.
+        // if let Some(ovid) = old_vid {
+        //     bail!(
+        //         "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
+        //         ovid,
+        //         key.entity_type,
+        //         entity.id()
+        //     );
+        // }
 
-        self.entity_op(key.clone(), EntityOp::Update(entity));
+        self.entity_op(key.clone(), EntityOp::Update(EntityV::new(entity, vid)));
 
         // The updates we were given are not valid by themselves; force a
         // lookup in the database and check again with an entity that merges
@@ -517,20 +517,23 @@ impl EntityCache {
                 // Entity was created
                 (None, EntityOp::Update(mut updates))
                 | (None, EntityOp::Overwrite(mut updates)) => {
-                    updates.remove_null_fields();
-                    let data = Arc::new(updates);
+                    let vid = updates.vid;
+                    updates.e.remove_null_fields();
+                    let data = Arc::new(updates.e.clone());
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     Some(Insert {
                         key,
                         data,
                         block,
                         end: None,
+                        vid,
                     })
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
+                    let vid = updates.vid;
                     let mut data = current.as_ref().clone();
-                    data.merge_remove_null_fields(updates)
+                    data.merge_remove_null_fields(updates.e)
                         .map_err(|e| key.unknown_attribute(e))?;
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
@@ -540,6 +543,7 @@ impl EntityCache {
                             data,
                             block,
                             end: None,
+                            vid,
                         })
                     } else {
                         None
@@ -547,7 +551,8 @@ impl EntityCache {
                 }
                 // Entity was removed and then updated, so it will be overwritten
                 (Some(current), EntityOp::Overwrite(data)) => {
-                    let data = Arc::new(data);
+                    let vid = data.vid;
+                    let data = Arc::new(data.e.clone());
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {
                         Some(Overwrite {
@@ -555,6 +560,7 @@ impl EntityCache {
                             data,
                             block,
                             end: None,
+                            vid,
                         })
                     } else {
                         None

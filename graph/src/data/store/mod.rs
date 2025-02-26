@@ -1105,6 +1105,19 @@ impl std::fmt::Debug for Entity {
     }
 }
 
+/// An entity wrapper that has VID too.
+#[derive(Debug, Clone, CacheWeight, PartialEq, Eq, Serialize)]
+pub struct EntityV {
+    pub e: Entity,
+    pub vid: i64,
+}
+
+impl EntityV {
+    pub fn new(e: Entity, vid: i64) -> Self {
+        Self { e, vid }
+    }
+}
+
 /// An object that is returned from a query. It's a an `r::Value` which
 /// carries the attributes of the object (`__typename`, `id` etc.) and
 /// possibly a pointer to its parent if the query that constructed it is one
