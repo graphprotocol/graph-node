@@ -309,32 +309,10 @@ impl<V> Object<V> {
 }
 
 impl<V: PartialEq> Object<V> {
-    fn len_ignore_atom(&self, atom: &Atom) -> usize {
-        // Because of tombstones and the ignored atom, we can't just return `self.entries.len()`.
-        self.entries
-            .iter()
-            .filter(|entry| entry.key != TOMBSTONE_KEY && entry.key != *atom)
-            .count()
-    }
-
     /// Check for equality while ignoring one particular element
     pub fn eq_ignore_key(&self, other: &Self, ignore_key: &str) -> bool {
-        let ignore = self.pool.lookup(ignore_key);
-        let len1 = if let Some(to_ignore) = ignore {
-            self.len_ignore_atom(&to_ignore)
-        } else {
-            self.len()
-        };
-        let len2 = if let Some(to_ignore) = other.pool.lookup(ignore_key) {
-            other.len_ignore_atom(&to_ignore)
-        } else {
-            other.len()
-        };
-        if len1 != len2 {
-            return false;
-        }
-
         if self.same_pool(other) {
+            let ignore = self.pool.lookup(ignore_key);
             self.entries
                 .iter()
                 .filter(|e| e.key != TOMBSTONE_KEY && ignore.map_or(true, |ig| e.key != ig))
