@@ -217,7 +217,7 @@ impl MappingContext {
             state: BlockState::new(
                 self.state.entity_cache.store.clone(),
                 Default::default(),
-                self.state.entity_cache.spec_version.clone().unwrap(), // TODO: handle this unwrap
+                self.state.entity_cache.strict_vid_order,
             ),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),

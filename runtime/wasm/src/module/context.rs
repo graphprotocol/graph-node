@@ -136,7 +136,7 @@ impl WasmInstanceData {
             BlockState::new(
                 state.entity_cache.store.cheap_clone(),
                 LfuCache::default(),
-                state.entity_cache.spec_version.clone().unwrap(), // TODO: handle this unwrap
+                state.entity_cache.strict_vid_order,
             ),
         )
     }

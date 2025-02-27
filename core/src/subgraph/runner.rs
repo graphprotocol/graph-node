@@ -382,7 +382,7 @@ where
         let mut block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
-            self.inputs.spec_version.clone(),
+            self.inputs.strict_vid_order(),
         );
 
         let _section = self
@@ -796,7 +796,7 @@ where
         let block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
-            self.inputs.spec_version.clone(),
+            self.inputs.strict_vid_order(),
         );
 
         self.ctx
@@ -1161,7 +1161,7 @@ where
             let mut block_state = BlockState::new(
                 EmptyStore::new(schema),
                 LfuCache::new(),
-                self.inputs.spec_version.clone(),
+                self.inputs.strict_vid_order(),
             );
 
             // PoI ignores offchain events.

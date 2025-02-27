@@ -4,7 +4,7 @@ use graph::{
         store::{DeploymentLocator, SourceableStore, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,
     },
-    data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
+    data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion, SPEC_VERSION_1_3_0},
     data_source::DataSourceTemplate,
     prelude::BlockNumber,
     semver::Version,
@@ -78,5 +78,11 @@ impl<C: Blockchain> IndexingInputs<C> {
             spec_version: spec_version.clone(),
             instrument: *instrument,
         }
+    }
+
+    // Whether to use strict vid order for the subgraph
+    // This is true for all subgraphs with spec version 1.3.0 or greater
+    pub fn strict_vid_order(&self) -> bool {
+        self.spec_version >= SPEC_VERSION_1_3_0
     }
 }

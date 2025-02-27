@@ -12,7 +12,6 @@ use crate::prelude::{CacheWeight, ENV_VARS};
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
-use semver::Version;
 
 use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
 
@@ -116,7 +115,7 @@ pub struct EntityCache {
     pub vid_seq: u32,
 
     /// The spec version of the subgraph being processed
-    pub spec_version: Option<Version>,
+    pub strict_vid_order: bool,
 }
 
 impl Debug for EntityCache {
@@ -145,7 +144,7 @@ impl EntityCache {
             store,
             seq: 0,
             vid_seq: RESERVED_VIDS,
-            spec_version: None,
+            strict_vid_order: false,
         }
     }
 
@@ -160,7 +159,7 @@ impl EntityCache {
     pub fn with_current(
         store: Arc<dyn s::ReadStore>,
         current: EntityLfuCache,
-        spec_version: Version,
+        strict_vid_order: bool,
     ) -> EntityCache {
         EntityCache {
             current,
@@ -171,7 +170,7 @@ impl EntityCache {
             store,
             seq: 0,
             vid_seq: RESERVED_VIDS,
-            spec_version: Some(spec_version),
+            strict_vid_order,
         }
     }
 
