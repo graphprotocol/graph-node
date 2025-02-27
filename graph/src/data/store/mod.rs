@@ -741,7 +741,10 @@ lazy_static! {
 
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, CacheWeight, PartialEq, Eq, Serialize)]
-pub struct Entity(Object<Value>);
+pub struct Entity {
+    o: Object<Value>,
+    vid: Option<i64>,
+}
 
 impl<'a> IntoIterator for &'a Entity {
     type Item = (Word, Value);
@@ -749,7 +752,7 @@ impl<'a> IntoIterator for &'a Entity {
     type IntoIter = intern::ObjectOwningIter<Value>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.clone().into_iter()
+        self.o.clone().into_iter()
     }
 }
 
@@ -853,7 +856,7 @@ impl Entity {
             obj.insert(key, value)
                 .map_err(|e| EntityValidationError::UnknownKey(e.not_interned()))?;
         }
-        let entity = Entity(obj);
+        let entity = Entity { o: obj, vid: None };
         entity.check_id()?;
         Ok(entity)
     }
@@ -868,23 +871,23 @@ impl Entity {
             obj.insert(key, value)
                 .map_err(|e| anyhow!("unknown attribute {}", e.not_interned()))?;
         }
-        let entity = Entity(obj);
+        let entity = Entity { o: obj, vid: None };
         entity.check_id()?;
         Ok(entity)
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(key)
+        self.o.get(key)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
-        self.0.contains_key(key)
+        self.o.contains_key(key)
     }
 
     // This collects the entity into an ordered vector so that it can be iterated deterministically.
     pub fn sorted(self) -> Vec<(Word, Value)> {
         let mut v: Vec<_> = self
-            .0
+            .o
             .into_iter()
             .filter(|(k, _)| !k.eq(VID_FIELD))
             .collect();
@@ -893,7 +896,7 @@ impl Entity {
     }
 
     pub fn sorted_ref(&self) -> Vec<(&str, &Value)> {
-        let mut v: Vec<_> = self.0.iter().filter(|(k, _)| !k.eq(&VID_FIELD)).collect();
+        let mut v: Vec<_> = self.o.iter().filter(|(k, _)| !k.eq(&VID_FIELD)).collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
     }
@@ -901,7 +904,7 @@ impl Entity {
     fn check_id(&self) -> Result<(), EntityValidationError> {
         match self.get("id") {
             None => Err(EntityValidationError::MissingIDAttribute {
-                entity: format!("{:?}", self.0),
+                entity: format!("{:?}", self),
             }),
             Some(Value::String(_)) | Some(Value::Bytes(_)) | Some(Value::Int8(_)) => Ok(()),
             _ => Err(EntityValidationError::UnsupportedTypeForIDAttribute),
@@ -918,31 +921,29 @@ impl Entity {
 
     /// Return the VID of this entity and if its missing or of a type different than
     /// i64 it panics.
-    pub fn vid(&self) -> i64 {
-        self.get(VID_FIELD)
-            .expect("the vid must be set")
-            .as_int8()
-            .expect("the vid must be set to a valid value")
+    pub fn vid(&self) -> Option<i64> {
+        self.vid
     }
 
     /// Sets the VID of the entity. The previous one is returned.
-    pub fn set_vid(&mut self, value: i64) -> Result<Option<Value>, InternError> {
-        self.0.insert(VID_FIELD, value.into())
+    pub fn set_vid(&mut self, value: i64) -> Option<i64> {
+        let old_val = self.vid;
+        self.vid = Some(value);
+        old_val
     }
 
     /// Clone entity and remove the VID.
     pub fn clone_no_vid(&self) -> Entity {
         let mut c = self.clone();
-        c.0.remove(VID_FIELD);
+        c.vid = None;
         c
     }
 
     /// Sets the VID if it's not already set. Should be used only for tests.
     #[cfg(debug_assertions)]
     pub fn set_vid_if_empty(&mut self) {
-        let vid = self.get(VID_FIELD);
-        if vid.is_none() {
-            let _ = self.set_vid(100).expect("the vid should be set");
+        if self.vid.is_none() {
+            self.vid = Some(100)
         }
     }
 
@@ -952,7 +953,7 @@ impl Entity {
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is set to `Value::Null`.
     pub fn merge(&mut self, update: Entity) {
-        self.0.merge(update.0);
+        self.o.merge(update.o);
     }
 
     /// Merges an entity update `update` into this entity, removing `Value::Null` values.
@@ -961,10 +962,10 @@ impl Entity {
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
     pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
-        for (key, value) in update.0.into_iter() {
+        for (key, value) in update.o.into_iter() {
             match value {
-                Value::Null => self.0.remove(&key),
-                _ => self.0.insert(&key, value)?,
+                Value::Null => self.o.remove(&key),
+                _ => self.o.insert(&key, value)?,
             };
         }
         Ok(())
@@ -972,7 +973,7 @@ impl Entity {
 
     /// Remove all entries with value `Value::Null` from `self`
     pub fn remove_null_fields(&mut self) {
-        self.0.retain(|_, value| !value.is_null())
+        self.o.retain(|_, value| !value.is_null())
     }
 
     /// Add the key/value pairs from `iter` to this entity. This is the same
@@ -984,7 +985,7 @@ impl Entity {
         iter: impl IntoIterator<Item = (impl AsRef<str>, Value)>,
     ) -> Result<(), InternError> {
         for (key, value) in iter {
-            self.0.insert(key, value)?;
+            self.o.insert(key, value)?;
         }
         Ok(())
     }
@@ -1074,11 +1075,11 @@ impl Entity {
 #[cfg(debug_assertions)]
 impl Entity {
     pub fn insert(&mut self, key: &str, value: Value) -> Result<Option<Value>, InternError> {
-        self.0.insert(key, value)
+        self.o.insert(key, value)
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
-        self.0.remove(key)
+        self.o.remove(key)
     }
 
     pub fn set(
@@ -1086,7 +1087,7 @@ impl Entity {
         name: &str,
         value: impl Into<Value>,
     ) -> Result<Option<Value>, InternError> {
-        self.0.insert(name, value.into())
+        self.o.insert(name, value.into())
     }
 }
 
@@ -1098,16 +1099,17 @@ impl<'a> From<&'a Entity> for Cow<'a, Entity> {
 
 impl GasSizeOf for Entity {
     fn gas_size_of(&self) -> Gas {
-        self.0.gas_size_of()
+        self.o.gas_size_of()
     }
 }
 
 impl std::fmt::Debug for Entity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut ds = f.debug_struct("Entity");
-        for (k, v) in &self.0 {
+        for (k, v) in &self.o {
             ds.field(k, v);
         }
+        ds.field("VID", &self.vid);
         ds.finish()
     }
 }

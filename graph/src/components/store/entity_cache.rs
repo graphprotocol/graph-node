@@ -402,12 +402,8 @@ impl EntityCache {
 
         let mut entity = entity;
         if self.strict_vid_order && is_object {
-            // The next VID is based on a block number and a sequence within the block
-            let vid = ((block as i64) << 32) + self.vid_seq as i64;
-            self.vid_seq += 1;
-            let old_vid = entity.set_vid(vid).expect("the vid should be set");
             // Make sure that there was no VID previously set for this entity.
-            if let Some(ovid) = old_vid {
+            if let Some(ovid) = entity.vid() {
                 bail!(
                     "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
                     ovid,
@@ -415,6 +411,10 @@ impl EntityCache {
                     entity.id()
                 );
             }
+            // The next VID is based on a block number and a sequence within the block
+            let vid = ((block as i64) << 32) + self.vid_seq as i64;
+            self.vid_seq += 1;
+            entity.set_vid(vid);
         }
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
