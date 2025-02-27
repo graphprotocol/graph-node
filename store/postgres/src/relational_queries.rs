@@ -39,7 +39,7 @@ use crate::block_range::{BoundSide, EntityBlockRange};
 use crate::relational::dsl::AtBlock;
 use crate::relational::{
     dsl, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
-    STRING_PREFIX_SIZE, VID_COLUMN,
+    STRING_PREFIX_SIZE,
 };
 use crate::{
     block_range::{
@@ -514,14 +514,15 @@ impl EntityData {
                     // table column; those will be things like the
                     // block_range that `select *` pulls in but that we
                     // don't care about here
-                    if key == VID_COLUMN {
-                        // VID is not in the input schema but we need it, so deserialize it too
-                        match T::Value::from_column_value(&ColumnType::Int8, json) {
-                            Ok(value) if value.is_null() => None,
-                            Ok(value) => Some(Ok((Word::from(VID_COLUMN), value))),
-                            Err(e) => Some(Err(e)),
-                        }
-                    } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
+                    // if key == VID_COLUMN {
+                    //     // VID is not in the input schema but we need it, so deserialize it too
+                    //     match T::Value::from_column_value(&ColumnType::Int8, json) {
+                    //         Ok(value) if value.is_null() => None,
+                    //         Ok(value) => Some(Ok((Word::from(VID_COLUMN), value))),
+                    //         Err(e) => Some(Err(e)),
+                    //     }
+                    // } else
+                    if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         match T::Value::from_column_value(&column.column_type, json) {
                             Ok(value) if value.is_null() => None,
                             Ok(value) => Some(Ok((Word::from(column.field.to_string()), value))),

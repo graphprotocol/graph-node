@@ -285,9 +285,8 @@ impl<'a> Table<'a> {
             }
         }
 
-        cols.push(&*VID_COL);
-
         if T::WITH_SYSTEM_COLUMNS {
+            cols.push(&*VID_COL);
             if self.meta.immutable {
                 cols.push(&*BLOCK_COL);
             } else {
