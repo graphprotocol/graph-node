@@ -222,16 +222,8 @@ impl EntityCache {
         // always creates it in a new style.
         debug_assert!(match scope {
             GetScope::Store => {
-                // Release build will never call this function and hence it's OK
-                // when that implementation is not correct.
                 fn remove_vid(entity: Option<Arc<Entity>>) -> Option<Entity> {
-                    entity.map(|e| {
-                        #[allow(unused_mut)]
-                        let mut entity = (*e).clone();
-                        #[cfg(debug_assertions)]
-                        entity.remove("vid");
-                        entity
-                    })
+                    entity.map(|e| e.clone_no_vid())
                 }
                 remove_vid(entity.clone()) == remove_vid(self.store.get(key).unwrap().map(Arc::new))
             }
@@ -547,7 +539,7 @@ impl EntityCache {
                         .map_err(|e| key.unknown_attribute(e))?;
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    if current != data {
+                    if current.clone_no_vid() != data.clone_no_vid() {
                         Some(Overwrite {
                             key,
                             data,
@@ -562,7 +554,7 @@ impl EntityCache {
                 (Some(current), EntityOp::Overwrite(data)) => {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    if current != data {
+                    if current.clone_no_vid() != data.clone_no_vid() {
                         Some(Overwrite {
                             key,
                             data,
