@@ -4,9 +4,10 @@ use graph::{
         store::{DeploymentLocator, SourceableStore, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,
     },
-    data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
+    data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion, SPEC_VERSION_1_3_0},
     data_source::DataSourceTemplate,
     prelude::BlockNumber,
+    semver::Version,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub static_filters: bool,
     pub poi_version: ProofOfIndexingVersion,
     pub network: String,
+    pub spec_version: Version,
 
     /// Whether to instrument trigger processing and log additional,
     /// possibly expensive and noisy, information
@@ -53,6 +55,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             static_filters,
             poi_version,
             network,
+            spec_version,
             instrument,
         } = self;
         IndexingInputs {
@@ -72,7 +75,14 @@ impl<C: Blockchain> IndexingInputs<C> {
             static_filters: *static_filters,
             poi_version: *poi_version,
             network: network.clone(),
+            spec_version: spec_version.clone(),
             instrument: *instrument,
         }
+    }
+
+    // Whether to use strict vid order for the subgraph
+    // This is true for all subgraphs with spec version 1.3.0 or greater
+    pub fn strict_vid_order(&self) -> bool {
+        self.spec_version >= SPEC_VERSION_1_3_0
     }
 }

@@ -105,10 +105,10 @@ async fn test_triggers_adapter_with_entities() {
     let id = DeploymentHash::new("test_deployment").unwrap();
     let schema = InputSchema::parse_latest(
         r#"
-        type User @entity { 
+        type User @entity {
             id: String!
             name: String!
-            age: Int 
+            age: Int
         }
         type Post @entity {
             id: String!

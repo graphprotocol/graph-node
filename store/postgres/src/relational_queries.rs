@@ -2257,7 +2257,11 @@ impl<'a> InsertRow<'a> {
         }
         let br_value = BlockRangeValue::new(table, row.block, row.end);
         let causality_region = row.causality_region;
-        let vid = row.entity.vid();
+        let vid = if table.object.has_vid_seq() {
+            row.entity.vid()
+        } else {
+            0
+        };
         Ok(Self {
             values,
             br_value,

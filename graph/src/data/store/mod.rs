@@ -930,6 +930,13 @@ impl Entity {
         self.0.insert(VID_FIELD, value.into())
     }
 
+    /// Clone entity and remove the VID.
+    pub fn clone_no_vid(&self) -> Entity {
+        let mut c = self.clone();
+        c.0.remove(VID_FIELD);
+        c
+    }
+
     /// Sets the VID if it's not already set. Should be used only for tests.
     #[cfg(debug_assertions)]
     pub fn set_vid_if_empty(&mut self) {
