@@ -1065,7 +1065,7 @@ impl Entity {
 /// Checks equality of two entities while ignoring the VID fields
 impl PartialEq for Entity {
     fn eq(&self, other: &Self) -> bool {
-        self.sorted_ref() == other.sorted_ref()
+        self.0.eq_ignore_key(&other.0, VID_FIELD)
     }
 }
 
