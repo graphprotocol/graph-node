@@ -113,6 +113,9 @@ pub struct EntityCache {
     // Sequence number of the next VID value for this block. The value written
     // in the database consist of a block number and this SEQ number.
     pub vid_seq: u32,
+
+    /// The spec version of the subgraph being processed
+    pub strict_vid_order: bool,
 }
 
 impl Debug for EntityCache {
@@ -141,6 +144,7 @@ impl EntityCache {
             store,
             seq: 0,
             vid_seq: RESERVED_VIDS,
+            strict_vid_order: false,
         }
     }
 
@@ -152,7 +156,11 @@ impl EntityCache {
         self.schema.make_entity(iter)
     }
 
-    pub fn with_current(store: Arc<dyn s::ReadStore>, current: EntityLfuCache) -> EntityCache {
+    pub fn with_current(
+        store: Arc<dyn s::ReadStore>,
+        current: EntityLfuCache,
+        strict_vid_order: bool,
+    ) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -162,6 +170,7 @@ impl EntityCache {
             store,
             seq: 0,
             vid_seq: RESERVED_VIDS,
+            strict_vid_order,
         }
     }
 
@@ -213,16 +222,8 @@ impl EntityCache {
         // always creates it in a new style.
         debug_assert!(match scope {
             GetScope::Store => {
-                // Release build will never call this function and hence it's OK
-                // when that implementation is not correct.
                 fn remove_vid(entity: Option<Arc<Entity>>) -> Option<Entity> {
-                    entity.map(|e| {
-                        #[allow(unused_mut)]
-                        let mut entity = (*e).clone();
-                        #[cfg(debug_assertions)]
-                        entity.remove("vid");
-                        entity
-                    })
+                    entity.map(|e| e.clone_no_vid())
                 }
                 remove_vid(entity.clone()) == remove_vid(self.store.get(key).unwrap().map(Arc::new))
             }
@@ -397,19 +398,23 @@ impl EntityCache {
             *write_capacity_remaining -= weight;
         }
 
-        // The next VID is based on a block number and a sequence within the block
-        let vid = ((block as i64) << 32) + self.vid_seq as i64;
-        self.vid_seq += 1;
+        let is_object = key.entity_type.is_object_type();
+
         let mut entity = entity;
-        let old_vid = entity.set_vid(vid).expect("the vid should be set");
-        // Make sure that there was no VID previously set for this entity.
-        if let Some(ovid) = old_vid {
-            bail!(
-                "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
-                ovid,
-                key.entity_type,
-                entity.id()
-            );
+        if self.strict_vid_order && is_object {
+            // Make sure that there was no VID previously set for this entity.
+            if let Some(ovid) = entity.vid() {
+                bail!(
+                    "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
+                    ovid,
+                    key.entity_type,
+                    entity.id()
+                );
+            }
+            // The next VID is based on a block number and a sequence within the block
+            let vid = ((block as i64) << 32) + self.vid_seq as i64;
+            self.vid_seq += 1;
+            entity.set_vid(vid);
         }
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
@@ -534,7 +539,7 @@ impl EntityCache {
                         .map_err(|e| key.unknown_attribute(e))?;
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    if current != data {
+                    if current.clone_no_vid() != data.clone_no_vid() {
                         Some(Overwrite {
                             key,
                             data,
@@ -549,7 +554,7 @@ impl EntityCache {
                 (Some(current), EntityOp::Overwrite(data)) => {
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    if current != data {
+                    if current.clone_no_vid() != data.clone_no_vid() {
                         Some(Overwrite {
                             key,
                             data,

@@ -126,6 +126,7 @@ pub fn mock_context(
             ))
             .unwrap(),
             Default::default(),
+            false, // TODO: Get this as a param
         ),
         proof_of_indexing: None,
         host_fns: Arc::new(Vec::new()),

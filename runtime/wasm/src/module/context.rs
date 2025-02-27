@@ -133,7 +133,11 @@ impl WasmInstanceData {
 
         std::mem::replace(
             state,
-            BlockState::new(state.entity_cache.store.cheap_clone(), LfuCache::default()),
+            BlockState::new(
+                state.entity_cache.store.cheap_clone(),
+                LfuCache::default(),
+                state.entity_cache.strict_vid_order,
+            ),
         )
     }
 }
