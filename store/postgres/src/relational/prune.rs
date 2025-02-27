@@ -1,4 +1,4 @@
-use std::{fmt::Write, sync::Arc};
+use std::{collections::HashMap, fmt::Write, sync::Arc};
 
 use diesel::{
     connection::SimpleConnection,
@@ -23,7 +23,10 @@ use crate::{
     vid_batcher::{VidBatcher, VidRange},
 };
 
-use super::{Catalog, Layout, Namespace};
+use super::{
+    index::{load_indexes_from_table, CreateIndex, IndexList},
+    Catalog, Layout, Namespace,
+};
 
 /// Utility to copy relevant data out of a source table and into a new
 /// destination table and replace the source table with the destination
@@ -56,9 +59,18 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
+            let mut list = IndexList {
+                indexes: HashMap::new(),
+            };
+            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?
+                .into_iter()
+                .map(|index| index.with_nsp(dst_nsp.to_string()))
+                .collect::<Result<Vec<CreateIndex>, _>>()?;
+            list.indexes.insert(src.name.to_string(), indexes);
+
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
-            dst.as_ddl(schema, catalog, None, &mut query)?;
+            dst.as_ddl(schema, catalog, Some(&list), &mut query)?;
         }
         conn.batch_execute(&query)?;
 
