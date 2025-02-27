@@ -7,6 +7,7 @@ use graph::{
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
     data_source::DataSourceTemplate,
     prelude::BlockNumber,
+    semver::Version,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub static_filters: bool,
     pub poi_version: ProofOfIndexingVersion,
     pub network: String,
+    pub spec_version: Version,
 
     /// Whether to instrument trigger processing and log additional,
     /// possibly expensive and noisy, information
@@ -53,6 +55,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             static_filters,
             poi_version,
             network,
+            spec_version,
             instrument,
         } = self;
         IndexingInputs {
@@ -72,6 +75,7 @@ impl<C: Blockchain> IndexingInputs<C> {
             static_filters: *static_filters,
             poi_version: *poi_version,
             network: network.clone(),
+            spec_version: spec_version.clone(),
             instrument: *instrument,
         }
     }

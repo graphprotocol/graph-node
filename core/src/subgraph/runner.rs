@@ -382,6 +382,7 @@ where
         let mut block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
+            self.inputs.spec_version.clone(),
         );
 
         let _section = self
@@ -795,6 +796,7 @@ where
         let block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
+            self.inputs.spec_version.clone(),
         );
 
         self.ctx
@@ -1156,7 +1158,11 @@ where
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
             // get causality region isolation.
             let schema = ReadStore::input_schema(&self.inputs.store);
-            let mut block_state = BlockState::new(EmptyStore::new(schema), LfuCache::new());
+            let mut block_state = BlockState::new(
+                EmptyStore::new(schema),
+                LfuCache::new(),
+                self.inputs.spec_version.clone(),
+            );
 
             // PoI ignores offchain events.
             // See also: poi-ignores-offchain

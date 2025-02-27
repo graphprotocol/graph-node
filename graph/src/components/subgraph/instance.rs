@@ -1,3 +1,5 @@
+use semver::Version;
+
 use crate::{
     blockchain::{Blockchain, DataSourceTemplate as _},
     components::{
@@ -87,9 +89,9 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn new(store: impl ReadStore, lfu_cache: EntityLfuCache) -> Self {
+    pub fn new(store: impl ReadStore, lfu_cache: EntityLfuCache, spec_version: Version) -> Self {
         BlockState {
-            entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache),
+            entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache, spec_version),
             deterministic_errors: Vec::new(),
             created_data_sources: Vec::new(),
             persisted_data_sources: Vec::new(),

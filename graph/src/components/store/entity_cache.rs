@@ -12,6 +12,7 @@ use crate::prelude::{CacheWeight, ENV_VARS};
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
+use semver::Version;
 
 use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
 
@@ -113,6 +114,9 @@ pub struct EntityCache {
     // Sequence number of the next VID value for this block. The value written
     // in the database consist of a block number and this SEQ number.
     pub vid_seq: u32,
+
+    /// The spec version of the subgraph being processed
+    pub spec_version: Option<Version>,
 }
 
 impl Debug for EntityCache {
@@ -141,6 +145,7 @@ impl EntityCache {
             store,
             seq: 0,
             vid_seq: RESERVED_VIDS,
+            spec_version: None,
         }
     }
 
@@ -152,7 +157,11 @@ impl EntityCache {
         self.schema.make_entity(iter)
     }
 
-    pub fn with_current(store: Arc<dyn s::ReadStore>, current: EntityLfuCache) -> EntityCache {
+    pub fn with_current(
+        store: Arc<dyn s::ReadStore>,
+        current: EntityLfuCache,
+        spec_version: Version,
+    ) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -162,6 +171,7 @@ impl EntityCache {
             store,
             seq: 0,
             vid_seq: RESERVED_VIDS,
+            spec_version: Some(spec_version),
         }
     }
 

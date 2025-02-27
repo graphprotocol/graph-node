@@ -214,7 +214,11 @@ impl MappingContext {
             host_exports: self.host_exports.cheap_clone(),
             block_ptr: self.block_ptr.cheap_clone(),
             timestamp: self.timestamp,
-            state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
+            state: BlockState::new(
+                self.state.entity_cache.store.clone(),
+                Default::default(),
+                self.state.entity_cache.spec_version.clone().unwrap(), // TODO: handle this unwrap
+            ),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
             debug_fork: self.debug_fork.cheap_clone(),

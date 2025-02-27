@@ -542,6 +542,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             static_filters: self.static_filters,
             poi_version,
             network: network.to_string(),
+            spec_version: manifest.spec_version.clone(),
             instrument,
         };
 

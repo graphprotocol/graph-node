@@ -126,6 +126,7 @@ pub fn mock_context(
             ))
             .unwrap(),
             Default::default(),
+            LATEST_VERSION.clone(),
         ),
         proof_of_indexing: None,
         host_fns: Arc::new(Vec::new()),
