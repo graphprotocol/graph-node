@@ -740,7 +740,7 @@ lazy_static! {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, CacheWeight, PartialEq, Eq, Serialize)]
+#[derive(Clone, CacheWeight, Eq, Serialize)]
 pub struct Entity(Object<Value>);
 
 impl<'a> IntoIterator for &'a Entity {
@@ -874,10 +874,16 @@ impl Entity {
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
+        if key == VID_FIELD {
+            return None;
+        }
         self.0.get(key)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
+        if key == VID_FIELD {
+            return false;
+        }
         self.0.contains_key(key)
     }
 
@@ -919,7 +925,8 @@ impl Entity {
     /// Return the VID of this entity and if its missing or of a type different than
     /// i64 it panics.
     pub fn vid(&self) -> i64 {
-        self.get(VID_FIELD)
+        self.0
+            .get(VID_FIELD)
             .expect("the vid must be set")
             .as_int8()
             .expect("the vid must be set to a valid value")
@@ -933,7 +940,7 @@ impl Entity {
     /// Sets the VID if it's not already set. Should be used only for tests.
     #[cfg(debug_assertions)]
     pub fn set_vid_if_empty(&mut self) {
-        let vid = self.get(VID_FIELD);
+        let vid = self.0.get(VID_FIELD);
         if vid.is_none() {
             let _ = self.set_vid(100).expect("the vid should be set");
         }
@@ -1059,6 +1066,12 @@ impl Entity {
             }
         }
         Ok(())
+    }
+}
+
+impl PartialEq for Entity {
+    fn eq(&self, other: &Self) -> bool {
+        self.sorted_ref() == other.sorted_ref()
     }
 }
 
