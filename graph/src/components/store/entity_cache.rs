@@ -406,19 +406,23 @@ impl EntityCache {
             *write_capacity_remaining -= weight;
         }
 
-        // The next VID is based on a block number and a sequence within the block
-        let vid = ((block as i64) << 32) + self.vid_seq as i64;
-        self.vid_seq += 1;
+        let is_object = key.entity_type.is_object_type();
+
         let mut entity = entity;
-        let old_vid = entity.set_vid(vid).expect("the vid should be set");
-        // Make sure that there was no VID previously set for this entity.
-        if let Some(ovid) = old_vid {
-            bail!(
-                "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
-                ovid,
-                key.entity_type,
-                entity.id()
-            );
+        if self.strict_vid_order && is_object {
+            // The next VID is based on a block number and a sequence within the block
+            let vid = ((block as i64) << 32) + self.vid_seq as i64;
+            self.vid_seq += 1;
+            let old_vid = entity.set_vid(vid).expect("the vid should be set");
+            // Make sure that there was no VID previously set for this entity.
+            if let Some(ovid) = old_vid {
+                bail!(
+                    "VID: {} of entity: {} with ID: {} was already present when set in EntityCache",
+                    ovid,
+                    key.entity_type,
+                    entity.id()
+                );
+            }
         }
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
