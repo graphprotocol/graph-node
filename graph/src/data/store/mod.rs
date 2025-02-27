@@ -874,6 +874,7 @@ impl Entity {
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
+        // VID field is private and not visible outside
         if key == VID_FIELD {
             return None;
         }
@@ -881,6 +882,7 @@ impl Entity {
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
+        // VID field is private and not visible outside
         if key == VID_FIELD {
             return false;
         }
@@ -935,15 +937,6 @@ impl Entity {
     /// Sets the VID of the entity. The previous one is returned.
     pub fn set_vid(&mut self, value: i64) -> Result<Option<Value>, InternError> {
         self.0.insert(VID_FIELD, value.into())
-    }
-
-    /// Sets the VID if it's not already set. Should be used only for tests.
-    #[cfg(debug_assertions)]
-    pub fn set_vid_if_empty(&mut self) {
-        let vid = self.0.get(VID_FIELD);
-        if vid.is_none() {
-            let _ = self.set_vid(100).expect("the vid should be set");
-        }
     }
 
     /// Merges an entity update `update` into this entity.
@@ -1069,6 +1062,7 @@ impl Entity {
     }
 }
 
+/// Checks equality of two entities while ignoring the VID fields
 impl PartialEq for Entity {
     fn eq(&self, other: &Self) -> bool {
         self.sorted_ref() == other.sorted_ref()
@@ -1093,6 +1087,13 @@ impl Entity {
         value: impl Into<Value>,
     ) -> Result<Option<Value>, InternError> {
         self.0.insert(name, value.into())
+    }
+    /// Sets the VID if it's not already set. Should be used only for tests.
+    pub fn set_vid_if_empty(&mut self) {
+        let vid = self.0.get(VID_FIELD);
+        if vid.is_none() {
+            let _ = self.set_vid(100).expect("the vid should be set");
+        }
     }
 }
 
