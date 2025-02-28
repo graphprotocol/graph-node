@@ -175,7 +175,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             .logger_factory
             .subgraph_logger(&deployment)
             .new(o!("component" => "BlockStream"));
-        let chain_store = chain.chain_store.cheap_clone();
         let chain_head_update_stream = chain
             .chain_head_update_listener
             .subscribe(chain.name.to_string(), logger.clone());
@@ -213,7 +212,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         };
 
         Ok(Box::new(PollingBlockStream::new(
-            chain_store,
             chain_head_update_stream,
             Arc::new(adapter),
             chain.node_id.clone(),
