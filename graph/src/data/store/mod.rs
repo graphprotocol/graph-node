@@ -740,16 +740,17 @@ lazy_static! {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, CacheWeight, PartialEq, Eq, Serialize)]
+#[derive(Clone, CacheWeight, Eq, Serialize)]
 pub struct Entity(Object<Value>);
 
 impl<'a> IntoIterator for &'a Entity {
-    type Item = (Word, Value);
+    type Item = (&'a str, &'a Value);
 
-    type IntoIter = intern::ObjectOwningIter<Value>;
+    type IntoIter =
+        std::iter::Filter<intern::ObjectIter<'a, Value>, fn(&(&'a str, &'a Value)) -> bool>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.clone().into_iter()
+        (&self.0).into_iter().filter(|(k, _)| *k != VID_FIELD)
     }
 }
 
@@ -874,10 +875,18 @@ impl Entity {
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
+        // VID field is private and not visible outside
+        if key == VID_FIELD {
+            return None;
+        }
         self.0.get(key)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
+        // VID field is private and not visible outside
+        if key == VID_FIELD {
+            return false;
+        }
         self.0.contains_key(key)
     }
 
@@ -919,7 +928,8 @@ impl Entity {
     /// Return the VID of this entity and if its missing or of a type different than
     /// i64 it panics.
     pub fn vid(&self) -> i64 {
-        self.get(VID_FIELD)
+        self.0
+            .get(VID_FIELD)
             .expect("the vid must be set")
             .as_int8()
             .expect("the vid must be set to a valid value")
@@ -928,15 +938,6 @@ impl Entity {
     /// Sets the VID of the entity. The previous one is returned.
     pub fn set_vid(&mut self, value: i64) -> Result<Option<Value>, InternError> {
         self.0.insert(VID_FIELD, value.into())
-    }
-
-    /// Sets the VID if it's not already set. Should be used only for tests.
-    #[cfg(debug_assertions)]
-    pub fn set_vid_if_empty(&mut self) {
-        let vid = self.get(VID_FIELD);
-        if vid.is_none() {
-            let _ = self.set_vid(100).expect("the vid should be set");
-        }
     }
 
     /// Merges an entity update `update` into this entity.
@@ -1062,6 +1063,13 @@ impl Entity {
     }
 }
 
+/// Checks equality of two entities while ignoring the VID fields
+impl PartialEq for Entity {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq_ignore_key(&other.0, VID_FIELD)
+    }
+}
+
 /// Convenience methods to modify individual attributes for tests.
 /// Production code should not use/need this.
 #[cfg(debug_assertions)]
@@ -1080,6 +1088,14 @@ impl Entity {
         value: impl Into<Value>,
     ) -> Result<Option<Value>, InternError> {
         self.0.insert(name, value.into())
+    }
+
+    /// Sets the VID if it's not already set. Should be used only for tests.
+    pub fn set_vid_if_empty(&mut self) {
+        let vid = self.0.get(VID_FIELD);
+        if vid.is_none() {
+            let _ = self.set_vid(100).expect("the vid should be set");
+        }
     }
 }
 
@@ -1271,4 +1287,48 @@ fn fmt_debug() {
 
     let bi = Value::BigInt(scalar::BigInt::from(-17i32));
     assert_eq!("BigInt(-17)", format!("{:?}", bi));
+}
+
+#[test]
+fn entity_hidden_vid() {
+    use crate::schema::InputSchema;
+    let subgraph_id = "oneInterfaceOneEntity";
+    let document = "type Thing @entity {id: ID!, name: String!}";
+    let schema = InputSchema::raw(document, subgraph_id);
+
+    let entity = entity! { schema => id: "1", name: "test", vid: 3i64 };
+    let debug_str = format!("{:?}", entity);
+    let entity_str = "Entity { id: String(\"1\"), name: String(\"test\"), vid: Int8(3) }";
+    assert_eq!(debug_str, entity_str);
+
+    // get returns nothing...
+    assert_eq!(entity.get(VID_FIELD), None);
+    assert_eq!(entity.contains_key(VID_FIELD), false);
+    // ...while vid is present
+    assert_eq!(entity.vid(), 3i64);
+
+    // into_iter() misses it too
+    let mut it = entity.into_iter();
+    assert_eq!(Some(("id", &Value::String("1".to_string()))), it.next());
+    assert_eq!(
+        Some(("name", &Value::String("test".to_string()))),
+        it.next()
+    );
+    assert_eq!(None, it.next());
+
+    let mut entity2 = entity! { schema => id: "1", name: "test", vid: 5i64 };
+    assert_eq!(entity2.vid(), 5i64);
+    // equal with different vid
+    assert_eq!(entity, entity2);
+
+    entity2.remove(VID_FIELD);
+    // equal if one has no vid
+    assert_eq!(entity, entity2);
+    let debug_str2 = format!("{:?}", entity2);
+    let entity_str2 = "Entity { id: String(\"1\"), name: String(\"test\") }";
+    assert_eq!(debug_str2, entity_str2);
+
+    // set again
+    _ = entity2.set_vid(7i64);
+    assert_eq!(entity2.vid(), 7i64);
 }
