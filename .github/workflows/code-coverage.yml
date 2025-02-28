@@ -39,10 +39,10 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - name: Install Node 14
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: "14"
           cache: yarn
@@ -62,12 +62,12 @@ jobs:
 
       - name: Generate code coverage
         run: cargo llvm-cov --package graph-tests --lcov --output-path lcov.info -- --nocapture
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: code-coverage-info
           path: lcov.info
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           # No token needed, because the repo is public.
           files: lcov.info
