@@ -153,6 +153,9 @@ async fn main() {
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
+    // Obtain tracing server port
+    let tracing_grpc_port = opt.grpc_port;
+
     // Obtain the fork base URL
     let fork_base = match &opt.fork_base {
         Some(url) => {
@@ -515,6 +518,12 @@ async fn main() {
 
         // Run the index node server
         graph::spawn(async move { index_node_server.start(index_node_port).await });
+
+        if env_vars.enable_tracing_grpc_server {
+            graph::spawn(async move {
+                graph_server_grpc::start(tracing_grpc_port).await.unwrap();
+            });
+        }
 
         graph::spawn(async move {
             metrics_server
