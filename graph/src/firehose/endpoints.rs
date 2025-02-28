@@ -14,10 +14,10 @@ use crate::{
     substreams_rpc,
 };
 use async_trait::async_trait;
-use futures03::StreamExt;
+use futures03::{StreamExt, TryStreamExt};
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
-use slog::{error, info, trace, Logger};
+use slog::{error, info, Logger};
 use std::{collections::HashMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
 use tokio::sync::OnceCell;
 use tonic::codegen::InterceptedService;
@@ -481,51 +481,33 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        let mut blocks = Vec::with_capacity(numbers.len());
+        let logger = logger.clone();
+        let logger_for_error = logger.clone();
 
-        for number in numbers {
-            let provider_name = self.provider.as_str();
+        let blocks_stream = futures03::stream::iter(numbers)
+            .map(move |number| {
+                let e = self.cheap_clone();
+                let l = logger.clone();
+                let retry_log_message = format!("get_block_by_number for block {}", number);
 
-            trace!(
-                logger,
-                "Loading block for block number {}", number;
-                "provider" => provider_name,
+                retry(retry_log_message, &l)
+                    .limit(ENV_VARS.firehose_block_fetch_retry_limit)
+                    .timeout_secs(ENV_VARS.firehose_block_fetch_timeout)
+                    .run(move || {
+                        let e = e.cheap_clone();
+                        let l = l.clone();
+                        async move { e.get_block_by_number::<M>(number, &l).await }
+                    })
+            })
+            .buffered(ENV_VARS.firehose_block_batch_size);
+
+        let blocks = blocks_stream.try_collect::<Vec<M>>().await.map_err(|e| {
+            error!(
+                logger_for_error,
+                "Failed to load blocks from firehose: {}", e;
             );
-
-            let retry_log_message = format!("get_block_by_number for block {}", number);
-            let endpoint_for_retry = self.cheap_clone();
-
-            let logger_for_retry = logger.clone();
-            let logger_for_error = logger.clone();
-
-            let block = retry(retry_log_message, &logger_for_retry)
-                .limit(ENV_VARS.firehose_block_fetch_retry_limit)
-                .timeout_secs(ENV_VARS.firehose_block_fetch_timeout)
-                .run(move || {
-                    let e = endpoint_for_retry.cheap_clone();
-                    let l = logger_for_retry.clone();
-                    async move { e.get_block_by_number::<M>(number, &l).await }
-                })
-                .await;
-
-            match block {
-                Ok(block) => {
-                    blocks.push(block);
-                }
-                Err(e) => {
-                    error!(
-                        logger_for_error,
-                        "Failed to load block number {}: {}", number, e;
-                        "provider" => provider_name,
-                    );
-                    return Err(anyhow::format_err!(
-                        "failed to load block number {}: {}",
-                        number,
-                        e
-                    ));
-                }
-            }
-        }
+            anyhow::format_err!("failed to load blocks from firehose: {}", e)
+        })?;
 
         Ok(blocks)
     }
