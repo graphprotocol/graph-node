@@ -13,7 +13,7 @@ use graph::blockchain::block_stream::{
 };
 use graph::blockchain::{Block, BlockPtr, TriggerFilterWrapper};
 use graph::futures03::{stream::Stream, Future, FutureExt};
-use graph::prelude::{DeploymentHash, NodeId, BLOCK_NUMBER_MAX};
+use graph::prelude::{DeploymentHash, BLOCK_NUMBER_MAX};
 use graph::slog::{debug, info, trace, warn, Logger};
 
 use graph::components::store::BlockNumber;
@@ -74,7 +74,6 @@ enum ReconciliationStep {
 
 struct PollingBlockStreamContext {
     adapter: Arc<TriggersAdapterWrapper<Chain>>,
-    node_id: NodeId,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
@@ -96,7 +95,6 @@ impl Clone for PollingBlockStreamContext {
     fn clone(&self) -> Self {
         Self {
             adapter: self.adapter.clone(),
-            node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
             filter: self.filter.clone(),
@@ -133,7 +131,6 @@ impl PollingBlockStream {
     pub fn new(
         chain_head_update_stream: ChainHeadUpdateStream,
         adapter: Arc<TriggersAdapterWrapper<Chain>>,
-        node_id: NodeId,
         subgraph_id: DeploymentHash,
         filter: Arc<TriggerFilterWrapper<Chain>>,
         start_blocks: Vec<BlockNumber>,
@@ -151,7 +148,6 @@ impl PollingBlockStream {
             ctx: PollingBlockStreamContext {
                 current_block: start_block,
                 adapter,
-                node_id,
                 subgraph_id,
                 reorg_threshold,
                 logger,

@@ -87,7 +87,6 @@ struct CommonChainConfig {
     mock_registry: Arc<MetricsRegistry>,
     chain_store: Arc<ChainStore>,
     firehose_endpoints: FirehoseEndpoints,
-    node_id: NodeId,
 }
 
 impl CommonChainConfig {
@@ -96,7 +95,6 @@ impl CommonChainConfig {
         let mock_registry = Arc::new(MetricsRegistry::mock());
         let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
         let chain_store = stores.chain_store.cheap_clone();
-        let node_id = NodeId::new(NODE_ID).unwrap();
 
         let firehose_endpoints =
             FirehoseEndpoints::for_testing(vec![Arc::new(FirehoseEndpoint::new(
@@ -116,7 +114,6 @@ impl CommonChainConfig {
             mock_registry,
             chain_store,
             firehose_endpoints,
-            node_id,
         }
     }
 }

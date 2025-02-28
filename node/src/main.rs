@@ -315,7 +315,6 @@ async fn main_inner() {
         let blockchain_map = network_adapters
             .blockchain_map(
                 &env_vars,
-                &node_id,
                 &logger,
                 block_store,
                 &logger_factory,
