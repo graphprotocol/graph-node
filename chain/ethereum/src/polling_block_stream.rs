@@ -13,7 +13,7 @@ use graph::blockchain::block_stream::{
 };
 use graph::blockchain::{Block, BlockPtr, TriggerFilterWrapper};
 use graph::futures03::{stream::Stream, Future, FutureExt};
-use graph::prelude::{ChainStore, CheapClone, DeploymentHash, NodeId, BLOCK_NUMBER_MAX};
+use graph::prelude::{DeploymentHash, NodeId, BLOCK_NUMBER_MAX};
 use graph::slog::{debug, info, trace, warn, Logger};
 
 use graph::components::store::BlockNumber;
@@ -73,7 +73,6 @@ enum ReconciliationStep {
 }
 
 struct PollingBlockStreamContext {
-    chain_store: Arc<dyn ChainStore>,
     adapter: Arc<TriggersAdapterWrapper<Chain>>,
     node_id: NodeId,
     subgraph_id: DeploymentHash,
@@ -96,7 +95,6 @@ struct PollingBlockStreamContext {
 impl Clone for PollingBlockStreamContext {
     fn clone(&self) -> Self {
         Self {
-            chain_store: self.chain_store.cheap_clone(),
             adapter: self.adapter.clone(),
             node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
@@ -133,7 +131,6 @@ enum NextBlocks {
 
 impl PollingBlockStream {
     pub fn new(
-        chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
         adapter: Arc<TriggersAdapterWrapper<Chain>>,
         node_id: NodeId,
@@ -153,7 +150,6 @@ impl PollingBlockStream {
             chain_head_update_stream,
             ctx: PollingBlockStreamContext {
                 current_block: start_block,
-                chain_store,
                 adapter,
                 node_id,
                 subgraph_id,
