@@ -1089,6 +1089,7 @@ impl Entity {
     ) -> Result<Option<Value>, InternError> {
         self.0.insert(name, value.into())
     }
+
     /// Sets the VID if it's not already set. Should be used only for tests.
     pub fn set_vid_if_empty(&mut self) {
         let vid = self.0.get(VID_FIELD);
@@ -1286,4 +1287,48 @@ fn fmt_debug() {
 
     let bi = Value::BigInt(scalar::BigInt::from(-17i32));
     assert_eq!("BigInt(-17)", format!("{:?}", bi));
+}
+
+#[test]
+fn entity_hidden_vid() {
+    use crate::schema::InputSchema;
+    let subgraph_id = "oneInterfaceOneEntity";
+    let document = "type Thing @entity {id: ID!, name: String!}";
+    let schema = InputSchema::raw(document, subgraph_id);
+
+    let entity = entity! { schema => id: "1", name: "test", vid: 3i64 };
+    let debug_str = format!("{:?}", entity);
+    let entity_str = "Entity { id: String(\"1\"), name: String(\"test\"), vid: Int8(3) }";
+    assert_eq!(debug_str, entity_str);
+
+    // get returns nothing...
+    assert_eq!(entity.get(VID_FIELD), None);
+    assert_eq!(entity.contains_key(VID_FIELD), false);
+    // ...while vid is present
+    assert_eq!(entity.vid(), 3i64);
+
+    // into_iter() misses it too
+    let mut it = entity.into_iter();
+    assert_eq!(Some(("id", &Value::String("1".to_string()))), it.next());
+    assert_eq!(
+        Some(("name", &Value::String("test".to_string()))),
+        it.next()
+    );
+    assert_eq!(None, it.next());
+
+    let mut entity2 = entity! { schema => id: "1", name: "test", vid: 5i64 };
+    assert_eq!(entity2.vid(), 5i64);
+    // equal with different vid
+    assert_eq!(entity, entity2);
+
+    entity2.remove(VID_FIELD);
+    // equal if one has no vid
+    assert_eq!(entity, entity2);
+    let debug_str2 = format!("{:?}", entity2);
+    let entity_str2 = "Entity { id: String(\"1\"), name: String(\"test\") }";
+    assert_eq!(debug_str2, entity_str2);
+
+    // set again
+    _ = entity2.set_vid(7i64);
+    assert_eq!(entity2.vid(), 7i64);
 }
