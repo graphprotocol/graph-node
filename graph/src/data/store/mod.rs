@@ -749,7 +749,9 @@ impl<'a> IntoIterator for &'a Entity {
     type IntoIter = intern::ObjectOwningIter<Value>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.clone().into_iter()
+        let mut obj = self.0.clone();
+        obj.retain(|k, _| k != VID_FIELD);
+        obj.into_iter()
     }
 }
 
