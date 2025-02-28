@@ -744,14 +744,13 @@ lazy_static! {
 pub struct Entity(Object<Value>);
 
 impl<'a> IntoIterator for &'a Entity {
-    type Item = (Word, Value);
+    type Item = (&'a str, &'a Value);
 
-    type IntoIter = intern::ObjectOwningIter<Value>;
+    type IntoIter =
+        std::iter::Filter<intern::ObjectIter<'a, Value>, fn(&(&'a str, &'a Value)) -> bool>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let mut obj = self.0.clone();
-        obj.retain(|k, _| k != VID_FIELD);
-        obj.into_iter()
+        (&self.0).into_iter().filter(|(k, _)| *k != VID_FIELD)
     }
 }
 
