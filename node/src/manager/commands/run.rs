@@ -129,7 +129,6 @@ pub async fn run(
         networks
             .blockchain_map(
                 &env_vars,
-                &node_id,
                 &logger,
                 block_store,
                 &logger_factory,

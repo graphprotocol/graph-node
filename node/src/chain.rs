@@ -17,7 +17,6 @@ use graph::blockchain::{
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
 use graph::components::store::{BlockStore as _, ChainHeadStore};
-use graph::data::store::NodeId;
 use graph::endpoint::EndpointMetrics;
 use graph::env::{EnvVars, ENV_VARS};
 use graph::firehose::{FirehoseEndpoint, SubgraphLimit};
@@ -353,7 +352,6 @@ pub async fn create_ethereum_networks_for_chain(
 pub async fn networks_as_chains(
     config: &Arc<EnvVars>,
     blockchain_map: &mut BlockchainMap,
-    node_id: &NodeId,
     logger: &Logger,
     networks: &Networks,
     store: Arc<BlockStore>,
@@ -464,7 +462,6 @@ pub async fn networks_as_chains(
                 let chain = ethereum::Chain::new(
                     logger_factory.clone(),
                     chain_id.clone(),
-                    node_id.clone(),
                     metrics_registry.clone(),
                     chain_store.cheap_clone(),
                     call_cache,

@@ -33,7 +33,7 @@ use graph::{
     firehose,
     prelude::{
         async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Logger, LoggerFactory, NodeId,
+        Logger, LoggerFactory,
     },
 };
 use prost::Message;
@@ -214,7 +214,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         Ok(Box::new(PollingBlockStream::new(
             chain_head_update_stream,
             Arc::new(adapter),
-            chain.node_id.clone(),
             deployment.hash,
             filter,
             start_blocks,
@@ -334,7 +333,6 @@ impl RuntimeAdapterBuilder for EthereumRuntimeAdapterBuilder {
 pub struct Chain {
     logger_factory: LoggerFactory,
     pub name: ChainName,
-    node_id: NodeId,
     registry: Arc<MetricsRegistry>,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
@@ -361,7 +359,6 @@ impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
         name: ChainName,
-        node_id: NodeId,
         registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
@@ -379,7 +376,6 @@ impl Chain {
         Chain {
             logger_factory,
             name,
-            node_id,
             registry,
             client,
             chain_store,

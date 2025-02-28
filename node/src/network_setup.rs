@@ -20,7 +20,7 @@ use graph::{
     log::factory::LoggerFactory,
     prelude::{
         anyhow::{anyhow, Result},
-        info, Logger, NodeId,
+        info, Logger,
     },
     slog::{o, warn, Discard},
 };
@@ -400,7 +400,6 @@ impl Networks {
     pub async fn blockchain_map(
         &self,
         config: &Arc<EnvVars>,
-        node_id: &NodeId,
         logger: &Logger,
         store: Arc<BlockStore>,
         logger_factory: &LoggerFactory,
@@ -412,7 +411,6 @@ impl Networks {
         networks_as_chains(
             config,
             &mut bm,
-            node_id,
             logger,
             self,
             store,
