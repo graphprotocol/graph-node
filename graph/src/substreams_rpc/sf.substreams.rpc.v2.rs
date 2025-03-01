@@ -9,28 +9,32 @@ pub struct Request {
     #[prost(uint64, tag = "3")]
     pub stop_block_num: u64,
     /// With final_block_only, you only receive blocks that are irreversible:
-    /// 'final_block_height' will be equal to current block and no 'undo_signal' will ever be sent
+    /// 'final_block_height' will be equal to current block and no 'undo_signal'
+    /// will ever be sent
     #[prost(bool, tag = "4")]
     pub final_blocks_only: bool,
-    /// Substreams has two mode when executing your module(s) either development mode or production
-    /// mode. Development and production modes impact the execution of Substreams, important aspects
-    /// of execution include:
+    /// Substreams has two mode when executing your module(s) either development
+    /// mode or production mode. Development and production modes impact the
+    /// execution of Substreams, important aspects of execution include:
     /// * The time required to reach the first byte.
     /// * The speed that large ranges get executed.
     /// * The module logs and outputs sent back to the client.
     ///
-    /// By default, the engine runs in developer mode, with richer and deeper output. Differences
-    /// between production and development modes include:
-    /// * Forward parallel execution is enabled in production mode and disabled in development mode
-    /// * The time required to reach the first byte in development mode is faster than in production mode.
+    /// By default, the engine runs in developer mode, with richer and deeper
+    /// output. Differences between production and development modes include:
+    /// * Forward parallel execution is enabled in production mode and disabled in
+    /// development mode
+    /// * The time required to reach the first byte in development mode is faster
+    /// than in production mode.
     ///
     /// Specific attributes of development mode include:
     /// * The client will receive all of the executed module's logs.
-    /// * It's possible to request specific store snapshots in the execution tree (via `debug_initial_store_snapshot_for_modules`).
+    /// * It's possible to request specific store snapshots in the execution tree
+    /// (via `debug_initial_store_snapshot_for_modules`).
     /// * Multiple module's output is possible.
     ///
-    /// With production mode`, however, you trade off functionality for high speed enabling forward
-    /// parallel execution of module ahead of time.
+    /// With production mode`, however, you trade off functionality for high speed
+    /// enabling forward parallel execution of module ahead of time.
     #[prost(bool, tag = "5")]
     pub production_mode: bool,
     #[prost(string, tag = "6")]
@@ -57,19 +61,22 @@ pub mod response {
         /// Always sent first
         #[prost(message, tag = "1")]
         Session(super::SessionInit),
-        /// Progress of data preparation, before sending in the stream of `data` events.
+        /// Progress of data preparation, before
         #[prost(message, tag = "2")]
         Progress(super::ModulesProgress),
+        /// sending in the stream of `data` events.
         #[prost(message, tag = "3")]
         BlockScopedData(super::BlockScopedData),
         #[prost(message, tag = "4")]
         BlockUndoSignal(super::BlockUndoSignal),
         #[prost(message, tag = "5")]
         FatalError(super::Error),
-        /// Available only in developer mode, and only if `debug_initial_store_snapshot_for_modules` is set.
+        /// Available only in developer mode, and only if
+        /// `debug_initial_store_snapshot_for_modules` is set.
         #[prost(message, tag = "10")]
         DebugSnapshotData(super::InitialSnapshotData),
-        /// Available only in developer mode, and only if `debug_initial_store_snapshot_for_modules` is set.
+        /// Available only in developer mode, and only if
+        /// `debug_initial_store_snapshot_for_modules` is set.
         #[prost(message, tag = "11")]
         DebugSnapshotComplete(super::InitialSnapshotComplete),
     }
@@ -144,9 +151,9 @@ pub struct MapModuleOutput {
     pub debug_info: ::core::option::Option<OutputDebugInfo>,
 }
 /// StoreModuleOutput are produced for store modules in development mode.
-/// It is not possible to retrieve store models in production, with parallelization
-/// enabled. If you need the deltas directly, write a pass through mapper module
-/// that will get them down to you.
+/// It is not possible to retrieve store models in production, with
+/// parallelization enabled. If you need the deltas directly, write a pass
+/// through mapper module that will get them down to you.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StoreModuleOutput {
@@ -162,8 +169,9 @@ pub struct StoreModuleOutput {
 pub struct OutputDebugInfo {
     #[prost(string, repeated, tag = "1")]
     pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    /// LogsTruncated is a flag that tells you if you received all the logs or if they
-    /// were truncated because you logged too much (fixed limit currently is set to 128 KiB).
+    /// LogsTruncated is a flag that tells you if you received all the logs or if
+    /// they were truncated because you logged too much (fixed limit currently is
+    /// set to 128 KiB).
     #[prost(bool, tag = "2")]
     pub logs_truncated: bool,
     #[prost(bool, tag = "3")]
@@ -202,8 +210,9 @@ pub struct Error {
     pub reason: ::prost::alloc::string::String,
     #[prost(string, repeated, tag = "3")]
     pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    /// FailureLogsTruncated is a flag that tells you if you received all the logs or if they
-    /// were truncated because you logged too much (fixed limit currently is set to 128 KiB).
+    /// FailureLogsTruncated is a flag that tells you if you received all the logs
+    /// or if they were truncated because you logged too much (fixed limit
+    /// currently is set to 128 KiB).
     #[prost(bool, tag = "4")]
     pub logs_truncated: bool,
 }
@@ -229,8 +238,9 @@ pub struct Stage {
     #[prost(message, repeated, tag = "2")]
     pub completed_ranges: ::prost::alloc::vec::Vec<BlockRange>,
 }
-/// ModuleStats gathers metrics and statistics from each module, running on tier1 or tier2
-/// All the 'count' and 'time_ms' values may include duplicate for each stage going over that module
+/// ModuleStats gathers metrics and statistics from each module, running on tier1
+/// or tier2 All the 'count' and 'time_ms' values may include duplicate for each
+/// stage going over that module
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModuleStats {
@@ -240,35 +250,44 @@ pub struct ModuleStats {
     /// total_processed_blocks is the sum of blocks sent to that module code
     #[prost(uint64, tag = "2")]
     pub total_processed_block_count: u64,
-    /// total_processing_time_ms is the sum of all time spent running that module code
+    /// total_processing_time_ms is the sum of all time spent running that module
+    /// code
     #[prost(uint64, tag = "3")]
     pub total_processing_time_ms: u64,
     /// // external_calls are chain-specific intrinsics, like "Ethereum RPC calls".
     #[prost(message, repeated, tag = "4")]
     pub external_call_metrics: ::prost::alloc::vec::Vec<ExternalCallMetric>,
-    /// total_store_operation_time_ms is the sum of all time spent running that module code waiting for a store operation (ex: read, write, delete...)
+    /// total_store_operation_time_ms is the sum of all time spent running that
+    /// module code waiting for a store operation (ex: read, write, delete...)
     #[prost(uint64, tag = "5")]
     pub total_store_operation_time_ms: u64,
-    /// total_store_read_count is the sum of all the store Read operations called from that module code
+    /// total_store_read_count is the sum of all the store Read operations called
+    /// from that module code
     #[prost(uint64, tag = "6")]
     pub total_store_read_count: u64,
-    /// total_store_write_count is the sum of all store Write operations called from that module code (store-only)
+    /// total_store_write_count is the sum of all store Write operations called
+    /// from that module code (store-only)
     #[prost(uint64, tag = "10")]
     pub total_store_write_count: u64,
-    /// total_store_deleteprefix_count is the sum of all store DeletePrefix operations called from that module code (store-only)
-    /// note that DeletePrefix can be a costly operation on large stores
+    /// total_store_deleteprefix_count is the sum of all store DeletePrefix
+    /// operations called from that module code (store-only) note that DeletePrefix
+    /// can be a costly operation on large stores
     #[prost(uint64, tag = "11")]
     pub total_store_deleteprefix_count: u64,
-    /// store_size_bytes is the uncompressed size of the full KV store for that module, from the last 'merge' operation (store-only)
+    /// store_size_bytes is the uncompressed size of the full KV store for that
+    /// module, from the last 'merge' operation (store-only)
     #[prost(uint64, tag = "12")]
     pub store_size_bytes: u64,
-    /// total_store_merging_time_ms is the time spent merging partial stores into a full KV store for that module (store-only)
+    /// total_store_merging_time_ms is the time spent merging partial stores into a
+    /// full KV store for that module (store-only)
     #[prost(uint64, tag = "13")]
     pub total_store_merging_time_ms: u64,
-    /// store_currently_merging is true if there is a merging operation (partial store to full KV store) on the way.
+    /// store_currently_merging is true if there is a merging operation (partial
+    /// store to full KV store) on the way.
     #[prost(bool, tag = "14")]
     pub store_currently_merging: bool,
-    /// highest_contiguous_block is the highest block in the highest merged full KV store of that module (store-only)
+    /// highest_contiguous_block is the highest block in the highest merged full KV
+    /// store of that module (store-only)
     #[prost(uint64, tag = "15")]
     pub highest_contiguous_block: u64,
 }
@@ -348,6 +367,118 @@ pub struct BlockRange {
     pub start_block: u64,
     #[prost(uint64, tag = "3")]
     pub end_block: u64,
+}
+/// Generated client implementations.
+pub mod endpoint_info_client {
+    #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    #[derive(Debug, Clone)]
+    pub struct EndpointInfoClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl EndpointInfoClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> EndpointInfoClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> EndpointInfoClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + Send + Sync,
+        {
+            EndpointInfoClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        pub async fn info(
+            &mut self,
+            request: impl tonic::IntoRequest<crate::firehose::InfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<crate::firehose::InfoResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::new(
+                        tonic::Code::Unknown,
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/sf.substreams.rpc.v2.EndpointInfo/Info",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("sf.substreams.rpc.v2.EndpointInfo", "Info"));
+            self.inner.unary(req, path, codec).await
+        }
+    }
 }
 /// Generated client implementations.
 pub mod stream_client {
@@ -459,6 +590,187 @@ pub mod stream_client {
                 .insert(GrpcMethod::new("sf.substreams.rpc.v2.Stream", "Blocks"));
             self.inner.server_streaming(req, path, codec).await
         }
+    }
+}
+/// Generated server implementations.
+pub mod endpoint_info_server {
+    #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with EndpointInfoServer.
+    #[async_trait]
+    pub trait EndpointInfo: Send + Sync + 'static {
+        async fn info(
+            &self,
+            request: tonic::Request<crate::firehose::InfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<crate::firehose::InfoResponse>,
+            tonic::Status,
+        >;
+    }
+    #[derive(Debug)]
+    pub struct EndpointInfoServer<T: EndpointInfo> {
+        inner: _Inner<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    struct _Inner<T>(Arc<T>);
+    impl<T: EndpointInfo> EndpointInfoServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            let inner = _Inner(inner);
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for EndpointInfoServer<T>
+    where
+        T: EndpointInfo,
+        B: Body + Send + 'static,
+        B::Error: Into<StdError> + Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            let inner = self.inner.clone();
+            match req.uri().path() {
+                "/sf.substreams.rpc.v2.EndpointInfo/Info" => {
+                    #[allow(non_camel_case_types)]
+                    struct InfoSvc<T: EndpointInfo>(pub Arc<T>);
+                    impl<
+                        T: EndpointInfo,
+                    > tonic::server::UnaryService<crate::firehose::InfoRequest>
+                    for InfoSvc<T> {
+                        type Response = crate::firehose::InfoResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<crate::firehose::InfoRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EndpointInfo>::info(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = InfoSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        Ok(
+                            http::Response::builder()
+                                .status(200)
+                                .header("grpc-status", "12")
+                                .header("content-type", "application/grpc")
+                                .body(empty_body())
+                                .unwrap(),
+                        )
+                    })
+                }
+            }
+        }
+    }
+    impl<T: EndpointInfo> Clone for EndpointInfoServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    impl<T: EndpointInfo> Clone for _Inner<T> {
+        fn clone(&self) -> Self {
+            Self(Arc::clone(&self.0))
+        }
+    }
+    impl<T: std::fmt::Debug> std::fmt::Debug for _Inner<T> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self.0)
+        }
+    }
+    impl<T: EndpointInfo> tonic::server::NamedService for EndpointInfoServer<T> {
+        const NAME: &'static str = "sf.substreams.rpc.v2.EndpointInfo";
     }
 }
 /// Generated server implementations.

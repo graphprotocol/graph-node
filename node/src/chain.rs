@@ -90,6 +90,7 @@ pub fn create_substreams_networks(
                         firehose.compression_enabled(),
                         SubgraphLimit::Unlimited,
                         endpoint_metrics.clone(),
+                        true,
                     )));
                 }
             }
@@ -157,6 +158,7 @@ pub fn create_firehose_networks(
                         firehose.compression_enabled(),
                         firehose.limit_for(&config.node),
                         endpoint_metrics.cheap_clone(),
+                        false,
                     )));
                 }
             }

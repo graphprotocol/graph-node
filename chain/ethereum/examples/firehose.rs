@@ -38,6 +38,7 @@ async fn main() -> Result<(), Error> {
         false,
         SubgraphLimit::Unlimited,
         metrics,
+        false,
     ));
 
     loop {
