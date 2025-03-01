@@ -73,7 +73,7 @@ use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
-    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    QueryExecutionError, StoreError, StoreEvent, ValueType,
 };
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -231,8 +231,6 @@ pub struct Layout {
     pub tables: HashMap<EntityType, Arc<Table>>,
     /// The database schema for this subgraph
     pub catalog: Catalog,
-    /// The query to count all entities
-    pub count_query: String,
     /// How many blocks of history the subgraph should keep
     pub history_blocks: BlockNumber,
 
@@ -290,25 +288,6 @@ impl Layout {
             ))
         }
 
-        let count_query = tables
-            .iter()
-            .map(|table| {
-                if table.immutable {
-                    format!(
-                        "select count(*) from \"{}\".\"{}\"",
-                        &catalog.site.namespace, table.name
-                    )
-                } else {
-                    format!(
-                        "select count(*) from \"{}\".\"{}\" where block_range @> {}",
-                        &catalog.site.namespace, table.name, BLOCK_NUMBER_MAX
-                    )
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\nunion all\n");
-        let count_query = format!("select sum(e.count) from ({}) e", count_query);
-
         let tables: HashMap<_, _> = tables
             .into_iter()
             .fold(HashMap::new(), |mut tables, table| {
@@ -322,7 +301,6 @@ impl Layout {
             site,
             catalog,
             tables,
-            count_query,
             history_blocks: i32::MAX,
             input_schema: schema.cheap_clone(),
             rollups,
@@ -1037,6 +1015,9 @@ impl Layout {
     /// numbers. After this operation, only entity versions inserted or
     /// updated at blocks with numbers strictly lower than `block` will
     /// remain
+    ///
+    /// The `i32` that is returned is the amount by which the entity count
+    /// for the subgraph needs to be adjusted
     pub fn revert_block(
         &self,
         conn: &mut PgConnection,
