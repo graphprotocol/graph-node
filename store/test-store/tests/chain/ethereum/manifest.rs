@@ -928,7 +928,7 @@ dataSources:
           file:
             /: /ipfs/Qmabi
       blockHandlers:
-        - handler: intitialize
+        - handler: initialize
           filter:
             kind: once
         - handler: handleBlock
