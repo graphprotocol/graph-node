@@ -1349,6 +1349,7 @@ impl Host {
     ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
         let user_id = String::from(id);
         self.host_exports.store_get(
+            &self.ctx.logger,
             &mut self.ctx.state,
             entity_type.to_string(),
             user_id,

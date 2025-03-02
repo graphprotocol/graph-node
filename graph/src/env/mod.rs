@@ -247,6 +247,13 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS`.
     /// The default value is 60 seconds.
     pub firehose_block_fetch_timeout: u64,
+
+    /// Set by the environment variable `GRAPH_NODE_DETAILED_TRACE_LOGS`.
+    /// The default value is false.
+    pub detailed_trace_logs: bool,
+    /// Set by the environment variable `GRAPH_NODE_DETAILED_TRACE_DEPLOYMENTS`.
+    /// The default value is None.
+    pub detailed_trace_deployments: Option<Vec<String>>,
 }
 
 impl EnvVars {
@@ -339,6 +346,10 @@ impl EnvVars {
             block_write_capacity: inner.block_write_capacity.0,
             firehose_block_fetch_retry_limit: inner.firehose_block_fetch_retry_limit,
             firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
+            detailed_trace_logs: inner.detailed_trace_logs.0,
+            detailed_trace_deployments: inner
+                .detailed_trace_deployments
+                .map(|s| s.split(',').map(str::to_string).collect()),
         })
     }
 
@@ -506,6 +517,10 @@ struct Inner {
     firehose_block_fetch_retry_limit: usize,
     #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS", default = "60")]
     firehose_block_fetch_timeout: u64,
+    #[envconfig(from = "GRAPH_DETAILED_TRACE_LOGS", default = "false")]
+    detailed_trace_logs: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_DETAILED_TRACE_DEPLOYMENTS")]
+    detailed_trace_deployments: Option<String>,
 }
 
 #[derive(Clone, Debug)]
