@@ -565,9 +565,6 @@ pub enum BlockchainKind {
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
     Near,
 
-    /// Cosmos chains
-    Cosmos,
-
     Substreams,
 }
 
@@ -577,7 +574,6 @@ impl fmt::Display for BlockchainKind {
             BlockchainKind::Arweave => "arweave",
             BlockchainKind::Ethereum => "ethereum",
             BlockchainKind::Near => "near",
-            BlockchainKind::Cosmos => "cosmos",
             BlockchainKind::Substreams => "substreams",
         };
         write!(f, "{}", value)
@@ -592,7 +588,6 @@ impl FromStr for BlockchainKind {
             "arweave" => Ok(BlockchainKind::Arweave),
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
-            "cosmos" => Ok(BlockchainKind::Cosmos),
             "substreams" => Ok(BlockchainKind::Substreams),
             "subgraph" => Ok(BlockchainKind::Ethereum), // TODO(krishna): We should detect the blockchain kind from the source subgraph
             _ => Err(anyhow!("unknown blockchain kind {}", s)),

@@ -523,23 +523,6 @@ impl<S: Store> IndexNodeResolver<S> {
                 )
                 .await?
             }
-            BlockchainKind::Cosmos => {
-                let unvalidated_subgraph_manifest =
-                    UnvalidatedSubgraphManifest::<graph_chain_cosmos::Chain>::resolve(
-                        deployment_hash.clone(),
-                        raw_yaml,
-                        &self.link_resolver,
-                        &self.logger,
-                        max_spec_version,
-                    )
-                    .await?;
-
-                Self::validate_and_extract_features(
-                    &self.store.subgraph_store(),
-                    unvalidated_subgraph_manifest,
-                )
-                .await?
-            }
             BlockchainKind::Near => {
                 let unvalidated_subgraph_manifest =
                     UnvalidatedSubgraphManifest::<graph_chain_near::Chain>::resolve(
@@ -698,7 +681,6 @@ impl<S: Store> IndexNodeResolver<S> {
         // so this seems like the next best thing.
         try_resolve_for_chain!(graph_chain_ethereum::Chain);
         try_resolve_for_chain!(graph_chain_arweave::Chain);
-        try_resolve_for_chain!(graph_chain_cosmos::Chain);
         try_resolve_for_chain!(graph_chain_near::Chain);
 
         // If you're adding support for a new chain and this `match` clause just
@@ -710,7 +692,6 @@ impl<S: Store> IndexNodeResolver<S> {
             BlockchainKind::Substreams
             | BlockchainKind::Arweave
             | BlockchainKind::Ethereum
-            | BlockchainKind::Cosmos
             | BlockchainKind::Near => (),
         }
 
