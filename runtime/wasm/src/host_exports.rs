@@ -492,7 +492,7 @@ impl HostExports {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.load_related(&store_key)?;
+        let result = state.entity_cache.load_related(&logger, &store_key)?;
 
         Self::track_gas_and_ops(
             gas,
@@ -502,6 +502,10 @@ impl HostExports {
         )?;
 
         state.metrics.track_entity_read_batch(&entity_type, &result);
+
+        if should_log_detailed_traces(&self.subgraph_id, logger) {
+            trace!(logger, "store_load_related"; "entity_type" => entity_type.as_str(), "result" => format!("{:?}", result));
+        }
 
         Ok(result)
     }
