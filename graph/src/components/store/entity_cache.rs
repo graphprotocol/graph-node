@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use slog::{trace, Logger};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
@@ -8,7 +9,7 @@ use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
 use crate::data::store::{EntityValidationError, Id, IdType, IntoEntityIterator};
-use crate::prelude::{CacheWeight, ENV_VARS};
+use crate::prelude::{CacheWeight, DeploymentHash, ENV_VARS};
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
@@ -540,5 +541,50 @@ impl EntityCache {
             entity_lfu_cache: self.current,
             evict_stats,
         })
+    }
+
+    pub fn debug_log_mods(&self, logger: &Logger, deployment_id: &DeploymentHash) {
+        // Master switch must be enabled first
+        if !ENV_VARS.detailed_trace_logs {
+            return;
+        }
+
+        // If no deployments are specified, tracing is disabled for all
+        let Some(deployments) = &ENV_VARS.detailed_trace_deployments else {
+            return;
+        };
+
+        // If deployment list is empty, tracing is disabled for all
+        if deployments.is_empty() {
+            return;
+        }
+
+        // Skip if this deployment is not in the trace list
+        if !deployments.contains(&deployment_id.to_string()) {
+            return;
+        }
+
+        // Log the modifications
+        trace!(logger, "Debug logging entity modifications"; "deployment" => deployment_id.to_string());
+        for (key, op) in &self.updates {
+            trace!(logger, "Entity modification";
+                "deployment" => deployment_id.to_string(),
+                "key" => format!("{:?}", key),
+                "operation" => format!("{:?}", op)
+            );
+        }
+        if !self.handler_updates.is_empty() {
+            trace!(logger, "Handler updates:";
+                "deployment" => deployment_id.to_string(),
+                "count" => self.handler_updates.len()
+            );
+            for (key, op) in &self.handler_updates {
+                trace!(logger, "Handler modification";
+                    "deployment" => deployment_id.to_string(),
+                    "key" => format!("{:?}", key),
+                    "operation" => format!("{:?}", op)
+                );
+            }
+        }
     }
 }

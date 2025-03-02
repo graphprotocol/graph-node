@@ -604,6 +604,10 @@ where
             .await?;
         }
 
+        block_state
+            .entity_cache
+            .debug_log_mods(&self.logger, &self.inputs.deployment.hash);
+
         let section = self
             .metrics
             .host
@@ -628,6 +632,9 @@ where
             "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
             "accesses" => evict_stats.accesses,
             "evict_time_ms" => evict_stats.evict_time.as_millis());
+
+        // Log the final modifications if detailed tracing is enabled
+        self.log_entity_modifications(&self.logger, &mods);
 
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
@@ -1030,6 +1037,41 @@ where
         }
         Ok(is_caught_up)
     }
+
+    fn log_entity_modifications(&self, logger: &Logger, mods: &[EntityModification]) {
+        // Master switch must be enabled first
+        if !ENV_VARS.detailed_trace_logs {
+            return;
+        }
+
+        // If no deployments are specified, tracing is disabled for all
+        let Some(deployments) = &ENV_VARS.detailed_trace_deployments else {
+            return;
+        };
+
+        // If deployment list is empty, tracing is disabled for all
+        if deployments.is_empty() {
+            return;
+        }
+
+        // Skip if this deployment is not in the trace list
+        if !deployments.contains(&self.inputs.deployment.hash.to_string()) {
+            return;
+        }
+
+        // Log the modifications
+        trace!(logger, "Final entity modifications:";
+            "deployment" => self.inputs.deployment.hash.to_string(),
+            "count" => mods.len()
+        );
+
+        for modification in mods {
+            trace!(logger, "Entity modification";
+                "deployment" => self.inputs.deployment.hash.to_string(),
+                "modification" => format!("{:?}", modification)
+            );
+        }
+    }
 }
 
 impl<C, T> SubgraphRunner<C, T>
@@ -1341,6 +1383,10 @@ where
             .await?;
         }
 
+        block_state
+            .entity_cache
+            .debug_log_mods(&self.logger, &self.inputs.deployment.hash);
+
         let section = self
             .metrics
             .host
@@ -1365,6 +1411,8 @@ where
             "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
             "accesses" => evict_stats.accesses,
             "evict_time_ms" => evict_stats.evict_time.as_millis());
+
+        self.log_entity_modifications(&self.logger, &mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
         assert!(self.state.entity_lfu_cache.is_empty());

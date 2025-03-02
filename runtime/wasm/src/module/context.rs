@@ -146,6 +146,7 @@ impl WasmInstanceContext<'_> {
         id_ptr: AscPtr<AscString>,
         scope: GetScope,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        let logger = self.as_ref().ctx.logger.cheap_clone();
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let _timer = self
             .as_ref()
@@ -156,6 +157,7 @@ impl WasmInstanceContext<'_> {
         let entity_type: String = asc_get(self, entity_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
         let entity_option = host_exports.store_get(
+            &logger,
             &mut self.as_mut().ctx.state,
             entity_type.clone(),
             id.clone(),
@@ -345,11 +347,13 @@ impl WasmInstanceContext<'_> {
         id_ptr: AscPtr<AscString>,
         field_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<Array<AscPtr<AscEntity>>>, HostExportError> {
+        let logger = self.as_ref().ctx.logger.cheap_clone();
         let entity_type: String = asc_get(self, entity_type_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
         let field: String = asc_get(self, field_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let entities = host_exports.store_load_related(
+            &logger,
             &mut self.as_mut().ctx.state,
             entity_type.clone(),
             id.clone(),

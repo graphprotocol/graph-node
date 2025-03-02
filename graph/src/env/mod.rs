@@ -240,6 +240,13 @@ pub struct EnvVars {
     pub firehose_disable_extended_blocks_for_chains: Vec<String>,
 
     pub block_write_capacity: usize,
+
+    /// Set by the environment variable `GRAPH_NODE_DETAILED_TRACE_LOGS`.
+    /// The default value is false.
+    pub detailed_trace_logs: bool,
+    /// Set by the environment variable `GRAPH_NODE_DETAILED_TRACE_DEPLOYMENTS`.
+    /// The default value is None.
+    pub detailed_trace_deployments: Option<Vec<String>>,
 }
 
 impl EnvVars {
@@ -330,6 +337,10 @@ impl EnvVars {
                     inner.firehose_disable_extended_blocks_for_chains,
                 ),
             block_write_capacity: inner.block_write_capacity.0,
+            detailed_trace_logs: inner.detailed_trace_logs.0,
+            detailed_trace_deployments: inner
+                .detailed_trace_deployments
+                .map(|s| s.split(',').map(str::to_string).collect()),
         })
     }
 
@@ -493,6 +504,10 @@ struct Inner {
     firehose_disable_extended_blocks_for_chains: Option<String>,
     #[envconfig(from = "GRAPH_NODE_BLOCK_WRITE_CAPACITY", default = "4_000_000_000")]
     block_write_capacity: NoUnderscores<usize>,
+    #[envconfig(from = "GRAPH_DETAILED_TRACE_LOGS", default = "false")]
+    detailed_trace_logs: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_DETAILED_TRACE_DEPLOYMENTS")]
+    detailed_trace_deployments: Option<String>,
 }
 
 #[derive(Clone, Debug)]
