@@ -221,9 +221,13 @@ impl EntityCache {
 
     pub fn load_related(
         &mut self,
+        logger: &Logger,
         eref: &LoadRelatedRequest,
     ) -> Result<Vec<Entity>, anyhow::Error> {
+        trace!(logger, "load_related"; "eref" => format!("{:?}", eref));
+
         let (entity_type, field) = self.schema.get_field_related(eref)?;
+        trace!(logger, "load_related"; "entity_type" => entity_type.to_string(), "field" => field.name.to_string());
 
         let query = DerivedEntityQuery {
             entity_type,
@@ -231,18 +235,23 @@ impl EntityCache {
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
         };
+        trace!(logger, "load_related"; "query" => format!("{:?}", query));
 
         let mut entity_map = self.store.get_derived(&query)?;
+
+        trace!(logger, "load_related"; "entity_map from store" => format!("{:?}", entity_map), "count" => entity_map.len());
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
             if !self.current.contains_key(&key) {
+                trace!(logger, "load_related"; "caching entity" => format!("{:?}", key), "entity_id" => format!("{}", entity.id()));
                 self.current
                     .insert(key.clone(), Some(Arc::new(entity.clone())));
             }
         }
 
         let mut keys_to_remove = Vec::new();
+        trace!(logger, "load_related"; "message" => "applying updates to entities in entity_map");
 
         // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
         for (key, entity) in entity_map.iter_mut() {
@@ -252,19 +261,27 @@ impl EntityCache {
             ) {
                 (Some(op), None) | (None, Some(op)) => op,
                 (Some(mut op), Some(op2)) => {
+                    trace!(logger, "load_related"; "key" => format!("{:?}", key), "merging ops" => true);
                     op.accumulate(op2);
                     op
                 }
-                (None, None) => continue,
+                (None, None) => {
+                    trace!(logger, "load_related"; "key" => format!("{:?}", key), "noop" => true);
+                    continue;
+                }
             };
+
+            trace!(logger, "load_related"; "key" => format!("{:?}", key), "op" => format!("{:?}", op));
 
             let updated_entity = op
                 .apply_to(&Some(&*entity))
                 .map_err(|e| key.unknown_attribute(e))?;
 
             if let Some(updated_entity) = updated_entity {
+                trace!(logger, "load_related"; "key" => format!("{:?}", key), "updated" => true, "old_id" => format!("{}", entity.id()), "new_id" => format!("{}", updated_entity.id()));
                 *entity = updated_entity;
             } else {
+                trace!(logger, "load_related"; "key" => format!("{:?}", key), "removed" => true, "entity_id" => format!("{}", entity.id()));
                 // if entity_arc is None, it means that the entity was removed by an update
                 // mark the key for removal from the map
                 keys_to_remove.push(key.clone());
@@ -288,6 +305,7 @@ impl EntityCache {
             }
         }
 
+        trace!(logger, "load_related"; "message" => "checking updates for additional entities");
         // Iterate over self.updates to find entities that:
         // - Aren't already present in the entity_map
         // - Match the query
@@ -296,26 +314,35 @@ impl EntityCache {
         // - Add the entity to entity_map.
         for (key, op) in self.updates.iter() {
             if !entity_map.contains_key(key) {
+                trace!(logger, "load_related"; "checking update for key not in entity_map" => format!("{:?}", key));
                 if let Some(entity) = matches_query(op, &query, key)? {
                     if let Some(handler_op) = self.handler_updates.get(key).cloned() {
                         // If there's a corresponding update in handler_updates, apply it to the entity
                         // and insert the updated entity into entity_map
+                        trace!(logger, "load_related"; "found matching entity with handler update" => format!("{:?}", key), "entity_id" => format!("{}", entity.id()));
                         let mut entity = Some(entity);
                         entity = handler_op
                             .apply_to(&entity)
                             .map_err(|e| key.unknown_attribute(e))?;
 
                         if let Some(updated_entity) = entity {
+                            trace!(logger, "load_related"; "inserting entity with handler updates" => format!("{:?}", key), "entity_id" => format!("{}", updated_entity.id()));
                             entity_map.insert(key.clone(), updated_entity);
+                        } else {
+                            trace!(logger, "load_related"; "entity was removed by handler update" => format!("{:?}", key));
                         }
                     } else {
                         // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
+                        trace!(logger, "load_related"; "inserting entity from updates" => format!("{:?}", key), "entity_id" => format!("{}", entity.id()));
                         entity_map.insert(key.clone(), entity);
                     }
+                } else {
+                    trace!(logger, "load_related"; "update doesn't match query" => format!("{:?}", key));
                 }
             }
         }
 
+        trace!(logger, "load_related"; "message" => "checking handler_updates for additional entities");
         // Iterate over handler_updates to find entities that:
         // - Aren't already present in the entity_map.
         // - Aren't present in self.updates.
@@ -323,22 +350,30 @@ impl EntityCache {
         // If these conditions are met, add the entity to entity_map.
         for (key, handler_op) in self.handler_updates.iter() {
             if !entity_map.contains_key(key) && !self.updates.contains_key(key) {
+                trace!(logger, "load_related"; "checking handler_update for key not in entity_map or updates" => format!("{:?}", key));
                 if let Some(entity) = matches_query(handler_op, &query, key)? {
+                    trace!(logger, "load_related"; "inserting entity from handler_updates" => format!("{:?}", key), "entity_id" => format!("{}", entity.id()));
                     entity_map.insert(key.clone(), entity);
+                } else {
+                    trace!(logger, "load_related"; "handler_update doesn't match query" => format!("{:?}", key));
                 }
             }
         }
 
+        trace!(logger, "load_related"; "message" => "removing entities marked for removal", "count" => keys_to_remove.len());
         // Remove entities that are in the store but have been removed by an update.
         // We do this last since the loops over updates and handler_updates are only
         // concerned with entities that are not in the store yet and by leaving removed
         // keys in entity_map we avoid processing these updates a second time when we
         // already looked at them when we went through entity_map
         for key in keys_to_remove {
+            trace!(logger, "load_related"; "removing entity" => format!("{:?}", key));
             entity_map.remove(&key);
         }
 
-        Ok(entity_map.into_values().collect())
+        let result = entity_map.into_values().collect::<Vec<Entity>>();
+        trace!(logger, "load_related"; "final result count" => result.len());
+        Ok(result)
     }
 
     pub fn remove(&mut self, key: EntityKey) {
