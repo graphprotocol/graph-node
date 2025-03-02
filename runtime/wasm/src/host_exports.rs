@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
+use graph::env::ENV_VARS;
 
 use graph::futures03::stream::StreamExt;
 use graph::schema::EntityType;
@@ -92,6 +93,25 @@ impl DataSourceDetails {
             entity_type_access: ds.entities(),
             templates,
             causality_region: ds.causality_region(),
+        }
+    }
+}
+
+// Helper function to check if detailed trace logs are enabled for a deployment
+fn should_log_detailed_traces(subgraph_id: &DeploymentHash, logger: &Logger) -> bool {
+    info!(logger, "===> should_log_detailed_traces"; "detailed_trace_logs" => ENV_VARS.detailed_trace_logs, "detailed_trace_deployments" => ENV_VARS.detailed_trace_deployments.is_some());
+    if !ENV_VARS.detailed_trace_logs {
+        return false;
+    }
+
+    match &ENV_VARS.detailed_trace_deployments {
+        None => true, // If no specific deployments listed, enable for all
+        Some(deployments) => {
+            if deployments.is_empty() {
+                true // If empty list specified, enable for all
+            } else {
+                deployments.contains(&subgraph_id.to_string())
+            }
         }
     }
 }
@@ -249,6 +269,10 @@ impl HostExports {
     ) -> Result<(), HostExportError> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
 
+        if should_log_detailed_traces(&self.subgraph_id, logger) {
+            trace!(logger, "store_set"; "entity_type" => entity_type.as_str(), "entity_id" => &entity_id);
+        }
+
         Self::expect_object_type(&entity_type, "set")?;
 
         let entity_id = if entity_id == "auto"
@@ -366,6 +390,10 @@ impl HostExports {
         entity_id: String,
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
+        if should_log_detailed_traces(&self.subgraph_id, logger) {
+            trace!(logger, "store_remove"; "entity_type" => entity_type.as_str(), "entity_id" => &entity_id);
+        }
+
         write_poi_event(
             proof_of_indexing,
             &ProofOfIndexingEvent::RemoveEntity {
@@ -375,6 +403,7 @@ impl HostExports {
             &self.poi_causality_region,
             logger,
         );
+
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         Self::expect_object_type(&entity_type, "remove")?;
 
@@ -395,12 +424,17 @@ impl HostExports {
 
     pub(crate) fn store_get<'a>(
         &self,
+        logger: &Logger,
         state: &'a mut BlockState,
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
         scope: GetScope,
     ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
+        if should_log_detailed_traces(&self.subgraph_id, logger) {
+            trace!(logger, "store_get"; "entity_type" => entity_type.as_str(), "entity_id" => &entity_id);
+        }
+
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         Self::expect_object_type(&entity_type, "get")?;
 
@@ -423,17 +457,27 @@ impl HostExports {
             state.metrics.track_entity_read(&entity_type, &entity)
         }
 
+        if should_log_detailed_traces(&self.subgraph_id, logger) {
+            // Log the entity
+            trace!(logger, "store_get"; "entity_type" => entity_type.as_str(), "entity" => format!("{:?}", result));
+        }
+
         Ok(result)
     }
 
     pub(crate) fn store_load_related(
         &self,
+        logger: &Logger,
         state: &mut BlockState,
         entity_type: String,
         entity_id: String,
         entity_field: String,
         gas: &GasCounter,
     ) -> Result<Vec<Entity>, anyhow::Error> {
+        if should_log_detailed_traces(&self.subgraph_id, logger) {
+            trace!(logger, "store_load_related"; "entity_type" => entity_type.as_str(), "entity_id" => &entity_id, "entity_field" => &entity_field);
+        }
+
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         let key = entity_type.parse_key_in(entity_id, self.data_source.causality_region)?;
         let store_key = LoadRelatedRequest {
@@ -1322,13 +1366,14 @@ pub mod test_support {
 
         pub fn store_get(
             &self,
+            logger: &Logger,
             state: &mut BlockState,
             entity_type: String,
             entity_id: String,
             gas: &GasCounter,
         ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
             self.host_exports
-                .store_get(state, entity_type, entity_id, gas, GetScope::Store)
+                .store_get(logger, state, entity_type, entity_id, gas, GetScope::Store)
         }
     }
 }
