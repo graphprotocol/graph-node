@@ -27,12 +27,12 @@ BEGIN
                 where
                   subgraph='subgraphs' and
                   entity='SubgraphDeploymentAssignment'
-              ) assigments
-            on deployments.id=assigments.id
+              ) assignments
+            on deployments.id=assignments.id
             where
               deployments.subgraph='subgraphs' and
               deployments.entity='SubgraphDeployment' and
-              assigments.id is null)
+              assignments.id is null)
     -- Iterate over indexes and drop each
     LOOP
         EXECUTE 'DROP INDEX ' || index_to_drop.name;
