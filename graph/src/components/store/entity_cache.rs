@@ -254,7 +254,12 @@ impl EntityCache {
 
         let mut entity_map = self.store.get_derived(&query)?;
 
-        trace!(logger, "load_related"; "entity_map from store" => format!("{:?}", entity_map), "count" => entity_map.len());
+        trace!(logger, "load_related"; "entity_map from store count" => entity_map.len());
+
+        // Log ids of entities in entity_map
+        for (_, entity) in entity_map.iter() {
+            trace!(logger, "load_related_entity_ids_from_store"; "entity_id" => format!("{}", entity.id()));
+        }
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
@@ -285,8 +290,6 @@ impl EntityCache {
                     continue;
                 }
             };
-
-            trace!(logger, "load_related"; "key" => format!("{:?}", key), "op" => format!("{:?}", op));
 
             let updated_entity = op
                 .apply_to(&Some(&*entity))
