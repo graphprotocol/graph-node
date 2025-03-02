@@ -1040,6 +1040,7 @@ impl ReadStore for EmptyStore {
 
     fn get_derived(
         &self,
+        _logger: &Logger,
         _query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(BTreeMap::new())
