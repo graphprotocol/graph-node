@@ -354,14 +354,14 @@ impl SyncStore {
 
     fn get_derived(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         key: &DerivedEntityQuery,
         block: BlockNumber,
         excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         retry::forever(&self.logger, "get_derived", || {
             self.writable
-                .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
+                .get_derived(logger, self.site.cheap_clone(), key, block, &excluded_keys)
         })
     }
 
