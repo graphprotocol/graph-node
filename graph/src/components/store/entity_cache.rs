@@ -252,7 +252,7 @@ impl EntityCache {
         };
         trace!(logger, "load_related"; "query" => format!("{:?}", query));
 
-        let mut entity_map = self.store.get_derived(&query)?;
+        let mut entity_map = self.store.get_derived(logger,&query  )?;
 
         trace!(logger, "load_related"; "entity_map from store count" => entity_map.len());
 

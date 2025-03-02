@@ -236,6 +236,7 @@ pub trait ReadStore: Send + Sync + 'static {
     /// Reverse lookup
     fn get_derived(
         &self,
+        logger: &Logger,
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
@@ -257,9 +258,10 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
 
     fn get_derived(
         &self,
+        logger: &Logger,
         entity_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        (**self).get_derived(entity_derived)
+        (**self).get_derived(logger, entity_derived)
     }
 
     fn input_schema(&self) -> InputSchema {

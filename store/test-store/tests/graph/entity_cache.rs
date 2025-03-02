@@ -68,6 +68,7 @@ impl ReadStore for MockStore {
 
     fn get_derived(
         &self,
+        _logger: &Logger,
         _key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(self.get_many_res.clone())

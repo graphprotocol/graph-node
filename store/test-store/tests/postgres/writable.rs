@@ -279,7 +279,7 @@ fn count_get_derived(writable: &dyn WritableStore) -> i32 {
         value: key.entity_id.clone(),
         causality_region: CausalityRegion::ONCHAIN,
     };
-    let map = writable.get_derived(&query).unwrap();
+    let map = writable.get_derived(&LOGGER, &query).unwrap();
     let counter = map.get(&key).unwrap();
     counter.get("count").unwrap().as_int().unwrap()
 }
