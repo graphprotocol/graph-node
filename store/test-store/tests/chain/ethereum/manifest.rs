@@ -1211,6 +1211,42 @@ graft:
 }
 
 #[test]
+fn can_detect_unsed_feature_in_subgraph_manifest() {
+    const YAML: &str = "
+specVersion: 0.0.4
+dataSources: []
+features:
+  - grafting
+  - fullTextSearch
+  - ipfsOnEthereumContracts
+schema:
+  file:
+    /: /ipfs/Qmschema
+";
+    test_store::run_test_sequentially(|store| async move {
+        let store = store.subgraph_store();
+        let unvalidated = resolve_unvalidated(YAML).await;
+        let error_msg = unvalidated
+            .validate(store.clone(), true)
+            .await
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    SubgraphManifestValidationError::FeatureValidationError(_)
+                )
+            })
+            .expect("There must be a FeatureValidation error")
+            .to_string();
+        assert_eq!(
+            "The feature `grafting, fullTextSearch, ipfsOnEthereumContracts` is not used by the subgraph but it is declared in the manifest.",
+            error_msg
+        )
+    })
+}
+
+#[test]
 fn declared_grafting_feature_causes_no_feature_validation_errors() {
     const YAML: &str = "
 specVersion: 0.0.4

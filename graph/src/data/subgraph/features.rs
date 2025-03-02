@@ -64,6 +64,10 @@ pub enum SubgraphFeatureValidationError {
     #[error("The feature `{}` is used by the subgraph but it is not declared in the manifest.", fmt_subgraph_features(.0))]
     Undeclared(BTreeSet<SubgraphFeature>),
 
+    /// A feature is declared in the `features` section of the manifest file but it is not used by the subgraph.
+    #[error("The feature `{}` is not used by the subgraph but it is declared in the manifest.", fmt_subgraph_features(.0))]
+    Unused(BTreeSet<SubgraphFeature>),
+
     /// The provided compiled mapping is not a valid WASM module.
     #[error("Failed to parse the provided mapping WASM module")]
     InvalidMapping,
@@ -79,7 +83,10 @@ pub fn validate_subgraph_features<C: Blockchain>(
     let declared: &BTreeSet<SubgraphFeature> = &manifest.features;
     let used = detect_features(manifest)?;
     let undeclared: BTreeSet<SubgraphFeature> = used.difference(declared).cloned().collect();
-    if !undeclared.is_empty() {
+    let unsed: BTreeSet<SubgraphFeature> = declared.difference(&used).cloned().collect();
+    if !unsed.is_empty() {
+        Err(SubgraphFeatureValidationError::Unused(unsed))
+    } else if !undeclared.is_empty() {
         Err(SubgraphFeatureValidationError::Undeclared(undeclared))
     } else {
         Ok(used)
