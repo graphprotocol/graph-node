@@ -883,16 +883,6 @@ pub enum BlockStreamEvent<C: Blockchain> {
     ProcessWasmBlock(BlockPtr, BlockTime, Box<[u8]>, String, FirehoseCursor),
 }
 
-impl<C: Blockchain> BlockStreamEvent<C> {
-    pub fn block_ptr(&self) -> BlockPtr {
-        match self {
-            BlockStreamEvent::Revert(ptr, _) => ptr.clone(),
-            BlockStreamEvent::ProcessBlock(block, _) => block.ptr(),
-            BlockStreamEvent::ProcessWasmBlock(ptr, _, _, _, _) => ptr.clone(),
-        }
-    }
-}
-
 impl<C: Blockchain> Clone for BlockStreamEvent<C>
 where
     C::TriggerData: Clone,
