@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -32,18 +31,6 @@ use crate::module::WasmInstance;
 use crate::{error::DeterminismLevel, module::IntoTrap};
 
 use super::module::WasmInstanceData;
-
-fn write_poi_event(
-    proof_of_indexing: &SharedProofOfIndexing,
-    poi_event: &ProofOfIndexingEvent,
-    causality_region: &str,
-    logger: &Logger,
-) {
-    if let Some(proof_of_indexing) = proof_of_indexing {
-        let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-        proof_of_indexing.write(logger, causality_region, poi_event);
-    }
-}
 
 impl IntoTrap for HostExportError {
     fn determinism_level(&self) -> DeterminismLevel {
@@ -336,8 +323,7 @@ impl HostExports {
             .map_err(|e| HostExportError::Deterministic(anyhow!(e)))?;
 
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
-        write_poi_event(
-            proof_of_indexing,
+        proof_of_indexing.write_event(
             &ProofOfIndexingEvent::SetEntity {
                 entity_type: &key.entity_type.typename(),
                 id: &key.entity_id.to_string(),
@@ -369,8 +355,7 @@ impl HostExports {
         entity_id: String,
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
-        write_poi_event(
-            proof_of_indexing,
+        proof_of_indexing.write_event(
             &ProofOfIndexingEvent::RemoveEntity {
                 entity_type: &entity_type,
                 id: &entity_id,

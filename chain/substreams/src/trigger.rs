@@ -15,7 +15,6 @@ use graph::{
     substreams::Modules,
 };
 use graph_runtime_wasm::module::ToAscPtr;
-use lazy_static::__Deref;
 use std::{collections::BTreeSet, sync::Arc};
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
@@ -179,18 +178,6 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
     }
 }
 
-fn write_poi_event(
-    proof_of_indexing: &SharedProofOfIndexing,
-    poi_event: &ProofOfIndexingEvent,
-    causality_region: &str,
-    logger: &Logger,
-) {
-    if let Some(proof_of_indexing) = proof_of_indexing {
-        let mut proof_of_indexing = proof_of_indexing.deref().borrow_mut();
-        proof_of_indexing.write(logger, causality_region, poi_event);
-    }
-}
-
 pub struct TriggerProcessor {
     pub locator: DeploymentLocator,
 }
@@ -226,8 +213,7 @@ where
                     return Err(MappingError::Unknown(anyhow!("Detected UNSET entity operation, either a server error or there's a new type of operation and we're running an outdated protobuf")));
                 }
                 ParsedChanges::Upsert { key, entity } => {
-                    write_poi_event(
-                        proof_of_indexing,
+                    proof_of_indexing.write_event(
                         &ProofOfIndexingEvent::SetEntity {
                             entity_type: key.entity_type.typename(),
                             id: &key.entity_id.to_string(),
@@ -249,8 +235,7 @@ where
                     let id = entity_key.entity_id.clone();
                     state.entity_cache.remove(entity_key);
 
-                    write_poi_event(
-                        proof_of_indexing,
+                    proof_of_indexing.write_event(
                         &ProofOfIndexingEvent::RemoveEntity {
                             entity_type: entity_type.typename(),
                             id: &id.to_string(),

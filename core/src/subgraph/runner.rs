@@ -3,7 +3,6 @@ use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
-use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
@@ -367,10 +366,8 @@ where
         debug!(logger, "Start processing block";
                "triggers" => triggers.len());
 
-        let proof_of_indexing = Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
-            block_ptr.number,
-            self.inputs.poi_version,
-        ))));
+        let proof_of_indexing =
+            SharedProofOfIndexing::new(block_ptr.number, self.inputs.poi_version);
 
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
@@ -629,8 +626,7 @@ where
             return Err(BlockProcessingError::Canceled);
         }
 
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
+        if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
             update_proof_of_indexing(
                 proof_of_indexing,
                 block.timestamp(),
@@ -1156,7 +1152,7 @@ where
 
             // PoI ignores offchain events.
             // See also: poi-ignores-offchain
-            let proof_of_indexing = None;
+            let proof_of_indexing = SharedProofOfIndexing::ignored();
             let causality_region = "";
 
             let trigger = TriggerData::Offchain(trigger);
@@ -1314,10 +1310,8 @@ where
             .deployment_head
             .set(block_ptr.number as f64);
 
-        let proof_of_indexing = Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
-            block_ptr.number,
-            self.inputs.poi_version,
-        ))));
+        let proof_of_indexing =
+            SharedProofOfIndexing::new(block_ptr.number, self.inputs.poi_version);
 
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
@@ -1372,8 +1366,7 @@ where
             return Err(BlockProcessingError::Canceled.into());
         }
 
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
+        if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
             update_proof_of_indexing(
                 proof_of_indexing,
                 block_time,

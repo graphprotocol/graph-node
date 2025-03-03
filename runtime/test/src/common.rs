@@ -1,6 +1,7 @@
 use ethabi::Contract;
 use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
+use graph::components::subgraph::SharedProofOfIndexing;
 use graph::data::subgraph::*;
 use graph::data_source;
 use graph::data_source::common::MappingABI;
@@ -127,7 +128,7 @@ pub fn mock_context(
             .unwrap(),
             Default::default(),
         ),
-        proof_of_indexing: None,
+        proof_of_indexing: SharedProofOfIndexing::ignored(),
         host_fns: Arc::new(Vec::new()),
         debug_fork: None,
         mapping_logger: Logger::root(slog::Discard, o!()),
