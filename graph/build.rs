@@ -22,6 +22,7 @@ fn main() {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional")
         .extern_path(".sf.substreams.v1", "crate::substreams")
+        .extern_path(".sf.firehose.v2", "crate::firehose")
         .out_dir("src/substreams_rpc")
         .compile(&["proto/substreams-rpc.proto"], &["proto"])
         .expect("Failed to compile Substreams RPC proto(s)");
