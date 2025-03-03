@@ -365,8 +365,6 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     /// Set subgraph status to failed with the given error as the cause.
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError>;
 
-    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
-
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///

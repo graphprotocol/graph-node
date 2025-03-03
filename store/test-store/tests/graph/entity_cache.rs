@@ -121,10 +121,6 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
-        unimplemented!()
-    }
-
     async fn transact_block_operations(
         &self,
         _: BlockPtr,

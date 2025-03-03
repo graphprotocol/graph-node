@@ -916,20 +916,6 @@ impl DeploymentStore {
         }
     }
 
-    pub(crate) async fn supports_proof_of_indexing<'a>(
-        &self,
-        site: Arc<Site>,
-    ) -> Result<bool, StoreError> {
-        let store = self.clone();
-        self.with_conn(move |conn, cancel| {
-            cancel.check_cancel()?;
-            let layout = store.layout(conn, site)?;
-            Ok(layout.supports_proof_of_indexing())
-        })
-        .await
-        .map_err(Into::into)
-    }
-
     pub(crate) async fn get_proof_of_indexing(
         &self,
         site: Arc<Site>,
@@ -949,10 +935,6 @@ impl DeploymentStore {
                 cancel.check_cancel()?;
 
                 let layout = store.layout(conn, site.cheap_clone())?;
-
-                if !layout.supports_proof_of_indexing() {
-                    return Ok(None);
-                }
 
                 conn.transaction::<_, CancelableError<anyhow::Error>, _>(move |conn| {
                     let mut block_ptr = block.cheap_clone();
