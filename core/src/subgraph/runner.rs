@@ -6,7 +6,6 @@ use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use anyhow::Context as _;
-use async_trait::async_trait;
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
@@ -1333,33 +1332,7 @@ impl Action {
     }
 }
 
-#[async_trait]
-trait StreamEventHandler<C: Blockchain> {
-    async fn handle_process_wasm_block(
-        &mut self,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, ProcessingError>;
-    async fn handle_process_block(
-        &mut self,
-        block: BlockWithTriggers<C>,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, Error>;
-    async fn handle_revert(
-        &mut self,
-        revert_to_ptr: BlockPtr,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, Error>;
-    async fn handle_err(&mut self, err: CancelableError<BlockStreamError>)
-        -> Result<Action, Error>;
-    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
-}
-
-#[async_trait]
-impl<C, T> StreamEventHandler<C> for SubgraphRunner<C, T>
+impl<C, T> SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
