@@ -1161,6 +1161,7 @@ where
         &mut self,
         event: Option<Result<BlockStreamEvent<C>, CancelableError<BlockStreamError>>>,
     ) -> Result<Action, Error> {
+        let stopwatch = &self.metrics.stream.stopwatch;
         let action = match event {
             Some(Ok(BlockStreamEvent::ProcessWasmBlock(
                 block_ptr,
@@ -1169,11 +1170,7 @@ where
                 handler,
                 cursor,
             ))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
+                let _section = stopwatch.start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
                 let res = self
                     .handle_process_wasm_block(block_ptr.clone(), block_time, data, handler, cursor)
                     .await;
@@ -1181,19 +1178,11 @@ where
                 self.handle_action(start, block_ptr, res).await?
             }
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(PROCESS_BLOCK_SECTION_NAME);
+                let _section = stopwatch.start_section(PROCESS_BLOCK_SECTION_NAME);
                 self.handle_process_block(block, cursor).await?
             }
             Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(HANDLE_REVERT_SECTION_NAME);
+                let _section = stopwatch.start_section(HANDLE_REVERT_SECTION_NAME);
                 self.handle_revert(revert_to_ptr, cursor).await?
             }
             // Log and drop the errors from the block_stream
