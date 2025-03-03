@@ -367,14 +367,10 @@ where
         debug!(logger, "Start processing block";
                "triggers" => triggers.len());
 
-        let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
-            Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
-                block_ptr.number,
-                self.inputs.poi_version,
-            ))))
-        } else {
-            None
-        };
+        let proof_of_indexing = Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
+            block_ptr.number,
+            self.inputs.poi_version,
+        ))));
 
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
@@ -1318,14 +1314,10 @@ where
             .deployment_head
             .set(block_ptr.number as f64);
 
-        let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
-            Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
-                block_ptr.number,
-                self.inputs.poi_version,
-            ))))
-        } else {
-            None
-        };
+        let proof_of_indexing = Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
+            block_ptr.number,
+            self.inputs.poi_version,
+        ))));
 
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
