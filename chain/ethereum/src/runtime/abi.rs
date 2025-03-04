@@ -121,6 +121,7 @@ impl AscIndexId for AscLogArray {
 
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub struct AscUnresolvedContractCall_0_0_4 {
     pub contract_name: AscPtr<AscString>,
     pub contract_address: AscPtr<AscAddress>,
@@ -201,6 +202,7 @@ impl AscIndexId for AscEthereumBlock {
 
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub(crate) struct AscEthereumBlock_0_0_6 {
     pub hash: AscPtr<AscH256>,
     pub parent_hash: AscPtr<AscH256>,
@@ -225,6 +227,7 @@ impl AscIndexId for AscEthereumBlock_0_0_6 {
 
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub(crate) struct AscEthereumTransaction_0_0_1 {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
@@ -241,6 +244,7 @@ impl AscIndexId for AscEthereumTransaction_0_0_1 {
 
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub(crate) struct AscEthereumTransaction_0_0_2 {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
@@ -258,6 +262,7 @@ impl AscIndexId for AscEthereumTransaction_0_0_2 {
 
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub(crate) struct AscEthereumTransaction_0_0_6 {
     pub hash: AscPtr<AscH256>,
     pub index: AscPtr<AscBigInt>,
@@ -346,6 +351,7 @@ impl AscIndexId for AscEthereumTransactionReceipt {
 /// `receipt` field.
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub(crate) struct AscEthereumEvent_0_0_7<T, B>
 where
     T: AscType,
@@ -392,6 +398,7 @@ impl AscIndexId for AscEthereumCall {
 
 #[repr(C)]
 #[derive(AscType)]
+#[allow(non_camel_case_types)]
 pub(crate) struct AscEthereumCall_0_0_3<T, B>
 where
     T: AscType,
