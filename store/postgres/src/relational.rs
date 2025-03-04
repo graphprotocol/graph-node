@@ -73,7 +73,7 @@ use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityOperation, Logger,
-    QueryExecutionError, StoreError, StoreEvent, ValueType,
+    QueryExecutionError, StoreError, ValueType,
 };
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -1004,11 +1004,11 @@ impl Layout {
         Ok(count)
     }
 
-    pub fn truncate_tables(&self, conn: &mut PgConnection) -> Result<StoreEvent, StoreError> {
+    pub fn truncate_tables(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         for table in self.tables.values() {
             sql_query(&format!("TRUNCATE TABLE {}", table.qualified_name)).execute(conn)?;
         }
-        Ok(StoreEvent::new(vec![]))
+        Ok(())
     }
 
     /// Revert the block with number `block` and all blocks with higher
