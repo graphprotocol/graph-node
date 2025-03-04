@@ -25,7 +25,6 @@ use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
 use graph::semver::Version;
 use graph_runtime_wasm::module::ToAscPtr;
-use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::runtime::abi::AscEthereumBlock;
@@ -192,14 +191,7 @@ impl ToAscPtr for MappingTrigger {
                 inputs,
                 outputs,
             } => {
-                let call = EthereumCallData {
-                    to: call.to,
-                    from: call.from,
-                    block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::new(transaction.deref()),
-                    inputs,
-                    outputs,
-                };
+                let call = EthereumCallData::new(&block, &transaction, &call, &inputs, &outputs);
                 if heap.api_version() >= Version::new(0, 0, 6) {
                     asc_new::<
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
@@ -594,10 +586,35 @@ impl<'a> EthereumEventData<'a> {
 /// An Ethereum call executed within a transaction within a block to a contract address.
 #[derive(Debug, Clone)]
 pub struct EthereumCallData<'a> {
-    pub from: Address,
-    pub to: Address,
     pub block: EthereumBlockData<'a>,
     pub transaction: EthereumTransactionData<'a>,
-    pub inputs: Vec<LogParam>,
-    pub outputs: Vec<LogParam>,
+    pub inputs: &'a [LogParam],
+    pub outputs: &'a [LogParam],
+    call: &'a EthereumCall,
+}
+
+impl<'a> EthereumCallData<'a> {
+    fn new(
+        block: &'a Block<Transaction>,
+        transaction: &'a Transaction,
+        call: &'a EthereumCall,
+        inputs: &'a [LogParam],
+        outputs: &'a [LogParam],
+    ) -> EthereumCallData<'a> {
+        EthereumCallData {
+            block: EthereumBlockData::from(block),
+            transaction: EthereumTransactionData::new(transaction),
+            inputs,
+            outputs,
+            call,
+        }
+    }
+
+    pub fn from(&self) -> &Address {
+        &self.call.from
+    }
+
+    pub fn to(&self) -> &Address {
+        &self.call.to
+    }
 }

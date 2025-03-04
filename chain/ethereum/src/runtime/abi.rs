@@ -37,18 +37,6 @@ impl AscType for AscLogParamArray {
     }
 }
 
-impl ToAscObj<AscLogParamArray> for Vec<ethabi::LogParam> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscLogParamArray, HostExportError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
-        let content = content?;
-        Ok(AscLogParamArray(Array::new(&content, heap, gas)?))
-    }
-}
-
 impl ToAscObj<AscLogParamArray> for &[ethabi::LogParam] {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -737,7 +725,7 @@ impl<'a> ToAscObj<AscEthereumCall> for EthereumCallData<'a> {
         gas: &GasCounter,
     ) -> Result<AscEthereumCall, HostExportError> {
         Ok(AscEthereumCall {
-            address: asc_new(heap, &self.to, gas)?,
+            address: asc_new(heap, self.to(), gas)?,
             block: asc_new(heap, &self.block, gas)?,
             transaction: asc_new(heap, &self.transaction, gas)?,
             inputs: asc_new(heap, &self.inputs, gas)?,
@@ -758,8 +746,8 @@ impl<'a> ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereu
         HostExportError,
     > {
         Ok(AscEthereumCall_0_0_3 {
-            to: asc_new(heap, &self.to, gas)?,
-            from: asc_new(heap, &self.from, gas)?,
+            to: asc_new(heap, self.to(), gas)?,
+            from: asc_new(heap, self.from(), gas)?,
             block: asc_new(heap, &self.block, gas)?,
             transaction: asc_new(heap, &self.transaction, gas)?,
             inputs: asc_new(heap, &self.inputs, gas)?,
@@ -780,8 +768,8 @@ impl<'a> ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereu
         HostExportError,
     > {
         Ok(AscEthereumCall_0_0_3 {
-            to: asc_new(heap, &self.to, gas)?,
-            from: asc_new(heap, &self.from, gas)?,
+            to: asc_new(heap, self.to(), gas)?,
+            from: asc_new(heap, self.from(), gas)?,
             block: asc_new(heap, &self.block, gas)?,
             transaction: asc_new(heap, &self.transaction, gas)?,
             inputs: asc_new(heap, &self.inputs, gas)?,
