@@ -49,6 +49,18 @@ impl ToAscObj<AscLogParamArray> for Vec<ethabi::LogParam> {
     }
 }
 
+impl ToAscObj<AscLogParamArray> for &[ethabi::LogParam] {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscLogParamArray, HostExportError> {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+        let content = content?;
+        Ok(AscLogParamArray(Array::new(&content, heap, gas)?))
+    }
+}
+
 impl AscIndexId for AscLogParamArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayEventParam;
 }
@@ -567,17 +579,17 @@ where
         gas: &GasCounter,
     ) -> Result<AscEthereumEvent<T, B>, HostExportError> {
         Ok(AscEthereumEvent {
-            address: asc_new(heap, &self.address, gas)?,
-            log_index: asc_new(heap, &BigInt::from_unsigned_u256(&self.log_index), gas)?,
+            address: asc_new(heap, self.address(), gas)?,
+            log_index: asc_new(heap, &BigInt::from_unsigned_u256(self.log_index()), gas)?,
             transaction_log_index: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.transaction_log_index),
+                &BigInt::from_unsigned_u256(self.transaction_log_index()),
                 gas,
             )?,
             log_type: self
-                .log_type
-                .clone()
-                .map(|log_type| asc_new(heap, &log_type, gas))
+                .log_type()
+                .as_ref()
+                .map(|log_type| asc_new(heap, log_type, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             block: asc_new::<B, EthereumBlockData, _>(heap, &self.block, gas)?,
             transaction: asc_new::<T, EthereumTransactionData, _>(heap, &self.transaction, gas)?,

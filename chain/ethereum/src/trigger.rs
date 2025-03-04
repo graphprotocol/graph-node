@@ -146,15 +146,12 @@ impl ToAscPtr for MappingTrigger {
                 calls: _,
             } => {
                 let api_version = heap.api_version();
-                let ethereum_event_data = EthereumEventData {
-                    block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::new(transaction.deref()),
-                    address: log.address,
-                    log_index: log.log_index.unwrap_or(U256::zero()),
-                    transaction_log_index: log.log_index.unwrap_or(U256::zero()),
-                    log_type: log.log_type.clone(),
-                    params,
-                };
+                let ethereum_event_data = EthereumEventData::new(
+                    block.as_ref(),
+                    transaction.as_ref(),
+                    log.as_ref(),
+                    &params,
+                );
                 if api_version >= API_VERSION_0_0_7 {
                     asc_new::<
                         AscEthereumEvent_0_0_7<
@@ -553,13 +550,45 @@ impl<'a> EthereumTransactionData<'a> {
 /// An Ethereum event logged from a specific contract address and block.
 #[derive(Debug, Clone)]
 pub struct EthereumEventData<'a> {
-    pub address: Address,
-    pub log_index: U256,
-    pub transaction_log_index: U256,
-    pub log_type: Option<String>,
     pub block: EthereumBlockData<'a>,
     pub transaction: EthereumTransactionData<'a>,
-    pub params: Vec<LogParam>,
+    pub params: &'a [LogParam],
+    log: &'a Log,
+}
+
+impl<'a> EthereumEventData<'a> {
+    pub fn new(
+        block: &'a Block<Transaction>,
+        tx: &'a Transaction,
+        log: &'a Log,
+        params: &'a [LogParam],
+    ) -> Self {
+        EthereumEventData {
+            block: EthereumBlockData::from(block),
+            transaction: EthereumTransactionData::new(tx),
+            log,
+            params,
+        }
+    }
+
+    pub fn address(&self) -> &Address {
+        &self.log.address
+    }
+
+    pub fn log_index(&self) -> &U256 {
+        self.log.log_index.as_ref().unwrap_or(&U256_DEFAULT)
+    }
+
+    pub fn transaction_log_index(&self) -> &U256 {
+        self.log
+            .transaction_log_index
+            .as_ref()
+            .unwrap_or(&U256_DEFAULT)
+    }
+
+    pub fn log_type(&self) -> &Option<String> {
+        &self.log.log_type
+    }
 }
 
 /// An Ethereum call executed within a transaction within a block to a contract address.
