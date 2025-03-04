@@ -420,68 +420,68 @@ where
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::EthereumCall;
 }
 
-impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
+impl<'a> ToAscObj<AscEthereumBlock> for EthereumBlockData<'a> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEthereumBlock, HostExportError> {
         Ok(AscEthereumBlock {
-            hash: asc_new(heap, &self.hash, gas)?,
-            parent_hash: asc_new(heap, &self.parent_hash, gas)?,
-            uncles_hash: asc_new(heap, &self.uncles_hash, gas)?,
-            author: asc_new(heap, &self.author, gas)?,
-            state_root: asc_new(heap, &self.state_root, gas)?,
-            transactions_root: asc_new(heap, &self.transactions_root, gas)?,
-            receipts_root: asc_new(heap, &self.receipts_root, gas)?,
-            number: asc_new(heap, &BigInt::from(self.number), gas)?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used), gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
-            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp), gas)?,
-            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty), gas)?,
+            hash: asc_new(heap, self.hash(), gas)?,
+            parent_hash: asc_new(heap, self.parent_hash(), gas)?,
+            uncles_hash: asc_new(heap, self.uncles_hash(), gas)?,
+            author: asc_new(heap, self.author(), gas)?,
+            state_root: asc_new(heap, self.state_root(), gas)?,
+            transactions_root: asc_new(heap, self.transactions_root(), gas)?,
+            receipts_root: asc_new(heap, self.receipts_root(), gas)?,
+            number: asc_new(heap, &BigInt::from(self.number()), gas)?,
+            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(self.gas_used()), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(self.gas_limit()), gas)?,
+            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(self.timestamp()), gas)?,
+            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(self.difficulty()), gas)?,
             total_difficulty: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.total_difficulty),
+                &BigInt::from_unsigned_u256(self.total_difficulty()),
                 gas,
             )?,
             size: self
-                .size
+                .size()
                 .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
         })
     }
 }
 
-impl ToAscObj<AscEthereumBlock_0_0_6> for EthereumBlockData {
+impl<'a> ToAscObj<AscEthereumBlock_0_0_6> for EthereumBlockData<'a> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEthereumBlock_0_0_6, HostExportError> {
         Ok(AscEthereumBlock_0_0_6 {
-            hash: asc_new(heap, &self.hash, gas)?,
-            parent_hash: asc_new(heap, &self.parent_hash, gas)?,
-            uncles_hash: asc_new(heap, &self.uncles_hash, gas)?,
-            author: asc_new(heap, &self.author, gas)?,
-            state_root: asc_new(heap, &self.state_root, gas)?,
-            transactions_root: asc_new(heap, &self.transactions_root, gas)?,
-            receipts_root: asc_new(heap, &self.receipts_root, gas)?,
-            number: asc_new(heap, &BigInt::from(self.number), gas)?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used), gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
-            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp), gas)?,
-            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty), gas)?,
+            hash: asc_new(heap, self.hash(), gas)?,
+            parent_hash: asc_new(heap, self.parent_hash(), gas)?,
+            uncles_hash: asc_new(heap, self.uncles_hash(), gas)?,
+            author: asc_new(heap, self.author(), gas)?,
+            state_root: asc_new(heap, self.state_root(), gas)?,
+            transactions_root: asc_new(heap, self.transactions_root(), gas)?,
+            receipts_root: asc_new(heap, self.receipts_root(), gas)?,
+            number: asc_new(heap, &BigInt::from(self.number()), gas)?,
+            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(self.gas_used()), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(self.gas_limit()), gas)?,
+            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(self.timestamp()), gas)?,
+            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(self.difficulty()), gas)?,
             total_difficulty: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.total_difficulty),
+                &BigInt::from_unsigned_u256(self.total_difficulty()),
                 gas,
             )?,
             size: self
-                .size
+                .size()
                 .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             base_fee_per_block: self
-                .base_fee_per_gas
+                .base_fee_per_gas()
                 .map(|base_fee| asc_new(heap, &BigInt::from_unsigned_u256(&base_fee), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
         })
@@ -554,12 +554,12 @@ impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
     }
 }
 
-impl<T, B> ToAscObj<AscEthereumEvent<T, B>> for EthereumEventData
+impl<'a, T, B> ToAscObj<AscEthereumEvent<T, B>> for EthereumEventData<'a>
 where
     T: AscType + AscIndexId,
     B: AscType + AscIndexId,
     EthereumTransactionData: ToAscObj<T>,
-    EthereumBlockData: ToAscObj<B>,
+    EthereumBlockData<'a>: ToAscObj<B>,
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -586,13 +586,13 @@ where
     }
 }
 
-impl<T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
-    for (EthereumEventData, Option<&TransactionReceipt>)
+impl<'a, T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
+    for (EthereumEventData<'a>, Option<&TransactionReceipt>)
 where
     T: AscType + AscIndexId,
     B: AscType + AscIndexId,
     EthereumTransactionData: ToAscObj<T>,
-    EthereumBlockData: ToAscObj<B>,
+    EthereumBlockData<'a>: ToAscObj<B>,
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -718,7 +718,7 @@ impl ToAscObj<AscEthereumTransactionReceipt> for &TransactionReceipt {
     }
 }
 
-impl ToAscObj<AscEthereumCall> for EthereumCallData {
+impl<'a> ToAscObj<AscEthereumCall> for EthereumCallData<'a> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -734,8 +734,8 @@ impl ToAscObj<AscEthereumCall> for EthereumCallData {
     }
 }
 
-impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>>
-    for EthereumCallData
+impl<'a> ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>>
+    for EthereumCallData<'a>
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -756,8 +756,8 @@ impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlo
     }
 }
 
-impl ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>>
-    for EthereumCallData
+impl<'a> ToAscObj<AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>>
+    for EthereumCallData<'a>
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
