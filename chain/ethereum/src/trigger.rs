@@ -10,7 +10,6 @@ use graph::prelude::ethabi::ethereum_types::U128;
 use graph::prelude::ethabi::ethereum_types::U256;
 use graph::prelude::ethabi::ethereum_types::U64;
 use graph::prelude::ethabi::Address;
-use graph::prelude::ethabi::Bytes;
 use graph::prelude::ethabi::LogParam;
 use graph::prelude::web3::types::Block;
 use graph::prelude::web3::types::Log;
@@ -41,6 +40,8 @@ use crate::runtime::abi::AscEthereumTransaction_0_0_6;
 
 // ETHDEP: This should be defined in only one place.
 type LightEthereumBlock = Block<Transaction>;
+
+static U256_DEFAULT: U256 = U256::zero();
 
 pub enum MappingTrigger {
     Log {
@@ -147,7 +148,7 @@ impl ToAscPtr for MappingTrigger {
                 let api_version = heap.api_version();
                 let ethereum_event_data = EthereumEventData {
                     block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    transaction: EthereumTransactionData::new(transaction.deref()),
                     address: log.address,
                     log_index: log.log_index.unwrap_or(U256::zero()),
                     transaction_log_index: log.log_index.unwrap_or(U256::zero()),
@@ -198,7 +199,7 @@ impl ToAscPtr for MappingTrigger {
                     to: call.to,
                     from: call.from,
                     block: EthereumBlockData::from(block.as_ref()),
-                    transaction: EthereumTransactionData::from(transaction.deref()),
+                    transaction: EthereumTransactionData::new(transaction.deref()),
                     inputs,
                     outputs,
                 };
@@ -481,8 +482,10 @@ impl<'a> EthereumBlockData<'a> {
     }
 
     pub fn total_difficulty(&self) -> &U256 {
-        static DEFAULT: U256 = U256::zero();
-        self.block.total_difficulty.as_ref().unwrap_or(&DEFAULT)
+        self.block
+            .total_difficulty
+            .as_ref()
+            .unwrap_or(&U256_DEFAULT)
     }
 
     pub fn size(&self) -> &Option<U256> {
@@ -496,34 +499,54 @@ impl<'a> EthereumBlockData<'a> {
 
 /// Ethereum transaction data.
 #[derive(Clone, Debug)]
-pub struct EthereumTransactionData {
-    pub hash: H256,
-    pub index: U128,
-    pub from: H160,
-    pub to: Option<H160>,
-    pub value: U256,
-    pub gas_limit: U256,
-    pub gas_price: U256,
-    pub input: Bytes,
-    pub nonce: U256,
+pub struct EthereumTransactionData<'a> {
+    tx: &'a Transaction,
 }
 
-impl From<&'_ Transaction> for EthereumTransactionData {
-    fn from(tx: &Transaction) -> EthereumTransactionData {
+impl<'a> EthereumTransactionData<'a> {
+    // We don't implement `From` because it causes confusion with the `from`
+    // accessor method
+    fn new(tx: &'a Transaction) -> EthereumTransactionData<'a> {
+        EthereumTransactionData { tx }
+    }
+
+    pub fn hash(&self) -> &H256 {
+        &self.tx.hash
+    }
+
+    pub fn index(&self) -> U128 {
+        self.tx.transaction_index.unwrap().as_u64().into()
+    }
+
+    pub fn from(&self) -> &H160 {
         // unwrap: this is always `Some` for txns that have been mined
         //         (see https://github.com/tomusdrw/rust-web3/pull/407)
-        let from = tx.from.unwrap();
-        EthereumTransactionData {
-            hash: tx.hash,
-            index: tx.transaction_index.unwrap().as_u64().into(),
-            from,
-            to: tx.to,
-            value: tx.value,
-            gas_limit: tx.gas,
-            gas_price: tx.gas_price.unwrap_or(U256::zero()), // EIP-1559 made this optional.
-            input: tx.input.0.clone(),
-            nonce: tx.nonce,
-        }
+        self.tx.from.as_ref().unwrap()
+    }
+
+    pub fn to(&self) -> &Option<H160> {
+        &self.tx.to
+    }
+
+    pub fn value(&self) -> &U256 {
+        &self.tx.value
+    }
+
+    pub fn gas_limit(&self) -> &U256 {
+        &self.tx.gas
+    }
+
+    pub fn gas_price(&self) -> &U256 {
+        // EIP-1559 made this optional.
+        self.tx.gas_price.as_ref().unwrap_or(&U256_DEFAULT)
+    }
+
+    pub fn input(&self) -> &[u8] {
+        &self.tx.input.0
+    }
+
+    pub fn nonce(&self) -> &U256 {
+        &self.tx.nonce
     }
 }
 
@@ -535,7 +558,7 @@ pub struct EthereumEventData<'a> {
     pub transaction_log_index: U256,
     pub log_type: Option<String>,
     pub block: EthereumBlockData<'a>,
-    pub transaction: EthereumTransactionData,
+    pub transaction: EthereumTransactionData<'a>,
     pub params: Vec<LogParam>,
 }
 
@@ -545,7 +568,7 @@ pub struct EthereumCallData<'a> {
     pub from: Address,
     pub to: Address,
     pub block: EthereumBlockData<'a>,
-    pub transaction: EthereumTransactionData,
+    pub transaction: EthereumTransactionData<'a>,
     pub inputs: Vec<LogParam>,
     pub outputs: Vec<LogParam>,
 }
