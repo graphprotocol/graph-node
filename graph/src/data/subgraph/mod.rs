@@ -348,7 +348,7 @@ pub enum SubgraphManifestValidationError {
     MultipleEthereumNetworks,
     #[error("subgraph must have at least one Ethereum network data source")]
     EthereumNetworkRequired,
-    #[error("the specified block must exist on the Ethereum network")]
+    #[error("the specified block {0} must exist on the Ethereum network")]
     BlockNotFound(String),
     #[error("schema validation failed: {0:?}")]
     SchemaValidationError(Vec<SchemaValidationError>),
