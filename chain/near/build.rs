@@ -3,7 +3,7 @@ fn main() {
     tonic_build::configure()
         .out_dir("src/protobuf")
         .extern_path(".sf.near.codec.v1", "crate::codec::pbcodec")
-        .compile(
+        .compile_protos(
             &["proto/near.proto", "proto/substreams-triggers.proto"],
             &["proto"],
         )

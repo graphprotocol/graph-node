@@ -6,12 +6,7 @@ fn main() {
             ".sf.near.codec.v1",
             "::substreams_near_core::pb::sf::near::type::v1",
         )
-        // .extern_path(
-        //     ".sf.ethereum.type.v2",
-        //     "graph_chain_ethereum::codec::pbcodec",
-        // )
-        // .extern_path(".sf.arweave.type.v1", "graph_chain_arweave::codec::pbcodec")
         .out_dir("src/pb")
-        .compile(&["proto/receipts.proto"], &["proto"])
+        .compile_protos(&["proto/receipts.proto"], &["proto"])
         .expect("Failed to compile Substreams entity proto(s)");
 }
