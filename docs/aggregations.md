@@ -1,10 +1,5 @@
 # Timeseries and aggregations
 
-**This feature is experimental. We very much encourage users to try this
-out, but we might still need to make material changes to what's described
-here in a manner that is not backwards compatible. That might require
-deleting and redeploying any subgraph that uses the features here.**
-
 _This feature is available from spec version 1.1.0 onwards_
 
 ## Overview
@@ -188,8 +183,9 @@ accepts the following arguments:
 - Optional `timestamp_{gte|gt|lt|lte|eq|in}` filters to restrict the range
   of timestamps to return. The timestamp to filter by must be a string
   containing microseconds since the epoch. The value `"1704164640000000"`
-  corresponds to `2024-01-02T03:04Z`.
-- Timeseries are always sorted by `timestamp` and `id` in descending order
+  corresponds to `2024-01-02T03:04Z`
+- Timeseries are sorted by `timestamp` and `id` in descending order by
+  default
 
 ```graphql
 token_stats(interval: "hour",
