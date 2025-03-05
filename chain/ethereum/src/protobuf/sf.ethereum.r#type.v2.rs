@@ -12,7 +12,7 @@ pub struct Block {
     pub size: u64,
     #[prost(message, optional, tag = "5")]
     pub header: ::core::option::Option<BlockHeader>,
-    /// Uncles represents block produced with a valid solution but were not actually choosen
+    /// Uncles represents block produced with a valid solution but were not actually chosen
     /// as the canonical block for the given height so they are mostly "forked" blocks.
     ///
     /// If the Block has been produced using the Proof of Stake consensus algorithm, this
@@ -360,7 +360,7 @@ pub struct Log {
     #[prost(bytes = "vec", tag = "3")]
     pub data: ::prost::alloc::vec::Vec<u8>,
     /// Index is the index of the log relative to the transaction. This index
-    /// is always populated regardless of the state revertion of the the call
+    /// is always populated regardless of the state reversion of the call
     /// that emitted this log.
     #[prost(uint32, tag = "4")]
     pub index: u32,
@@ -369,7 +369,7 @@ pub struct Log {
     /// An **important** notice is that this field will be 0 when the call
     /// that emitted the log has been reverted by the chain.
     ///
-    /// Currently, there is two locations where a Log can be obtained:
+    /// Currently, there are two locations where a Log can be obtained:
     /// - block.transaction_traces\[\].receipt.logs\[\]
     /// - block.transaction_traces\[\].calls\[\].logs\[\]
     ///
@@ -432,7 +432,7 @@ pub struct Call {
     #[prost(message, repeated, tag = "28")]
     pub gas_changes: ::prost::alloc::vec::Vec<GasChange>,
     /// In Ethereum, a call can be either:
-    /// - Successfull, execution passes without any problem encountered
+    /// - Successful, execution passes without any problem encountered
     /// - Failed, execution failed, and remaining gas should be consumed
     /// - Reverted, execution failed, but only gas consumed so far is billed, remaining gas is refunded
     ///
@@ -447,7 +447,7 @@ pub struct Call {
     /// see above for details about those flags.
     #[prost(string, tag = "11")]
     pub failure_reason: ::prost::alloc::string::String,
-    /// This field represents wheter or not the state changes performed
+    /// This field represents whether or not the state changes performed
     /// by this call were correctly recorded by the blockchain.
     ///
     /// On Ethereum, a transaction can record state changes even if some
@@ -507,7 +507,7 @@ pub struct BalanceChange {
 }
 /// Nested message and enum types in `BalanceChange`.
 pub mod balance_change {
-    /// Obtain all balanche change reasons under deep mind repository:
+    /// Obtain all balance change reasons under deep mind repository:
     ///
     /// ```shell
     /// ack -ho 'BalanceChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
@@ -632,7 +632,7 @@ pub struct CodeChange {
 /// The gas is computed per actual op codes. Doing them completely might prove
 /// overwhelming in most cases.
 ///
-/// Hence, we only index some of them, those that are costy like all the calls
+/// Hence, we only index some of them, those that are costly like all the calls
 /// one, log events, return data, etc.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
