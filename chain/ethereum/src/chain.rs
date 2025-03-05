@@ -17,7 +17,7 @@ use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
-use graph::slog::{debug, error, trace};
+use graph::slog::{debug, error, trace, warn};
 use graph::substreams::Clock;
 use graph::{
     blockchain::{
@@ -257,6 +257,7 @@ pub struct EthereumAdapterSelector {
     client: Arc<ChainClient<Chain>>,
     registry: Arc<MetricsRegistry>,
     chain_store: Arc<dyn ChainStore>,
+    eth_adapters: Arc<EthereumNetworkAdapters>,
 }
 
 impl EthereumAdapterSelector {
@@ -265,12 +266,14 @@ impl EthereumAdapterSelector {
         client: Arc<ChainClient<Chain>>,
         registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
+        eth_adapters: Arc<EthereumNetworkAdapters>,
     ) -> Self {
         Self {
             logger_factory,
             client,
             registry,
             chain_store,
+            eth_adapters,
         }
     }
 }
@@ -296,6 +299,7 @@ impl TriggersAdapterSelector<Chain> for EthereumAdapterSelector {
             chain_store: self.chain_store.cheap_clone(),
             unified_api_version,
             capabilities: *capabilities,
+            eth_adapters: self.eth_adapters.cheap_clone(),
         };
         Ok(Arc::new(adapter))
     }
@@ -739,6 +743,7 @@ pub struct TriggersAdapter {
     chain_client: Arc<ChainClient<Chain>>,
     capabilities: NodeCapabilities,
     unified_api_version: UnifiedMappingApiVersion,
+    eth_adapters: Arc<EthereumNetworkAdapters>,
 }
 
 /// Fetches blocks from the cache based on block numbers, excluding duplicates
@@ -788,6 +793,28 @@ async fn fetch_unique_blocks_from_cache(
     }
 
     (blocks, missing_blocks)
+}
+
+// This is used to load blocks from the RPC.
+async fn load_blocks_with_rpc(
+    logger: &Logger,
+    adapter: Arc<EthereumAdapter>,
+    chain_store: Arc<dyn ChainStore>,
+    block_numbers: BTreeSet<BlockNumber>,
+) -> Result<Vec<BlockFinality>> {
+    let logger_clone = logger.clone();
+    load_blocks(
+        logger,
+        chain_store,
+        block_numbers,
+        |missing_numbers| async move {
+            adapter
+                .load_block_ptrs_by_numbers_rpc(logger_clone, missing_numbers)
+                .try_collect()
+                .await
+        },
+    )
+    .await
 }
 
 /// Fetches blocks by their numbers, first attempting to load from cache.
@@ -847,6 +874,32 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     ) -> Result<Vec<BlockFinality>> {
         match &*self.chain_client {
             ChainClient::Firehose(endpoints) => {
+                // If the force_rpc_for_block_ptrs flag is set, we will use the RPC to load the blocks
+                // even if the firehose is available. If no adapter is available, we will log an error.
+                // And then fallback to the firehose.
+                if ENV_VARS.force_rpc_for_block_ptrs {
+                    match self.eth_adapters.cheapest_with(&self.capabilities).await {
+                        Ok(adapter) => {
+                            match load_blocks_with_rpc(
+                                &logger,
+                                adapter,
+                                self.chain_store.clone(),
+                                block_numbers.clone(),
+                            )
+                            .await
+                            {
+                                Ok(blocks) => return Ok(blocks),
+                                Err(e) => {
+                                    warn!(logger, "Error loading blocks from RPC: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!(logger, "Error getting cheapest adapter: {}", e);
+                        }
+                    }
+                }
+
                 trace!(
                     logger,
                     "Loading blocks from firehose";
@@ -884,29 +937,16 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 .await
             }
 
-            ChainClient::Rpc(client) => {
+            ChainClient::Rpc(eth_adapters) => {
                 trace!(
                     logger,
                     "Loading blocks from RPC";
                     "block_numbers" => format!("{:?}", block_numbers)
                 );
 
-                let adapter = client.cheapest_with(&self.capabilities).await?;
-                let chain_store = self.chain_store.clone();
-                let logger_clone = logger.clone();
-
-                load_blocks(
-                    &logger,
-                    chain_store,
-                    block_numbers,
-                    |missing_numbers| async move {
-                        adapter
-                            .load_block_ptrs_by_numbers_rpc(logger_clone, missing_numbers)
-                            .try_collect()
-                            .await
-                    },
-                )
-                .await
+                let adapter = eth_adapters.cheapest_with(&self.capabilities).await?;
+                load_blocks_with_rpc(&logger, adapter, self.chain_store.clone(), block_numbers)
+                    .await
             }
         }
     }
