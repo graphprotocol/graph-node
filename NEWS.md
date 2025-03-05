@@ -446,8 +446,8 @@ Not Relevant
 <!--
 Not relevant
 * graph-chain-ethereum: Avoid adapters with errors by @mangas in https://github.com/graphprotocol/graph-node/pull/4468
-* Limit stack depth of asc_get by @leoyvens in https://gitub.com/graphprotocol/graph-node/pull/4576
-* core: Log how many entries the cache had at each block by @lutter in https://ithub.com/graphprotocol/graph-node/pull/4541
+* Limit stack depth of asc_get by @leoyvens in https://github.com/graphprotocol/graph-node/pull/4576
+* core: Log how many entries the cache had at each block by @lutter in https://github.com/graphprotocol/graph-node/pull/4541
 * store: Remove ability to recount entities by @lutter in https://github.com/graphprotocol/graph-node/pull/4406
 -->
 
@@ -1155,7 +1155,7 @@ storage](./docs/config.md) and spread subgraph deployments, and the load
 coming from indexing and querying them across multiple independent Postgres
 databases.
 
-**This feature is considered experimenatal. We encourage users to try this
+**This feature is considered experimental. We encourage users to try this
 out in a test environment, but do not recommend it yet for production use**
 In particular, the details of how sharding is configured may change in
 backwards-incompatible ways in the future.

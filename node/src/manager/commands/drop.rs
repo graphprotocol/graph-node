@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 /// Finds, unassigns, record and remove matching deployments.
 ///
-/// Asks for confirmation before removing any data.
-/// This is a convenience fuction that to call a series of other graphman commands.
+/// Asks for confirmation before removing any data. This is a convenience
+/// function that to call a series of other graphman commands.
 pub async fn run(
     primary_pool: ConnectionPool,
     subgraph_store: Arc<SubgraphStore>,
