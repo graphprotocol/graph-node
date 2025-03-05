@@ -41,10 +41,10 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 anyhow = "1.0"
 async-graphql = { version = "7.0.15", features = ["chrono", "uuid"] }
-async-graphql-axum = "7.0.11"
-axum = "0.7.5"
-bs58 = "0.5.1"
+async-graphql-axum = "7.0.15"
+axum = "0.8.1"
 chrono = "0.4.38"
+bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 derivative = "2.2.0"
 diesel = { version = "2.2.4", features = [
@@ -68,8 +68,8 @@ graphman = { path = "./core/graphman" }
 graphman-store = { path = "./core/graphman_store" }
 itertools = "0.13.0"
 lazy_static = "1.5.0"
-prost = "0.12.6"
-prost-types = "0.12.6"
+prost = "0.13"
+prost-types = "0.13"
 regex = "1.5.4"
 reqwest = "0.12.5"
 serde = { version = "1.0.126", features = ["rc"] }
@@ -87,11 +87,14 @@ syn = { version = "2.0.87", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "1.0.25"
 tokio = { version = "1.38.0", features = ["full"] }
-tonic = { version = "0.11.0", features = ["tls-roots", "gzip"] }
-tonic-build = { version = "0.11.0", features = ["prost"] }
+tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
+tonic-build = { version = "0.12.3", features = ["prost"] }
 tower-http = { version = "0.5.2", features = ["cors"] }
 wasmparser = "0.118.1"
 wasmtime = "15.0.1"
+substreams = "=0.6.0"
+substreams-entity-change = "2"
+substreams-near-core = "=0.10.2"
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]

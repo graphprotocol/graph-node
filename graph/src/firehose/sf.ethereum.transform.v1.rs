@@ -17,7 +17,6 @@
 /// the "block index" is always produced after the merged-blocks files
 /// are produced. Therefore, the "live" blocks are never filtered out.
 ///
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CombinedFilter {
     #[prost(message, repeated, tag = "1")]
@@ -30,7 +29,6 @@ pub struct CombinedFilter {
     pub send_all_block_headers: bool,
 }
 /// MultiLogFilter concatenates the results of each LogFilter (inclusive OR)
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MultiLogFilter {
     #[prost(message, repeated, tag = "1")]
@@ -41,7 +39,6 @@ pub struct MultiLogFilter {
 /// * the event signature (topic.0) is one of the provided event_signatures -- OR event_signatures is empty --
 ///
 /// a LogFilter with both empty addresses and event_signatures lists is invalid and will fail.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LogFilter {
     #[prost(bytes = "vec", repeated, tag = "1")]
@@ -51,7 +48,6 @@ pub struct LogFilter {
     pub event_signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
 /// MultiCallToFilter concatenates the results of each CallToFilter (inclusive OR)
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MultiCallToFilter {
     #[prost(message, repeated, tag = "1")]
@@ -62,7 +58,6 @@ pub struct MultiCallToFilter {
 /// * the method signature (in 4-bytes format) is one of the provided signatures -- OR signatures is empty --
 ///
 /// a CallToFilter with both empty addresses and signatures lists is invalid and will fail.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CallToFilter {
     #[prost(bytes = "vec", repeated, tag = "1")]
@@ -72,8 +67,7 @@ pub struct CallToFilter {
 }
 /// Deprecated: LightBlock is deprecated, replaced by HeaderOnly, note however that the new transform
 /// does not have any transactions traces returned, so it's not a direct replacement.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct LightBlock {}
 /// HeaderOnly returns only the block's header and few top-level core information for the block. Useful
 /// for cases where no transactions information is required at all.
@@ -91,6 +85,5 @@ pub struct LightBlock {}
 /// ```
 ///
 /// Everything else will be empty.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct HeaderOnly {}
