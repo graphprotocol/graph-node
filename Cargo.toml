@@ -36,17 +36,17 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
-async-graphql = { version = "7.0.15", features = ["chrono", "uuid"] }
-async-graphql-axum = "7.0.11"
-axum = "0.7.5"
+async-graphql = { version = "7.0.15", features = ["chrono"] }
+async-graphql-axum = "7.0.15"
+axum = "0.8.1"
 bs58 = "0.5.1"
 chrono = "0.4.38"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 derivative = "2.2.0"
-diesel = { version = "2.2.4", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono", "uuid", "i-implement-a-third-party-backend-and-opt-into-breaking-changes"] }
+diesel = { version = "2.2.7", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono", "i-implement-a-third-party-backend-and-opt-into-breaking-changes"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
-diesel-dynamic-schema = { version = "0.2.1", features = ["postgres"] }
-diesel_derives = "2.1.4"
+diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
+diesel_derives = "2.2.3"
 diesel_migrations = "2.1.0"
 graph = { path = "./graph" }
 graph-core = { path = "./core" }
