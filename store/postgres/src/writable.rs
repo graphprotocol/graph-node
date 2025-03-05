@@ -279,15 +279,6 @@ impl SyncStore {
         .await
     }
 
-    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
-        retry::forever_async(&self.logger, "supports_proof_of_indexing", || async {
-            self.writable
-                .supports_proof_of_indexing(self.site.clone())
-                .await
-        })
-        .await
-    }
-
     fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
         retry::forever(&self.logger, "get", || {
             self.writable.get(self.site.cheap_clone(), key, block)
@@ -1665,10 +1656,6 @@ impl WritableStoreTrait for WritableStore {
 
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
         self.store.fail_subgraph(error).await
-    }
-
-    async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError> {
-        self.store.supports_proof_of_indexing().await
     }
 
     async fn transact_block_operations(

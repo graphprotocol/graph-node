@@ -3,11 +3,15 @@ mod online;
 mod reference;
 
 pub use event::ProofOfIndexingEvent;
+use graph_derive::CheapClone;
 pub use online::{ProofOfIndexing, ProofOfIndexingFinisher};
 pub use reference::PoICausalityRegion;
 
 use atomic_refcell::AtomicRefCell;
-use std::sync::Arc;
+use slog::Logger;
+use std::{ops::Deref, sync::Arc};
+
+use crate::prelude::BlockNumber;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ProofOfIndexingVersion {
@@ -22,15 +26,57 @@ pub enum ProofOfIndexingVersion {
 /// intentionally disallowed - PoI requires sequential access to the hash
 /// function within a given causality region even if ownership is shared across
 /// multiple mapping contexts.
-///
-/// The Option<_> is because not all subgraphs support PoI until re-deployed.
-/// Eventually this can be removed.
-///
-/// This is not a great place to define this type, since the ProofOfIndexing
-/// shouldn't "know" these details about wasmtime and subgraph re-deployments,
-/// but the APIs that would make use of this are in graph/components so this
-/// lives here for lack of a better choice.
-pub type SharedProofOfIndexing = Option<Arc<AtomicRefCell<ProofOfIndexing>>>;
+#[derive(Clone, CheapClone)]
+pub struct SharedProofOfIndexing {
+    poi: Option<Arc<AtomicRefCell<ProofOfIndexing>>>,
+}
+
+impl SharedProofOfIndexing {
+    pub fn new(block: BlockNumber, version: ProofOfIndexingVersion) -> Self {
+        SharedProofOfIndexing {
+            poi: Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
+                block, version,
+            )))),
+        }
+    }
+
+    pub fn ignored() -> Self {
+        SharedProofOfIndexing { poi: None }
+    }
+
+    pub fn write_event(
+        &self,
+        poi_event: &ProofOfIndexingEvent,
+        causality_region: &str,
+        logger: &Logger,
+    ) {
+        if let Some(poi) = &self.poi {
+            let mut poi = poi.deref().borrow_mut();
+            poi.write(logger, causality_region, poi_event);
+        }
+    }
+
+    pub fn start_handler(&self, causality_region: &str) {
+        if let Some(poi) = &self.poi {
+            let mut poi = poi.deref().borrow_mut();
+            poi.start_handler(causality_region);
+        }
+    }
+
+    pub fn write_deterministic_error(&self, logger: &Logger, causality_region: &str) {
+        if let Some(proof_of_indexing) = &self.poi {
+            proof_of_indexing
+                .deref()
+                .borrow_mut()
+                .write_deterministic_error(logger, causality_region);
+        }
+    }
+
+    pub fn into_inner(self) -> Option<ProofOfIndexing> {
+        self.poi
+            .map(|poi| Arc::try_unwrap(poi).unwrap().into_inner())
+    }
+}
 
 #[cfg(test)]
 mod tests {

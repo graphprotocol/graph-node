@@ -39,11 +39,7 @@ where
             return Ok(state);
         }
 
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            proof_of_indexing
-                .borrow_mut()
-                .start_handler(causality_region);
-        }
+        proof_of_indexing.start_handler(causality_region);
 
         for HostedTrigger {
             host,
@@ -73,16 +69,12 @@ where
             }
         }
 
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            if state.deterministic_errors.len() != error_count {
-                assert!(state.deterministic_errors.len() == error_count + 1);
+        if state.deterministic_errors.len() != error_count {
+            assert!(state.deterministic_errors.len() == error_count + 1);
 
-                // If a deterministic error has happened, write a new
-                // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-                proof_of_indexing
-                    .borrow_mut()
-                    .write_deterministic_error(logger, causality_region);
-            }
+            // If a deterministic error has happened, write a new
+            // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
+            proof_of_indexing.write_deterministic_error(logger, causality_region);
         }
 
         Ok(state)
