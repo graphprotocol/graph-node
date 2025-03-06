@@ -1018,10 +1018,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             ChainClient::Firehose(endpoints) => {
                 let endpoint = endpoints.endpoint().await?;
                 let block = endpoint
-                    .get_block_by_number::<codec::Block>(ptr.number as u64, &self.logger)
+                    .get_block_by_number_with_retry::<codec::Block>(ptr.number as u64, &self.logger)
                     .await
-                    .map_err(|e| anyhow!("Failed to fetch block from firehose: {}", e))?;
-
+                    .context(format!(
+                        "Failed to fetch block {} from firehose",
+                        ptr.number
+                    ))?;
                 Ok(block.hash() == ptr.hash)
             }
             ChainClient::Rpc(adapter) => {
