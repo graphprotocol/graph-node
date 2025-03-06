@@ -929,7 +929,7 @@ impl Context {
         store
     }
 
-    fn pools(self) -> HashMap<Shard, ConnectionPool> {
+    fn pools(&self) -> HashMap<Shard, ConnectionPool> {
         let (_, pools) = self.store_and_pools();
         pools
     }
@@ -1318,7 +1318,9 @@ async fn main() -> anyhow::Result<()> {
                     .await
                 }
                 Activate { deployment, shard } => {
-                    commands::copy::activate(ctx.subgraph_store(), deployment, shard)
+                    let pools = ctx.pools();
+                    let store = ctx.subgraph_store();
+                    commands::copy::activate(&pools, store, deployment, shard)
                 }
                 List => commands::copy::list(ctx.pools()),
                 Status { dst } => commands::copy::status(ctx.pools(), &dst),
