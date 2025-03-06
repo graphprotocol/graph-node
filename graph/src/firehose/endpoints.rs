@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use futures03::{StreamExt, TryStreamExt};
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
-use slog::{error, info, Logger};
+use slog::{error, info, trace, Logger};
 use std::{collections::HashMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
 use tokio::sync::OnceCell;
 use tonic::codegen::InterceptedService;
@@ -451,7 +451,7 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        debug!(
+        trace!(
             logger,
             "Connecting to firehose to retrieve block for number {}", number;
             "provider" => self.provider.as_str(),

@@ -789,7 +789,7 @@ async fn fetch_unique_blocks_from_cache(
             "Loading {} block(s) not in the block cache",
             missing_blocks.len()
         );
-        debug!(logger, "Missing blocks {:?}", missing_blocks);
+        trace!(logger, "Missing blocks {:?}", missing_blocks.len());
     }
 
     (blocks, missing_blocks)
@@ -878,6 +878,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 // even if the firehose is available. If no adapter is available, we will log an error.
                 // And then fallback to the firehose.
                 if ENV_VARS.force_rpc_for_block_ptrs {
+                    trace!(
+                        logger,
+                        "Loading blocks from RPC (force_rpc_for_block_ptrs is set)";
+                        "block_numbers" => format!("{:?}", block_numbers)
+                    );
                     match self.eth_adapters.cheapest_with(&self.capabilities).await {
                         Ok(adapter) => {
                             match load_blocks_with_rpc(

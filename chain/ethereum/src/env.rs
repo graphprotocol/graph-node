@@ -197,6 +197,6 @@ struct Inner {
     genesis_block_number: u64,
     #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613,421614")]
     eth_call_no_gas: String,
-    #[envconfig(from = "GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS", default = "false")]
+    #[envconfig(from = "GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS", default = "true")]
     force_rpc_for_block_ptrs: EnvVarBoolean,
 }
