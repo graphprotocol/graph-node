@@ -1,5 +1,7 @@
 use crate::ext::futures::FutureExtension;
 use futures03::{Future, FutureExt, TryFutureExt};
+use lazy_static::lazy_static;
+use regex::Regex;
 use slog::{debug, trace, warn, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -61,6 +63,7 @@ pub fn retry<I, E>(operation_name: impl ToString, logger: &Logger) -> RetryConfi
         log_after: 1,
         warn_after: 10,
         limit: RetryConfigProperty::Unknown,
+        redact_log_urls: false,
         phantom_item: PhantomData,
         phantom_error: PhantomData,
     }
@@ -75,6 +78,7 @@ pub struct RetryConfig<I, E> {
     limit: RetryConfigProperty<usize>,
     phantom_item: PhantomData<I>,
     phantom_error: PhantomData<E>,
+    redact_log_urls: bool,
 }
 
 impl<I, E> RetryConfig<I, E>
@@ -122,6 +126,12 @@ where
     /// Allow unlimited retry attempts.
     pub fn no_limit(mut self) -> Self {
         self.limit.clear();
+        self
+    }
+
+    /// Redact alphanumeric URLs from log messages.
+    pub fn redact_log_urls(mut self, redact_log_urls: bool) -> Self {
+        self.redact_log_urls = redact_log_urls;
         self
     }
 
@@ -173,6 +183,7 @@ where
         let log_after = self.inner.log_after;
         let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
+        let redact_log_urls = self.inner.redact_log_urls;
         let timeout = self.timeout;
 
         trace!(logger, "Run with retry: {}", operation_name);
@@ -184,6 +195,7 @@ where
             log_after,
             warn_after,
             limit_opt,
+            redact_log_urls,
             move || {
                 try_it()
                     .timeout(timeout)
@@ -214,6 +226,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
         let log_after = self.inner.log_after;
         let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
+        let redact_log_urls = self.inner.redact_log_urls;
 
         trace!(logger, "Run with retry: {}", operation_name);
 
@@ -224,6 +237,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
             log_after,
             warn_after,
             limit_opt,
+            redact_log_urls,
             // No timeout, so all errors are inner errors
             move || try_it().map_err(TimeoutError::Inner),
         )
@@ -265,6 +279,7 @@ fn run_retry<O, E, F, R>(
     log_after: u64,
     warn_after: u64,
     limit_opt: Option<usize>,
+    redact_log_urls: bool,
     mut try_it_with_timeout: F,
 ) -> impl Future<Output = Result<O, TimeoutError<E>>> + Send
 where
@@ -311,25 +326,38 @@ where
 
                 // If needs retry
                 if condition.check(&result) {
+                    let result_str = || {
+                        if redact_log_urls {
+                            lazy_static! {
+                                static ref RE: Regex =
+                                    Regex::new(r#"https?://[a-zA-Z0-9\-\._:/\?#&=]+"#).unwrap();
+                            }
+                            let e = format!("{result:?}");
+                            RE.replace_all(&e, "[REDACTED]").into_owned()
+                        } else {
+                            format!("{result:?}")
+                        }
+                    };
+
                     if attempt_count >= warn_after {
                         // This looks like it would be nice to de-duplicate, but if we try
                         // to use log! slog complains about requiring a const for the log level
                         // See also b05e1594-e408-4047-aefb-71fc60d70e8f
                         warn!(
                             logger,
-                            "Trying again after {} failed (attempt #{}) with result {:?}",
+                            "Trying again after {} failed (attempt #{}) with result {}",
                             &operation_name,
                             attempt_count,
-                            result
+                            result_str(),
                         );
                     } else if attempt_count >= log_after {
                         // See also b05e1594-e408-4047-aefb-71fc60d70e8f
                         debug!(
                             logger,
-                            "Trying again after {} failed (attempt #{}) with result {:?}",
+                            "Trying again after {} failed (attempt #{}) with result {}",
                             &operation_name,
                             attempt_count,
-                            result
+                            result_str(),
                         );
                     }
 
