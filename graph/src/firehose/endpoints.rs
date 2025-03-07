@@ -13,8 +13,9 @@ use crate::{
     prelude::{anyhow, debug, DeploymentHash},
     substreams_rpc,
 };
+use anyhow::Context;
 use async_trait::async_trait;
-use futures03::StreamExt;
+use futures03::{StreamExt, TryStreamExt};
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
 use slog::{error, info, trace, Logger};
@@ -443,15 +444,47 @@ impl FirehoseEndpoint {
         }
     }
 
-    pub async fn get_block_by_number<M>(
-        &self,
-        number: u64,
+    pub async fn get_block_by_ptr_with_retry<M>(
+        self: Arc<Self>,
+        ptr: &BlockPtr,
         logger: &Logger,
     ) -> Result<M, anyhow::Error>
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        debug!(
+        let retry_log_message = format!("get_block_by_ptr for block {}", ptr);
+        let endpoint = self.cheap_clone();
+        let logger = logger.cheap_clone();
+        let ptr_for_retry = ptr.clone();
+
+        retry(retry_log_message, &logger)
+            .limit(ENV_VARS.firehose_block_fetch_retry_limit)
+            .timeout_secs(ENV_VARS.firehose_block_fetch_timeout)
+            .run(move || {
+                let endpoint = endpoint.cheap_clone();
+                let logger = logger.cheap_clone();
+                let ptr = ptr_for_retry.clone();
+                async move {
+                    endpoint
+                        .get_block_by_ptr::<M>(&ptr, &logger)
+                        .await
+                        .context(format!(
+                            "Failed to fetch block by ptr {} from firehose",
+                            ptr
+                        ))
+                }
+            })
+            .await
+            .map_err(move |e| {
+                anyhow::anyhow!("Failed to fetch block by ptr {} from firehose: {}", ptr, e)
+            })
+    }
+
+    async fn get_block_by_number<M>(&self, number: u64, logger: &Logger) -> Result<M, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
+        trace!(
             logger,
             "Connecting to firehose to retrieve block for number {}", number;
             "provider" => self.provider.as_str(),
@@ -473,6 +506,44 @@ impl FirehoseEndpoint {
         }
     }
 
+    pub async fn get_block_by_number_with_retry<M>(
+        self: Arc<Self>,
+        number: u64,
+        logger: &Logger,
+    ) -> Result<M, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
+        let retry_log_message = format!("get_block_by_number for block {}", number);
+        let endpoint = self.cheap_clone();
+        let logger = logger.cheap_clone();
+
+        retry(retry_log_message, &logger)
+            .limit(ENV_VARS.firehose_block_fetch_retry_limit)
+            .timeout_secs(ENV_VARS.firehose_block_fetch_timeout)
+            .run(move || {
+                let endpoint = endpoint.cheap_clone();
+                let logger = logger.cheap_clone();
+                async move {
+                    endpoint
+                        .get_block_by_number::<M>(number, &logger)
+                        .await
+                        .context(format!(
+                            "Failed to fetch block by number {} from firehose",
+                            number
+                        ))
+                }
+            })
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to fetch block by number {} from firehose: {}",
+                    number,
+                    e
+                )
+            })
+    }
+
     pub async fn load_blocks_by_numbers<M>(
         self: Arc<Self>,
         numbers: Vec<u64>,
@@ -481,51 +552,24 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        let mut blocks = Vec::with_capacity(numbers.len());
+        let logger = logger.clone();
+        let logger_for_error = logger.clone();
 
-        for number in numbers {
-            let provider_name = self.provider.as_str();
+        let blocks_stream = futures03::stream::iter(numbers)
+            .map(move |number| {
+                let e = self.cheap_clone();
+                let l = logger.clone();
+                async move { e.get_block_by_number_with_retry::<M>(number, &l).await }
+            })
+            .buffered(ENV_VARS.firehose_block_batch_size);
 
-            trace!(
-                logger,
-                "Loading block for block number {}", number;
-                "provider" => provider_name,
+        let blocks = blocks_stream.try_collect::<Vec<M>>().await.map_err(|e| {
+            error!(
+                logger_for_error,
+                "Failed to load blocks from firehose: {}", e;
             );
-
-            let retry_log_message = format!("get_block_by_number for block {}", number);
-            let endpoint_for_retry = self.cheap_clone();
-
-            let logger_for_retry = logger.clone();
-            let logger_for_error = logger.clone();
-
-            let block = retry(retry_log_message, &logger_for_retry)
-                .limit(ENV_VARS.firehose_block_fetch_retry_limit)
-                .timeout_secs(ENV_VARS.firehose_block_fetch_timeout)
-                .run(move || {
-                    let e = endpoint_for_retry.cheap_clone();
-                    let l = logger_for_retry.clone();
-                    async move { e.get_block_by_number::<M>(number, &l).await }
-                })
-                .await;
-
-            match block {
-                Ok(block) => {
-                    blocks.push(block);
-                }
-                Err(e) => {
-                    error!(
-                        logger_for_error,
-                        "Failed to load block number {}: {}", number, e;
-                        "provider" => provider_name,
-                    );
-                    return Err(anyhow::format_err!(
-                        "failed to load block number {}: {}",
-                        number,
-                        e
-                    ));
-                }
-            }
-        }
+            anyhow::format_err!("failed to load blocks from firehose: {}", e)
+        })?;
 
         Ok(blocks)
     }
