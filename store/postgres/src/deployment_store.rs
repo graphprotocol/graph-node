@@ -1248,7 +1248,7 @@ impl DeploymentStore {
             let req = PruneRequest::new(
                 &site.as_ref().into(),
                 history_blocks,
-                ENV_VARS.reorg_threshold,
+                ENV_VARS.reorg_threshold(),
                 earliest_block,
                 latest_block,
             )?;
