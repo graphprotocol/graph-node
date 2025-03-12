@@ -2149,7 +2149,9 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "sqlparser",
  "stable-hash 0.3.4",
+ "thiserror 1.0.61",
 ]
 
 [[package]]
@@ -4708,6 +4710,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11a81a8cad9befe4cf1b9d2d4b9c6841c76f0882a3fec00d95133953c13b3d3d"
 dependencies = [
  "log",
+ "sqlparser_derive",
+]
+
+[[package]]
+name = "sqlparser_derive"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01b2e185515564f15375f593fb966b5718bc624ba77fe49fa4616ad619690554"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
 ]
 
 [[package]]
