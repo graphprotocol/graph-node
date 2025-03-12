@@ -292,7 +292,10 @@ impl DeploymentStore {
         conn: &mut PgConnection,
         query: &str,
     ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
-        let query = format!("select to_jsonb(sub.*) as data from ({}) as sub", query);
+        let query = format!(
+            "select to_jsonb(sub.*) as data from ({}) as sub limit {}",
+            query, ENV_VARS.graphql.max_first
+        );
         let query = diesel::sql_query(query);
 
         let results = conn

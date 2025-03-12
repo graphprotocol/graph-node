@@ -1,7 +1,7 @@
 use graph::prelude::BlockNumber;
 use sqlparser::ast::{
-    Expr, Ident, ObjectName, Query, SetExpr, Statement, TableAlias, TableFactor, VisitMut,
-    VisitorMut,
+    Expr, Ident, ObjectName, Offset, Query, SetExpr, Statement, TableAlias, TableFactor, Value,
+    VisitMut, VisitorMut,
 };
 use sqlparser::parser::Parser;
 use std::result::Result;
@@ -22,20 +22,30 @@ pub enum Error {
     NotSelectQuery,
     #[error("Unknown table {0}")]
     UnknownTable(String),
+    #[error("Only constant numbers are supported for LIMIT and OFFSET.")]
+    UnsupportedLimitOffset,
+    #[error("The limit of {0} is greater than the maximum allowed limit of {1}.")]
+    UnsupportedLimit(u32, u32),
+    #[error("The offset of {0} is greater than the maximum allowed offset of {1}.")]
+    UnsupportedOffset(u32, u32),
 }
 
 pub struct Validator<'a> {
     layout: &'a Layout,
     ctes: HashSet<String>,
     block: BlockNumber,
+    max_limit: u32,
+    max_offset: u32,
 }
 
 impl<'a> Validator<'a> {
-    pub fn new(layout: &'a Layout, block: BlockNumber) -> Self {
+    pub fn new(layout: &'a Layout, block: BlockNumber, max_limit: u32, max_offset: u32) -> Self {
         Self {
             layout,
             ctes: Default::default(),
             block,
+            max_limit,
+            max_offset,
         }
     }
 
@@ -61,6 +71,45 @@ impl<'a> Validator<'a> {
 
         Ok(())
     }
+
+    pub fn validate_limit_offset(&mut self, query: &mut Query) -> ControlFlow<Error> {
+        let Query { limit, offset, .. } = query;
+
+        if let Some(limit) = limit {
+            match limit {
+                Expr::Value(Value::Number(s, _)) => match s.parse::<u32>() {
+                    Err(_) => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+                    Ok(limit) => {
+                        if limit > self.max_limit {
+                            return ControlFlow::Break(Error::UnsupportedLimit(
+                                limit,
+                                self.max_limit,
+                            ));
+                        }
+                    }
+                },
+                _ => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+            }
+        }
+
+        if let Some(Offset { value, .. }) = offset {
+            match value {
+                Expr::Value(Value::Number(s, _)) => match s.parse::<u32>() {
+                    Err(_) => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+                    Ok(offset) => {
+                        if offset > self.max_offset {
+                            return ControlFlow::Break(Error::UnsupportedOffset(
+                                offset,
+                                self.max_offset,
+                            ));
+                        }
+                    }
+                },
+                _ => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+            }
+        }
+        ControlFlow::Continue(())
+    }
 }
 
 impl VisitorMut for Validator<'_> {
@@ -73,9 +122,9 @@ impl VisitorMut for Validator<'_> {
         }
     }
 
-    fn pre_visit_query(&mut self, _query: &mut Query) -> ControlFlow<Self::Break> {
+    fn pre_visit_query(&mut self, query: &mut Query) -> ControlFlow<Self::Break> {
         // Add common table expressions to the set of known tables
-        if let Some(ref with) = _query.with {
+        if let Some(ref with) = query.with {
             self.ctes.extend(
                 with.cte_tables
                     .iter()
@@ -83,10 +132,17 @@ impl VisitorMut for Validator<'_> {
             );
         }
 
-        match *_query.body {
-            SetExpr::Update(_) | SetExpr::Insert(_) => ControlFlow::Break(Error::NotSelectQuery),
-            _ => ControlFlow::Continue(()),
+        match *query.body {
+            SetExpr::Select(_) | SetExpr::Query(_) => { /* permitted */ }
+            SetExpr::SetOperation { .. } => { /* permitted */ }
+            SetExpr::Table(_) => { /* permitted */ }
+            SetExpr::Values(_) => { /* permitted */ }
+            SetExpr::Insert(_) | SetExpr::Update(_) => {
+                return ControlFlow::Break(Error::NotSelectQuery)
+            }
         }
+
+        self.validate_limit_offset(query)
     }
 
     /// Invoked for any table function in the AST.
