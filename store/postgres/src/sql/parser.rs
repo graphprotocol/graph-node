@@ -1,7 +1,7 @@
 use super::{constants::SQL_DIALECT, validation::Validator};
 use crate::relational::Layout;
 use anyhow::{anyhow, Ok, Result};
-use graph::prelude::BlockNumber;
+use graph::{env::ENV_VARS, prelude::BlockNumber};
 use std::sync::Arc;
 
 pub struct Parser {
@@ -17,7 +17,10 @@ impl Parser {
     pub fn parse_and_validate(&self, sql: &str) -> Result<String> {
         let mut statements = sqlparser::parser::Parser::parse_sql(&SQL_DIALECT, sql)?;
 
-        let mut validator = Validator::new(&self.layout, self.block);
+        let max_offset = ENV_VARS.graphql.max_skip;
+        let max_limit = ENV_VARS.graphql.max_first;
+
+        let mut validator = Validator::new(&self.layout, self.block, max_limit, max_offset);
         validator.validate_statements(&mut statements)?;
 
         let statement = statements
