@@ -3,193 +3,113 @@
 [![Build Status](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml/badge.svg)](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
 
-[The Graph](https://thegraph.com/) is a protocol for building decentralized applications (dApps) quickly on Ethereum and IPFS using GraphQL.
+[The Graph](https://thegraph.com/) is a protocol that organizes and serves web3 data.
 
-Graph Node is an open source Rust implementation that event sources the Ethereum blockchain to deterministically update a data store that can be queried via the GraphQL endpoint.
+Graph Node extracts and transforms blockchain data and makes the transformed
+data available to decentralized applications (dApps) via GraphQL queries.
+You can find more details on how to write these transformations, called
+_subgraphs_, in the official [Graph
+documentation](https://thegraph.com/docs/en/subgraphs/quick-start/). If you
+are not familiar already with subgraphs, we highly recommend at least
+reading through that documentation first.
 
-For detailed instructions and more context, check out the [Getting Started Guide](docs/getting-started.md).
+The rest of this page is geared towards two audiences:
 
-## Quick Start
+1. Subgraph developers who want to run `graph-node` locally so they can test
+   their subgraphs during development
+2. Developers who want to contribute bug fixes and features to `graph-node`
+   itself
+
+## Running `graph-node` from Docker images
+
+For subgraph developers, it is highly recommended to use prebuilt Docker
+images to set up a local `graph-node` environment. Please read [these
+instructions](./docker/README.md) to learn how to do that.
+
+## Running `graph-node` from source
+
+This is usually only needed for developers who want to contribute to `graph-node`.
 
 ### Prerequisites
 
 To build and run this project you need to have the following installed on your system:
 
 - Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
-  - Note that `rustfmt`, which is part of the default Rust installation, is a build-time requirement.
-- PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
+  has general instructions. Run `rustup install stable` in this directory to make
+  sure all required components are installed. The `graph-node` code assumes that the
+  latest available `stable` compiler is used.
+- PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/) lists
+  downloads for almost all operating systems. For OSX users, we highly recommend
+  using [Postgres.app](https://postgresapp.com/). Linux users can simply use the
+  Postgres version that comes with their distribution.
 - IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
 - Protobuf Compiler - [Installing Protobuf](https://grpc.io/docs/protoc-installation/)
 
 For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 
-**Minimum Hardware Requirements:**
+### Create a database
 
-- To build graph-node with `cargo`, 8GB RAM are required.
+Once Postgres is running, you need to issue the following commands to create a database
+and set it up so that `graph-node` can use it. The name of the `SUPERUSER` depends
+on your installation, but is usually `postgres` or your username.
 
-### Docker
+```bash
+psql -U <SUPERUSER> <<EOF
+create user graph with password '<password>';
+create database "graph-node" with owner=graph template=template0 encoding='UTF8' locale='C';
+create extension pg_trgm;
+create extension btree_gist;
+create extension postgres_fdw;
+grant usage on foreign data wrapper postgres_fdw to graph;
+EOF
 
-The easiest way to run a Graph Node is to use the official Docker compose setup. This will start a Postgres database, IPFS node, and Graph Node.
-[Follow the instructions here](./docker/README.md).
-
-### Running a Local Graph Node
-
-This is a quick example to show a working Graph Node. It is a [subgraph for Gravatars](https://github.com/graphprotocol/example-subgraph).
-
-1. Install IPFS and run `ipfs init` followed by `ipfs daemon`.
-2. Install PostgreSQL and run `initdb -D .postgres -E UTF8 --locale=C` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
-3. If using Ubuntu, you may need to install additional packages:
-   - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
-4. In the terminal, clone https://github.com/graphprotocol/example-subgraph, and install dependencies and generate types for contract ABIs:
-
-```
-yarn
-yarn codegen
+# Save this in ~/.bashrc or similar
+export POSTGRES_URL=postgresql://graph:<password>@localhost:5432/graph-node
 ```
 
-5. In the terminal, clone https://github.com/graphprotocol/graph-node, and run `cargo build`.
+With this setup, the URL that you will use to have `graph-node` connect to the
+database will be `postgresql://graph:<password>@localhost:5432/graph-node`. If
+you ever need to manually inspect the contents of your database, you can do
+that by running `psql $POSTGRES_URL`.
 
-Once you have all the dependencies set up, you can run the following:
+### Build `graph-node`
 
-```
+To build `graph-node`, clone this repository and run this command at the
+root of the repository:
+
+```bash
+export GRAPH_LOG=debug
 cargo run -p graph-node --release -- \
-  --postgres-url postgresql://USERNAME[:PASSWORD]@localhost:5432/graph-node \
+  --postgres-url $POSTGRES_URL \
   --ethereum-rpc NETWORK_NAME:[CAPABILITIES]:URL \
   --ipfs 127.0.0.1:5001
 ```
 
-Try your OS username as `USERNAME` and `PASSWORD`. For details on setting
-the connection string, check the [Postgres
-documentation](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
-`graph-node` uses a few Postgres extensions. If the Postgres user with which
-you run `graph-node` is a superuser, `graph-node` will enable these
-extensions when it initializes the database. If the Postgres user is not a
-superuser, you will need to create the extensions manually since only
-superusers are allowed to do that. To create them you need to connect as a
-superuser, which in many installations is the `postgres` user:
+The argument for `--ethereum-rpc` contains a network name (e.g. `mainnet`) and
+a list of provider capabilities (e.g. `archive,traces`). The URL is the address
+of the Ethereum node you want to connect to, usually a `https` URL, so that the
+entire argument might be `mainnet:archive,traces:https://provider.io/some/path`.
 
-```bash
-    psql -q -X -U <SUPERUSER> graph-node <<EOF
-create extension pg_trgm;
-create extension pg_stat_statements;
-create extension btree_gist;
-create extension postgres_fdw;
-grant usage on foreign data wrapper postgres_fdw to <USERNAME>;
-EOF
+When `graph-node` starts, it prints the various ports that it is listening on.
+The most important of these is the GraphQL HTTP server, which is by default
+is at `http://localhost:8000`. You can use routes like `/subgraphs/name/<subgraph-name>`
+and `/subgraphs/id/<IPFS hash>` to query subgraphs once you have deployed them.
 
-```
+### Deploying a Subgraph
 
-This will also spin up a GraphiQL interface at `http://127.0.0.1:8000/`.
-
-6.  With this Gravatar example, to get the subgraph working locally run:
-
-```
-yarn create-local
-```
-
-Then you can deploy the subgraph:
-
-```
-yarn deploy-local
-```
-
-This will build and deploy the subgraph to the Graph Node. It should start indexing the subgraph immediately.
-
-### Command-Line Interface
-
-```
-USAGE:
-    graph-node [FLAGS] [OPTIONS] --ethereum-ipc <NETWORK_NAME:FILE> --ethereum-rpc <NETWORK_NAME:URL> --ethereum-ws <NETWORK_NAME:URL> --ipfs <HOST:PORT> --postgres-url <URL>
-
-FLAGS:
-        --debug      Enable debug logging
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-
-OPTIONS:
-        --admin-port <PORT>                           Port for the JSON-RPC admin server [default: 8020]
-        --elasticsearch-password <PASSWORD>
-            Password to use for Elasticsearch logging [env: ELASTICSEARCH_PASSWORD]
-
-        --elasticsearch-url <URL>
-            Elasticsearch service to write subgraph logs to [env: ELASTICSEARCH_URL=]
-
-        --elasticsearch-user <USER>                   User to use for Elasticsearch logging [env: ELASTICSEARCH_USER=]
-        --ethereum-ipc <NETWORK_NAME:[CAPABILITIES]:FILE>
-            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg full,archive), and an Ethereum IPC pipe, separated by a ':'
-
-        --ethereum-polling-interval <MILLISECONDS>
-            How often to poll the Ethereum node for new blocks [env: ETHEREUM_POLLING_INTERVAL=]  [default: 500]
-
-        --ethereum-rpc <NETWORK_NAME:[CAPABILITIES]:URL>
-            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'
-
-        --ethereum-ws <NETWORK_NAME:[CAPABILITIES]:URL>
-            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg `full,archive), and an Ethereum WebSocket URL, separated by a ':'
-
-        --node-id <NODE_ID>
-            A unique identifier for this node instance. Should have the same value between consecutive node restarts [default: default]
-
-        --http-port <PORT>                            Port for the GraphQL HTTP server [default: 8000]
-        --ipfs <HOST:PORT>                            HTTP address of an IPFS node
-        --postgres-url <URL>                          Location of the Postgres database used for storing entities
-        --subgraph <[NAME:]IPFS_HASH>                 Name and IPFS hash of the subgraph manifest
-        --ws-port <PORT>                              Port for the GraphQL WebSocket server [default: 8001]
-```
+Instructions for how to deploy subgraphs can be found [here](https://thegraph.com/docs/en/subgraphs/developing/introduction/) After setting up `graph-cli` as described there, you can deploy a subgraph to your local Graph Node instance.
 
 ### Advanced Configuration
 
 The command line arguments generally are all that is needed to run a
 `graph-node` instance. For advanced uses, various aspects of `graph-node`
 can further be configured through [environment
-variables](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md). Very
-large `graph-node` instances can also split the work of querying and
-indexing across [multiple databases](./docs/config.md).
+variables](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md).
 
-## Project Layout
-
-- `node` — A local Graph Node.
-- `graph` — A library providing traits for system components and types for
-  common data.
-- `core` — A library providing implementations for core components, used by all
-  nodes.
-- `chain/ethereum` — A library with components for obtaining data from
-  Ethereum.
-- `graphql` — A GraphQL implementation with API schema generation,
-  introspection, and more.
-- `mock` — A library providing mock implementations for all system components.
-- `runtime/wasm` — A library for running WASM data-extraction scripts.
-- `server/http` — A library providing a GraphQL server over HTTP.
-- `store/postgres` — A Postgres store with a GraphQL-friendly interface
-  and audit logs.
-
-## Roadmap
-
-🔨 = In Progress
-
-🛠 = Feature complete. Additional testing required.
-
-✅ = Feature complete
-
-
-| Feature |  Status |
-| ------- |  :------: |
-| **Ethereum** |    |
-| Indexing smart contract events | ✅ |
-| Handle chain reorganizations | ✅ |
-| **Mappings** |    |
-| WASM-based mappings| ✅ |
-| TypeScript-to-WASM toolchain | ✅ |
-| Autogenerated TypeScript types | ✅ |
-| **GraphQL** |     |
-| Query entities by ID | ✅ |
-| Query entity collections | ✅ |
-| Pagination | ✅ |
-| Filtering | ✅ |
-| Block-based Filtering | ✅ |
-| Entity relationships | ✅ |
-| Subscriptions | ✅ |
-
+Very large `graph-node` instances can also be configured using a
+[configuration file](./docs/config.md) That is usually only necessary when
+the `graph-node` needs to connect to multiple chains or if the work of
+indexing and querying needs to be split across [multiple databases](./docs/config.md).
 
 ## Contributing
 

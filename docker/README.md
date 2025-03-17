@@ -1,34 +1,9 @@
-# Graph Node Docker Image
+# Running prebuilt `graph-node` images
 
-Preconfigured Docker image for running a Graph Node.
-
-## Usage
-
-```sh
-docker run -it \
-  -e postgres_host=<HOST> \
-  -e postgres_port=<PORT> \
-  -e postgres_user=<USER> \
-  -e postgres_pass=<PASSWORD> \
-  -e postgres_db=<DBNAME> \
-  -e ipfs=<HOST>:<PORT> \
-  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL> \
-  graphprotocol/graph-node:latest
-```
-
-### Example usage
-
-```sh
-docker run -it \
-  -e postgres_host=host.docker.internal \
-  -e postgres_port=5432 \
-  -e postgres_user=graph-node \
-  -e postgres_pass=oh-hello \
-  -e postgres_db=graph-node \
-  -e ipfs=host.docker.internal:5001 \
-  -e ethereum=mainnet:http://localhost:8545/ \
-  graphprotocol/graph-node:latest
-```
+You can run the `graph-node` docker image either in a [complete
+setup](#docker-compose) controlled by Docker Compose, or, if you already
+have an IPFS and Postgres server, [by
+itself](#running-with-existing-ipfs-and-postgres).
 
 ## Docker Compose
 
@@ -76,4 +51,18 @@ docker rmi graphprotocol/graph-node:latest
 
 # Tag the newly created image
 docker tag graph-node graphprotocol/graph-node:latest
+```
+
+## Running with existing IPFS and Postgres
+
+```sh
+docker run -it \
+  -e postgres_host=<HOST> \
+  -e postgres_port=<PORT> \
+  -e postgres_user=<USER> \
+  -e postgres_pass=<PASSWORD> \
+  -e postgres_db=<DBNAME> \
+  -e ipfs=<HOST>:<PORT> \
+  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL> \
+  graphprotocol/graph-node:latest
 ```

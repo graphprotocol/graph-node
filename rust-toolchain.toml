@@ -1,3 +1,4 @@
 [toolchain]
 channel = "stable"
 profile = "default"
+components = [ "rustfmt" ]
