@@ -38,7 +38,7 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::{q, EntityChange, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::prelude::{q, EntityChange, EntityQuery, StopwatchMetrics, StoreEvent, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };

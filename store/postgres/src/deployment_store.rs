@@ -1322,9 +1322,9 @@ impl DeploymentStore {
                 let layout = self.layout(conn, site.clone())?;
 
                 let event = if truncate {
-                    let event = layout.truncate_tables(conn)?;
+                    layout.truncate_tables(conn)?;
                     deployment::clear_entity_count(conn, site.as_ref())?;
-                    event
+                    StoreEvent::new(vec![])
                 } else {
                     let (event, count) = layout.revert_block(conn, block)?;
                     deployment::update_entity_count(conn, site.as_ref(), count)?;
