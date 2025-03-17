@@ -699,12 +699,6 @@ impl SubgraphStoreInner {
             )));
         }
         let deployment = src_store.load_deployment(src.clone())?;
-        if deployment.failed {
-            return Err(StoreError::Unknown(anyhow!(
-                "can not copy deployment {} because it has failed",
-                src_loc
-            )));
-        }
         let index_def = src_store.load_indexes(src.clone())?;
 
         // Transmogrify the deployment into a new one
