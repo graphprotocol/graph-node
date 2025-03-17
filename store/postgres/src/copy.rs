@@ -94,6 +94,20 @@ table! {
     }
 }
 
+/// Return `true` if the site is the source of a copy operation. The copy
+/// operation might be just queued or in progress already
+pub fn is_source(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
+    use active_copies as ac;
+
+    select(diesel::dsl::exists(
+        ac::table
+            .filter(ac::src.eq(site.id))
+            .filter(ac::cancelled_at.is_null()),
+    ))
+    .get_result::<bool>(conn)
+    .map_err(StoreError::from)
+}
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Status {
     Finished,

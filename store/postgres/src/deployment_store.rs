@@ -55,7 +55,7 @@ use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{advisory_lock, catalog, retry};
+use crate::{advisory_lock, catalog, copy, retry};
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
@@ -1234,6 +1234,14 @@ impl DeploymentStore {
             site: Arc<Site>,
             req: PruneRequest,
         ) -> Result<(), StoreError> {
+            let mut conn = store.get_conn()?;
+            if copy::is_source(&mut conn, &site)? {
+                debug!(
+                    logger,
+                    "Skipping pruning since this deployment is being copied"
+                );
+                return Ok(());
+            }
             let logger2 = logger.cheap_clone();
             retry::forever_async(&logger2, "prune", move || {
                 let store = store.cheap_clone();
