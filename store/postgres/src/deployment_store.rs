@@ -1234,13 +1234,15 @@ impl DeploymentStore {
             site: Arc<Site>,
             req: PruneRequest,
         ) -> Result<(), StoreError> {
-            let mut conn = store.get_conn()?;
-            if copy::is_source(&mut conn, &site)? {
-                debug!(
-                    logger,
-                    "Skipping pruning since this deployment is being copied"
-                );
-                return Ok(());
+            {
+                let mut conn = store.get_conn()?;
+                if copy::is_source(&mut conn, &site)? {
+                    debug!(
+                        logger,
+                        "Skipping pruning since this deployment is being copied"
+                    );
+                    return Ok(());
+                }
             }
             let logger2 = logger.cheap_clone();
             retry::forever_async(&logger2, "prune", move || {
