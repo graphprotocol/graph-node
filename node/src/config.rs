@@ -1216,7 +1216,7 @@ mod tests {
     use crate::config::{default_polling_interval, ChainSection, Web3Rule};
 
     use super::{
-        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
+        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
@@ -1936,5 +1936,43 @@ mod tests {
             different,
             actual.chains.get("mainnet").unwrap().polling_interval
         );
+    }
+
+    #[test]
+    fn pool_sizes() {
+        let index = NodeId::new("index_node_1").unwrap();
+        let query = NodeId::new("query_node_1").unwrap();
+        let other = NodeId::new("other_node_1").unwrap();
+
+        let shard = {
+            let mut shard = toml::from_str::<Shard>(
+                r#"
+            connection = "postgresql://postgres:postgres@postgres/graph"
+pool_size = [
+  { node = "index_node_.*", size = 20 },
+  { node = "query_node_.*", size = 40 }]
+fdw_pool_size = [
+  { node = "index_node_.*", size = 10 },
+  { node = ".*", size = 5 },
+]"#,
+            )
+            .unwrap();
+
+            shard.validate("index_node_1").unwrap();
+            shard
+        };
+
+        assert_eq!(
+            shard.connection,
+            "postgresql://postgres:postgres@postgres/graph"
+        );
+
+        assert_eq!(shard.pool_size.size_for(&index, "ashard").unwrap(), 20);
+        assert_eq!(shard.pool_size.size_for(&query, "ashard").unwrap(), 40);
+        assert!(shard.pool_size.size_for(&other, "ashard").is_err());
+
+        assert_eq!(shard.fdw_pool_size.size_for(&index, "ashard").unwrap(), 10);
+        assert_eq!(shard.fdw_pool_size.size_for(&query, "ashard").unwrap(), 5);
+        assert_eq!(shard.fdw_pool_size.size_for(&other, "ashard").unwrap(), 5);
     }
 }
