@@ -1803,7 +1803,7 @@ dependencies = [
 
 [[package]]
 name = "graph"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -1885,7 +1885,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-arweave"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "base64-url",
  "diesel",
@@ -1901,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-common"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "heck 0.5.0",
@@ -1911,10 +1911,10 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-ethereum"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.13.1",
  "envconfig",
  "graph",
  "graph-runtime-derive",
@@ -1932,7 +1932,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-near"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "diesel",
@@ -1948,7 +1948,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-substreams"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1966,7 +1966,7 @@ dependencies = [
 
 [[package]]
 name = "graph-core"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1987,7 +1987,7 @@ dependencies = [
 
 [[package]]
 name = "graph-graphql"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -2002,7 +2002,7 @@ dependencies = [
 
 [[package]]
 name = "graph-node"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2035,7 +2035,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-derive"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-test"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "graph",
  "graph-chain-ethereum",
@@ -2059,7 +2059,7 @@ dependencies = [
 
 [[package]]
 name = "graph-runtime-wasm"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-http"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "graph",
  "graph-core",
@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-index-node"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "blake3 1.6.1",
  "git-testament",
@@ -2102,7 +2102,7 @@ dependencies = [
 
 [[package]]
 name = "graph-server-json-rpc"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "graph",
  "jsonrpsee",
@@ -2111,14 +2111,14 @@ dependencies = [
 
 [[package]]
 name = "graph-server-metrics"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "graph",
 ]
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "Inflector",
  "anyhow",
@@ -2154,7 +2154,7 @@ dependencies = [
 
 [[package]]
 name = "graph-tests"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "assert-json-diff",
@@ -2178,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "graph_derive"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "heck 0.5.0",
  "proc-macro-utils",
@@ -2189,7 +2189,7 @@ dependencies = [
 
 [[package]]
 name = "graphman"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "diesel",
@@ -2203,7 +2203,7 @@ dependencies = [
 
 [[package]]
 name = "graphman-server"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -2228,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "graphman-store"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4832,7 +4832,7 @@ dependencies = [
 
 [[package]]
 name = "substreams-head-tracker"
-version = "0.36.0"
+version = "0.37.1"
 
 [[package]]
 name = "substreams-macro"
@@ -4862,7 +4862,7 @@ dependencies = [
 
 [[package]]
 name = "substreams-trigger-filter"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "hex",
  "prost",
@@ -4996,7 +4996,7 @@ dependencies = [
 
 [[package]]
 name = "test-store"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "diesel",
  "graph",
@@ -5543,7 +5543,7 @@ dependencies = [
 
 [[package]]
 name = "trigger-filters"
-version = "0.36.0"
+version = "0.37.1"
 dependencies = [
  "anyhow",
 ]
