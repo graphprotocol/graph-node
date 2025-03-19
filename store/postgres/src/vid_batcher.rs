@@ -136,12 +136,26 @@ impl VidBatcher {
     ) -> Result<Self, StoreError> {
         let start = range.min;
 
-        let bounds = bounds
-            .into_iter()
-            .filter(|bound| range.min < *bound && range.max > *bound)
-            .chain(vec![range.min, range.max].into_iter())
-            .collect::<Vec<_>>();
-
+        let bounds = {
+            // Keep only histogram bounds that are relevent for the range
+            let mut bounds = bounds
+                .into_iter()
+                .filter(|bound| range.min <= *bound && range.max >= *bound)
+                .collect::<Vec<_>>();
+            // The first and last entry in `bounds` are Postgres' estimates
+            // of the min and max `vid` values in the table. We use the
+            // actual min and max `vid` values from the `vid_range` instead
+            let len = bounds.len();
+            if len > 1 {
+                bounds[0] = range.min;
+                bounds[len - 1] = range.max;
+            } else {
+                // If Postgres doesn't have a histogram, just use one bucket
+                // from min to max
+                bounds = vec![range.min, range.max];
+            }
+            bounds
+        };
         let mut ogive = if range.is_empty() {
             None
         } else {
@@ -363,6 +377,17 @@ mod tests {
         }
     }
 
+    impl std::fmt::Debug for Batcher {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("Batcher")
+                .field("start", &self.vid.start)
+                .field("end", &self.vid.end)
+                .field("size", &self.vid.batch_size.size)
+                .field("duration", &self.vid.batch_size.target.as_secs())
+                .finish()
+        }
+    }
+
     #[test]
     fn simple() {
         let bounds = vec![10, 20, 30, 40, 49];
@@ -413,5 +438,24 @@ mod tests {
 
         batcher.at(360, 359, 80);
         batcher.step(360, 359, S010);
+    }
+
+    #[test]
+    fn vid_batcher_adjusts_bounds() {
+        // The first and last entry in `bounds` are estimats of the min and
+        // max that are slightly off compared to the actual min and max we
+        // put in `vid_range`. Check that `VidBatcher` uses the actual min
+        // and max from `vid_range`.
+        let bounds = vec![639, 20_000, 40_000, 60_000, 80_000, 90_000];
+        let vid_range = VidRange::new(1, 100_000);
+        let batch_size = AdaptiveBatchSize {
+            size: 1000,
+            target: S100,
+        };
+
+        let vid_batcher = VidBatcher::new(bounds, vid_range, batch_size).unwrap();
+        let ogive = vid_batcher.ogive.as_ref().unwrap();
+        assert_eq!(1, ogive.start());
+        assert_eq!(100_000, ogive.end());
     }
 }
