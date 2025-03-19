@@ -112,20 +112,6 @@ pub(crate) struct VidBatcher {
 }
 
 impl VidBatcher {
-    fn histogram_bounds(
-        conn: &mut PgConnection,
-        nsp: &Namespace,
-        table: &Table,
-        range: VidRange,
-    ) -> Result<Vec<i64>, StoreError> {
-        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN)?
-            .into_iter()
-            .filter(|bound| range.min < *bound && range.max > *bound)
-            .chain(vec![range.min, range.max].into_iter())
-            .collect::<Vec<_>>();
-        Ok(bounds)
-    }
-
     /// Initialize a batcher for batching through entries in `table` with
     /// `vid` in the given `vid_range`
     ///
@@ -138,7 +124,7 @@ impl VidBatcher {
         table: &Table,
         vid_range: VidRange,
     ) -> Result<Self, StoreError> {
-        let bounds = Self::histogram_bounds(conn, nsp, table, vid_range)?;
+        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN)?;
         let batch_size = AdaptiveBatchSize::new(table);
         Self::new(bounds, vid_range, batch_size)
     }
@@ -149,6 +135,12 @@ impl VidBatcher {
         batch_size: AdaptiveBatchSize,
     ) -> Result<Self, StoreError> {
         let start = range.min;
+
+        let bounds = bounds
+            .into_iter()
+            .filter(|bound| range.min < *bound && range.max > *bound)
+            .chain(vec![range.min, range.max].into_iter())
+            .collect::<Vec<_>>();
 
         let mut ogive = if range.is_empty() {
             None
