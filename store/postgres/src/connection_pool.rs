@@ -37,6 +37,11 @@ use crate::primary::{self, NAMESPACE_PUBLIC};
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
+/// Tables that we map from the primary into `primary_public` in each shard
+const PRIMARY_TABLES: [&str; 3] = ["deployment_schemas", "chains", "active_copies"];
+
+/// Tables that we map from each shard into each other shard into the
+/// `shard_<name>_subgraphs` namespace
 const SHARDED_TABLES: [(&str, &[&str]); 2] = [
     ("public", &["ethereum_networks"]),
     (
@@ -209,7 +214,7 @@ impl ForeignServer {
         catalog::recreate_schema(conn, Self::PRIMARY_PUBLIC)?;
 
         let mut query = String::new();
-        for table_name in ["deployment_schemas", "chains", "active_copies"] {
+        for table_name in PRIMARY_TABLES {
             let create_stmt = if shard == &*PRIMARY_SHARD {
                 format!(
                     "create view {nsp}.{table_name} as select * from public.{table_name};",
@@ -245,6 +250,33 @@ impl ForeignServer {
             }
         }
         Ok(conn.batch_execute(&query)?)
+    }
+
+    fn needs_remap(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
+        fn different(mut existing: Vec<String>, mut needed: Vec<String>) -> bool {
+            existing.sort();
+            needed.sort();
+            existing != needed
+        }
+
+        if &self.shard == &*PRIMARY_SHARD {
+            let existing = catalog::foreign_tables(conn, Self::PRIMARY_PUBLIC)?;
+            let needed = PRIMARY_TABLES
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>();
+            if different(existing, needed) {
+                return Ok(true);
+            }
+        }
+
+        let existing = catalog::foreign_tables(conn, &Self::metadata_schema(&self.shard))?;
+        let needed = SHARDED_TABLES
+            .iter()
+            .flat_map(|(_, tables)| *tables)
+            .map(|table| table.to_string())
+            .collect::<Vec<_>>();
+        Ok(different(existing, needed))
     }
 }
 
@@ -1037,16 +1069,14 @@ impl PoolInner {
         let result = pool
             .configure_fdw(coord.servers.as_ref())
             .and_then(|()| pool.drop_cross_shard_views())
-            .and_then(|()| migrate_schema(&pool.logger, &mut conn))
-            .and_then(|count| {
-                pool.create_cross_shard_views(coord.servers.as_ref())
-                    .map(|()| count)
-            });
+            .and_then(|()| migrate_schema(&pool.logger, &mut conn));
         debug!(&pool.logger, "Release migration lock");
         advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
         });
-        let result = result.and_then(|count| coord.propagate(&pool, count));
+        let result = result
+            .and_then(|count| coord.propagate(&pool, count))
+            .and_then(|()| pool.create_cross_shard_views(coord.servers.as_ref()));
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
 
         // Locale check
@@ -1178,9 +1208,9 @@ impl PoolInner {
         .await
     }
 
-    // The foreign server `server` had schema changes, and we therefore need
-    // to remap anything that we are importing via fdw to make sure we are
-    // using this updated schema
+    /// The foreign server `server` had schema changes, and we therefore
+    /// need to remap anything that we are importing via fdw to make sure we
+    /// are using this updated schema
     pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
@@ -1198,6 +1228,15 @@ impl PoolInner {
         }
         Ok(())
     }
+
+    pub fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
+        if &server.shard == &self.shard {
+            return Ok(false);
+        }
+
+        let mut conn = self.get()?;
+        server.needs_remap(&mut conn)
+    }
 }
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
@@ -1210,10 +1249,6 @@ struct MigrationCount {
 impl MigrationCount {
     fn had_migrations(&self) -> bool {
         self.old != self.new
-    }
-
-    fn is_new(&self) -> bool {
-        self.old == 0
     }
 }
 
@@ -1334,13 +1369,22 @@ impl PoolCoordinator {
     /// code that does _not_ hold the migration lock as it will otherwise
     /// deadlock
     fn propagate(&self, pool: &PoolInner, count: MigrationCount) -> Result<(), StoreError> {
-        // pool is a new shard, map all other shards into it
-        if count.is_new() {
-            for server in self.servers.iter() {
+        // We need to remap all these servers into `pool` if the list of
+        // tables that are mapped have changed from the code of the previous
+        // version. Since dropping and recreating the foreign table
+        // definitions can slow the startup of other nodes down because of
+        // locking, we try to only do this when it is actually needed
+        for server in self.servers.iter() {
+            if pool.needs_remap(server)? {
                 pool.remap(server)?;
             }
         }
-        // pool had schema changes, refresh the import from pool into all other shards
+
+        // pool had schema changes, refresh the import from pool into all
+        // other shards. This makes sure that schema changes to
+        // already-mapped tables are propagated to all other shards. Since
+        // we run `propagate` after migrations have been applied to `pool`,
+        // we can be sure that these mappings use the correct schema
         if count.had_migrations() {
             let server = self.server(&pool.shard)?;
             for pool in self.pools.lock().unwrap().values() {
