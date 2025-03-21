@@ -12,7 +12,7 @@ use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::env::EnvVars;
+use graph::env::{EnvVars, TEST_WITH_NO_REORG};
 use graph::ipfs;
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
@@ -109,6 +109,8 @@ fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
+    *TEST_WITH_NO_REORG.lock().unwrap() = true;
+
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("data_source_revert", "data-source-revert").await;
 
