@@ -185,7 +185,7 @@ impl ForeignServer {
         alter server \"{name}\"
               options (set host '{remote_host}', \
                        {set_port} port '{remote_port}', \
-                       set dbname '{remote_db}, \
+                       set dbname '{remote_db}', \
                        {set_fetch_size} fetch_size '{fetch_size}');
         alter user mapping
               for current_user server \"{name}\"
