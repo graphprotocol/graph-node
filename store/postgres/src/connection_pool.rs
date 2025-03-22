@@ -52,7 +52,6 @@ const SHARDED_TABLES: [(&str, &[&str]); 2] = [
             "dynamic_ethereum_contract_data_source",
             "subgraph_deployment",
             "subgraph_error",
-            "subgraph_features",
             "subgraph_manifest",
             "table_stats",
         ],
