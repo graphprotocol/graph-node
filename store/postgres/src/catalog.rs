@@ -398,6 +398,16 @@ pub fn drop_foreign_schema(conn: &mut PgConnection, src: &Site) -> Result<(), St
     Ok(())
 }
 
+pub fn foreign_tables(conn: &mut PgConnection, nsp: &str) -> Result<Vec<String>, StoreError> {
+    use foreign_tables as ft;
+
+    ft::table
+        .filter(ft::foreign_table_schema.eq(nsp))
+        .select(ft::foreign_table_name)
+        .get_results::<String>(conn)
+        .map_err(StoreError::from)
+}
+
 /// Drop the schema `nsp` and all its contents if it exists, and create it
 /// again so that `nsp` is an empty schema
 pub fn recreate_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
