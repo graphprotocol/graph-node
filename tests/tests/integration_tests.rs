@@ -603,6 +603,19 @@ async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn load_save(ctx: TestContext) -> anyhow::Result<()> {
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+
+    let _contract = ctx
+        .contracts
+        .iter()
+        .find(|x| x.name == "SimpleContract")
+        .unwrap();
+
+    Ok(())
+}
+
 async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
@@ -980,6 +993,7 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("block-handlers", test_block_handlers),
         TestCase::new("timestamp", test_timestamp),
         TestCase::new("ethereum-api-tests", test_eth_api),
+        TestCase::new("load-save", load_save),
         TestCase::new("topic-filter", test_topic_filters),
         TestCase::new_with_source_subgraph(
             "subgraph-data-sources",
