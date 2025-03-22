@@ -1553,6 +1553,12 @@ impl DeploymentStore {
 
                 catalog::copy_account_like(conn, &src.site, &dst.site)?;
 
+                // Analyze all tables for this deployment
+                info!(logger, "Analyzing all {} tables", dst.tables.len());
+                for entity_name in dst.tables.keys() {
+                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)?;
+                }
+
                 // Rewind the subgraph so that entity versions that are
                 // clamped in the future (beyond `block`) become valid for
                 // all blocks after `block`. `revert_block` gets rid of
@@ -1563,6 +1569,7 @@ impl DeploymentStore {
                     .number
                     .checked_add(1)
                     .expect("block numbers fit into an i32");
+                info!(logger, "Rewinding to block {}", block.number);
                 let count = dst.revert_block(conn, block_to_revert)?;
                 deployment::update_entity_count(conn, &dst.site, count)?;
 
@@ -1574,11 +1581,6 @@ impl DeploymentStore {
                     &dst.site,
                     src_deployment.manifest.history_blocks,
                 )?;
-
-                // Analyze all tables for this deployment
-                for entity_name in dst.tables.keys() {
-                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)?;
-                }
 
                 // The `earliest_block` for `src` might have changed while
                 // we did the copy if `src` was pruned while we copied;
