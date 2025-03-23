@@ -2,7 +2,7 @@ use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQuery
 use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use graph::{
-    components::store::{BlockStore as _, DeploymentId},
+    components::store::{BlockStore as _, DeploymentId, DeploymentLocator},
     data::query::QueryTarget,
     prelude::{
         anyhow::{anyhow, bail, Error},
@@ -84,10 +84,9 @@ impl CopyState {
     }
 }
 
-pub async fn create(
+async fn create_inner(
     store: Arc<Store>,
-    primary: ConnectionPool,
-    src: DeploymentSearch,
+    src: &DeploymentLocator,
     shard: String,
     shards: Vec<String>,
     node: String,
@@ -104,7 +103,6 @@ pub async fn create(
     };
 
     let subgraph_store = store.subgraph_store();
-    let src = src.locate_unique(&primary)?;
     let query_store = store
         .query_store(QueryTarget::Deployment(
             src.hash.clone(),
@@ -152,6 +150,32 @@ pub async fn create(
 
     println!("created deployment {} as copy of {}", dst, src);
     Ok(())
+}
+
+pub async fn create(
+    store: Arc<Store>,
+    primary: ConnectionPool,
+    src: DeploymentSearch,
+    shard: String,
+    shards: Vec<String>,
+    node: String,
+    block_offset: u32,
+    activate: bool,
+    replace: bool,
+) -> Result<(), Error> {
+    let src = src.locate_unique(&primary)?;
+    create_inner(
+        store,
+        &src,
+        shard,
+        shards,
+        node,
+        block_offset,
+        activate,
+        replace,
+    )
+    .await
+    .map_err(|e| anyhow!("cannot copy {src}: {e}"))
 }
 
 pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
