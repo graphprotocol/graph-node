@@ -255,12 +255,10 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
 }
 
 pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> Result<(), Error> {
+    const CHECK: &str = "✓";
+
     use catalog::active_copies as ac;
     use catalog::deployment_schemas as ds;
-
-    fn done(ts: &Option<UtcDateTime>) -> String {
-        ts.map(|_| "✓").unwrap_or(".").to_string()
-    }
 
     fn duration(start: &UtcDateTime, end: &Option<UtcDateTime>) -> String {
         let start = *start;
@@ -314,7 +312,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     };
 
     let progress = match &state.finished_at {
-        Some(_) => done(&state.finished_at),
+        Some(_) => CHECK.to_string(),
         None => {
             let target: i64 = tables.iter().map(|table| table.target_vid).sum();
             let next: i64 = tables.iter().map(|table| table.next_vid).sum();
@@ -363,13 +361,15 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     );
     println!("{:-<74}", "-");
     for table in tables {
-        let status = if table.next_vid > 0 && table.next_vid < table.target_vid {
-            ">".to_string()
-        } else if table.target_vid < 0 {
+        let status = match &table.finished_at {
+            // table finished
+            Some(_) => CHECK,
             // empty source table
-            "✓".to_string()
-        } else {
-            done(&table.finished_at)
+            None if table.target_vid < 0 => CHECK,
+            // copying in progress
+            None if table.duration_ms > 0 => ">",
+            // not started
+            None => ".",
         };
         println!(
             "{} {:<28} | {:>8} | {:>8} | {:>8} | {:>8}",
