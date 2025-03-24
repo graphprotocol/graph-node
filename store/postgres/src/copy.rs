@@ -730,7 +730,7 @@ impl Connection {
                 &table.src.name.to_string(),
                 &table.dst,
                 true,
-                true,
+                false,
             )?;
 
             for (_, sql) in arr {
@@ -748,7 +748,11 @@ impl Connection {
                 .iter()
                 .map(|c| c.name.to_string())
                 .collect_vec();
-            for sql in table.dst.create_postponed_indexes(orig_colums).into_iter() {
+            for sql in table
+                .dst
+                .create_postponed_indexes(orig_colums, false)
+                .into_iter()
+            {
                 let query = sql_query(sql);
                 query.execute(conn)?;
             }

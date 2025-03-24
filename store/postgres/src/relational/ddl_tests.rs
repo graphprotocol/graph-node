@@ -158,7 +158,7 @@ fn generate_postponed_indexes() {
     let layout = test_layout(THING_GQL);
     let table = layout.table(&SqlName::from("Scalar")).unwrap();
     let skip_colums = vec!["id".to_string()];
-    let query_vec = table.create_postponed_indexes(skip_colums);
+    let query_vec = table.create_postponed_indexes(skip_colums, true);
     assert!(query_vec.len() == 7);
     let queries = query_vec.join(" ");
     check_eqv(THING_POSTPONED_INDEXES, &queries)
