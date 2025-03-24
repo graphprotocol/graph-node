@@ -63,7 +63,7 @@ lazy_static = "1.5.0"
 prost = "0.13"
 prost-types = "0.13"
 regex = "1.5.4"
-reqwest = "0.12.5"
+reqwest = "0.12.15"
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
