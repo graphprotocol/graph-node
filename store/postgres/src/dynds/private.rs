@@ -1,4 +1,4 @@
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use diesel::{
     pg::sql_types,
@@ -252,32 +252,11 @@ impl DataSourcesTable {
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
 
+        let manifest_map =
+            ManifestIdxMap::new(src_manifest_idx_and_name, dst_manifest_idx_and_name);
         let mut count = 0;
-        for (block_range, src_manifest_idx, param, context, causality_region, done_at) in src_tuples
-        {
-            let name = &src_manifest_idx_and_name
-                .iter()
-                .find(|(idx, _)| idx == &src_manifest_idx)
-                .with_context(|| {
-                    anyhow!(
-                        "the source {} does not have a template with index {}",
-                        self.namespace,
-                        src_manifest_idx
-                    )
-                })?
-                .1;
-            let dst_manifest_idx = dst_manifest_idx_and_name
-                .iter()
-                .find(|(_, n)| n == name)
-                .with_context(|| {
-                    anyhow!(
-                        "the destination {} is missing a template with name {}. The source {} created one at block {:?}",
-                        dst.namespace,
-                        name, self.namespace, block_range.0
-                    )
-                })?
-                .0;
-
+        for (block_range, src_idx, param, context, causality_region, done_at) in src_tuples {
+            let dst_idx = manifest_map.dst_idx(src_idx)?;
             let query = format!(
                 "\
              insert into {dst}(block_range, manifest_idx, param, context, causality_region, done_at)
@@ -293,7 +272,7 @@ impl DataSourcesTable {
             count += sql_query(query)
                 .bind::<Integer, _>(target_block)
                 .bind::<sql_types::Range<Integer>, _>(block_range)
-                .bind::<Integer, _>(dst_manifest_idx)
+                .bind::<Integer, _>(dst_idx)
                 .bind::<Nullable<Binary>, _>(param)
                 .bind::<Nullable<Jsonb>, _>(context)
                 .bind::<Integer, _>(causality_region)
@@ -359,5 +338,45 @@ impl DataSourcesTable {
             .order_by((&self.causality_region).desc())
             .first::<CausalityRegion>(conn)
             .optional()?)
+    }
+}
+
+/// Map src manifest indexes to dst manifest indexes. If the
+/// destination is missing an entry, put `None` as the value for the
+/// source index
+struct ManifestIdxMap<'a> {
+    map: HashMap<i32, (Option<i32>, &'a String)>,
+}
+
+impl<'a> ManifestIdxMap<'a> {
+    fn new(src: &'a [(i32, String)], dst: &'a [(i32, String)]) -> Self {
+        let map = src
+            .iter()
+            .map(|(src_idx, src_name)| {
+                (
+                    *src_idx,
+                    (
+                        dst.iter()
+                            .find(|(_, dst_name)| src_name == dst_name)
+                            .map(|(dst_idx, _)| *dst_idx),
+                        src_name,
+                    ),
+                )
+            })
+            .collect();
+        ManifestIdxMap { map }
+    }
+
+    fn dst_idx(&self, src_idx: i32) -> Result<i32, StoreError> {
+        let (dst_idx, name) = self.map.get(&src_idx).with_context(|| {
+            anyhow!("the source does not have a template with index {}", src_idx)
+        })?;
+        let dst_idx = dst_idx.with_context(|| {
+            anyhow!(
+                "the destination does not have a template with name {}",
+                name
+            )
+        })?;
+        Ok(dst_idx)
     }
 }
