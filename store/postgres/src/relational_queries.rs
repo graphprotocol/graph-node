@@ -53,7 +53,7 @@ use crate::{
 const BASE_SQL_COLUMNS: [&str; 2] = ["id", "vid"];
 
 /// The maximum number of bind variables that can be used in a query
-const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
+pub(crate) const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 
 const SORT_KEY_COLUMN: &str = "sort_key$";
 
