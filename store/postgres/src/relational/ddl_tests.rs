@@ -352,6 +352,74 @@ fn can_copy_from() {
     );
 }
 
+/// Check that we do not create the index on `block$` twice. There was a bug
+/// that if an immutable entity type had a `block` field and index creation
+/// was postponed, we would emit the index on `block$` twice, once from
+/// `Table.create_time_travel_indexes` and once through
+/// `IndexList.indexes_for_table`
+#[test]
+fn postponed_indexes_with_block_column() {
+    fn index_list() -> IndexList {
+        // To generate this list, print the output of `layout.as_ddl(None)`, run
+        // that in Postgres and do `select indexdef from pg_indexes where
+        // schemaname = 'sgd0815'`
+        const INDEX_DEFS: &[&str] = &[
+            "CREATE UNIQUE INDEX data_pkey ON sgd0815.data USING btree (vid)",
+            "CREATE UNIQUE INDEX data_id_key ON sgd0815.data USING btree (id)",
+            "CREATE INDEX data_block ON sgd0815.data USING btree (block$)",
+            "CREATE INDEX attr_1_0_data_block ON sgd0815.data USING btree (block, \"block$\")",
+        ];
+
+        let mut indexes: HashMap<String, Vec<CreateIndex>> = HashMap::new();
+        indexes.insert(
+            "data".to_string(),
+            INDEX_DEFS
+                .iter()
+                .map(|def| CreateIndex::parse(def.to_string()))
+                .collect(),
+        );
+        IndexList { indexes }
+    }
+    // Names of the two indexes we are interested in. Not the leading space
+    // to guard a little against overlapping names
+    const BLOCK_IDX: &str = " data_block";
+    const ATTR_IDX: &str = " attr_1_0_data_block";
+
+    let layout = test_layout(BLOCK_GQL);
+
+    // Create everything
+    let sql = layout.as_ddl(None).unwrap();
+    assert!(sql.contains(BLOCK_IDX));
+    assert!(sql.contains(ATTR_IDX));
+
+    // Defer attribute indexes
+    let sql = layout.as_ddl(Some(index_list())).unwrap();
+    assert!(sql.contains(BLOCK_IDX));
+    assert!(!sql.contains(ATTR_IDX));
+    // This used to be duplicated
+    let count = sql.matches(BLOCK_IDX).count();
+    assert_eq!(1, count);
+
+    let table = layout.table(&SqlName::from("Data")).unwrap();
+    let sql = table.create_postponed_indexes(vec![], false);
+    assert_eq!(1, sql.len());
+    assert!(!sql[0].contains(BLOCK_IDX));
+    assert!(sql[0].contains(ATTR_IDX));
+
+    let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
+    let arr = index_list()
+        .indexes_for_table(&dst_nsp, &table.name.to_string(), &table, true, false)
+        .unwrap();
+    assert_eq!(1, arr.len());
+    assert!(!arr[0].1.contains(BLOCK_IDX));
+    assert!(arr[0].1.contains(ATTR_IDX));
+
+    let arr = index_list()
+        .indexes_for_table(&dst_nsp, &table.name.to_string(), &table, false, false)
+        .unwrap();
+    assert_eq!(0, arr.len());
+}
+
 const THING_GQL: &str = r#"
         type Thing @entity {
             id: ID!
@@ -1108,4 +1176,16 @@ create index attr_8_3_stats_3_day_volume
 on "sgd0815"."stats_3_day" using btree("volume");
 create index stats_3_day_dims
 on "sgd0815"."stats_3_day"(group_2, group_1, timestamp);
+"#;
+
+const BLOCK_GQL: &str = r#"
+type Block @entity(immutable: true) {
+    id: ID!
+    number: Int!
+}
+
+type Data @entity(immutable: true) {
+    id: ID!
+    block: Block!
+}
 "#;

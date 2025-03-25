@@ -123,7 +123,7 @@ impl Display for Expr {
             Expr::Column(s) => write!(f, "{s}")?,
             Expr::Prefix(s, _) => write!(f, "{s}")?,
             Expr::Vid => write!(f, "vid")?,
-            Expr::Block => write!(f, "block")?,
+            Expr::Block => write!(f, "{BLOCK_COLUMN}")?,
             Expr::BlockRange => write!(f, "block_range")?,
             Expr::BlockRangeLower => write!(f, "lower(block_range)")?,
             Expr::BlockRangeUpper => write!(f, "upper(block_range)")?,
@@ -488,11 +488,28 @@ impl CreateIndex {
                             && columns[1] == Expr::BlockRange
                     }
                     Method::Brin => false,
-                    Method::BTree | Method::Gin => {
+                    Method::Gin => {
+                        // 'using gin(<attr>)'
                         columns.len() == 1
                             && columns[0].is_attribute()
                             && cond.is_none()
                             && with.is_none()
+                    }
+                    Method::BTree => {
+                        match columns.len() {
+                            1 => {
+                                // 'using btree(<attr>)'
+                                columns[0].is_attribute() && cond.is_none() && with.is_none()
+                            }
+                            2 => {
+                                // 'using btree(<attr>, block$)'
+                                columns[0].is_attribute()
+                                    && columns[1] == Expr::Block
+                                    && cond.is_none()
+                                    && with.is_none()
+                            }
+                            _ => false,
+                        }
                     }
                     Method::Unknown(_) => false,
                 }
@@ -537,6 +554,7 @@ impl CreateIndex {
                         None,
                     ),
                     dummy(false, BTree, &[Expr::BlockRangeUpper], Some(Cond::Closed)),
+                    dummy(false, BTree, &[Expr::Block], None),
                 ]
             };
         }
@@ -630,7 +648,7 @@ impl CreateIndex {
     }
 
     pub fn fields_exist_in_dest<'a>(&self, dest_table: &'a Table) -> bool {
-        fn column_exists<'a>(it: &mut impl Iterator<Item = &'a str>, column_name: &String) -> bool {
+        fn column_exists<'a>(it: &mut impl Iterator<Item = &'a str>, column_name: &str) -> bool {
             it.any(|c| *c == *column_name)
         }
 
@@ -667,9 +685,7 @@ impl CreateIndex {
                         }
                         Expr::Vid => (),
                         Expr::Block => {
-                            if !column_exists(cols, &"block".to_string()) {
-                                return false;
-                            }
+                            return dest_table.immutable;
                         }
                         Expr::Unknown(expression) => {
                             if some_column_contained(
@@ -776,7 +792,7 @@ impl IndexList {
                 // First we check if the fields do exist in the destination subgraph.
                 // In case of grafting that is not given.
                 if ci.fields_exist_in_dest(dest_table)
-                    // Then we check if the index is one of the default indexes not based on 
+                    // Then we check if the index is one of the default indexes not based on
                     // the attributes. Those will be created anyway and we should skip them.
                     && !ci.is_default_non_attr_index()
                     // Then ID based indexes in the immutable tables are also created initially
