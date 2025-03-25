@@ -270,6 +270,55 @@ impl UnresolvedDataSource {
             .map(Arc::new)
     }
 
+    /// Recursively verifies that all grafts in the chain meet the minimum spec version requirement
+    async fn verify_graft_chain<C: Blockchain>(
+        manifest: Arc<SubgraphManifest<C>>,
+        resolver: &Arc<dyn LinkResolver>,
+        logger: &Logger,
+        graft_chain: &mut Vec<String>,
+    ) -> Result<(), Error> {
+        // Add current manifest to graft chain
+        graft_chain.push(manifest.id.to_string());
+
+        // Check if current manifest meets spec version requirement
+        if manifest.spec_version < SPEC_VERSION_1_3_0 {
+            return Err(anyhow!(
+                "Subgraph manifest spec version {} is not supported, minimum supported version is {}. Graft chain: {}",
+                manifest.spec_version,
+                SPEC_VERSION_1_3_0,
+                graft_chain.join(" -> ")
+            ));
+        }
+
+        // If there's a graft, recursively verify it
+        if let Some(graft) = &manifest.graft {
+            let graft_raw = resolver
+                .cat(logger, &graft.base.to_ipfs_link())
+                .await
+                .context("Failed to resolve graft base manifest")?;
+
+            let graft_raw: serde_yaml::Mapping = serde_yaml::from_slice(&graft_raw)
+                .context("Failed to parse graft base manifest as YAML")?;
+
+            let graft_manifest =
+                UnresolvedSubgraphManifest::<C>::parse(graft.base.clone(), graft_raw)
+                    .context("Failed to parse graft base manifest")?
+                    .resolve(resolver, logger, LATEST_VERSION.clone())
+                    .await
+                    .context("Failed to resolve graft base manifest")?;
+
+            Box::pin(Self::verify_graft_chain(
+                Arc::new(graft_manifest),
+                resolver,
+                logger,
+                graft_chain,
+            ))
+            .await?;
+        }
+
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub(super) async fn resolve<C: Blockchain>(
         self,
@@ -286,6 +335,18 @@ impl UnresolvedDataSource {
         let kind = self.kind.clone();
         let source_manifest = self.resolve_source_manifest::<C>(resolver, logger).await?;
         let source_spec_version = &source_manifest.spec_version;
+        if source_spec_version < &SPEC_VERSION_1_3_0 {
+            return Err(anyhow!(
+                "Source subgraph manifest spec version {} is not supported, minimum supported version is {}",
+                source_spec_version,
+                SPEC_VERSION_1_3_0
+            ));
+        }
+
+        // Verify the entire graft chain meets spec version requirements
+        let mut graft_chain = Vec::new();
+        Self::verify_graft_chain(source_manifest.clone(), resolver, logger, &mut graft_chain)
+            .await?;
 
         if source_manifest
             .data_sources
@@ -293,14 +354,6 @@ impl UnresolvedDataSource {
             .any(|ds| matches!(ds, crate::data_source::DataSource::Subgraph(_)))
         {
             return Err(anyhow!("Nested subgraph data sources are not supported."));
-        }
-
-        if source_spec_version < &SPEC_VERSION_1_3_0 {
-            return Err(anyhow!(
-                "Source subgraph manifest spec version {} is not supported, minimum supported version is {}",
-                source_spec_version,
-                SPEC_VERSION_1_3_0
-            ));
         }
 
         let pruning_enabled = match source_manifest.indexer_hints.as_ref() {
