@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, i32, ops::Bound};
 
 use diesel::{
     pg::{sql_types, Pg},
@@ -249,7 +249,7 @@ impl DataSourcesTable {
             .order_by(&self.vid)
             .load::<DsForCopy>(conn)?
             .into_iter()
-            .map(|ds| ds.src_to_dst(target_block, &manifest_map))
+            .map(|ds| ds.src_to_dst(target_block, &manifest_map, &self.namespace, &dst.namespace))
             .collect::<Result<_, _>>()?;
 
         // Split all dss into chunks so that we never use more than
@@ -348,14 +348,23 @@ impl ManifestIdxMap {
         ManifestIdxMap { map }
     }
 
-    fn dst_idx(&self, src_idx: i32) -> Result<i32, StoreError> {
+    fn dst_idx(
+        &self,
+        src_idx: i32,
+        src_nsp: &Namespace,
+        src_created: BlockNumber,
+        dst_nsp: &Namespace,
+    ) -> Result<i32, StoreError> {
         let (dst_idx, name) = self.map.get(&src_idx).with_context(|| {
-            anyhow!("the source does not have a template with index {}", src_idx)
+            anyhow!(
+                "the source {src_nsp} does not have a template with \
+              index {src_idx} but created one at block {src_created}"
+            )
         })?;
         let dst_idx = dst_idx.with_context(|| {
             anyhow!(
-                "the destination does not have a template with name {}",
-                name
+                "the destination {dst_nsp} is missing a template with \
+                name {name}. The source {src_nsp} created one at block {src_created}"
             )
         })?;
         Ok(dst_idx)
@@ -377,6 +386,8 @@ impl DsForCopy {
         mut self,
         target_block: BlockNumber,
         map: &ManifestIdxMap,
+        src_nsp: &Namespace,
+        dst_nsp: &Namespace,
     ) -> Result<Self, StoreError> {
         // unclamp block range if it ends beyond target block
         match self.block_range.1 {
@@ -384,7 +395,12 @@ impl DsForCopy {
             _ => { /* use block range as is */ }
         }
         // Translate manifest index
-        self.idx = map.dst_idx(self.idx)?;
+        let src_created = match self.block_range.0 {
+            Bound::Included(block) => block,
+            Bound::Excluded(block) => block + 1,
+            Bound::Unbounded => i32::MAX,
+        };
+        self.idx = map.dst_idx(self.idx, src_nsp, src_created, dst_nsp)?;
         Ok(self)
     }
 }
