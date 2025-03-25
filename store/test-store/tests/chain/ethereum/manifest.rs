@@ -50,6 +50,7 @@ const SOURCE_SUBGRAPH_SCHEMA: &str = "
 type TestEntity @entity { id: ID! }
 type User @entity { id: ID! }
 type Profile @entity { id: ID! }
+type ImmutableUser @entity(immutable: true) { id: ID!, name: String! }
 
 type TokenData @entity(timeseries: true) {
     id: Int8!
@@ -1856,4 +1857,73 @@ specVersion: 1.3.0
             }
         }
     })
+}
+
+#[tokio::test]
+async fn subgraph_ds_manifest_mutable_entities_should_fail() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: User # This is a mutable entity and should fail
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("Entity User is not immutable and cannot be used as a mapping entity"));
+}
+
+#[tokio::test]
+async fn subgraph_ds_manifest_immutable_entities_should_succeed() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: ImmutableUser # This is an immutable entity and should succeed
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+
+    assert!(result.is_ok());
 }
