@@ -81,6 +81,10 @@ pub struct EnvVarsStore {
     /// The default is 180s.
     pub batch_target_duration: Duration,
 
+    /// Cancel and reset a batch copy operation if it takes longer than
+    /// this. Set by `GRAPH_STORE_BATCH_TIMEOUT`. Unlimited by default
+    pub batch_timeout: Option<Duration>,
+
     /// Prune tables where we will remove at least this fraction of entity
     /// versions by rebuilding the table. Set by
     /// `GRAPH_STORE_HISTORY_REBUILD_THRESHOLD`. The default is 0.5
@@ -168,6 +172,7 @@ impl From<InnerStore> for EnvVarsStore {
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
             batch_target_duration: Duration::from_secs(x.batch_target_duration_in_secs),
+            batch_timeout: x.batch_timeout_in_secs.map(Duration::from_secs),
             rebuild_threshold: x.rebuild_threshold.0,
             delete_threshold: x.delete_threshold.0,
             history_slack_factor: x.history_slack_factor.0,
@@ -222,6 +227,8 @@ pub struct InnerStore {
     write_queue_size: usize,
     #[envconfig(from = "GRAPH_STORE_BATCH_TARGET_DURATION", default = "180")]
     batch_target_duration_in_secs: u64,
+    #[envconfig(from = "GRAPH_STORE_BATCH_TIMEOUT")]
+    batch_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_STORE_HISTORY_REBUILD_THRESHOLD", default = "0.5")]
     rebuild_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_DELETE_THRESHOLD", default = "0.05")]

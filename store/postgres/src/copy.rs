@@ -19,6 +19,7 @@ use std::{
 };
 
 use diesel::{
+    connection::SimpleConnection as _,
     dsl::sql,
     insert_into,
     r2d2::{ConnectionManager, PooledConnection},
@@ -27,7 +28,7 @@ use diesel::{
 };
 use graph::{
     constraint_violation,
-    prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError},
+    prelude::{info, lazy_static, o, warn, BlockNumber, BlockPtr, Logger, StoreError, ENV_VARS},
     schema::EntityType,
 };
 use itertools::Itertools;
@@ -53,6 +54,13 @@ const ACCEPTABLE_REPLICATION_LAG: Duration = Duration::from_secs(30);
 /// When replicas are lagging too much, sleep for this long before checking
 /// the lag again
 const REPLICATION_SLEEP: Duration = Duration::from_secs(10);
+
+lazy_static! {
+    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+        .store
+        .batch_timeout
+        .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
+}
 
 table! {
     subgraphs.copy_state(dst) {
@@ -509,6 +517,22 @@ impl TableState {
 
         Ok(Status::Finished)
     }
+
+    fn set_batch_size(&mut self, conn: &mut PgConnection, size: usize) -> Result<(), StoreError> {
+        use copy_table_state as cts;
+
+        self.batcher.set_batch_size(size);
+
+        update(
+            cts::table
+                .filter(cts::dst.eq(self.dst_site.id))
+                .filter(cts::entity_type.eq(self.dst.object.as_str())),
+        )
+        .set(cts::batch_size.eq(self.batcher.batch_size() as i64))
+        .execute(conn)?;
+
+        Ok(())
+    }
 }
 
 // A helper for logging progress while data is being copied
@@ -711,7 +735,44 @@ impl Connection {
                     }
                 }
 
-                let status = self.transaction(|conn| table.copy_batch(conn))?;
+                let status = {
+                    loop {
+                        match self.transaction(|conn| {
+                            if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
+                                conn.batch_execute(timeout)?;
+                            }
+                            table.copy_batch(conn)
+                        }) {
+                            Ok(status) => {
+                                break status;
+                            }
+                            Err(StoreError::StatementTimeout) => {
+                                warn!(
+                                    logger,
+                                    "Current batch took longer than GRAPH_STORE_BATCH_TIMEOUT seconds. Retrying with a smaller batch size."
+                                );
+                            }
+                            Err(e) => {
+                                return Err(e);
+                            }
+                        }
+                        // We hit a timeout. Reset the batch size to 1.
+                        // That's small enough that we will make _some_
+                        // progress, assuming the timeout is set to a
+                        // reasonable value (several minutes)
+                        //
+                        // Our estimation of batch sizes is generally good
+                        // and stays within the prescribed bounds, but there
+                        // are cases where proper estimation of the batch
+                        // size is nearly impossible since the size of the
+                        // rows in the table jumps sharply at some point
+                        // that is hard to predict. This mechanism ensures
+                        // that if our estimation is wrong, the consequences
+                        // aren't too severe.
+                        self.transaction(|conn| table.set_batch_size(conn, 1))?;
+                    }
+                };
+
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
