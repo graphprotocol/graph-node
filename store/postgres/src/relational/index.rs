@@ -784,7 +784,8 @@ impl IndexList {
         table_name: &String,
         dest_table: &Table,
         postponed: bool,
-        concurrent_if_not_exist: bool,
+        concurrent: bool,
+        if_not_exists: bool,
     ) -> Result<Vec<(Option<String>, String)>, Error> {
         let mut arr = vec![];
         if let Some(vec) = self.indexes.get(table_name) {
@@ -805,7 +806,7 @@ impl IndexList {
                 {
                     if let Ok(sql) = ci
                         .with_nsp(namespace.to_string())?
-                        .to_sql(concurrent_if_not_exist, concurrent_if_not_exist)
+                        .to_sql(concurrent, if_not_exists)
                     {
                         arr.push((ci.name(), sql))
                     }
@@ -829,7 +830,7 @@ impl IndexList {
         let namespace = &layout.catalog.site.namespace;
         for table in layout.tables.values() {
             for (ind_name, create_query) in
-                self.indexes_for_table(namespace, &table.name.to_string(), table, true, true)?
+                self.indexes_for_table(namespace, &table.name.to_string(), table, true, true, true)?
             {
                 if let Some(index_name) = ind_name {
                     let table_name = table.name.clone();

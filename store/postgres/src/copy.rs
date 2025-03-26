@@ -731,6 +731,7 @@ impl Connection {
                 &table.dst,
                 true,
                 false,
+                true,
             )?;
 
             for (_, sql) in arr {
