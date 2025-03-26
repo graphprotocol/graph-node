@@ -356,20 +356,6 @@ impl UnresolvedDataSource {
             return Err(anyhow!("Nested subgraph data sources are not supported."));
         }
 
-        let pruning_enabled = match source_manifest.indexer_hints.as_ref() {
-            None => false,
-            Some(hints) => match hints.prune.as_ref() {
-                None => false,
-                Some(prune) => !matches!(prune, crate::data::subgraph::Prune::Never),
-            },
-        };
-
-        if pruning_enabled {
-            return Err(anyhow!(
-                "Pruning is enabled for source subgraph, which is not supported"
-            ));
-        }
-
         let mapping_entities: Vec<String> = self
             .mapping
             .handlers
