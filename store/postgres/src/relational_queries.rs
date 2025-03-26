@@ -4809,7 +4809,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let has_vid_seq = self.src.object.has_vid_seq();
+        let has_vid_seq = self.dst.object.has_vid_seq();
 
         // Construct a query
         //   insert into {dst}({columns})
