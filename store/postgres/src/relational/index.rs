@@ -685,7 +685,9 @@ impl CreateIndex {
                         }
                         Expr::Vid => (),
                         Expr::Block => {
-                            return dest_table.immutable;
+                            if !dest_table.immutable {
+                                return false;
+                            }
                         }
                         Expr::Unknown(expression) => {
                             if some_column_contained(
