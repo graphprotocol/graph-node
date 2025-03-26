@@ -233,6 +233,10 @@ impl VidBatcher {
             }
         }
     }
+
+    pub(crate) fn set_batch_size(&mut self, size: usize) {
+        self.batch_size.size = size as i64;
+    }
 }
 
 #[derive(Copy, Clone, QueryableByName)]
