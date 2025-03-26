@@ -358,7 +358,10 @@ impl UnresolvedDataSource {
 
         let pruning_enabled = match source_manifest.indexer_hints.as_ref() {
             None => false,
-            Some(hints) => hints.prune.is_some(),
+            Some(hints) => match hints.prune.as_ref() {
+                None => false,
+                Some(prune) => !matches!(prune, crate::data::subgraph::Prune::Never),
+            },
         };
 
         if pruning_enabled {
