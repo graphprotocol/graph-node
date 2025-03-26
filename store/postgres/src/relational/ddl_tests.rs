@@ -380,6 +380,15 @@ fn postponed_indexes_with_block_column() {
         );
         IndexList { indexes }
     }
+
+    fn cr(index: &str) -> String {
+        format!("create index{}", index)
+    }
+
+    fn cre(index: &str) -> String {
+        format!("create index if not exists{}", index)
+    }
+
     // Names of the two indexes we are interested in. Not the leading space
     // to guard a little against overlapping names
     const BLOCK_IDX: &str = " data_block";
@@ -389,12 +398,12 @@ fn postponed_indexes_with_block_column() {
 
     // Create everything
     let sql = layout.as_ddl(None).unwrap();
-    assert!(sql.contains(BLOCK_IDX));
-    assert!(sql.contains(ATTR_IDX));
+    assert!(sql.contains(&cr(BLOCK_IDX)));
+    assert!(sql.contains(&cr(ATTR_IDX)));
 
     // Defer attribute indexes
     let sql = layout.as_ddl(Some(index_list())).unwrap();
-    assert!(sql.contains(BLOCK_IDX));
+    assert!(sql.contains(&cr(BLOCK_IDX)));
     assert!(!sql.contains(ATTR_IDX));
     // This used to be duplicated
     let count = sql.matches(BLOCK_IDX).count();
@@ -404,7 +413,7 @@ fn postponed_indexes_with_block_column() {
     let sql = table.create_postponed_indexes(vec![], false);
     assert_eq!(1, sql.len());
     assert!(!sql[0].contains(BLOCK_IDX));
-    assert!(sql[0].contains(ATTR_IDX));
+    assert!(sql[0].contains(&cre(ATTR_IDX)));
 
     let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
     let arr = index_list()
@@ -419,7 +428,7 @@ fn postponed_indexes_with_block_column() {
         .unwrap();
     assert_eq!(1, arr.len());
     assert!(!arr[0].1.contains(BLOCK_IDX));
-    assert!(arr[0].1.contains(ATTR_IDX));
+    assert!(arr[0].1.contains(&cr(ATTR_IDX)));
 
     let arr = index_list()
         .indexes_for_table(
