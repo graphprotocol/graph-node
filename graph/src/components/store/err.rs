@@ -74,6 +74,8 @@ pub enum StoreError {
     UnsupportedFilter(String, String),
     #[error("writing {0} entities at block {1} failed: {2} Query: {3}")]
     WriteFailure(String, BlockNumber, String, String),
+    #[error("database query timed out")]
+    StatementTimeout,
 }
 
 // Convenience to report a constraint violation
@@ -133,25 +135,29 @@ impl Clone for StoreError {
             Self::WriteFailure(arg0, arg1, arg2, arg3) => {
                 Self::WriteFailure(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
             }
+            Self::StatementTimeout => Self::StatementTimeout,
         }
     }
 }
 
 impl StoreError {
-    fn database_unavailable(e: &DieselError) -> Option<Self> {
-        // When the error is caused by a closed connection, treat the error
-        // as 'database unavailable'. When this happens during indexing, the
-        // indexing machinery will retry in that case rather than fail the
-        // subgraph
-        if let DieselError::DatabaseError(_, info) = e {
-            if info
-                .message()
-                .contains("server closed the connection unexpectedly")
-            {
-                return Some(Self::DatabaseUnavailable);
-            }
+    fn from_diesel_error(e: &DieselError) -> Option<Self> {
+        const CONN_CLOSE: &str = "server closed the connection unexpectedly";
+        const STMT_TIMEOUT: &str = "canceling statement due to statement timeout";
+        let DieselError::DatabaseError(_, info) = e else {
+            return None;
+        };
+        if info.message().contains(CONN_CLOSE) {
+            // When the error is caused by a closed connection, treat the error
+            // as 'database unavailable'. When this happens during indexing, the
+            // indexing machinery will retry in that case rather than fail the
+            // subgraph
+            Some(StoreError::DatabaseUnavailable)
+        } else if info.message().contains(STMT_TIMEOUT) {
+            Some(StoreError::StatementTimeout)
+        } else {
+            None
         }
-        None
     }
 
     pub fn write_failure(
@@ -160,19 +166,15 @@ impl StoreError {
         block: BlockNumber,
         query: String,
     ) -> Self {
-        match Self::database_unavailable(&error) {
-            Some(e) => return e,
-            None => StoreError::WriteFailure(entity.to_string(), block, error.to_string(), query),
-        }
+        Self::from_diesel_error(&error).unwrap_or_else(|| {
+            StoreError::WriteFailure(entity.to_string(), block, error.to_string(), query)
+        })
     }
 }
 
 impl From<DieselError> for StoreError {
     fn from(e: DieselError) -> Self {
-        match Self::database_unavailable(&e) {
-            Some(e) => return e,
-            None => StoreError::Unknown(e.into()),
-        }
+        Self::from_diesel_error(&e).unwrap_or_else(|| StoreError::Unknown(e.into()))
     }
 }
 
