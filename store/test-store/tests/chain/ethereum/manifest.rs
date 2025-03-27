@@ -47,11 +47,10 @@ specVersion: 1.3.0
 ";
 
 const SOURCE_SUBGRAPH_SCHEMA: &str = "
-type TestEntity @entity { id: ID! }
-type User @entity { id: ID! }
-type ImmutableUser @entity { id: ID! }
-type Profile @entity { id: ID! }
-type ImmutableUser @entity(immutable: true) { id: ID!, name: String! }
+type TestEntity @entity(immutable: true) { id: ID! }
+type MutableEntity @entity { id: ID! }
+type User @entity(immutable: true) { id: ID! }
+type Profile @entity(immutable: true) { id: ID! }
 
 type TokenData @entity(timeseries: true) {
     id: Int8!
@@ -1668,7 +1667,7 @@ dataSources:
             /: /ipfs/Qmabi
       handlers:
         - handler: handleEntity
-          entity: ImmutableUser
+          entity: User
           calls:
             fake1: Factory[entity.address].get(entity.user)
             fake3: Factory[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].get(entity.address)
@@ -1763,6 +1762,7 @@ specVersion: 1.3.0
     let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
+    println!("Error: {}", err);
     assert!(err
         .to_string()
         .contains("Subgraph datasources cannot be used alongside onchain datasources"));
@@ -1884,7 +1884,7 @@ dataSources:
         /: /ipfs/Qmmapping
       handlers:
         - handler: handleEntity
-          entity: User # This is a mutable entity and should fail
+          entity: MutableEntity # This is a mutable entity and should fail
 specVersion: 1.3.0
 ";
 
@@ -1893,7 +1893,7 @@ specVersion: 1.3.0
     let err = result.unwrap_err();
     assert!(err
         .to_string()
-        .contains("Entity User is not immutable and cannot be used as a mapping entity"));
+        .contains("Entity MutableEntity is not immutable and cannot be used as a mapping entity"));
 }
 
 #[tokio::test]
@@ -1920,7 +1920,7 @@ dataSources:
         /: /ipfs/Qmmapping
       handlers:
         - handler: handleEntity
-          entity: ImmutableUser # This is an immutable entity and should succeed
+          entity: User # This is an immutable entity and should succeed
 specVersion: 1.3.0
 ";
 
