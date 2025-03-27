@@ -1872,6 +1872,7 @@ dependencies = [
  "serde_plain",
  "serde_regex",
  "serde_yaml",
+ "sha2",
  "slog",
  "slog-async",
  "slog-envlogger",
