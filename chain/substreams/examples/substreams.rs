@@ -57,7 +57,6 @@ async fn main() -> Result<(), Error> {
         false,
         SubgraphLimit::Unlimited,
         Arc::new(endpoint_metrics),
-        true,
     ));
 
     let client = Arc::new(ChainClient::new_firehose(FirehoseEndpoints::for_testing(
