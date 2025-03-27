@@ -49,6 +49,7 @@ specVersion: 1.3.0
 const SOURCE_SUBGRAPH_SCHEMA: &str = "
 type TestEntity @entity { id: ID! }
 type User @entity { id: ID! }
+type ImmutableUser @entity { id: ID! }
 type Profile @entity { id: ID! }
 type ImmutableUser @entity(immutable: true) { id: ID!, name: String! }
 
@@ -1667,7 +1668,7 @@ dataSources:
             /: /ipfs/Qmabi
       handlers:
         - handler: handleEntity
-          entity: User
+          entity: ImmutableUser
           calls:
             fake1: Factory[entity.address].get(entity.user)
             fake3: Factory[0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF].get(entity.address)

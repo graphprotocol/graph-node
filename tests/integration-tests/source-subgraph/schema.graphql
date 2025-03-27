@@ -1,11 +1,10 @@
-type Block @entity {
+type Block @entity(immutable: true) {
   id: ID!
   number: BigInt!
   hash: Bytes!
-  testMessage: String
 }
 
-type Block2 @entity {
+type Block2 @entity(immutable: true) {
   id: ID!
   number: BigInt!
   hash: Bytes!
