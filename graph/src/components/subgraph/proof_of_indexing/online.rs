@@ -132,7 +132,7 @@ impl BlockEventStream {
             }
             Hashers::Fast(mut digest) => {
                 if let Some(prev) = prev {
-                    let prev = prev
+                    let prev = prev[..32]
                         .try_into()
                         .expect("Expected valid fast stable hash representation");
                     let prev = FastStableHasher::from_bytes(prev);
