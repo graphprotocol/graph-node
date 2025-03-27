@@ -108,7 +108,6 @@ impl CommonChainConfig {
                 false,
                 SubgraphLimit::Unlimited,
                 Arc::new(EndpointMetrics::mock()),
-                false,
             ))]);
 
         Self {
