@@ -16,7 +16,7 @@ use crate::{
 use anyhow::Context;
 use async_trait::async_trait;
 use futures03::{StreamExt, TryStreamExt};
-use http::uri::{Scheme, Uri};
+use http0::uri::{Scheme, Uri};
 use itertools::Itertools;
 use slog::{error, info, trace, Logger};
 use std::{collections::HashMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
