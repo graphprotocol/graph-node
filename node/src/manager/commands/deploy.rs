@@ -68,7 +68,6 @@ pub async fn run(
     deployment: DeploymentSearch,
     search: DeploymentSearch,
     url: String,
-    create: bool,
 ) -> Result<()> {
     let hash = match deployment {
         DeploymentSearch::Hash { hash, shard: _ } => hash,
@@ -85,17 +84,12 @@ pub async fn run(
 
     let exists = subgraph_store.subgraph_exists(&subgraph_name)?;
 
-    if create && !exists {
+    if !exists {
         println!("Creating subgraph `{}`", name);
 
         // Send the subgraph_create request
         send_create_request(&name, &url).await?;
         println!("Subgraph `{}` created", name);
-    } else if !create && !exists {
-        bail!(
-            "Subgraph with name `{}` does not exist. Use the `--create` flag to create it",
-            name
-        );
     }
 
     // Send the subgraph_deploy request
