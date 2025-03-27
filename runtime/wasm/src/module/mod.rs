@@ -70,23 +70,13 @@ impl ToAscPtr for offchain::TriggerData {
     }
 }
 
-impl ToAscPtr for subgraph::TriggerData {
-    fn to_asc_ptr<H: AscHeap>(
-        self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscPtr<()>, HostExportError> {
-        asc_new(heap, &self.entity, gas).map(|ptr| ptr.erase())
-    }
-}
-
 impl ToAscPtr for subgraph::MappingEntityTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        asc_new(heap, &self.data.entity, gas).map(|ptr| ptr.erase())
+        asc_new(heap, &self.data.entity.entity.sorted_ref(), gas).map(|ptr| ptr.erase())
     }
 }
 
