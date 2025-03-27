@@ -331,17 +331,14 @@ struct ManifestIdxMap {
 
 impl ManifestIdxMap {
     fn new(src: &[(i32, String)], dst: &[(i32, String)]) -> Self {
+        let dst_idx_map: HashMap<&String, i32> =
+            HashMap::from_iter(dst.iter().map(|(idx, name)| (name, *idx)));
         let map = src
             .iter()
             .map(|(src_idx, src_name)| {
                 (
                     *src_idx,
-                    (
-                        dst.iter()
-                            .find(|(_, dst_name)| src_name == dst_name)
-                            .map(|(dst_idx, _)| *dst_idx),
-                        src_name.to_string(),
-                    ),
+                    (dst_idx_map.get(src_name).copied(), src_name.to_string()),
                 )
             })
             .collect();
