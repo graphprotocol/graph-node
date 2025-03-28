@@ -253,20 +253,32 @@ impl UnresolvedDataSource {
         let source_raw = resolver
             .cat(logger, &self.source.address.to_ipfs_link())
             .await
-            .context("Failed to resolve source subgraph manifest")?;
+            .context(format!(
+                "Failed to resolve source subgraph [{}] manifest",
+                self.source.address,
+            ))?;
 
-        let source_raw: serde_yaml::Mapping = serde_yaml::from_slice(&source_raw)
-            .context("Failed to parse source subgraph manifest as YAML")?;
+        let source_raw: serde_yaml::Mapping =
+            serde_yaml::from_slice(&source_raw).context(format!(
+                "Failed to parse source subgraph [{}] manifest as YAML",
+                self.source.address
+            ))?;
 
         let deployment_hash = self.source.address.clone();
 
         let source_manifest = UnresolvedSubgraphManifest::<C>::parse(deployment_hash, source_raw)
-            .context("Failed to parse source subgraph manifest")?;
+            .context(format!(
+            "Failed to parse source subgraph [{}] manifest",
+            self.source.address
+        ))?;
 
         source_manifest
             .resolve(resolver, logger, LATEST_VERSION.clone())
             .await
-            .context("Failed to resolve source subgraph manifest")
+            .context(format!(
+                "Failed to resolve source subgraph [{}] manifest",
+                self.source.address
+            ))
             .map(Arc::new)
     }
 
@@ -292,12 +304,16 @@ impl UnresolvedDataSource {
             .iter()
             .any(|ds| matches!(ds, crate::data_source::DataSource::Subgraph(_)))
         {
-            return Err(anyhow!("Nested subgraph data sources are not supported."));
+            return Err(anyhow!(
+                "Nested subgraph data sources [{}] are not supported.",
+                self.name
+            ));
         }
 
         if source_spec_version < &SPEC_VERSION_1_3_0 {
             return Err(anyhow!(
-                "Source subgraph manifest spec version {} is not supported, minimum supported version is {}",
+                "Source subgraph [{}] manifest spec version {} is not supported, minimum supported version is {}",
+                self.source.address,
                 source_spec_version,
                 SPEC_VERSION_1_3_0
             ));
@@ -310,7 +326,8 @@ impl UnresolvedDataSource {
 
         if pruning_enabled {
             return Err(anyhow!(
-                "Pruning is enabled for source subgraph, which is not supported"
+                "Pruning is enabled for source subgraph [{}], which is not supported",
+                self.source.address
             ));
         }
 
