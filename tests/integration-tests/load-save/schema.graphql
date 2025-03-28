@@ -1,0 +1,5 @@
+type LSData @entity {
+  id: ID!
+  data: String!
+  blockNumber: BigInt!
+} 
