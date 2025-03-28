@@ -13,7 +13,10 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -540,10 +543,11 @@ impl TableState {
 // A helper for logging progress while data is being copied
 struct CopyProgress {
     logger: Logger,
-    last_log: Instant,
+    last_log: Arc<Mutex<Instant>>,
     src: Arc<Site>,
     dst: Arc<Site>,
-    current_vid: i64,
+    /// The sum of all `target_vid` of tables that have finished
+    current_vid: AtomicI64,
     target_vid: i64,
 }
 
@@ -559,9 +563,10 @@ impl CopyProgress {
             .iter()
             .map(|table| table.batcher.next_vid())
             .sum();
+        let current_vid = AtomicI64::new(current_vid);
         Self {
             logger,
-            last_log: Instant::now(),
+            last_log: Arc::new(Mutex::new(Instant::now())),
             src: state.src.site.clone(),
             dst: state.dst.site.clone(),
             current_vid,
@@ -590,8 +595,21 @@ impl CopyProgress {
         }
     }
 
-    fn update(&mut self, entity_type: &EntityType, batcher: &VidBatcher) {
-        if self.last_log.elapsed() > LOG_INTERVAL {
+    fn update(&self, entity_type: &EntityType, batcher: &VidBatcher) {
+        let mut last_log = self.last_log.lock().unwrap_or_else(|err| {
+            // Better to clear the poison error and skip a log message than
+            // crash for no important reason
+            warn!(
+                self.logger,
+                "Lock for progress locking was poisoned, skipping a log message"
+            );
+            let mut last_log = err.into_inner();
+            *last_log = Instant::now();
+            self.last_log.clear_poison();
+            last_log
+        });
+        if last_log.elapsed() > LOG_INTERVAL {
+            let total_current_vid = self.current_vid.load(Ordering::SeqCst) + batcher.next_vid();
             info!(
                 self.logger,
                 "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
@@ -599,14 +617,15 @@ impl CopyProgress {
                 entity_type,
                 batcher.next_vid(),
                 batcher.target_vid(),
-                Self::progress_pct(self.current_vid + batcher.next_vid(), self.target_vid)
+                Self::progress_pct(total_current_vid, self.target_vid)
             );
-            self.last_log = Instant::now();
+            *last_log = Instant::now();
         }
     }
 
-    fn table_finished(&mut self, batcher: &VidBatcher) {
-        self.current_vid += batcher.next_vid();
+    fn table_finished(&self, batcher: &VidBatcher) {
+        self.current_vid
+            .fetch_add(batcher.next_vid(), Ordering::SeqCst);
     }
 
     fn finished(&self) {
@@ -730,7 +749,7 @@ impl Connection {
         let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
 
         let logger = &self.logger.clone();
-        let mut progress = CopyProgress::new(self.logger.cheap_clone(), &state);
+        let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
@@ -739,7 +758,7 @@ impl Connection {
             let mut conn = self.conn.take().ok_or_else(|| {
                 constraint_violation!("copy connection is not where it is supposed to be")
             })?;
-            let res = Self::copy_table(&mut conn, logger, &mut progress, table);
+            let res = Self::copy_table(&mut conn, logger, progress.cheap_clone(), table);
             self.conn = Some(conn);
 
             match res? {
@@ -799,7 +818,7 @@ impl Connection {
     fn copy_table(
         conn: &mut PgConnection,
         logger: &Logger,
-        progress: &mut CopyProgress,
+        progress: Arc<CopyProgress>,
         table: &mut TableState,
     ) -> Result<Status, StoreError> {
         use Status::*;
