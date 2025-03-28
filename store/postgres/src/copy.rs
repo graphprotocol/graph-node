@@ -122,7 +122,6 @@ pub enum Status {
     Cancelled,
 }
 
-#[allow(dead_code)]
 struct CopyState {
     src: Arc<Layout>,
     dst: Arc<Layout>,
@@ -710,7 +709,7 @@ impl Connection {
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
-            match self.copy_table(logger, &mut progress, table)? {
+            match Self::copy_table(&mut self.conn, logger, &mut progress, table)? {
                 Status::Finished => { /* Move on to the next table */ }
                 Status::Cancelled => {
                     return Ok(Status::Cancelled);
@@ -766,7 +765,7 @@ impl Connection {
     }
 
     fn copy_table(
-        &mut self,
+        conn: &mut PgConnection,
         logger: &Logger,
         progress: &mut CopyProgress<'_>,
         table: &mut TableState,
@@ -777,21 +776,21 @@ impl Connection {
             // It is important that this check happens outside the write
             // transaction so that we do not hold on to locks acquired
             // by the check
-            if table.is_cancelled(&mut self.conn)? {
+            if table.is_cancelled(conn)? {
                 return Ok(Cancelled);
             }
 
             // Pause copying if replication is lagging behind to avoid
             // overloading replicas
-            let mut lag = catalog::replication_lag(&mut self.conn)?;
+            let mut lag = catalog::replication_lag(conn)?;
             if lag > MAX_REPLICATION_LAG {
                 loop {
-                    info!(&self.logger,
+                    info!(logger,
                          "Replicas are lagging too much; pausing copying for {}s to allow them to catch up",
                          REPLICATION_SLEEP.as_secs();
                          "lag_s" => lag.as_secs());
                     std::thread::sleep(REPLICATION_SLEEP);
-                    lag = catalog::replication_lag(&mut self.conn)?;
+                    lag = catalog::replication_lag(conn)?;
                     if lag <= ACCEPTABLE_REPLICATION_LAG {
                         break;
                     }
@@ -800,7 +799,7 @@ impl Connection {
 
             let status = {
                 loop {
-                    match self.transaction(|conn| {
+                    match conn.transaction(|conn| {
                         if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
                             conn.batch_execute(timeout)?;
                         }
@@ -832,7 +831,7 @@ impl Connection {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    self.transaction(|conn| table.set_batch_size(conn, 1))?;
+                    conn.transaction(|conn| table.set_batch_size(conn, 1))?;
                 }
             };
 
