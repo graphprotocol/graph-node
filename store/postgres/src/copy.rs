@@ -538,8 +538,8 @@ impl TableState {
 }
 
 // A helper for logging progress while data is being copied
-struct CopyProgress<'a> {
-    logger: &'a Logger,
+struct CopyProgress {
+    logger: Logger,
     last_log: Instant,
     src: Arc<Site>,
     dst: Arc<Site>,
@@ -547,8 +547,8 @@ struct CopyProgress<'a> {
     target_vid: i64,
 }
 
-impl<'a> CopyProgress<'a> {
-    fn new(logger: &'a Logger, state: &CopyState) -> Self {
+impl CopyProgress {
+    fn new(logger: Logger, state: &CopyState) -> Self {
         let target_vid: i64 = state
             .tables
             .iter()
@@ -730,7 +730,7 @@ impl Connection {
         let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
 
         let logger = &self.logger.clone();
-        let mut progress = CopyProgress::new(logger, &state);
+        let mut progress = CopyProgress::new(self.logger.cheap_clone(), &state);
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
@@ -799,7 +799,7 @@ impl Connection {
     fn copy_table(
         conn: &mut PgConnection,
         logger: &Logger,
-        progress: &mut CopyProgress<'_>,
+        progress: &mut CopyProgress,
         table: &mut TableState,
     ) -> Result<Status, StoreError> {
         use Status::*;
