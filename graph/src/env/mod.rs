@@ -253,11 +253,11 @@ pub struct EnvVars {
 }
 
 impl EnvVars {
-    pub fn from_env() -> Result<Self, envconfig::Error> {
+    pub fn from_env() -> Result<Self, anyhow::Error> {
         let inner = Inner::init_from_env()?;
         let graphql = InnerGraphQl::init_from_env()?.into();
         let mapping_handlers = InnerMappingHandlers::init_from_env()?.into();
-        let store = InnerStore::init_from_env()?.into();
+        let store = InnerStore::init_from_env()?.try_into()?;
 
         // The default reorganization (reorg) threshold is set to 250.
         // For testing purposes, we need to set this threshold to 0 because:
