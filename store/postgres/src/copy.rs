@@ -13,7 +13,6 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
-    ops::DerefMut,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -28,7 +27,9 @@ use diesel::{
 };
 use graph::{
     constraint_violation,
-    prelude::{info, lazy_static, o, warn, BlockNumber, BlockPtr, Logger, StoreError, ENV_VARS},
+    prelude::{
+        info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
+    },
     schema::EntityType,
 };
 use itertools::Itertools;
@@ -623,8 +624,8 @@ pub struct Connection {
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
-    src_manifest_idx_and_name: Vec<(i32, String)>,
-    dst_manifest_idx_and_name: Vec<(i32, String)>,
+    src_manifest_idx_and_name: Arc<Vec<(i32, String)>>,
+    dst_manifest_idx_and_name: Arc<Vec<(i32, String)>>,
 }
 
 impl Connection {
@@ -661,6 +662,8 @@ impl Connection {
             }
             false
         })?;
+        let src_manifest_idx_and_name = Arc::new(src_manifest_idx_and_name);
+        let dst_manifest_idx_and_name = Arc::new(dst_manifest_idx_and_name);
         Ok(Self {
             logger,
             conn,
@@ -683,15 +686,16 @@ impl Connection {
     /// has a private data sources table. The copying is done in its own
     /// transaction.
     fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
+        let src_manifest_idx_and_name = self.src_manifest_idx_and_name.cheap_clone();
+        let dst_manifest_idx_and_name = self.dst_manifest_idx_and_name.cheap_clone();
         if state.src.site.schema_version.private_data_sources() {
-            let conn = &mut self.conn;
-            conn.transaction(|conn| {
+            self.transaction(|conn| {
                 DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
                     conn,
                     &DataSourcesTable::new(state.dst.site.namespace.clone()),
                     state.target_block.number,
-                    &self.src_manifest_idx_and_name,
-                    &self.dst_manifest_idx_and_name,
+                    &src_manifest_idx_and_name,
+                    &dst_manifest_idx_and_name,
                 )
             })?;
         }
@@ -723,7 +727,6 @@ impl Connection {
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
         // First recreate the indexes that existed in the original subgraph.
-        let conn = self.conn.deref_mut();
         for table in state.tables.iter() {
             let arr = index_list.indexes_for_table(
                 &self.dst.site.namespace,
@@ -736,7 +739,7 @@ impl Connection {
 
             for (_, sql) in arr {
                 let query = sql_query(format!("{};", sql));
-                query.execute(conn)?;
+                self.transaction(|conn| query.execute(conn).map_err(StoreError::from))?;
             }
         }
 
@@ -755,7 +758,7 @@ impl Connection {
                 .into_iter()
             {
                 let query = sql_query(sql);
-                query.execute(conn)?;
+                self.transaction(|conn| query.execute(conn).map_err(StoreError::from))?;
             }
         }
 
@@ -876,9 +879,10 @@ impl Connection {
             &self.logger,
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
-        advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
+        let dst_site = self.dst.site.cheap_clone();
+        self.transaction(|conn| advisory_lock::lock_copying(conn, &dst_site))?;
         let res = self.copy_data_internal(index_list).await;
-        advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
+        self.transaction(|conn| advisory_lock::unlock_copying(conn, &dst_site))?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
         }
