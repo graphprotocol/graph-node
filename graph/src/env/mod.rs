@@ -247,6 +247,9 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS`.
     /// The default value is 60 seconds.
     pub firehose_block_fetch_timeout: u64,
+    /// Set by the environment variable `GRAPH_FIREHOSE_BLOCK_BATCH_SIZE`.
+    /// The default value is 10.
+    pub firehose_block_batch_size: usize,
 }
 
 impl EnvVars {
@@ -339,6 +342,7 @@ impl EnvVars {
             block_write_capacity: inner.block_write_capacity.0,
             firehose_block_fetch_retry_limit: inner.firehose_block_fetch_retry_limit,
             firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
+            firehose_block_batch_size: inner.firehose_block_fetch_batch_size,
         })
     }
 
@@ -506,6 +510,8 @@ struct Inner {
     firehose_block_fetch_retry_limit: usize,
     #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_TIMEOUT_SECS", default = "60")]
     firehose_block_fetch_timeout: u64,
+    #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_BATCH_SIZE", default = "10")]
+    firehose_block_fetch_batch_size: usize,
 }
 
 #[derive(Clone, Debug)]
