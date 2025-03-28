@@ -220,8 +220,10 @@ impl SyncStore {
                 }
                 None => None,
             };
-            self.writable
-                .start_subgraph(logger, self.site.clone(), graft_base)?;
+            graph::block_on(
+                self.writable
+                    .start_subgraph(logger, self.site.clone(), graft_base),
+            )?;
             self.store.primary_conn()?.copy_finished(self.site.as_ref())
         })
     }
