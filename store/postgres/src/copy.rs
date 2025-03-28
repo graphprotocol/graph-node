@@ -132,7 +132,8 @@ struct CopyState {
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
-    tables: Vec<TableState>,
+    finished: Vec<TableState>,
+    unfinished: Vec<TableState>,
 }
 
 impl CopyState {
@@ -191,11 +192,13 @@ impl CopyState {
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
         let tables = TableState::load(conn, src.as_ref(), dst.as_ref())?;
+        let (finished, unfinished) = tables.into_iter().partition(|table| table.finished());
         Ok(CopyState {
             src,
             dst,
             target_block,
-            tables,
+            finished,
+            unfinished,
         })
     }
 
@@ -217,7 +220,7 @@ impl CopyState {
             ))
             .execute(conn)?;
 
-        let mut tables: Vec<_> = dst
+        let mut unfinished: Vec<_> = dst
             .tables
             .values()
             .filter_map(|dst_table| {
@@ -235,9 +238,9 @@ impl CopyState {
                     })
             })
             .collect::<Result<_, _>>()?;
-        tables.sort_by_key(|table| table.dst.object.to_string());
+        unfinished.sort_by_key(|table| table.dst.object.to_string());
 
-        let values = tables
+        let values = unfinished
             .iter()
             .map(|table| {
                 (
@@ -255,7 +258,8 @@ impl CopyState {
             src,
             dst,
             target_block,
-            tables,
+            finished: Vec::new(),
+            unfinished,
         })
     }
 
@@ -298,6 +302,10 @@ impl CopyState {
             }
         }
         Ok(())
+    }
+
+    fn all_tables(&self) -> impl Iterator<Item = &TableState> {
+        self.finished.iter().chain(self.unfinished.iter())
     }
 }
 
@@ -554,13 +562,12 @@ struct CopyProgress {
 impl CopyProgress {
     fn new(logger: Logger, state: &CopyState) -> Self {
         let target_vid: i64 = state
-            .tables
-            .iter()
+            .all_tables()
             .map(|table| table.batcher.target_vid())
             .sum();
         let current_vid = state
-            .tables
-            .iter()
+            .all_tables()
+            .filter(|table| table.finished())
             .map(|table| table.batcher.next_vid())
             .sum();
         let current_vid = AtomicI64::new(current_vid);
@@ -752,17 +759,19 @@ impl Connection {
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
 
-        for table in state.tables.iter_mut().filter(|table| !table.finished()) {
+        while let Some(mut table) = state.unfinished.pop() {
             // Take self.conn to decouple it from self, copy the table and
             // put the connection back
             let mut conn = self.conn.take().ok_or_else(|| {
                 constraint_violation!("copy connection is not where it is supposed to be")
             })?;
-            let res = Self::copy_table(&mut conn, logger, progress.cheap_clone(), table);
+            let res = Self::copy_table(&mut conn, logger, progress.cheap_clone(), &mut table);
             self.conn = Some(conn);
 
             match res? {
-                Status::Finished => { /* Move on to the next table */ }
+                Status::Finished => {
+                    state.finished.push(table);
+                }
                 Status::Cancelled => {
                     return Ok(Status::Cancelled);
                 }
@@ -772,7 +781,7 @@ impl Connection {
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
         // First recreate the indexes that existed in the original subgraph.
-        for table in state.tables.iter() {
+        for table in state.all_tables() {
             let arr = index_list.indexes_for_table(
                 &self.dst.site.namespace,
                 &table.src.name.to_string(),
@@ -790,7 +799,7 @@ impl Connection {
 
         // Second create the indexes for the new fields.
         // Here we need to skip those created in the first step for the old fields.
-        for table in state.tables.iter() {
+        for table in state.all_tables() {
             let orig_colums = table
                 .src
                 .columns
