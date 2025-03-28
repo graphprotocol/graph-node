@@ -85,6 +85,12 @@ pub struct EnvVarsStore {
     /// this. Set by `GRAPH_STORE_BATCH_TIMEOUT`. Unlimited by default
     pub batch_timeout: Option<Duration>,
 
+    /// The number of workers to use for batch operations. If there are idle
+    /// connectiosn, each subgraph copy operation will use up to this many
+    /// workers to copy tables in parallel. Defaults to 1 and must be at
+    /// least 1
+    pub batch_workers: usize,
+
     /// Prune tables where we will remove at least this fraction of entity
     /// versions by rebuilding the table. Set by
     /// `GRAPH_STORE_HISTORY_REBUILD_THRESHOLD`. The default is 0.5
@@ -175,6 +181,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             write_queue_size: x.write_queue_size,
             batch_target_duration: Duration::from_secs(x.batch_target_duration_in_secs),
             batch_timeout: x.batch_timeout_in_secs.map(Duration::from_secs),
+            batch_workers: x.batch_workers,
             rebuild_threshold: x.rebuild_threshold.0,
             delete_threshold: x.delete_threshold.0,
             history_slack_factor: x.history_slack_factor.0,
@@ -193,6 +200,9 @@ impl TryFrom<InnerStore> for EnvVarsStore {
                     "GRAPH_STORE_BATCH_TIMEOUT must be greater than 2*GRAPH_STORE_BATCH_TARGET_DURATION"
                 );
             }
+        }
+        if vars.batch_workers < 1 {
+            bail!("GRAPH_STORE_BATCH_WORKERS must be at least 1");
         }
         Ok(vars)
     }
@@ -239,6 +249,8 @@ pub struct InnerStore {
     batch_target_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_BATCH_TIMEOUT")]
     batch_timeout_in_secs: Option<u64>,
+    #[envconfig(from = "GRAPH_STORE_BATCH_WORKERS", default = "1")]
+    batch_workers: usize,
     #[envconfig(from = "GRAPH_STORE_HISTORY_REBUILD_THRESHOLD", default = "0.5")]
     rebuild_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_DELETE_THRESHOLD", default = "0.05")]

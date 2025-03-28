@@ -840,7 +840,7 @@ impl Connection {
             logger,
             conn,
             pool,
-            workers: 5,
+            workers: ENV_VARS.store.batch_workers,
             src,
             dst,
             target_block,
@@ -945,7 +945,7 @@ impl Connection {
         // and there are more tables to be copied, we can start more
         // workers, up to `self.workers` many
         let mut workers = Vec::new();
-        while !state.unfinished.is_empty() && !workers.is_empty() {
+        while !state.unfinished.is_empty() || !workers.is_empty() {
             // We usually add at least one job here, except if we are out of
             // tables to copy. In that case, we go through the `while` loop
             // every time one of the tables we are currently copying
