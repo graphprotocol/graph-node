@@ -239,7 +239,16 @@ impl UnresolvedDataSource {
                 None => {
                     return Err(anyhow!("Entity {} not found in source manifest", entity));
                 }
-                Some(TypeKind::Object) => {}
+                Some(TypeKind::Object) => {
+                    // Check if the entity is immutable
+                    let entity_type = source_manifest.schema.entity_type(entity)?;
+                    if !entity_type.is_immutable() {
+                        return Err(anyhow!(
+                            "Entity {} is not immutable and cannot be used as a mapping entity",
+                            entity
+                        ));
+                    }
+                }
             }
         }
         Ok(())

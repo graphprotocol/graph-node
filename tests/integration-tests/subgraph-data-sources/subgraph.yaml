@@ -6,7 +6,7 @@ dataSources:
     name: Contract
     network: test
     source:
-      address: 'QmVz1Pt7NhgCkz4gfavmNrMhojnMT9hW81QDqVjy56ZMUP'
+      address: 'QmWi3H11QFE2PiWx6WcQkZYZdA5UasaBptUJqGn54MFux5'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
@@ -16,6 +16,6 @@ dataSources:
       handlers:
         - handler: handleEntity
           entity: Block
-        - handler: handleEntity
+        - handler: handleEntity2
           entity: Block2
       file: ./src/mapping.ts
