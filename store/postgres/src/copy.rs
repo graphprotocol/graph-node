@@ -598,6 +598,16 @@ impl CopyProgress {
         );
     }
 
+    fn start_table(&self, table: &TableState) {
+        info!(
+            self.logger,
+            "Starting to copy `{}` entities from {} to {}",
+            table.dst.object,
+            table.src.qualified_name,
+            table.dst.qualified_name
+        );
+    }
+
     fn progress_pct(current_vid: i64, target_vid: i64) -> f64 {
         // When a step is done, current_vid == target_vid + 1; don't report
         // more than 100% completion
@@ -710,6 +720,7 @@ impl CopyTableWorker {
                 }
             }
 
+            progress.start_table(&self.table);
             let status = {
                 loop {
                     if progress.is_cancelled() {
@@ -779,6 +790,8 @@ pub struct Connection {
     /// `Some(..)`. Most code shouldn't access `self.conn` directly, but use
     /// `self.transaction`
     conn: Option<PooledPgConnection>,
+    pool: ConnectionPool,
+    workers: usize,
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
@@ -826,6 +839,8 @@ impl Connection {
         Ok(Self {
             logger,
             conn,
+            pool,
+            workers: 5,
             src,
             dst,
             target_block,
@@ -866,18 +881,50 @@ impl Connection {
         Ok(())
     }
 
+    /// Create a worker using the connection in `self.conn`. This may return
+    /// `None` if there are no more tables that need to be copied. It is an
+    /// error to call this if `self.conn` is `None`
     fn default_worker(
         &mut self,
         state: &mut CopyState,
-        progress: Arc<CopyProgress>,
-    ) -> Option<Pin<Box<impl Future<Output = CopyTableWorker>>>> {
-        let conn = self.conn.take()?;
-        let table = state.unfinished.pop()?;
+        progress: &Arc<CopyProgress>,
+    ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
+        let conn = self.conn.take().ok_or_else(|| {
+            constraint_violation!(
+                "copy connection has been handed to background task but not returned yet"
+            )
+        })?;
+        let Some(table) = state.unfinished.pop() else {
+            return Ok(None);
+        };
 
         let worker = CopyTableWorker::new(conn, table);
-        Some(Box::pin(
+        Ok(Some(Box::pin(
             worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
-        ))
+        )))
+    }
+
+    /// Opportunistically create an extra worker if we have more tables to
+    /// copy and there are idle fdw connections. If there are no more tables
+    /// or no idle connections, this will return `None`.
+    fn extra_worker(
+        &mut self,
+        state: &mut CopyState,
+        progress: &Arc<CopyProgress>,
+    ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
+        // It's important that we get the connection before the table since
+        // we remove the table from the state and could drop it otherwise
+        let Some(conn) = self.pool.try_get_fdw(&self.logger)? else {
+            return Ok(None);
+        };
+        let Some(table) = state.unfinished.pop() else {
+            return Ok(None);
+        };
+
+        let worker = CopyTableWorker::new(conn, table);
+        Ok(Some(Box::pin(
+            worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
+        )))
     }
 
     pub async fn copy_data_internal(
@@ -892,17 +939,34 @@ impl Connection {
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
 
+        // Run as many copy jobs as we can in parallel, up to `self.workers`
+        // many. We can always start at least one worker because of the
+        // connection in `self.conn`. If the fdw pool has idle connections
+        // and there are more tables to be copied, we can start more
+        // workers, up to `self.workers` many
         let mut workers = Vec::new();
         while !state.unfinished.is_empty() && !workers.is_empty() {
-            if let Some(worker) = self.default_worker(&mut state, progress.cheap_clone()) {
+            // We usually add at least one job here, except if we are out of
+            // tables to copy. In that case, we go through the `while` loop
+            // every time one of the tables we are currently copying
+            // finishes
+            if let Some(worker) = self.default_worker(&mut state, &progress)? {
                 workers.push(worker);
             }
-
+            loop {
+                if workers.len() >= self.workers {
+                    break;
+                }
+                let Some(worker) = self.extra_worker(&mut state, &progress)? else {
+                    break;
+                };
+                workers.push(worker);
+            }
             let (worker, _idx, remaining) = select_all(workers).await;
             workers = remaining;
 
             // Put the connection back into self.conn so that we can use it
-            // in the next iteration
+            // in the next iteration.
             self.conn = Some(worker.conn);
             state.finished.push(worker.table);
 
@@ -915,6 +979,7 @@ impl Connection {
                 return Ok(Status::Cancelled);
             }
         }
+        debug_assert!(self.conn.is_some());
 
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.

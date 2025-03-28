@@ -524,6 +524,15 @@ impl ConnectionPool {
         self.get_ready()?.get_fdw(logger, timeout)
     }
 
+    /// Get a connection from the pool for foreign data wrapper access if
+    /// one is available
+    pub fn try_get_fdw(
+        &self,
+        logger: &Logger,
+    ) -> Result<Option<PooledConnection<ConnectionManager<PgConnection>>>, StoreError> {
+        self.get_ready()?.try_get_fdw(logger)
+    }
+
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
         let pool = self.get_ready()?;
         ForeignServer::new(pool.shard.clone(), &pool.postgres_url).map_err(|e| e.into())
@@ -980,6 +989,23 @@ impl PoolInner {
         }
     }
 
+    /// Get the pool for fdw connections. It is an error if none is configured
+    fn fdw_pool(
+        &self,
+        logger: &Logger,
+    ) -> Result<&Pool<ConnectionManager<PgConnection>>, StoreError> {
+        let pool = match &self.fdw_pool {
+            Some(pool) => pool,
+            None => {
+                const MSG: &str =
+                    "internal error: trying to get fdw connection on a pool that doesn't have any";
+                error!(logger, "{}", MSG);
+                return Err(constraint_violation!(MSG));
+            }
+        };
+        Ok(pool)
+    }
+
     /// Get a connection from the pool for foreign data wrapper access;
     /// since that pool can be very contended, periodically log that we are
     /// still waiting for a connection
@@ -995,15 +1021,7 @@ impl PoolInner {
     where
         F: FnMut() -> bool,
     {
-        let pool = match &self.fdw_pool {
-            Some(pool) => pool,
-            None => {
-                const MSG: &str =
-                    "internal error: trying to get fdw connection on a pool that doesn't have any";
-                error!(logger, "{}", MSG);
-                return Err(constraint_violation!(MSG));
-            }
-        };
+        let pool = self.fdw_pool(logger)?;
         loop {
             match pool.get() {
                 Ok(conn) => return Ok(conn),
@@ -1014,6 +1032,14 @@ impl PoolInner {
                 }
             }
         }
+    }
+
+    /// Get a connection from the fdw pool if one is available
+    pub fn try_get_fdw(
+        &self,
+        logger: &Logger,
+    ) -> Result<Option<PooledConnection<ConnectionManager<PgConnection>>>, StoreError> {
+        Ok(self.fdw_pool(logger)?.try_get())
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
