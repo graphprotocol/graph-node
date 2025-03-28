@@ -710,75 +710,12 @@ impl Connection {
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
-            while !table.finished() {
-                // It is important that this check happens outside the write
-                // transaction so that we do not hold on to locks acquired
-                // by the check
-                if table.is_cancelled(&mut self.conn)? {
+            match self.copy_table(logger, &mut progress, table)? {
+                Status::Finished => { /* Move on to the next table */ }
+                Status::Cancelled => {
                     return Ok(Status::Cancelled);
                 }
-
-                // Pause copying if replication is lagging behind to avoid
-                // overloading replicas
-                let mut lag = catalog::replication_lag(&mut self.conn)?;
-                if lag > MAX_REPLICATION_LAG {
-                    loop {
-                        info!(&self.logger,
-                             "Replicas are lagging too much; pausing copying for {}s to allow them to catch up",
-                             REPLICATION_SLEEP.as_secs();
-                             "lag_s" => lag.as_secs());
-                        std::thread::sleep(REPLICATION_SLEEP);
-                        lag = catalog::replication_lag(&mut self.conn)?;
-                        if lag <= ACCEPTABLE_REPLICATION_LAG {
-                            break;
-                        }
-                    }
-                }
-
-                let status = {
-                    loop {
-                        match self.transaction(|conn| {
-                            if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
-                                conn.batch_execute(timeout)?;
-                            }
-                            table.copy_batch(conn)
-                        }) {
-                            Ok(status) => {
-                                break status;
-                            }
-                            Err(StoreError::StatementTimeout) => {
-                                warn!(
-                                    logger,
-                                    "Current batch took longer than GRAPH_STORE_BATCH_TIMEOUT seconds. Retrying with a smaller batch size."
-                                );
-                            }
-                            Err(e) => {
-                                return Err(e);
-                            }
-                        }
-                        // We hit a timeout. Reset the batch size to 1.
-                        // That's small enough that we will make _some_
-                        // progress, assuming the timeout is set to a
-                        // reasonable value (several minutes)
-                        //
-                        // Our estimation of batch sizes is generally good
-                        // and stays within the prescribed bounds, but there
-                        // are cases where proper estimation of the batch
-                        // size is nearly impossible since the size of the
-                        // rows in the table jumps sharply at some point
-                        // that is hard to predict. This mechanism ensures
-                        // that if our estimation is wrong, the consequences
-                        // aren't too severe.
-                        self.transaction(|conn| table.set_batch_size(conn, 1))?;
-                    }
-                };
-
-                if status == Status::Cancelled {
-                    return Ok(status);
-                }
-                progress.update(&table.dst.object, &table.batcher);
             }
-            progress.table_finished(&table.batcher);
         }
 
         // Create indexes for all the attributes that were postponed at the start of
@@ -826,6 +763,86 @@ impl Connection {
         progress.finished();
 
         Ok(Status::Finished)
+    }
+
+    fn copy_table(
+        &mut self,
+        logger: &Logger,
+        progress: &mut CopyProgress<'_>,
+        table: &mut TableState,
+    ) -> Result<Status, StoreError> {
+        use Status::*;
+
+        while !table.finished() {
+            // It is important that this check happens outside the write
+            // transaction so that we do not hold on to locks acquired
+            // by the check
+            if table.is_cancelled(&mut self.conn)? {
+                return Ok(Cancelled);
+            }
+
+            // Pause copying if replication is lagging behind to avoid
+            // overloading replicas
+            let mut lag = catalog::replication_lag(&mut self.conn)?;
+            if lag > MAX_REPLICATION_LAG {
+                loop {
+                    info!(&self.logger,
+                         "Replicas are lagging too much; pausing copying for {}s to allow them to catch up",
+                         REPLICATION_SLEEP.as_secs();
+                         "lag_s" => lag.as_secs());
+                    std::thread::sleep(REPLICATION_SLEEP);
+                    lag = catalog::replication_lag(&mut self.conn)?;
+                    if lag <= ACCEPTABLE_REPLICATION_LAG {
+                        break;
+                    }
+                }
+            }
+
+            let status = {
+                loop {
+                    match self.transaction(|conn| {
+                        if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
+                            conn.batch_execute(timeout)?;
+                        }
+                        table.copy_batch(conn)
+                    }) {
+                        Ok(status) => {
+                            break status;
+                        }
+                        Err(StoreError::StatementTimeout) => {
+                            warn!(
+                                logger,
+                                "Current batch took longer than GRAPH_STORE_BATCH_TIMEOUT seconds. Retrying with a smaller batch size."
+                            );
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                    // We hit a timeout. Reset the batch size to 1.
+                    // That's small enough that we will make _some_
+                    // progress, assuming the timeout is set to a
+                    // reasonable value (several minutes)
+                    //
+                    // Our estimation of batch sizes is generally good
+                    // and stays within the prescribed bounds, but there
+                    // are cases where proper estimation of the batch
+                    // size is nearly impossible since the size of the
+                    // rows in the table jumps sharply at some point
+                    // that is hard to predict. This mechanism ensures
+                    // that if our estimation is wrong, the consequences
+                    // aren't too severe.
+                    self.transaction(|conn| table.set_batch_size(conn, 1))?;
+                }
+            };
+
+            if status == Cancelled {
+                return Ok(Cancelled);
+            }
+            progress.update(&table.dst.object, &table.batcher);
+        }
+        progress.table_finished(&table.batcher);
+        Ok(Finished)
     }
 
     /// Copy the data for the subgraph `src` to the subgraph `dst`. The
