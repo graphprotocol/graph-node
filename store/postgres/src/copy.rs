@@ -13,6 +13,8 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
+    future::Future,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
         Arc, Mutex,
@@ -864,6 +866,20 @@ impl Connection {
         Ok(())
     }
 
+    fn default_worker(
+        &mut self,
+        state: &mut CopyState,
+        progress: Arc<CopyProgress>,
+    ) -> Option<Pin<Box<impl Future<Output = CopyTableWorker>>>> {
+        let conn = self.conn.take()?;
+        let table = state.unfinished.pop()?;
+
+        let worker = CopyTableWorker::new(conn, table);
+        Some(Box::pin(
+            worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
+        ))
+    }
+
     pub async fn copy_data_internal(
         &mut self,
         index_list: IndexList,
@@ -873,22 +889,15 @@ impl Connection {
         let target_block = self.target_block.clone();
         let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
 
-        let logger = &self.logger.clone();
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
 
         let mut workers = Vec::new();
-        while let Some(table) = state.unfinished.pop() {
-            // Take self.conn to decouple it from self, copy the table and
-            // put the connection back
-            let conn = self.conn.take().ok_or_else(|| {
-                constraint_violation!("copy connection is not where it is supposed to be")
-            })?;
+        while !state.unfinished.is_empty() && !workers.is_empty() {
+            if let Some(worker) = self.default_worker(&mut state, progress.cheap_clone()) {
+                workers.push(worker);
+            }
 
-            let worker = CopyTableWorker::new(conn, table);
-            let fut = Box::pin(worker.run(logger.cheap_clone(), progress.cheap_clone()));
-
-            workers.push(fut);
             let (worker, _idx, remaining) = select_all(workers).await;
             workers = remaining;
 
