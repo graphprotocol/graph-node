@@ -142,9 +142,11 @@ impl fmt::Debug for EnvVarsStore {
     }
 }
 
-impl From<InnerStore> for EnvVarsStore {
-    fn from(x: InnerStore) -> Self {
-        Self {
+impl TryFrom<InnerStore> for EnvVarsStore {
+    type Error = anyhow::Error;
+
+    fn try_from(x: InnerStore) -> Result<Self, Self::Error> {
+        let vars = Self {
             chain_head_watcher_timeout: Duration::from_secs(x.chain_head_watcher_timeout_in_secs),
             query_stats_refresh_interval: Duration::from_secs(
                 x.query_stats_refresh_interval_in_secs,
@@ -184,7 +186,15 @@ impl From<InnerStore> for EnvVarsStore {
             last_rollup_from_poi: x.last_rollup_from_poi,
             insert_extra_cols: x.insert_extra_cols,
             fdw_fetch_size: x.fdw_fetch_size,
+        };
+        if let Some(timeout) = vars.batch_timeout {
+            if timeout < 2 * vars.batch_target_duration {
+                bail!(
+                    "GRAPH_STORE_BATCH_TIMEOUT must be greater than 2*GRAPH_STORE_BATCH_TARGET_DURATION"
+                );
+            }
         }
+        Ok(vars)
     }
 }
 
