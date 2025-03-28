@@ -1491,7 +1491,7 @@ impl DeploymentStore {
     /// to the graph point, so that calling this needlessly with `Some(..)`
     /// will remove any progress that might have been made since the last
     /// time the deployment was started.
-    pub(crate) fn start_subgraph(
+    pub(crate) async fn start_subgraph(
         &self,
         logger: &Logger,
         site: Arc<Site>,
@@ -1528,7 +1528,7 @@ impl DeploymentStore {
                 src_manifest_idx_and_name,
                 dst_manifest_idx_and_name,
             )?;
-            let status = copy_conn.copy_data(index_list)?;
+            let status = copy_conn.copy_data(index_list).await?;
             if status == crate::copy::Status::Cancelled {
                 return Err(StoreError::Canceled);
             }
