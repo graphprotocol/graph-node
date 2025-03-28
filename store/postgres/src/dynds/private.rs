@@ -389,13 +389,16 @@ impl DsForCopy {
         // unclamp block range if it ends beyond target block
         match self.block_range.1 {
             Bound::Included(block) if block > target_block => self.block_range.1 = Bound::Unbounded,
+            Bound::Excluded(block) if block - 1 > target_block => {
+                self.block_range.1 = Bound::Unbounded
+            }
             _ => { /* use block range as is */ }
         }
         // Translate manifest index
         let src_created = match self.block_range.0 {
             Bound::Included(block) => block,
             Bound::Excluded(block) => block + 1,
-            Bound::Unbounded => i32::MAX,
+            Bound::Unbounded => 0,
         };
         self.idx = map.dst_idx(self.idx, src_nsp, src_created, dst_nsp)?;
         Ok(self)
