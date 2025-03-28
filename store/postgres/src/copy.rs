@@ -56,6 +56,8 @@ const ACCEPTABLE_REPLICATION_LAG: Duration = Duration::from_secs(30);
 /// the lag again
 const REPLICATION_SLEEP: Duration = Duration::from_secs(10);
 
+type PooledPgConnection = PooledConnection<ConnectionManager<PgConnection>>;
+
 lazy_static! {
     static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
         .store
@@ -620,7 +622,17 @@ pub struct Connection {
     /// The connection pool for the shard that will contain the destination
     /// of the copy
     logger: Logger,
-    conn: PooledConnection<ConnectionManager<PgConnection>>,
+    /// We always have one database connection to make sure that copy jobs,
+    /// once started, can eventually finished so that we don't have
+    /// different copy jobs that are all half done and have to wait for
+    /// other jobs to finish
+    ///
+    /// This is an `Option` because we need to take this connection out of
+    /// `self` at some point to spawn a background task to copy an
+    /// individual table. Except for that case, this will always be
+    /// `Some(..)`. Most code shouldn't access `self.conn` directly, but use
+    /// `self.transaction`
+    conn: Option<PooledPgConnection>,
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
@@ -662,6 +674,7 @@ impl Connection {
             }
             false
         })?;
+        let conn = Some(conn);
         let src_manifest_idx_and_name = Arc::new(src_manifest_idx_and_name);
         let dst_manifest_idx_and_name = Arc::new(dst_manifest_idx_and_name);
         Ok(Self {
@@ -679,7 +692,12 @@ impl Connection {
     where
         F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
-        self.conn.transaction(|conn| f(conn))
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(constraint_violation!(
+                "copy connection has been handed to background task but not returned yet"
+            ));
+        };
+        conn.transaction(|conn| f(conn))
     }
 
     /// Copy private data sources if the source uses a schema version that
@@ -716,7 +734,15 @@ impl Connection {
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
-            match Self::copy_table(&mut self.conn, logger, &mut progress, table)? {
+            // Take self.conn to decouple it from self, copy the table and
+            // put the connection back
+            let mut conn = self.conn.take().ok_or_else(|| {
+                constraint_violation!("copy connection is not where it is supposed to be")
+            })?;
+            let res = Self::copy_table(&mut conn, logger, &mut progress, table);
+            self.conn = Some(conn);
+
+            match res? {
                 Status::Finished => { /* Move on to the next table */ }
                 Status::Cancelled => {
                     return Ok(Status::Cancelled);
