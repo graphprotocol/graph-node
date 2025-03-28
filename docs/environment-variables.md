@@ -231,6 +231,10 @@ those.
   timeout is hit, the batch size is reset to 1 so we can be sure that
   batches stay below `GRAPH_STORE_BATCH_TARGET_DURATION` and the smaller
   batch is retried. Value is in seconds and defaults to unlimited.
+- `GRAPH_STORE_BATCH_WORKERS`: The number of workers to use for batch
+    operations. If there are idle connectiosn, each subgraph copy operation
+    will use up to this many workers to copy tables in parallel. Defaults
+    to 1 and must be at least 1
 - `GRAPH_START_BLOCK`: block hash:block number where the forked subgraph will start indexing at.
 - `GRAPH_FORK_BASE`: api url for where the graph node will fork from, use `https://api.thegraph.com/subgraphs/id/`
   for the hosted service.

@@ -13,8 +13,10 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
+    future::Future,
+    pin::Pin,
     sync::{
-        atomic::{AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant},
@@ -30,6 +32,7 @@ use diesel::{
 };
 use graph::{
     constraint_violation,
+    futures03::future::select_all,
     prelude::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
     },
@@ -548,7 +551,8 @@ impl TableState {
     }
 }
 
-// A helper for logging progress while data is being copied
+// A helper for logging progress while data is being copied and
+// communicating across all copy workers
 struct CopyProgress {
     logger: Logger,
     last_log: Arc<Mutex<Instant>>,
@@ -557,6 +561,7 @@ struct CopyProgress {
     /// The sum of all `target_vid` of tables that have finished
     current_vid: AtomicI64,
     target_vid: i64,
+    cancelled: AtomicBool,
 }
 
 impl CopyProgress {
@@ -578,6 +583,7 @@ impl CopyProgress {
             dst: state.dst.site.clone(),
             current_vid,
             target_vid,
+            cancelled: AtomicBool::new(false),
         }
     }
 
@@ -589,6 +595,16 @@ impl CopyProgress {
             self.src.namespace,
             self.dst.deployment,
             self.dst.namespace
+        );
+    }
+
+    fn start_table(&self, table: &TableState) {
+        info!(
+            self.logger,
+            "Starting to copy `{}` entities from {} to {}",
+            table.dst.object,
+            table.src.qualified_name,
+            table.dst.qualified_name
         );
     }
 
@@ -641,6 +657,121 @@ impl CopyProgress {
             "Finished copying data into {}[{}]", self.dst.deployment, self.dst.namespace
         );
     }
+
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+}
+
+/// A helper to run copying of one table. We need to thread `conn` and
+/// `table` from the control loop to the background worker and back again to
+/// the control loop. This worker facilitates that
+struct CopyTableWorker {
+    conn: PooledPgConnection,
+    table: TableState,
+    result: Result<Status, StoreError>,
+}
+
+impl CopyTableWorker {
+    fn new(conn: PooledPgConnection, table: TableState) -> Self {
+        Self {
+            conn,
+            table,
+            result: Ok(Status::Cancelled),
+        }
+    }
+
+    async fn run(mut self, logger: Logger, progress: Arc<CopyProgress>) -> Self {
+        self.result = self.run_inner(logger, &progress);
+        self
+    }
+
+    fn run_inner(&mut self, logger: Logger, progress: &CopyProgress) -> Result<Status, StoreError> {
+        use Status::*;
+
+        let conn = &mut self.conn;
+        while !self.table.finished() {
+            // It is important that this check happens outside the write
+            // transaction so that we do not hold on to locks acquired
+            // by the check
+            if self.table.is_cancelled(conn)? || progress.is_cancelled() {
+                progress.cancel();
+                return Ok(Cancelled);
+            }
+
+            // Pause copying if replication is lagging behind to avoid
+            // overloading replicas
+            let mut lag = catalog::replication_lag(conn)?;
+            if lag > MAX_REPLICATION_LAG {
+                loop {
+                    info!(logger,
+                             "Replicas are lagging too much; pausing copying for {}s to allow them to catch up",
+                             REPLICATION_SLEEP.as_secs();
+                             "lag_s" => lag.as_secs());
+                    std::thread::sleep(REPLICATION_SLEEP);
+                    lag = catalog::replication_lag(conn)?;
+                    if lag <= ACCEPTABLE_REPLICATION_LAG {
+                        break;
+                    }
+                }
+            }
+
+            progress.start_table(&self.table);
+            let status = {
+                loop {
+                    if progress.is_cancelled() {
+                        break Cancelled;
+                    }
+
+                    match conn.transaction(|conn| {
+                        if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
+                            conn.batch_execute(timeout)?;
+                        }
+                        self.table.copy_batch(conn)
+                    }) {
+                        Ok(status) => {
+                            break status;
+                        }
+                        Err(StoreError::StatementTimeout) => {
+                            warn!(
+                                    logger,
+                                    "Current batch took longer than GRAPH_STORE_BATCH_TIMEOUT seconds. Retrying with a smaller batch size."
+                                );
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                    // We hit a timeout. Reset the batch size to 1.
+                    // That's small enough that we will make _some_
+                    // progress, assuming the timeout is set to a
+                    // reasonable value (several minutes)
+                    //
+                    // Our estimation of batch sizes is generally good
+                    // and stays within the prescribed bounds, but there
+                    // are cases where proper estimation of the batch
+                    // size is nearly impossible since the size of the
+                    // rows in the table jumps sharply at some point
+                    // that is hard to predict. This mechanism ensures
+                    // that if our estimation is wrong, the consequences
+                    // aren't too severe.
+                    conn.transaction(|conn| self.table.set_batch_size(conn, 1))?;
+                }
+            };
+
+            if status == Cancelled {
+                progress.cancel();
+                return Ok(Cancelled);
+            }
+            progress.update(&self.table.dst.object, &self.table.batcher);
+        }
+        progress.table_finished(&self.table.batcher);
+        Ok(Finished)
+    }
 }
 
 /// A helper for copying subgraphs
@@ -659,6 +790,8 @@ pub struct Connection {
     /// `Some(..)`. Most code shouldn't access `self.conn` directly, but use
     /// `self.transaction`
     conn: Option<PooledPgConnection>,
+    pool: ConnectionPool,
+    workers: usize,
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
@@ -706,6 +839,8 @@ impl Connection {
         Ok(Self {
             logger,
             conn,
+            pool,
+            workers: ENV_VARS.store.batch_workers,
             src,
             dst,
             target_block,
@@ -746,6 +881,52 @@ impl Connection {
         Ok(())
     }
 
+    /// Create a worker using the connection in `self.conn`. This may return
+    /// `None` if there are no more tables that need to be copied. It is an
+    /// error to call this if `self.conn` is `None`
+    fn default_worker(
+        &mut self,
+        state: &mut CopyState,
+        progress: &Arc<CopyProgress>,
+    ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
+        let conn = self.conn.take().ok_or_else(|| {
+            constraint_violation!(
+                "copy connection has been handed to background task but not returned yet"
+            )
+        })?;
+        let Some(table) = state.unfinished.pop() else {
+            return Ok(None);
+        };
+
+        let worker = CopyTableWorker::new(conn, table);
+        Ok(Some(Box::pin(
+            worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
+        )))
+    }
+
+    /// Opportunistically create an extra worker if we have more tables to
+    /// copy and there are idle fdw connections. If there are no more tables
+    /// or no idle connections, this will return `None`.
+    fn extra_worker(
+        &mut self,
+        state: &mut CopyState,
+        progress: &Arc<CopyProgress>,
+    ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
+        // It's important that we get the connection before the table since
+        // we remove the table from the state and could drop it otherwise
+        let Some(conn) = self.pool.try_get_fdw(&self.logger)? else {
+            return Ok(None);
+        };
+        let Some(table) = state.unfinished.pop() else {
+            return Ok(None);
+        };
+
+        let worker = CopyTableWorker::new(conn, table);
+        Ok(Some(Box::pin(
+            worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
+        )))
+    }
+
     pub async fn copy_data_internal(
         &mut self,
         index_list: IndexList,
@@ -755,28 +936,50 @@ impl Connection {
         let target_block = self.target_block.clone();
         let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
 
-        let logger = &self.logger.clone();
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
 
-        while let Some(mut table) = state.unfinished.pop() {
-            // Take self.conn to decouple it from self, copy the table and
-            // put the connection back
-            let mut conn = self.conn.take().ok_or_else(|| {
-                constraint_violation!("copy connection is not where it is supposed to be")
-            })?;
-            let res = Self::copy_table(&mut conn, logger, progress.cheap_clone(), &mut table);
-            self.conn = Some(conn);
+        // Run as many copy jobs as we can in parallel, up to `self.workers`
+        // many. We can always start at least one worker because of the
+        // connection in `self.conn`. If the fdw pool has idle connections
+        // and there are more tables to be copied, we can start more
+        // workers, up to `self.workers` many
+        let mut workers = Vec::new();
+        while !state.unfinished.is_empty() || !workers.is_empty() {
+            // We usually add at least one job here, except if we are out of
+            // tables to copy. In that case, we go through the `while` loop
+            // every time one of the tables we are currently copying
+            // finishes
+            if let Some(worker) = self.default_worker(&mut state, &progress)? {
+                workers.push(worker);
+            }
+            loop {
+                if workers.len() >= self.workers {
+                    break;
+                }
+                let Some(worker) = self.extra_worker(&mut state, &progress)? else {
+                    break;
+                };
+                workers.push(worker);
+            }
+            let (worker, _idx, remaining) = select_all(workers).await;
+            workers = remaining;
 
-            match res? {
-                Status::Finished => {
-                    state.finished.push(table);
-                }
-                Status::Cancelled => {
-                    return Ok(Status::Cancelled);
-                }
+            // Put the connection back into self.conn so that we can use it
+            // in the next iteration.
+            self.conn = Some(worker.conn);
+            state.finished.push(worker.table);
+
+            if worker.result.is_err() {
+                progress.cancel();
+                return worker.result;
+            }
+
+            if progress.is_cancelled() {
+                return Ok(Status::Cancelled);
             }
         }
+        debug_assert!(self.conn.is_some());
 
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
@@ -822,86 +1025,6 @@ impl Connection {
         progress.finished();
 
         Ok(Status::Finished)
-    }
-
-    fn copy_table(
-        conn: &mut PgConnection,
-        logger: &Logger,
-        progress: Arc<CopyProgress>,
-        table: &mut TableState,
-    ) -> Result<Status, StoreError> {
-        use Status::*;
-
-        while !table.finished() {
-            // It is important that this check happens outside the write
-            // transaction so that we do not hold on to locks acquired
-            // by the check
-            if table.is_cancelled(conn)? {
-                return Ok(Cancelled);
-            }
-
-            // Pause copying if replication is lagging behind to avoid
-            // overloading replicas
-            let mut lag = catalog::replication_lag(conn)?;
-            if lag > MAX_REPLICATION_LAG {
-                loop {
-                    info!(logger,
-                         "Replicas are lagging too much; pausing copying for {}s to allow them to catch up",
-                         REPLICATION_SLEEP.as_secs();
-                         "lag_s" => lag.as_secs());
-                    std::thread::sleep(REPLICATION_SLEEP);
-                    lag = catalog::replication_lag(conn)?;
-                    if lag <= ACCEPTABLE_REPLICATION_LAG {
-                        break;
-                    }
-                }
-            }
-
-            let status = {
-                loop {
-                    match conn.transaction(|conn| {
-                        if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
-                            conn.batch_execute(timeout)?;
-                        }
-                        table.copy_batch(conn)
-                    }) {
-                        Ok(status) => {
-                            break status;
-                        }
-                        Err(StoreError::StatementTimeout) => {
-                            warn!(
-                                logger,
-                                "Current batch took longer than GRAPH_STORE_BATCH_TIMEOUT seconds. Retrying with a smaller batch size."
-                            );
-                        }
-                        Err(e) => {
-                            return Err(e);
-                        }
-                    }
-                    // We hit a timeout. Reset the batch size to 1.
-                    // That's small enough that we will make _some_
-                    // progress, assuming the timeout is set to a
-                    // reasonable value (several minutes)
-                    //
-                    // Our estimation of batch sizes is generally good
-                    // and stays within the prescribed bounds, but there
-                    // are cases where proper estimation of the batch
-                    // size is nearly impossible since the size of the
-                    // rows in the table jumps sharply at some point
-                    // that is hard to predict. This mechanism ensures
-                    // that if our estimation is wrong, the consequences
-                    // aren't too severe.
-                    conn.transaction(|conn| table.set_batch_size(conn, 1))?;
-                }
-            };
-
-            if status == Cancelled {
-                return Ok(Cancelled);
-            }
-            progress.update(&table.dst.object, &table.batcher);
-        }
-        progress.table_finished(&table.batcher);
-        Ok(Finished)
     }
 
     /// Copy the data for the subgraph `src` to the subgraph `dst`. The
