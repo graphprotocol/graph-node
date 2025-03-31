@@ -47,9 +47,10 @@ specVersion: 1.3.0
 ";
 
 const SOURCE_SUBGRAPH_SCHEMA: &str = "
-type TestEntity @entity { id: ID! }
-type User @entity { id: ID! }
-type Profile @entity { id: ID! }
+type TestEntity @entity(immutable: true) { id: ID! }
+type MutableEntity @entity { id: ID! }
+type User @entity(immutable: true) { id: ID! }
+type Profile @entity(immutable: true) { id: ID! }
 
 type TokenData @entity(timeseries: true) {
     id: Int8!
@@ -1761,6 +1762,7 @@ specVersion: 1.3.0
     let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
+    println!("Error: {}", err);
     assert!(err
         .to_string()
         .contains("Subgraph datasources cannot be used alongside onchain datasources"));
@@ -1856,4 +1858,73 @@ specVersion: 1.3.0
             }
         }
     })
+}
+
+#[tokio::test]
+async fn subgraph_ds_manifest_mutable_entities_should_fail() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: MutableEntity # This is a mutable entity and should fail
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("Entity MutableEntity is not immutable and cannot be used as a mapping entity"));
+}
+
+#[tokio::test]
+async fn subgraph_ds_manifest_immutable_entities_should_succeed() {
+    let yaml = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: SubgraphSource
+    kind: subgraph
+    entities:
+        - Gravatar
+    network: mainnet
+    source: 
+      address: 'QmSource'
+      startBlock: 9562480
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handlers:
+        - handler: handleEntity
+          entity: User # This is an immutable entity and should succeed
+specVersion: 1.3.0
+";
+
+    let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
+
+    assert!(result.is_ok());
 }

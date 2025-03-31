@@ -1,4 +1,4 @@
-type SourceBData @entity {
+type SourceBData @entity(immutable: true) {
   id: ID!
   data: String!
   blockNumber: BigInt!
