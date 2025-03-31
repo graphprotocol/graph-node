@@ -91,7 +91,7 @@ pub struct EnvVars {
     /// This is a comma separated list of chain ids for which the gas field will not be set
     /// when calling `eth_call`.
     pub eth_call_no_gas: Vec<String>,
-    /// Set by the flag `GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS`. Off by default.
+    /// Set by the flag `GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS`. On by default.
     /// When enabled, forces the use of RPC instead of Firehose for loading block pointers by numbers.
     /// This is used in composable subgraphs. Firehose can be slow for loading block pointers by numbers.
     pub force_rpc_for_block_ptrs: bool,
