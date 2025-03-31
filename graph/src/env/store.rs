@@ -86,7 +86,7 @@ pub struct EnvVarsStore {
     pub batch_timeout: Option<Duration>,
 
     /// The number of workers to use for batch operations. If there are idle
-    /// connectiosn, each subgraph copy operation will use up to this many
+    /// connections, each subgraph copy operation will use up to this many
     /// workers to copy tables in parallel. Defaults to 1 and must be at
     /// least 1
     pub batch_workers: usize,
