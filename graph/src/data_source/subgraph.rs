@@ -270,8 +270,8 @@ impl UnresolvedDataSource {
             .map(Arc::new)
     }
 
-    /// Recursively verifies that all grafts in the chain meet the minimum spec version requirement
-    async fn verify_graft_chain<C: Blockchain>(
+    /// Recursively verifies that all grafts in the chain meet the minimum spec version requirement for a subgraph source
+    async fn verify_graft_chain_sourcable<C: Blockchain>(
         manifest: Arc<SubgraphManifest<C>>,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
@@ -283,7 +283,7 @@ impl UnresolvedDataSource {
         // Check if current manifest meets spec version requirement
         if manifest.spec_version < SPEC_VERSION_1_3_0 {
             return Err(anyhow!(
-                "Subgraph manifest spec version {} is not supported, minimum supported version is {}. Graft chain: {}",
+                "Subgraph with a spec version {} is not supported for a subgraph source, minimum supported version is {}. Graft chain: {}",
                 manifest.spec_version,
                 SPEC_VERSION_1_3_0,
                 graft_chain.join(" -> ")
@@ -307,7 +307,7 @@ impl UnresolvedDataSource {
                     .await
                     .context("Failed to resolve graft base manifest")?;
 
-            Box::pin(Self::verify_graft_chain(
+            Box::pin(Self::verify_graft_chain_sourcable(
                 Arc::new(graft_manifest),
                 resolver,
                 logger,
@@ -345,8 +345,13 @@ impl UnresolvedDataSource {
 
         // Verify the entire graft chain meets spec version requirements
         let mut graft_chain = Vec::new();
-        Self::verify_graft_chain(source_manifest.clone(), resolver, logger, &mut graft_chain)
-            .await?;
+        Self::verify_graft_chain_sourcable(
+            source_manifest.clone(),
+            resolver,
+            logger,
+            &mut graft_chain,
+        )
+        .await?;
 
         if source_manifest
             .data_sources
