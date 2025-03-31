@@ -91,6 +91,10 @@ pub struct EnvVars {
     /// This is a comma separated list of chain ids for which the gas field will not be set
     /// when calling `eth_call`.
     pub eth_call_no_gas: Vec<String>,
+    /// Set by the flag `GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS`. On by default.
+    /// When enabled, forces the use of RPC instead of Firehose for loading block pointers by numbers.
+    /// This is used in composable subgraphs. Firehose can be slow for loading block pointers by numbers.
+    pub force_rpc_for_block_ptrs: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -141,6 +145,7 @@ impl From<Inner> for EnvVars {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect(),
+            force_rpc_for_block_ptrs: x.force_rpc_for_block_ptrs.0,
         }
     }
 }
@@ -192,4 +197,6 @@ struct Inner {
     genesis_block_number: u64,
     #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "421613,421614")]
     eth_call_no_gas: String,
+    #[envconfig(from = "GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS", default = "true")]
+    force_rpc_for_block_ptrs: EnvVarBoolean,
 }

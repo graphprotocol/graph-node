@@ -441,6 +441,7 @@ pub async fn networks_as_chains(
                     client.clone(),
                     metrics_registry.clone(),
                     chain_store.clone(),
+                    eth_adapters.clone(),
                 );
 
                 let call_cache = chain_store.cheap_clone();
