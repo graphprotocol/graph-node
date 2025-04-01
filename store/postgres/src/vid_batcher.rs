@@ -258,7 +258,10 @@ impl VidRange {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.max == -1
+        // min > max can happen when we restart a copy job that has finished
+        // some tables. For those, min (the next_vid) will be larger than
+        // max (the target_vid)
+        self.max == -1 || self.min > self.max
     }
 
     pub fn size(&self) -> usize {
