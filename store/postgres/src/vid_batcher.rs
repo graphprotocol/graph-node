@@ -226,7 +226,8 @@ impl VidBatcher {
                 let duration = self.step_timer.elapsed();
 
                 let batch_size = self.batch_size.adapt(duration);
-                self.start = self.end + 1;
+                // We can't possibly copy farther than `max_vid`
+                self.start = (self.end + 1).min(self.max_vid + 1);
                 self.end = ogive.next_point(self.start, batch_size as usize)?;
 
                 Ok((duration, Some(res)))
