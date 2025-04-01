@@ -195,7 +195,9 @@ impl CopyState {
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
         let tables = TableState::load(conn, src.as_ref(), dst.as_ref())?;
-        let (finished, unfinished) = tables.into_iter().partition(|table| table.finished());
+        let (finished, mut unfinished): (Vec<_>, Vec<_>) =
+            tables.into_iter().partition(|table| table.finished());
+        unfinished.sort_by_key(|table| table.dst.object.to_string());
         Ok(CopyState {
             src,
             dst,
