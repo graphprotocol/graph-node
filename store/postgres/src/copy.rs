@@ -1104,10 +1104,23 @@ impl Connection {
             &self.logger,
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
+
         let dst_site = self.dst.site.cheap_clone();
         self.transaction(|conn| advisory_lock::lock_copying(conn, &dst_site))?;
+
         let res = self.copy_data_internal(index_list).await;
+
+        if self.conn.is_none() {
+            // A background worker panicked and left us without our
+            // dedicated connection, but we still need to release the copy
+            // lock; get a normal connection, not from the fdw pool for that
+            // as that will be much less contended. We won't be holding on
+            // to the connection for long as `res` will be an error and we
+            // will abort starting this subgraph
+            self.conn = Some(self.pool.get()?);
+        }
         self.transaction(|conn| advisory_lock::unlock_copying(conn, &dst_site))?;
+
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
         }
