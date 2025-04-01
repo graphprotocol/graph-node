@@ -687,9 +687,18 @@ impl CopyTableWorker {
         }
     }
 
-    async fn run(mut self, logger: Logger, progress: Arc<CopyProgress>) -> Self {
-        self.result = self.run_inner(logger, &progress);
-        self
+    async fn run(
+        mut self,
+        logger: Logger,
+        progress: Arc<CopyProgress>,
+    ) -> Result<Self, StoreError> {
+        let object = self.table.dst.object.cheap_clone();
+        graph::spawn_blocking_allow_panic(move || {
+            self.result = self.run_inner(logger, &progress);
+            self
+        })
+        .await
+        .map_err(|e| constraint_violation!("copy worker for {} panicked: {}", object, e))
     }
 
     fn run_inner(&mut self, logger: Logger, progress: &CopyProgress) -> Result<Status, StoreError> {
@@ -890,7 +899,7 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>> {
+    ) -> Option<Pin<Box<dyn Future<Output = Result<CopyTableWorker, StoreError>>>>> {
         let Some(conn) = self.conn.take() else {
             return None;
         };
@@ -911,7 +920,7 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>> {
+    ) -> Option<Pin<Box<dyn Future<Output = Result<CopyTableWorker, StoreError>>>>> {
         // It's important that we get the connection before the table since
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
@@ -990,7 +999,18 @@ impl Connection {
                 workers.push(worker);
             }
             self.assert_progress(workers.len(), &state)?;
-            let (worker, _idx, remaining) = select_all(workers).await;
+            let (result, _idx, remaining) = select_all(workers).await;
+
+            let worker = match result {
+                Ok(worker) => worker,
+                Err(e) => {
+                    // This is a panic in the background task. We need to
+                    // cancel all other tasks and return the error
+                    progress.cancel();
+                    return Err(e);
+                }
+            };
+
             workers = remaining;
 
             // Put the connection back into self.conn so that we can use it
