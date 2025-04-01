@@ -694,6 +694,7 @@ impl CopyTableWorker {
         use Status::*;
 
         let conn = &mut self.conn;
+        progress.start_table(&self.table);
         while !self.table.finished() {
             // It is important that this check happens outside the write
             // transaction so that we do not hold on to locks acquired
@@ -720,7 +721,6 @@ impl CopyTableWorker {
                 }
             }
 
-            progress.start_table(&self.table);
             let status = {
                 loop {
                     if progress.is_cancelled() {
