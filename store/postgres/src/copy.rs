@@ -914,7 +914,10 @@ impl Connection {
     ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
         // It's important that we get the connection before the table since
         // we remove the table from the state and could drop it otherwise
-        let Some(conn) = self.pool.try_get_fdw(&self.logger)? else {
+        let Some(conn) = self
+            .pool
+            .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)?
+        else {
             return Ok(None);
         };
         let Some(table) = state.unfinished.pop() else {

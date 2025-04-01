@@ -529,8 +529,9 @@ impl ConnectionPool {
     pub fn try_get_fdw(
         &self,
         logger: &Logger,
+        timeout: Duration,
     ) -> Result<Option<PooledConnection<ConnectionManager<PgConnection>>>, StoreError> {
-        self.get_ready()?.try_get_fdw(logger)
+        self.get_ready()?.try_get_fdw(logger, timeout)
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
@@ -1034,12 +1035,22 @@ impl PoolInner {
         }
     }
 
-    /// Get a connection from the fdw pool if one is available
+    /// Get a connection from the fdw pool if one is available. We wait for
+    /// `timeout` for a connection which should be set just big enough to
+    /// allow establishing a connection
     pub fn try_get_fdw(
         &self,
         logger: &Logger,
+        timeout: Duration,
     ) -> Result<Option<PooledConnection<ConnectionManager<PgConnection>>>, StoreError> {
-        Ok(self.fdw_pool(logger)?.try_get())
+        // Any error trying to get a connection is treated as "couldn't get
+        // a connection in time". If there is a serious error with the
+        // database, e.g., because it's not available, the next database
+        // operation will run into it and report it.
+        self.fdw_pool(logger)?
+            .get_timeout(timeout)
+            .map(|conn| Some(conn))
+            .or_else(|_| Ok(None))
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {

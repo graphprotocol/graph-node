@@ -91,6 +91,12 @@ pub struct EnvVarsStore {
     /// least 1
     pub batch_workers: usize,
 
+    /// How long to wait to get an additional connection for a batch worker.
+    /// This should just be big enough to allow the connection pool to
+    /// establish a connection. Set by `GRAPH_STORE_BATCH_WORKER_WAIT`.
+    /// Value is in ms and defaults to 2000ms
+    pub batch_worker_wait: Duration,
+
     /// Prune tables where we will remove at least this fraction of entity
     /// versions by rebuilding the table. Set by
     /// `GRAPH_STORE_HISTORY_REBUILD_THRESHOLD`. The default is 0.5
@@ -182,6 +188,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             batch_target_duration: Duration::from_secs(x.batch_target_duration_in_secs),
             batch_timeout: x.batch_timeout_in_secs.map(Duration::from_secs),
             batch_workers: x.batch_workers,
+            batch_worker_wait: Duration::from_millis(x.batch_worker_wait),
             rebuild_threshold: x.rebuild_threshold.0,
             delete_threshold: x.delete_threshold.0,
             history_slack_factor: x.history_slack_factor.0,
@@ -251,6 +258,8 @@ pub struct InnerStore {
     batch_timeout_in_secs: Option<u64>,
     #[envconfig(from = "GRAPH_STORE_BATCH_WORKERS", default = "1")]
     batch_workers: usize,
+    #[envconfig(from = "GRAPH_STORE_BATCH_WORKER_WAIT", default = "2000")]
+    batch_worker_wait: u64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_REBUILD_THRESHOLD", default = "0.5")]
     rebuild_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_DELETE_THRESHOLD", default = "0.05")]
