@@ -890,20 +890,18 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
-        let conn = self.conn.take().ok_or_else(|| {
-            constraint_violation!(
-                "copy connection has been handed to background task but not returned yet (default worker)"
-            )
-        })?;
+    ) -> Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>> {
+        let Some(conn) = self.conn.take() else {
+            return None;
+        };
         let Some(table) = state.unfinished.pop() else {
-            return Ok(None);
+            return None;
         };
 
         let worker = CopyTableWorker::new(conn, table);
-        Ok(Some(Box::pin(
+        Some(Box::pin(
             worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
-        )))
+        ))
     }
 
     /// Opportunistically create an extra worker if we have more tables to
@@ -913,23 +911,44 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
+    ) -> Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>> {
         // It's important that we get the connection before the table since
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
             .pool
             .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)
         else {
-            return Ok(None);
+            return None;
         };
         let Some(table) = state.unfinished.pop() else {
-            return Ok(None);
+            return None;
         };
 
         let worker = CopyTableWorker::new(conn, table);
-        Ok(Some(Box::pin(
+        Some(Box::pin(
             worker.run(self.logger.cheap_clone(), progress.cheap_clone()),
-        )))
+        ))
+    }
+
+    /// Check that we can make progress, i.e., that we have at least one
+    /// worker that copies as long as there are unfinished tables. This is a
+    /// safety check to guard against `copy_data_internal` looping forever
+    /// because of some internal inconsistency
+    fn assert_progress(&self, num_workers: usize, state: &CopyState) -> Result<(), StoreError> {
+        if num_workers == 0 && !state.unfinished.is_empty() {
+            // Something bad happened. We should have at least one
+            // worker if there are still tables to copy
+            if self.conn.is_none() {
+                return Err(constraint_violation!(
+                    "copy connection has been handed to background task but not returned yet (copy_data_internal)"
+                ));
+            } else {
+                return Err(constraint_violation!(
+                    "no workers left but still tables to copy"
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub async fn copy_data_internal(
@@ -949,24 +968,28 @@ impl Connection {
         // connection in `self.conn`. If the fdw pool has idle connections
         // and there are more tables to be copied, we can start more
         // workers, up to `self.workers` many
+        //
+        // The loop has to be very careful about terminating early so that
+        // we do not ever leave the loop with `self.conn == None`
         let mut workers = Vec::new();
         while !state.unfinished.is_empty() || !workers.is_empty() {
             // We usually add at least one job here, except if we are out of
             // tables to copy. In that case, we go through the `while` loop
             // every time one of the tables we are currently copying
             // finishes
-            if let Some(worker) = self.default_worker(&mut state, &progress)? {
+            if let Some(worker) = self.default_worker(&mut state, &progress) {
                 workers.push(worker);
             }
             loop {
                 if workers.len() >= self.workers {
                     break;
                 }
-                let Some(worker) = self.extra_worker(&mut state, &progress)? else {
+                let Some(worker) = self.extra_worker(&mut state, &progress) else {
                     break;
                 };
                 workers.push(worker);
             }
+            self.assert_progress(workers.len(), &state)?;
             let (worker, _idx, remaining) = select_all(workers).await;
             workers = remaining;
 
