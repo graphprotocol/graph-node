@@ -125,7 +125,7 @@ pub fn is_source(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreErro
     .map_err(StoreError::from)
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Status {
     Finished,
     Cancelled,
@@ -857,7 +857,7 @@ impl Connection {
     {
         let Some(conn) = self.conn.as_mut() else {
             return Err(constraint_violation!(
-                "copy connection has been handed to background task but not returned yet"
+                "copy connection has been handed to background task but not returned yet (transaction)"
             ));
         };
         conn.transaction(|conn| f(conn))
@@ -893,7 +893,7 @@ impl Connection {
     ) -> Result<Option<Pin<Box<dyn Future<Output = CopyTableWorker>>>>, StoreError> {
         let conn = self.conn.take().ok_or_else(|| {
             constraint_violation!(
-                "copy connection has been handed to background task but not returned yet"
+                "copy connection has been handed to background task but not returned yet (default worker)"
             )
         })?;
         let Some(table) = state.unfinished.pop() else {
@@ -918,7 +918,7 @@ impl Connection {
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
             .pool
-            .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)?
+            .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)
         else {
             return Ok(None);
         };

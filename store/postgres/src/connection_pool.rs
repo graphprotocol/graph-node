@@ -347,12 +347,14 @@ impl PoolName {
 #[derive(Clone)]
 struct PoolStateTracker {
     available: Arc<AtomicBool>,
+    ignore_timeout: Arc<AtomicBool>,
 }
 
 impl PoolStateTracker {
     fn new() -> Self {
         Self {
             available: Arc::new(AtomicBool::new(true)),
+            ignore_timeout: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -366,6 +368,20 @@ impl PoolStateTracker {
 
     fn is_available(&self) -> bool {
         self.available.load(Ordering::Relaxed)
+    }
+
+    fn timeout_is_ignored(&self) -> bool {
+        self.ignore_timeout.load(Ordering::Relaxed)
+    }
+
+    fn ignore_timeout<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        self.ignore_timeout.store(true, Ordering::Relaxed);
+        let res = f();
+        self.ignore_timeout.store(false, Ordering::Relaxed);
+        res
     }
 }
 
@@ -530,8 +546,12 @@ impl ConnectionPool {
         &self,
         logger: &Logger,
         timeout: Duration,
-    ) -> Result<Option<PooledConnection<ConnectionManager<PgConnection>>>, StoreError> {
-        self.get_ready()?.try_get_fdw(logger, timeout)
+    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+        let Ok(inner) = self.get_ready() else {
+            return None;
+        };
+        self.state_tracker
+            .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
@@ -740,6 +760,9 @@ impl HandleEvent for EventHandler {
     }
 
     fn handle_timeout(&self, event: e::TimeoutEvent) {
+        if self.state_tracker.timeout_is_ignored() {
+            return;
+        }
         self.add_conn_wait_time(event.timeout());
         if self.state_tracker.is_available() {
             error!(self.logger, "Connection checkout timed out";
@@ -1042,15 +1065,18 @@ impl PoolInner {
         &self,
         logger: &Logger,
         timeout: Duration,
-    ) -> Result<Option<PooledConnection<ConnectionManager<PgConnection>>>, StoreError> {
+    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
         // Any error trying to get a connection is treated as "couldn't get
         // a connection in time". If there is a serious error with the
         // database, e.g., because it's not available, the next database
         // operation will run into it and report it.
-        self.fdw_pool(logger)?
-            .get_timeout(timeout)
-            .map(|conn| Some(conn))
-            .or_else(|_| Ok(None))
+        let Ok(fdw_pool) = self.fdw_pool(logger) else {
+            return None;
+        };
+        let Ok(conn) = fdw_pool.get_timeout(timeout) else {
+            return None;
+        };
+        Some(conn)
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
