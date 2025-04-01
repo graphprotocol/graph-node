@@ -194,9 +194,14 @@ impl FirehoseEndpoint {
 
         let endpoint_builder = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
-            "https" => Channel::builder(uri)
-                .tls_config(ClientTlsConfig::new())
-                .expect("TLS config on this host is invalid"),
+            "https" => {
+                let mut tls = ClientTlsConfig::new();
+                tls = tls.with_native_roots();
+
+                Channel::builder(uri)
+                    .tls_config(tls)
+                    .expect("TLS config on this host is invalid")
+            }
             _ => panic!("invalid uri scheme for firehose endpoint"),
         };
 

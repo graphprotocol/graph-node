@@ -47,7 +47,14 @@ chrono = "0.4.38"
 bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env"] }
 derivative = "2.2.0"
-diesel = { version = "2.2.7", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono", "i-implement-a-third-party-backend-and-opt-into-breaking-changes"] }
+diesel = { version = "2.2.7", features = [
+    "postgres",
+    "serde_json",
+    "numeric",
+    "r2d2",
+    "chrono",
+    "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
+] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.2.3"
