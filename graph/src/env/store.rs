@@ -280,7 +280,7 @@ pub struct InnerStore {
     last_rollup_from_poi: bool,
     #[envconfig(from = "GRAPH_STORE_INSERT_EXTRA_COLS", default = "0")]
     insert_extra_cols: usize,
-    #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "10000")]
+    #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "1000")]
     fdw_fetch_size: usize,
 }
 
