@@ -237,6 +237,10 @@ impl VidBatcher {
 
     pub(crate) fn set_batch_size(&mut self, size: usize) {
         self.batch_size.size = size as i64;
+        self.end = match &self.ogive {
+            Some(ogive) => ogive.next_point(self.start, size as usize).unwrap(),
+            None => self.start + size as i64,
+        };
     }
 }
 
