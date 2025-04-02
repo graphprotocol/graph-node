@@ -9,6 +9,7 @@ use crate::{
     prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
     util::stable_hash_glue::AsBytes,
 };
+use sha2::{Digest, Sha256};
 use stable_hash::{fast::FastStableHasher, FieldAddress, StableHash, StableHasher};
 use stable_hash_legacy::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash_legacy::prelude::{
@@ -30,6 +31,8 @@ enum Hashers {
     Fast(FastStableHasher),
     Legacy(SetHasher),
 }
+
+const STABLE_HASH_LEN: usize = 32;
 
 impl Hashers {
     fn new(version: ProofOfIndexingVersion) -> Self {
@@ -132,9 +135,14 @@ impl BlockEventStream {
             }
             Hashers::Fast(mut digest) => {
                 if let Some(prev) = prev {
-                    let prev = prev
-                        .try_into()
-                        .expect("Expected valid fast stable hash representation");
+                    let prev = if prev.len() == STABLE_HASH_LEN {
+                        prev.try_into()
+                            .expect("Expected valid fast stable hash representation")
+                    } else {
+                        let mut hasher = Sha256::new();
+                        hasher.update(prev);
+                        hasher.finalize().into()
+                    };
                     let prev = FastStableHasher::from_bytes(prev);
                     digest.mixin(&prev);
                 }
