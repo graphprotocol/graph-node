@@ -1519,7 +1519,7 @@ impl DeploymentStore {
             // as adding new tables in `self`; we only need to check that tables
             // that actually need to be copied from the source are compatible
             // with the corresponding tables in `self`
-            let mut copy_conn = crate::copy::Connection::new(
+            let copy_conn = crate::copy::Connection::new(
                 logger,
                 self.pool.clone(),
                 src.clone(),

@@ -997,10 +997,7 @@ impl Connection {
         }
     }
 
-    pub async fn copy_data_internal(
-        &mut self,
-        index_list: IndexList,
-    ) -> Result<Status, StoreError> {
+    async fn copy_data_internal(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
         let src = self.src.clone();
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
@@ -1142,7 +1139,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub async fn copy_data(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
+    pub async fn copy_data(mut self, index_list: IndexList) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
