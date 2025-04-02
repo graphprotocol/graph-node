@@ -37,6 +37,7 @@ use graph::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
     },
     schema::EntityType,
+    slog::error,
 };
 use itertools::Itertools;
 
@@ -969,6 +970,33 @@ impl Connection {
         Ok(())
     }
 
+    /// Wait for all workers to finish. This is called when we a worker has
+    /// failed with an error that forces us to abort copying
+    async fn cancel_workers(
+        &mut self,
+        progress: Arc<CopyProgress>,
+        mut workers: Vec<Pin<Box<dyn Future<Output = Result<CopyTableWorker, StoreError>>>>>,
+    ) {
+        progress.cancel();
+        error!(
+            self.logger,
+            "copying encountered an error; waiting for all workers to finish"
+        );
+        while !workers.is_empty() {
+            let (result, _, remaining) = select_all(workers).await;
+            workers = remaining;
+            match result {
+                Ok(worker) => {
+                    self.conn = Some(worker.conn);
+                }
+                Err(e) => {
+                    /* Ignore; we had an error previously */
+                    error!(self.logger, "copy worker panicked: {}", e);
+                }
+            }
+        }
+    }
+
     pub async fn copy_data_internal(
         &mut self,
         index_list: IndexList,
@@ -1009,18 +1037,17 @@ impl Connection {
             }
             self.assert_progress(workers.len(), &state)?;
             let (result, _idx, remaining) = select_all(workers).await;
+            workers = remaining;
 
             let worker = match result {
                 Ok(worker) => worker,
                 Err(e) => {
                     // This is a panic in the background task. We need to
                     // cancel all other tasks and return the error
-                    progress.cancel();
+                    self.cancel_workers(progress, workers).await;
                     return Err(e);
                 }
             };
-
-            workers = remaining;
 
             // Put the connection back into self.conn so that we can use it
             // in the next iteration.
@@ -1028,11 +1055,12 @@ impl Connection {
             state.finished.push(worker.table);
 
             if worker.result.is_err() {
-                progress.cancel();
+                self.cancel_workers(progress, workers).await;
                 return worker.result;
             }
 
             if progress.is_cancelled() {
+                self.cancel_workers(progress, workers).await;
                 return Ok(Status::Cancelled);
             }
         }
