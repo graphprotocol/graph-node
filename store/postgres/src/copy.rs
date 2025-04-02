@@ -748,10 +748,19 @@ impl CopyTableWorker {
                             break status;
                         }
                         Err(StoreError::StatementTimeout) => {
+                            let timeout = ENV_VARS
+                                .store
+                                .batch_timeout
+                                .map(|t| t.as_secs().to_string())
+                                .unwrap_or_else(|| "unlimted".to_string());
                             warn!(
-                                    logger,
-                                    "Current batch took longer than GRAPH_STORE_BATCH_TIMEOUT seconds. Retrying with a smaller batch size."
-                                );
+                                logger,
+                                "Current batch timed out. Retrying with a smaller batch size.";
+                                "timeout_s" => timeout,
+                                "table" => self.table.dst.qualified_name.as_str(),
+                                "current_vid" => self.table.batcher.next_vid(),
+                                "current_batch_size" => self.table.batcher.batch_size(),
+                            );
                         }
                         Err(e) => {
                             return Err(e);
