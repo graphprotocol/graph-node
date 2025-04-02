@@ -1035,34 +1035,48 @@ impl Connection {
                 };
                 workers.push(worker);
             }
+
             self.assert_progress(workers.len(), &state)?;
             let (result, _idx, remaining) = select_all(workers).await;
             workers = remaining;
 
-            let worker = match result {
-                Ok(worker) => worker,
+            // Analyze `result` and take another trip through the loop if
+            // everything is ok; wait for pending workers and return if
+            // there was an error or if copying was cancelled.
+            match result {
                 Err(e) => {
                     // This is a panic in the background task. We need to
                     // cancel all other tasks and return the error
                     self.cancel_workers(progress, workers).await;
                     return Err(e);
                 }
+                Ok(worker) => {
+                    // Put the connection back into self.conn so that we can use it
+                    // in the next iteration.
+                    self.conn = Some(worker.conn);
+
+                    match (worker.result, progress.is_cancelled()) {
+                        (Ok(Status::Finished), false) => {
+                            // The worker finished successfully, and nothing was
+                            // cancelled; take another trip through the loop
+                            state.finished.push(worker.table);
+                        }
+                        (Ok(Status::Finished), true) => {
+                            state.finished.push(worker.table);
+                            self.cancel_workers(progress, workers).await;
+                            return Ok(Status::Cancelled);
+                        }
+                        (Ok(Status::Cancelled), _) => {
+                            self.cancel_workers(progress, workers).await;
+                            return Ok(Status::Cancelled);
+                        }
+                        (Err(e), _) => {
+                            self.cancel_workers(progress, workers).await;
+                            return Err(e);
+                        }
+                    }
+                }
             };
-
-            // Put the connection back into self.conn so that we can use it
-            // in the next iteration.
-            self.conn = Some(worker.conn);
-            state.finished.push(worker.table);
-
-            if worker.result.is_err() {
-                self.cancel_workers(progress, workers).await;
-                return worker.result;
-            }
-
-            if progress.is_cancelled() {
-                self.cancel_workers(progress, workers).await;
-                return Ok(Status::Cancelled);
-            }
         }
         debug_assert!(self.conn.is_some());
 
