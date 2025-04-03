@@ -6,7 +6,7 @@
 //! has more details on advisory locks.
 //!
 //! We use the following 64 bit locks:
-//!   * 1,2: to synchronize on migratons
+//!   * 1: to synchronize on migratons
 //!
 //! We use the following 2x 32-bit locks
 //!   * 1, n: to lock copying of the deployment with id n in the destination
@@ -69,17 +69,31 @@ const COPY: Scope = Scope { id: 1 };
 const WRITE: Scope = Scope { id: 2 };
 const PRUNE: Scope = Scope { id: 3 };
 
-/// Get a lock for running migrations. Blocks until we get the lock.
-pub(crate) fn lock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
-    sql_query("select pg_advisory_lock(1)").execute(conn)?;
+/// Block until we can get the migration lock, then run `f` and unlock when
+/// it is done. This is used to make sure that only one node runs setup at a
+/// time.
+pub(crate) async fn with_migration_lock<F, Fut, R>(
+    conn: &mut PgConnection,
+    f: F,
+) -> Result<R, StoreError>
+where
+    F: FnOnce(&mut PgConnection) -> Fut,
+    Fut: std::future::Future<Output = Result<R, StoreError>>,
+{
+    fn execute(conn: &mut PgConnection, query: &str, msg: &str) -> Result<(), StoreError> {
+        sql_query(query).execute(conn).map(|_| ()).map_err(|e| {
+            StoreError::from_diesel_error(&e)
+                .unwrap_or_else(|| StoreError::Unknown(anyhow::anyhow!("{}: {}", msg, e)))
+        })
+    }
 
-    Ok(())
-}
+    const LOCK: &str = "select pg_advisory_lock(1)";
+    const UNLOCK: &str = "select pg_advisory_unlock(1)";
 
-/// Release the migration lock.
-pub(crate) fn unlock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
-    sql_query("select pg_advisory_unlock(1)").execute(conn)?;
-    Ok(())
+    execute(conn, LOCK, "failed to acquire migration lock")?;
+    let res = f(conn).await;
+    execute(conn, UNLOCK, "failed to release migration lock")?;
+    res
 }
 
 /// Take the lock used to keep two copy operations to run simultaneously on
