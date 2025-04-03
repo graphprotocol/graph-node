@@ -10,6 +10,8 @@ use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
 use graph::constraint_violation;
+use graph::futures03::future::join_all;
+use graph::futures03::FutureExt as _;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{tokio, MetricsRegistry};
 use graph::slog::warn;
@@ -33,8 +35,9 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
-use crate::primary::{self, Mirror, NAMESPACE_PUBLIC};
-use crate::{advisory_lock, catalog};
+use crate::advisory_lock::with_migration_lock;
+use crate::catalog;
+use crate::primary::{self, Mirror, Namespace, NAMESPACE_PUBLIC};
 use crate::{Shard, PRIMARY_SHARD};
 
 /// Tables that we map from the primary into `primary_public` in each shard
@@ -479,12 +482,17 @@ impl ConnectionPool {
         }
 
         match &*guard {
-            PoolState::Created(pool, servers) => {
-                pool.setup(servers.clone())?;
-                let pool2 = pool.clone();
-                *guard = PoolState::Ready(pool.clone());
-                self.state_tracker.mark_available();
-                Ok(pool2)
+            PoolState::Created(pool, coord) => {
+                let migrated = coord.cheap_clone().setup_bg(pool.cheap_clone())?;
+
+                if migrated {
+                    let pool2 = pool.clone();
+                    *guard = PoolState::Ready(pool.clone());
+                    self.state_tracker.mark_available();
+                    Ok(pool2)
+                } else {
+                    Err(StoreError::DatabaseUnavailable)
+                }
             }
             PoolState::Ready(pool) => Ok(pool.clone()),
             PoolState::Disabled => Err(StoreError::DatabaseDisabled),
@@ -578,23 +586,6 @@ impl ConnectionPool {
         };
         self.state_tracker
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
-    }
-
-    /// Setup the database for this pool. This includes configuring foreign
-    /// data wrappers for cross-shard communication, and running any pending
-    /// schema migrations for this database.
-    ///
-    /// # Panics
-    ///
-    /// If any errors happen during the migration, the process panics
-    pub async fn setup(&self) {
-        let pool = self.clone();
-        graph::spawn_blocking_allow_panic(move || {
-            pool.get_ready().ok();
-        })
-        .await
-        // propagate panics
-        .unwrap();
     }
 
     pub(crate) async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
@@ -1096,61 +1087,6 @@ impl PoolInner {
             .unwrap_or(false)
     }
 
-    /// Setup the database for this pool. This includes configuring foreign
-    /// data wrappers for cross-shard communication, and running any pending
-    /// schema migrations for this database.
-    ///
-    /// Returns `StoreError::DatabaseUnavailable` if we can't connect to the
-    /// database. Any other error causes a panic.
-    ///
-    /// # Panics
-    ///
-    /// If any errors happen during the migration, the process panics
-    fn setup(&self, coord: Arc<PoolCoordinator>) -> Result<(), StoreError> {
-        fn die(logger: &Logger, msg: &'static str, err: &dyn std::fmt::Display) -> ! {
-            crit!(logger, "{}", msg; "error" => format!("{:#}", err));
-            panic!("{}: {}", msg, err);
-        }
-
-        let pool = self.clone();
-        let mut conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
-
-        let start = Instant::now();
-
-        advisory_lock::lock_migration(&mut conn)
-            .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
-        // This code can cause a race in database setup: if pool A has had
-        // schema changes and pool B then tries to map tables from pool A,
-        // but does so before the concurrent thread running this code for
-        // pool B has at least finished `configure_fdw`, mapping tables will
-        // fail. In that case, the node must be restarted. The restart is
-        // guaranteed because this failure will lead to a panic in the setup
-        // for pool A
-        //
-        // This code can also leave the table mappings in a state where they
-        // have not been updated if the process is killed after migrating
-        // the schema but before finishing remapping in all shards.
-        // Addressing that would require keeping track of the need to remap
-        // in the database instead of just in memory
-        let result = pool
-            .configure_fdw(coord.servers.as_ref())
-            .and_then(|()| pool.drop_cross_shard_views())
-            .and_then(|()| migrate_schema(&pool.logger, &mut conn));
-        debug!(&pool.logger, "Release migration lock");
-        advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
-            die(&pool.logger, "failed to release migration lock", &err);
-        });
-        let result = result
-            .and_then(|count| coord.propagate(&pool, count))
-            .and_then(|()| pool.create_cross_shard_views(coord.servers.as_ref()));
-        result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
-
-        self.locale_check(&pool.logger, conn)?;
-
-        debug!(&pool.logger, "Setup finished"; "setup_time_s" => start.elapsed().as_secs());
-        Ok(())
-    }
-
     fn locale_check(
         &self,
         logger: &Logger,
@@ -1199,6 +1135,28 @@ impl PoolInner {
         })
     }
 
+    /// Do the part of database setup that only affects this pool. Those
+    /// steps are
+    /// 1. Configuring foreign servers and user mappings for talking to the
+    ///    other shards
+    /// 2. Migrating the schema to the latest version
+    /// 3. Checking that the locale is set to C
+    async fn migrate(
+        self: Arc<Self>,
+        servers: &[ForeignServer],
+    ) -> Result<(Arc<Self>, MigrationCount), StoreError> {
+        self.configure_fdw(servers)?;
+        let mut conn = self.get()?;
+        let (this, count) = conn.transaction(|conn| -> Result<_, StoreError> {
+            let count = migrate_schema(&self.logger, conn)?;
+            Ok((self, count))
+        })?;
+
+        this.locale_check(&this.logger, conn)?;
+
+        Ok((this, count))
+    }
+
     /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
     fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
         if self.shard != *PRIMARY_SHARD {
@@ -1242,14 +1200,17 @@ impl PoolInner {
             return Ok(());
         }
 
-        info!(&self.logger, "Creating cross-shard views");
         let mut conn = self.get()?;
+        let sharded = Namespace::special(ForeignServer::CROSS_SHARD_NSP);
+        if catalog::has_namespace(&mut conn, &sharded)? {
+            // We dropped the namespace before, but another node must have
+            // recreated it in the meantime so we don't need to do anything
+            return Ok(());
+        }
 
+        info!(&self.logger, "Creating cross-shard views");
         conn.transaction(|conn| {
-            let query = format!(
-                "create schema if not exists {}",
-                ForeignServer::CROSS_SHARD_NSP
-            );
+            let query = format!("create schema {}", ForeignServer::CROSS_SHARD_NSP);
             conn.batch_execute(&query)?;
             for (src_nsp, src_tables) in SHARDED_TABLES {
                 // Pairs of (shard, nsp) for all servers
@@ -1458,13 +1419,7 @@ impl PoolCoordinator {
         if count.had_migrations() {
             let server = self.server(&pool.shard)?;
             for pool in self.pools.lock().unwrap().values() {
-                let mut conn = pool.get()?;
-                let remap_res = {
-                    advisory_lock::lock_migration(&mut conn)?;
-                    let res = pool.remap(server);
-                    advisory_lock::unlock_migration(&mut conn)?;
-                    res
-                };
+                let remap_res = pool.remap(server);
                 if let Err(e) = remap_res {
                     error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
                     return Err(e);
@@ -1487,5 +1442,157 @@ impl PoolCoordinator {
             .iter()
             .find(|server| &server.shard == shard)
             .ok_or_else(|| constraint_violation!("unknown shard {shard}"))
+    }
+
+    fn primary(&self) -> Result<Arc<PoolInner>, StoreError> {
+        self.pools
+            .lock()
+            .unwrap()
+            .get(&*PRIMARY_SHARD)
+            .cloned()
+            .ok_or_else(|| {
+                constraint_violation!("internal error: primary shard not found in pool coordinator")
+            })
+    }
+
+    /// Setup all pools the coordinator knows about and return the number of
+    /// pools that were successfully set up.
+    ///
+    /// # Panics
+    ///
+    /// If any errors besides a database not being available happen during
+    /// the migration, the process panics
+    pub async fn setup_all(&self, logger: &Logger) -> usize {
+        let pools = self
+            .pools
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let res = self.setup(pools).await;
+
+        match res {
+            Ok(count) => {
+                info!(logger, "Setup finished"; "shards" => count);
+                count
+            }
+            Err(e) => {
+                crit!(logger, "database setup failed"; "error" => format!("{e}"));
+                panic!("database setup failed: {}", e);
+            }
+        }
+    }
+
+    /// A helper to call `setup` from a non-async context. Returns `true` if
+    /// the setup was actually run, i.e. if `pool` was available
+    fn setup_bg(self: Arc<Self>, pool: Arc<PoolInner>) -> Result<bool, StoreError> {
+        let migrated = graph::spawn_thread("database-setup", move || {
+            graph::block_on(self.setup(vec![pool.clone()]))
+        })
+        .join()
+        // unwrap: propagate panics
+        .unwrap()?;
+        Ok(migrated == 1)
+    }
+
+    /// Setup all pools by doing the following steps:
+    /// 1. Get the migration lock in the primary. This makes sure that only
+    ///    one node runs migrations
+    /// 2. Remove the views in `sharded` as they might interfere with
+    ///    running migrations
+    /// 3. In parallel, do the following in each pool:
+    ///    1. Configure fdw servers
+    ///    2. Run migrations in all pools in parallel
+    /// 4. In parallel, do the following in each pool:
+    ///    1. Create/update the mappings in `shard_<shard>_subgraphs` and in
+    ///       `primary_public`
+    /// 5. Create the views in `sharded` again
+    /// 6. Release the migration lock
+    ///
+    /// This method tolerates databases that are not available and will
+    /// simply ignore them. The returned count is the number of pools that
+    /// were successfully set up.
+    async fn setup(&self, pools: Vec<Arc<PoolInner>>) -> Result<usize, StoreError> {
+        type MigrationCounts = Vec<(Arc<PoolInner>, MigrationCount)>;
+
+        /// Filter out pools that are not available. We don't want to fail
+        /// because one of the pools is not available. We will just ignore
+        /// them and continue with the others.
+        fn filter_unavailable<T>(
+            (pool, res): (Arc<PoolInner>, Result<T, StoreError>),
+        ) -> Option<Result<T, StoreError>> {
+            if let Err(StoreError::DatabaseUnavailable) = res {
+                error!(
+                    pool.logger,
+                    "migrations failed because database was unavailable"
+                );
+                None
+            } else {
+                Some(res)
+            }
+        }
+
+        /// Migrate all pools in parallel
+        async fn migrate(
+            pools: &[Arc<PoolInner>],
+            servers: &[ForeignServer],
+        ) -> Result<MigrationCounts, StoreError> {
+            let futures = pools
+                .iter()
+                .map(|pool| {
+                    pool.cheap_clone()
+                        .migrate(servers)
+                        .map(|res| (pool.cheap_clone(), res))
+                })
+                .collect::<Vec<_>>();
+            join_all(futures)
+                .await
+                .into_iter()
+                .filter_map(filter_unavailable)
+                .collect::<Result<Vec<_>, _>>()
+        }
+
+        /// Propagate the schema changes to all other pools in parallel
+        async fn propagate(
+            this: &PoolCoordinator,
+            migrated: MigrationCounts,
+        ) -> Result<usize, StoreError> {
+            let futures = migrated
+                .into_iter()
+                .map(|(pool, count)| async move {
+                    let res = this.propagate(&pool, count);
+                    (pool.cheap_clone(), res)
+                })
+                .collect::<Vec<_>>();
+            join_all(futures)
+                .await
+                .into_iter()
+                .filter_map(filter_unavailable)
+                .collect::<Result<Vec<_>, _>>()
+                .map(|v| v.len())
+        }
+
+        let primary = self.primary()?;
+
+        let mut pconn = primary.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+
+        // Everything here happens under the migration lock. Anything called
+        // from here should not try to get that lock, otherwise the process
+        // will deadlock
+        let res = with_migration_lock(&mut pconn, |_| async {
+            primary.drop_cross_shard_views()?;
+
+            let migrated = migrate(&pools, self.servers.as_ref()).await?;
+
+            let propagated = propagate(&self, migrated).await?;
+
+            primary.create_cross_shard_views(&self.servers)?;
+            Ok(propagated)
+        })
+        .await;
+
+        res
     }
 }

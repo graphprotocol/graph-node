@@ -141,7 +141,7 @@ impl Clone for StoreError {
 }
 
 impl StoreError {
-    fn from_diesel_error(e: &DieselError) -> Option<Self> {
+    pub fn from_diesel_error(e: &DieselError) -> Option<Self> {
         const CONN_CLOSE: &str = "server closed the connection unexpectedly";
         const STMT_TIMEOUT: &str = "canceling statement due to statement timeout";
         let DieselError::DatabaseError(_, info) = e else {

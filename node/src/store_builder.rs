@@ -1,7 +1,6 @@
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
-use graph::futures03::future::join_all;
 use graph::prelude::{o, MetricsRegistry, NodeId};
 use graph::url::Url;
 use graph::{
@@ -62,7 +61,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.values().map(|pool| pool.setup())).await;
+        coord.setup_all(logger).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -196,8 +195,8 @@ impl StoreBuilder {
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of the primary shard
-    /// without connecting to all the other configured databases
+    /// Create a connection pool for the main (non-replica) database of a
+    /// shard
     pub fn main_pool(
         logger: &Logger,
         node: &NodeId,
