@@ -17,7 +17,6 @@ use graph::semver::Version;
 use graph::{
     blockchain::block_stream::FirehoseCursor,
     data::subgraph::schema::SubgraphError,
-    env::ENV_VARS,
     schema::EntityType,
     slog::{debug, Logger},
 };
@@ -549,7 +548,7 @@ pub fn revert_block_ptr(
     let affected_rows = update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
-            .filter(d::earliest_block_number.le(ptr.number - ENV_VARS.reorg_threshold)),
+            .filter(d::earliest_block_number.lt(ptr.number)),
     )
     .set((
         d::latest_ethereum_block_number.eq(sql(&number)),
