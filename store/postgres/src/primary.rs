@@ -1839,6 +1839,20 @@ pub struct Mirror {
 }
 
 impl Mirror {
+    // The tables that we mirror
+    //
+    // `chains` needs to be mirrored before `deployment_schemas` because
+    // of the fk constraint on `deployment_schemas.network`. We don't
+    // care much about mirroring `active_copies` but it has a fk
+    // constraint on `deployment_schemas` and is tiny, therefore it's
+    // easiest to just mirror it
+    pub(crate) const PUBLIC_TABLES: [&str; 3] = ["chains", "deployment_schemas", "active_copies"];
+    pub(crate) const SUBGRAPHS_TABLES: [&str; 3] = [
+        "subgraph_deployment_assignment",
+        "subgraph",
+        "subgraph_version",
+    ];
+
     pub fn new(pools: &HashMap<Shard, ConnectionPool>) -> Mirror {
         let primary = pools
             .get(&PRIMARY_SHARD)
@@ -1895,18 +1909,6 @@ impl Mirror {
         conn: &mut PgConnection,
         handle: &CancelHandle,
     ) -> Result<(), StoreError> {
-        // `chains` needs to be mirrored before `deployment_schemas` because
-        // of the fk constraint on `deployment_schemas.network`. We don't
-        // care much about mirroring `active_copies` but it has a fk
-        // constraint on `deployment_schemas` and is tiny, therefore it's
-        // easiest to just mirror it
-        const PUBLIC_TABLES: [&str; 3] = ["chains", "deployment_schemas", "active_copies"];
-        const SUBGRAPHS_TABLES: [&str; 3] = [
-            "subgraph_deployment_assignment",
-            "subgraph",
-            "subgraph_version",
-        ];
-
         fn run_query(conn: &mut PgConnection, query: String) -> Result<(), StoreError> {
             conn.batch_execute(&query).map_err(StoreError::from)
         }
@@ -1938,11 +1940,11 @@ impl Mirror {
 
         // Truncate all tables at once, otherwise truncation can fail
         // because of foreign key constraints
-        let tables = PUBLIC_TABLES
+        let tables = Self::PUBLIC_TABLES
             .iter()
             .map(|name| (NAMESPACE_PUBLIC, name))
             .chain(
-                SUBGRAPHS_TABLES
+                Self::SUBGRAPHS_TABLES
                     .iter()
                     .map(|name| (NAMESPACE_SUBGRAPHS, name)),
             )
@@ -1953,7 +1955,7 @@ impl Mirror {
         check_cancel()?;
 
         // Repopulate `PUBLIC_TABLES` by copying their data wholesale
-        for table_name in PUBLIC_TABLES {
+        for table_name in Self::PUBLIC_TABLES {
             copy_table(
                 conn,
                 ForeignServer::PRIMARY_PUBLIC,
