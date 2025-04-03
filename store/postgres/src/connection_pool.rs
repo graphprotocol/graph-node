@@ -1169,22 +1169,31 @@ impl PoolInner {
             .and_then(|()| pool.create_cross_shard_views(coord.servers.as_ref()));
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
 
-        // Locale check
-        if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
-            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn)? {
-                die(
-                    &pool.logger,
-                    "Database does not use C locale. \
-                    Please check the graph-node documentation for how to set up the database locale",
-                    &msg,
-                );
-            } else {
-                warn!(pool.logger, "{}.\nPlease check the graph-node documentation for how to set up the database locale", msg);
-            }
-        }
+        self.locale_check(&pool.logger, conn)?;
 
         debug!(&pool.logger, "Setup finished"; "setup_time_s" => start.elapsed().as_secs());
         Ok(())
+    }
+
+    fn locale_check(
+        &self,
+        logger: &Logger,
+        mut conn: PooledConnection<ConnectionManager<PgConnection>>,
+    ) -> Result<(), StoreError> {
+        Ok(
+            if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
+                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn)? {
+                    const MSG: &str =
+                    "Database does not use C locale. \
+                    Please check the graph-node documentation for how to set up the database locale";
+
+                    crit!(logger, "{}: {}", MSG, msg);
+                    panic!("{}: {}", MSG, msg);
+                } else {
+                    warn!(logger, "{}.\nPlease check the graph-node documentation for how to set up the database locale", msg);
+                }
+            },
+        )
     }
 
     pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
