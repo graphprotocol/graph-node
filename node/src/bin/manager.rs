@@ -34,6 +34,7 @@ use graph_store_postgres::{
 };
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use std::env;
 use std::str::FromStr;
 use std::{collections::HashMap, num::ParseIntError, sync::Arc, time::Duration};
 const VERSION_LABEL_KEY: &str = "version";
@@ -1030,6 +1031,9 @@ impl Context {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Disable load management for graphman commands
+    env::set_var("GRAPH_LOAD_THRESHOLD", "0");
+
     let opt = Opt::parse();
 
     Terminal::set_color_preference(&opt.color);
