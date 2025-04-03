@@ -614,7 +614,7 @@ impl Blockchain for Chain {
                 // present in the DB.
                 Box::new(PollingBlockIngestor::new(
                     logger,
-                    graph::env::ENV_VARS.reorg_threshold,
+                    graph::env::ENV_VARS.reorg_threshold(),
                     self.chain_client(),
                     self.chain_store().cheap_clone(),
                     self.polling_ingestor_interval,
