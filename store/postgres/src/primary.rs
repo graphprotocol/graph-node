@@ -266,6 +266,13 @@ impl Namespace {
         Namespace(format!("prune{id}"))
     }
 
+    /// A namespace that is not a deployment namespace. This is used for
+    /// special namespaces we use. No checking is done on `s` and the caller
+    /// must ensure it's a valid namespace name
+    pub fn special(s: impl Into<String>) -> Self {
+        Namespace(s.into())
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
