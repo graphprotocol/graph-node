@@ -33,7 +33,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
-use crate::primary::{self, NAMESPACE_PUBLIC};
+use crate::primary::{self, Mirror, NAMESPACE_PUBLIC};
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
 
@@ -54,9 +54,35 @@ const SHARDED_TABLES: [(&str, &[&str]); 2] = [
             "subgraph_error",
             "subgraph_manifest",
             "table_stats",
+            "subgraph",
+            "subgraph_version",
+            "subgraph_deployment_assignment",
         ],
     ),
 ];
+
+/// Make sure that the tables that `jobs::MirrorJob` wants to mirror are
+/// actually mapped into the various shards. A failure here is simply a
+/// coding mistake
+fn check_mirrored_tables() {
+    for table in Mirror::PUBLIC_TABLES {
+        if !PRIMARY_TABLES.contains(&table) {
+            panic!("table {} is not in PRIMARY_TABLES", table);
+        }
+    }
+
+    let subgraphs_tables = *SHARDED_TABLES
+        .iter()
+        .find(|(nsp, _)| *nsp == "subgraphs")
+        .map(|(_, tables)| tables)
+        .unwrap();
+
+    for table in Mirror::SUBGRAPHS_TABLES {
+        if !subgraphs_tables.contains(&table) {
+            panic!("table {} is not in SHARDED_TABLES[subgraphs]", table);
+        }
+    }
+}
 
 pub struct ForeignServer {
     pub name: String,
@@ -817,6 +843,8 @@ impl PoolInner {
         registry: Arc<MetricsRegistry>,
         state_tracker: PoolStateTracker,
     ) -> PoolInner {
+        check_mirrored_tables();
+
         let logger_store = logger.new(o!("component" => "Store"));
         let logger_pool = logger.new(o!("component" => "ConnectionPool"));
         let const_labels = {
