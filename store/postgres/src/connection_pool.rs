@@ -10,6 +10,7 @@ use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
 use graph::constraint_violation;
+use graph::derive::CheapClone;
 use graph::futures03::future::join_all;
 use graph::futures03::FutureExt as _;
 use graph::prelude::tokio::time::Instant;
@@ -312,7 +313,17 @@ impl ForeignServer {
 /// them on idle. This is much shorter than the default of 10 minutes.
 const FDW_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// A pool goes through several states, and this enum tracks what state we
+enum PoolStateInner {
+    /// A connection pool, and all the servers for which we need to
+    /// establish fdw mappings when we call `setup` on the pool
+    Created(Arc<PoolInner>, Arc<PoolCoordinator>),
+    /// The pool has been successfully set up
+    Ready(Arc<PoolInner>),
+    /// The pool has been disabled by setting its size to 0
+    Disabled(String),
+}
+
+/// A pool goes through several states, and this struct tracks what state we
 /// are in, together with the `state_tracker` field on `ConnectionPool`.
 /// When first created, the pool is in state `Created`; once we successfully
 /// called `setup` on it, it moves to state `Ready`. During use, we use the
@@ -322,20 +333,96 @@ const FDW_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// database connection. That avoids overall undesirable states like buildup
 /// of queries; instead of queueing them until the database is available,
 /// they return almost immediately with an error
-enum PoolState {
-    /// A connection pool, and all the servers for which we need to
-    /// establish fdw mappings when we call `setup` on the pool
-    Created(Arc<PoolInner>, Arc<PoolCoordinator>),
-    /// The pool has been successfully set up
-    Ready(Arc<PoolInner>),
-    /// The pool has been disabled by setting its size to 0
-    Disabled,
+#[derive(Clone, CheapClone)]
+struct PoolState {
+    logger: Logger,
+    inner: Arc<TimedMutex<PoolStateInner>>,
 }
 
+impl PoolState {
+    fn new(logger: Logger, inner: PoolStateInner, name: String) -> Self {
+        let pool_name = format!("pool-{}", name);
+        Self {
+            logger,
+            inner: Arc::new(TimedMutex::new(inner, pool_name)),
+        }
+    }
+
+    fn disabled(logger: Logger, name: &str) -> Self {
+        Self::new(
+            logger,
+            PoolStateInner::Disabled(name.to_string()),
+            name.to_string(),
+        )
+    }
+
+    fn created(pool: Arc<PoolInner>, coord: Arc<PoolCoordinator>) -> Self {
+        let logger = pool.logger.clone();
+        let name = pool.shard.to_string();
+        let inner = PoolStateInner::Created(pool, coord);
+        Self::new(logger, inner, name)
+    }
+
+    fn ready(pool: Arc<PoolInner>) -> Self {
+        let logger = pool.logger.clone();
+        let name = pool.shard.to_string();
+        let inner = PoolStateInner::Ready(pool);
+        Self::new(logger, inner, name)
+    }
+
+    fn set_ready(&self) {
+        use PoolStateInner::*;
+
+        let mut guard = self.inner.lock(&self.logger);
+        match &*guard {
+            Created(pool, _) => *guard = Ready(pool.clone()),
+            Ready(_) | Disabled(_) => { /* nothing to do */ }
+        }
+    }
+
+    /// Get a connection pool that is ready, i.e., has been through setup
+    /// and running migrations
+    fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
+        let mut guard = self.inner.lock(&self.logger);
+
+        use PoolStateInner::*;
+        match &*guard {
+            Created(pool, coord) => {
+                let migrated = coord.cheap_clone().setup_bg(pool.cheap_clone())?;
+
+                if migrated {
+                    let pool2 = pool.cheap_clone();
+                    *guard = Ready(pool.cheap_clone());
+                    Ok(pool2)
+                } else {
+                    Err(StoreError::DatabaseUnavailable)
+                }
+            }
+            Ready(pool) => Ok(pool.clone()),
+            Disabled(name) => Err(constraint_violation!(
+                "tried to access disabled database pool `{}`",
+                name
+            )),
+        }
+    }
+
+    /// Get the inner pool, regardless of whether it has been set up or not.
+    /// Most uses should use `get_ready` instead
+    fn get_unready(&self) -> Result<Arc<PoolInner>, StoreError> {
+        use PoolStateInner::*;
+
+        match &*self.inner.lock(&self.logger) {
+            Created(pool, _) | Ready(pool) => Ok(pool.cheap_clone()),
+            Disabled(name) => Err(constraint_violation!(
+                "tried to access disabled database pool `{}`",
+                name
+            )),
+        }
+    }
+}
 #[derive(Clone)]
 pub struct ConnectionPool {
-    inner: Arc<TimedMutex<PoolState>>,
-    logger: Logger,
+    inner: PoolState,
     pub shard: Shard,
     state_tracker: PoolStateTracker,
 }
@@ -428,9 +515,9 @@ impl ConnectionPool {
         let state_tracker = PoolStateTracker::new();
         let shard =
             Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
-        let pool_state = {
+        let inner = {
             if pool_size == 0 {
-                PoolState::Disabled
+                PoolState::disabled(logger.cheap_clone(), shard_name)
             } else {
                 let pool = PoolInner::create(
                     shard.clone(),
@@ -443,15 +530,14 @@ impl ConnectionPool {
                     state_tracker.clone(),
                 );
                 if pool_name.is_replica() {
-                    PoolState::Ready(Arc::new(pool))
+                    PoolState::ready(Arc::new(pool))
                 } else {
-                    PoolState::Created(Arc::new(pool), coord)
+                    PoolState::created(Arc::new(pool), coord)
                 }
             }
         };
         ConnectionPool {
-            inner: Arc::new(TimedMutex::new(pool_state, format!("pool-{}", shard_name))),
-            logger: logger.clone(),
+            inner,
             shard,
             state_tracker,
         }
@@ -460,11 +546,7 @@ impl ConnectionPool {
     /// This is only used for `graphman` to ensure it doesn't run migrations
     /// or other setup steps
     pub fn skip_setup(&self) {
-        let mut guard = self.inner.lock(&self.logger);
-        match &*guard {
-            PoolState::Created(pool, _) => *guard = PoolState::Ready(pool.clone()),
-            PoolState::Ready(_) | PoolState::Disabled => { /* nothing to do */ }
-        }
+        self.inner.set_ready();
     }
 
     /// Return a pool that is ready, i.e., connected to the database. If the
@@ -472,7 +554,6 @@ impl ConnectionPool {
     /// or the pool is marked as unavailable, return
     /// `StoreError::DatabaseUnavailable`
     fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
-        let mut guard = self.inner.lock(&self.logger);
         if !self.state_tracker.is_available() {
             // We know that trying to use this pool is pointless since the
             // database is not available, and will only lead to other
@@ -481,21 +562,12 @@ impl ConnectionPool {
             return Err(StoreError::DatabaseUnavailable);
         }
 
-        match &*guard {
-            PoolState::Created(pool, coord) => {
-                let migrated = coord.cheap_clone().setup_bg(pool.cheap_clone())?;
-
-                if migrated {
-                    let pool2 = pool.clone();
-                    *guard = PoolState::Ready(pool.clone());
-                    self.state_tracker.mark_available();
-                    Ok(pool2)
-                } else {
-                    Err(StoreError::DatabaseUnavailable)
-                }
+        match self.inner.get_ready() {
+            Ok(pool) => {
+                self.state_tracker.mark_available();
+                Ok(pool)
             }
-            PoolState::Ready(pool) => Ok(pool.clone()),
-            PoolState::Disabled => Err(StoreError::DatabaseDisabled),
+            Err(e) => Err(e),
         }
     }
 
@@ -589,12 +661,7 @@ impl ConnectionPool {
     }
 
     pub(crate) async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
-        let pool = match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.clone(),
-            PoolState::Disabled => {
-                return Err(StoreError::DatabaseDisabled);
-            }
-        };
+        let pool = self.inner.get_unready()?;
         let start = Instant::now();
         let permit = pool.query_permit().await;
         Ok(QueryPermit {
@@ -604,10 +671,9 @@ impl ConnectionPool {
     }
 
     pub(crate) fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
-        match &*self.inner.lock(&self.logger) {
-            PoolState::Created(pool, _) | PoolState::Ready(pool) => Ok(pool.wait_stats.clone()),
-            PoolState::Disabled => Err(StoreError::DatabaseDisabled),
-        }
+        self.inner
+            .get_unready()
+            .map(|pool| pool.wait_stats.cheap_clone())
     }
 
     /// Mirror key tables from the primary into our own schema. We do this
@@ -1381,14 +1447,11 @@ impl PoolCoordinator {
             // yet. We remember the `PoolInner` so that later, when we have to
             // call `remap()`, we do not have to take this lock as that will be
             // already held in `get_ready()`
-            match &*pool.inner.lock(logger) {
-                PoolState::Created(inner, _) | PoolState::Ready(inner) => {
-                    self.pools
-                        .lock()
-                        .unwrap()
-                        .insert(pool.shard.clone(), inner.clone());
-                }
-                PoolState::Disabled => { /* nothing to do */ }
+            if let Some(inner) = pool.inner.get_unready().ok() {
+                self.pools
+                    .lock()
+                    .unwrap()
+                    .insert(pool.shard.clone(), inner.clone());
             }
         }
         pool
