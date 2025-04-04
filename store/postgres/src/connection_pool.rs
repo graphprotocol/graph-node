@@ -435,27 +435,27 @@ impl fmt::Debug for ConnectionPool {
     }
 }
 
-/// The name of the pool, mostly for logging, and what purpose it serves.
+/// The role of the pool, mostly for logging, and what purpose it serves.
 /// The main pool will always be called `main`, and can be used for reading
 /// and writing. Replica pools can only be used for reading, and don't
 /// require any setup (migrations etc.)
-pub enum PoolName {
+pub enum PoolRole {
     Main,
     Replica(String),
 }
 
-impl PoolName {
+impl PoolRole {
     fn as_str(&self) -> &str {
         match self {
-            PoolName::Main => "main",
-            PoolName::Replica(name) => name,
+            PoolRole::Main => "main",
+            PoolRole::Replica(name) => name,
         }
     }
 
     fn is_replica(&self) -> bool {
         match self {
-            PoolName::Main => false,
-            PoolName::Replica(_) => true,
+            PoolRole::Main => false,
+            PoolRole::Replica(_) => true,
         }
     }
 }
@@ -504,7 +504,7 @@ impl PoolStateTracker {
 impl ConnectionPool {
     fn create(
         shard_name: &str,
-        pool_name: PoolName,
+        pool_name: PoolRole,
         postgres_url: String,
         pool_size: u32,
         fdw_pool_size: Option<u32>,
@@ -1421,7 +1421,7 @@ impl PoolCoordinator {
         self: Arc<Self>,
         logger: &Logger,
         name: &str,
-        pool_name: PoolName,
+        pool_name: PoolRole,
         postgres_url: String,
         pool_size: u32,
         fdw_pool_size: Option<u32>,
