@@ -1336,13 +1336,16 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationC
 /// changes schema to all other shards so they can update their fdw mappings
 /// of tables imported from that shard
 pub struct PoolCoordinator {
+    logger: Logger,
     pools: Mutex<HashMap<Shard, Arc<PoolInner>>>,
     servers: Arc<Vec<ForeignServer>>,
 }
 
 impl PoolCoordinator {
-    pub fn new(servers: Arc<Vec<ForeignServer>>) -> Self {
+    pub fn new(logger: &Logger, servers: Arc<Vec<ForeignServer>>) -> Self {
+        let logger = logger.new(o!("component" => "ConnectionPool", "component" => "Coordinator"));
         Self {
+            logger,
             pools: Mutex::new(HashMap::new()),
             servers,
         }
@@ -1581,7 +1584,9 @@ impl PoolCoordinator {
         // Everything here happens under the migration lock. Anything called
         // from here should not try to get that lock, otherwise the process
         // will deadlock
+        debug!(self.logger, "Waiting for migration lock");
         let res = with_migration_lock(&mut pconn, |_| async {
+            debug!(self.logger, "Migration lock acquired");
             primary.drop_cross_shard_views()?;
 
             let migrated = migrate(&pools, self.servers.as_ref()).await?;
@@ -1592,7 +1597,7 @@ impl PoolCoordinator {
             Ok(propagated)
         })
         .await;
-
+        debug!(self.logger, "Database setup finished");
         res
     }
 }

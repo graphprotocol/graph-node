@@ -110,7 +110,7 @@ impl StoreBuilder {
             .collect::<Result<Vec<_>, _>>()
             .expect("connection url's contain enough detail");
         let servers = Arc::new(servers);
-        let coord = Arc::new(PoolCoordinator::new(servers));
+        let coord = Arc::new(PoolCoordinator::new(logger, servers));
 
         let shards: Vec<_> = config
             .stores

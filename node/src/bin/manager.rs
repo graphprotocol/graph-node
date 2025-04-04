@@ -898,7 +898,7 @@ impl Context {
 
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
-        let coord = Arc::new(PoolCoordinator::new(Arc::new(vec![])));
+        let coord = Arc::new(PoolCoordinator::new(&self.logger, Arc::new(vec![])));
         let pool = StoreBuilder::main_pool(
             &self.logger,
             &self.node_id,
