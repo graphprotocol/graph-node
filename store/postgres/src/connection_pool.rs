@@ -580,16 +580,6 @@ impl ConnectionPool {
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
     }
 
-    pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
-        let pool = self.get_ready()?;
-        ForeignServer::new(pool.shard.clone(), &pool.postgres_url).map_err(|e| e.into())
-    }
-
-    /// Check that we can connect to the database
-    pub fn check(&self) -> bool {
-        true
-    }
-
     /// Setup the database for this pool. This includes configuring foreign
     /// data wrappers for cross-shard communication, and running any pending
     /// schema migrations for this database.
@@ -1025,20 +1015,6 @@ impl PoolInner {
 
     pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
-    }
-
-    pub fn get_with_timeout_warning(
-        &self,
-        logger: &Logger,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        loop {
-            match self.pool.get_timeout(ENV_VARS.store.connection_timeout) {
-                Ok(conn) => return Ok(conn),
-                Err(e) => error!(logger, "Error checking out connection, retrying";
-                   "error" => brief_error_msg(&e),
-                ),
-            }
-        }
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
