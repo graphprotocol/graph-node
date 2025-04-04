@@ -118,11 +118,8 @@ impl Trace {
         }
     }
 
-    pub fn query_done(&mut self, dur: Duration, permit: &Result<QueryPermit, QueryExecutionError>) {
-        let permit_dur = match permit {
-            Ok(permit) => permit.wait,
-            Err(_) => Duration::from_millis(0),
-        };
+    pub fn query_done(&mut self, dur: Duration, permit: &QueryPermit) {
+        let permit_dur = permit.wait;
         match self {
             Trace::None => { /* nothing to do */ }
             Trace::Root { .. } => {

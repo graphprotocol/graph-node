@@ -415,7 +415,7 @@ impl DeploymentStore {
         Ok(conn)
     }
 
-    pub(crate) async fn query_permit(&self, replica: ReplicaId) -> Result<QueryPermit, StoreError> {
+    pub(crate) async fn query_permit(&self, replica: ReplicaId) -> QueryPermit {
         let pool = match replica {
             ReplicaId::Main => &self.pool,
             ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx],
@@ -423,7 +423,7 @@ impl DeploymentStore {
         pool.query_permit().await
     }
 
-    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> Result<PoolWaitStats, StoreError> {
+    pub(crate) fn wait_stats(&self, replica: ReplicaId) -> PoolWaitStats {
         match replica {
             ReplicaId::Main => self.pool.wait_stats(),
             ReplicaId::ReadOnly(idx) => self.read_only_pools[idx].wait_stats(),

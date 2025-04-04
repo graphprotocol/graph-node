@@ -112,7 +112,7 @@ impl QueryStoreTrait for QueryStore {
         self.chain_store.block_numbers(block_hashes).await
     }
 
-    fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
+    fn wait_stats(&self) -> PoolWaitStats {
         self.store.wait_stats(self.replica_id)
     }
 
@@ -137,7 +137,7 @@ impl QueryStoreTrait for QueryStore {
         &self.site.network
     }
 
-    async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
+    async fn query_permit(&self) -> QueryPermit {
         self.store.query_permit(self.replica_id).await
     }
 

@@ -356,7 +356,7 @@ impl Resolver for IntrospectionResolver {
     // see `fn as_introspection_context`, so this value is irrelevant.
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
+    async fn query_permit(&self) -> QueryPermit {
         unreachable!()
     }
 
