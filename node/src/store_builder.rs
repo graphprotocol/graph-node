@@ -8,7 +8,7 @@ use graph::{
     util::security::SafeDisplay,
 };
 use graph_store_postgres::connection_pool::{
-    ConnectionPool, ForeignServer, PoolCoordinator, PoolName,
+    ConnectionPool, ForeignServer, PoolCoordinator, PoolRole,
 };
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
@@ -224,7 +224,7 @@ impl StoreBuilder {
         coord.create_pool(
             &logger,
             name,
-            PoolName::Main,
+            PoolRole::Main,
             shard.connection.clone(),
             pool_size,
             Some(fdw_pool_size),
@@ -264,7 +264,7 @@ impl StoreBuilder {
                     coord.clone().create_pool(
                         &logger,
                         name,
-                        PoolName::Replica(pool),
+                        PoolRole::Replica(pool),
                         replica.connection.clone(),
                         pool_size,
                         None,
