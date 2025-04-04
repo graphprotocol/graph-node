@@ -373,22 +373,27 @@ impl PoolState {
     /// Get a connection pool that is ready, i.e., has been through setup
     /// and running migrations
     fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
-        let mut guard = self.inner.lock(&self.logger);
+        // We have to be careful here that we do not hold a lock when we
+        // call `setup_bg`, otherwise we will deadlock
+        let (pool, coord) = {
+            let guard = self.inner.lock(&self.logger);
 
-        use PoolStateInner::*;
-        match &*guard {
-            Created(pool, coord) => {
-                let migrated = coord.cheap_clone().setup_bg(pool.cheap_clone())?;
-
-                if migrated {
-                    let pool2 = pool.cheap_clone();
-                    *guard = Ready(pool.cheap_clone());
-                    Ok(pool2)
-                } else {
-                    Err(StoreError::DatabaseUnavailable)
-                }
+            use PoolStateInner::*;
+            match &*guard {
+                Created(pool, coord) => (pool.cheap_clone(), coord.cheap_clone()),
+                Ready(pool) => return Ok(pool.clone()),
             }
-            Ready(pool) => Ok(pool.clone()),
+        };
+
+        // self is `Created` and needs to have setup run
+        coord.setup_bg(self.cheap_clone())?;
+
+        // We just tried to set up the pool; if it is still not set up and
+        // we didn't have an error, it means the database is not available
+        if self.needs_setup() {
+            return Err(StoreError::DatabaseUnavailable);
+        } else {
+            Ok(pool)
         }
     }
 
@@ -399,6 +404,16 @@ impl PoolState {
 
         match &*self.inner.lock(&self.logger) {
             Created(pool, _) | Ready(pool) => pool.cheap_clone(),
+        }
+    }
+
+    fn needs_setup(&self) -> bool {
+        let guard = self.inner.lock(&self.logger);
+
+        use PoolStateInner::*;
+        match &*guard {
+            Created(_, _) => true,
+            Ready(_) => false,
         }
     }
 }
@@ -1186,7 +1201,7 @@ impl PoolInner {
     async fn migrate(
         self: Arc<Self>,
         servers: &[ForeignServer],
-    ) -> Result<(Arc<Self>, MigrationCount), StoreError> {
+    ) -> Result<MigrationCount, StoreError> {
         self.configure_fdw(servers)?;
         let mut conn = self.get()?;
         let (this, count) = conn.transaction(|conn| -> Result<_, StoreError> {
@@ -1196,7 +1211,7 @@ impl PoolInner {
 
         this.locale_check(&this.logger, conn)?;
 
-        Ok((this, count))
+        Ok(count)
     }
 
     /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
@@ -1379,7 +1394,7 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationC
 /// of tables imported from that shard
 pub struct PoolCoordinator {
     logger: Logger,
-    pools: Mutex<HashMap<Shard, Arc<PoolInner>>>,
+    pools: Mutex<HashMap<Shard, PoolState>>,
     servers: Arc<Vec<ForeignServer>>,
 }
 
@@ -1419,16 +1434,12 @@ impl PoolCoordinator {
         // Ignore non-writable pools (replicas), there is no need (and no
         // way) to coordinate schema changes with them
         if is_writable {
-            // It is safe to take this lock here since nobody has seen the pool
-            // yet. We remember the `PoolInner` so that later, when we have to
-            // call `remap()`, we do not have to take this lock as that will be
-            // already held in `get_ready()`
-            let inner = pool.inner.get_unready();
             self.pools
                 .lock()
                 .unwrap()
-                .insert(pool.shard.clone(), inner.clone());
+                .insert(pool.shard.clone(), pool.inner.cheap_clone());
         }
+
         pool
     }
 
@@ -1460,6 +1471,7 @@ impl PoolCoordinator {
         if count.had_migrations() {
             let server = self.server(&pool.shard)?;
             for pool in self.pools.lock().unwrap().values() {
+                let pool = pool.get_unready();
                 let remap_res = pool.remap(server);
                 if let Err(e) = remap_res {
                     error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
@@ -1470,8 +1482,15 @@ impl PoolCoordinator {
         Ok(())
     }
 
+    /// Return a list of all pools, regardless of whether they are ready or
+    /// not.
     pub fn pools(&self) -> Vec<Arc<PoolInner>> {
-        self.pools.lock().unwrap().values().cloned().collect()
+        self.pools
+            .lock()
+            .unwrap()
+            .values()
+            .map(|state| state.get_unready())
+            .collect::<Vec<_>>()
     }
 
     pub fn servers(&self) -> Arc<Vec<ForeignServer>> {
@@ -1486,14 +1505,12 @@ impl PoolCoordinator {
     }
 
     fn primary(&self) -> Result<Arc<PoolInner>, StoreError> {
-        self.pools
-            .lock()
-            .unwrap()
-            .get(&*PRIMARY_SHARD)
-            .cloned()
-            .ok_or_else(|| {
-                constraint_violation!("internal error: primary shard not found in pool coordinator")
-            })
+        let map = self.pools.lock().unwrap();
+        let pool_state = map.get(&*&PRIMARY_SHARD).ok_or_else(|| {
+            constraint_violation!("internal error: primary shard not found in pool coordinator")
+        })?;
+
+        Ok(pool_state.get_unready())
     }
 
     /// Setup all pools the coordinator knows about and return the number of
@@ -1528,7 +1545,7 @@ impl PoolCoordinator {
 
     /// A helper to call `setup` from a non-async context. Returns `true` if
     /// the setup was actually run, i.e. if `pool` was available
-    fn setup_bg(self: Arc<Self>, pool: Arc<PoolInner>) -> Result<bool, StoreError> {
+    fn setup_bg(self: Arc<Self>, pool: PoolState) -> Result<bool, StoreError> {
         let migrated = graph::spawn_thread("database-setup", move || {
             graph::block_on(self.setup(vec![pool.clone()]))
         })
@@ -1555,37 +1572,43 @@ impl PoolCoordinator {
     /// This method tolerates databases that are not available and will
     /// simply ignore them. The returned count is the number of pools that
     /// were successfully set up.
-    async fn setup(&self, pools: Vec<Arc<PoolInner>>) -> Result<usize, StoreError> {
-        type MigrationCounts = Vec<(Arc<PoolInner>, MigrationCount)>;
+    ///
+    /// When this method returns, the entries from `states` that were
+    /// successfully set up will be marked as ready. The method returns the
+    /// number of pools that were set up
+    async fn setup(&self, states: Vec<PoolState>) -> Result<usize, StoreError> {
+        type MigrationCounts = Vec<(PoolState, MigrationCount)>;
 
         /// Filter out pools that are not available. We don't want to fail
         /// because one of the pools is not available. We will just ignore
         /// them and continue with the others.
         fn filter_unavailable<T>(
-            (pool, res): (Arc<PoolInner>, Result<T, StoreError>),
-        ) -> Option<Result<T, StoreError>> {
+            (state, res): (PoolState, Result<T, StoreError>),
+        ) -> Option<Result<(PoolState, T), StoreError>> {
             if let Err(StoreError::DatabaseUnavailable) = res {
                 error!(
-                    pool.logger,
+                    state.logger,
                     "migrations failed because database was unavailable"
                 );
                 None
             } else {
-                Some(res)
+                Some(res.map(|count| (state, count)))
             }
         }
 
         /// Migrate all pools in parallel
         async fn migrate(
-            pools: &[Arc<PoolInner>],
+            pools: &[PoolState],
             servers: &[ForeignServer],
         ) -> Result<MigrationCounts, StoreError> {
             let futures = pools
                 .iter()
-                .map(|pool| {
-                    pool.cheap_clone()
+                .map(|state| {
+                    state
+                        .get_unready()
+                        .cheap_clone()
                         .migrate(servers)
-                        .map(|res| (pool.cheap_clone(), res))
+                        .map(|res| (state.cheap_clone(), res))
                 })
                 .collect::<Vec<_>>();
             join_all(futures)
@@ -1599,25 +1622,31 @@ impl PoolCoordinator {
         async fn propagate(
             this: &PoolCoordinator,
             migrated: MigrationCounts,
-        ) -> Result<usize, StoreError> {
+        ) -> Result<Vec<PoolState>, StoreError> {
             let futures = migrated
                 .into_iter()
-                .map(|(pool, count)| async move {
+                .map(|(state, count)| async move {
+                    let pool = state.get_unready();
                     let res = this.propagate(&pool, count);
-                    (pool.cheap_clone(), res)
+                    (state.cheap_clone(), res)
                 })
                 .collect::<Vec<_>>();
             join_all(futures)
                 .await
                 .into_iter()
                 .filter_map(filter_unavailable)
+                .map(|res| res.map(|(state, ())| state))
                 .collect::<Result<Vec<_>, _>>()
-                .map(|v| v.len())
         }
 
         let primary = self.primary()?;
 
         let mut pconn = primary.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+
+        let pools: Vec<_> = states
+            .into_iter()
+            .filter(|pool| pool.needs_setup())
+            .collect();
 
         // Everything here happens under the migration lock. Anything called
         // from here should not try to get that lock, otherwise the process
@@ -1636,6 +1665,13 @@ impl PoolCoordinator {
         })
         .await;
         debug!(self.logger, "Database setup finished");
-        res
+
+        // Mark all pool states that we set up completely as ready
+        res.map(|states| {
+            for state in &states {
+                state.set_ready();
+            }
+            states.len()
+        })
     }
 }
