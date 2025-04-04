@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use prometheus::IntGauge;
 use prometheus::{labels, Histogram, IntCounterVec};
-use slog::info;
+use slog::debug;
 
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
 use crate::prelude::Collector;
@@ -133,7 +133,7 @@ impl MetricsRegistry {
         let mut result = self.registry.register(collector.clone());
 
         if matches!(result, Err(PrometheusError::AlreadyReg)) {
-            info!(logger, "Resolving duplicate metric registration");
+            debug!(logger, "Resolving duplicate metric registration");
 
             // Since the current metric is a duplicate,
             // we can use it to unregister the previous registration.
@@ -144,7 +144,6 @@ impl MetricsRegistry {
 
         match result {
             Ok(()) => {
-                info!(logger, "Successfully registered a new metric");
                 self.registered_metrics.inc();
             }
             Err(err) => {
