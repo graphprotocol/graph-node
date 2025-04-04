@@ -319,8 +319,6 @@ enum PoolStateInner {
     Created(Arc<PoolInner>, Arc<PoolCoordinator>),
     /// The pool has been successfully set up
     Ready(Arc<PoolInner>),
-    /// The pool has been disabled by setting its size to 0
-    Disabled(String),
 }
 
 /// A pool goes through several states, and this struct tracks what state we
@@ -348,14 +346,6 @@ impl PoolState {
         }
     }
 
-    fn disabled(logger: Logger, name: &str) -> Self {
-        Self::new(
-            logger,
-            PoolStateInner::Disabled(name.to_string()),
-            name.to_string(),
-        )
-    }
-
     fn created(pool: Arc<PoolInner>, coord: Arc<PoolCoordinator>) -> Self {
         let logger = pool.logger.clone();
         let name = pool.shard.to_string();
@@ -376,7 +366,7 @@ impl PoolState {
         let mut guard = self.inner.lock(&self.logger);
         match &*guard {
             Created(pool, _) => *guard = Ready(pool.clone()),
-            Ready(_) | Disabled(_) => { /* nothing to do */ }
+            Ready(_) => { /* nothing to do */ }
         }
     }
 
@@ -399,24 +389,16 @@ impl PoolState {
                 }
             }
             Ready(pool) => Ok(pool.clone()),
-            Disabled(name) => Err(constraint_violation!(
-                "tried to access disabled database pool `{}`",
-                name
-            )),
         }
     }
 
     /// Get the inner pool, regardless of whether it has been set up or not.
     /// Most uses should use `get_ready` instead
-    fn get_unready(&self) -> Result<Arc<PoolInner>, StoreError> {
+    fn get_unready(&self) -> Arc<PoolInner> {
         use PoolStateInner::*;
 
         match &*self.inner.lock(&self.logger) {
-            Created(pool, _) | Ready(pool) => Ok(pool.cheap_clone()),
-            Disabled(name) => Err(constraint_violation!(
-                "tried to access disabled database pool `{}`",
-                name
-            )),
+            Created(pool, _) | Ready(pool) => pool.cheap_clone(),
         }
     }
 }
@@ -516,24 +498,20 @@ impl ConnectionPool {
         let shard =
             Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
         let inner = {
-            if pool_size == 0 {
-                PoolState::disabled(logger.cheap_clone(), shard_name)
+            let pool = PoolInner::create(
+                shard.clone(),
+                pool_name.as_str(),
+                postgres_url,
+                pool_size,
+                fdw_pool_size,
+                logger,
+                registry,
+                state_tracker.clone(),
+            );
+            if pool_name.is_replica() {
+                PoolState::ready(Arc::new(pool))
             } else {
-                let pool = PoolInner::create(
-                    shard.clone(),
-                    pool_name.as_str(),
-                    postgres_url,
-                    pool_size,
-                    fdw_pool_size,
-                    logger,
-                    registry,
-                    state_tracker.clone(),
-                );
-                if pool_name.is_replica() {
-                    PoolState::ready(Arc::new(pool))
-                } else {
-                    PoolState::created(Arc::new(pool), coord)
-                }
+                PoolState::created(Arc::new(pool), coord)
             }
         };
         ConnectionPool {
@@ -660,20 +638,18 @@ impl ConnectionPool {
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
     }
 
-    pub(crate) async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
-        let pool = self.inner.get_unready()?;
+    pub(crate) async fn query_permit(&self) -> QueryPermit {
+        let pool = self.inner.get_unready();
         let start = Instant::now();
         let permit = pool.query_permit().await;
-        Ok(QueryPermit {
+        QueryPermit {
             permit,
             wait: start.elapsed(),
-        })
+        }
     }
 
-    pub(crate) fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
-        self.inner
-            .get_unready()
-            .map(|pool| pool.wait_stats.cheap_clone())
+    pub(crate) fn wait_stats(&self) -> PoolWaitStats {
+        self.inner.get_unready().wait_stats.cheap_clone()
     }
 
     /// Mirror key tables from the primary into our own schema. We do this
@@ -1447,12 +1423,11 @@ impl PoolCoordinator {
             // yet. We remember the `PoolInner` so that later, when we have to
             // call `remap()`, we do not have to take this lock as that will be
             // already held in `get_ready()`
-            if let Some(inner) = pool.inner.get_unready().ok() {
-                self.pools
-                    .lock()
-                    .unwrap()
-                    .insert(pool.shard.clone(), inner.clone());
-            }
+            let inner = pool.inner.get_unready();
+            self.pools
+                .lock()
+                .unwrap()
+                .insert(pool.shard.clone(), inner.clone());
         }
         pool
     }

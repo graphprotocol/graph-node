@@ -53,15 +53,15 @@ impl Resolver for MockResolver {
         Ok(r::Value::Null)
     }
 
-    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
+    async fn query_permit(&self) -> QueryPermit {
         let permit = Arc::new(tokio::sync::Semaphore::new(1))
             .acquire_owned()
             .await
             .unwrap();
-        Ok(QueryPermit {
+        QueryPermit {
             permit,
             wait: Duration::from_secs(0),
-        })
+        }
     }
 }
 

@@ -18,7 +18,7 @@ use super::Query;
 pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
 
-    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError>;
+    async fn query_permit(&self) -> QueryPermit;
 
     /// Prepare for executing a query by prefetching as much data as possible
     fn prefetch(

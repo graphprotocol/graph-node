@@ -319,11 +319,7 @@ impl BlockStore {
     }
 
     pub(crate) async fn query_permit_primary(&self) -> QueryPermit {
-        self.mirror
-            .primary()
-            .query_permit()
-            .await
-            .expect("the primary is never disabled")
+        self.mirror.primary().query_permit().await
     }
 
     pub fn allocate_chain(

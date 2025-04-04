@@ -655,7 +655,7 @@ pub trait QueryStore: Send + Sync {
         block_hash: &BlockHash,
     ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError>;
 
-    fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
+    fn wait_stats(&self) -> PoolWaitStats;
 
     /// Find the current state for the subgraph deployment `id` and
     /// return details about it needed for executing queries
@@ -668,7 +668,7 @@ pub trait QueryStore: Send + Sync {
     fn network_name(&self) -> &str;
 
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> Result<QueryPermit, StoreError>;
+    async fn query_permit(&self) -> QueryPermit;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
@@ -683,7 +683,7 @@ pub trait QueryStore: Send + Sync {
 #[async_trait]
 pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> Result<QueryPermit, StoreError>;
+    async fn query_permit(&self) -> QueryPermit;
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 

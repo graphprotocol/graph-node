@@ -143,7 +143,7 @@ where
         )?;
         self.load_manager
             .decide(
-                &store.wait_stats().map_err(QueryExecutionError::from)?,
+                &store.wait_stats(),
                 store.shard(),
                 store.deployment_id(),
                 query.shape_hash,

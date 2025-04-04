@@ -2,6 +2,7 @@ use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
 use graph::prelude::{o, MetricsRegistry, NodeId};
+use graph::slog::warn;
 use graph::url::Url;
 use graph::{
     prelude::{info, CheapClone, Logger},
@@ -115,8 +116,23 @@ impl StoreBuilder {
         let shards: Vec<_> = config
             .stores
             .iter()
-            .map(|(name, shard)| {
+            .filter_map(|(name, shard)| {
                 let logger = logger.new(o!("shard" => name.to_string()));
+                let pool_size = shard.pool_size.size_for(node, name).unwrap_or_else(|_| {
+                    panic!("cannot determine the pool size for store {}", name)
+                });
+                if pool_size == 0 {
+                    if name == PRIMARY_SHARD.as_str() {
+                        panic!("pool size for primary shard must be greater than 0");
+                    } else {
+                        warn!(
+                            logger,
+                            "pool size for shard {} is 0, ignoring this shard", name
+                        );
+                        return None;
+                    }
+                }
+
                 let conn_pool = Self::main_pool(
                     &logger,
                     node,
@@ -137,7 +153,7 @@ impl StoreBuilder {
 
                 let name =
                     ShardName::new(name.to_string()).expect("shard names have been validated");
-                (name, conn_pool, read_only_conn_pools, weights)
+                Some((name, conn_pool, read_only_conn_pools, weights))
             })
             .collect();
 
