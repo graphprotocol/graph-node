@@ -1,15 +1,15 @@
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
-use graph::futures03::future::join_all;
 use graph::prelude::{o, MetricsRegistry, NodeId};
+use graph::slog::warn;
 use graph::url::Url;
 use graph::{
     prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
 };
 use graph_store_postgres::connection_pool::{
-    ConnectionPool, ForeignServer, PoolCoordinator, PoolName,
+    ConnectionPool, ForeignServer, PoolCoordinator, PoolRole,
 };
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
@@ -62,7 +62,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.values().map(|pool| pool.setup())).await;
+        coord.setup_all(logger).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -111,13 +111,28 @@ impl StoreBuilder {
             .collect::<Result<Vec<_>, _>>()
             .expect("connection url's contain enough detail");
         let servers = Arc::new(servers);
-        let coord = Arc::new(PoolCoordinator::new(servers));
+        let coord = Arc::new(PoolCoordinator::new(logger, servers));
 
         let shards: Vec<_> = config
             .stores
             .iter()
-            .map(|(name, shard)| {
+            .filter_map(|(name, shard)| {
                 let logger = logger.new(o!("shard" => name.to_string()));
+                let pool_size = shard.pool_size.size_for(node, name).unwrap_or_else(|_| {
+                    panic!("cannot determine the pool size for store {}", name)
+                });
+                if pool_size == 0 {
+                    if name == PRIMARY_SHARD.as_str() {
+                        panic!("pool size for primary shard must be greater than 0");
+                    } else {
+                        warn!(
+                            logger,
+                            "pool size for shard {} is 0, ignoring this shard", name
+                        );
+                        return None;
+                    }
+                }
+
                 let conn_pool = Self::main_pool(
                     &logger,
                     node,
@@ -138,7 +153,7 @@ impl StoreBuilder {
 
                 let name =
                     ShardName::new(name.to_string()).expect("shard names have been validated");
-                (name, conn_pool, read_only_conn_pools, weights)
+                Some((name, conn_pool, read_only_conn_pools, weights))
             })
             .collect();
 
@@ -196,8 +211,8 @@ impl StoreBuilder {
         Arc::new(DieselStore::new(subgraph_store, block_store))
     }
 
-    /// Create a connection pool for the main database of the primary shard
-    /// without connecting to all the other configured databases
+    /// Create a connection pool for the main (non-replica) database of a
+    /// shard
     pub fn main_pool(
         logger: &Logger,
         node: &NodeId,
@@ -225,7 +240,7 @@ impl StoreBuilder {
         coord.create_pool(
             &logger,
             name,
-            PoolName::Main,
+            PoolRole::Main,
             shard.connection.clone(),
             pool_size,
             Some(fdw_pool_size),
@@ -265,7 +280,7 @@ impl StoreBuilder {
                     coord.clone().create_pool(
                         &logger,
                         name,
-                        PoolName::Replica(pool),
+                        PoolRole::Replica(pool),
                         replica.connection.clone(),
                         pool_size,
                         None,

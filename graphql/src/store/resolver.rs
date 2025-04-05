@@ -256,8 +256,8 @@ impl StoreResolver {
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
 
-    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
-        self.store.query_permit().await.map_err(Into::into)
+    async fn query_permit(&self) -> QueryPermit {
+        self.store.query_permit().await
     }
 
     fn prefetch(

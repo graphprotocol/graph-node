@@ -167,8 +167,8 @@ impl StatusStore for Store {
             .await
     }
 
-    async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
+    async fn query_permit(&self) -> QueryPermit {
         // Status queries go to the primary shard.
-        Ok(self.block_store.query_permit_primary().await)
+        self.block_store.query_permit_primary().await
     }
 }

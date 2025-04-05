@@ -777,8 +777,8 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 impl<S: Store> Resolver for IndexNodeResolver<S> {
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
-        self.store.query_permit().await.map_err(Into::into)
+    async fn query_permit(&self) -> QueryPermit {
+        self.store.query_permit().await
     }
 
     fn prefetch(
