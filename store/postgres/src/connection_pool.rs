@@ -380,13 +380,18 @@ impl PoolState {
 
             use PoolStateInner::*;
             match &*guard {
-                Created(pool, coord) => (pool.cheap_clone(), coord.cheap_clone()),
+                Created(pool, coord) => {
+                    warn!(self.logger, "pool_state: pool not ready; creating");
+                    (pool.cheap_clone(), coord.cheap_clone())
+                }
                 Ready(pool) => return Ok(pool.clone()),
             }
         };
 
         // self is `Created` and needs to have setup run
+        warn!(self.logger, "pool_state: setting up pool");
         let migrated = coord.setup_bg(self.cheap_clone())?;
+        warn!(self.logger, "pool_state: pool is ready");
         if migrated {
             Ok(pool)
         } else {
@@ -1547,6 +1552,7 @@ impl PoolCoordinator {
     /// the setup was actually run, i.e. if `pool` was available
     fn setup_bg(self: Arc<Self>, pool: PoolState) -> Result<bool, StoreError> {
         let migrated = graph::spawn_thread("database-setup", move || {
+            std::thread::sleep(Duration::from_secs(1));
             graph::block_on(self.setup(vec![pool.clone()]))
         })
         .join()
