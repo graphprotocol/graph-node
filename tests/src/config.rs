@@ -210,7 +210,6 @@ impl Config {
         let setup = format!(
             r#"
         create extension pg_trgm;
-        create extension pg_stat_statements;
         create extension btree_gist;
         create extension postgres_fdw;
         grant usage on foreign data wrapper postgres_fdw to "{}";

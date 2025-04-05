@@ -1364,11 +1364,6 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationC
     }
 
     let migrations = catalog::migration_count(conn)?;
-    if migrations != old_count {
-        // Reset the query statistics since a schema change makes them not
-        // all that useful. An error here is not serious and can be ignored.
-        conn.batch_execute("select pg_stat_statements_reset()").ok();
-    }
 
     Ok(MigrationCount {
         new: migrations,
