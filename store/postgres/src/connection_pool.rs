@@ -1643,10 +1643,13 @@ impl PoolCoordinator {
 
         let mut pconn = primary.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
-        let pools: Vec<_> = states
+        let states: Vec<_> = states
             .into_iter()
             .filter(|pool| pool.needs_setup())
             .collect();
+        if states.is_empty() {
+            return Ok(0);
+        }
 
         // Everything here happens under the migration lock. Anything called
         // from here should not try to get that lock, otherwise the process
@@ -1654,24 +1657,34 @@ impl PoolCoordinator {
         debug!(self.logger, "Waiting for migration lock");
         let res = with_migration_lock(&mut pconn, |_| async {
             debug!(self.logger, "Migration lock acquired");
+
+            // While we were waiting for the migration lock, another thread
+            // might have already run this
+            let states: Vec<_> = states
+                .into_iter()
+                .filter(|pool| pool.needs_setup())
+                .collect();
+            if states.is_empty() {
+                debug!(self.logger, "No pools to set up");
+                return Ok(0);
+            }
+
             primary.drop_cross_shard_views()?;
 
-            let migrated = migrate(&pools, self.servers.as_ref()).await?;
+            let migrated = migrate(&states, self.servers.as_ref()).await?;
 
             let propagated = propagate(&self, migrated).await?;
 
             primary.create_cross_shard_views(&self.servers)?;
-            Ok(propagated)
+
+            for state in &propagated {
+                state.set_ready();
+            }
+            Ok(propagated.len())
         })
         .await;
         debug!(self.logger, "Database setup finished");
 
-        // Mark all pool states that we set up completely as ready
-        res.map(|states| {
-            for state in &states {
-                state.set_ready();
-            }
-            states.len()
-        })
+        res
     }
 }
