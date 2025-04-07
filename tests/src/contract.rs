@@ -7,7 +7,7 @@ use graph::prelude::{
         api::{Eth, Namespace},
         contract::{tokens::Tokenize, Contract as Web3Contract, Options},
         transports::Http,
-        types::{Address, Bytes, TransactionReceipt},
+        types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256},
     },
 };
 // web3 version 0.18 does not expose this; once the graph crate updates to
@@ -164,5 +164,14 @@ impl Contract {
             contracts.push(contract);
         }
         Ok(contracts)
+    }
+
+    pub async fn latest_block() -> Option<Block<H256>> {
+        let eth = Self::eth();
+        let block = eth
+            .block(BlockId::Number(BlockNumber::Latest))
+            .await
+            .unwrap_or_default();
+        block
     }
 }
