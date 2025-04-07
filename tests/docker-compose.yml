@@ -23,7 +23,7 @@ services:
     image: ghcr.io/foundry-rs/foundry:stable
     ports:
       - '3021:8545'
-    command: "'anvil --host 0.0.0.0 --gas-limit 100000000000 --base-fee 1 --block-time 5 --timestamp 1743944919 --mnemonic \"test test test test test test test test test test test junk\"'"
+    command: "'anvil --host 0.0.0.0 --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --mnemonic \"test test test test test test test test test test test junk\"'"
 
 # graph-node ports:
 #   json-rpc: 8020
