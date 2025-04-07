@@ -164,7 +164,7 @@ impl Subgraph {
     }
 
     /// Make a GraphQL query to the index node API
-    pub async fn index_with_vars(&self, text: &str, vars: Value) -> anyhow::Result<Value> {
+    pub async fn query_with_vars(text: &str, vars: Value) -> anyhow::Result<Value> {
         let endpoint = CONFIG.graph_node.index_node_uri();
         graphql_query_with_vars(&endpoint, text, vars).await
     }
