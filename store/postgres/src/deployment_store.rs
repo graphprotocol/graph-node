@@ -1235,8 +1235,7 @@ impl DeploymentStore {
             req: PruneRequest,
         ) -> Result<(), StoreError> {
             {
-                let mut conn = store.get_conn()?;
-                if copy::is_source(&mut conn, &site)? {
+                if copy::is_source(&logger, &store.pool, &site)? {
                     debug!(
                         logger,
                         "Skipping pruning since this deployment is being copied"
