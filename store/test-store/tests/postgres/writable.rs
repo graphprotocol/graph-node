@@ -195,13 +195,15 @@ fn count_get(writable: &dyn WritableStore) -> i32 {
 
 fn count_get_derived(writable: &dyn WritableStore) -> i32 {
     let key = count_key("1");
+    // Discard the logger
+    let logger = Logger::root(slog::Discard, o!());
     let query = DerivedEntityQuery {
         entity_type: key.entity_type.clone(),
         entity_field: Word::from("id"),
         value: key.entity_id.clone(),
         causality_region: CausalityRegion::ONCHAIN,
     };
-    let map = writable.get_derived(&query).unwrap();
+    let map = writable.get_derived(&logger, &query).unwrap();
     let counter = map.get(&key).unwrap();
     counter.get("count").unwrap().as_int().unwrap()
 }

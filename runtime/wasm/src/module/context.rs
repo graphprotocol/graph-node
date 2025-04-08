@@ -339,7 +339,6 @@ impl WasmInstanceContext<'_> {
     /// function store.loadRelated(entity_type: string, id: string, field: string): Array<Entity>
     pub fn store_load_related(
         &mut self,
-
         gas: &GasCounter,
         entity_type_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
@@ -350,6 +349,7 @@ impl WasmInstanceContext<'_> {
         let field: String = asc_get(self, field_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let entities = host_exports.store_load_related(
+            &self.as_ref().ctx.logger.clone(),
             &mut self.as_mut().ctx.state,
             entity_type.clone(),
             id.clone(),

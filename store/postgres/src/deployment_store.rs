@@ -1065,6 +1065,7 @@ impl DeploymentStore {
 
     pub(crate) fn get_derived(
         &self,
+        logger: &Logger,
         site: Arc<Site>,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
@@ -1072,7 +1073,7 @@ impl DeploymentStore {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let mut conn = self.get_conn()?;
         let layout = self.layout(&mut conn, site)?;
-        layout.find_derived(&mut conn, derived_query, block, excluded_keys)
+        layout.find_derived(logger, &mut conn, derived_query, block, excluded_keys)
     }
 
     pub(crate) fn get_changes(

@@ -61,3 +61,13 @@ impl std::fmt::Debug for EntityKey {
         )
     }
 }
+
+impl std::fmt::Display for EntityKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EntityKey({}[{}], cr={})",
+            self.entity_type, self.entity_id, self.causality_region
+        )
+    }
+}

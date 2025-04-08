@@ -98,6 +98,12 @@ impl DerivedEntityQuery {
     }
 }
 
+impl fmt::Display for DerivedEntityQuery {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "DerivedEntityQuery {{ entity_type: {}, entity_field: {}, value: {}, causality_region: {} }}", self.entity_type, self.entity_field, self.value, self.causality_region)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Child {
     pub attr: Attribute,
@@ -1040,6 +1046,7 @@ impl ReadStore for EmptyStore {
 
     fn get_derived(
         &self,
+        _logger: &Logger,
         _query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(BTreeMap::new())

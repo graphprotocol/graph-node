@@ -17,7 +17,7 @@ use graph::prelude::{
     SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
 use graph::schema::{EntityKey, EntityType, InputSchema};
-use graph::slog::{debug, info, warn};
+use graph::slog::{debug, info, trace, warn};
 use graph::tokio::select;
 use graph::tokio::sync::Notify;
 use graph::tokio::task::JoinHandle;
@@ -354,13 +354,14 @@ impl SyncStore {
 
     fn get_derived(
         &self,
+        logger: &Logger,
         key: &DerivedEntityQuery,
         block: BlockNumber,
         excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         retry::forever(&self.logger, "get_derived", || {
             self.writable
-                .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
+                .get_derived(logger, self.site.cheap_clone(), key, block, &excluded_keys)
         })
     }
 
@@ -1221,8 +1222,15 @@ impl Queue {
 
     fn get_derived(
         &self,
+        logger: &Logger,
         derived_query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        trace!(logger, "==> Starting get_derived operation";
+            "entity_type" => derived_query.entity_type.to_string(),
+            "field" => derived_query.entity_field.to_string(),
+            "value" => derived_query.value.to_string()
+        );
+
         fn is_related(derived_query: &DerivedEntityQuery, entity: &Entity) -> bool {
             entity
                 .get(&derived_query.entity_field)
@@ -1263,12 +1271,36 @@ impl Queue {
             },
         );
 
+        trace!(logger, "==> Found entities in queue";
+            "queue_entities_count" => entities_in_queue.len(),
+            "query_block" => query_block
+        );
+
+        // Log all keys in the entities_in_queue as a comma separated sorted list
+        let mut queue_keys: Vec<String> = entities_in_queue.keys().map(|k| k.to_string()).collect();
+        queue_keys.sort();
+        trace!(logger, "==] Entity keys from queue";
+            "keys" => queue_keys.join(", ")
+        );
+
         let excluded_keys: Vec<EntityKey> = entities_in_queue.keys().cloned().collect();
 
         // We filter to exclude the entities ids that we already have from the queue
         let mut items_from_database =
             self.store
-                .get_derived(derived_query, query_block, excluded_keys)?;
+                .get_derived(logger, derived_query, query_block, excluded_keys.clone())?;
+
+        trace!(logger, "==> Retrieved entities from database";
+            "database_entities_count" => items_from_database.len(),
+            "excluded_keys_count" => excluded_keys.len()
+        );
+
+        // Log all keys in the items_from_database as a comma separated sorted list
+        let mut db_keys: Vec<String> = items_from_database.keys().map(|k| k.to_string()).collect();
+        db_keys.sort();
+        trace!(logger, "==] Entity keys from database";
+            "keys" => db_keys.join(", ")
+        );
 
         // Extend the store results with the entities from the queue.
         // This overwrites any entitiy from the database with the same key from queue
@@ -1276,7 +1308,23 @@ impl Queue {
             .into_iter()
             .filter_map(|(key, entity)| entity.map(|entity| (key, entity)))
             .collect();
+
+        let queue_entities_count = items_from_queue.len();
         items_from_database.extend(items_from_queue);
+
+        trace!(logger, "==> Completed get_derived operation";
+            "total_entities" => items_from_database.len(),
+            "from_queue" => queue_entities_count,
+            "from_database" => items_from_database.len() - queue_entities_count,
+            "query_block" => query_block
+        );
+
+        // Log all keys in the items_from_database as a comma separated sorted list
+        let mut db_keys: Vec<String> = items_from_database.keys().map(|k| k.to_string()).collect();
+        db_keys.sort();
+        trace!(logger, "==] Entity keys from database";
+            "keys" => db_keys.join(", ")
+        );
 
         Ok(items_from_database)
     }
@@ -1433,11 +1481,22 @@ impl Writer {
 
     fn get_derived(
         &self,
+        logger: &Logger,
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, vec![]),
-            Writer::Async { queue, .. } => queue.get_derived(key),
+            Writer::Sync(store) => {
+                trace!(logger, "==> get_derived Writer::Sync";
+                    "key" => format!("{}", key)
+                );
+                store.get_derived(logger, key, BLOCK_NUMBER_MAX, vec![])
+            }
+            Writer::Async { queue, .. } => {
+                trace!(logger, "==> get_derived Writer::Async";
+                    "key" => format!("{}", key)
+                );
+                queue.get_derived(logger, key)
+            }
         }
     }
 
@@ -1561,9 +1620,10 @@ impl ReadStore for WritableStore {
 
     fn get_derived(
         &self,
+        logger: &Logger,
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        self.writer.get_derived(key)
+        self.writer.get_derived(logger, key)
     }
 
     fn input_schema(&self) -> InputSchema {

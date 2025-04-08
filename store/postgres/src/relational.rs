@@ -41,7 +41,7 @@ use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };
-use graph::slog::warn;
+use graph::slog::{trace, warn};
 use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;
@@ -543,6 +543,7 @@ impl Layout {
 
     pub fn find_derived(
         &self,
+        logger: &Logger,
         conn: &mut PgConnection,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
@@ -552,6 +553,11 @@ impl Layout {
         let ids = excluded_keys.iter().map(|key| &key.entity_id).cloned();
         let excluded_keys = IdList::try_from_iter(derived_query.entity_type.id_type()?, ids)?;
         let query = FindDerivedQuery::new(table, derived_query, block, excluded_keys);
+
+        let query_sql = debug_query(&query).to_string().replace('\n', "\t");
+        trace!(logger, "==] FindDerivedQuery";
+            "query" => query_sql
+        );
 
         let mut entities = BTreeMap::new();
 

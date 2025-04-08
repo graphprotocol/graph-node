@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use slog::{o, trace, Logger};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
@@ -218,11 +219,38 @@ impl EntityCache {
         Ok(entity)
     }
 
-    pub fn load_related(
+    pub fn load_related_for_test(
         &mut self,
         eref: &LoadRelatedRequest,
     ) -> Result<Vec<Entity>, anyhow::Error> {
+        let logger = slog::Logger::root(slog::Discard, o!());
+        self.load_related(&logger, eref)
+    }
+
+    pub fn load_related(
+        &mut self,
+        logger: &Logger,
+        eref: &LoadRelatedRequest,
+    ) -> Result<Vec<Entity>, anyhow::Error> {
+        self.load_related_inner(logger, eref)
+    }
+
+    fn load_related_inner(
+        &mut self,
+        logger: &Logger,
+        eref: &LoadRelatedRequest,
+    ) -> Result<Vec<Entity>, anyhow::Error> {
         let (entity_type, field) = self.schema.get_field_related(eref)?;
+
+        let entity_type_str = entity_type.to_string();
+        let field_str = field.name.to_string();
+        let entity_id_str = eref.entity_id.to_string();
+
+        trace!(logger, "==> Loading derived entities";
+            "entity_type" => entity_type_str.clone(),
+            "field" => field_str.clone(),
+            "value" => entity_id_str.clone()
+        );
 
         let query = DerivedEntityQuery {
             entity_type,
@@ -231,7 +259,21 @@ impl EntityCache {
             causality_region: eref.causality_region,
         };
 
-        let mut entity_map = self.store.get_derived(&query)?;
+        let mut entity_map = self.store.get_derived(logger, &query)?;
+
+        trace!(logger, "==> Loaded derived entities";
+            "entity_type" => entity_type_str,
+            "field" => field_str,
+            "value" => entity_id_str,
+            "length" => entity_map.len()
+        );
+
+        // Log all keys in the entity_map as a comma separated sorted list
+        let mut keys: Vec<String> = entity_map.keys().map(|k| k.to_string()).collect();
+        keys.sort();
+        trace!(logger, "==] Entity keys from store";
+            "keys" => keys.join(", ")
+        );
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
@@ -242,6 +284,7 @@ impl EntityCache {
         }
 
         let mut keys_to_remove = Vec::new();
+        let mut updated_count = 0;
 
         // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
         for (key, entity) in entity_map.iter_mut() {
@@ -263,12 +306,18 @@ impl EntityCache {
 
             if let Some(updated_entity) = updated_entity {
                 *entity = updated_entity;
+                updated_count += 1;
             } else {
                 // if entity_arc is None, it means that the entity was removed by an update
                 // mark the key for removal from the map
                 keys_to_remove.push(key.clone());
             }
         }
+
+        trace!(logger, "==> Summary of entity updates";
+            "updated_count" => format!("{}", updated_count),
+            "removed_count" => format!("{}", keys_to_remove.len())
+        );
 
         // A helper function that checks if an update matches the query and returns the updated entity if it does
         fn matches_query(
@@ -286,6 +335,8 @@ impl EntityCache {
                 _ => Ok(None),
             }
         }
+
+        let mut added_count = 0;
 
         // Iterate over self.updates to find entities that:
         // - Aren't already present in the entity_map
@@ -306,14 +357,21 @@ impl EntityCache {
 
                         if let Some(updated_entity) = entity {
                             entity_map.insert(key.clone(), updated_entity);
+                            added_count += 1;
                         }
                     } else {
                         // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
                         entity_map.insert(key.clone(), entity);
+                        added_count += 1;
                     }
                 }
             }
         }
+
+        trace!(logger, "==> Summary of entity additions";
+            "added_count" => format!("{}", added_count)
+        );
+        let mut handler_added_count = 0;
 
         // Iterate over handler_updates to find entities that:
         // - Aren't already present in the entity_map.
@@ -324,9 +382,15 @@ impl EntityCache {
             if !entity_map.contains_key(key) && !self.updates.contains_key(key) {
                 if let Some(entity) = matches_query(handler_op, &query, key)? {
                     entity_map.insert(key.clone(), entity);
+                    handler_added_count += 1;
                 }
             }
         }
+
+        trace!(logger, "==> Summary of handler entity additions";
+            "handler_added_count" => format!("{}", handler_added_count)
+        );
+        let mut removed_count = 0;
 
         // Remove entities that are in the store but have been removed by an update.
         // We do this last since the loops over updates and handler_updates are only
@@ -334,8 +398,21 @@ impl EntityCache {
         // keys in entity_map we avoid processing these updates a second time when we
         // already looked at them when we went through entity_map
         for key in keys_to_remove {
-            entity_map.remove(&key);
+            if entity_map.remove(&key).is_some() {
+                removed_count += 1;
+            }
         }
+
+        trace!(logger, "==> Summary of entity removals";
+            "removed_count" => format!("{}", removed_count)
+        );
+
+        // Log all keys in the entity_map as a comma separated sorted list
+        let mut keys: Vec<String> = entity_map.keys().map(|k| k.to_string()).collect();
+        keys.sort();
+        trace!(logger, "==] Entity keys from entity_map";
+            "keys" => keys.join(", ")
+        );
 
         Ok(entity_map.into_values().collect())
     }
