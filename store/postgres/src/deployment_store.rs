@@ -904,20 +904,12 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn block_time(
-        &self,
-        site: Arc<Site>,
-        block: BlockNumber,
-    ) -> Result<Option<BlockTime>, StoreError> {
+    pub(crate) fn block_time(&self, site: Arc<Site>) -> Result<Option<BlockTime>, StoreError> {
         let store = self.cheap_clone();
 
         let mut conn = self.get_conn()?;
         let layout = store.layout(&mut conn, site.cheap_clone())?;
-        if ENV_VARS.store.last_rollup_from_poi {
-            layout.block_time(&mut conn, block)
-        } else {
-            layout.last_rollup(&mut conn)
-        }
+        layout.last_rollup(&mut conn)
     }
 
     pub(crate) async fn get_proof_of_indexing(

@@ -129,14 +129,6 @@ pub struct EnvVarsStore {
     pub use_brin_for_all_query_types: bool,
     /// Temporary env var to disable certain lookups in the chain store
     pub disable_block_cache_for_lookup: bool,
-    /// Temporary env var to fall back to the old broken way of determining
-    /// the time of the last rollup from the POI table instead of the new
-    /// way that fixes
-    /// https://github.com/graphprotocol/graph-node/issues/5530 Remove this
-    /// and all code that is dead as a consequence once this has been vetted
-    /// sufficiently, probably after 2024-12-01
-    /// Defaults to `false`, i.e. using the new fixed behavior
-    pub last_rollup_from_poi: bool,
     /// Safety switch to increase the number of columns used when
     /// calculating the chunk size in `InsertQuery::chunk_size`. This can be
     /// used to work around Postgres errors complaining 'number of
@@ -197,7 +189,6 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             create_gin_indexes: x.create_gin_indexes,
             use_brin_for_all_query_types: x.use_brin_for_all_query_types,
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
-            last_rollup_from_poi: x.last_rollup_from_poi,
             insert_extra_cols: x.insert_extra_cols,
             fdw_fetch_size: x.fdw_fetch_size,
         };
@@ -276,8 +267,6 @@ pub struct InnerStore {
     use_brin_for_all_query_types: bool,
     #[envconfig(from = "GRAPH_STORE_DISABLE_BLOCK_CACHE_FOR_LOOKUP", default = "false")]
     disable_block_cache_for_lookup: bool,
-    #[envconfig(from = "GRAPH_STORE_LAST_ROLLUP_FROM_POI", default = "false")]
-    last_rollup_from_poi: bool,
     #[envconfig(from = "GRAPH_STORE_INSERT_EXTRA_COLS", default = "0")]
     insert_extra_cols: usize,
     #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "1000")]
