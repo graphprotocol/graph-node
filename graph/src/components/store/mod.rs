@@ -12,7 +12,7 @@ pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCa
 use slog::Logger;
 
 pub use super::subgraph::Entity;
-pub use err::StoreError;
+pub use err::{StoreError, StoreResult};
 use itertools::Itertools;
 use strum_macros::Display;
 pub use traits::*;

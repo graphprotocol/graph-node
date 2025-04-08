@@ -7,6 +7,8 @@ use diesel::result::Error as DieselError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
+pub type StoreResult<T> = Result<T, StoreError>;
+
 #[derive(Error, Debug)]
 pub enum StoreError {
     #[error("store error: {0:#}")]
