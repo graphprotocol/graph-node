@@ -422,8 +422,9 @@ impl Table {
             }
         } else {
             self.create_attribute_indexes(out)?;
+            self.create_aggregate_indexes(schema, out)?;
         }
-        self.create_aggregate_indexes(schema, out)
+        Ok(())
     }
 
     pub fn exclusion_ddl(&self, out: &mut String) -> fmt::Result {
