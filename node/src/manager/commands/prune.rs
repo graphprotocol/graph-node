@@ -6,7 +6,7 @@ use std::{
 };
 
 use graph::{
-    components::store::{PrunePhase, PruneRequest},
+    components::store::{DeploymentLocator, PrunePhase, PruneRequest},
     env::ENV_VARS,
 };
 use graph::{
@@ -14,9 +14,16 @@ use graph::{
     data::subgraph::status,
     prelude::{anyhow, BlockNumber},
 };
-use graph_store_postgres::{ConnectionPool, Store};
+use graph_store_postgres::{
+    command_support::{Phase, PruneTableState},
+    ConnectionPool, Store,
+};
 
-use crate::manager::{commands::stats::show_stats, deployment::DeploymentSearch, fmt};
+use crate::manager::{
+    commands::stats::show_stats,
+    deployment::DeploymentSearch,
+    fmt::{self, MapOrNull as _},
+};
 
 struct Progress {
     start: Instant,
@@ -153,15 +160,19 @@ impl PruneReporter for Progress {
     }
 }
 
-pub async fn run(
-    store: Arc<Store>,
+struct Args {
+    history: BlockNumber,
+    deployment: DeploymentLocator,
+    earliest_block: BlockNumber,
+    latest_block: BlockNumber,
+}
+
+fn check_args(
+    store: &Arc<Store>,
     primary_pool: ConnectionPool,
     search: DeploymentSearch,
     history: usize,
-    rebuild_threshold: Option<f64>,
-    delete_threshold: Option<f64>,
-    once: bool,
-) -> Result<(), anyhow::Error> {
+) -> Result<Args, anyhow::Error> {
     let history = history as BlockNumber;
     let deployment = search.locate_unique(&primary_pool)?;
     let mut info = store
@@ -178,22 +189,38 @@ pub async fn run(
         .chains
         .pop()
         .ok_or_else(|| anyhow!("deployment {} does not index any chain", deployment))?;
-    let latest = status.latest_block.map(|ptr| ptr.number()).unwrap_or(0);
-    if latest <= history {
-        return Err(anyhow!("deployment {deployment} has only indexed up to block {latest} and we can't preserve {history} blocks of history"));
+    let latest_block = status.latest_block.map(|ptr| ptr.number()).unwrap_or(0);
+    if latest_block <= history {
+        return Err(anyhow!("deployment {deployment} has only indexed up to block {latest_block} and we can't preserve {history} blocks of history"));
     }
+    Ok(Args {
+        history,
+        deployment,
+        earliest_block: status.earliest_block_number,
+        latest_block,
+    })
+}
 
-    println!("prune {deployment}");
-    println!("    latest: {latest}");
-    println!("     final: {}", latest - ENV_VARS.reorg_threshold());
-    println!("  earliest: {}\n", latest - history);
+async fn first_prune(
+    store: &Arc<Store>,
+    args: &Args,
+    rebuild_threshold: Option<f64>,
+    delete_threshold: Option<f64>,
+) -> Result<(), anyhow::Error> {
+    println!("prune {}", args.deployment);
+    println!(
+        "     range: {} - {} ({} blocks)",
+        args.earliest_block,
+        args.latest_block,
+        args.latest_block - args.earliest_block
+    );
 
     let mut req = PruneRequest::new(
-        &deployment,
-        history,
+        &args.deployment,
+        args.history,
         ENV_VARS.reorg_threshold(),
-        status.earliest_block_number,
-        latest,
+        args.earliest_block,
+        args.latest_block,
     )?;
     if let Some(rebuild_threshold) = rebuild_threshold {
         req.rebuild_threshold = rebuild_threshold;
@@ -206,17 +233,186 @@ pub async fn run(
 
     store
         .subgraph_store()
-        .prune(reporter, &deployment, req)
+        .prune(reporter, &args.deployment, req)
         .await?;
+    Ok(())
+}
+
+async fn run_inner(
+    store: Arc<Store>,
+    primary_pool: ConnectionPool,
+    search: DeploymentSearch,
+    history: usize,
+    rebuild_threshold: Option<f64>,
+    delete_threshold: Option<f64>,
+    once: bool,
+    do_first_prune: bool,
+) -> Result<(), anyhow::Error> {
+    let args = check_args(&store, primary_pool, search, history)?;
+
+    if do_first_prune {
+        first_prune(&store, &args, rebuild_threshold, delete_threshold).await?;
+    }
 
     // Only after everything worked out, make the history setting permanent
     if !once {
         store.subgraph_store().set_history_blocks(
-            &deployment,
-            history,
+            &args.deployment,
+            args.history,
             ENV_VARS.reorg_threshold(),
         )?;
     }
 
+    Ok(())
+}
+
+pub async fn run(
+    store: Arc<Store>,
+    primary_pool: ConnectionPool,
+    search: DeploymentSearch,
+    history: usize,
+    rebuild_threshold: Option<f64>,
+    delete_threshold: Option<f64>,
+    once: bool,
+) -> Result<(), anyhow::Error> {
+    run_inner(
+        store,
+        primary_pool,
+        search,
+        history,
+        rebuild_threshold,
+        delete_threshold,
+        once,
+        true,
+    )
+    .await
+}
+
+pub async fn set(
+    store: Arc<Store>,
+    primary_pool: ConnectionPool,
+    search: DeploymentSearch,
+    history: usize,
+    rebuild_threshold: Option<f64>,
+    delete_threshold: Option<f64>,
+) -> Result<(), anyhow::Error> {
+    run_inner(
+        store,
+        primary_pool,
+        search,
+        history,
+        rebuild_threshold,
+        delete_threshold,
+        false,
+        false,
+    )
+    .await
+}
+
+pub async fn status(
+    store: Arc<Store>,
+    primary_pool: ConnectionPool,
+    search: DeploymentSearch,
+    run: Option<usize>,
+) -> Result<(), anyhow::Error> {
+    fn percentage(left: Option<i64>, x: Option<i64>, right: Option<i64>) -> String {
+        match (left, x, right) {
+            (Some(left), Some(x), Some(right)) => {
+                let range = right - left;
+                if range == 0 {
+                    return fmt::null();
+                }
+                let percent = (x - left) as f64 / range as f64 * 100.0;
+                format!("{:.0}%", percent.min(100.0))
+            }
+            _ => fmt::null(),
+        }
+    }
+
+    let deployment = search.locate_unique(&primary_pool)?;
+
+    let viewer = store.subgraph_store().prune_viewer(&deployment).await?;
+    let runs = viewer.runs()?;
+    if runs.is_empty() {
+        return Err(anyhow!("No prune runs found for deployment {deployment}"));
+    }
+    let run = run.unwrap_or(*runs.last().unwrap());
+    let Some((state, table_states)) = viewer.state(run)? else {
+        let runs = match runs.len() {
+            0 => unreachable!("we checked that runs is not empty"),
+            1 => format!("There is only one prune run #{}", runs[0]),
+            _ => format!(
+                "Only prune runs #{} up to #{} exist",
+                runs[0],
+                runs.last().unwrap()
+            ),
+        };
+        return Err(anyhow!(
+            "No information about prune run #{run} found for deployment {deployment}. {runs}"
+        ));
+    };
+    println!("prune {deployment} (run #{run})");
+    println!(
+        "     range: {} - {} ({} blocks, should keep {} blocks)",
+        state.first_block,
+        state.latest_block,
+        state.latest_block - state.first_block,
+        state.history_blocks
+    );
+    println!("   started: {}", fmt::date_time(&state.started_at));
+    match &state.finished_at {
+        Some(finished_at) => println!("  finished: {}", fmt::date_time(finished_at)),
+        None => println!("  finished: still running"),
+    }
+    println!(
+        "  duration: {}",
+        fmt::duration(&state.started_at, &state.finished_at)
+    );
+
+    println!(
+        "\n{:^30} | {:^22} | {:^8} | {:^11} | {:^8}",
+        "table", "status", "rows", "batch_size", "duration"
+    );
+    println!(
+        "{:-^30}-+-{:-^22}-+-{:-^8}-+-{:-^11}-+-{:-^8}",
+        "", "", "", "", ""
+    );
+    for ts in table_states {
+        #[allow(unused_variables)]
+        let PruneTableState {
+            vid: _,
+            id: _,
+            run: _,
+            table_name,
+            strategy,
+            phase,
+            start_vid,
+            final_vid,
+            nonfinal_vid,
+            rows,
+            next_vid,
+            batch_size,
+            started_at,
+            finished_at,
+        } = ts;
+
+        let complete = match phase {
+            Phase::Queued | Phase::Started => "0%".to_string(),
+            Phase::CopyFinal => percentage(start_vid, next_vid, final_vid),
+            Phase::CopyNonfinal | Phase::Delete => percentage(start_vid, next_vid, nonfinal_vid),
+            Phase::Done => fmt::check(),
+            Phase::Unknown => fmt::null(),
+        };
+
+        let table_name = fmt::abbreviate(&table_name, 30);
+        let rows = rows.map_or_null(|rows| rows.to_string());
+        let batch_size = batch_size.map_or_null(|b| b.to_string());
+        let duration = started_at.map_or_null(|s| fmt::duration(&s, &finished_at));
+        let phase = phase.as_str();
+        println!(
+            "{table_name:<30} | {:<15} {complete:>6} | {rows:>8} | {batch_size:>11} | {duration:>8}",
+            format!("{strategy}/{phase}")
+        );
+    }
     Ok(())
 }

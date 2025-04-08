@@ -40,6 +40,7 @@ use crate::{
     deployment::{OnSync, SubgraphHealth},
     primary::{self, DeploymentId, Mirror as PrimaryMirror, Primary, Site},
     relational::{
+        self,
         index::{IndexList, Method},
         Layout,
     },
@@ -1247,6 +1248,16 @@ impl SubgraphStoreInner {
         let store = self.for_site(&site)?;
 
         store.prune(reporter, site, req).await
+    }
+
+    pub async fn prune_viewer(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<relational::prune::Viewer, StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let store = self.for_site(&site)?;
+
+        store.prune_viewer(site).await
     }
 
     pub fn set_history_blocks(

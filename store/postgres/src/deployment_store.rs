@@ -53,7 +53,7 @@ use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
-use crate::relational::{Layout, LayoutCache, SqlName, Table};
+use crate::relational::{self, Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{advisory_lock, catalog, retry};
 use crate::{detail, ConnectionPool};
@@ -875,6 +875,19 @@ impl DeploymentStore {
             }
         })
         .await
+    }
+
+    pub(crate) async fn prune_viewer(
+        self: &Arc<Self>,
+        site: Arc<Site>,
+    ) -> Result<relational::prune::Viewer, StoreError> {
+        let store = self.cheap_clone();
+        let layout = self
+            .pool
+            .with_conn(move |conn, _| store.layout(conn, site.clone()).map_err(|e| e.into()))
+            .await?;
+
+        Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
     }
 }
 

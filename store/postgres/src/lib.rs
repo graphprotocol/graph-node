@@ -85,5 +85,6 @@ pub mod command_support {
     }
     pub use crate::deployment::{on_sync, OnSync};
     pub use crate::primary::Namespace;
+    pub use crate::relational::prune::{Phase, PruneState, PruneTableState, Viewer};
     pub use crate::relational::{Catalog, Column, ColumnType, Layout, SqlName};
 }
