@@ -1003,6 +1003,9 @@ pub struct PruneRequest {
     pub earliest_block: BlockNumber,
     /// The last block that contains final entities not subject to a reorg
     pub final_block: BlockNumber,
+    /// The first block for which the deployment contained entities when the
+    /// request was made
+    pub first_block: BlockNumber,
     /// The latest block, i.e., the subgraph head
     pub latest_block: BlockNumber,
     /// Use the rebuild strategy when removing more than this fraction of
@@ -1066,6 +1069,7 @@ impl PruneRequest {
             earliest_block,
             final_block,
             latest_block,
+            first_block,
             rebuild_threshold,
             delete_threshold,
         })
