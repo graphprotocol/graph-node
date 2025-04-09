@@ -556,17 +556,13 @@ async fn main() {
                                      "num_alive_tasks" => num_alive_tasks);
 
             // Dump task information when contention is detected
-            let dump = graph::futures03::executor::block_on(Duration::from_secs(20), handle.dump());
+            let dump = graph::futures03::executor::block_on(handle.dump());
 
             debug!(contention_logger, "Dumped tasks");
 
-            if let Ok(dump) = dump {
-                for (i, task) in dump.tasks().iter().enumerate() {
-                    let trace = task.trace();
-                    debug!(contention_logger, "Task {}: {}\n", i, trace);
-                }
-            } else {
-                debug!(contention_logger, "Failed to dump tasks");
+            for (i, task) in dump.tasks().iter().enumerate() {
+                let trace = task.trace();
+                debug!(contention_logger, "Task {}: {}\n", i, trace);
             }
 
             if timeout < ENV_VARS.kill_if_unresponsive_timeout {
