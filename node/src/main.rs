@@ -13,6 +13,7 @@ use graph::env::EnvVars;
 use graph::log::logger;
 use graph::prelude::*;
 use graph::prometheus::Registry;
+use graph::tokio::runtime::Handle;
 use graph::url::Url;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
@@ -536,6 +537,7 @@ async fn main() {
         }
         panic!("ping sender dropped");
     });
+    let handle = Handle::current();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));
         let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
@@ -546,9 +548,28 @@ async fn main() {
         let mut timeout = Duration::from_millis(10);
         while pong_receive.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
         {
+            let metrics = handle.metrics();
+            let num_alive_tasks = metrics.active_tasks_count();
             debug!(contention_logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
-                                     "code" => LogCode::TokioContention);
+                                     "code" => LogCode::TokioContention,
+                                     "num_alive_tasks" => num_alive_tasks);
+
+            // Dump task information when contention is detected
+            let dump = graph::futures03::executor::block_on(tokio::time::timeout(
+                Duration::from_secs(20),
+                handle.dump(),
+            ));
+
+            if let Ok(dump) = dump {
+                for (i, task) in dump.tasks().iter().enumerate() {
+                    let trace = task.trace();
+                    debug!(contention_logger, "Task {}: {}\n", i, trace);
+                }
+            } else {
+                debug!(contention_logger, "Failed to dump tasks");
+            }
+
             if timeout < ENV_VARS.kill_if_unresponsive_timeout {
                 timeout *= 10;
             } else if ENV_VARS.kill_if_unresponsive {

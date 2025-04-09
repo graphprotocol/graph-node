@@ -7,3 +7,6 @@ check-clippy = "clippy --no-deps -- --allow warnings"
 # becomes the default.
 [registries.crates-io]
 protocol = "sparse"
+
+[build]
+rustflags = ["--cfg", "tokio_unstable", "--cfg", "tokio_taskdump"]
