@@ -62,6 +62,13 @@ pub struct EnvVarsMapping {
     /// eth calls before running triggers; instead eth calls happen when
     /// mappings call `ethereum.call`. Off by default.
     pub disable_declared_calls: bool,
+
+    /// Set by the flag `GRAPH_STORE_ERRORS_ARE_NON_DETERMINISTIC`. Off by
+    /// default. Setting this to `true` will revert to the old behavior of
+    /// treating all store errors as nondeterministic. This is a temporary
+    /// measure and can be removed after 2025-07-01, once we are sure the
+    /// new behavior works as intended.
+    pub store_errors_are_nondeterministic: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -89,6 +96,7 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
             ipfs_request_limit: x.ipfs_request_limit,
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
             disable_declared_calls: x.disable_declared_calls.0,
+            store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,
         }
     }
 }
@@ -123,4 +131,6 @@ pub struct InnerMappingHandlers {
     allow_non_deterministic_ipfs: EnvVarBoolean,
     #[envconfig(from = "GRAPH_DISABLE_DECLARED_CALLS", default = "false")]
     disable_declared_calls: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_STORE_ERRORS_ARE_NON_DETERMINISTIC", default = "false")]
+    store_errors_are_nondeterministic: EnvVarBoolean,
 }
