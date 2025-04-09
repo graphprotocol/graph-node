@@ -1,5 +1,5 @@
 use graph::data::subgraph::schema::SubgraphError;
-use graph::prelude::{thiserror, Error, StoreError};
+use graph::prelude::{thiserror, Error};
 
 #[derive(thiserror::Error, Debug)]
 pub enum BlockProcessingError {
@@ -18,11 +18,5 @@ pub enum BlockProcessingError {
 impl BlockProcessingError {
     pub fn is_deterministic(&self) -> bool {
         matches!(self, BlockProcessingError::Deterministic(_))
-    }
-}
-
-impl From<StoreError> for BlockProcessingError {
-    fn from(e: StoreError) -> Self {
-        BlockProcessingError::Unknown(e.into())
     }
 }
