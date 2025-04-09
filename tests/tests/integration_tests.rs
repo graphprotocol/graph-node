@@ -850,17 +850,20 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
         assert_eq!(block_hash, block_hashes[(i - 1) as usize]);
 
         const FETCH_POI: &str = r#"
-        query proofOfIndexing($subgraph: String!, $blockNumber: Int!, $blockHash: String!) {
+        query proofOfIndexing($subgraph: String!, $blockNumber: Int!, $blockHash: String!, $indexer: String!) {
             proofOfIndexing(
               subgraph: $subgraph,
               blockNumber: $blockNumber,
-              blockHash: $blockHash
+              blockHash: $blockHash,
+              indexer: $indexer
             ) } "#;
 
+        let zero_addr = "0000000000000000000000000000000000000000";
         let vars = json!({
             "subgraph": subgraph.deployment,
             "blockNumber": i,
             "blockHash": block_hash,
+            "indexer": zero_addr,
         });
         let resp = Subgraph::query_with_vars(FETCH_POI, vars).await?;
         assert_eq!(None, resp.get("errors"));
