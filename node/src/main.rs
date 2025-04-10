@@ -39,6 +39,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use console_subscriber;
 
 git_testament!(TESTAMENT);
 
@@ -82,6 +83,9 @@ fn read_expensive_queries(
 
 #[tokio::main]
 async fn main() {
+    // Initialize tokio-console subscriber
+    console_subscriber::init();
+
     env_logger::init();
 
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
@@ -242,7 +246,6 @@ async fn main() {
     let graphql_metrics_registry = metrics_registry.clone();
 
     let contention_logger = logger.clone();
-    let contention_logger_2 = logger.clone();
 
     // TODO: make option loadable from configuration TOML and environment:
     let expensive_queries =
@@ -545,44 +548,44 @@ async fn main() {
         let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
         if graph::futures03::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
             debug!(
-                contention_logger_2,
+                contention_logger,
                 "Shutting down contention checker thread"
             );
             break;
         }
         let metrics = handle.metrics();
         let num_alive_tasks = metrics.active_tasks_count();
-        debug!(contention_logger_2, "num_active_tasks: {num_alive_tasks}");
+        debug!(contention_logger, "num_active_tasks: {num_alive_tasks}");
         let mut timeout = Duration::from_millis(10);
         while pong_receive.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
         {
             let metrics = handle.metrics();
             let num_alive_tasks = metrics.active_tasks_count();
-            debug!(contention_logger_2, "Possible contention in tokio threadpool";
+            debug!(contention_logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention,
                                      "num_active_tasks" => num_alive_tasks);
 
-            let cl = contention_logger.clone();
-            handle.spawn(async move {
-                let handle = Handle::current();
-                if let Ok(dump) = tokio::time::timeout(Duration::from_secs(2), handle.dump()).await
-                {
-                    for (i, task) in dump.tasks().iter().enumerate() {
-                        let trace = task.trace();
-                        debug!(cl, "TASK {i}:");
-                        debug!(cl, "{trace}\n");
-                    }
-                } else {
-                    debug!(cl, "Failed to dump tasks");
-                }
-            });
+            // let cl = contention_logger.clone();
+            // handle.spawn(async move {
+            //     let handle = Handle::current();
+            //     if let Ok(dump) = tokio::time::timeout(Duration::from_secs(2), handle.dump()).await
+            //     {
+            //         for (i, task) in dump.tasks().iter().enumerate() {
+            //             let trace = task.trace();
+            //             debug!(cl, "TASK {i}:");
+            //             debug!(cl, "{trace}\n");
+            //         }
+            //     } else {
+            //         debug!(cl, "Failed to dump tasks");
+            //     }
+            // });
 
             if timeout < ENV_VARS.kill_if_unresponsive_timeout {
                 timeout *= 10;
             } else if ENV_VARS.kill_if_unresponsive {
                 // The node is unresponsive, kill it in hopes it will be restarted.
-                crit!(contention_logger_2, "Node is unresponsive, killing process");
+                crit!(contention_logger, "Node is unresponsive, killing process");
                 std::process::abort()
             }
         }
