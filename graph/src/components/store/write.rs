@@ -439,7 +439,7 @@ impl RowGroup {
             // clamping an old version
             match (&*prev_row, &row) {
                 (Insert { end: None, .. } | Overwrite { end: None, .. }, Insert { .. })
-                | (Remove { .. }, Overwrite { .. } | Remove { .. })
+                | (Remove { .. }, Overwrite { .. })
                 | (
                     Insert { end: Some(_), .. } | Overwrite { end: Some(_), .. },
                     Overwrite { .. } | Remove { .. },
@@ -449,6 +449,11 @@ impl RowGroup {
                         prev_row,
                         row
                     ))
+                }
+                (Remove { .. }, Remove { .. }) => {
+                    // Ignore the new row, since prev_row is already a
+                    // delete. This can happen when subgraphs delete
+                    // entities without checking if they even exist
                 }
                 (
                     Insert { end: Some(_), .. } | Overwrite { end: Some(_), .. } | Remove { .. },
