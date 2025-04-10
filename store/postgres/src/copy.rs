@@ -64,8 +64,6 @@ const ACCEPTABLE_REPLICATION_LAG: Duration = Duration::from_secs(30);
 /// the lag again
 const REPLICATION_SLEEP: Duration = Duration::from_secs(10);
 
-type PooledPgConnection = PooledConnection<ConnectionManager<PgConnection>>;
-
 lazy_static! {
     static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
         .store
@@ -667,17 +665,77 @@ impl From<Result<CopyTableWorker, StoreError>> for WorkerResult {
     }
 }
 
+/// We pass connections back and forth between the control loop and various
+/// workers. We need to make sure that we end up with the connection that
+/// was used to acquire the copy lock in the right place so we can release
+/// the copy lock which is only possible with the connection that acquired
+/// it.
+///
+/// This struct helps us with that. It wraps a connection and tracks whether
+/// the connection was used to acquire the copy lock
+struct LockTrackingConnection {
+    inner: PooledConnection<ConnectionManager<PgConnection>>,
+    has_lock: bool,
+}
+
+impl LockTrackingConnection {
+    fn new(inner: PooledConnection<ConnectionManager<PgConnection>>) -> Self {
+        Self {
+            inner,
+            has_lock: false,
+        }
+    }
+
+    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
+    where
+        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
+    {
+        let conn = &mut self.inner;
+        conn.transaction(|conn| f(conn))
+    }
+
+    /// Put `self` into `other` if `self` has the lock.
+    fn extract(self, other: &mut Option<Self>) {
+        if self.has_lock {
+            *other = Some(self);
+        }
+    }
+
+    fn lock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
+        if self.has_lock {
+            warn!(logger, "already acquired copy lock for {}", dst);
+            return Ok(());
+        }
+        advisory_lock::lock_copying(&mut self.inner, dst)?;
+        self.has_lock = true;
+        Ok(())
+    }
+
+    fn unlock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
+        if !self.has_lock {
+            error!(
+                logger,
+                "tried to release copy lock for {} even though we are not the owner", dst
+            );
+            return Ok(());
+        }
+        advisory_lock::unlock_copying(&mut self.inner, dst)?;
+        self.has_lock = false;
+        Ok(())
+    }
+}
+
 /// A helper to run copying of one table. We need to thread `conn` and
 /// `table` from the control loop to the background worker and back again to
 /// the control loop. This worker facilitates that
 struct CopyTableWorker {
-    conn: PooledPgConnection,
+    conn: LockTrackingConnection,
     table: TableState,
     result: Result<Status, StoreError>,
 }
 
 impl CopyTableWorker {
-    fn new(conn: PooledPgConnection, table: TableState) -> Self {
+    fn new(conn: LockTrackingConnection, table: TableState) -> Self {
         Self {
             conn,
             table,
@@ -699,7 +757,7 @@ impl CopyTableWorker {
     fn run_inner(&mut self, logger: Logger, progress: &CopyProgress) -> Result<Status, StoreError> {
         use Status::*;
 
-        let conn = &mut self.conn;
+        let conn = &mut self.conn.inner;
         progress.start_table(&self.table);
         while !self.table.finished() {
             // It is important that this check happens outside the write
@@ -855,7 +913,7 @@ pub struct Connection {
     /// individual table. Except for that case, this will always be
     /// `Some(..)`. Most code shouldn't access `self.conn` directly, but use
     /// `self.transaction`
-    conn: Option<PooledPgConnection>,
+    conn: Option<LockTrackingConnection>,
     pool: ConnectionPool,
     primary: Primary,
     workers: usize,
@@ -901,9 +959,9 @@ impl Connection {
             }
             false
         })?;
-        let conn = Some(conn);
         let src_manifest_idx_and_name = Arc::new(src_manifest_idx_and_name);
         let dst_manifest_idx_and_name = Arc::new(dst_manifest_idx_and_name);
+        let conn = Some(LockTrackingConnection::new(conn));
         Ok(Self {
             logger,
             conn,
@@ -990,6 +1048,7 @@ impl Connection {
         let Some(table) = state.unfinished.pop() else {
             return None;
         };
+        let conn = LockTrackingConnection::new(conn);
 
         let worker = CopyTableWorker::new(conn, table);
         Some(Box::pin(
@@ -1031,7 +1090,7 @@ impl Connection {
             let result = workers.select().await;
             match result {
                 Ok(worker) => {
-                    self.conn = Some(worker.conn);
+                    worker.conn.extract(&mut self.conn);
                 }
                 Err(e) => {
                     /* Ignore; we had an error previously */
@@ -1098,7 +1157,7 @@ impl Connection {
                 W::Ok(worker) => {
                     // Put the connection back into self.conn so that we can use it
                     // in the next iteration.
-                    self.conn = Some(worker.conn);
+                    worker.conn.extract(&mut self.conn);
 
                     match (worker.result, progress.is_cancelled()) {
                         (Ok(Status::Finished), false) => {
@@ -1207,20 +1266,30 @@ impl Connection {
         );
 
         let dst_site = self.dst.site.cheap_clone();
-        self.transaction(|conn| advisory_lock::lock_copying(conn, &dst_site))?;
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(constraint_violation!(
+                "copy connection went missing (copy_data)"
+            ));
+        };
+        conn.lock(&self.logger, &dst_site)?;
 
         let res = self.copy_data_internal(index_list).await;
 
-        if self.conn.is_none() {
-            // A background worker panicked and left us without our
-            // dedicated connection, but we still need to release the copy
-            // lock; get a normal connection, not from the fdw pool for that
-            // as that will be much less contended. We won't be holding on
-            // to the connection for long as `res` will be an error and we
-            // will abort starting this subgraph
-            self.conn = Some(self.pool.get()?);
+        match self.conn.as_mut() {
+            None => {
+                // A background worker panicked and left us without our
+                // dedicated connection; we would need to get that
+                // connection to unlock the advisory lock. We can't do that,
+                // so we just log an error
+                warn!(
+                    self.logger,
+                    "can't unlock copy lock since the default worker panicked; lock will linger until session ends"
+                );
+            }
+            Some(conn) => {
+                conn.unlock(&self.logger, &dst_site)?;
+            }
         }
-        self.transaction(|conn| advisory_lock::unlock_copying(conn, &dst_site))?;
 
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
