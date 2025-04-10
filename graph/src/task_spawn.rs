@@ -15,6 +15,7 @@ use std::future::Future as Future03;
 use std::panic::AssertUnwindSafe;
 use tokio::task::JoinHandle;
 
+#[track_caller]
 fn abort_on_panic<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,
 ) -> impl Future03<Output = T> {
@@ -26,10 +27,12 @@ fn abort_on_panic<T: Send + 'static>(
 }
 
 /// Aborts on panic.
+#[track_caller]
 pub fn spawn<T: Send + 'static>(f: impl Future03<Output = T> + Send + 'static) -> JoinHandle<T> {
     tokio::spawn(abort_on_panic(f))
 }
 
+#[track_caller]
 pub fn spawn_allow_panic<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,
 ) -> JoinHandle<T> {
@@ -37,6 +40,7 @@ pub fn spawn_allow_panic<T: Send + 'static>(
 }
 
 /// Aborts on panic.
+#[track_caller]
 pub fn spawn_blocking<T: Send + 'static>(
     f: impl Future03<Output = T> + Send + 'static,
 ) -> JoinHandle<T> {
@@ -44,6 +48,7 @@ pub fn spawn_blocking<T: Send + 'static>(
 }
 
 /// Does not abort on panic, panics result in an `Err` in `JoinHandle`.
+#[track_caller]
 pub fn spawn_blocking_allow_panic<R: 'static + Send>(
     f: impl 'static + FnOnce() -> R + Send,
 ) -> JoinHandle<R> {
@@ -57,6 +62,7 @@ pub fn block_on<T>(f: impl Future03<Output = T>) -> T {
 }
 
 /// Spawns a thread with access to the tokio runtime. Panics if the thread cannot be spawned.
+#[track_caller]
 pub fn spawn_thread(
     name: impl Into<String>,
     f: impl 'static + FnOnce() + Send,
