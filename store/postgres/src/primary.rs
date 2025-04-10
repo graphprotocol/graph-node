@@ -36,6 +36,7 @@ use graph::{
         store::scalar::ToPrimitive,
         subgraph::{status, DeploymentFeatures},
     },
+    derive::CheapClone,
     prelude::{
         anyhow,
         chrono::{DateTime, Utc},
@@ -53,9 +54,9 @@ use maybe_owned::MaybeOwnedMut;
 use std::{
     borrow::Borrow,
     collections::HashMap,
-    convert::TryFrom,
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -1823,6 +1824,52 @@ impl<'a> Connection<'a> {
         delete(cp::table.filter(cp::dst.eq(dst.id))).execute(self.conn.as_mut())?;
 
         Ok(())
+    }
+}
+
+/// A limited interface to query the primary database.
+#[derive(Clone, CheapClone)]
+pub struct Primary {
+    pool: Arc<ConnectionPool>,
+}
+
+impl Primary {
+    pub fn new(pool: Arc<ConnectionPool>) -> Self {
+        // This really indicates a programming error
+        if pool.shard != *PRIMARY_SHARD {
+            panic!("Primary pool must be the primary shard");
+        }
+
+        Primary { pool }
+    }
+
+    /// Return `true` if the site is the source of a copy operation. The copy
+    /// operation might be just queued or in progress already. This method will
+    /// block until a fdw connection becomes available.
+    pub fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
+        use active_copies as ac;
+
+        let mut conn = self.pool.get()?;
+
+        select(diesel::dsl::exists(
+            ac::table
+                .filter(ac::src.eq(site.id))
+                .filter(ac::cancelled_at.is_null()),
+        ))
+        .get_result::<bool>(&mut conn)
+        .map_err(StoreError::from)
+    }
+
+    pub fn is_copy_cancelled(&self, dst: &Site) -> Result<bool, StoreError> {
+        use active_copies as ac;
+
+        let mut conn = self.pool.get()?;
+
+        ac::table
+            .filter(ac::dst.eq(dst.id))
+            .select(ac::cancelled_at.is_not_null())
+            .get_result::<bool>(&mut conn)
+            .map_err(StoreError::from)
     }
 }
 

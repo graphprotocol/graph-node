@@ -37,7 +37,7 @@ use graph::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
     },
     schema::EntityType,
-    slog::{debug, error},
+    slog::error,
     tokio,
 };
 use itertools::Itertools;
@@ -45,7 +45,7 @@ use itertools::Itertools;
 use crate::{
     advisory_lock, catalog, deployment,
     dynds::DataSourcesTable,
-    primary::{DeploymentId, Site},
+    primary::{DeploymentId, Primary, Site},
     relational::index::IndexList,
     vid_batcher::{VidBatcher, VidRange},
 };
@@ -104,46 +104,6 @@ table! {
     }
 }
 
-// This is the same as primary::active_copies, but mapped into each shard
-table! {
-    primary_public.active_copies(dst) {
-        src -> Integer,
-        dst -> Integer,
-        cancelled_at -> Nullable<Date>,
-    }
-}
-
-/// Return `true` if the site is the source of a copy operation. The copy
-/// operation might be just queued or in progress already. This method will
-/// block until a fdw connection becomes available.
-pub fn is_source(logger: &Logger, pool: &ConnectionPool, site: &Site) -> Result<bool, StoreError> {
-    use active_copies as ac;
-
-    // We use a fdw connection to check if the site is being copied. If we
-    // used an ordinary connection and there are many calls to this method,
-    // postgres_fdw might open an unmanageable number of connections into
-    // the primary, which makes the primary run out of connections
-    let mut last_log = Instant::now();
-    let mut conn = pool.get_fdw(&logger, || {
-        if last_log.elapsed() > LOG_INTERVAL {
-            last_log = Instant::now();
-            debug!(
-                logger,
-                "Waiting for fdw connection to check if site {} is being copied", site.namespace
-            );
-        }
-        false
-    })?;
-
-    select(diesel::dsl::exists(
-        ac::table
-            .filter(ac::src.eq(site.id))
-            .filter(ac::cancelled_at.is_null()),
-    ))
-    .get_result::<bool>(&mut conn)
-    .map_err(StoreError::from)
-}
-
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Status {
     Finished,
@@ -161,6 +121,7 @@ struct CopyState {
 impl CopyState {
     fn new(
         conn: &mut PgConnection,
+        primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -199,9 +160,9 @@ impl CopyState {
                         src.site.id
                     ));
                 }
-                Self::load(conn, src, dst, target_block)
+                Self::load(conn, primary, src, dst, target_block)
             }
-            None => Self::create(conn, src, dst, target_block),
+            None => Self::create(conn, primary.cheap_clone(), src, dst, target_block),
         }?;
 
         Ok(state)
@@ -209,11 +170,12 @@ impl CopyState {
 
     fn load(
         conn: &mut PgConnection,
+        primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
-        let tables = TableState::load(conn, src.as_ref(), dst.as_ref())?;
+        let tables = TableState::load(conn, primary, src.as_ref(), dst.as_ref())?;
         let (finished, mut unfinished): (Vec<_>, Vec<_>) =
             tables.into_iter().partition(|table| table.finished());
         unfinished.sort_by_key(|table| table.dst.object.to_string());
@@ -228,6 +190,7 @@ impl CopyState {
 
     fn create(
         conn: &mut PgConnection,
+        primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -253,6 +216,7 @@ impl CopyState {
                     .map(|src_table| {
                         TableState::init(
                             conn,
+                            primary.cheap_clone(),
                             dst.site.clone(),
                             &src,
                             src_table.clone(),
@@ -354,6 +318,7 @@ pub(crate) fn source(
 /// transformation. See `CopyEntityBatchQuery` for the details of what
 /// exactly that means
 struct TableState {
+    primary: Primary,
     src: Arc<Table>,
     dst: Arc<Table>,
     dst_site: Arc<Site>,
@@ -364,6 +329,7 @@ struct TableState {
 impl TableState {
     fn init(
         conn: &mut PgConnection,
+        primary: Primary,
         dst_site: Arc<Site>,
         src_layout: &Layout,
         src: Arc<Table>,
@@ -373,6 +339,7 @@ impl TableState {
         let vid_range = VidRange::for_copy(conn, &src, target_block)?;
         let batcher = VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range)?;
         Ok(Self {
+            primary,
             src,
             dst,
             dst_site,
@@ -387,6 +354,7 @@ impl TableState {
 
     fn load(
         conn: &mut PgConnection,
+        primary: Primary,
         src_layout: &Layout,
         dst_layout: &Layout,
     ) -> Result<Vec<TableState>, StoreError> {
@@ -450,6 +418,7 @@ impl TableState {
                             .with_batch_size(size as usize);
 
                             Ok(TableState {
+                                primary: primary.cheap_clone(),
                                 src,
                                 dst,
                                 dst_site: dst_layout.site.clone(),
@@ -516,13 +485,8 @@ impl TableState {
     }
 
     fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
-        use active_copies as ac;
-
         let dst = self.dst_site.as_ref();
-        let canceled = ac::table
-            .filter(ac::dst.eq(dst.id))
-            .select(ac::cancelled_at.is_not_null())
-            .get_result::<bool>(conn)?;
+        let canceled = self.primary.is_copy_cancelled(dst)?;
         if canceled {
             use copy_state as cs;
 
@@ -893,6 +857,7 @@ pub struct Connection {
     /// `self.transaction`
     conn: Option<PooledPgConnection>,
     pool: ConnectionPool,
+    primary: Primary,
     workers: usize,
     src: Arc<Layout>,
     dst: Arc<Layout>,
@@ -910,6 +875,7 @@ impl Connection {
     /// is available.
     pub fn new(
         logger: &Logger,
+        primary: Primary,
         pool: ConnectionPool,
         src: Arc<Layout>,
         dst: Arc<Layout>,
@@ -942,6 +908,7 @@ impl Connection {
             logger,
             conn,
             pool,
+            primary,
             workers: ENV_VARS.store.batch_workers,
             src,
             dst,
@@ -1079,7 +1046,9 @@ impl Connection {
         let src = self.src.clone();
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
-        let mut state = self.transaction(|conn| CopyState::new(conn, src, dst, target_block))?;
+        let primary = self.primary.cheap_clone();
+        let mut state =
+            self.transaction(|conn| CopyState::new(conn, primary, src, dst, target_block))?;
 
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();

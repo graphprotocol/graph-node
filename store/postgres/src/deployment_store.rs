@@ -51,11 +51,11 @@ use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
-use crate::primary::DeploymentId;
+use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{advisory_lock, catalog, copy, retry};
+use crate::{advisory_lock, catalog, retry};
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
@@ -92,6 +92,8 @@ type PruneHandle = JoinHandle<Result<(), StoreError>>;
 
 pub struct StoreInner {
     logger: Logger,
+
+    primary: Primary,
 
     pool: ConnectionPool,
     read_only_pools: Vec<ConnectionPool>,
@@ -130,6 +132,7 @@ impl Deref for DeploymentStore {
 impl DeploymentStore {
     pub fn new(
         logger: &Logger,
+        primary: Primary,
         pool: ConnectionPool,
         read_only_pools: Vec<ConnectionPool>,
         mut pool_weights: Vec<usize>,
@@ -160,6 +163,7 @@ impl DeploymentStore {
         // Create the store
         let store = StoreInner {
             logger: logger.clone(),
+            primary,
             pool,
             read_only_pools,
             replica_order,
@@ -1235,7 +1239,7 @@ impl DeploymentStore {
             req: PruneRequest,
         ) -> Result<(), StoreError> {
             {
-                if copy::is_source(&logger, &store.pool, &site)? {
+                if store.is_source(&site)? {
                     debug!(
                         logger,
                         "Skipping pruning since this deployment is being copied"
@@ -1520,6 +1524,7 @@ impl DeploymentStore {
             // with the corresponding tables in `self`
             let copy_conn = crate::copy::Connection::new(
                 logger,
+                self.primary.cheap_clone(),
                 self.pool.clone(),
                 src.clone(),
                 dst.clone(),
@@ -1847,6 +1852,10 @@ impl DeploymentStore {
             deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml).map_err(Into::into)
         })
         .await
+    }
+
+    fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
+        self.primary.is_source(site)
     }
 }
 

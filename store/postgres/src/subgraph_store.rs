@@ -39,7 +39,7 @@ use graph::{
 use crate::{
     connection_pool::ConnectionPool,
     deployment::{OnSync, SubgraphHealth},
-    primary::{self, DeploymentId, Mirror as PrimaryMirror, Site},
+    primary::{self, DeploymentId, Mirror as PrimaryMirror, Primary, Site},
     relational::{
         index::{IndexList, Method},
         Layout,
@@ -360,6 +360,12 @@ impl SubgraphStoreInner {
         sender: Arc<NotificationSender>,
         registry: Arc<MetricsRegistry>,
     ) -> Self {
+        let primary = stores
+            .iter()
+            .find(|(name, _, _, _)| name == &*PRIMARY_SHARD)
+            .map(|(_, pool, _, _)| Primary::new(Arc::new(pool.clone())))
+            .expect("primary shard must be present");
+
         let mirror = {
             let pools = HashMap::from_iter(
                 stores
@@ -376,6 +382,7 @@ impl SubgraphStoreInner {
                     name,
                     Arc::new(DeploymentStore::new(
                         &logger,
+                        primary.cheap_clone(),
                         main_pool,
                         read_only_pools,
                         weights,
