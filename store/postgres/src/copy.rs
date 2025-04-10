@@ -1091,6 +1091,7 @@ impl Connection {
                 W::Err(e) => {
                     // This is a panic in the background task. We need to
                     // cancel all other tasks and return the error
+                    error!(self.logger, "copy worker panicked: {}", e);
                     self.cancel_workers(progress, workers).await;
                     return Err(e);
                 }
@@ -1115,6 +1116,7 @@ impl Connection {
                             return Ok(Status::Cancelled);
                         }
                         (Err(e), _) => {
+                            error!(self.logger, "copy worker had an error: {}", e);
                             self.cancel_workers(progress, workers).await;
                             return Err(e);
                         }
