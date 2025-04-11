@@ -188,13 +188,13 @@ pub async fn run(
 
     println!("prune {deployment}");
     println!("    latest: {latest}");
-    println!("     final: {}", latest - ENV_VARS.reorg_threshold);
+    println!("     final: {}", latest - ENV_VARS.reorg_threshold());
     println!("  earliest: {}\n", latest - history);
 
     let mut req = PruneRequest::new(
         &deployment,
         history,
-        ENV_VARS.reorg_threshold,
+        ENV_VARS.reorg_threshold(),
         status.earliest_block_number,
         latest,
     )?;
@@ -217,7 +217,7 @@ pub async fn run(
         store.subgraph_store().set_history_blocks(
             &deployment,
             history,
-            ENV_VARS.reorg_threshold,
+            ENV_VARS.reorg_threshold(),
         )?;
     }
 
