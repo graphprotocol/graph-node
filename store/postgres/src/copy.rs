@@ -1020,6 +1020,7 @@ impl Connection {
             return None;
         };
         let Some(table) = state.unfinished.pop() else {
+            self.conn = Some(conn);
             return None;
         };
 
