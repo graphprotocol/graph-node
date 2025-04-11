@@ -641,16 +641,22 @@ impl ConnectionPool {
 
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
-    pub fn try_get_fdw(
+    pub async fn try_get_fdw(
         &self,
         logger: &Logger,
         timeout: Duration,
     ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
-        let Ok(inner) = self.get_ready() else {
-            return None;
-        };
-        self.state_tracker
-            .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
+        let pool = self.clone();
+        let logger = logger.cheap_clone();
+        tokio::task::spawn_blocking(move || {
+            let Ok(inner) = pool.get_ready() else {
+                return None;
+            };
+            pool.state_tracker
+                .ignore_timeout(|| inner.try_get_fdw(&logger, timeout))
+        })
+        .await
+        .unwrap_or(None)
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
