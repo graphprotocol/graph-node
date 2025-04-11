@@ -153,7 +153,7 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Start anvil
-        run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --port 3021 &
+        run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --port 3021 &
 
       - name: Install graph CLI
         run: curl -sSL http://cli.thegraph.com/install.sh | sudo bash
