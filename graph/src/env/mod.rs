@@ -369,6 +369,7 @@ impl EnvVars {
             .filter(|x| !x.is_empty())
             .collect()
     }
+    #[cfg(debug_assertions)]
     pub fn reorg_threshold(&self) -> i32 {
         // The default reorganization (reorg) threshold is set to 250.
         // For testing purposes, we need to set this threshold to 0 because:
@@ -380,6 +381,10 @@ impl EnvVars {
         } else {
             self.reorg_threshold
         }
+    }
+    #[cfg(not(debug_assertions))]
+    pub fn reorg_threshold(&self) -> i32 {
+        self.reorg_threshold
     }
 }
 

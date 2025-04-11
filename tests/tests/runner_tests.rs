@@ -181,6 +181,8 @@ async fn data_source_revert() -> anyhow::Result<()> {
     // since it uses the same deployment id.
     data_source_long_revert().await.unwrap();
 
+    *TEST_WITH_NO_REORG.lock().unwrap() = false;
+
     Ok(())
 }
 
