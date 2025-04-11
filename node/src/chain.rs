@@ -460,7 +460,7 @@ pub async fn networks_as_chains(
                     Arc::new(adapter_selector),
                     Arc::new(EthereumRuntimeAdapterBuilder {}),
                     eth_adapters,
-                    ENV_VARS.reorg_threshold,
+                    ENV_VARS.reorg_threshold(),
                     polling_interval,
                     true,
                 );
