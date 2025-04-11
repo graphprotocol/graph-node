@@ -95,8 +95,8 @@ impl LastRollup {
         let kind = match (has_aggregations, block) {
             (false, _) => LastRollup::NotNeeded,
             (true, None) => LastRollup::Unknown,
-            (true, Some(block)) => {
-                let block_time = store.block_time(site, block)?;
+            (true, Some(_)) => {
+                let block_time = store.block_time(site)?;
                 block_time
                     .map(|b| LastRollup::Some(b))
                     .unwrap_or(LastRollup::Unknown)
@@ -240,9 +240,7 @@ impl SyncStore {
                 firehose_cursor,
             )?;
 
-            let block_time = self
-                .writable
-                .block_time(self.site.cheap_clone(), block_ptr_to.number)?;
+            let block_time = self.writable.block_time(self.site.cheap_clone())?;
             self.last_rollup.set(block_time)
         })
     }
