@@ -449,6 +449,7 @@ fn read_range_pool_created_test() {
         let pool_created_type = TEST_SUBGRAPH_SCHEMA.entity_type("PoolCreated").unwrap();
         let entity_types = vec![pool_created_type.clone()];
 
+        let mut last_op: Option<EntityOperation> = None;
         for count in (1..=2).map(|x| x as i64) {
             let id = if count == 1 {
                 "0xff80818283848586"
@@ -478,6 +479,7 @@ fn read_range_pool_created_test() {
                 data,
             };
 
+            last_op = Some(op.clone());
             transact_entity_operations(
                 &subgraph_store,
                 &deployment,
@@ -499,6 +501,22 @@ fn read_range_pool_created_test() {
             let index = *en.0 - 1;
             let a = result_entities[index as usize].clone();
             assert_eq!(a, format!("{:?}", en));
+        }
+
+        // Make sure we get a constraint violation
+        let op = last_op.take().unwrap();
+
+        transact_entity_operations(&subgraph_store, &deployment, block_pointer(3), vec![op])
+            .await
+            .unwrap();
+        let res = writable.flush().await;
+        let exp = "duplicate key value violates unique constraint \"pool_created_pkey\": Key (vid)=(2) already exists.";
+        match res {
+            Ok(_) => panic!("Expected error, but got success"),
+            Err(StoreError::ConstraintViolation(msg)) => {
+                assert_eq!(msg, exp);
+            }
+            Err(e) => panic!("Expected constraint violation, but got {:?}", e),
         }
     })
 }

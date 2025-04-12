@@ -70,6 +70,8 @@ pub enum StoreError {
     WriteFailure(String, BlockNumber, String, String),
     #[error("database query timed out")]
     StatementTimeout,
+    #[error("database constraint violated: {0}")]
+    ConstraintViolation(String),
 }
 
 // Convenience to report an internal error
@@ -127,6 +129,7 @@ impl Clone for StoreError {
                 Self::WriteFailure(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
             }
             Self::StatementTimeout => Self::StatementTimeout,
+            Self::ConstraintViolation(arg0) => Self::ConstraintViolation(arg0.clone()),
         }
     }
 }
@@ -135,6 +138,7 @@ impl StoreError {
     pub fn from_diesel_error(e: &DieselError) -> Option<Self> {
         const CONN_CLOSE: &str = "server closed the connection unexpectedly";
         const STMT_TIMEOUT: &str = "canceling statement due to statement timeout";
+        const UNIQUE_CONSTR: &str = "duplicate key value violates unique constraint";
         let DieselError::DatabaseError(_, info) = e else {
             return None;
         };
@@ -146,6 +150,12 @@ impl StoreError {
             Some(StoreError::DatabaseUnavailable)
         } else if info.message().contains(STMT_TIMEOUT) {
             Some(StoreError::StatementTimeout)
+        } else if info.message().contains(UNIQUE_CONSTR) {
+            let msg = match info.details() {
+                Some(details) => format!("{}: {}", info.message(), details.replace('\n', " ")),
+                None => info.message().to_string(),
+            };
+            Some(StoreError::ConstraintViolation(msg))
         } else {
             None
         }
@@ -174,7 +184,8 @@ impl StoreError {
             | UnknownTable(_)
             | UnknownAttribute(_, _)
             | InvalidIdentifier(_)
-            | UnsupportedFilter(_, _) => true,
+            | UnsupportedFilter(_, _)
+            | ConstraintViolation(_) => true,
 
             // non-deterministic errors
             Unknown(_)
