@@ -643,20 +643,28 @@ impl ConnectionPool {
     /// one is available
     pub async fn try_get_fdw(
         &self,
-        logger: &Logger,
+        logger2: &Logger,
         timeout: Duration,
     ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
         let pool = self.clone();
-        let logger = logger.cheap_clone();
-        tokio::task::spawn_blocking(move || {
+        let logger = logger2.cheap_clone();
+        debug!(logger, "try_get_fdw: spawn blocking");
+        let res = tokio::task::spawn_blocking(move || {
             let Ok(inner) = pool.get_ready() else {
+                debug!(logger, "try_get_fdw: pool not ready");
                 return None;
             };
-            pool.state_tracker
-                .ignore_timeout(|| inner.try_get_fdw(&logger, timeout))
+            debug!(logger, "try_get_fdw: pool ready");
+            let res = pool
+                .state_tracker
+                .ignore_timeout(|| inner.try_get_fdw(&logger, timeout));
+            debug!(logger, "try_get_fdw: got fdw connection"; "is_some" => res.is_some());
+            res
         })
         .await
-        .unwrap_or(None)
+        .unwrap_or(None);
+        debug!(logger2, "try_get_fdw: spawn blocking finished"; "is_some" => res.is_some());
+        res
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
@@ -1129,11 +1137,14 @@ impl PoolInner {
         // database, e.g., because it's not available, the next database
         // operation will run into it and report it.
         let Ok(fdw_pool) = self.fdw_pool(logger) else {
+            debug!(logger, "try_get_fdw: fdw pool not available");
             return None;
         };
         let Ok(conn) = fdw_pool.get_timeout(timeout) else {
+            debug!(logger, "try_get_fdw: get_timeout expired"; "timeout" => timeout.as_millis());
             return None;
         };
+        debug!(logger, "try_get_fdw: got connection (PoolInner)");
         Some(conn)
     }
 

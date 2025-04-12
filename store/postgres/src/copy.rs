@@ -37,7 +37,7 @@ use graph::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
     },
     schema::EntityType,
-    slog::error,
+    slog::{debug, error},
     tokio,
 };
 use itertools::Itertools;
@@ -1121,25 +1121,60 @@ impl Connection {
         // we do not ever leave the loop with `self.conn == None`
         let mut workers = Workers::new();
         while !state.unfinished.is_empty() || workers.has_work() {
+            debug!(self.logger, "copy_data_internal: looking for more work";
+                   "workers" => workers.len(), "unfinished" => state.unfinished.len());
             // We usually add at least one job here, except if we are out of
             // tables to copy. In that case, we go through the `while` loop
             // every time one of the tables we are currently copying
             // finishes
             if let Some(worker) = self.default_worker(&mut state, &progress) {
                 workers.add(worker);
+                debug!(self.logger, "copy_data_internal: found more work for default worker";
+                "workers" => workers.len(), "unfinished" => state.unfinished.len());
+            } else {
+                debug!(self.logger, "copy_data_internal: no more work for default worker";
+                "workers" => workers.len(), "unfinished" => state.unfinished.len());
             }
             loop {
                 if workers.len() >= self.workers {
+                    debug!(self.logger, "copy_data_internal: max workers reached, not looking for extra work";
+                    "workers" => workers.len(), "unfinished" => state.unfinished.len());
+
                     break;
                 }
                 let Some(worker) = self.extra_worker(&mut state, &progress).await else {
+                    debug!(self.logger, "copy_data_internal: no more work for extra worker";
+                    "workers" => workers.len(), "unfinished" => state.unfinished.len());
                     break;
                 };
+                debug!(self.logger, "copy_data_internal: found more work for extra worker";
+                "workers" => workers.len(), "unfinished" => state.unfinished.len());
                 workers.add(worker);
             }
 
             self.assert_progress(workers.len(), &state)?;
+            debug!(self.logger, "copy_data_internal: running workers";
+            "workers" => workers.len(), "unfinished" => state.unfinished.len());
             let result = workers.select().await;
+
+            match &result {
+                W::Ok(copy_table_worker) => {
+                    debug!(self.logger, "copy_data_internal: worker finished successfully";
+                    "workers" => workers.len(),
+                    "unfinished" => state.unfinished.len(),
+                    "table" => copy_table_worker.table.dst.name.as_str());
+                }
+                W::Err(store_error) => {
+                    debug!(self.logger, "copy_data_internal: worker finished with error";
+                    "workers" => workers.len(),
+                    "unfinished" => state.unfinished.len(),
+                    "error" => store_error.to_string());
+                }
+                W::Wake => {
+                    debug!(self.logger, "copy_data_internal: waker finished";
+                    "workers" => workers.len(), "unfinished" => state.unfinished.len());
+                }
+            }
 
             // Analyze `result` and take another trip through the loop if
             // everything is ok; wait for pending workers and return if
@@ -1187,6 +1222,8 @@ impl Connection {
             };
         }
         debug_assert!(self.conn.is_some());
+        debug!(self.logger, "copy_data_internal: finished all tables";
+        "workers" => workers.len(), "unfinished" => state.unfinished.len());
 
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
