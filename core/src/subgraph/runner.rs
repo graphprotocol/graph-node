@@ -1,5 +1,5 @@
 use crate::subgraph::context::IndexingContext;
-use crate::subgraph::error::BlockProcessingError;
+use crate::subgraph::error::{BlockProcessingError, ErrorHelper as _};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
@@ -524,7 +524,8 @@ where
                             let chain = chain.cheap_clone();
                             async move { chain.refetch_firehose_block(&log, cur).await }
                         })
-                        .await?,
+                        .await
+                        .non_deterministic()?,
                     )
                 } else {
                     block.cheap_clone()
@@ -535,7 +536,8 @@ where
                     .inputs
                     .triggers_adapter
                     .triggers_in_block(&logger, block.as_ref().clone(), filter)
-                    .await?;
+                    .await
+                    .non_deterministic()?;
 
                 let triggers = block_with_triggers.trigger_data;
 
@@ -641,7 +643,8 @@ where
                 &self.metrics.host.stopwatch,
                 &mut block_state.entity_cache,
             )
-            .await?;
+            .await
+            .non_deterministic()?;
         }
 
         let section = self
@@ -671,10 +674,15 @@ where
 
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
-        let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
+        let offchain_events = self
+            .ctx
+            .offchain_monitor
+            .ready_offchain_events()
+            .non_deterministic()?;
         let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
             self.handle_offchain_triggers(offchain_events, &block)
-                .await?;
+                .await
+                .non_deterministic()?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -720,7 +728,7 @@ where
 
         let first_error = deterministic_errors.first().cloned();
 
-        let is_caught_up = self.is_caught_up(&block_ptr).await?;
+        let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
 
         persisted_data_sources.extend(persisted_off_chain_data_sources);
         self.inputs
@@ -738,7 +746,7 @@ where
                 is_caught_up,
             )
             .await
-            .context("Failed to transact block operations")?;
+            .non_deterministic()?;
 
         // For subgraphs with `nonFatalErrors` feature disabled, we consider
         // any error as fatal.
@@ -758,11 +766,9 @@ where
             .block_ops_transaction_duration
             .observe(elapsed);
 
-        block_state_metrics.flush_metrics_to_store(
-            &logger,
-            block_ptr,
-            self.inputs.deployment.id,
-        )?;
+        block_state_metrics
+            .flush_metrics_to_store(&logger, block_ptr, self.inputs.deployment.id)
+            .non_deterministic()?;
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
@@ -817,7 +823,7 @@ where
     fn create_dynamic_data_sources(
         &mut self,
         created_data_sources: Vec<InstanceDSTemplateInfo>,
-    ) -> Result<(Vec<DataSource<C>>, Vec<Arc<T::Host>>), Error> {
+    ) -> Result<(Vec<DataSource<C>>, Vec<Arc<T::Host>>), BlockProcessingError> {
         let mut data_sources = vec![];
         let mut runtime_hosts = vec![];
 
@@ -825,15 +831,15 @@ where
             let manifest_idx = info
                 .template
                 .manifest_idx()
-                .ok_or_else(|| anyhow!("Expected template to have an idx"))?;
+                .ok_or_else(|| anyhow!("Expected template to have an idx"))
+                .non_deterministic()?;
             let created_ds_template = self
                 .inputs
                 .templates
                 .iter()
                 .find(|t| t.manifest_idx() == manifest_idx)
-                .ok_or_else(|| {
-                    anyhow!("Expected to find a template for this dynamic data source")
-                })?;
+                .ok_or_else(|| anyhow!("Expected to find a template for this dynamic data source"))
+                .non_deterministic()?;
 
             // Try to instantiate a data source from the template
             let data_source = {
@@ -855,14 +861,15 @@ where
                         warn!(self.logger, "{}", e.to_string());
                         continue;
                     }
-                    Err(DataSourceCreationError::Unknown(e)) => return Err(e),
+                    Err(DataSourceCreationError::Unknown(e)) => return Err(e).non_deterministic(),
                 }
             };
 
             // Try to create a runtime host for the data source
             let host = self
                 .ctx
-                .add_dynamic_data_source(&self.logger, data_source.clone())?;
+                .add_dynamic_data_source(&self.logger, data_source.clone())
+                .non_deterministic()?;
 
             match host {
                 Some(host) => {
@@ -1381,7 +1388,8 @@ where
                 &self.metrics.host.stopwatch,
                 &mut block_state.entity_cache,
             )
-            .await?;
+            .await
+            .non_deterministic()?;
         }
 
         let section = self
@@ -1451,7 +1459,7 @@ where
         let first_error = deterministic_errors.first().cloned();
 
         // We consider a subgraph caught up when it's at most 1 blocks behind the chain head.
-        let is_caught_up = self.is_caught_up(&block_ptr).await?;
+        let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
 
         self.inputs
             .store
@@ -1468,7 +1476,8 @@ where
                 is_caught_up,
             )
             .await
-            .context("Failed to transact block operations")?;
+            .context("Failed to transact block operations")
+            .non_deterministic()?;
 
         // For subgraphs with `nonFatalErrors` feature disabled, we consider
         // any error as fatal.
