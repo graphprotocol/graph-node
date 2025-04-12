@@ -1,5 +1,5 @@
 use crate::subgraph::context::IndexingContext;
-use crate::subgraph::error::{BlockProcessingError, ErrorHelper as _};
+use crate::subgraph::error::{ErrorHelper as _, ProcessingError};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
@@ -361,7 +361,7 @@ where
         block_stream_cancel_handle: &CancelHandle,
         block: BlockWithTriggers<C>,
         firehose_cursor: FirehoseCursor,
-    ) -> Result<Action, BlockProcessingError> {
+    ) -> Result<Action, ProcessingError> {
         let triggers = block.trigger_data;
         let block = Arc::new(block.block);
         let block_ptr = block.ptr();
@@ -449,7 +449,7 @@ where
             Ok(state) => block_state = state,
 
             // Some form of unknown or non-deterministic error ocurred.
-            Err(MappingError::Unknown(e)) => return Err(BlockProcessingError::Unknown(e)),
+            Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e)),
             Err(MappingError::PossibleReorg(e)) => {
                 info!(logger,
                     "Possible reorg detected, retrying";
@@ -616,7 +616,7 @@ where
                     // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
                     match e {
                         MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                            BlockProcessingError::Unknown(e)
+                            ProcessingError::Unknown(e)
                         }
                     }
                 })?;
@@ -633,7 +633,7 @@ where
 
         // Avoid writing to store if block stream has been canceled
         if block_stream_cancel_handle.is_canceled() {
-            return Err(BlockProcessingError::Canceled);
+            return Err(ProcessingError::Canceled);
         }
 
         if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
@@ -659,7 +659,7 @@ where
         } = block_state
             .entity_cache
             .as_modifications(block.number())
-            .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+            .map_err(|e| ProcessingError::Unknown(e.into()))?;
         section.end();
 
         trace!(self.logger, "Entity cache statistics";
@@ -757,7 +757,7 @@ where
         // all of the others are discarded.
         if has_errors && !is_non_fatal_errors_active {
             // Only the first error is reported.
-            return Err(BlockProcessingError::Deterministic(Box::new(
+            return Err(ProcessingError::Deterministic(Box::new(
                 first_error.unwrap(),
             )));
         }
@@ -778,11 +778,11 @@ where
         if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
                 .unassign_subgraph()
-                .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+                .map_err(|e| ProcessingError::Unknown(e.into()))?;
 
             // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
             // just transacted so it will be already be set to unhealthy.
-            return Err(BlockProcessingError::Canceled);
+            return Err(ProcessingError::Canceled);
         }
 
         match needs_restart {
@@ -825,7 +825,7 @@ where
     fn create_dynamic_data_sources(
         &mut self,
         created_data_sources: Vec<InstanceDSTemplateInfo>,
-    ) -> Result<(Vec<DataSource<C>>, Vec<Arc<T::Host>>), BlockProcessingError> {
+    ) -> Result<(Vec<DataSource<C>>, Vec<Arc<T::Host>>), ProcessingError> {
         let mut data_sources = vec![];
         let mut runtime_hosts = vec![];
 
@@ -899,7 +899,7 @@ where
         &mut self,
         start: Instant,
         block_ptr: BlockPtr,
-        action: Result<Action, BlockProcessingError>,
+        action: Result<Action, ProcessingError>,
     ) -> Result<Action, Error> {
         self.state.skip_ptr_updates_timer = Instant::now();
 
@@ -951,7 +951,7 @@ where
 
                 return Ok(action);
             }
-            Err(BlockProcessingError::Canceled) => {
+            Err(ProcessingError::Canceled) => {
                 debug!(self.logger, "Subgraph block stream shut down cleanly");
                 return Ok(Action::Stop);
             }
@@ -1280,7 +1280,7 @@ trait StreamEventHandler<C: Blockchain> {
         handler: String,
         cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
-    ) -> Result<Action, BlockProcessingError>;
+    ) -> Result<Action, ProcessingError>;
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
@@ -1314,7 +1314,7 @@ where
         handler: String,
         cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
-    ) -> Result<Action, BlockProcessingError> {
+    ) -> Result<Action, ProcessingError> {
         let logger = self.logger.new(o!(
                 "block_number" => format!("{:?}", block_ptr.number),
                 "block_hash" => format!("{}", block_ptr.hash)
@@ -1349,9 +1349,7 @@ where
                 Ok(block_state) => block_state,
 
                 // Some form of unknown or non-deterministic error ocurred.
-                Err(MappingError::Unknown(e)) => {
-                    return Err(BlockProcessingError::Unknown(e).into())
-                }
+                Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e).into()),
                 Err(MappingError::PossibleReorg(e)) => {
                     info!(logger,
                         "Possible reorg detected, retrying";
@@ -1380,7 +1378,7 @@ where
 
         // Avoid writing to store if block stream has been canceled
         if cancel_handle.is_canceled() {
-            return Err(BlockProcessingError::Canceled.into());
+            return Err(ProcessingError::Canceled.into());
         }
 
         if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
@@ -1406,7 +1404,7 @@ where
         } = block_state
             .entity_cache
             .as_modifications(block_ptr.number)
-            .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+            .map_err(|e| ProcessingError::Unknown(e.into()))?;
         section.end();
 
         trace!(self.logger, "Entity cache statistics";
@@ -1490,7 +1488,7 @@ where
         // all of the others are discarded.
         if has_errors && !is_non_fatal_errors_active {
             // Only the first error is reported.
-            return Err(BlockProcessingError::Deterministic(Box::new(
+            return Err(ProcessingError::Deterministic(Box::new(
                 first_error.unwrap(),
             )));
         }
@@ -1507,11 +1505,11 @@ where
         if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
                 .unassign_subgraph()
-                .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
+                .map_err(|e| ProcessingError::Unknown(e.into()))?;
 
             // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
             // just transacted so it will be already be set to unhealthy.
-            return Err(BlockProcessingError::Canceled.into());
+            return Err(ProcessingError::Canceled.into());
         };
 
         Ok(Action::Continue)

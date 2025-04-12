@@ -6,7 +6,7 @@ pub trait DeterministicError: std::fmt::Debug + std::fmt::Display + Send + Sync 
 impl DeterministicError for SubgraphError {}
 
 #[derive(thiserror::Error, Debug)]
-pub enum BlockProcessingError {
+pub enum ProcessingError {
     #[error("{0:#}")]
     Unknown(Error),
 
@@ -19,24 +19,24 @@ pub enum BlockProcessingError {
     Canceled,
 }
 
-impl BlockProcessingError {
+impl ProcessingError {
     pub fn is_deterministic(&self) -> bool {
-        matches!(self, BlockProcessingError::Deterministic(_))
+        matches!(self, ProcessingError::Deterministic(_))
     }
 }
 
 pub(crate) trait ErrorHelper<T, E> {
-    fn non_deterministic(self: Self) -> Result<T, BlockProcessingError>;
+    fn non_deterministic(self: Self) -> Result<T, ProcessingError>;
 }
 
 impl<T> ErrorHelper<T, anyhow::Error> for Result<T, anyhow::Error> {
-    fn non_deterministic(self) -> Result<T, BlockProcessingError> {
-        self.map_err(|e| BlockProcessingError::Unknown(e))
+    fn non_deterministic(self) -> Result<T, ProcessingError> {
+        self.map_err(|e| ProcessingError::Unknown(e))
     }
 }
 
 impl<T> ErrorHelper<T, StoreError> for Result<T, StoreError> {
-    fn non_deterministic(self) -> Result<T, BlockProcessingError> {
-        self.map_err(|e| BlockProcessingError::Unknown(Error::from(e)))
+    fn non_deterministic(self) -> Result<T, ProcessingError> {
+        self.map_err(|e| ProcessingError::Unknown(Error::from(e)))
     }
 }
