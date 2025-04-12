@@ -757,7 +757,9 @@ where
         // all of the others are discarded.
         if has_errors && !is_non_fatal_errors_active {
             // Only the first error is reported.
-            return Err(BlockProcessingError::Deterministic(first_error.unwrap()));
+            return Err(BlockProcessingError::Deterministic(Box::new(
+                first_error.unwrap(),
+            )));
         }
 
         let elapsed = start.elapsed().as_secs_f64();
@@ -1488,7 +1490,9 @@ where
         // all of the others are discarded.
         if has_errors && !is_non_fatal_errors_active {
             // Only the first error is reported.
-            return Err(BlockProcessingError::Deterministic(first_error.unwrap()).into());
+            return Err(BlockProcessingError::Deterministic(Box::new(
+                first_error.unwrap(),
+            )));
         }
 
         let elapsed = start.elapsed().as_secs_f64();

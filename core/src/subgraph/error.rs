@@ -1,6 +1,10 @@
 use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::{thiserror, Error, StoreError};
 
+pub trait DeterministicError: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static {}
+
+impl DeterministicError for SubgraphError {}
+
 #[derive(thiserror::Error, Debug)]
 pub enum BlockProcessingError {
     #[error("{0:#}")]
@@ -9,7 +13,7 @@ pub enum BlockProcessingError {
     // The error had a deterministic cause but, for a possibly non-deterministic reason, we chose to
     // halt processing due to the error.
     #[error("{0}")]
-    Deterministic(SubgraphError),
+    Deterministic(Box<dyn DeterministicError>),
 
     #[error("subgraph stopped while processing triggers")]
     Canceled,
