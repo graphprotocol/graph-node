@@ -161,6 +161,42 @@ impl StoreError {
             StoreError::WriteFailure(entity.to_string(), block, error.to_string(), query)
         })
     }
+
+    pub fn is_deterministic(&self) -> bool {
+        use StoreError::*;
+
+        // This classification tries to err on the side of caution. If in doubt,
+        // assume the error is non-deterministic.
+        match self {
+            // deterministic errors
+            ConflictingId(_, _, _)
+            | UnknownField(_, _)
+            | UnknownTable(_)
+            | UnknownAttribute(_, _)
+            | InvalidIdentifier(_)
+            | UnsupportedFilter(_, _) => true,
+
+            // non-deterministic errors
+            Unknown(_)
+            | QueryExecutionError(_)
+            | ChildFilterNestingNotSupportedError(_, _)
+            | DuplicateBlockProcessing(_, _)
+            | ConstraintViolation(_)
+            | DeploymentNotFound(_)
+            | UnknownShard(_)
+            | FulltextSearchNonDeterministic
+            | FulltextColumnMissingConfig
+            | Canceled
+            | DatabaseUnavailable
+            | ForkFailure(_)
+            | Poisoned
+            | WriterPanic(_)
+            | UnsupportedDeploymentSchemaVersion(_)
+            | PruneFailure(_)
+            | WriteFailure(_, _, _, _)
+            | StatementTimeout => false,
+        }
+    }
 }
 
 impl From<DieselError> for StoreError {
