@@ -1836,12 +1836,23 @@ impl DeploymentStore {
     }
 
     pub(crate) async fn set_manifest_raw_yaml(
-        &self,
+        self: Arc<Self>,
         site: Arc<Site>,
         raw_yaml: String,
     ) -> Result<(), StoreError> {
-        self.with_conn(move |conn, _| {
-            deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml).map_err(Into::into)
+        let logger = self.logger.cheap_clone();
+        retry::forever_async(&logger, "set_manifest_raw_yaml", move || {
+            let site = site.cheap_clone();
+            let raw_yaml = raw_yaml.clone();
+            let store = self.cheap_clone();
+            async move {
+                store
+                    .with_conn(move |conn, _| {
+                        deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml)
+                            .map_err(Into::into)
+                    })
+                    .await
+            }
         })
         .await
     }

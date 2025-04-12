@@ -1615,7 +1615,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         raw_yaml: String,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(hash)?;
-        store.set_manifest_raw_yaml(site, raw_yaml).await
+        store
+            .cheap_clone()
+            .set_manifest_raw_yaml(site, raw_yaml)
+            .await
     }
 
     fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError> {
