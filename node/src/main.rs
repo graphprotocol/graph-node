@@ -78,8 +78,21 @@ fn read_expensive_queries(
     Ok(queries)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    let max_blocking: usize = std::env::var("GRAPH_MAX_BLOCKING_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(512);
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .max_blocking_threads(max_blocking)
+        .build()
+        .unwrap()
+        .block_on(async { main_inner().await })
+}
+
+async fn main_inner() {
     env_logger::init();
 
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
