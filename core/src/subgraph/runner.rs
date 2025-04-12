@@ -3,6 +3,8 @@ use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
+use anyhow::Context as _;
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
@@ -27,8 +29,14 @@ use graph::data_source::{
 use graph::env::EnvVars;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::TryStreamExt;
-use graph::prelude::*;
+use graph::prelude::{
+    anyhow, hex, retry, thiserror, BlockNumber, BlockPtr, BlockState, CancelGuard, CancelHandle,
+    CancelToken as _, CancelableError, CheapClone as _, EntityCache, EntityModification, Error,
+    InstanceDSTemplateInfo, LogCode, RunnerMetrics, RuntimeHostBuilder, StopwatchMetrics,
+    StoreError, StreamExtension, UnfailOutcome, Value, ENV_VARS,
+};
 use graph::schema::EntityKey;
+use graph::slog::{debug, error, info, o, trace, warn, Logger};
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
