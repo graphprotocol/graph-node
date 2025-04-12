@@ -5,10 +5,10 @@ use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     cheap_clone::CheapClone,
     components::subgraph::Entity,
-    constraint_violation,
     data::{store::Id, subgraph::schema::SubgraphError},
     data_source::CausalityRegion,
     derive::CacheWeight,
+    internal_error,
     util::cache_weight::CacheWeight,
 };
 
@@ -182,7 +182,7 @@ impl EntityModification {
         match self {
             Insert { end, .. } | Overwrite { end, .. } => {
                 if end.is_some() {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "can not clamp {:?} to block {}",
                         self,
                         block
@@ -191,7 +191,7 @@ impl EntityModification {
                 *end = Some(block);
             }
             Remove { .. } => {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "can not clamp block range for removal of {:?} to {}",
                     self,
                     block
@@ -219,7 +219,7 @@ impl EntityModification {
                 end,
             }),
             Remove { key, .. } => {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "a remove for {}[{}] can not be converted into an insert",
                     entity_type,
                     key.entity_id
@@ -330,7 +330,7 @@ impl RowGroup {
         if !is_forward {
             // unwrap: we only get here when `last()` is `Some`
             let last_block = self.rows.last().map(|emod| emod.block()).unwrap();
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "we already have a modification for block {}, can not append {:?}",
                 last_block,
                 emod
@@ -412,7 +412,7 @@ impl RowGroup {
                     self.rows.push(row);
                 }
                 EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "immutable entity type {} only allows inserts, not {:?}",
                         self.entity_type,
                         row
@@ -426,7 +426,7 @@ impl RowGroup {
             use EntityModification::*;
 
             if row.block() <= prev_row.block() {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "can not append operations that go backwards from {:?} to {:?}",
                     prev_row,
                     row
@@ -444,7 +444,7 @@ impl RowGroup {
                     Insert { end: Some(_), .. } | Overwrite { end: Some(_), .. },
                     Overwrite { .. } | Remove { .. },
                 ) => {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "impossible combination of entity operations: {:?} and then {:?}",
                         prev_row,
                         row
@@ -481,7 +481,7 @@ impl RowGroup {
 
     fn append(&mut self, group: RowGroup) -> Result<(), StoreError> {
         if self.entity_type != group.entity_type {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "Can not append a row group for {} to a row group for {}",
                 group.entity_type,
                 self.entity_type
@@ -710,7 +710,7 @@ impl Batch {
 
     fn append_inner(&mut self, mut batch: Batch) -> Result<(), StoreError> {
         if batch.block_ptr.number <= self.block_ptr.number {
-            return Err(constraint_violation!("Batches must go forward. Can't append a batch with block pointer {} to one with block pointer {}", batch.block_ptr, self.block_ptr));
+            return Err(internal_error!("Batches must go forward. Can't append a batch with block pointer {} to one with block pointer {}", batch.block_ptr, self.block_ptr));
         }
 
         self.block_ptr = batch.block_ptr;

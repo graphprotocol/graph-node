@@ -31,12 +31,12 @@ use diesel::{
 };
 use graph::{
     components::store::DeploymentLocator,
-    constraint_violation,
     data::{
         store::scalar::ToPrimitive,
         subgraph::{status, DeploymentFeatures},
     },
     derive::CheapClone,
+    internal_error,
     prelude::{
         anyhow,
         chrono::{DateTime, Utc},
@@ -384,9 +384,9 @@ impl TryFrom<Schema> for Site {
 
     fn try_from(schema: Schema) -> Result<Self, Self::Error> {
         let deployment = DeploymentHash::new(&schema.subgraph)
-            .map_err(|s| constraint_violation!("Invalid deployment id {}", s))?;
+            .map_err(|s| internal_error!("Invalid deployment id {}", s))?;
         let namespace = Namespace::new(schema.name.clone()).map_err(|nsp| {
-            constraint_violation!(
+            internal_error!(
                 "Invalid schema name {} for deployment {}",
                 nsp,
                 &schema.subgraph
@@ -450,8 +450,8 @@ mod queries {
     use diesel::sql_types::Text;
     use graph::prelude::NodeId;
     use graph::{
-        constraint_violation,
         data::subgraph::status,
+        internal_error,
         prelude::{DeploymentHash, StoreError, SubgraphName},
     };
     use std::{collections::HashMap, convert::TryFrom, convert::TryInto};
@@ -510,7 +510,7 @@ mod queries {
             .optional()?;
         match id {
             Some(id) => DeploymentHash::new(id)
-                .map_err(|id| constraint_violation!("illegal deployment id: {}", id)),
+                .map_err(|id| internal_error!("illegal deployment id: {}", id)),
             None => Err(StoreError::DeploymentNotFound(name.to_string())),
         }
     }
@@ -673,7 +673,7 @@ mod queries {
             .optional()?
             .map(|node| {
                 NodeId::new(&node).map_err(|()| {
-                    constraint_violation!(
+                    internal_error!(
                         "invalid node id `{}` in assignment for `{}`",
                         node,
                         site.deployment
@@ -698,7 +698,7 @@ mod queries {
             .optional()?
             .map(|(node, ts)| {
                 let node_id = NodeId::new(&node).map_err(|()| {
-                    constraint_violation!(
+                    internal_error!(
                         "invalid node id `{}` in assignment for `{}`",
                         node,
                         site.deployment
@@ -837,7 +837,7 @@ impl<'a> Connection<'a> {
                 DeploymentHash::new(hash)
                     .map(|hash| AssignmentChange::removed(DeploymentLocator::new(id.into(), hash)))
                     .map_err(|id| {
-                        StoreError::ConstraintViolation(format!(
+                        StoreError::InternalError(format!(
                             "invalid id `{}` for deployment assignment",
                             id
                         ))
@@ -1318,7 +1318,7 @@ impl<'a> Connection<'a> {
             .cloned()
             .ok_or_else(|| anyhow!("failed to read schema name for {} back", deployment))?;
         let namespace = Namespace::new(namespace).map_err(|name| {
-            constraint_violation!("Generated database schema name {} is invalid", name)
+            internal_error!("Generated database schema name {} is invalid", name)
         })?;
 
         Ok(Site {
@@ -1522,7 +1522,7 @@ impl<'a> Connection<'a> {
             .transpose()
             // This can't really happen since we filtered by valid NodeId's
             .map_err(|node| {
-                constraint_violation!("database has assignment for illegal node name {:?}", node)
+                internal_error!("database has assignment for illegal node name {:?}", node)
             })
     }
 
@@ -1559,7 +1559,7 @@ impl<'a> Connection<'a> {
             .map(|(shard, _)| Shard::new(shard.to_string()))
             .transpose()
             // This can't really happen since we filtered by valid shards
-            .map_err(|e| constraint_violation!("database has illegal shard name: {}", e))
+            .map_err(|e| internal_error!("database has illegal shard name: {}", e))
     }
 
     #[cfg(debug_assertions)]
@@ -1729,10 +1729,7 @@ impl<'a> Connection<'a> {
                 let ts = chrono::offset::Local::now()
                     .checked_sub_signed(duration)
                     .ok_or_else(|| {
-                        StoreError::ConstraintViolation(format!(
-                            "duration {} is too large",
-                            duration
-                        ))
+                        StoreError::InternalError(format!("duration {} is too large", duration))
                     })?;
                 Ok(u::table
                     .filter(u::removed_at.is_null())

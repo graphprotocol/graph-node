@@ -9,8 +9,8 @@ use graph::{
             StatusStore, Store as StoreTrait,
         },
     },
-    constraint_violation,
     data::subgraph::status,
+    internal_error,
     prelude::{
         web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash, PartialBlockPtr,
         QueryExecutionError, StoreError,
@@ -87,7 +87,7 @@ impl QueryStoreManager for Store {
         .and_then(|x| x)?;
 
         let chain_store = self.block_store.chain_store(&site.network).ok_or_else(|| {
-            constraint_violation!(
+            internal_error!(
                 "Subgraphs index a known network, but {} indexes `{}` which we do not know about. This is most likely a configuration error.",
                 site.deployment,
                 site.network

@@ -32,11 +32,11 @@ use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
-use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
+use graph::internal_error;
 use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
@@ -503,7 +503,7 @@ impl Layout {
             let key =
                 entity_type.key_in(entity_data.id(), CausalityRegion::from_entity(&entity_data));
             if entities.contains_key(&key) {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "duplicate entity {}[{}] in result set, block = {}",
                     key.entity_type,
                     key.entity_id,
@@ -910,7 +910,7 @@ impl Layout {
                 .map(|id| id.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "entities of type `{}` can not be updated since they are immutable. Entity ids are [{}]",
                 group.entity_type,
                 ids
@@ -968,7 +968,7 @@ impl Layout {
 
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
                 table.object, group.ids().join(", ")
             ));
@@ -1138,11 +1138,11 @@ impl Layout {
             let source_type = mapping.source_type(schema);
             let source_table = tables
                 .get(&source_type)
-                .ok_or_else(|| constraint_violation!("Table for {source_type} is missing"))?;
+                .ok_or_else(|| internal_error!("Table for {source_type} is missing"))?;
             let agg_type = mapping.agg_type(schema);
             let agg_table = tables
                 .get(&agg_type)
-                .ok_or_else(|| constraint_violation!("Table for {agg_type} is missing"))?;
+                .ok_or_else(|| internal_error!("Table for {agg_type} is missing"))?;
             let aggregation = mapping.aggregation(schema);
             let rollup = Rollup::new(
                 mapping.interval,
@@ -1612,9 +1612,9 @@ impl Table {
     ) -> Result<Table, StoreError> {
         SqlName::check_valid_identifier(defn.as_str(), "object")?;
 
-        let object_type = defn.object_type().map_err(|_| {
-            constraint_violation!("The type `{}` is not an object type", defn.as_str())
-        })?;
+        let object_type = defn
+            .object_type()
+            .map_err(|_| internal_error!("The type `{}` is not an object type", defn.as_str()))?;
 
         let table_name = SqlName::from(defn.as_str());
         let columns = object_type

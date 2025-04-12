@@ -7,7 +7,7 @@ use std::{
 use graph::{
     block_on,
     components::store::SubgraphFork as SubgraphForkTrait,
-    constraint_violation,
+    internal_error,
     prelude::{
         anyhow, info, r::Value as RValue, reqwest, serde_json, DeploymentHash, Entity, Logger,
         Serialize, StoreError, Value, ValueType,
@@ -69,9 +69,7 @@ impl SubgraphForkTrait for SubgraphFork {
         let entity_type = self.schema.entity_type(&entity_type_name)?;
         let fields = &entity_type
             .object_type()
-            .map_err(|_| {
-                constraint_violation!("no object type called `{}` found", entity_type_name)
-            })?
+            .map_err(|_| internal_error!("no object type called `{}` found", entity_type_name))?
             .fields;
 
         let query = Query {

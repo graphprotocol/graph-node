@@ -37,8 +37,8 @@ use std::time::{Duration, Instant};
 
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
-use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
+use graph::internal_error;
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
     DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
@@ -806,7 +806,7 @@ impl DeploymentStore {
         reorg_threshold: BlockNumber,
     ) -> Result<(), StoreError> {
         if history_blocks <= reorg_threshold {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "the amount of history to keep for sgd{} can not be set to \
                  {history_blocks} since it must be more than the \
                  reorg threshold {reorg_threshold}",
@@ -1208,9 +1208,7 @@ impl DeploymentStore {
                         Some(Ok(Ok(()))) => Ok(false),
                         Some(Ok(Err(err))) => Err(StoreError::PruneFailure(err.to_string())),
                         Some(Err(join_err)) => Err(StoreError::PruneFailure(join_err.to_string())),
-                        None => Err(constraint_violation!(
-                            "prune handle is finished but not ready"
-                        )),
+                        None => Err(internal_error!("prune handle is finished but not ready")),
                     }
                 }
                 Some(false) => {
@@ -1324,7 +1322,7 @@ impl DeploymentStore {
         // Sanity check on block numbers
         let from_number = block_ptr_from.map(|ptr| ptr.number);
         if from_number <= Some(block_ptr_to.number) {
-            constraint_violation!(
+            internal_error!(
                 "truncate must go backwards, but would go from block {} to block {}",
                 from_number.unwrap_or(0),
                 block_ptr_to.number
@@ -1350,7 +1348,7 @@ impl DeploymentStore {
         // Sanity check on block numbers
         let from_number = block_ptr_from.map(|ptr| ptr.number);
         if from_number <= Some(block_ptr_to.number) {
-            constraint_violation!(
+            internal_error!(
                 "rewind must go backwards, but would go from block {} to block {}",
                 from_number.unwrap_or(0),
                 block_ptr_to.number
@@ -1387,7 +1385,7 @@ impl DeploymentStore {
         let info = self.subgraph_info_with_conn(&mut conn, site.cheap_clone())?;
         if let Some(graft_block) = info.graft_block {
             if graft_block > block_ptr_to.number {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "Can not revert subgraph `{}` to block {} as it was \
                         grafted at block {} and reverting past a graft point \
                         is not possible",

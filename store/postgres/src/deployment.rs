@@ -42,7 +42,7 @@ use std::{str::FromStr, sync::Arc};
 
 use crate::connection_pool::ForeignServer;
 use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
-use graph::constraint_violation;
+use graph::internal_error;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
 #[PgType = "text"]
@@ -92,7 +92,7 @@ impl TryFrom<Option<&str>> for OnSync {
             None => Ok(OnSync::None),
             Some("activate") => Ok(OnSync::Activate),
             Some("replace") => Ok(OnSync::Replace),
-            _ => Err(constraint_violation!("illegal value for on_sync: {value}")),
+            _ => Err(internal_error!("illegal value for on_sync: {value}")),
         }
     }
 }
@@ -466,7 +466,7 @@ pub fn transact_block(
         ))),
 
         // More than one matching row was found.
-        _ => Err(StoreError::ConstraintViolation(
+        _ => Err(StoreError::InternalError(
             "duplicate deployments in shard".to_owned(),
         )),
     }
@@ -515,7 +515,7 @@ pub fn forward_block_ptr(
         },
 
         // More than one matching row was found.
-        _ => Err(StoreError::ConstraintViolation(
+        _ => Err(StoreError::InternalError(
             "duplicate deployments in shard".to_owned(),
         )),
     }
@@ -612,7 +612,7 @@ pub fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Result<(), 
         .select(d::latest_ethereum_block_hash)
         .first::<Option<Vec<u8>>>(conn)
         .map_err(|e| {
-            constraint_violation!(
+            internal_error!(
                 "deployment sgd{} must have been created before calling initialize_block_ptr but we got {}",
                 site.id, e
             )
@@ -645,10 +645,10 @@ pub fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Result<(), 
 
 fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u32, StoreError> {
     number
-        .ok_or_else(|| constraint_violation!("missing {} for subgraph `{}`", field, subgraph))
+        .ok_or_else(|| internal_error!("missing {} for subgraph `{}`", field, subgraph))
         .and_then(|number| {
             u32::try_from(number).map_err(|_| {
-                constraint_violation!(
+                internal_error!(
                     "invalid value {:?} for {} in subgraph {}",
                     number,
                     field,
@@ -1330,7 +1330,7 @@ pub fn set_on_sync(
     match n {
         0 => Err(StoreError::DeploymentNotFound(site.to_string())),
         1 => Ok(()),
-        _ => Err(constraint_violation!(
+        _ => Err(internal_error!(
             "multiple manifests for deployment {}",
             site.to_string()
         )),

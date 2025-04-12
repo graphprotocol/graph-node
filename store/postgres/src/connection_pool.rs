@@ -9,10 +9,10 @@ use diesel::{sql_query, RunQueryDsl};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
-use graph::constraint_violation;
 use graph::derive::CheapClone;
 use graph::futures03::future::join_all;
 use graph::futures03::FutureExt as _;
+use graph::internal_error;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{tokio, MetricsRegistry};
 use graph::slog::warn;
@@ -1076,7 +1076,7 @@ impl PoolInner {
                 const MSG: &str =
                     "internal error: trying to get fdw connection on a pool that doesn't have any";
                 error!(logger, "{}", MSG);
-                return Err(constraint_violation!(MSG));
+                return Err(internal_error!(MSG));
             }
         };
         Ok(pool)
@@ -1501,13 +1501,13 @@ impl PoolCoordinator {
         self.servers
             .iter()
             .find(|server| &server.shard == shard)
-            .ok_or_else(|| constraint_violation!("unknown shard {shard}"))
+            .ok_or_else(|| internal_error!("unknown shard {shard}"))
     }
 
     fn primary(&self) -> Result<Arc<PoolInner>, StoreError> {
         let map = self.pools.lock().unwrap();
         let pool_state = map.get(&*&PRIMARY_SHARD).ok_or_else(|| {
-            constraint_violation!("internal error: primary shard not found in pool coordinator")
+            internal_error!("internal error: primary shard not found in pool coordinator")
         })?;
 
         Ok(pool_state.get_unready())

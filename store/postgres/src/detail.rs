@@ -17,7 +17,7 @@ use graph::prelude::{
     BigDecimal, BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity,
 };
 use graph::schema::InputSchema;
-use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
+use graph::{data::subgraph::status, internal_error, prelude::web3::types::H256};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -134,7 +134,7 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             _ => None,
         };
         let subgraph_id = DeploymentHash::new(subgraph_id).map_err(|id| {
-            StoreError::ConstraintViolation(format!("invalid subgraph id `{}` in fatal error", id))
+            StoreError::InternalError(format!("invalid subgraph id `{}` in fatal error", id))
         })?;
         Ok(SubgraphError {
             subgraph_id,
@@ -155,7 +155,7 @@ pub(crate) fn block(
     match (hash, number) {
         (Some(hash), Some(number)) => {
             let number = number.to_i32().ok_or_else(|| {
-                constraint_violation!(
+                internal_error!(
                     "the block number {} for {} in {} is not representable as an i32",
                     number,
                     name,
@@ -168,7 +168,7 @@ pub(crate) fn block(
             )))
         }
         (None, None) => Ok(None),
-        (hash, number) => Err(constraint_violation!(
+        (hash, number) => Err(internal_error!(
             "the hash and number \
         of a block pointer must either both be null or both have a \
         value, but for `{}` the hash of {} is `{:?}` and the number is `{:?}`",
@@ -208,7 +208,7 @@ pub(crate) fn info_from_details(
     let site = sites
         .iter()
         .find(|site| site.deployment.as_str() == deployment)
-        .ok_or_else(|| constraint_violation!("missing site for subgraph `{}`", deployment))?;
+        .ok_or_else(|| internal_error!("missing site for subgraph `{}`", deployment))?;
 
     // This needs to be filled in later since it lives in a
     // different shard
@@ -227,7 +227,7 @@ pub(crate) fn info_from_details(
         latest_block,
     };
     let entity_count = entity_count.to_u64().ok_or_else(|| {
-        constraint_violation!(
+        internal_error!(
             "the entityCount for {} is not representable as a u64",
             deployment
         )
@@ -438,13 +438,13 @@ impl StoredDeploymentEntity {
             .graft_base
             .map(DeploymentHash::new)
             .transpose()
-            .map_err(|b| constraint_violation!("invalid graft base `{}`", b))?;
+            .map_err(|b| internal_error!("invalid graft base `{}`", b))?;
 
         let debug_fork = detail
             .debug_fork
             .map(DeploymentHash::new)
             .transpose()
-            .map_err(|b| constraint_violation!("invalid debug fork `{}`", b))?;
+            .map_err(|b| internal_error!("invalid debug fork `{}`", b))?;
 
         Ok(SubgraphDeploymentEntity {
             manifest: manifest.as_manifest(schema),

@@ -36,8 +36,8 @@ pub enum StoreError {
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold
-    #[error("internal constraint violated: {0}")]
-    ConstraintViolation(String),
+    #[error("internal error: {0}")]
+    InternalError(String),
     #[error("deployment not found: {0}")]
     DeploymentNotFound(String),
     #[error("shard not found: {0} (this usually indicates a misconfiguration)")]
@@ -72,14 +72,14 @@ pub enum StoreError {
     StatementTimeout,
 }
 
-// Convenience to report a constraint violation
+// Convenience to report an internal error
 #[macro_export]
-macro_rules! constraint_violation {
+macro_rules! internal_error {
     ($msg:expr) => {{
-        $crate::prelude::StoreError::ConstraintViolation(format!("{}", $msg))
+        $crate::prelude::StoreError::InternalError(format!("{}", $msg))
     }};
     ($fmt:expr, $($arg:tt)*) => {{
-        $crate::prelude::StoreError::ConstraintViolation(format!($fmt, $($arg)*))
+        $crate::prelude::StoreError::InternalError(format!($fmt, $($arg)*))
     }}
 }
 
@@ -106,7 +106,7 @@ impl Clone for StoreError {
             Self::DuplicateBlockProcessing(arg0, arg1) => {
                 Self::DuplicateBlockProcessing(arg0.clone(), arg1.clone())
             }
-            Self::ConstraintViolation(arg0) => Self::ConstraintViolation(arg0.clone()),
+            Self::InternalError(arg0) => Self::InternalError(arg0.clone()),
             Self::DeploymentNotFound(arg0) => Self::DeploymentNotFound(arg0.clone()),
             Self::UnknownShard(arg0) => Self::UnknownShard(arg0.clone()),
             Self::FulltextSearchNonDeterministic => Self::FulltextSearchNonDeterministic,
@@ -181,7 +181,7 @@ impl StoreError {
             | QueryExecutionError(_)
             | ChildFilterNestingNotSupportedError(_, _)
             | DuplicateBlockProcessing(_, _)
-            | ConstraintViolation(_)
+            | InternalError(_)
             | DeploymentNotFound(_)
             | UnknownShard(_)
             | FulltextSearchNonDeterministic

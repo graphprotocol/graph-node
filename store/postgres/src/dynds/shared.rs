@@ -11,9 +11,9 @@ use diesel::{insert_into, pg::PgConnection};
 
 use graph::{
     components::store::{write, StoredDynamicDataSource},
-    constraint_violation,
     data::store::scalar::ToPrimitive,
     data_source::CausalityRegion,
+    internal_error,
     prelude::{serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError},
 };
 
@@ -62,7 +62,7 @@ pub(super) fn load(
     let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
     for (vid, name, context, address, creation_block) in dds.into_iter() {
         if address.len() != 20 {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "Data source address `0x{:?}` for dynamic data source {} should be 20 bytes long but is {} bytes long",
                 address, vid,
             address.len()
@@ -72,7 +72,7 @@ pub(super) fn load(
         let manifest_idx = manifest_idx_and_name
             .iter()
             .find(|(_, manifest_name)| manifest_name == &name)
-            .ok_or_else(|| constraint_violation!("data source name {} not found", name))?
+            .ok_or_else(|| internal_error!("data source name {} not found", name))?
             .0;
         let creation_block = creation_block.to_i32();
         let data_source = StoredDynamicDataSource {
@@ -88,7 +88,7 @@ pub(super) fn load(
         };
 
         if data_sources.last().and_then(|d| d.creation_block) > data_source.creation_block {
-            return Err(StoreError::ConstraintViolation(
+            return Err(StoreError::InternalError(
                 "data sources not ordered by creation block".to_string(),
             ));
         }
@@ -126,7 +126,7 @@ pub(super) fn insert(
                 } = ds;
 
                 if causality_region != &CausalityRegion::ONCHAIN {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "using shared data source schema with file data sources"
                     ));
                 }
@@ -134,17 +134,13 @@ pub(super) fn insert(
                 let address = match param {
                     Some(param) => param,
                     None => {
-                        return Err(constraint_violation!(
-                            "dynamic data sources must have an address",
-                        ));
+                        return Err(internal_error!("dynamic data sources must have an address",));
                     }
                 };
                 let name = manifest_idx_and_name
                     .iter()
                     .find(|(idx, _)| *idx == ds.manifest_idx)
-                    .ok_or_else(|| {
-                        constraint_violation!("manifest idx {} not found", ds.manifest_idx)
-                    })?
+                    .ok_or_else(|| internal_error!("manifest idx {} not found", ds.manifest_idx))?
                     .1
                     .clone();
                 Ok((

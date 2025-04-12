@@ -21,9 +21,9 @@ use graph::{
             PruneReporter, PruneRequest, SubgraphFork,
         },
     },
-    constraint_violation,
     data::query::QueryTarget,
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
+    internal_error,
     prelude::{
         anyhow, lazy_static, o, web3::types::Address, ApiVersion, BlockNumber, BlockPtr,
         ChainStore, DeploymentHash, EntityOperation, Logger, MetricsRegistry, NodeId,
@@ -443,7 +443,7 @@ impl SubgraphStoreInner {
     fn evict(&self, id: &DeploymentHash) -> Result<(), StoreError> {
         if let Some((site, _)) = self.sites.remove(id) {
             let store = self.stores.get(&site.shard).ok_or_else(|| {
-                constraint_violation!(
+                internal_error!(
                     "shard {} for deployment sgd{} not found when evicting",
                     site.shard,
                     site.id
@@ -540,9 +540,7 @@ impl SubgraphStoreInner {
         let placement = self
             .placer
             .place(name.as_str(), network_name)
-            .map_err(|msg| {
-                constraint_violation!("illegal indexer name in deployment rule: {}", msg)
-            })?;
+            .map_err(|msg| internal_error!("illegal indexer name in deployment rule: {}", msg))?;
 
         match placement {
             None => Ok((PRIMARY_SHARD.clone(), default_node)),
@@ -985,7 +983,7 @@ impl SubgraphStoreInner {
     pub(crate) fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
         if let Some((deployment_id, created_at)) = self.mirror.version_info(version)? {
             let id = DeploymentHash::new(deployment_id.clone())
-                .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
+                .map_err(|id| internal_error!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
             let statuses = store.deployment_statuses(&[site.clone()])?;
             let status = statuses
@@ -994,7 +992,7 @@ impl SubgraphStoreInner {
             let chain = status
                 .chains
                 .first()
-                .ok_or_else(|| constraint_violation!("no chain info for {}", deployment_id))?;
+                .ok_or_else(|| internal_error!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|block| block.number());
             let subgraph_info = store.subgraph_info(site.cheap_clone())?;
@@ -1601,7 +1599,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError> {
         let sites = self.mirror.find_sites(&[hash.to_string()], true)?;
         if sites.len() > 1 {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "There are {} active deployments for {hash}, there should only be one",
                 sites.len()
             ));

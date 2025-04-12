@@ -7,8 +7,8 @@ use crate::primary::Site;
 use diesel::PgConnection;
 use graph::{
     components::store::{write, StoredDynamicDataSource},
-    constraint_violation,
     data_source::CausalityRegion,
+    internal_error,
     prelude::{BlockNumber, StoreError},
 };
 
@@ -60,7 +60,7 @@ pub(crate) fn update_offchain_status(
         true => {
             DataSourcesTable::new(site.namespace.clone()).update_offchain_status(conn, data_sources)
         }
-        false => Err(constraint_violation!(
+        false => Err(internal_error!(
             "shared schema does not support data source offchain_found",
         )),
     }

@@ -28,7 +28,7 @@ impl From<QueryError> for ServerError {
 impl From<StoreError> for ServerError {
     fn from(e: StoreError) -> Self {
         match e {
-            StoreError::ConstraintViolation(s) => ServerError::InternalError(s),
+            StoreError::InternalError(s) => ServerError::InternalError(s),
             _ => ServerError::ClientError(e.to_string()),
         }
     }

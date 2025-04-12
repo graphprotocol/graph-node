@@ -12,8 +12,8 @@ use diesel::{
 use graph::{
     anyhow::{anyhow, Context},
     components::store::{write, StoredDynamicDataSource},
-    constraint_violation,
     data_source::CausalityRegion,
+    internal_error,
     prelude::{serde_json, BlockNumber, StoreError},
 };
 
@@ -164,7 +164,7 @@ impl DataSourcesTable {
                 // Nested offchain data sources might not pass this check, as their `creation_block`
                 // will be their parent's `creation_block`, not necessarily `block`.
                 if causality_region == &CausalityRegion::ONCHAIN && creation_block != &Some(block) {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "mismatching creation blocks `{:?}` and `{}`",
                         creation_block,
                         block
@@ -293,7 +293,7 @@ impl DataSourcesTable {
                     .execute(conn)?;
 
                 if count > 1 {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                     "expected to remove at most one offchain data source but would remove {}, causality region: {}",
                     count,
                     ds.causality_region

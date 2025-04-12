@@ -632,7 +632,7 @@ impl<'a> Loader<'a> {
                     let object_type = input_schema
                         .object_or_aggregation(&object_type.name, parent_interval)
                         .ok_or_else(|| {
-                            vec![QueryExecutionError::ConstraintViolation(format!(
+                            vec![QueryExecutionError::InternalError(format!(
                                 "the type `{}`(interval {}) is not an object type",
                                 object_type.name,
                                 parent_interval

@@ -94,9 +94,9 @@ impl From<UnsupportedFilter> for diesel::result::Error {
     }
 }
 
-// Similar to graph::prelude::constraint_violation, but returns a Diesel
+// Similar to graph::prelude::internal_error, but returns a Diesel
 // error for use in the guts of query generation
-macro_rules! constraint_violation {
+macro_rules! internal_error {
     ($msg:expr) => {{
         diesel::result::Error::QueryBuilderError(anyhow!("{}", $msg).into())
     }};
@@ -431,7 +431,7 @@ pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreErr
         };
         id_type.parse(s).map_err(StoreError::from)
     } else {
-        Err(graph::constraint_violation!(
+        Err(graph::internal_error!(
             "the value {:?} can not be converted into an id of type {}",
             json,
             id_type
@@ -485,7 +485,7 @@ impl EntityData {
                                 // A query that does not have parents
                                 // somehow returned parent ids. We have no
                                 // idea how to deserialize that
-                                Some(Err(graph::constraint_violation!(
+                                Some(Err(graph::internal_error!(
                                     "query unexpectedly produces parent ids"
                                 )))
                             }
@@ -583,7 +583,7 @@ impl<'a> SqlValue<'a> {
             String(s) => match column_type {
                 ColumnType::String|ColumnType::Enum(_)|ColumnType::TSVector(_) => S::Text(s),
                 ColumnType::Int8 => S::Int8(s.parse::<i64>().map_err(|e| {
-                    constraint_violation!("failed to convert `{}` to an Int8: {}", s, e.to_string())
+                    internal_error!("failed to convert `{}` to an Int8: {}", s, e.to_string())
                 })?),
                 ColumnType::Bytes => {
                     let bytes = scalar::Bytes::from_str(s)
@@ -913,7 +913,7 @@ impl PrefixType {
         match column.column_type() {
             ColumnType::String => Ok(PrefixType::String),
             ColumnType::Bytes => Ok(PrefixType::Bytes),
-            _ => Err(constraint_violation!(
+            _ => Err(internal_error!(
                 "cannot setup prefix comparison for column {} of type {}",
                 column,
                 column.column_type().sql_type()
@@ -1086,7 +1086,7 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
         // For `op` either `<=` or `>=`, we can write (using '<=' as an example)
         //   uv <= st <=> u < s || u = s && uv <= st
         let large = self.kind.is_large(&self.value).map_err(|()| {
-            constraint_violation!(
+            internal_error!(
                 "column {} has type {} and can't be compared with the value `{}` using {}",
                 self.column,
                 self.column.column_type().sql_type(),
@@ -2237,7 +2237,7 @@ impl<'a> InsertRow<'a> {
                     .filter_map(|field| row.entity.get(field))
                     .map(|value| match value {
                         Value::String(s) => Ok(s),
-                        _ => Err(constraint_violation!(
+                        _ => Err(internal_error!(
                             "fulltext fields must be strings but got {:?}",
                             value
                         )),
@@ -3178,7 +3178,7 @@ impl<'a> FilterCollection<'a> {
                 if windows.iter().map(FilterWindow::parent_type).all_equal() {
                     Ok(Some(windows[0].parent_type()?))
                 } else {
-                    Err(graph::constraint_violation!(
+                    Err(graph::internal_error!(
                         "all implementors of an interface must use the same type for their `id`"
                     ))
                 }
@@ -3448,7 +3448,7 @@ impl<'a> SortKey<'a> {
                     true => (
                         parent_table.primary_key(),
                         child_table.column_for_field(&join_attribute).map_err(|_| {
-                            graph::constraint_violation!(
+                            graph::internal_error!(
                                 "Column for a join attribute `{}` of `{}` table not found",
                                 join_attribute,
                                 child_table.name()
@@ -3459,7 +3459,7 @@ impl<'a> SortKey<'a> {
                         parent_table
                             .column_for_field(&join_attribute)
                             .map_err(|_| {
-                                graph::constraint_violation!(
+                                graph::internal_error!(
                                     "Column for a join attribute `{}` of `{}` table not found",
                                     join_attribute,
                                     parent_table.name()
@@ -3535,7 +3535,7 @@ impl<'a> SortKey<'a> {
                                 child_table
                                     .column_for_field(&child.join_attribute)
                                     .map_err(|_| {
-                                        graph::constraint_violation!(
+                                        graph::internal_error!(
                                     "Column for a join attribute `{}` of `{}` table not found",
                                     child.join_attribute,
                                     child_table.name()
@@ -3546,7 +3546,7 @@ impl<'a> SortKey<'a> {
                                 parent_table
                                     .column_for_field(&child.join_attribute)
                                     .map_err(|_| {
-                                        graph::constraint_violation!(
+                                        graph::internal_error!(
                                     "Column for a join attribute `{}` of `{}` table not found",
                                     child.join_attribute,
                                     parent_table.name()
@@ -3586,7 +3586,7 @@ impl<'a> SortKey<'a> {
             direction: SortDirection,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
             if entity_types.is_empty() {
-                return Err(QueryExecutionError::ConstraintViolation(
+                return Err(QueryExecutionError::InternalError(
                     "Cannot order by child interface with no implementing entity types".to_string(),
                 ));
             }
@@ -3744,7 +3744,7 @@ impl<'a> SortKey<'a> {
                 direction: _,
             } => {
                 if column.is_primary_key() {
-                    return Err(constraint_violation!("SortKey::Key never uses 'id'"));
+                    return Err(internal_error!("SortKey::Key never uses 'id'"));
                 }
 
                 match select_statement_level {
@@ -3764,7 +3764,7 @@ impl<'a> SortKey<'a> {
                 match nested {
                     ChildKey::Single(child) => {
                         if child.sort_by_column.is_primary_key() {
-                            return Err(constraint_violation!("SortKey::Key never uses 'id'"));
+                            return Err(internal_error!("SortKey::Key never uses 'id'"));
                         }
 
                         match select_statement_level {
@@ -3781,7 +3781,7 @@ impl<'a> SortKey<'a> {
                     ChildKey::Many(_, children) => {
                         for child in children.iter() {
                             if child.sort_by_column.is_primary_key() {
-                                return Err(constraint_violation!("SortKey::Key never uses 'id'"));
+                                return Err(internal_error!("SortKey::Key never uses 'id'"));
                             }
                             out.push_sql(", ");
                             child.sort_by_column.walk_ast(out.reborrow())?;
@@ -3930,9 +3930,7 @@ impl<'a> SortKey<'a> {
     ) -> QueryResult<()> {
         if column.is_primary_key() {
             // This shouldn't happen since we'd use SortKey::IdAsc/Desc
-            return Err(constraint_violation!(
-                "sort_expr called with primary key column"
-            ));
+            return Err(internal_error!("sort_expr called with primary key column"));
         }
 
         fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
@@ -3990,14 +3988,14 @@ impl<'a> SortKey<'a> {
             let sort_by = &child.sort_by_column;
             if sort_by.is_primary_key() {
                 // This shouldn't happen since we'd use SortKey::ManyIdAsc/ManyDesc
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "multi_sort_expr called with primary key column"
                 ));
             }
 
             match sort_by.column_type() {
                 ColumnType::TSVector(_) => {
-                    return Err(constraint_violation!("TSVector is not supported"));
+                    return Err(internal_error!("TSVector is not supported"));
                 }
                 _ => {}
             }
@@ -4565,7 +4563,7 @@ impl<'a> ClampRangeQuery<'a> {
         block: BlockNumber,
     ) -> Result<Self, StoreError> {
         if table.immutable {
-            Err(graph::constraint_violation!(
+            Err(graph::internal_error!(
                 "immutable entities can not be deleted or updated (table `{}`)",
                 table.qualified_name
             ))
@@ -4674,7 +4672,7 @@ pub struct RevertClampQuery<'a> {
 impl<'a> RevertClampQuery<'a> {
     pub(crate) fn new(table: &'a Table, block: BlockNumber) -> Result<Self, StoreError> {
         if table.immutable {
-            Err(graph::constraint_violation!(
+            Err(graph::internal_error!(
                 "can not revert clamping in immutable table `{}`",
                 table.qualified_name
             ))
@@ -4894,7 +4892,7 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 out.push_sql(", 0");
             }
             (true, false) => {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "can not copy entity type {} to {} because the src has a causality region but the dst does not",
                     self.src.object.as_str(),
                     self.dst.object.as_str()

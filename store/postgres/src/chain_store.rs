@@ -30,7 +30,7 @@ use graph::prelude::{
     BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error,
     EthereumCallCache, StoreError,
 };
-use graph::{constraint_violation, ensure};
+use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
 use crate::{
@@ -98,8 +98,8 @@ mod data {
         update,
     };
     use graph::blockchain::{Block, BlockHash};
-    use graph::constraint_violation;
     use graph::data::store::scalar::Bytes;
+    use graph::internal_error;
     use graph::prelude::ethabi::ethereum_types::H160;
     use graph::prelude::transaction_receipt::LightTransactionReceipt;
     use graph::prelude::web3::types::H256;
@@ -176,7 +176,7 @@ mod data {
         if bytes.len() == H256::len_bytes() {
             Ok(H256::from_slice(bytes))
         } else {
-            Err(constraint_violation!(
+            Err(internal_error!(
                 "invalid H256 value `{}` has {} bytes instead of {}",
                 graph::prelude::hex::encode(bytes),
                 bytes.len(),
@@ -1840,7 +1840,7 @@ impl ChainStore {
 
         number.map(|number| number.try_into()).transpose().map_err(
             |e: std::num::TryFromIntError| {
-                constraint_violation!(
+                internal_error!(
                     "head block number for {} is {:?} which does not fit into a u32: {}",
                     chain,
                     number,
@@ -2792,7 +2792,7 @@ impl EthereumCallCache for ChainStore {
         let mut resps = Vec::new();
         for (id, retval, _) in rows {
             let idx = ids.iter().position(|i| i.as_ref() == id).ok_or_else(|| {
-                constraint_violation!(
+                internal_error!(
                     "get_calls returned a call id that was not requested: {}",
                     hex::encode(id)
                 )

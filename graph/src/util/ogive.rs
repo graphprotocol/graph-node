@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use crate::{constraint_violation, prelude::StoreError};
+use crate::{internal_error, prelude::StoreError};
 
 /// A helper to deal with cumulative histograms, also known as ogives. This
 /// implementation is restricted to histograms where each bin has the same
@@ -37,9 +37,7 @@ impl Ogive {
     /// and deduplicated, i.e., they don't have to be in ascending order.
     pub fn from_equi_histogram(mut points: Vec<i64>, total: usize) -> Result<Self, StoreError> {
         if points.is_empty() {
-            return Err(constraint_violation!(
-                "histogram must have at least one point"
-            ));
+            return Err(internal_error!("histogram must have at least one point"));
         }
 
         points.sort_unstable();
@@ -124,7 +122,7 @@ impl Ogive {
     fn inverse(&self, value: i64) -> Result<i64, StoreError> {
         let value = value as f64;
         if value < 0.0 {
-            return Err(constraint_violation!("value {} can not be negative", value));
+            return Err(internal_error!("value {} can not be negative", value));
         }
         let idx = (value / self.bin_size) as usize;
         if idx >= self.points.len() - 1 {
@@ -138,7 +136,7 @@ impl Ogive {
 
     fn check_in_range(&self, point: i64) -> Result<(), StoreError> {
         if !self.range.contains(&point) {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "point {} is outside of the range [{}, {}]",
                 point,
                 self.range.start(),

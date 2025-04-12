@@ -31,8 +31,8 @@ use diesel::{
     QueryDsl, RunQueryDsl,
 };
 use graph::{
-    constraint_violation,
     futures03::{future::select_all, FutureExt as _},
+    internal_error,
     prelude::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
     },
@@ -140,7 +140,7 @@ impl CopyState {
             Some((src_id, hash, number)) => {
                 let stored_target_block = BlockPtr::from((hash, number));
                 if stored_target_block != target_block {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "CopyState {} for copying {} to {} has incompatible block pointer {} instead of {}",
                         dst.site.id,
                         src.site.deployment,
@@ -149,7 +149,7 @@ impl CopyState {
                         target_block));
                 }
                 if src_id != src.site.id {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "CopyState {} for copying {} to {} has incompatible source {} instead of {}",
                         dst.site.id,
                         src.site.deployment,
@@ -275,7 +275,7 @@ impl CopyState {
                 // drop_foreign_schema does), see that we do not have
                 // metadata for `src`
                 if crate::deployment::exists(conn, &self.src.site)? {
-                    return Err(constraint_violation!(
+                    return Err(internal_error!(
                         "we think we are copying {}[{}] across shards from {} to {}, but the \
                         source subgraph is actually in this shard",
                         self.src.site.deployment,
@@ -368,7 +368,7 @@ impl TableState {
             layout
                 .table_for_entity(entity_type)
                 .map_err(|e| {
-                    constraint_violation!(
+                    internal_error!(
                         "invalid {} table {} in CopyState {} (table {}): {}",
                         kind,
                         entity_type,
@@ -750,7 +750,7 @@ impl CopyTableWorker {
             self
         })
         .await
-        .map_err(|e| constraint_violation!("copy worker for {} panicked: {}", object, e))
+        .map_err(|e| internal_error!("copy worker for {} panicked: {}", object, e))
         .into()
     }
 
@@ -944,7 +944,7 @@ impl Connection {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
 
         if src.site.schema_version != dst.site.schema_version {
-            return Err(StoreError::ConstraintViolation(format!(
+            return Err(StoreError::InternalError(format!(
                 "attempted to copy between different schema versions, \
                  source version is {} but destination version is {}",
                 src.site.schema_version, dst.site.schema_version
@@ -981,7 +981,7 @@ impl Connection {
         F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
         let Some(conn) = self.conn.as_mut() else {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "copy connection has been handed to background task but not returned yet (transaction)"
             ));
         };
@@ -1066,13 +1066,11 @@ impl Connection {
             // Something bad happened. We should have at least one
             // worker if there are still tables to copy
             if self.conn.is_none() {
-                return Err(constraint_violation!(
+                return Err(internal_error!(
                     "copy connection has been handed to background task but not returned yet (copy_data_internal)"
                 ));
             } else {
-                return Err(constraint_violation!(
-                    "no workers left but still tables to copy"
-                ));
+                return Err(internal_error!("no workers left but still tables to copy"));
             }
         }
         Ok(())
@@ -1268,9 +1266,7 @@ impl Connection {
 
         let dst_site = self.dst.site.cheap_clone();
         let Some(conn) = self.conn.as_mut() else {
-            return Err(constraint_violation!(
-                "copy connection went missing (copy_data)"
-            ));
+            return Err(internal_error!("copy connection went missing (copy_data)"));
         };
         conn.lock(&self.logger, &dst_site)?;
 

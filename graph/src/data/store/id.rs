@@ -20,9 +20,9 @@ use crate::{
 
 use crate::{
     components::store::StoreError,
-    constraint_violation,
     data::value::Word,
     derive::CacheWeight,
+    internal_error,
     prelude::QueryExecutionError,
     runtime::gas::{Gas, GasSizeOf},
 };
@@ -367,7 +367,7 @@ impl IdList {
                         ids.push(id);
                         Ok(ids)
                     }
-                    _ => Err(constraint_violation!(
+                    _ => Err(internal_error!(
                         "expected string id, got {}: {}",
                         id.id_type(),
                         id,
@@ -381,7 +381,7 @@ impl IdList {
                         ids.push(id);
                         Ok(ids)
                     }
-                    _ => Err(constraint_violation!(
+                    _ => Err(internal_error!(
                         "expected bytes id, got {}: {}",
                         id.id_type(),
                         id,
@@ -395,7 +395,7 @@ impl IdList {
                         ids.push(id);
                         Ok(ids)
                     }
-                    _ => Err(constraint_violation!(
+                    _ => Err(internal_error!(
                         "expected int8 id, got {}: {}",
                         id.id_type(),
                         id,
@@ -423,7 +423,7 @@ impl IdList {
                         ids.push(Word::from(id));
                         Ok(ids)
                     }
-                    _ => Err(constraint_violation!(
+                    _ => Err(internal_error!(
                         "expected string id, got {}: 0x{}",
                         id.id_type(),
                         id,
@@ -438,7 +438,7 @@ impl IdList {
                             ids.push(scalar::Bytes::from(id));
                             Ok(ids)
                         }
-                        _ => Err(constraint_violation!(
+                        _ => Err(internal_error!(
                             "expected bytes id, got {}: {}",
                             id.id_type(),
                             id,
@@ -452,7 +452,7 @@ impl IdList {
                         ids.push(id);
                         Ok(ids)
                     }
-                    _ => Err(constraint_violation!(
+                    _ => Err(internal_error!(
                         "expected int8 id, got {}: {}",
                         id.id_type(),
                         id,
@@ -533,7 +533,7 @@ impl IdList {
                 ids.push(id);
                 Ok(())
             }
-            (list, id) => Err(constraint_violation!(
+            (list, id) => Err(internal_error!(
                 "expected id of type {}, but got {}[{}]",
                 list.id_type(),
                 id.id_type(),

@@ -17,7 +17,7 @@ use graph::{
     prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
     slog::o,
 };
-use graph::{constraint_violation, prelude::CheapClone};
+use graph::{internal_error, prelude::CheapClone};
 use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 
 use crate::{
@@ -55,7 +55,7 @@ pub mod primary {
     };
     use graph::{
         blockchain::{BlockHash, ChainIdentifier},
-        constraint_violation,
+        internal_error,
         prelude::StoreError,
     };
 
@@ -92,7 +92,7 @@ pub mod primary {
                 net_version: self.net_version.clone(),
                 genesis_block_hash: BlockHash::try_from(self.genesis_block.as_str()).map_err(
                     |e| {
-                        constraint_violation!(
+                        internal_error!(
                             "the genesis block hash `{}` for chain `{}` is not a valid hash: {}",
                             self.genesis_block,
                             self.name,
@@ -366,7 +366,7 @@ impl BlockStore {
         let pool = self
             .pools
             .get(&chain.shard)
-            .ok_or_else(|| constraint_violation!("there is no pool for shard {}", chain.shard))?
+            .ok_or_else(|| internal_error!("there is no pool for shard {}", chain.shard))?
             .clone();
         let sender = ChainHeadUpdateSender::new(
             self.mirror.primary().clone(),
@@ -427,7 +427,7 @@ impl BlockStore {
     pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         let store = self
             .store(chain)
-            .ok_or_else(|| constraint_violation!("unknown network `{}`", chain))?;
+            .ok_or_else(|| internal_error!("unknown network `{}`", chain))?;
         store.chain_head_block(chain)
     }
 
@@ -466,7 +466,7 @@ impl BlockStore {
     pub fn drop_chain(&self, chain: &str) -> Result<(), StoreError> {
         let chain_store = self
             .store(chain)
-            .ok_or_else(|| constraint_violation!("unknown chain {}", chain))?;
+            .ok_or_else(|| internal_error!("unknown chain {}", chain))?;
 
         // Delete from the primary first since that's where
         // deployment_schemas has a fk constraint on chains

@@ -74,7 +74,7 @@ pub enum QueryExecutionError {
     DeploymentNotFound(String),
     IdMissing,
     IdNotString,
-    ConstraintViolation(String),
+    InternalError(String),
 }
 
 impl QueryExecutionError {
@@ -132,7 +132,7 @@ impl QueryExecutionError {
             | DeploymentNotFound(_)
             | IdMissing
             | IdNotString
-            | ConstraintViolation(_) => false,
+            | InternalError(_) => false,
         }
     }
 }
@@ -274,7 +274,7 @@ impl fmt::Display for QueryExecutionError {
             DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name),
             IdMissing => write!(f, "entity is missing an `id` attribute"),
             IdNotString => write!(f, "entity `id` attribute is not a string"),
-            ConstraintViolation(msg) => write!(f, "internal constraint violated: {}", msg),
+            InternalError(msg) => write!(f, "internal error: {}", msg),
         }
     }
 }
@@ -306,7 +306,7 @@ impl From<StoreError> for QueryExecutionError {
             StoreError::ChildFilterNestingNotSupportedError(attr, filter) => {
                 QueryExecutionError::ChildFilterNestingNotSupportedError(attr, filter)
             }
-            StoreError::ConstraintViolation(msg) => QueryExecutionError::ConstraintViolation(msg),
+            StoreError::InternalError(msg) => QueryExecutionError::InternalError(msg),
             _ => QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into()))),
         }
     }

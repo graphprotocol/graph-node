@@ -26,13 +26,13 @@ use std::time::Duration;
 use crate::blockchain::{Block, BlockHash, BlockPtr};
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
-use crate::constraint_violation;
 use crate::data::store::scalar::Bytes;
 use crate::data::store::{Id, IdList, Value};
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
+use crate::internal_error;
 use crate::prelude::{s, Attribute, DeploymentHash, ValueType};
 use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
 use crate::util::stats::MovingStats;
@@ -1000,17 +1000,17 @@ impl PruneRequest {
         let rebuild_threshold = ENV_VARS.store.rebuild_threshold;
         let delete_threshold = ENV_VARS.store.delete_threshold;
         if rebuild_threshold < 0.0 || rebuild_threshold > 1.0 {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "the copy threshold must be between 0 and 1 but is {rebuild_threshold}"
             ));
         }
         if delete_threshold < 0.0 || delete_threshold > 1.0 {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "the delete threshold must be between 0 and 1 but is {delete_threshold}"
             ));
         }
         if history_blocks <= reorg_threshold {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "the deployment {} needs to keep at least {} blocks \
                    of history and can't be pruned to only {} blocks of history",
                 deployment,
@@ -1019,7 +1019,7 @@ impl PruneRequest {
             ));
         }
         if first_block >= latest_block {
-            return Err(constraint_violation!(
+            return Err(internal_error!(
                 "the earliest block {} must be before the latest block {}",
                 first_block,
                 latest_block

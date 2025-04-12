@@ -63,8 +63,8 @@ use diesel::{sql_query, PgConnection, RunQueryDsl as _};
 use diesel::sql_types::{Integer, Nullable, Timestamptz};
 use graph::blockchain::BlockTime;
 use graph::components::store::{BlockNumber, StoreError};
-use graph::constraint_violation;
 use graph::data::store::IdType;
+use graph::internal_error;
 use graph::schema::{
     Aggregate, AggregateFn, Aggregation, AggregationInterval, ExprVisitor, VisitExpr,
 };
@@ -111,7 +111,7 @@ fn rewrite<'a>(table: &'a Table, expr: &str) -> Result<(String, Vec<&'a str>), S
 
         fn not_supported(&mut self, msg: String) {
             if self.error.is_none() {
-                self.error = Some(constraint_violation!(
+                self.error = Some(internal_error!(
                     "Schema validation should have found expression errors: {}",
                     msg
                 ));
