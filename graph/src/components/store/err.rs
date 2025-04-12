@@ -1,6 +1,6 @@
 use super::{BlockNumber, DeploymentSchemaVersion};
+use crate::prelude::DeploymentHash;
 use crate::prelude::QueryExecutionError;
-use crate::{data::store::EntityValidationError, prelude::DeploymentHash};
 
 use anyhow::{anyhow, Error};
 use diesel::result::Error as DieselError;
@@ -11,8 +11,6 @@ use tokio::task::JoinError;
 pub enum StoreError {
     #[error("store error: {0:#}")]
     Unknown(Error),
-    #[error("Entity validation failed: {0}")]
-    EntityValidationError(EntityValidationError),
     #[error(
         "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \
          which has an interface in common with `{0}`, exists with the same ID"
@@ -24,8 +22,6 @@ pub enum StoreError {
     UnknownTable(String),
     #[error("entity type '{0}' does not have an attribute '{0}'")]
     UnknownAttribute(String, String),
-    #[error("malformed directive '{0}'")]
-    MalformedDirective(String),
     #[error("query execution failed: {0}")]
     QueryExecutionError(String),
     #[error("Child filter nesting not supported by value `{0}`: `{1}`")]
@@ -54,8 +50,6 @@ pub enum StoreError {
     Canceled,
     #[error("database unavailable")]
     DatabaseUnavailable,
-    #[error("database disabled")]
-    DatabaseDisabled,
     #[error("subgraph forking failed: {0}")]
     ForkFailure(String),
     #[error("subgraph writer poisoned by previous error")]
@@ -96,7 +90,6 @@ impl Clone for StoreError {
     fn clone(&self) -> Self {
         match self {
             Self::Unknown(arg0) => Self::Unknown(anyhow!("{}", arg0)),
-            Self::EntityValidationError(arg0) => Self::EntityValidationError(arg0.clone()),
             Self::ConflictingId(arg0, arg1, arg2) => {
                 Self::ConflictingId(arg0.clone(), arg1.clone(), arg2.clone())
             }
@@ -105,7 +98,6 @@ impl Clone for StoreError {
             Self::UnknownAttribute(arg0, arg1) => {
                 Self::UnknownAttribute(arg0.clone(), arg1.clone())
             }
-            Self::MalformedDirective(arg0) => Self::MalformedDirective(arg0.clone()),
             Self::QueryExecutionError(arg0) => Self::QueryExecutionError(arg0.clone()),
             Self::ChildFilterNestingNotSupportedError(arg0, arg1) => {
                 Self::ChildFilterNestingNotSupportedError(arg0.clone(), arg1.clone())
@@ -121,7 +113,6 @@ impl Clone for StoreError {
             Self::FulltextColumnMissingConfig => Self::FulltextColumnMissingConfig,
             Self::Canceled => Self::Canceled,
             Self::DatabaseUnavailable => Self::DatabaseUnavailable,
-            Self::DatabaseDisabled => Self::DatabaseDisabled,
             Self::ForkFailure(arg0) => Self::ForkFailure(arg0.clone()),
             Self::Poisoned => Self::Poisoned,
             Self::WriterPanic(arg0) => Self::Unknown(anyhow!("writer panic: {}", arg0)),

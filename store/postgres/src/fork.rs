@@ -9,8 +9,8 @@ use graph::{
     components::store::SubgraphFork as SubgraphForkTrait,
     constraint_violation,
     prelude::{
-        info, r::Value as RValue, reqwest, serde_json, DeploymentHash, Entity, Logger, Serialize,
-        StoreError, Value, ValueType,
+        anyhow, info, r::Value as RValue, reqwest, serde_json, DeploymentHash, Entity, Logger,
+        Serialize, StoreError, Value, ValueType,
     },
     schema::Field,
     url::Url,
@@ -211,11 +211,9 @@ query Query ($id: String) {{
             map
         };
 
-        Ok(Some(
-            schema
-                .make_entity(map)
-                .map_err(|e| StoreError::EntityValidationError(e))?,
-        ))
+        Ok(Some(schema.make_entity(map).map_err(|e| {
+            StoreError::Unknown(anyhow!("entity validation failed: {e}"))
+        })?))
     }
 }
 
