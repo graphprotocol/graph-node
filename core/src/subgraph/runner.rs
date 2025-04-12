@@ -1,5 +1,5 @@
 use crate::subgraph::context::IndexingContext;
-use crate::subgraph::error::{ErrorHelper as _, ProcessingError};
+use crate::subgraph::error::{NonDeterministicErrorHelper as _, ProcessingError};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;

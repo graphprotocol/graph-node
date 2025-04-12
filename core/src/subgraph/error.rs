@@ -5,6 +5,9 @@ pub trait DeterministicError: std::fmt::Debug + std::fmt::Display + Send + Sync 
 
 impl DeterministicError for SubgraphError {}
 
+/// An error happened during processing and we need to classify errors into
+/// deterministic and non-deterministic errors. This struct holds the result
+/// of that classification
 #[derive(thiserror::Error, Debug)]
 pub enum ProcessingError {
     #[error("{0:#}")]
@@ -24,18 +27,18 @@ impl ProcessingError {
         matches!(self, ProcessingError::Deterministic(_))
     }
 }
-
-pub(crate) trait ErrorHelper<T, E> {
+/// Implement this for errors that are always non-deterministic.
+pub(crate) trait NonDeterministicErrorHelper<T, E> {
     fn non_deterministic(self: Self) -> Result<T, ProcessingError>;
 }
 
-impl<T> ErrorHelper<T, anyhow::Error> for Result<T, anyhow::Error> {
+impl<T> NonDeterministicErrorHelper<T, anyhow::Error> for Result<T, anyhow::Error> {
     fn non_deterministic(self) -> Result<T, ProcessingError> {
         self.map_err(|e| ProcessingError::Unknown(e))
     }
 }
 
-impl<T> ErrorHelper<T, StoreError> for Result<T, StoreError> {
+impl<T> NonDeterministicErrorHelper<T, StoreError> for Result<T, StoreError> {
     fn non_deterministic(self) -> Result<T, ProcessingError> {
         self.map_err(|e| ProcessingError::Unknown(Error::from(e)))
     }
