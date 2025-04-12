@@ -1,5 +1,7 @@
 use crate::subgraph::context::IndexingContext;
-use crate::subgraph::error::{NonDeterministicErrorHelper as _, ProcessingError};
+use crate::subgraph::error::{
+    ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
+};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
@@ -746,7 +748,8 @@ where
                 is_caught_up,
             )
             .await
-            .non_deterministic()?;
+            .classify()
+            .detail("Failed to transact block operations")?;
 
         // For subgraphs with `nonFatalErrors` feature disabled, we consider
         // any error as fatal.
@@ -1476,8 +1479,8 @@ where
                 is_caught_up,
             )
             .await
-            .context("Failed to transact block operations")
-            .non_deterministic()?;
+            .classify()
+            .detail("Failed to transact block operations")?;
 
         // For subgraphs with `nonFatalErrors` feature disabled, we consider
         // any error as fatal.
