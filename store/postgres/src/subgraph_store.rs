@@ -44,6 +44,7 @@ use crate::{
         index::{IndexList, Method},
         Layout,
     },
+    retry,
     writable::{SourceableStore, WritableStore},
     NotificationSender,
 };
@@ -290,8 +291,11 @@ impl SubgraphStore {
 
         // Ideally the lower level functions would be asyncified.
         let this = self.clone();
+        let logger2 = logger.cheap_clone();
         let site = graph::spawn_blocking_allow_panic(move || -> Result<_, StoreError> {
-            this.find_site(deployment)
+            retry::forever(&logger2, "get_or_create_writable_store", || {
+                this.find_site(deployment)
+            })
         })
         .await
         .unwrap()?; // Propagate panics, there shouldn't be any.
