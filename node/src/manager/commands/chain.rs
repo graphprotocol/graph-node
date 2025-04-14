@@ -10,11 +10,16 @@ use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainIdentifierStore;
 use graph::components::network_provider::ChainName;
 use graph::components::store::StoreError;
+use graph::futures03::compat::Future01CompatExt as _;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
+use graph::prelude::LightEthereumBlockExt;
 use graph::prelude::{anyhow, anyhow::bail};
 use graph::slog::Logger;
 use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
+use graph_chain_ethereum::chain::BlockFinality;
+use graph_chain_ethereum::EthereumAdapter;
+use graph_chain_ethereum::EthereumAdapterTrait as _;
 use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
@@ -257,5 +262,33 @@ pub fn change_block_cache_shard(
         chain_name, old_shard, shard
     );
 
+    Ok(())
+}
+
+pub async fn ingest(
+    logger: &Logger,
+    chain_store: Arc<ChainStore>,
+    ethereum_adapter: Arc<EthereumAdapter>,
+    number: BlockNumber,
+) -> Result<(), Error> {
+    let Some(block) = ethereum_adapter
+        .block_by_number(logger, number)
+        .compat()
+        .await
+        .map_err(|e| anyhow!("error getting block number {number}: {}", e))?
+    else {
+        bail!("block number {number} not found");
+    };
+    let ptr = block.block_ptr();
+    // For inserting the block, it doesn't matter whether the block is final or not.
+    let block = Arc::new(BlockFinality::Final(Arc::new(block)));
+    chain_store.upsert_block(block).await?;
+
+    let rows = chain_store.confirm_block_hash(ptr.number, &ptr.hash)?;
+
+    println!("Inserted block {}", ptr);
+    if rows > 0 {
+        println!("    (also deleted {rows} duplicate row(s) with that number)");
+    }
     Ok(())
 }
