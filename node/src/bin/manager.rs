@@ -8,7 +8,7 @@ use graph::components::network_provider::ChainName;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
-use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
+use graph::prelude::{BlockNumber, MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     prelude::{
@@ -586,6 +586,19 @@ pub enum ChainCommand {
         /// Chain name (must be an existing chain, see 'chain list')
         #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
         chain_name: String,
+    },
+
+    /// Ingest a block into the block cache.
+    ///
+    /// This will overwrite any blocks we may already have in the block
+    /// cache, and can therefore be used to get rid of duplicate blocks in
+    /// the block cache as well as making sure that a certain block is in
+    /// the cache
+    Ingest {
+        /// The name of the chain
+        name: String,
+        /// The block number to ingest
+        number: BlockNumber,
     },
 }
 
@@ -1451,6 +1464,12 @@ async fn main() -> anyhow::Result<()> {
                             commands::chain::clear_call_cache(chain_store, from, to).await
                         }
                     }
+                }
+                Ingest { name, number } => {
+                    let logger = ctx.logger.cheap_clone();
+                    let (chain_store, ethereum_adapter) =
+                        ctx.chain_store_and_adapter(&name).await?;
+                    commands::chain::ingest(&logger, chain_store, ethereum_adapter, number).await
                 }
             }
         }
