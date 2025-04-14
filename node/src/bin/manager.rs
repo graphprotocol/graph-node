@@ -1028,7 +1028,19 @@ impl Context {
         self,
         chain_name: &str,
     ) -> anyhow::Result<(Arc<ChainStore>, Arc<EthereumAdapter>)> {
-        let networks = self.networks().await?;
+        let logger = self.logger.clone();
+        let registry = self.metrics_registry();
+        let metrics = Arc::new(EndpointMetrics::mock());
+        let networks = Networks::from_config_for_chain(
+            logger,
+            &self.config,
+            registry,
+            metrics,
+            &[],
+            chain_name,
+        )
+        .await?;
+
         let chain_store = self.chain_store(chain_name)?;
         let ethereum_adapter = networks
             .ethereum_rpcs(chain_name.into())

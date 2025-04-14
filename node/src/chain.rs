@@ -48,10 +48,39 @@ pub enum ProviderNetworkStatus {
     },
 }
 
+pub trait ChainFilter: Send + Sync {
+    fn filter(&self, chain_name: &str) -> bool;
+}
+
+pub struct AnyChainFilter;
+
+impl ChainFilter for AnyChainFilter {
+    fn filter(&self, _: &str) -> bool {
+        true
+    }
+}
+
+pub struct OneChainFilter {
+    chain_name: String,
+}
+
+impl OneChainFilter {
+    pub fn new(chain_name: String) -> Self {
+        Self { chain_name }
+    }
+}
+
+impl ChainFilter for OneChainFilter {
+    fn filter(&self, chain_name: &str) -> bool {
+        self.chain_name == chain_name
+    }
+}
+
 pub fn create_substreams_networks(
     logger: Logger,
     config: &Config,
     endpoint_metrics: Arc<EndpointMetrics>,
+    chain_filter: &dyn ChainFilter,
 ) -> Vec<AdapterConfiguration> {
     debug!(
         logger,
@@ -63,7 +92,13 @@ pub fn create_substreams_networks(
     let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainName), Vec<Arc<FirehoseEndpoint>>> =
         BTreeMap::new();
 
-    for (name, chain) in &config.chains.chains {
+    let filtered_chains = config
+        .chains
+        .chains
+        .iter()
+        .filter(|(name, _)| chain_filter.filter(name));
+
+    for (name, chain) in filtered_chains {
         let name: ChainName = name.as_str().into();
         for provider in &chain.providers {
             if let ProviderDetails::Substreams(ref firehose) = provider.details {
@@ -113,6 +148,7 @@ pub fn create_firehose_networks(
     logger: Logger,
     config: &Config,
     endpoint_metrics: Arc<EndpointMetrics>,
+    chain_filter: &dyn ChainFilter,
 ) -> Vec<AdapterConfiguration> {
     debug!(
         logger,
@@ -124,7 +160,13 @@ pub fn create_firehose_networks(
     let mut networks_by_kind: BTreeMap<(BlockchainKind, ChainName), Vec<Arc<FirehoseEndpoint>>> =
         BTreeMap::new();
 
-    for (name, chain) in &config.chains.chains {
+    let filtered_chains = config
+        .chains
+        .chains
+        .iter()
+        .filter(|(name, _)| chain_filter.filter(name));
+
+    for (name, chain) in filtered_chains {
         let name: ChainName = name.as_str().into();
         for provider in &chain.providers {
             let logger = logger.cheap_clone();
@@ -179,11 +221,12 @@ pub fn create_firehose_networks(
 
 /// Parses all Ethereum connection strings and returns their network names and
 /// `EthereumAdapter`.
-pub async fn create_all_ethereum_networks(
+pub async fn create_ethereum_networks(
     logger: Logger,
     registry: Arc<MetricsRegistry>,
     config: &Config,
     endpoint_metrics: Arc<EndpointMetrics>,
+    chain_filter: &dyn ChainFilter,
 ) -> anyhow::Result<Vec<AdapterConfiguration>> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let eth_networks_futures = config
@@ -191,6 +234,7 @@ pub async fn create_all_ethereum_networks(
         .chains
         .iter()
         .filter(|(_, chain)| chain.protocol == BlockchainKind::Ethereum)
+        .filter(|(name, _)| chain_filter.filter(name))
         .map(|(name, _)| {
             create_ethereum_networks_for_chain(
                 &logger,
