@@ -5,7 +5,6 @@ mod store;
 use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
-use std::sync::Mutex;
 use std::{collections::HashSet, env::VarError, fmt, str::FromStr, time::Duration};
 
 use self::graphql::*;
@@ -16,8 +15,14 @@ use crate::{
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
 
+#[cfg(debug_assertions)]
+use std::sync::Mutex;
+
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
+}
+#[cfg(debug_assertions)]
+lazy_static! {
     pub static ref TEST_WITH_NO_REORG: Mutex<bool> = Mutex::new(false);
 }
 
