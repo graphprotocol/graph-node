@@ -30,8 +30,8 @@ use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 use std::{any::Any, cmp::Ordering, sync::Arc, time::Duration};
 
 use crate::chain::{
-    create_all_ethereum_networks, create_firehose_networks, create_substreams_networks,
-    networks_as_chains,
+    create_ethereum_networks, create_firehose_networks, create_substreams_networks,
+    networks_as_chains, AnyChainFilter, ChainFilter, OneChainFilter,
 };
 
 #[derive(Debug, Clone)]
@@ -183,31 +183,38 @@ impl Networks {
             .await
     }
 
-    pub async fn from_config(
+    async fn from_config_inner(
         logger: Logger,
         config: &crate::config::Config,
         registry: Arc<MetricsRegistry>,
         endpoint_metrics: Arc<EndpointMetrics>,
         provider_checks: &[Arc<dyn ProviderCheck>],
+        chain_filter: &dyn ChainFilter,
     ) -> Result<Networks> {
         if config.query_only(&config.node) {
             return Ok(Networks::noop());
         }
 
-        let eth = create_all_ethereum_networks(
+        let eth = create_ethereum_networks(
             logger.cheap_clone(),
             registry,
             &config,
             endpoint_metrics.cheap_clone(),
+            chain_filter,
         )
         .await?;
         let firehose = create_firehose_networks(
             logger.cheap_clone(),
             &config,
             endpoint_metrics.cheap_clone(),
+            chain_filter,
         );
-        let substreams =
-            create_substreams_networks(logger.cheap_clone(), &config, endpoint_metrics);
+        let substreams = create_substreams_networks(
+            logger.cheap_clone(),
+            &config,
+            endpoint_metrics,
+            chain_filter,
+        );
         let adapters: Vec<_> = eth
             .into_iter()
             .chain(firehose.into_iter())
@@ -215,6 +222,44 @@ impl Networks {
             .collect();
 
         Ok(Networks::new(&logger, adapters, provider_checks))
+    }
+
+    pub async fn from_config_for_chain(
+        logger: Logger,
+        config: &crate::config::Config,
+        registry: Arc<MetricsRegistry>,
+        endpoint_metrics: Arc<EndpointMetrics>,
+        provider_checks: &[Arc<dyn ProviderCheck>],
+        chain_name: &str,
+    ) -> Result<Networks> {
+        let filter = OneChainFilter::new(chain_name.to_string());
+        Self::from_config_inner(
+            logger,
+            config,
+            registry,
+            endpoint_metrics,
+            provider_checks,
+            &filter,
+        )
+        .await
+    }
+
+    pub async fn from_config(
+        logger: Logger,
+        config: &crate::config::Config,
+        registry: Arc<MetricsRegistry>,
+        endpoint_metrics: Arc<EndpointMetrics>,
+        provider_checks: &[Arc<dyn ProviderCheck>],
+    ) -> Result<Networks> {
+        Self::from_config_inner(
+            logger,
+            config,
+            registry,
+            endpoint_metrics,
+            provider_checks,
+            &AnyChainFilter,
+        )
+        .await
     }
 
     fn new(
