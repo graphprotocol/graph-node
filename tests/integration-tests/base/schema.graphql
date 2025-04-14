@@ -1,4 +1,4 @@
-type GraftingData @entity(immutable: true) {
+type BaseData @entity(immutable: true) {
   id: ID!
   data: String!
   blockNumber: BigInt!

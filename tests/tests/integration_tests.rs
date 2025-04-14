@@ -112,12 +112,12 @@ impl TestCase {
         }
     }
 
-    fn new_with_grafting<T>(name: &str, test: fn(TestContext) -> T, grafted_subgraph: &str) -> Self
+    fn new_with_grafting<T>(name: &str, test: fn(TestContext) -> T, base_subgraph: &str) -> Self
     where
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
         let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(grafted_subgraph.to_string());
+        test_case.source_subgraph = Some(base_subgraph.to_string());
         test_case
     }
 
@@ -836,9 +836,9 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
     ];
 
     let pois: Vec<&str> = vec![
-        "0x4f3e32c290fd6aa3613a0bbd0cc4367ae082036086cf75f292f8eaf798648a27",
-        "0x6053124bc1042dfc9c153b49c626f11860a1bc34d0fde384526a2dbed909d242",
-        "0xca535e3a5be9b93012f6173b33cf9c053cac8028dda9c398b619b67f53a9e1a4",
+        "0xde9e5650e22e61def6990d3fc4bd5915a4e8e0dd54af0b6830bf064aab16cc03",
+        "0x5d790dca3e37bd9976345d32d437b84ba5ea720a0b6ea26231a866e9f078bd52",
+        "0x719c04b78e01804c86f2bd809d20f481e146327af07227960e2242da365754ef",
     ];
 
     for i in 1..4 {
@@ -1040,7 +1040,7 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("timestamp", test_timestamp),
         TestCase::new("ethereum-api-tests", test_eth_api),
         TestCase::new("topic-filter", test_topic_filters),
-        TestCase::new_with_grafting("grafting", test_subgraph_grafting, "grafted"),
+        TestCase::new_with_grafting("grafted", test_subgraph_grafting, "base"),
         TestCase::new_with_source_subgraph(
             "subgraph-data-sources",
             subgraph_data_sources,
@@ -1063,9 +1063,9 @@ async fn integration_tests() -> anyhow::Result<()> {
         cases
     };
 
-    // Here we wait got a block in anvil environment in order not to mess up
+    // Here we wait for a block in the blockchain in order not to influence
     // block hashes for all the blocks until the end of the grafting tests.
-    // Currently the block 3.
+    // Currently the last used block for grafting test is the block 3.
     assert!(wait_for_blockchain_block(SUBGRAPH_LAST_GRAFTING_BLOCK).await);
 
     let contracts = Contract::deploy_all().await?;

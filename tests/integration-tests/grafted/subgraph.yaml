@@ -1,4 +1,4 @@
-specVersion: 0.0.5
+specVersion: 0.0.6
 description: Grafted Subgraph
 repository: https://github.com/graphprotocol/graph-node
 schema:
@@ -22,4 +22,9 @@ dataSources:
           file: ./abis/Contract.abi
       blockHandlers:
         - handler: handleBlock
-      file: ./src/mapping.ts 
+      file: ./src/mapping.ts
+features:
+  - grafting
+graft:
+  base: QmQpiC9bJGFssQfeZippfQ7rcTv7QA67X7jUejc8nV125F
+  block: 2

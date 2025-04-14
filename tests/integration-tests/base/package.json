@@ -1,12 +1,12 @@
 {
-  "name": "grafting-subgraph",
+  "name": "base-subgraph",
   "version": "0.1.0",
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen --skip-migrations",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
-    "create:test": "graph create test/grafting-subgraph --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/grafting-subgraph --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "create:test": "graph create test/base-subgraph --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/base-subgraph --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "0.69.0",

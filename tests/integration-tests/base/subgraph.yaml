@@ -1,5 +1,5 @@
-specVersion: 0.0.6
-description: Grafting Subgraph
+specVersion: 0.0.5
+description: Base Subgraph
 repository: https://github.com/graphprotocol/graph-node
 schema:
   file: ./schema.graphql
@@ -16,15 +16,10 @@ dataSources:
       apiVersion: 0.0.6
       language: wasm/assemblyscript
       entities:
-        - GraftedData
+        - BaseData
       abis:
         - name: SimpleContract
           file: ./abis/Contract.abi
       blockHandlers:
         - handler: handleBlock
-      file: ./src/mapping.ts
-features:
-  - grafting
-graft:
-  base: QmTiueTVFgeUedMsx8trJDYYwCfFxrHmzkgRnKbvBkujq9
-  block: 2
+      file: ./src/mapping.ts 
