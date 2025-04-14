@@ -11,7 +11,6 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::thread;
 use std::time::{self, Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -807,7 +806,7 @@ async fn test_remove_then_update(ctx: TestContext) -> anyhow::Result<()> {
 }
 
 async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
-    async fn get_bloock_hash(block_number: i32) -> Option<String> {
+    async fn get_block_hash(block_number: i32) -> Option<String> {
         const FETCH_BLOCK_HASH: &str = r#"
         query blockHashFromNumber($network: String!, $blockNumber: Int!) {
             hash: blockHashFromNumber(
@@ -843,10 +842,10 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
     ];
 
     for i in 1..4 {
-        let block_hash = get_bloock_hash(i).await.unwrap();
+        let block_hash = get_block_hash(i).await.unwrap();
         // We need to make sure that the preconditions for POI are fulfiled
-        // namely that the anvil produces the proper block hashes for the
-        // blocks of which we will check the POI
+        // namely that the blockchain produced the proper block hashes for the
+        // blocks of which we will check the POI.
         assert_eq!(block_hash, block_hashes[(i - 1) as usize]);
 
         const FETCH_POI: &str = r#"
@@ -1004,6 +1003,7 @@ async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<
 async fn wait_for_blockchain_block(block_number: i32) -> bool {
     // Wait up to 5 minutes for the expected block to appear
     const STATUS_WAIT: Duration = Duration::from_secs(300);
+    const REQUEST_REPEATING: Duration = time::Duration::from_secs(1);
     let start = Instant::now();
     while start.elapsed() < STATUS_WAIT {
         let latest_block = Contract::latest_block().await;
@@ -1014,8 +1014,7 @@ async fn wait_for_blockchain_block(block_number: i32) -> bool {
                 }
             }
         }
-        let one_sec = time::Duration::from_secs(1);
-        thread::sleep(one_sec);
+        tokio::time::sleep(REQUEST_REPEATING).await;
     }
     false
 }
