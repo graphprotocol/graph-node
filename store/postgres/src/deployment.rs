@@ -546,10 +546,14 @@ pub fn revert_block_ptr(
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
+    // Intention is to revert to a block lower than the reorg threshold, on the other
+    // hand the earliest we can possibly go is genesys block, so go to genesys even
+    // if it's within the reorg threshold.
+    let earliest_block = i32::max(ptr.number - ENV_VARS.reorg_threshold(), 0);
     let affected_rows = update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
-            .filter(d::earliest_block_number.le(ptr.number - ENV_VARS.reorg_threshold)),
+            .filter(d::earliest_block_number.le(earliest_block)),
     )
     .set((
         d::latest_ethereum_block_number.eq(sql(&number)),

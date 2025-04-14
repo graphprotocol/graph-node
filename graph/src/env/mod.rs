@@ -15,8 +15,15 @@ use crate::{
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
 
+#[cfg(debug_assertions)]
+use std::sync::Mutex;
+
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
+}
+#[cfg(debug_assertions)]
+lazy_static! {
+    pub static ref TEST_WITH_NO_REORG: Mutex<bool> = Mutex::new(false);
 }
 
 /// Panics if:
@@ -181,7 +188,7 @@ pub struct EnvVars {
     pub static_filters_threshold: usize,
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
-    pub reorg_threshold: BlockNumber,
+    reorg_threshold: BlockNumber,
     /// The time to wait between polls when using polling block ingestor.
     /// The value is set by `ETHERUM_POLLING_INTERVAL` in millis and the
     /// default is 1000.
@@ -259,16 +266,6 @@ impl EnvVars {
         let mapping_handlers = InnerMappingHandlers::init_from_env()?.into();
         let store = InnerStore::init_from_env()?.try_into()?;
 
-        // The default reorganization (reorg) threshold is set to 250.
-        // For testing purposes, we need to set this threshold to 0 because:
-        // 1. Many tests involve reverting blocks.
-        // 2. Blocks cannot be reverted below the reorg threshold.
-        // Therefore, during tests, we want to set the reorg threshold to 0.
-        let reorg_threshold =
-            inner
-                .reorg_threshold
-                .unwrap_or_else(|| if cfg!(debug_assertions) { 0 } else { 250 });
-
         Ok(Self {
             graphql,
             mappings: mapping_handlers,
@@ -322,13 +319,15 @@ impl EnvVars {
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
-            reorg_threshold,
+            reorg_threshold: inner.reorg_threshold,
             ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
             enable_dips_metrics: inner.enable_dips_metrics.0,
             history_blocks_override: inner.history_blocks_override,
-            min_history_blocks: inner.min_history_blocks.unwrap_or(2 * reorg_threshold),
+            min_history_blocks: inner
+                .min_history_blocks
+                .unwrap_or(2 * inner.reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
             firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
@@ -374,6 +373,23 @@ impl EnvVars {
             .map(|x| x.trim().to_string())
             .filter(|x| !x.is_empty())
             .collect()
+    }
+    #[cfg(debug_assertions)]
+    pub fn reorg_threshold(&self) -> i32 {
+        // The default reorganization (reorg) threshold is set to 250.
+        // For testing purposes, we need to set this threshold to 0 because:
+        // 1. Many tests involve reverting blocks.
+        // 2. Blocks cannot be reverted below the reorg threshold.
+        // Therefore, during tests, we want to set the reorg threshold to 0.
+        if *TEST_WITH_NO_REORG.lock().unwrap() {
+            0
+        } else {
+            self.reorg_threshold
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    pub fn reorg_threshold(&self) -> i32 {
+        self.reorg_threshold
     }
 }
 
@@ -473,8 +489,8 @@ struct Inner {
     #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "10000")]
     static_filters_threshold: usize,
     // JSON-RPC specific.
-    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD")]
-    reorg_threshold: Option<BlockNumber>,
+    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
+    reorg_threshold: BlockNumber,
     #[envconfig(from = "ETHEREUM_POLLING_INTERVAL", default = "1000")]
     ingestor_polling_interval: u64,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS")]

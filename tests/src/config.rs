@@ -175,7 +175,8 @@ impl Config {
             .stdout(stdout)
             .stderr(stderr)
             .args(args)
-            .env("GRAPH_STORE_WRITE_BATCH_DURATION", "5");
+            .env("GRAPH_STORE_WRITE_BATCH_DURATION", "5")
+            .env("ETHEREUM_REORG_THRESHOLD", "0");
 
         status!(
             "graph-node",
