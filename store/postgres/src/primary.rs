@@ -450,6 +450,7 @@ mod queries {
     use diesel::sql_types::Text;
     use graph::prelude::NodeId;
     use graph::{
+        components::store::DeploymentId as GraphDeploymentId,
         data::subgraph::status,
         internal_error,
         prelude::{DeploymentHash, StoreError, SubgraphName},
@@ -646,18 +647,18 @@ mod queries {
         conn: &mut PgConnection,
         infos: &mut [status::Info],
     ) -> Result<(), StoreError> {
-        let ids: Vec<_> = infos.iter().map(|info| &info.subgraph).collect();
+        let ids: Vec<_> = infos.iter().map(|info| &info.id).collect();
         let nodes: HashMap<_, _> = a::table
             .inner_join(ds::table.on(ds::id.eq(a::id)))
-            .filter(ds::subgraph.eq_any(ids))
-            .select((ds::subgraph, a::node_id, a::paused_at.is_not_null()))
-            .load::<(String, String, bool)>(conn)?
+            .filter(ds::id.eq_any(ids))
+            .select((ds::id, a::node_id, a::paused_at.is_not_null()))
+            .load::<(GraphDeploymentId, String, bool)>(conn)?
             .into_iter()
-            .map(|(subgraph, node, paused)| (subgraph, (node, paused)))
+            .map(|(id, node, paused)| (id, (node, paused)))
             .collect();
         for info in infos {
-            info.node = nodes.get(&info.subgraph).map(|(node, _)| node.clone());
-            info.paused = nodes.get(&info.subgraph).map(|(_, paused)| *paused);
+            info.node = nodes.get(&info.id).map(|(node, _)| node.clone());
+            info.paused = nodes.get(&info.id).map(|(_, paused)| *paused);
         }
         Ok(())
     }
