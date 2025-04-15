@@ -1,0 +1,30 @@
+specVersion: 0.0.6
+description: Grafted Subgraph
+repository: https://github.com/graphprotocol/graph-node
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: SimpleContract
+    network: test
+    source:
+      address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      abi: SimpleContract
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - GraftedData
+      abis:
+        - name: SimpleContract
+          file: ./abis/Contract.abi
+      blockHandlers:
+        - handler: handleBlock
+      file: ./src/mapping.ts
+features:
+  - grafting
+graft:
+  base: QmQpiC9bJGFssQfeZippfQ7rcTv7QA67X7jUejc8nV125F
+  block: 2

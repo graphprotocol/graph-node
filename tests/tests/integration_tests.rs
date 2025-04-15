@@ -11,7 +11,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::time::{Duration, Instant};
+use std::time::{self, Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use graph::futures03::StreamExt;
@@ -24,6 +24,8 @@ use graph_tests::{error, status, CONFIG};
 use tokio::process::{Child, Command};
 use tokio::task::JoinError;
 use tokio::time::sleep;
+
+const SUBGRAPH_LAST_GRAFTING_BLOCK: i32 = 3;
 
 type TestFn = Box<
     dyn FnOnce(TestContext) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>>
@@ -108,6 +110,15 @@ impl TestCase {
             test: Box::new(move |ctx| Box::pin(test(ctx))),
             source_subgraph: None,
         }
+    }
+
+    fn new_with_grafting<T>(name: &str, test: fn(TestContext) -> T, base_subgraph: &str) -> Self
+    where
+        T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+    {
+        let mut test_case = Self::new(name, test);
+        test_case.source_subgraph = Some(base_subgraph.to_string());
+        test_case
     }
 
     fn new_with_source_subgraph<T>(
@@ -246,7 +257,7 @@ impl TestCase {
                 let subgraph = self.deploy_and_wait(source, contracts).await?;
                 status!(
                     source,
-                    "source subgraph deployed with hash {}",
+                    "Source subgraph deployed with hash {}",
                     subgraph.deployment
                 );
             }
@@ -456,9 +467,8 @@ async fn test_block_handlers(ctx: TestContext) -> anyhow::Result<()> {
     .await?;
 
     // test subgraphFeatures endpoint returns handlers correctly
-    let subgraph_features = subgraph
-        .index_with_vars(
-            "query GetSubgraphFeatures($deployment: String!) {
+    let subgraph_features = Subgraph::query_with_vars(
+        "query GetSubgraphFeatures($deployment: String!) {
           subgraphFeatures(subgraphId: $deployment) {
             specVersion
             apiVersion
@@ -468,9 +478,9 @@ async fn test_block_handlers(ctx: TestContext) -> anyhow::Result<()> {
             handlers
           }
         }",
-            json!({ "deployment": subgraph.deployment }),
-        )
-        .await?;
+        json!({ "deployment": subgraph.deployment }),
+    )
+    .await?;
     let handlers = &subgraph_features["data"]["subgraphFeatures"]["handlers"];
     assert!(
         handlers.is_array(),
@@ -697,9 +707,8 @@ async fn test_non_fatal_errors(ctx: TestContext) -> anyhow::Result<()> {
         }
       }";
 
-    let resp = subgraph
-        .index_with_vars(query, json!({ "deployment" : subgraph.deployment }))
-        .await?;
+    let resp =
+        Subgraph::query_with_vars(query, json!({ "deployment" : subgraph.deployment })).await?;
     let subgraph_features = &resp["data"]["subgraphFeatures"];
     let exp = json!({
       "specVersion": "0.0.4",
@@ -796,6 +805,82 @@ async fn test_remove_then_update(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
+    async fn get_block_hash(block_number: i32) -> Option<String> {
+        const FETCH_BLOCK_HASH: &str = r#"
+        query blockHashFromNumber($network: String!, $blockNumber: Int!) {
+            hash: blockHashFromNumber(
+              network: $network,
+              blockNumber: $blockNumber,
+            ) } "#;
+        let vars = json!({
+            "network": "test",
+            "blockNumber": block_number
+        });
+
+        let resp = Subgraph::query_with_vars(FETCH_BLOCK_HASH, vars)
+            .await
+            .unwrap();
+        assert_eq!(None, resp.get("errors"));
+        resp["data"]["hash"].as_str().map(|s| s.to_owned())
+    }
+
+    let subgraph = ctx.subgraph;
+
+    assert!(subgraph.healthy);
+
+    let block_hashes: Vec<&str> = vec![
+        "384c705d4d1933ae8ba89026f016f09854057a267e1143e47bb7511d772a35d4",
+        "b90423eead33404dae0684169d35edd494b36802b721fb8de0bb8bc036c10480",
+        "2a6c4b65d659e0485371a93bc1ac0f0d7bc0f25a454b5f23a842335fea0638d5",
+    ];
+
+    let pois: Vec<&str> = vec![
+        "0xde9e5650e22e61def6990d3fc4bd5915a4e8e0dd54af0b6830bf064aab16cc03",
+        "0x5d790dca3e37bd9976345d32d437b84ba5ea720a0b6ea26231a866e9f078bd52",
+        "0x719c04b78e01804c86f2bd809d20f481e146327af07227960e2242da365754ef",
+    ];
+
+    for i in 1..4 {
+        let block_hash = get_block_hash(i).await.unwrap();
+        // We need to make sure that the preconditions for POI are fulfiled
+        // namely that the blockchain produced the proper block hashes for the
+        // blocks of which we will check the POI.
+        assert_eq!(block_hash, block_hashes[(i - 1) as usize]);
+
+        const FETCH_POI: &str = r#"
+        query proofOfIndexing($subgraph: String!, $blockNumber: Int!, $blockHash: String!, $indexer: String!) {
+            proofOfIndexing(
+              subgraph: $subgraph,
+              blockNumber: $blockNumber,
+              blockHash: $blockHash,
+              indexer: $indexer
+            ) } "#;
+
+        let zero_addr = "0000000000000000000000000000000000000000";
+        let vars = json!({
+            "subgraph": subgraph.deployment,
+            "blockNumber": i,
+            "blockHash": block_hash,
+            "indexer": zero_addr,
+        });
+        let resp = Subgraph::query_with_vars(FETCH_POI, vars).await?;
+        assert_eq!(None, resp.get("errors"));
+        assert!(resp["data"]["proofOfIndexing"].is_string());
+        let poi = resp["data"]["proofOfIndexing"].as_str().unwrap();
+        // Check the expected value of the POI. The transition from the old legacy
+        // hashing to the new one is done in the block #2 anything before that
+        // should not change as the legacy code will not be updated. Any change
+        // after that might indicate a change in the way new POI is now calculated.
+        // Change on the block #2 would mean a change in the transitioning
+        // from the old to the new algorithm hence would be reflected only
+        // subgraphs that are grafting from pre 0.0.5 to 0.0.6 or newer.
+        assert_eq!(poi, pois[(i - 1) as usize]);
+    }
+
+    Ok(())
+}
+
 async fn test_poi_for_failed_subgraph(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     const INDEXING_STATUS: &str = r#"
@@ -829,9 +914,9 @@ async fn test_poi_for_failed_subgraph(ctx: TestContext) -> anyhow::Result<()> {
     }
 
     async fn fetch_status(subgraph: &Subgraph) -> anyhow::Result<Status> {
-        let resp = subgraph
-            .index_with_vars(INDEXING_STATUS, json!({ "subgraphName": subgraph.name }))
-            .await?;
+        let resp =
+            Subgraph::query_with_vars(INDEXING_STATUS, json!({ "subgraphName": subgraph.name }))
+                .await?;
         assert_eq!(None, resp.get("errors"));
         let statuses = &resp["data"]["statuses"];
         assert_eq!(1, statuses.as_array().unwrap().len());
@@ -877,7 +962,7 @@ async fn test_poi_for_failed_subgraph(ctx: TestContext) -> anyhow::Result<()> {
         "blockNumber": block_number,
         "blockHash": status.latest_block["hash"],
     });
-    let resp = subgraph.index_with_vars(FETCH_POI, vars).await?;
+    let resp = Subgraph::query_with_vars(FETCH_POI, vars).await?;
     assert_eq!(None, resp.get("errors"));
     assert!(resp["data"]["proofOfIndexing"].is_string());
     Ok(())
@@ -915,6 +1000,25 @@ async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<
     Ok(())
 }
 
+async fn wait_for_blockchain_block(block_number: i32) -> bool {
+    // Wait up to 5 minutes for the expected block to appear
+    const STATUS_WAIT: Duration = Duration::from_secs(300);
+    const REQUEST_REPEATING: Duration = time::Duration::from_secs(1);
+    let start = Instant::now();
+    while start.elapsed() < STATUS_WAIT {
+        let latest_block = Contract::latest_block().await;
+        if let Some(latest_block) = latest_block {
+            if let Some(number) = latest_block.number {
+                if number >= block_number.into() {
+                    return true;
+                }
+            }
+        }
+        tokio::time::sleep(REQUEST_REPEATING).await;
+    }
+    false
+}
+
 /// The main test entrypoint.
 #[tokio::test]
 async fn integration_tests() -> anyhow::Result<()> {
@@ -936,6 +1040,7 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("timestamp", test_timestamp),
         TestCase::new("ethereum-api-tests", test_eth_api),
         TestCase::new("topic-filter", test_topic_filters),
+        TestCase::new_with_grafting("grafted", test_subgraph_grafting, "base"),
         TestCase::new_with_source_subgraph(
             "subgraph-data-sources",
             subgraph_data_sources,
@@ -957,6 +1062,11 @@ async fn integration_tests() -> anyhow::Result<()> {
     } else {
         cases
     };
+
+    // Here we wait for a block in the blockchain in order not to influence
+    // block hashes for all the blocks until the end of the grafting tests.
+    // Currently the last used block for grafting test is the block 3.
+    assert!(wait_for_blockchain_block(SUBGRAPH_LAST_GRAFTING_BLOCK).await);
 
     let contracts = Contract::deploy_all().await?;
 
