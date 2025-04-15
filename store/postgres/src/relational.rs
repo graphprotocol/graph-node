@@ -94,7 +94,7 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
-    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+    pub(crate) static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
         .graphql
         .sql_statement_timeout
         .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
@@ -442,12 +442,13 @@ impl Layout {
         Ok(())
     }
 
-    /// Find the table with the provided `name`. The name must exactly match
-    /// the name of an existing table. No conversions of the name are done
-    pub fn table(&self, name: &SqlName) -> Option<&Table> {
+    /// Find the table with the provided `sql_name`. The name must exactly
+    /// match the name of an existing table. No conversions of the name are
+    /// done
+    pub fn table(&self, sql_name: &str) -> Option<&Table> {
         self.tables
             .values()
-            .find(|table| &table.name == name)
+            .find(|table| &table.name == sql_name)
             .map(|rc| rc.as_ref())
     }
 
