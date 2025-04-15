@@ -3,6 +3,11 @@ mod err;
 mod traits;
 pub mod write;
 
+use diesel::deserialize::FromSql;
+use diesel::pg::Pg;
+use diesel::serialize::{Output, ToSql};
+use diesel::sql_types::Integer;
+use diesel_derives::{AsExpression, FromSqlRow};
 pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
 use slog::Logger;
 
@@ -691,7 +696,20 @@ pub struct StoredDynamicDataSource {
 /// identifier only has meaning in the context of a specific instance of
 /// graph-node. Only store code should ever construct or consume it; all
 /// other code passes it around as an opaque token.
-#[derive(Copy, Clone, CheapClone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(
+    Copy,
+    Clone,
+    CheapClone,
+    Debug,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    AsExpression,
+    FromSqlRow,
+)]
+#[diesel(sql_type = Integer)]
 pub struct DeploymentId(pub i32);
 
 impl Display for DeploymentId {
@@ -703,6 +721,19 @@ impl Display for DeploymentId {
 impl DeploymentId {
     pub fn new(id: i32) -> Self {
         Self(id)
+    }
+}
+
+impl FromSql<Integer, Pg> for DeploymentId {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
+        let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
+        Ok(DeploymentId(id))
+    }
+}
+
+impl ToSql<Integer, Pg> for DeploymentId {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
+        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
     }
 }
 
