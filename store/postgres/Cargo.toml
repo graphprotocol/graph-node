@@ -7,7 +7,7 @@ edition.workspace = true
 async-trait = "0.1.50"
 blake3 = "1.6"
 chrono = { workspace = true }
-derive_more = { version = "0.99.18" }
+derive_more = { version = "2.0.1" }
 diesel = { workspace = true }
 diesel-dynamic-schema = { workspace = true }
 diesel-derive-enum = { workspace = true }
