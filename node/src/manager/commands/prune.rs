@@ -341,14 +341,16 @@ pub async fn status(
         let runs = match runs.len() {
             0 => unreachable!("we checked that runs is not empty"),
             1 => format!("There is only one prune run #{}", runs[0]),
+            2 => format!("Only prune runs #{} and #{} exist", runs[0], runs[1]),
             _ => format!(
-                "Only prune runs #{} up to #{} exist",
+                "Only prune runs #{} and #{} up to #{} exist",
                 runs[0],
+                runs[1],
                 runs.last().unwrap()
             ),
         };
         return Err(anyhow!(
-            "No information about prune run #{run} found for deployment {deployment}. {runs}"
+            "No information about prune run #{run} found for deployment {deployment}.\n  {runs}"
         ));
     };
     println!("prune {deployment} (run #{run})");
