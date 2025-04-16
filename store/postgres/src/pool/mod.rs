@@ -66,6 +66,8 @@ const SHARDED_TABLES: [(&str, &[&str]); 2] = [
             "subgraph",
             "subgraph_version",
             "subgraph_deployment_assignment",
+            "prune_state",
+            "prune_table_state",
         ],
     ),
 ];
