@@ -16,10 +16,7 @@ use graph::{
 };
 use graph_store_postgres::{ConnectionPool, Store};
 
-use crate::manager::{
-    commands::stats::{abbreviate_table_name, show_stats},
-    deployment::DeploymentSearch,
-};
+use crate::manager::{commands::stats::show_stats, deployment::DeploymentSearch, fmt};
 
 struct Progress {
     start: Instant,
@@ -66,7 +63,7 @@ fn print_batch(
     };
     print!(
         "\r{:<30} | {:>10} | {:>9}s {phase}",
-        abbreviate_table_name(table, 30),
+        fmt::abbreviate(table, 30),
         total_rows,
         elapsed.as_secs()
     );
