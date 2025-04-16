@@ -1,5 +1,5 @@
 use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, sync::Arc};
 
 use graph::{
     components::store::{BlockStore as _, DeploymentId, DeploymentLocator},
@@ -19,8 +19,8 @@ use graph_store_postgres::{
 };
 use graph_store_postgres::{ConnectionPool, Shard, Store, SubgraphStore};
 
-use crate::manager::deployment::DeploymentSearch;
 use crate::manager::display::List;
+use crate::manager::{deployment::DeploymentSearch, fmt};
 
 type UtcDateTime = DateTime<Utc>;
 
@@ -260,26 +260,6 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     use catalog::active_copies as ac;
     use catalog::deployment_schemas as ds;
 
-    fn duration(start: &UtcDateTime, end: &Option<UtcDateTime>) -> String {
-        let start = *start;
-        let end = *end;
-
-        let end = end.unwrap_or(UtcDateTime::from(SystemTime::now()));
-        let duration = end - start;
-
-        human_duration(duration)
-    }
-
-    fn human_duration(duration: Duration) -> String {
-        if duration.num_seconds() < 5 {
-            format!("{}ms", duration.num_milliseconds())
-        } else if duration.num_minutes() < 5 {
-            format!("{}s", duration.num_seconds())
-        } else {
-            format!("{}m", duration.num_minutes())
-        }
-    }
-
     let primary = pools
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
@@ -336,7 +316,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         state.dst.to_string(),
         state.target_block_number.to_string(),
         on_sync.to_str().to_string(),
-        duration(&state.started_at, &state.finished_at),
+        fmt::duration(&state.started_at, &state.finished_at),
         progress,
     ];
     match (cancelled_at, state.cancelled_at) {
@@ -378,7 +358,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
             table.next_vid,
             table.target_vid,
             table.batch_size,
-            human_duration(Duration::milliseconds(table.duration_ms)),
+            fmt::human_duration(Duration::milliseconds(table.duration_ms)),
         );
     }
 

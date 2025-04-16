@@ -8,6 +8,7 @@ pub mod color;
 pub mod commands;
 pub mod deployment;
 mod display;
+pub mod fmt;
 pub mod prompt;
 
 /// A dummy subscription manager that always panics
