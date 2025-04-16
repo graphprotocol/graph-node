@@ -50,7 +50,20 @@ pub fn human_duration(duration: Duration) -> String {
     } else if duration.num_minutes() < 5 {
         format!("{}s", duration.num_seconds())
     } else {
-        format!("{}m", duration.num_minutes())
+        let minutes = duration.num_minutes();
+        if minutes < 90 {
+            format!("{}m", duration.num_minutes())
+        } else {
+            let hours = minutes / 60;
+            let minutes = minutes % 60;
+            if hours < 24 {
+                format!("{}h {}m", hours, minutes)
+            } else {
+                let days = hours / 24;
+                let hours = hours % 24;
+                format!("{}d {}h {}m", days, hours, minutes)
+            }
+        }
     }
 }
 
@@ -75,4 +88,36 @@ pub fn abbreviate(name: &str, size: usize) -> String {
 pub fn date_time(date: &DateTime<Utc>) -> String {
     let date = DateTime::<Local>::from(*date);
     date.format("%Y-%m-%d %H:%M:%S%Z").to_string()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_human_duration() {
+        let duration = Duration::seconds(1);
+        assert_eq!(human_duration(duration), "1000ms");
+
+        let duration = Duration::seconds(10);
+        assert_eq!(human_duration(duration), "10s");
+
+        let duration = Duration::minutes(5);
+        assert_eq!(human_duration(duration), "5m");
+
+        let duration = Duration::hours(1);
+        assert_eq!(human_duration(duration), "60m");
+
+        let duration = Duration::minutes(100);
+        assert_eq!(human_duration(duration), "1h 40m");
+
+        let duration = Duration::days(1);
+        assert_eq!(human_duration(duration), "1d 0h 0m");
+
+        let duration = Duration::days(1) + Duration::minutes(35);
+        assert_eq!(human_duration(duration), "1d 0h 35m");
+
+        let duration = Duration::days(1) + Duration::minutes(95);
+        assert_eq!(human_duration(duration), "1d 1h 35m");
+    }
 }
