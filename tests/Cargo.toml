@@ -19,7 +19,7 @@ graph-runtime-wasm = { path = "../runtime/wasm" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
-tokio = { version = "1.38.0", features = ["rt", "macros", "process"] }
+tokio = { version = "1.44.2", features = ["rt", "macros", "process"] }
 # Once graph upgrades to web3 0.19, we don't need this anymore. The version
 # here needs to be kept in sync with the web3 version that the graph crate
 # uses until then
