@@ -508,6 +508,7 @@ mod status {
     };
     use graph::{
         components::store::{PruneRequest, PruningStrategy, StoreResult},
+        env::ENV_VARS,
         prelude::StoreError,
     };
 
@@ -675,6 +676,15 @@ mod status {
                 .map_err(StoreError::from)?
                 .unwrap_or(0)
                 + 1;
+
+            // Delete old prune state. Keep the initial run and the last
+            // `prune_keep_history` runs (including this one)
+            diesel::delete(ps::table)
+                .filter(ps::id.eq(layout.site.id))
+                .filter(ps::run.gt(1))
+                .filter(ps::run.lt(run - (ENV_VARS.store.prune_keep_history - 1) as i32))
+                .execute(conn)
+                .map_err(StoreError::from)?;
 
             Ok(Tracker { layout, run })
         }
