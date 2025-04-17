@@ -356,6 +356,157 @@ where
         }
     }
 
+    async fn transact_block_state(
+        &mut self,
+        logger: &Logger,
+        block_ptr: BlockPtr,
+        firehose_cursor: FirehoseCursor,
+        block_time: BlockTime,
+        mut block_state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
+        offchain_mods: Vec<EntityModification>,
+        processed_offchain_data_sources: Vec<StoredDynamicDataSource>,
+        cancel_handle: &CancelHandle,
+    ) -> Result<bool, ProcessingError> {
+        let has_errors = block_state.has_errors();
+        let is_non_fatal_errors_active = self
+            .inputs
+            .features
+            .contains(&SubgraphFeature::NonFatalErrors);
+
+        // Avoid writing to store if block stream has been canceled
+        if cancel_handle.is_canceled() {
+            return Err(ProcessingError::Canceled);
+        }
+
+        if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
+            update_proof_of_indexing(
+                proof_of_indexing,
+                block_time,
+                &self.metrics.host.stopwatch,
+                &mut block_state.entity_cache,
+            )
+            .await
+            .non_deterministic()?;
+        }
+
+        let section = self
+            .metrics
+            .host
+            .stopwatch
+            .start_section("as_modifications");
+        let ModificationsAndCache {
+            modifications: mut mods,
+            entity_lfu_cache: cache,
+            evict_stats,
+        } = block_state
+            .entity_cache
+            .as_modifications(block_ptr.number)
+            .map_err(|e| ProcessingError::Unknown(e.into()))?;
+        section.end();
+
+        trace!(self.logger, "Entity cache statistics";
+                            "weight" => evict_stats.new_weight,
+                            "evicted_weight" => evict_stats.evicted_weight,
+                            "count" => evict_stats.new_count,
+                            "evicted_count" => evict_stats.evicted_count,
+                            "stale_update" => evict_stats.stale_update,
+                            "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
+                            "accesses" => evict_stats.accesses,
+                            "evict_time_ms" => evict_stats.evict_time.as_millis());
+
+        mods.extend(offchain_mods);
+
+        // Put the cache back in the state, asserting that the placeholder cache was not used.
+        assert!(self.state.entity_lfu_cache.is_empty());
+        self.state.entity_lfu_cache = cache;
+
+        if !mods.is_empty() {
+            info!(&logger, "Applying {} entity operation(s)", mods.len());
+        }
+
+        let err_count = block_state.deterministic_errors.len();
+        for (i, e) in block_state.deterministic_errors.iter().enumerate() {
+            let message = format!("{:#}", e).replace('\n', "\t");
+            error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
+                "error" => message,
+                "code" => LogCode::SubgraphSyncingFailure
+            );
+        }
+
+        // Transact entity operations into the store and update the
+        // subgraph's block stream pointer
+        let _section = self.metrics.host.stopwatch.start_section("transact_block");
+        let start = Instant::now();
+
+        // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
+        if has_errors && !is_non_fatal_errors_active {
+            let is_poi_entity =
+                |entity_mod: &EntityModification| entity_mod.key().entity_type.is_poi();
+            mods.retain(is_poi_entity);
+            // Confidence check
+            assert!(
+                mods.len() == 1,
+                "There should be only one PoI EntityModification"
+            );
+        }
+
+        let BlockState {
+            deterministic_errors,
+            persisted_data_sources,
+            metrics: block_state_metrics,
+            ..
+        } = block_state;
+
+        let first_error = deterministic_errors.first().cloned();
+
+        let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
+
+        self.inputs
+            .store
+            .transact_block_operations(
+                block_ptr.clone(),
+                block_time,
+                firehose_cursor,
+                mods,
+                &self.metrics.host.stopwatch,
+                persisted_data_sources,
+                deterministic_errors,
+                processed_offchain_data_sources,
+                is_non_fatal_errors_active,
+                is_caught_up,
+            )
+            .await
+            .classify()
+            .detail("Failed to transact block operations")?;
+
+        // For subgraphs with `nonFatalErrors` feature disabled, we consider
+        // any error as fatal.
+        //
+        // So we do an early return to make the subgraph stop processing blocks.
+        //
+        // In this scenario the only entity that is stored/transacted is the PoI,
+        // all of the others are discarded.
+        if has_errors && !is_non_fatal_errors_active {
+            // Only the first error is reported.
+            return Err(ProcessingError::Deterministic(Box::new(
+                first_error.unwrap(),
+            )));
+        }
+
+        let elapsed = start.elapsed().as_secs_f64();
+        self.metrics
+            .subgraph
+            .block_ops_transaction_duration
+            .observe(elapsed);
+
+        block_state_metrics
+            .flush_metrics_to_store(&logger, block_ptr, self.inputs.deployment.id)
+            .non_deterministic()?;
+
+        Ok(has_errors)
+    }
+
     /// Processes a block and returns the updated context and a boolean flag indicating
     /// whether new dynamic data sources have been added to the subgraph.
     async fn process_block(
@@ -625,55 +776,6 @@ where
             }
         }
 
-        let has_errors = block_state.has_errors();
-        let is_non_fatal_errors_active = self
-            .inputs
-            .features
-            .contains(&SubgraphFeature::NonFatalErrors);
-
-        // Apply entity operations and advance the stream
-
-        // Avoid writing to store if block stream has been canceled
-        if block_stream_cancel_handle.is_canceled() {
-            return Err(ProcessingError::Canceled);
-        }
-
-        if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
-            update_proof_of_indexing(
-                proof_of_indexing,
-                block.timestamp(),
-                &self.metrics.host.stopwatch,
-                &mut block_state.entity_cache,
-            )
-            .await
-            .non_deterministic()?;
-        }
-
-        let section = self
-            .metrics
-            .host
-            .stopwatch
-            .start_section("as_modifications");
-        let ModificationsAndCache {
-            modifications: mut mods,
-            entity_lfu_cache: cache,
-            evict_stats,
-        } = block_state
-            .entity_cache
-            .as_modifications(block.number())
-            .map_err(|e| ProcessingError::Unknown(e.into()))?;
-        section.end();
-
-        trace!(self.logger, "Entity cache statistics";
-            "weight" => evict_stats.new_weight,
-            "evicted_weight" => evict_stats.evicted_weight,
-            "count" => evict_stats.new_count,
-            "evicted_count" => evict_stats.evicted_count,
-            "stale_update" => evict_stats.stale_update,
-            "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
-            "accesses" => evict_stats.accesses,
-            "evict_time_ms" => evict_stats.evict_time.as_millis());
-
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self
@@ -685,95 +787,23 @@ where
             self.handle_offchain_triggers(offchain_events, &block)
                 .await
                 .non_deterministic()?;
-        mods.extend(offchain_mods);
+        block_state
+            .persisted_data_sources
+            .extend(persisted_off_chain_data_sources);
 
-        // Put the cache back in the state, asserting that the placeholder cache was not used.
-        assert!(self.state.entity_lfu_cache.is_empty());
-        self.state.entity_lfu_cache = cache;
-
-        if !mods.is_empty() {
-            info!(&logger, "Applying {} entity operation(s)", mods.len());
-        }
-
-        let err_count = block_state.deterministic_errors.len();
-        for (i, e) in block_state.deterministic_errors.iter().enumerate() {
-            let message = format!("{:#}", e).replace('\n', "\t");
-            error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
-                "error" => message,
-                "code" => LogCode::SubgraphSyncingFailure
-            );
-        }
-
-        // Transact entity operations into the store and update the
-        // subgraph's block stream pointer
-        let _section = self.metrics.host.stopwatch.start_section("transact_block");
-        let start = Instant::now();
-
-        // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
-        if has_errors && !is_non_fatal_errors_active {
-            let is_poi_entity =
-                |entity_mod: &EntityModification| entity_mod.key().entity_type.is_poi();
-            mods.retain(is_poi_entity);
-            // Confidence check
-            assert!(
-                mods.len() == 1,
-                "There should be only one PoI EntityModification"
-            );
-        }
-
-        let BlockState {
-            deterministic_errors,
-            mut persisted_data_sources,
-            metrics: block_state_metrics,
-            ..
-        } = block_state;
-
-        let first_error = deterministic_errors.first().cloned();
-
-        let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
-
-        persisted_data_sources.extend(persisted_off_chain_data_sources);
-        self.inputs
-            .store
-            .transact_block_operations(
+        let has_errors = self
+            .transact_block_state(
+                &logger,
                 block_ptr.clone(),
+                firehose_cursor.clone(),
                 block.timestamp(),
-                firehose_cursor,
-                mods,
-                &self.metrics.host.stopwatch,
-                persisted_data_sources,
-                deterministic_errors,
+                block_state,
+                proof_of_indexing,
+                offchain_mods,
                 processed_offchain_data_sources,
-                is_non_fatal_errors_active,
-                is_caught_up,
+                block_stream_cancel_handle,
             )
-            .await
-            .classify()
-            .detail("Failed to transact block operations")?;
-
-        // For subgraphs with `nonFatalErrors` feature disabled, we consider
-        // any error as fatal.
-        //
-        // So we do an early return to make the subgraph stop processing blocks.
-        //
-        // In this scenario the only entity that is stored/transacted is the PoI,
-        // all of the others are discarded.
-        if has_errors && !is_non_fatal_errors_active {
-            // Only the first error is reported.
-            return Err(ProcessingError::Deterministic(Box::new(
-                first_error.unwrap(),
-            )));
-        }
-
-        let elapsed = start.elapsed().as_secs_f64();
-        self.metrics
-            .subgraph
-            .block_ops_transaction_duration
-            .observe(elapsed);
-
-        block_state_metrics
-            .flush_metrics_to_store(&logger, block_ptr, self.inputs.deployment.id)
-            .non_deterministic()?;
+            .await?;
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
@@ -1336,7 +1366,7 @@ where
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
 
-        let mut block_state = {
+        let block_state = {
             match self
                 .process_wasm_block(
                     &proof_of_indexing,
@@ -1371,136 +1401,19 @@ where
             }
         };
 
-        let has_errors = block_state.has_errors();
-        let is_non_fatal_errors_active = self
-            .inputs
-            .features
-            .contains(&SubgraphFeature::NonFatalErrors);
-
-        // Apply entity operations and advance the stream
-
-        // Avoid writing to store if block stream has been canceled
-        if cancel_handle.is_canceled() {
-            return Err(ProcessingError::Canceled.into());
-        }
-
-        if let Some(proof_of_indexing) = proof_of_indexing.into_inner() {
-            update_proof_of_indexing(
+        let has_errors = self
+            .transact_block_state(
+                &logger,
+                block_ptr.clone(),
+                cursor.clone(),
+                block_time,
+                block_state,
                 proof_of_indexing,
-                block_time,
-                &self.metrics.host.stopwatch,
-                &mut block_state.entity_cache,
-            )
-            .await
-            .non_deterministic()?;
-        }
-
-        let section = self
-            .metrics
-            .host
-            .stopwatch
-            .start_section("as_modifications");
-        let ModificationsAndCache {
-            modifications: mut mods,
-            entity_lfu_cache: cache,
-            evict_stats,
-        } = block_state
-            .entity_cache
-            .as_modifications(block_ptr.number)
-            .map_err(|e| ProcessingError::Unknown(e.into()))?;
-        section.end();
-
-        trace!(self.logger, "Entity cache statistics";
-            "weight" => evict_stats.new_weight,
-            "evicted_weight" => evict_stats.evicted_weight,
-            "count" => evict_stats.new_count,
-            "evicted_count" => evict_stats.evicted_count,
-            "stale_update" => evict_stats.stale_update,
-            "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
-            "accesses" => evict_stats.accesses,
-            "evict_time_ms" => evict_stats.evict_time.as_millis());
-
-        // Put the cache back in the state, asserting that the placeholder cache was not used.
-        assert!(self.state.entity_lfu_cache.is_empty());
-        self.state.entity_lfu_cache = cache;
-
-        if !mods.is_empty() {
-            info!(&logger, "Applying {} entity operation(s)", mods.len());
-        }
-
-        let err_count = block_state.deterministic_errors.len();
-        for (i, e) in block_state.deterministic_errors.iter().enumerate() {
-            let message = format!("{:#}", e).replace('\n', "\t");
-            error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
-                "error" => message,
-                "code" => LogCode::SubgraphSyncingFailure
-            );
-        }
-
-        // Transact entity operations into the store and update the
-        // subgraph's block stream pointer
-        let _section = self.metrics.host.stopwatch.start_section("transact_block");
-        let start = Instant::now();
-
-        // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
-        if has_errors && !is_non_fatal_errors_active {
-            let is_poi_entity =
-                |entity_mod: &EntityModification| entity_mod.key().entity_type.is_poi();
-            mods.retain(is_poi_entity);
-            // Confidence check
-            assert!(
-                mods.len() == 1,
-                "There should be only one PoI EntityModification"
-            );
-        }
-
-        let BlockState {
-            deterministic_errors,
-            ..
-        } = block_state;
-
-        let first_error = deterministic_errors.first().cloned();
-
-        // We consider a subgraph caught up when it's at most 1 blocks behind the chain head.
-        let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
-
-        self.inputs
-            .store
-            .transact_block_operations(
-                block_ptr,
-                block_time,
-                cursor,
-                mods,
-                &self.metrics.host.stopwatch,
                 vec![],
-                deterministic_errors,
                 vec![],
-                is_non_fatal_errors_active,
-                is_caught_up,
+                cancel_handle,
             )
-            .await
-            .classify()
-            .detail("Failed to transact block operations")?;
-
-        // For subgraphs with `nonFatalErrors` feature disabled, we consider
-        // any error as fatal.
-        //
-        // So we do an early return to make the subgraph stop processing blocks.
-        //
-        // In this scenario the only entity that is stored/transacted is the PoI,
-        // all of the others are discarded.
-        if has_errors && !is_non_fatal_errors_active {
-            // Only the first error is reported.
-            return Err(ProcessingError::Deterministic(Box::new(
-                first_error.unwrap(),
-            )));
-        }
-
-        let elapsed = start.elapsed().as_secs_f64();
-        self.metrics
-            .subgraph
-            .block_ops_transaction_duration
-            .observe(elapsed);
+            .await?;
 
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
