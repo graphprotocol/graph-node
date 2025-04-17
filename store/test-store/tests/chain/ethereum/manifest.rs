@@ -1854,7 +1854,8 @@ specVersion: 1.3.0
                 assert!(matches!(e, SubgraphManifestResolveError::ResolveError(_)));
                 let error_msg = e.to_string();
                 println!("{}", error_msg);
-                assert!(error_msg.contains("Nested subgraph data sources are not supported."));
+                assert!(error_msg
+                    .contains("Nested subgraph data sources [SubgraphSource] are not supported."));
             }
         }
     })
