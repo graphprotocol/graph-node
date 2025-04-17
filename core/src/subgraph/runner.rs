@@ -362,7 +362,7 @@ where
         block_ptr: BlockPtr,
         firehose_cursor: FirehoseCursor,
         block_time: BlockTime,
-        mut block_state: BlockState,
+        block_state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         offchain_mods: Vec<EntityModification>,
         processed_offchain_data_sources: Vec<StoredDynamicDataSource>,
@@ -374,6 +374,14 @@ where
             .features
             .contains(&SubgraphFeature::NonFatalErrors);
 
+        let BlockState {
+            deterministic_errors,
+            persisted_data_sources,
+            metrics: block_state_metrics,
+            mut entity_cache,
+            ..
+        } = block_state;
+
         // Avoid writing to store if block stream has been canceled
         if cancel_handle.is_canceled() {
             return Err(ProcessingError::Canceled);
@@ -384,7 +392,7 @@ where
                 proof_of_indexing,
                 block_time,
                 &self.metrics.host.stopwatch,
-                &mut block_state.entity_cache,
+                &mut entity_cache,
             )
             .await
             .non_deterministic()?;
@@ -399,8 +407,7 @@ where
             modifications: mut mods,
             entity_lfu_cache: cache,
             evict_stats,
-        } = block_state
-            .entity_cache
+        } = entity_cache
             .as_modifications(block_ptr.number)
             .map_err(|e| ProcessingError::Unknown(e.into()))?;
         section.end();
@@ -425,8 +432,8 @@ where
             info!(&logger, "Applying {} entity operation(s)", mods.len());
         }
 
-        let err_count = block_state.deterministic_errors.len();
-        for (i, e) in block_state.deterministic_errors.iter().enumerate() {
+        let err_count = deterministic_errors.len();
+        for (i, e) in deterministic_errors.iter().enumerate() {
             let message = format!("{:#}", e).replace('\n', "\t");
             error!(&logger, "Subgraph error {}/{}", i + 1, err_count;
                 "error" => message,
@@ -450,13 +457,6 @@ where
                 "There should be only one PoI EntityModification"
             );
         }
-
-        let BlockState {
-            deterministic_errors,
-            persisted_data_sources,
-            metrics: block_state_metrics,
-            ..
-        } = block_state;
 
         let first_error = deterministic_errors.first().cloned();
 
