@@ -4,6 +4,7 @@
 use crate::{
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
+    pool::PRIMARY_PUBLIC,
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
     ConnectionPool, ForeignServer, NotificationSender,
 };
@@ -2006,12 +2007,7 @@ impl Mirror {
 
         // Repopulate `PUBLIC_TABLES` by copying their data wholesale
         for table_name in Self::PUBLIC_TABLES {
-            copy_table(
-                conn,
-                ForeignServer::PRIMARY_PUBLIC,
-                NAMESPACE_PUBLIC,
-                table_name,
-            )?;
+            copy_table(conn, PRIMARY_PUBLIC, NAMESPACE_PUBLIC, table_name)?;
             check_cancel()?;
         }
 

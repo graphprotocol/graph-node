@@ -14,35 +14,40 @@ use graph::futures03::future::join_all;
 use graph::futures03::FutureExt as _;
 use graph::internal_error;
 use graph::prelude::tokio::time::Instant;
+use graph::prelude::{
+    anyhow::anyhow, crit, debug, error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle,
+    CancelToken as _, CancelableError, Counter, Gauge, Logger, MovingStats, PoolWaitStats,
+    StoreError, ENV_VARS,
+};
 use graph::prelude::{tokio, MetricsRegistry};
 use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
-use graph::{
-    prelude::{
-        anyhow::{self, anyhow, bail},
-        crit, debug, error, info, o,
-        tokio::sync::Semaphore,
-        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
-        MovingStats, PoolWaitStats, StoreError, ENV_VARS,
-    },
-    util::security::SafeDisplay,
-};
 
-use std::fmt::{self, Write};
+use std::fmt::{self};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
-use postgres::config::{Config, Host};
-
 use crate::advisory_lock::with_migration_lock;
 use crate::catalog;
-use crate::primary::{self, Mirror, Namespace, NAMESPACE_PUBLIC};
+use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
+
+mod foreign_server;
+
+pub use foreign_server::ForeignServer;
+
+/// The namespace under which the `PRIMARY_TABLES` are mapped into each
+/// shard
+pub(crate) const PRIMARY_PUBLIC: &'static str = "primary_public";
 
 /// Tables that we map from the primary into `primary_public` in each shard
 const PRIMARY_TABLES: [&str; 3] = ["deployment_schemas", "chains", "active_copies"];
+
+/// The namespace under which we create views in the primary that union all
+/// the `SHARDED_TABLES`
+pub(crate) const CROSS_SHARD_NSP: &'static str = "sharded";
 
 /// Tables that we map from each shard into each other shard into the
 /// `shard_<name>_subgraphs` namespace
@@ -85,227 +90,6 @@ fn check_mirrored_tables() {
         if !subgraphs_tables.contains(&table) {
             panic!("table {} is not in SHARDED_TABLES[subgraphs]", table);
         }
-    }
-}
-
-pub struct ForeignServer {
-    pub name: String,
-    pub shard: Shard,
-    pub user: String,
-    pub password: String,
-    pub host: String,
-    pub port: u16,
-    pub dbname: String,
-}
-
-impl ForeignServer {
-    pub(crate) const PRIMARY_PUBLIC: &'static str = "primary_public";
-    pub(crate) const CROSS_SHARD_NSP: &'static str = "sharded";
-
-    /// The name of the foreign server under which data for `shard` is
-    /// accessible
-    pub fn name(shard: &Shard) -> String {
-        format!("shard_{}", shard.as_str())
-    }
-
-    /// The name of the schema under which the `subgraphs` schema for
-    /// `shard` is accessible in shards that are not `shard`. In most cases
-    /// you actually want to use `metadata_schema_in`
-    pub fn metadata_schema(shard: &Shard) -> String {
-        format!("{}_subgraphs", Self::name(shard))
-    }
-
-    /// The name of the schema under which the `subgraphs` schema for
-    /// `shard` is accessible in the shard `current`. It is permissible for
-    /// `shard` and `current` to be the same.
-    pub fn metadata_schema_in(shard: &Shard, current: &Shard) -> String {
-        if shard == current {
-            "subgraphs".to_string()
-        } else {
-            Self::metadata_schema(&shard)
-        }
-    }
-
-    pub fn new_from_raw(shard: String, postgres_url: &str) -> Result<Self, anyhow::Error> {
-        Self::new(Shard::new(shard)?, postgres_url)
-    }
-
-    pub fn new(shard: Shard, postgres_url: &str) -> Result<Self, anyhow::Error> {
-        let config: Config = match postgres_url.parse() {
-            Ok(config) => config,
-            Err(e) => panic!(
-                "failed to parse Postgres connection string `{}`: {}",
-                SafeDisplay(postgres_url),
-                e
-            ),
-        };
-
-        let host = match config.get_hosts().get(0) {
-            Some(Host::Tcp(host)) => host.to_string(),
-            _ => bail!("can not find host name in `{}`", SafeDisplay(postgres_url)),
-        };
-
-        let user = config
-            .get_user()
-            .ok_or_else(|| anyhow!("could not find user in `{}`", SafeDisplay(postgres_url)))?
-            .to_string();
-        let password = String::from_utf8(
-            config
-                .get_password()
-                .ok_or_else(|| {
-                    anyhow!(
-                        "could not find password in `{}`; you must provide one.",
-                        SafeDisplay(postgres_url)
-                    )
-                })?
-                .into(),
-        )?;
-        let port = config.get_ports().first().cloned().unwrap_or(5432u16);
-        let dbname = config
-            .get_dbname()
-            .map(|s| s.to_string())
-            .ok_or_else(|| anyhow!("could not find user in `{}`", SafeDisplay(postgres_url)))?;
-
-        Ok(Self {
-            name: Self::name(&shard),
-            shard,
-            user,
-            password,
-            host,
-            port,
-            dbname,
-        })
-    }
-
-    /// Create a new foreign server and user mapping on `conn` for this foreign
-    /// server
-    fn create(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
-        let query = format!(
-            "\
-        create server \"{name}\"
-               foreign data wrapper postgres_fdw
-               options (host '{remote_host}', \
-                        port '{remote_port}', \
-                        dbname '{remote_db}', \
-                        fetch_size '{fetch_size}', \
-                        updatable 'false');
-        create user mapping
-               for current_user server \"{name}\"
-               options (user '{remote_user}', password '{remote_password}');",
-            name = self.name,
-            remote_host = self.host,
-            remote_port = self.port,
-            remote_db = self.dbname,
-            remote_user = self.user,
-            remote_password = self.password,
-            fetch_size = ENV_VARS.store.fdw_fetch_size,
-        );
-        Ok(conn.batch_execute(&query)?)
-    }
-
-    /// Update an existing user mapping with possibly new details
-    fn update(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
-        let options = catalog::server_options(conn, &self.name)?;
-        let set_or_add = |option: &str| -> &'static str {
-            if options.contains_key(option) {
-                "set"
-            } else {
-                "add"
-            }
-        };
-
-        let query = format!(
-            "\
-        alter server \"{name}\"
-              options (set host '{remote_host}', \
-                       {set_port} port '{remote_port}', \
-                       set dbname '{remote_db}', \
-                       {set_fetch_size} fetch_size '{fetch_size}');
-        alter user mapping
-              for current_user server \"{name}\"
-              options (set user '{remote_user}', set password '{remote_password}');",
-            name = self.name,
-            remote_host = self.host,
-            set_port = set_or_add("port"),
-            set_fetch_size = set_or_add("fetch_size"),
-            remote_port = self.port,
-            remote_db = self.dbname,
-            remote_user = self.user,
-            remote_password = self.password,
-            fetch_size = ENV_VARS.store.fdw_fetch_size,
-        );
-        Ok(conn.batch_execute(&query)?)
-    }
-
-    /// Map key tables from the primary into our local schema. If we are the
-    /// primary, set them up as views.
-    fn map_primary(conn: &mut PgConnection, shard: &Shard) -> Result<(), StoreError> {
-        catalog::recreate_schema(conn, Self::PRIMARY_PUBLIC)?;
-
-        let mut query = String::new();
-        for table_name in PRIMARY_TABLES {
-            let create_stmt = if shard == &*PRIMARY_SHARD {
-                format!(
-                    "create view {nsp}.{table_name} as select * from public.{table_name};",
-                    nsp = Self::PRIMARY_PUBLIC,
-                    table_name = table_name
-                )
-            } else {
-                catalog::create_foreign_table(
-                    conn,
-                    NAMESPACE_PUBLIC,
-                    table_name,
-                    Self::PRIMARY_PUBLIC,
-                    Self::name(&PRIMARY_SHARD).as_str(),
-                )?
-            };
-            write!(query, "{}", create_stmt)?;
-        }
-        conn.batch_execute(&query)?;
-        Ok(())
-    }
-
-    /// Map the `subgraphs` schema from the foreign server `self` into the
-    /// database accessible through `conn`
-    fn map_metadata(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
-        let nsp = Self::metadata_schema(&self.shard);
-        catalog::recreate_schema(conn, &nsp)?;
-        let mut query = String::new();
-        for (src_nsp, src_tables) in SHARDED_TABLES {
-            for src_table in src_tables {
-                let create_stmt =
-                    catalog::create_foreign_table(conn, src_nsp, src_table, &nsp, &self.name)?;
-                write!(query, "{}", create_stmt)?;
-            }
-        }
-        Ok(conn.batch_execute(&query)?)
-    }
-
-    fn needs_remap(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
-        fn different(mut existing: Vec<String>, mut needed: Vec<String>) -> bool {
-            existing.sort();
-            needed.sort();
-            existing != needed
-        }
-
-        if &self.shard == &*PRIMARY_SHARD {
-            let existing = catalog::foreign_tables(conn, Self::PRIMARY_PUBLIC)?;
-            let needed = PRIMARY_TABLES
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<_>>();
-            if different(existing, needed) {
-                return Ok(true);
-            }
-        }
-
-        let existing = catalog::foreign_tables(conn, &Self::metadata_schema(&self.shard))?;
-        let needed = SHARDED_TABLES
-            .iter()
-            .flat_map(|(_, tables)| *tables)
-            .map(|table| table.to_string())
-            .collect::<Vec<_>>();
-        Ok(different(existing, needed))
     }
 }
 
@@ -1223,10 +1007,7 @@ impl PoolInner {
         info!(&self.logger, "Dropping cross-shard views");
         let mut conn = self.get()?;
         conn.transaction(|conn| {
-            let query = format!(
-                "drop schema if exists {} cascade",
-                ForeignServer::CROSS_SHARD_NSP
-            );
+            let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
             conn.batch_execute(&query)?;
             Ok(())
         })
@@ -1258,7 +1039,7 @@ impl PoolInner {
         }
 
         let mut conn = self.get()?;
-        let sharded = Namespace::special(ForeignServer::CROSS_SHARD_NSP);
+        let sharded = Namespace::special(CROSS_SHARD_NSP);
         if catalog::has_namespace(&mut conn, &sharded)? {
             // We dropped the namespace before, but another node must have
             // recreated it in the meantime so we don't need to do anything
@@ -1267,7 +1048,7 @@ impl PoolInner {
 
         info!(&self.logger, "Creating cross-shard views");
         conn.transaction(|conn| {
-            let query = format!("create schema {}", ForeignServer::CROSS_SHARD_NSP);
+            let query = format!("create schema {}", CROSS_SHARD_NSP);
             conn.batch_execute(&query)?;
             for (src_nsp, src_tables) in SHARDED_TABLES {
                 // Pairs of (shard, nsp) for all servers
@@ -1277,7 +1058,7 @@ impl PoolInner {
                         conn,
                         src_nsp,
                         src_table,
-                        ForeignServer::CROSS_SHARD_NSP,
+                        CROSS_SHARD_NSP,
                         &nsps,
                     )?;
                     conn.batch_execute(&create_view)?;
