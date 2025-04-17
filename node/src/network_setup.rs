@@ -372,10 +372,6 @@ impl Networks {
         let mut res = vec![];
         for ((kind, id), chain) in blockchain_map.iter() {
             match kind {
-                BlockchainKind::Arweave => {
-                    block_ingestor::<graph_chain_arweave::Chain>(logger, id, chain, &mut res)
-                        .await?
-                }
                 BlockchainKind::Ethereum => {
                     block_ingestor::<graph_chain_ethereum::Chain>(logger, id, chain, &mut res)
                         .await?

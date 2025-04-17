@@ -310,24 +310,6 @@ where
             history_blocks.or(self.settings.for_name(&name).map(|c| c.history_blocks));
 
         let deployment_locator = match kind {
-            BlockchainKind::Arweave => {
-                create_subgraph_version::<graph_chain_arweave::Chain, _>(
-                    &logger,
-                    self.store.clone(),
-                    self.chains.cheap_clone(),
-                    name.clone(),
-                    hash.cheap_clone(),
-                    start_block_override,
-                    graft_block_override,
-                    raw,
-                    node_id,
-                    debug_fork,
-                    self.version_switching_mode,
-                    &self.resolver,
-                    history_blocks,
-                )
-                .await?
-            }
             BlockchainKind::Ethereum => {
                 create_subgraph_version::<graph_chain_ethereum::Chain, _>(
                     &logger,

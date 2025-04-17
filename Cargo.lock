@@ -494,15 +494,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "base64-url"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38e2b6c78c06f7288d5e3c3d683bde35a79531127c83b087e5d0d77c974b4b28"
-dependencies = [
- "base64 0.22.1",
-]
-
-[[package]]
 name = "beef"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1948,22 +1939,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-arweave"
-version = "0.36.0"
-dependencies = [
- "base64-url",
- "diesel",
- "graph",
- "graph-runtime-derive",
- "graph-runtime-wasm",
- "prost",
- "prost-types",
- "serde",
- "sha2",
- "tonic-build",
-]
-
-[[package]]
 name = "graph-chain-common"
 version = "0.36.0"
 dependencies = [
@@ -2039,7 +2014,6 @@ dependencies = [
  "bytes",
  "cid",
  "graph",
- "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-substreams",
@@ -2076,7 +2050,6 @@ dependencies = [
  "env_logger",
  "git-testament",
  "graph",
- "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-substreams",
@@ -2159,7 +2132,6 @@ dependencies = [
  "blake3 1.8.2",
  "git-testament",
  "graph",
- "graph-chain-arweave",
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-substreams",

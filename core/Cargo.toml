@@ -8,9 +8,6 @@ async-trait = "0.1.50"
 atomic_refcell = "0.1.13"
 bytes = "1.0"
 graph = { path = "../graph" }
-# This dependency is temporary. The multiblockchain refactoring is not
-# finished as long as this dependency exists
-graph-chain-arweave = { path = "../chain/arweave" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
 graph-chain-substreams = { path = "../chain/substreams" }

@@ -4,7 +4,6 @@ members = [
     "core",
     "core/graphman",
     "core/graphman_store",
-    "chain/arweave",
     "chain/common",
     "chain/ethereum",
     "chain/near",
