@@ -120,9 +120,7 @@ where
                     .compat()
                     .map_err(SubgraphAssignmentProviderError::Unknown)
                     .map_err(CancelableError::Error)
-                    .cancelable(&assignment_event_stream_cancel_handle, || {
-                        Err(CancelableError::Cancel)
-                    })
+                    .cancelable(&assignment_event_stream_cancel_handle)
                     .compat()
                     .for_each(move |assignment_event| {
                         assert_eq!(assignment_event.node_id(), &node_id);
