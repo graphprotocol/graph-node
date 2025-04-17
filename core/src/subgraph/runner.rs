@@ -8,7 +8,7 @@ use crate::subgraph::stream::new_block_stream;
 use anyhow::Context as _;
 use async_trait::async_trait;
 use graph::blockchain::block_stream::{
-    BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
+    BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockTime, Blockchain, DataSource as _, SubgraphFilter, Trigger, TriggerFilter as _,
@@ -26,8 +26,8 @@ use graph::data_source::{
     offchain, CausalityRegion, DataSource, DataSourceCreationError, TriggerData,
 };
 use graph::env::EnvVars;
+use graph::ext::futures::Cancelable;
 use graph::futures03::stream::StreamExt;
-use graph::futures03::TryStreamExt;
 use graph::prelude::{
     anyhow, hex, retry, thiserror, BlockNumber, BlockPtr, BlockState, CancelGuard, CancelHandle,
     CancelToken as _, CancelableError, CheapClone as _, EntityCache, EntityModification, Error,
@@ -60,6 +60,7 @@ where
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
     pub metrics: RunnerMetrics,
+    cancel_handle: Option<CancelHandle>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -99,6 +100,7 @@ where
             },
             logger,
             metrics,
+            cancel_handle: None,
         }
     }
 
@@ -206,6 +208,39 @@ where
         self.build_filter()
     }
 
+    async fn start_block_stream(&mut self) -> Result<Cancelable<Box<dyn BlockStream<C>>>, Error> {
+        let block_stream_canceler = CancelGuard::new();
+        let block_stream_cancel_handle = block_stream_canceler.handle();
+        // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
+        self.ctx.filter = Some(self.build_filter());
+
+        let block_stream = new_block_stream(
+            &self.inputs,
+            self.ctx.filter.clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+            &self.metrics.subgraph,
+        )
+        .await?
+        .cancelable(&block_stream_canceler);
+
+        self.cancel_handle = Some(block_stream_cancel_handle);
+
+        // Keep the stream's cancel guard around to be able to shut it down when the subgraph
+        // deployment is unassigned
+        self.ctx
+            .instances
+            .insert(self.inputs.deployment.id, block_stream_canceler);
+
+        Ok(block_stream)
+    }
+
+    fn is_canceled(&self) -> bool {
+        if let Some(ref cancel_handle) = self.cancel_handle {
+            cancel_handle.is_canceled()
+        } else {
+            false
+        }
+    }
+
     pub async fn run(self) -> Result<(), SubgraphRunnerError> {
         self.run_inner(false).await.map(|_| ())
     }
@@ -255,27 +290,9 @@ where
         loop {
             debug!(self.logger, "Starting or restarting subgraph");
 
-            let block_stream_canceler = CancelGuard::new();
-            let block_stream_cancel_handle = block_stream_canceler.handle();
-            // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
-            self.ctx.filter = Some(self.build_filter());
+            let mut block_stream = self.start_block_stream().await?;
 
-            let mut block_stream = new_block_stream(
-                &self.inputs,
-                self.ctx.filter.clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
-                &self.metrics.subgraph,
-            )
-            .await?
-            .map_err(CancelableError::from)
-            .cancelable(&block_stream_canceler);
-
-            // Keep the stream's cancel guard around to be able to shut it down when the subgraph
-            // deployment is unassigned
-            self.ctx
-                .instances
-                .insert(self.inputs.deployment.id, block_stream_canceler);
-
-            debug!(self.logger, "Starting block stream");
+            debug!(self.logger, "Started block stream");
 
             self.metrics.subgraph.deployment_status.running();
 
@@ -291,21 +308,18 @@ where
                 // This will require some code refactor in how the BlockStream is created
                 let block_start = Instant::now();
 
-                let action = self
-                    .handle_stream_event(event, &block_stream_cancel_handle)
-                    .await
-                    .map(|res| {
-                        self.metrics
-                            .subgraph
-                            .observe_block_processed(block_start.elapsed(), res.block_finished());
-                        res
-                    })?;
+                let action = self.handle_stream_event(event).await.map(|res| {
+                    self.metrics
+                        .subgraph
+                        .observe_block_processed(block_start.elapsed(), res.block_finished());
+                    res
+                })?;
 
                 self.update_deployment_synced_metric();
 
                 // It is possible that the subgraph was unassigned, but the runner was in
                 // a retry delay state and did not observe the cancel signal.
-                if block_stream_cancel_handle.is_canceled() {
+                if self.is_canceled() {
                     // It is also possible that the runner was in a retry delay state while
                     // the subgraph was reassigned and a new runner was started.
                     if self.ctx.instances.contains(&self.inputs.deployment.id) {
@@ -363,7 +377,6 @@ where
         proof_of_indexing: SharedProofOfIndexing,
         offchain_mods: Vec<EntityModification>,
         processed_offchain_data_sources: Vec<StoredDynamicDataSource>,
-        cancel_handle: &CancelHandle,
     ) -> Result<bool, ProcessingError> {
         let has_errors = block_state.has_errors();
         let BlockState {
@@ -375,7 +388,7 @@ where
         } = block_state;
 
         // Avoid writing to store if block stream has been canceled
-        if cancel_handle.is_canceled() {
+        if self.is_canceled() {
             return Err(ProcessingError::Canceled);
         }
 
@@ -503,7 +516,6 @@ where
     /// whether new dynamic data sources have been added to the subgraph.
     async fn process_block(
         &mut self,
-        block_stream_cancel_handle: &CancelHandle,
         block: BlockWithTriggers<C>,
         firehose_cursor: FirehoseCursor,
     ) -> Result<Action, ProcessingError> {
@@ -793,7 +805,6 @@ where
                 proof_of_indexing,
                 offchain_mods,
                 processed_offchain_data_sources,
-                block_stream_cancel_handle,
             )
             .await?;
 
@@ -1114,7 +1125,6 @@ where
     async fn handle_stream_event(
         &mut self,
         event: Option<Result<BlockStreamEvent<C>, CancelableError<BlockStreamError>>>,
-        cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let action = match event {
             Some(Ok(BlockStreamEvent::ProcessWasmBlock(
@@ -1130,14 +1140,7 @@ where
                     .stopwatch
                     .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
                 let res = self
-                    .handle_process_wasm_block(
-                        block_ptr.clone(),
-                        block_time,
-                        data,
-                        handler,
-                        cursor,
-                        cancel_handle,
-                    )
+                    .handle_process_wasm_block(block_ptr.clone(), block_time, data, handler, cursor)
                     .await;
                 let start = Instant::now();
                 self.handle_action(start, block_ptr, res).await?
@@ -1148,8 +1151,7 @@ where
                     .stream
                     .stopwatch
                     .start_section(PROCESS_BLOCK_SECTION_NAME);
-                self.handle_process_block(block, cursor, cancel_handle)
-                    .await?
+                self.handle_process_block(block, cursor).await?
             }
             Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
                 let _section = self
@@ -1161,7 +1163,7 @@ where
             }
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
-            Some(Err(e)) => self.handle_err(e, cancel_handle).await?,
+            Some(Err(e)) => self.handle_err(e).await?,
             // If the block stream ends, that means that there is no more indexing to do.
             // Typically block streams produce indefinitely, but tests are an example of finite block streams.
             None => Action::Stop,
@@ -1304,24 +1306,19 @@ trait StreamEventHandler<C: Blockchain> {
         block_data: Box<[u8]>,
         handler: String,
         cursor: FirehoseCursor,
-        cancel_handle: &CancelHandle,
     ) -> Result<Action, ProcessingError>;
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
         cursor: FirehoseCursor,
-        cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
         cursor: FirehoseCursor,
     ) -> Result<Action, Error>;
-    async fn handle_err(
-        &mut self,
-        err: CancelableError<BlockStreamError>,
-        cancel_handle: &CancelHandle,
-    ) -> Result<Action, Error>;
+    async fn handle_err(&mut self, err: CancelableError<BlockStreamError>)
+        -> Result<Action, Error>;
     fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
 }
 
@@ -1338,7 +1335,6 @@ where
         block_data: Box<[u8]>,
         handler: String,
         cursor: FirehoseCursor,
-        cancel_handle: &CancelHandle,
     ) -> Result<Action, ProcessingError> {
         let logger = self.logger.new(o!(
                 "block_number" => format!("{:?}", block_ptr.number),
@@ -1403,7 +1399,6 @@ where
                 proof_of_indexing,
                 vec![],
                 vec![],
-                cancel_handle,
             )
             .await?;
 
@@ -1427,7 +1422,6 @@ where
         &mut self,
         block: BlockWithTriggers<C>,
         cursor: FirehoseCursor,
-        cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let block_ptr = block.ptr();
         self.metrics
@@ -1460,7 +1454,7 @@ where
 
         let start = Instant::now();
 
-        let res = self.process_block(cancel_handle, block, cursor).await;
+        let res = self.process_block(block, cursor).await;
 
         self.handle_action(start, block_ptr, res).await
     }
@@ -1519,9 +1513,8 @@ where
     async fn handle_err(
         &mut self,
         err: CancelableError<BlockStreamError>,
-        cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
-        if cancel_handle.is_canceled() {
+        if self.is_canceled() {
             debug!(&self.logger, "Subgraph block stream shut down cleanly");
             return Ok(Action::Stop);
         }
