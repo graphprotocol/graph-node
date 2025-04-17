@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_graphql::Context;
 use async_graphql::Result;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graph_store_postgres::Store;
 

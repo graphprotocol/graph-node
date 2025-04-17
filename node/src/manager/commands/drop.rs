@@ -4,7 +4,7 @@ use crate::manager::{
     prompt::prompt_for_confirmation,
 };
 use graph::anyhow::{self, bail};
-use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
+use graph_store_postgres::{ConnectionPool, NotificationSender, SubgraphStore};
 use std::sync::Arc;
 
 /// Finds, unassigns, record and remove matching deployments.

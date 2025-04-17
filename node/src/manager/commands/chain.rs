@@ -16,16 +16,14 @@ use graph::prelude::{anyhow, anyhow::bail};
 use graph::slog::Logger;
 use graph::{components::store::BlockStore as _, prelude::anyhow::Error};
 use graph_store_postgres::add_chain;
-use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStatus;
 use graph_store_postgres::ChainStore;
+use graph_store_postgres::PoolCoordinator;
 use graph_store_postgres::Shard;
-use graph_store_postgres::{
-    command_support::catalog::block_store, connection_pool::ConnectionPool,
-};
+use graph_store_postgres::{command_support::catalog::block_store, ConnectionPool};
 
 use crate::network_setup::Networks;
 

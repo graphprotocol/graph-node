@@ -28,9 +28,9 @@ use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
-use graph_store_postgres::connection_pool::ConnectionPool;
-use graph_store_postgres::Store;
-use graph_store_postgres::{register_jobs as register_store_jobs, NotificationSender};
+use graph_store_postgres::{
+    register_jobs as register_store_jobs, ConnectionPool, NotificationSender, Store,
+};
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
 use std::io::{BufRead, BufReader};

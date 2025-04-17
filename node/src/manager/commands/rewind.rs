@@ -10,8 +10,8 @@ use graph::components::store::{BlockStore as _, ChainStore as _, DeploymentLocat
 use graph::env::ENV_VARS;
 use graph::prelude::{anyhow, BlockNumber, BlockPtr};
 use graph_store_postgres::command_support::catalog::{self as store_catalog};
-use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 use graph_store_postgres::{BlockStore, NotificationSender};
+use graph_store_postgres::{ConnectionPool, Store};
 
 async fn block_ptr(
     store: Arc<BlockStore>,

@@ -11,8 +11,8 @@ use graph::{
     prelude::{anyhow, lazy_static, regex::Regex, DeploymentHash},
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
-use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::unused;
+use graph_store_postgres::ConnectionPool;
 
 lazy_static! {
     // `Qm...` optionally follow by `:$shard`

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graphman::commands::deployment::resume::load_paused_deployment;
 use graphman::commands::deployment::resume::resume_paused_deployment;

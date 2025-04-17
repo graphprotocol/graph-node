@@ -17,7 +17,7 @@ use graph_store_postgres::{
     },
     PRIMARY_SHARD,
 };
-use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
+use graph_store_postgres::{ConnectionPool, Shard, Store, SubgraphStore};
 
 use crate::manager::deployment::DeploymentSearch;
 use crate::manager::display::List;

@@ -7,7 +7,7 @@ use graph::prelude::AssignmentChange;
 use graph::prelude::NodeId;
 use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::command_support::catalog::Site;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use thiserror::Error;
 

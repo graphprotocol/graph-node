@@ -7,7 +7,7 @@ use graph::components::store::BlockNumber;
 use graph::components::store::DeploymentId;
 use graph::components::store::StatusStore;
 use graph::data::subgraph::schema::SubgraphHealth;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::Store;
 use itertools::Itertools;
 

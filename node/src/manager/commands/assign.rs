@@ -1,8 +1,6 @@
 use graph::components::store::DeploymentLocator;
 use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
-use graph_store_postgres::{
-    command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
-};
+use graph_store_postgres::{command_support::catalog, ConnectionPool, NotificationSender};
 use std::thread;
 use std::time::Duration;
 

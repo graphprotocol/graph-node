@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use graph::prelude::NodeId;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graphman::commands::deployment::reassign::{
     load_deployment, reassign_deployment, ReassignResult,

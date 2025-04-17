@@ -3,7 +3,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use anyhow::Result;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graphman::deployment::DeploymentSelector;
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Result;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::Store;
 use graphman::commands::deployment::info::load_deployment_statuses;
 use graphman::commands::deployment::info::load_deployments;

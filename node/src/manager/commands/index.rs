@@ -6,8 +6,7 @@ use graph::{
 };
 use graph_store_postgres::{
     command_support::index::{CreateIndex, Method},
-    connection_pool::ConnectionPool,
-    SubgraphStore,
+    ConnectionPool, SubgraphStore,
 };
 use std::io::Write as _;
 use std::{collections::HashSet, sync::Arc};

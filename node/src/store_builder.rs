@@ -8,13 +8,11 @@ use graph::{
     prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
 };
-use graph_store_postgres::connection_pool::{
-    ConnectionPool, ForeignServer, PoolCoordinator, PoolRole,
-};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    ChainStoreMetrics, NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    ChainStoreMetrics, ConnectionPool, ForeignServer, NotificationSender, PoolCoordinator,
+    PoolRole, Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager,
+    PRIMARY_SHARD,
 };
 
 use crate::config::{Config, Shard};

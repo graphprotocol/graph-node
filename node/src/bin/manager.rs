@@ -26,11 +26,9 @@ use graph_node::network_setup::Networks;
 use graph_node::{
     manager::deployment::DeploymentSearch, store_builder::StoreBuilder, MetricsContext,
 };
-use graph_store_postgres::connection_pool::PoolCoordinator;
-use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
-    connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    BlockStore, ChainStore, ConnectionPool, NotificationSender, PoolCoordinator, Shard, Store,
+    SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
 };
 use itertools::Itertools;
 use lazy_static::lazy_static;

@@ -1,7 +1,7 @@
 use std::{io::Write, time::Instant};
 
 use graph::prelude::anyhow;
-use graph_store_postgres::connection_pool::PoolCoordinator;
+use graph_store_postgres::PoolCoordinator;
 
 pub async fn remap(
     coord: &PoolCoordinator,

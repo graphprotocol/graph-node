@@ -11,7 +11,7 @@ use graph::components::store::VersionStats;
 use graph::prelude::anyhow;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
-use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::Shard;
 use graph_store_postgres::SubgraphStore;
 use graph_store_postgres::PRIMARY_SHARD;
