@@ -267,7 +267,7 @@ where
             )
             .await?
             .map_err(CancelableError::from)
-            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            .cancelable(&block_stream_canceler);
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned

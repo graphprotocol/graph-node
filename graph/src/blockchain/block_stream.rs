@@ -1024,7 +1024,7 @@ mod test {
 
         let mut stream = BufferedBlockStream::spawn_from_stream(buffer_size, stream)
             .map_err(CancelableError::Error)
-            .cancelable(&guard, || Err(CancelableError::Cancel));
+            .cancelable(&guard);
 
         let mut blocks = HashSet::<MockBlock>::new();
         let mut count = 0;
