@@ -75,4 +75,12 @@ impl<C: Blockchain> IndexingInputs<C> {
             instrument: *instrument,
         }
     }
+
+    pub fn errors_are_non_fatal(&self) -> bool {
+        self.features.contains(&SubgraphFeature::NonFatalErrors)
+    }
+
+    pub fn errors_are_fatal(&self) -> bool {
+        !self.features.contains(&SubgraphFeature::NonFatalErrors)
+    }
 }

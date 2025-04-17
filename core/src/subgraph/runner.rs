@@ -21,10 +21,7 @@ use graph::components::{
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::{
-    schema::{SubgraphError, SubgraphHealth},
-    SubgraphFeature,
-};
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data_source::{
     offchain, CausalityRegion, DataSource, DataSourceCreationError, TriggerData,
 };
@@ -369,11 +366,6 @@ where
         cancel_handle: &CancelHandle,
     ) -> Result<bool, ProcessingError> {
         let has_errors = block_state.has_errors();
-        let is_non_fatal_errors_active = self
-            .inputs
-            .features
-            .contains(&SubgraphFeature::NonFatalErrors);
-
         let BlockState {
             deterministic_errors,
             persisted_data_sources,
@@ -447,7 +439,7 @@ where
         let start = Instant::now();
 
         // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
-        if has_errors && !is_non_fatal_errors_active {
+        if has_errors && self.inputs.errors_are_fatal() {
             let is_poi_entity =
                 |entity_mod: &EntityModification| entity_mod.key().entity_type.is_poi();
             mods.retain(is_poi_entity);
@@ -473,7 +465,7 @@ where
                 persisted_data_sources,
                 deterministic_errors,
                 processed_offchain_data_sources,
-                is_non_fatal_errors_active,
+                self.inputs.errors_are_non_fatal(),
                 is_caught_up,
             )
             .await
@@ -487,7 +479,7 @@ where
         //
         // In this scenario the only entity that is stored/transacted is the PoI,
         // all of the others are discarded.
-        if has_errors && !is_non_fatal_errors_active {
+        if has_errors && self.inputs.errors_are_fatal() {
             // Only the first error is reported.
             return Err(ProcessingError::Deterministic(Box::new(
                 first_error.unwrap(),
