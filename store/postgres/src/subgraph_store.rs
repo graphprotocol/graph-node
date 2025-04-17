@@ -37,7 +37,6 @@ use graph::{
 };
 
 use crate::{
-    connection_pool::ConnectionPool,
     deployment::{OnSync, SubgraphHealth},
     primary::{self, DeploymentId, Mirror as PrimaryMirror, Primary, Site},
     relational::{
@@ -45,7 +44,7 @@ use crate::{
         Layout,
     },
     writable::{SourceableStore, WritableStore},
-    NotificationSender,
+    ConnectionPool, NotificationSender,
 };
 use crate::{
     deployment_store::{DeploymentStore, ReplicaId},

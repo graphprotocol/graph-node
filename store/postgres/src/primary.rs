@@ -3,10 +3,9 @@
 //! for the primary shard.
 use crate::{
     block_range::UNVERSIONED_RANGE,
-    connection_pool::{ConnectionPool, ForeignServer},
     detail::DeploymentDetail,
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
-    NotificationSender,
+    ConnectionPool, ForeignServer, NotificationSender,
 };
 use diesel::{
     connection::SimpleConnection,

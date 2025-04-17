@@ -17,8 +17,8 @@ use graph::{
     prelude::{serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError},
 };
 
-use crate::connection_pool::ForeignServer;
 use crate::primary::Site;
+use crate::ForeignServer;
 
 table! {
     subgraphs.dynamic_ethereum_contract_data_source (vid) {

@@ -40,7 +40,7 @@ use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};
 use std::{str::FromStr, sync::Arc};
 
-use crate::connection_pool::ForeignServer;
+use crate::ForeignServer;
 use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::internal_error;
 

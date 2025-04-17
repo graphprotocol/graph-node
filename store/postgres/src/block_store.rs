@@ -23,7 +23,7 @@ use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 use crate::{
     chain_head_listener::ChainHeadUpdateSender,
     chain_store::{ChainStoreMetrics, Storage},
-    connection_pool::ConnectionPool,
+    pool::ConnectionPool,
     primary::Mirror as PrimaryMirror,
     ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
@@ -60,7 +60,7 @@ pub mod primary {
     };
 
     use crate::chain_store::Storage;
-    use crate::{connection_pool::ConnectionPool, Shard};
+    use crate::{ConnectionPool, Shard};
 
     table! {
             chains(id) {

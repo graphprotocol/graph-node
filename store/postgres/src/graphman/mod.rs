@@ -6,7 +6,7 @@ use graphman_store::Execution;
 use graphman_store::ExecutionId;
 use graphman_store::ExecutionStatus;
 
-use crate::connection_pool::ConnectionPool;
+use crate::ConnectionPool;
 
 mod schema;
 

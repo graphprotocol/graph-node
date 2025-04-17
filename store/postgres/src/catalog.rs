@@ -22,8 +22,8 @@ use graph::{
     prelude::{lazy_static, StoreError},
 };
 
-use crate::connection_pool::ForeignServer;
 use crate::{
+    pool::ForeignServer,
     primary::{Namespace, Site, NAMESPACE_PUBLIC},
     relational::SqlName,
 };

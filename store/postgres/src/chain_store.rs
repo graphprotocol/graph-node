@@ -34,8 +34,7 @@ use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
 use crate::{
-    block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
-    connection_pool::ConnectionPool,
+    block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool,
 };
 
 /// Our own internal notion of a block

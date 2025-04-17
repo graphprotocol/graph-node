@@ -56,7 +56,7 @@ use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{advisory_lock, catalog, retry};
-use crate::{connection_pool::ConnectionPool, detail};
+use crate::{detail, ConnectionPool};
 use crate::{dynds, primary::Site};
 
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.

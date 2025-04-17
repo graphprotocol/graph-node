@@ -10,7 +10,7 @@ use graph::prelude::{error, Logger, MetricsRegistry, StoreError, ENV_VARS};
 use graph::prometheus::Gauge;
 use graph::util::jobs::{Job, Runner};
 
-use crate::connection_pool::ConnectionPool;
+use crate::ConnectionPool;
 use crate::{unused, Store, SubgraphStore};
 
 pub fn register(

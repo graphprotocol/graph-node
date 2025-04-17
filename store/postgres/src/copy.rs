@@ -46,11 +46,11 @@ use crate::{
     advisory_lock, catalog, deployment,
     dynds::DataSourcesTable,
     primary::{DeploymentId, Primary, Site},
-    relational::index::IndexList,
+    relational::{index::IndexList, Layout, Table},
+    relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
+    ConnectionPool,
 };
-use crate::{connection_pool::ConnectionPool, relational::Layout};
-use crate::{relational::Table, relational_queries as rq};
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
 

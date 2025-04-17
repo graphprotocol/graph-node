@@ -77,7 +77,7 @@ use graph::prelude::{
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
-use crate::connection_pool::ForeignServer;
+use crate::ForeignServer;
 use crate::{catalog, deployment};
 
 use self::rollup::Rollup;
