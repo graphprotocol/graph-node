@@ -767,6 +767,56 @@ impl CreateIndex {
             }
         }
     }
+
+    pub(crate) fn method(self, method: Method) -> CreateIndex {
+        match self {
+            CreateIndex::Unknown { defn } => CreateIndex::Unknown { defn },
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method: _,
+                columns,
+                cond,
+                with,
+            } => CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            },
+        }
+    }
+
+    pub(crate) fn cond(self, cond: Cond) -> CreateIndex {
+        match self {
+            CreateIndex::Unknown { defn } => CreateIndex::Unknown { defn },
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond: _,
+                with,
+            } => CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond: Some(cond),
+                with,
+            },
+        }
+    }
 }
 
 /// A helper to run or write index creation statements with options as to

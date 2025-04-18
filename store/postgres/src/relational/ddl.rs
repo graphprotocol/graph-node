@@ -8,14 +8,14 @@ use graph::{
     schema::InputSchema,
 };
 
-use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
     ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
     VID_COLUMN,
 };
+use crate::{block_range::CAUSALITY_REGION_COLUMN, relational::index::Cond};
 
 use super::{
-    index::{IndexCreator, IndexList},
+    index::{CreateIndex, Expr, IndexCreator, IndexList, Method},
     Catalog, Column, Layout, SqlName, Table,
 };
 
@@ -162,6 +162,72 @@ impl Table {
 
             self.exclusion_ddl(out)
         }
+    }
+
+    /// Create a `CreateIndex` for an index on this table with the given
+    /// name over the given columns. The index will be a non-unique BTree
+    /// index
+    fn create_index(&self, name: &str, columns: Vec<Expr>) -> CreateIndex {
+        CreateIndex::create(
+            name,
+            &self.qualified_name,
+            self.name.as_str(),
+            false,
+            Method::BTree,
+            columns,
+            None,
+            None,
+        )
+    }
+
+    fn time_travel_indexes(&self) -> Vec<CreateIndex> {
+        let mut idxs = Vec::new();
+        if self.immutable {
+            // For immutable entities, a simple BTree on block$ is sufficient
+            let idx = self.create_index(&format!("{}_block", self.name), vec![Expr::Block]);
+            idxs.push(idx);
+        } else {
+            // Add a BRIN index on the block_range bounds to exploit the fact
+            // that block ranges closely correlate with where in a table an
+            // entity appears physically. This index is incredibly efficient for
+            // reverts where we look for very recent blocks, so that this index
+            // is highly selective. See https://github.com/graphprotocol/graph-node/issues/1415#issuecomment-630520713
+            // for details on one experiment.
+            //
+            // We do not index the `block_range` as a whole, but rather the lower
+            // and upper bound separately, since experimentation has shown that
+            // Postgres will not use the index on `block_range` for clauses like
+            // `block_range @> $block` but rather falls back to a full table scan.
+            //
+            // We also make sure that we do not put `NULL` in the index for
+            // the upper bound since nulls can not be compared to anything and
+            // will make the index less effective.
+            //
+            // To make the index usable, queries need to have clauses using
+            // `lower(block_range)` and `coalesce(..)` verbatim.
+            //
+            // We also index `vid` as that correlates with the order in which
+            // entities are stored.
+
+            let idx = self
+                .create_index(
+                    &format!("brin_{table_name}", table_name = self.name),
+                    vec![Expr::BlockRangeLower, Expr::BlockRangeUpper, Expr::Vid],
+                )
+                .method(Method::Brin);
+            idxs.push(idx);
+
+            // Add a BTree index that helps with the `RevertClampQuery` by making
+            // it faster to find entity versions that have been modified
+            let idx = self
+                .create_index(
+                    &format!("{table_name}_block_range_closed", table_name = self.name),
+                    vec![Expr::BlockRangeUpper],
+                )
+                .cond(Cond::Closed);
+            idxs.push(idx);
+        }
+        idxs
     }
 
     fn create_time_travel_indexes(&self, catalog: &Catalog, out: &mut String) -> fmt::Result {
@@ -410,6 +476,7 @@ impl Table {
         out: &mut String,
     ) -> fmt::Result {
         self.create_table(out)?;
+        let idxs = self.time_travel_indexes();
         self.create_time_travel_indexes(catalog, out)?;
         match (index_def, ENV_VARS.postpone_attribute_index_creation) {
             (Some(index_def), true) => {
