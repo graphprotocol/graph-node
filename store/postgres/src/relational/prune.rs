@@ -137,7 +137,7 @@ impl TablePair {
                 })
             })?;
             let rows = rows.unwrap_or(0);
-            tracker.copy_final_batch(conn, &self.src, rows, &batcher)?;
+            tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
             cancel.check_cancel()?;
 
             reporter.prune_batch(
@@ -196,7 +196,7 @@ impl TablePair {
             })?;
             let rows = rows.unwrap_or(0);
 
-            tracker.copy_nonfinal_batch(conn, &self.src, rows as i64, &batcher)?;
+            tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
 
             reporter.prune_batch(
                 self.src.name.as_str(),
@@ -458,7 +458,7 @@ impl Layout {
                         .execute(conn).map_err(StoreError::from)})?;
                         let rows = rows.unwrap_or(0);
 
-                        tracker.delete_batch(conn, table, rows, &batcher)?;
+                        tracker.finish_batch(conn, table, -(rows as i64), &batcher)?;
 
                         reporter.prune_batch(
                             table.name.as_str(),
@@ -682,7 +682,7 @@ mod status {
             diesel::delete(ps::table)
                 .filter(ps::id.eq(layout.site.id))
                 .filter(ps::run.gt(1))
-                .filter(ps::run.lt(run - (ENV_VARS.store.prune_keep_history - 1) as i32))
+                .filter(ps::run.lt(run - (ENV_VARS.store.prune_keep_history as i32 - 1)))
                 .execute(conn)
                 .map_err(StoreError::from)?;
 
@@ -768,24 +768,6 @@ mod status {
             self.update_table_state(conn, table, values)
         }
 
-        pub(crate) fn copy_final_batch(
-            &self,
-            conn: &mut PgConnection,
-            table: &Table,
-            rows: usize,
-            batcher: &VidBatcher,
-        ) -> StoreResult<()> {
-            use prune_table_state as pts;
-
-            let values = (
-                pts::next_vid.eq(batcher.next_vid()),
-                pts::batch_size.eq(batcher.batch_size() as i64),
-                pts::rows.eq(pts::rows + (rows as i64)),
-            );
-
-            self.update_table_state(conn, table, values)
-        }
-
         pub(crate) fn start_copy_nonfinal(
             &self,
             conn: &mut PgConnection,
@@ -801,7 +783,7 @@ mod status {
             self.update_table_state(conn, table, values)
         }
 
-        pub(crate) fn copy_nonfinal_batch(
+        pub(crate) fn finish_batch(
             &self,
             conn: &mut PgConnection,
             src: &Table,
@@ -851,24 +833,6 @@ mod status {
                 pts::rows.eq(0),
                 pts::next_vid.eq(range.min),
                 pts::batch_size.eq(batcher.batch_size() as i64),
-            );
-
-            self.update_table_state(conn, table, values)
-        }
-
-        pub(crate) fn delete_batch(
-            &self,
-            conn: &mut PgConnection,
-            table: &Table,
-            rows: usize,
-            batcher: &VidBatcher,
-        ) -> StoreResult<()> {
-            use prune_table_state as pts;
-
-            let values = (
-                pts::next_vid.eq(batcher.next_vid()),
-                pts::batch_size.eq(batcher.batch_size() as i64),
-                pts::rows.eq(pts::rows - (rows as i64)),
             );
 
             self.update_table_state(conn, table, values)
