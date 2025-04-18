@@ -195,8 +195,8 @@ impl Expr {
             return false;
         }
         for i in 0..orig.len() {
-            let o = orig[i].to_sql();
-            let n = current[i].to_sql();
+            let o = orig[i].to_sql(false);
+            let n = current[i].to_sql(false);
 
             // check that string n starts with o
             if n.len() < o.len() || n[0..o.len()] != o {
@@ -206,16 +206,29 @@ impl Expr {
         true
     }
 
-    fn to_sql(&self) -> String {
-        match self {
-            Expr::Column(name) => format!("\"{}\"", name),
-            Expr::Prefix(name, kind) => kind.to_sql(&format!("\"{}\"", name)),
-            Expr::Vid => VID_COLUMN.to_string(),
-            Expr::Block => BLOCK_COLUMN.to_string(),
-            Expr::BlockRange => BLOCK_RANGE_COLUMN.to_string(),
-            Expr::BlockRangeLower => "lower(block_range)".to_string(),
-            Expr::BlockRangeUpper => "coalesce(upper(block_range), 2147483647)".to_string(),
-            Expr::Unknown(expr) => expr.to_string(),
+    /// Generate a SQL expression for this index expression. The `multi_ops`
+    /// indicates whether we should also print the `minmax_multi_ops`
+    /// operator class used for BRIN indexes. This is needed because it is
+    /// not the default operator class, and only supported in Postgres 14+.
+    fn to_sql(&self, multi_ops: bool) -> String {
+        const LBR: &str = "lower(block_range)";
+        const LBR_MULTI: &str = "lower(block_range) int4_minmax_multi_ops";
+        const UBR: &str = "coalesce(upper(block_range), 2147483647)";
+        const UBR_MULTI: &str = "coalesce(upper(block_range), 2147483647) int4_minmax_multi_ops";
+        const VID_MULTI: &str = "vid int8_minmax_multi_ops";
+
+        match (self, multi_ops) {
+            (Expr::Column(name), _) => format!("\"{}\"", name),
+            (Expr::Prefix(name, kind), _) => kind.to_sql(&format!("\"{}\"", name)),
+            (Expr::Vid, true) => VID_MULTI.to_string(),
+            (Expr::Vid, false) => VID_COLUMN.to_string(),
+            (Expr::Block, _) => BLOCK_COLUMN.to_string(),
+            (Expr::BlockRange, _) => BLOCK_RANGE_COLUMN.to_string(),
+            (Expr::BlockRangeLower, false) => LBR.to_string(),
+            (Expr::BlockRangeLower, true) => LBR_MULTI.to_string(),
+            (Expr::BlockRangeUpper, false) => UBR.to_string(),
+            (Expr::BlockRangeUpper, true) => UBR_MULTI.to_string(),
+            (Expr::Unknown(expr), _) => expr.to_string(),
         }
     }
 }
@@ -703,7 +716,7 @@ impl CreateIndex {
     /// Generate a SQL statement that creates this index. If `concurrent` is
     /// `true`, make it a concurrent index creation. If `if_not_exists` is
     /// `true` add a `if not exists` clause to the index creation.
-    fn to_sql(&self, concurrent: bool, if_not_exists: bool) -> Result<String, std::fmt::Error> {
+    fn to_sql(&self, creat: &IndexCreator) -> Result<String, std::fmt::Error> {
         match self {
             CreateIndex::Unknown { defn } => Ok(defn.to_string()),
             CreateIndex::Parsed {
@@ -716,10 +729,17 @@ impl CreateIndex {
                 cond,
                 with,
             } => {
+                let IndexCreator {
+                    concurrently,
+                    if_not_exists,
+                    multi_ops,
+                } = creat;
+                // Explicit operator classes are only needed for BRIN indexes
+                let multi_ops = *multi_ops && method == &Method::Brin;
                 let unique = if *unique { "unique " } else { "" };
-                let concurrent = if concurrent { "concurrently " } else { "" };
-                let if_not_exists = if if_not_exists { "if not exists " } else { "" };
-                let columns = columns.iter().map(|c| c.to_sql()).join(", ");
+                let concurrent = if *concurrently { "concurrently " } else { "" };
+                let if_not_exists = if *if_not_exists { "if not exists " } else { "" };
+                let columns = columns.iter().map(|c| c.to_sql(multi_ops)).join(", ");
 
                 let mut sql = format!("create {unique}index {concurrent}{if_not_exists}{name} on {nsp}.{table} using {method} ({columns})");
                 if let Some(with) = with {
@@ -739,13 +759,19 @@ impl CreateIndex {
 pub struct IndexCreator {
     concurrently: bool,
     if_not_exists: bool,
+    /// Whether the shard supports the multi_ops operator classes
+    multi_ops: bool,
 }
 
 impl IndexCreator {
-    pub fn new(concurrently: bool, if_not_exists: bool) -> Self {
+    /// Create an index creator with the given options. The `multi_ops` flag
+    /// indicates whether the database in which we will create indexes
+    /// supports the `minmax_multi_ops` operator classes
+    pub fn new(concurrently: bool, if_not_exists: bool, multi_ops: bool) -> Self {
         IndexCreator {
             concurrently,
             if_not_exists,
+            multi_ops,
         }
     }
 
@@ -756,7 +782,7 @@ impl IndexCreator {
         conn: &mut AsyncPgConnection,
         idx: &CreateIndex,
     ) -> Result<(), StoreError> {
-        let sql = idx.to_sql(self.concurrently, self.if_not_exists)?;
+        let sql = idx.to_sql(self)?;
         sql_query(sql).execute(conn).await?;
         Ok(())
     }
@@ -776,7 +802,7 @@ impl IndexCreator {
     }
 
     pub fn to_sql(&self, index: &CreateIndex) -> Result<String, std::fmt::Error> {
-        index.to_sql(self.concurrently, self.if_not_exists)
+        index.to_sql(self)
     }
 }
 
@@ -784,7 +810,8 @@ impl Layout {
     /// Create an index creator with the given options for creating indexes
     /// in this layout
     pub fn index_creator(&self, concurrently: bool, if_not_exists: bool) -> IndexCreator {
-        IndexCreator::new(concurrently, if_not_exists)
+        let multi_ops = self.catalog.has_minmax_multi_ops;
+        IndexCreator::new(concurrently, if_not_exists, multi_ops)
     }
 }
 
@@ -851,6 +878,7 @@ impl IndexList {
         }
 
         let namespace = &layout.catalog.site.namespace;
+        let creat = layout.index_creator(true, true);
         for table in layout.tables.values() {
             let idxs = self
                 .indexes_for_table(table)
@@ -885,8 +913,9 @@ impl IndexList {
                                 sql_query(format!("DROP INDEX {}.{};", namespace, index_name));
                             drop_query.execute(conn).await?;
                         }
-                        let create_query = idx.to_sql(true, true)?;
-                        sql_query(create_query).execute(conn).await?;
+                        // We are creating concurrently, which can't be done
+                        // in a transaction
+                        IndexCreator::execute(&creat, conn, idx).await?;
                     }
                 }
             }
@@ -1013,7 +1042,8 @@ mod tests {
             assert_eq!(exp, act);
 
             let defn = defn.to_ascii_lowercase();
-            assert_eq!(defn, act.to_sql(false, false).unwrap());
+            let creat = IndexCreator::new(false, false, false);
+            assert_eq!(defn, creat.to_sql(&act).unwrap());
         }
 
         use TestCond::*;

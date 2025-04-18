@@ -183,7 +183,7 @@ pub async fn list(
     let mut term = Terminal::new();
 
     if to_sql {
-        let creat = IndexCreator::new(concurrent, if_not_exists);
+        let creat = IndexCreator::new(concurrent, if_not_exists, true);
         for index in indexes {
             writeln!(term, "{};", creat.to_sql(&index)?)?;
         }
