@@ -36,6 +36,7 @@ use graph::prelude::{
 };
 use graph::schema::EntityKey;
 use graph::slog::{debug, error, info, o, trace, warn, Logger};
+use graph::util::lfu_cache::EvictStats;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -377,8 +378,19 @@ where
         proof_of_indexing: SharedProofOfIndexing,
         offchain_mods: Vec<EntityModification>,
         processed_offchain_data_sources: Vec<StoredDynamicDataSource>,
-    ) -> Result<bool, ProcessingError> {
-        let has_errors = block_state.has_errors();
+    ) -> Result<(), ProcessingError> {
+        fn log_evict_stats(logger: &Logger, evict_stats: &EvictStats) {
+            trace!(logger, "Entity cache statistics";
+                "weight" => evict_stats.new_weight,
+                "evicted_weight" => evict_stats.evicted_weight,
+                "count" => evict_stats.new_count,
+                "evicted_count" => evict_stats.evicted_count,
+                "stale_update" => evict_stats.stale_update,
+                "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
+                "accesses" => evict_stats.accesses,
+                "evict_time_ms" => evict_stats.evict_time.as_millis());
+        }
+
         let BlockState {
             deterministic_errors,
             persisted_data_sources,
@@ -386,6 +398,8 @@ where
             mut entity_cache,
             ..
         } = block_state;
+        let first_error = deterministic_errors.first().cloned();
+        let has_errors = first_error.is_some();
 
         // Avoid writing to store if block stream has been canceled
         if self.is_canceled() {
@@ -412,20 +426,10 @@ where
             modifications: mut mods,
             entity_lfu_cache: cache,
             evict_stats,
-        } = entity_cache
-            .as_modifications(block_ptr.number)
-            .map_err(|e| ProcessingError::Unknown(e.into()))?;
+        } = entity_cache.as_modifications(block_ptr.number).classify()?;
         section.end();
 
-        trace!(self.logger, "Entity cache statistics";
-                            "weight" => evict_stats.new_weight,
-                            "evicted_weight" => evict_stats.evicted_weight,
-                            "count" => evict_stats.new_count,
-                            "evicted_count" => evict_stats.evicted_count,
-                            "stale_update" => evict_stats.stale_update,
-                            "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
-                            "accesses" => evict_stats.accesses,
-                            "evict_time_ms" => evict_stats.evict_time.as_millis());
+        log_evict_stats(&self.logger, &evict_stats);
 
         mods.extend(offchain_mods);
 
@@ -462,8 +466,6 @@ where
                 "There should be only one PoI EntityModification"
             );
         }
-
-        let first_error = deterministic_errors.first().cloned();
 
         let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
 
@@ -509,7 +511,30 @@ where
             .flush_metrics_to_store(&logger, block_ptr, self.inputs.deployment.id)
             .non_deterministic()?;
 
-        Ok(has_errors)
+        if has_errors {
+            self.maybe_cancel()?;
+        }
+
+        Ok(())
+    }
+
+    /// Cancel the subgraph if `disable_fail_fast` is not set and it is not
+    /// synced
+    fn maybe_cancel(&self) -> Result<(), ProcessingError> {
+        // To prevent a buggy pending version from replacing a current version, if errors are
+        // present the subgraph will be unassigned.
+        let store = &self.inputs.store;
+        if !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
+            store
+                .unassign_subgraph()
+                .map_err(|e| ProcessingError::Unknown(e.into()))?;
+
+            // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
+            // just transacted so it will be already be set to unhealthy.
+            Err(ProcessingError::Canceled.into())
+        } else {
+            Ok(())
+        }
     }
 
     /// Processes a block and returns the updated context and a boolean flag indicating
@@ -795,31 +820,17 @@ where
             .persisted_data_sources
             .extend(persisted_off_chain_data_sources);
 
-        let has_errors = self
-            .transact_block_state(
-                &logger,
-                block_ptr.clone(),
-                firehose_cursor.clone(),
-                block.timestamp(),
-                block_state,
-                proof_of_indexing,
-                offchain_mods,
-                processed_offchain_data_sources,
-            )
-            .await?;
-
-        // To prevent a buggy pending version from replacing a current version, if errors are
-        // present the subgraph will be unassigned.
-        let store = &self.inputs.store;
-        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
-            store
-                .unassign_subgraph()
-                .map_err(|e| ProcessingError::Unknown(e.into()))?;
-
-            // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
-            // just transacted so it will be already be set to unhealthy.
-            return Err(ProcessingError::Canceled);
-        }
+        self.transact_block_state(
+            &logger,
+            block_ptr.clone(),
+            firehose_cursor.clone(),
+            block.timestamp(),
+            block_state,
+            proof_of_indexing,
+            offchain_mods,
+            processed_offchain_data_sources,
+        )
+        .await?;
 
         match needs_restart {
             true => Ok(Action::Restart),
@@ -1389,31 +1400,17 @@ where
             }
         };
 
-        let has_errors = self
-            .transact_block_state(
-                &logger,
-                block_ptr.clone(),
-                cursor.clone(),
-                block_time,
-                block_state,
-                proof_of_indexing,
-                vec![],
-                vec![],
-            )
-            .await?;
-
-        // To prevent a buggy pending version from replacing a current version, if errors are
-        // present the subgraph will be unassigned.
-        let store = &self.inputs.store;
-        if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
-            store
-                .unassign_subgraph()
-                .map_err(|e| ProcessingError::Unknown(e.into()))?;
-
-            // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
-            // just transacted so it will be already be set to unhealthy.
-            return Err(ProcessingError::Canceled.into());
-        };
+        self.transact_block_state(
+            &logger,
+            block_ptr.clone(),
+            cursor.clone(),
+            block_time,
+            block_state,
+            proof_of_indexing,
+            vec![],
+            vec![],
+        )
+        .await?;
 
         Ok(Action::Continue)
     }

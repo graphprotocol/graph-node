@@ -131,10 +131,6 @@ impl BlockState {
             write_capacity_remaining.saturating_sub(other.write_capacity_remaining);
     }
 
-    pub fn has_errors(&self) -> bool {
-        !self.deterministic_errors.is_empty()
-    }
-
     pub fn has_created_data_sources(&self) -> bool {
         assert!(!self.in_handler);
         !self.created_data_sources.is_empty()
