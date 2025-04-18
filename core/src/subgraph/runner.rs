@@ -689,29 +689,18 @@ where
                     vec![],
                 ));
 
-                let block: Arc<C::Block> = if self.inputs.chain.is_refetch_block_required() {
-                    let cur = firehose_cursor.clone();
-                    let log = logger.cheap_clone();
-                    let chain = self.inputs.chain.cheap_clone();
-                    Arc::new(
-                        retry(
-                            "refetch firehose block after dynamic datasource was added",
-                            &logger,
-                        )
-                        .limit(5)
-                        .no_timeout()
-                        .run(move || {
-                            let cur = cur.clone();
-                            let log = log.cheap_clone();
-                            let chain = chain.cheap_clone();
-                            async move { chain.refetch_firehose_block(&log, cur).await }
-                        })
-                        .await
-                        .non_deterministic()?,
-                    )
-                } else {
-                    block.cheap_clone()
-                };
+                // TODO: We have to pass a reference to `block` to
+                // `refetch_block`, otherwise the call to
+                // handle_offchain_triggers below gets an error that `block`
+                // has moved. That is extremely fishy since it means that
+                // `handle_offchain_triggers` uses the non-refetched block
+                //
+                // It's also not clear why refetching needs to happen inside
+                // the loop; will firehose really return something diffrent
+                // each time even though the cursor doesn't change?
+                let block = self
+                    .refetch_block(&logger, &block, &firehose_cursor)
+                    .await?;
 
                 // Reprocess the triggers from this block that match the new data sources
                 let block_with_triggers = self
@@ -836,6 +825,37 @@ where
             true => Ok(Action::Restart),
             false => Ok(Action::Continue),
         }
+    }
+
+    /// Refetch the block if it that is needed. Otherwise return the block as is.
+    async fn refetch_block(
+        &mut self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        firehose_cursor: &FirehoseCursor,
+    ) -> Result<Arc<C::Block>, ProcessingError> {
+        if !self.inputs.chain.is_refetch_block_required() {
+            return Ok(block.cheap_clone());
+        }
+
+        let cur = firehose_cursor.clone();
+        let log = logger.cheap_clone();
+        let chain = self.inputs.chain.cheap_clone();
+        let block = retry(
+            "refetch firehose block after dynamic datasource was added",
+            logger,
+        )
+        .limit(5)
+        .no_timeout()
+        .run(move || {
+            let cur = cur.clone();
+            let log = log.cheap_clone();
+            let chain = chain.cheap_clone();
+            async move { chain.refetch_firehose_block(&log, cur).await }
+        })
+        .await
+        .non_deterministic()?;
+        Ok(Arc::new(block))
     }
 
     async fn process_wasm_block(
