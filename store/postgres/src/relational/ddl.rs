@@ -405,18 +405,19 @@ impl Table {
     ) -> fmt::Result {
         self.create_table(out)?;
         self.create_time_travel_indexes(catalog, out)?;
-        if index_def.is_some() && ENV_VARS.postpone_attribute_index_creation {
-            #[allow(clippy::unnecessary_unwrap)]
-            let arr = index_def
-                .unwrap()
-                .indexes_for_table(&self.nsp, &self.name.to_string(), self, false, false, false)
-                .map_err(|_| fmt::Error)?;
-            for (_, sql) in arr {
-                writeln!(out, "{};", sql).expect("properly formated index statements")
+        match (index_def, ENV_VARS.postpone_attribute_index_creation) {
+            (Some(index_def), true) => {
+                let arr = index_def
+                    .indexes_for_table(&self.nsp, &self.name.to_string(), self, false, false, false)
+                    .map_err(|_| fmt::Error)?;
+                for (_, sql) in arr {
+                    writeln!(out, "{};", sql).expect("properly formated index statements")
+                }
             }
-        } else {
-            self.create_attribute_indexes(out)?;
-            self.create_aggregate_indexes(schema, out)?;
+            (Some(_), false) | (None, _) => {
+                self.create_attribute_indexes(out)?;
+                self.create_aggregate_indexes(schema, out)?;
+            }
         }
         Ok(())
     }
