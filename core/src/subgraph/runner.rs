@@ -544,6 +544,14 @@ where
         block: BlockWithTriggers<C>,
         firehose_cursor: FirehoseCursor,
     ) -> Result<Action, ProcessingError> {
+        fn log_triggers_found<C: Blockchain>(logger: &Logger, triggers: &[Trigger<C>]) {
+            if triggers.len() == 1 {
+                info!(logger, "1 trigger found in this block");
+            } else if triggers.len() > 1 {
+                info!(logger, "{} triggers found in this block", triggers.len());
+            }
+        }
+
         let triggers = block.trigger_data;
         let block = Arc::new(block.block);
         let block_ptr = block.ptr();
@@ -711,19 +719,7 @@ where
                     .non_deterministic()?;
 
                 let triggers = block_with_triggers.trigger_data;
-
-                if triggers.len() == 1 {
-                    info!(
-                        &logger,
-                        "1 trigger found in this block for the new data sources"
-                    );
-                } else if triggers.len() > 1 {
-                    info!(
-                        &logger,
-                        "{} triggers found in this block for the new data sources",
-                        triggers.len()
-                    );
-                }
+                log_triggers_found(&logger, &triggers);
 
                 // Add entity operations for the new data sources to the block state
                 // and add runtimes for the data sources to the subgraph instance.
