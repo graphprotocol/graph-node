@@ -131,6 +131,13 @@ impl Display for Expr {
 }
 
 impl Expr {
+    const LBR: &str = "lower(block_range)";
+    const LBR_MULTI: &str = "lower(block_range) int4_minmax_multi_ops";
+    const UBR: &str = "coalesce(upper(block_range), 2147483647)";
+    const UBR_MULTI: &str = "coalesce(upper(block_range), 2147483647) int4_minmax_multi_ops";
+    const VID_MULTI: &str = "vid int8_minmax_multi_ops";
+    const BLOCK_MULTI: &str = "block$ int4_minmax_multi_ops";
+
     fn parse(expr: &str) -> Self {
         use Expr::*;
 
@@ -138,15 +145,19 @@ impl Expr {
 
         let prefix_rx = Regex::new("^(?P<kind>substring|left)\\((?P<name>[a-z0-9$_]+)").unwrap();
 
-        if expr == VID_COLUMN {
+        // We strip out the minmax_multi_ops operator class from the
+        // expression for the columns where we usually use them. They will
+        // be put back when we create an index, but whether they should be
+        // used depends on the database in which the index is created
+        if expr == VID_COLUMN || expr == Self::VID_MULTI {
             Vid
-        } else if expr == "lower(block_range)" {
+        } else if expr == Self::LBR || expr == Self::LBR_MULTI {
             BlockRangeLower
-        } else if expr == "coalesce(upper(block_range), 2147483647)" {
+        } else if expr == Self::UBR || expr == Self::UBR_MULTI {
             BlockRangeUpper
         } else if expr == "block_range" {
             BlockRange
-        } else if expr == "block$" {
+        } else if expr == BLOCK_COLUMN || expr == Self::BLOCK_MULTI {
             Block
         } else if expr
             .chars()
@@ -211,23 +222,18 @@ impl Expr {
     /// operator class used for BRIN indexes. This is needed because it is
     /// not the default operator class, and only supported in Postgres 14+.
     fn to_sql(&self, multi_ops: bool) -> String {
-        const LBR: &str = "lower(block_range)";
-        const LBR_MULTI: &str = "lower(block_range) int4_minmax_multi_ops";
-        const UBR: &str = "coalesce(upper(block_range), 2147483647)";
-        const UBR_MULTI: &str = "coalesce(upper(block_range), 2147483647) int4_minmax_multi_ops";
-        const VID_MULTI: &str = "vid int8_minmax_multi_ops";
-
         match (self, multi_ops) {
             (Expr::Column(name), _) => format!("\"{}\"", name),
             (Expr::Prefix(name, kind), _) => kind.to_sql(&format!("\"{}\"", name)),
-            (Expr::Vid, true) => VID_MULTI.to_string(),
+            (Expr::Vid, true) => Self::VID_MULTI.to_string(),
             (Expr::Vid, false) => VID_COLUMN.to_string(),
-            (Expr::Block, _) => BLOCK_COLUMN.to_string(),
+            (Expr::Block, false) => BLOCK_COLUMN.to_string(),
+            (Expr::Block, true) => Self::BLOCK_MULTI.to_string(),
             (Expr::BlockRange, _) => BLOCK_RANGE_COLUMN.to_string(),
-            (Expr::BlockRangeLower, false) => LBR.to_string(),
-            (Expr::BlockRangeLower, true) => LBR_MULTI.to_string(),
-            (Expr::BlockRangeUpper, false) => UBR.to_string(),
-            (Expr::BlockRangeUpper, true) => UBR_MULTI.to_string(),
+            (Expr::BlockRangeLower, false) => Self::LBR.to_string(),
+            (Expr::BlockRangeLower, true) => Self::LBR_MULTI.to_string(),
+            (Expr::BlockRangeUpper, false) => Self::UBR.to_string(),
+            (Expr::BlockRangeUpper, true) => Self::UBR_MULTI.to_string(),
             (Expr::Unknown(expr), _) => expr.to_string(),
         }
     }
@@ -1109,6 +1115,16 @@ mod tests {
             cond: None,
         };
         parse_one(sql, exp);
+
+        let sql = "CREATE INDEX brin_nft_transfer ON sgd4.nft_transfer USING brin (lower(block_range) int4_minmax_multi_ops, COALESCE(upper(block_range), 2147483647) int4_minmax_multi_ops, vid int8_minmax_multi_ops)";
+        let act = CreateIndex::parse(sql.to_string());
+        let CreateIndex::Parsed { columns, .. } = act else {
+            panic!("Failed to parse index");
+        };
+        assert_eq!(
+            vec![Expr::BlockRangeLower, Expr::BlockRangeUpper, Expr::Vid],
+            columns
+        );
 
         let sql = "create index token_block_range_closed on sgd44.token using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647)";
         let exp = Parsed {
