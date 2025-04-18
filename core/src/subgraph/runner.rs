@@ -16,6 +16,7 @@ use graph::blockchain::{
 };
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::subgraph::InstanceDSTemplate;
+use graph::components::trigger_processor::RunnableTriggers;
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
@@ -537,6 +538,33 @@ where
         }
     }
 
+    async fn match_and_decode_many<'a, F>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        triggers: Vec<Trigger<C>>,
+        hosts_filter: F,
+    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
+    where
+        F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+    {
+        let triggers = triggers.into_iter().map(|t| match t {
+            Trigger::Chain(t) => TriggerData::Onchain(t),
+            Trigger::Subgraph(t) => TriggerData::Subgraph(t),
+        });
+
+        self.ctx
+            .decoder
+            .match_and_decode_many(
+                &logger,
+                &block,
+                triggers,
+                hosts_filter,
+                &self.metrics.subgraph,
+            )
+            .await
+    }
+
     /// Processes a block and returns the updated context and a boolean flag indicating
     /// whether new dynamic data sources have been added to the subgraph.
     async fn process_block(
@@ -584,18 +612,7 @@ where
         // Match and decode all triggers in the block
         let hosts_filter = |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger);
         let match_res = self
-            .ctx
-            .decoder
-            .match_and_decode_many(
-                &logger,
-                &block,
-                triggers.into_iter().map(|t| match t {
-                    Trigger::Chain(t) => TriggerData::Onchain(t),
-                    Trigger::Subgraph(t) => TriggerData::Subgraph(t),
-                }),
-                hosts_filter,
-                &self.metrics.subgraph,
-            )
+            .match_and_decode_many(&logger, &block, triggers, hosts_filter)
             .await;
 
         // Process events one after the other, passing in entity operations
@@ -727,19 +744,11 @@ where
 
                 // Process the triggers in each host in the same order the
                 // corresponding data sources have been created.
+                let hosts_filter = |_: &'_ TriggerData<C>| -> Box<dyn Iterator<Item = _> + Send> {
+                    Box::new(runtime_hosts.iter().map(Arc::as_ref))
+                };
                 let match_res: Result<Vec<_>, _> = self
-                    .ctx
-                    .decoder
-                    .match_and_decode_many(
-                        &logger,
-                        &block,
-                        triggers.into_iter().map(|t| match t {
-                            Trigger::Chain(t) => TriggerData::Onchain(t),
-                            Trigger::Subgraph(_) => unreachable!(), // TODO(krishna): Re-evaulate this
-                        }),
-                        |_| Box::new(runtime_hosts.iter().map(Arc::as_ref)),
-                        &self.metrics.subgraph,
-                    )
+                    .match_and_decode_many(&logger, &block, triggers, hosts_filter)
                     .await;
 
                 let mut res = Ok(block_state);
