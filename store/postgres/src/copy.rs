@@ -1004,6 +1004,18 @@ impl Connection {
     /// Run `callback` in a transaction using the connection in `self.conn`.
     /// This will return an error if `self.conn` is `None`, which happens
     /// while a background task is copying a table.
+    fn get_conn(&mut self) -> Result<&mut AsyncPgConnection, StoreError> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(internal_error!(
+                "copy connection has been handed to background task but not returned yet (get_conn)"
+            ));
+        };
+        Ok(&mut conn.inner)
+    }
+
+    /// Run `callback` in a transaction using the connection in `self.conn`.
+    /// This will return an error if `self.conn` is `None`, which happens
+    /// while a background task is copying a table.
     fn transaction<'a, 'conn, R, F>(
         &'conn mut self,
         callback: F,
@@ -1017,12 +1029,7 @@ impl Connection {
         R: Send + 'a,
         'a: 'conn,
     {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(internal_error!(
-                "copy connection has been handed to background task but not returned yet (transaction)"
-            ));
-        };
-        let conn = &mut conn.inner;
+        let conn = self.get_conn()?;
         Ok(conn.transaction(|conn| callback(conn).scope_boxed()))
     }
 
@@ -1232,6 +1239,7 @@ impl Connection {
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
         // First recreate the indexes that existed in the original subgraph.
+        let creat = self.dst.index_creator(false, true);
         for table in state.all_tables() {
             let dst_nsp = self.dst.site.namespace.to_string();
             let idxs = index_list
@@ -1240,13 +1248,8 @@ impl Connection {
                 .map(|idx| idx.with_nsp(dst_nsp.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            for idx in idxs {
-                let query = sql_query(format!("{};", idx.to_sql(false, true)?));
-                self.transaction(|conn| {
-                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
-                })?
-                .await?;
-            }
+            let conn = self.get_conn()?;
+            creat.execute_many(conn, &idxs).await?;
         }
 
         // Second create the indexes for the new fields.

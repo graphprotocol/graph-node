@@ -83,7 +83,7 @@ pub mod command_support {
         pub use crate::primary::{Connection, Mirror};
     }
     pub mod index {
-        pub use crate::relational::index::{CreateIndex, Expr, Method};
+        pub use crate::relational::index::{CreateIndex, Expr, IndexCreator, Method};
     }
     pub use crate::deployment::{on_sync, OnSync};
     pub use crate::primary::Namespace;

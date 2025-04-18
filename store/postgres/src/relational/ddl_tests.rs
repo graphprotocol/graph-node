@@ -415,10 +415,11 @@ fn postponed_indexes_with_block_column() {
 
     let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
     let list = index_list();
+    let creat = layout.index_creator(false, false);
     let arr: Vec<_> = list
         .indexes_for_table(table)
         .filter(|idx| idx.to_postpone())
-        .map(|idx| idx.to_sql(false, false).unwrap())
+        .map(|idx| creat.to_sql(idx).unwrap())
         .collect();
     assert_eq!(1, arr.len());
     assert!(!arr[0].contains(BLOCK_IDX));
@@ -428,10 +429,8 @@ fn postponed_indexes_with_block_column() {
         .indexes_for_table(table)
         .filter(|idx| !idx.to_postpone())
         .map(|idx| {
-            idx.with_nsp(dst_nsp.to_string())
-                .unwrap()
-                .to_sql(false, false)
-                .unwrap()
+            let idx = idx.with_nsp(dst_nsp.to_string()).unwrap();
+            creat.to_sql(&idx).unwrap()
         })
         .collect();
 

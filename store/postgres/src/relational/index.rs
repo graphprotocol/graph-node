@@ -703,7 +703,7 @@ impl CreateIndex {
     /// Generate a SQL statement that creates this index. If `concurrent` is
     /// `true`, make it a concurrent index creation. If `if_not_exists` is
     /// `true` add a `if not exists` clause to the index creation.
-    pub fn to_sql(&self, concurrent: bool, if_not_exists: bool) -> Result<String, std::fmt::Error> {
+    fn to_sql(&self, concurrent: bool, if_not_exists: bool) -> Result<String, std::fmt::Error> {
         match self {
             CreateIndex::Unknown { defn } => Ok(defn.to_string()),
             CreateIndex::Parsed {
@@ -731,6 +731,60 @@ impl CreateIndex {
                 Ok(sql)
             }
         }
+    }
+}
+
+/// A helper to run or write index creation statements with options as to
+/// whether to create them concurrently or only of they do not exist
+pub struct IndexCreator {
+    concurrently: bool,
+    if_not_exists: bool,
+}
+
+impl IndexCreator {
+    pub fn new(concurrently: bool, if_not_exists: bool) -> Self {
+        IndexCreator {
+            concurrently,
+            if_not_exists,
+        }
+    }
+
+    /// Create the index `idx` in the transaction that is currently active
+    /// on `conn`, i.e., do not start a new transaction
+    pub async fn execute(
+        &self,
+        conn: &mut AsyncPgConnection,
+        idx: &CreateIndex,
+    ) -> Result<(), StoreError> {
+        let sql = idx.to_sql(self.concurrently, self.if_not_exists)?;
+        sql_query(sql).execute(conn).await?;
+        Ok(())
+    }
+
+    /// Create all indexes in `idxs`. Each index creation happens in its own
+    /// transaction, and `conn` should therefore not be in a transaction
+    /// when this method is called.
+    pub async fn execute_many(
+        &self,
+        conn: &mut AsyncPgConnection,
+        idxs: &[CreateIndex],
+    ) -> Result<(), StoreError> {
+        for idx in idxs {
+            self.execute(conn, idx).await?;
+        }
+        Ok(())
+    }
+
+    pub fn to_sql(&self, index: &CreateIndex) -> Result<String, std::fmt::Error> {
+        index.to_sql(self.concurrently, self.if_not_exists)
+    }
+}
+
+impl Layout {
+    /// Create an index creator with the given options for creating indexes
+    /// in this layout
+    pub fn index_creator(&self, concurrently: bool, if_not_exists: bool) -> IndexCreator {
+        IndexCreator::new(concurrently, if_not_exists)
     }
 }
 
