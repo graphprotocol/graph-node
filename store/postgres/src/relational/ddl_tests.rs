@@ -8,7 +8,7 @@ use crate::{deployment_store::generate_index_creation_sql, layout_for_tests::mak
 
 const ID_TYPE: ColumnType = ColumnType::String;
 
-fn test_layout(gql: &str) -> Layout {
+fn test_layout(gql: &str) -> Arc<Layout> {
     let subgraph = DeploymentHash::new("subgraph").unwrap();
     let schema = InputSchema::parse_latest(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
@@ -20,7 +20,7 @@ fn test_layout(gql: &str) -> Layout {
         }
     };
     let catalog = Catalog::for_tests(site.clone(), ents).expect("Can not create catalog");
-    Layout::new(site, &schema, catalog).expect("Failed to construct Layout")
+    Arc::new(Layout::new(site, &schema, catalog).expect("Failed to construct Layout"))
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn check_eqv(left: &str, right: &str) {
 
 #[test]
 fn test_manual_index_creation_ddl() {
-    let layout = Arc::new(test_layout(BOOKS_GQL));
+    let layout = test_layout(BOOKS_GQL);
 
     #[track_caller]
     fn assert_generated_sql(
@@ -206,7 +206,7 @@ impl IndexList {
                 .to_string(),
         )];
         indexes.insert("file_thing".to_string(), v3);
-        IndexList { indexes }
+        IndexList::new(indexes)
     }
 }
 
@@ -376,7 +376,7 @@ fn postponed_indexes_with_block_column() {
                 .map(|def| CreateIndex::parse(def.to_string()))
                 .collect(),
         );
-        IndexList { indexes }
+        IndexList::new(indexes)
     }
 
     fn cr(index: &str) -> String {
@@ -414,23 +414,27 @@ fn postponed_indexes_with_block_column() {
     assert!(sql[0].contains(&cre(ATTR_IDX)));
 
     let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
-    let arr = index_list()
-        .indexes_for_table(&dst_nsp, &table.name.to_string(), table, true, false, false)
-        .unwrap();
+    let list = index_list();
+    let arr: Vec<_> = list
+        .indexes_for_table(&table.name.to_string(), table)
+        .filter(|idx| idx.to_postpone())
+        .map(|idx| idx.to_sql(false, false).unwrap())
+        .collect();
     assert_eq!(1, arr.len());
-    assert!(!arr[0].1.contains(BLOCK_IDX));
-    assert!(arr[0].1.contains(&cr(ATTR_IDX)));
+    assert!(!arr[0].contains(BLOCK_IDX));
+    assert!(arr[0].contains(&cr(ATTR_IDX)));
 
-    let arr = index_list()
-        .indexes_for_table(
-            &dst_nsp,
-            &table.name.to_string(),
-            table,
-            false,
-            false,
-            false,
-        )
-        .unwrap();
+    let arr: Vec<_> = list
+        .indexes_for_table(&table.name.to_string(), table)
+        .filter(|idx| !idx.to_postpone())
+        .map(|idx| {
+            idx.with_nsp(dst_nsp.to_string())
+                .unwrap()
+                .to_sql(false, false)
+                .unwrap()
+        })
+        .collect();
+
     assert_eq!(0, arr.len());
 }
 

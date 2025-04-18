@@ -407,11 +407,14 @@ impl Table {
         self.create_time_travel_indexes(catalog, out)?;
         match (index_def, ENV_VARS.postpone_attribute_index_creation) {
             (Some(index_def), true) => {
-                let arr = index_def
-                    .indexes_for_table(&self.nsp, &self.name.to_string(), self, false, false, false)
-                    .map_err(|_| fmt::Error)?;
-                for (_, sql) in arr {
-                    writeln!(out, "{};", sql).expect("properly formated index statements")
+                let idxs = index_def
+                    .indexes_for_table(&self.name.to_string(), self)
+                    .filter(|idx| !idx.to_postpone());
+                for idx in idxs {
+                    // For copies, the `index_def` is for the source table;
+                    // we need to make sure it is for us
+                    let idx = idx.with_nsp(self.nsp.to_string()).map_err(|_| fmt::Error)?;
+                    writeln!(out, "{};", idx.to_sql(false, false)?)?;
                 }
             }
             (Some(_), false) | (None, _) => {

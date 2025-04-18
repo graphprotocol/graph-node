@@ -1233,17 +1233,15 @@ impl Connection {
         // the copy/graft operations.
         // First recreate the indexes that existed in the original subgraph.
         for table in state.all_tables() {
-            let arr = index_list.indexes_for_table(
-                &self.dst.site.namespace,
-                &table.src.name.to_string(),
-                &table.dst,
-                true,
-                false,
-                true,
-            )?;
+            let dst_nsp = self.dst.site.namespace.to_string();
+            let idxs = index_list
+                .indexes_for_table(table.src.name.as_str(), &table.dst)
+                .filter(|idx| idx.to_postpone())
+                .map(|idx| idx.with_nsp(dst_nsp.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
 
-            for (_, sql) in arr {
-                let query = sql_query(format!("{};", sql));
+            for idx in idxs {
+                let query = sql_query(format!("{};", idx.to_sql(false, true)?));
                 self.transaction(|conn| {
                     async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
                 })?

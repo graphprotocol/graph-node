@@ -2,7 +2,6 @@
 use anyhow::{anyhow, Error};
 use std::collections::HashMap;
 use std::fmt::{Display, Write};
-use std::sync::Arc;
 
 use diesel::sql_query;
 use diesel::sql_types::{Bool, Text};
@@ -16,9 +15,6 @@ use graph::prelude::{
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
-use crate::command_support::catalog::Site;
-use crate::deployment_store::DeploymentStore;
-use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
 use crate::{catalog, AsyncPgConnection};
 
@@ -743,70 +739,47 @@ pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
 }
 
-pub async fn load_indexes_from_table(
-    conn: &mut AsyncPgConnection,
-    table: &Arc<Table>,
-    schema_name: &str,
-) -> Result<Vec<CreateIndex>, StoreError> {
-    let table_name = table.name.as_str();
-    let indexes = catalog::indexes_for_table(conn, schema_name, table_name).await?;
-    Ok(indexes.into_iter().map(CreateIndex::parse).collect())
-}
-
 impl IndexList {
-    pub async fn load(
-        conn: &mut AsyncPgConnection,
-        site: Arc<Site>,
-        store: DeploymentStore,
-    ) -> Result<Self, StoreError> {
-        let mut list = IndexList {
-            indexes: HashMap::new(),
-        };
-        let schema_name = site.namespace.clone();
-        let layout = store.layout(conn, site).await?;
-        for table in layout.tables.values() {
-            let indexes = load_indexes_from_table(conn, table, schema_name.as_str()).await?;
-            list.indexes.insert(table.name.to_string(), indexes);
-        }
-        Ok(list)
+    pub fn new(indexes: HashMap<String, Vec<CreateIndex>>) -> Self {
+        IndexList { indexes }
     }
 
-    pub fn indexes_for_table(
-        &self,
-        namespace: &Namespace,
-        table_name: &String,
-        dest_table: &Table,
-        postponed: bool,
-        concurrent: bool,
-        if_not_exists: bool,
-    ) -> Result<Vec<(Option<String>, String)>, Error> {
-        let mut arr = vec![];
-        if let Some(vec) = self.indexes.get(table_name) {
-            for ci in vec {
-                // First we check if the fields do exist in the destination subgraph.
-                // In case of grafting that is not given.
-                if ci.fields_exist_in_dest(dest_table)
-                    // Then we check if the index is one of the default indexes not based on
-                    // the attributes. Those will be created anyway and we should skip them.
-                    && !ci.is_default_non_attr_index()
-                    // Then ID based indexes in the immutable tables are also created initially
-                    // and should be skipped.
-                    && !(ci.is_id() && dest_table.immutable)
-                    // Finally we filter by the criteria is the index to be postponed. The ones
-                    // that are not to be postponed we want to create during initial creation of
-                    // the copied subgraph
-                    && postponed == ci.to_postpone()
-                {
-                    if let Ok(sql) = ci
-                        .with_nsp(namespace.to_string())?
-                        .to_sql(concurrent, if_not_exists)
-                    {
-                        arr.push((ci.name(), sql))
-                    }
-                }
-            }
+    pub async fn load(conn: &mut AsyncPgConnection, layout: &Layout) -> Result<Self, StoreError> {
+        let mut indexes = HashMap::new();
+        let schema_name = layout.site.namespace.clone();
+        for table in layout.tables.values() {
+            let indexes_from_table =
+                catalog::indexes_for_table(conn, schema_name.as_str(), table.name.as_str())
+                    .await?
+                    .into_iter()
+                    .map(CreateIndex::parse)
+                    .collect();
+            indexes.insert(table.name.to_string(), indexes_from_table);
         }
-        Ok(arr)
+        Ok(Self::new(indexes))
+    }
+
+    pub fn indexes_for_table<'a>(
+        &'a self,
+        table_name: &str,
+        dest_table: &'a Table,
+    ) -> impl Iterator<Item = &'a CreateIndex> {
+        static EMPTY: Vec<CreateIndex> = vec![];
+        let indexes = self.indexes.get(table_name).unwrap_or(&EMPTY);
+
+        let iter = indexes.iter().filter(move |ci| {
+            // First we check if the fields do exist in the destination subgraph.
+            // In case of grafting that is not given.
+            ci.fields_exist_in_dest(dest_table)
+                // Then we check if the index is one of the default indexes not based on
+                // the attributes. Those will be created anyway and we should skip them.
+                && !ci.is_default_non_attr_index()
+                // Then ID based indexes in the immutable tables are also created initially
+                // and should be skipped.
+                && !(ci.is_id() && dest_table.immutable)
+        });
+
+        iter
     }
 
     pub async fn recreate_invalid_indexes(
@@ -822,10 +795,11 @@ impl IndexList {
 
         let namespace = &layout.catalog.site.namespace;
         for table in layout.tables.values() {
-            for (ind_name, create_query) in
-                self.indexes_for_table(namespace, &table.name.to_string(), table, true, true, true)?
-            {
-                if let Some(index_name) = ind_name {
+            let idxs = self
+                .indexes_for_table(table.name.as_str(), table)
+                .filter(|idx| idx.to_postpone());
+            for idx in idxs {
+                if let Some(index_name) = idx.name() {
                     let table_name = table.name.clone();
                     let query = r#"
                         SELECT  x.indisvalid           AS isvalid
@@ -854,6 +828,7 @@ impl IndexList {
                                 sql_query(format!("DROP INDEX {}.{};", namespace, index_name));
                             drop_query.execute(conn).await?;
                         }
+                        let create_query = idx.to_sql(true, true)?;
                         sql_query(create_query).execute(conn).await?;
                     }
                 }
