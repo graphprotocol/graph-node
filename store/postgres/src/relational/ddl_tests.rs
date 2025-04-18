@@ -416,7 +416,7 @@ fn postponed_indexes_with_block_column() {
     let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
     let list = index_list();
     let arr: Vec<_> = list
-        .indexes_for_table(&table.name.to_string(), table)
+        .indexes_for_table(table)
         .filter(|idx| idx.to_postpone())
         .map(|idx| idx.to_sql(false, false).unwrap())
         .collect();
@@ -425,7 +425,7 @@ fn postponed_indexes_with_block_column() {
     assert!(arr[0].contains(&cr(ATTR_IDX)));
 
     let arr: Vec<_> = list
-        .indexes_for_table(&table.name.to_string(), table)
+        .indexes_for_table(table)
         .filter(|idx| !idx.to_postpone())
         .map(|idx| {
             idx.with_nsp(dst_nsp.to_string())

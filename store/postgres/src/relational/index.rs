@@ -759,24 +759,27 @@ impl IndexList {
         Ok(Self::new(indexes))
     }
 
+    /// Return all indexes for `table` from this list. Only indexes that are
+    /// for columns that actually exist on `table` are returned. In
+    /// addition, indexes that are always created when a deployment is
+    /// created independent of the configuration are also not returned.
     pub fn indexes_for_table<'a>(
         &'a self,
-        table_name: &str,
-        dest_table: &'a Table,
+        table: &'a Table,
     ) -> impl Iterator<Item = &'a CreateIndex> {
         static EMPTY: Vec<CreateIndex> = vec![];
-        let indexes = self.indexes.get(table_name).unwrap_or(&EMPTY);
+        let indexes = self.indexes.get(table.name.as_str()).unwrap_or(&EMPTY);
 
         let iter = indexes.iter().filter(move |ci| {
             // First we check if the fields do exist in the destination subgraph.
             // In case of grafting that is not given.
-            ci.fields_exist_in_dest(dest_table)
+            ci.fields_exist_in_dest(table)
                 // Then we check if the index is one of the default indexes not based on
                 // the attributes. Those will be created anyway and we should skip them.
                 && !ci.is_default_non_attr_index()
                 // Then ID based indexes in the immutable tables are also created initially
                 // and should be skipped.
-                && !(ci.is_id() && dest_table.immutable)
+                && !(ci.is_id() && table.immutable)
         });
 
         iter
@@ -796,7 +799,7 @@ impl IndexList {
         let namespace = &layout.catalog.site.namespace;
         for table in layout.tables.values() {
             let idxs = self
-                .indexes_for_table(table.name.as_str(), table)
+                .indexes_for_table(table)
                 .filter(|idx| idx.to_postpone());
             for idx in idxs {
                 if let Some(index_name) = idx.name() {

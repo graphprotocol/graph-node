@@ -66,7 +66,7 @@ impl TablePair {
                 indexes: HashMap::new(),
             };
             let indexes = src_indexes
-                .indexes_for_table(src.name.as_str(), &src)
+                .indexes_for_table(&src)
                 .map(|index| index.with_nsp(dst_nsp.to_string()))
                 .collect::<Result<Vec<CreateIndex>, _>>()?;
             list.indexes.insert(src.name.to_string(), indexes);

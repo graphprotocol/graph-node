@@ -1235,7 +1235,7 @@ impl Connection {
         for table in state.all_tables() {
             let dst_nsp = self.dst.site.namespace.to_string();
             let idxs = index_list
-                .indexes_for_table(table.src.name.as_str(), &table.dst)
+                .indexes_for_table(&table.dst)
                 .filter(|idx| idx.to_postpone())
                 .map(|idx| idx.with_nsp(dst_nsp.clone()))
                 .collect::<Result<Vec<_>, _>>()?;
