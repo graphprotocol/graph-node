@@ -79,21 +79,6 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
 
             async move {
                 match BlockchainKind::from_manifest(&manifest)? {
-                    BlockchainKind::Arweave => {
-                        let runner = instance_manager
-                            .build_subgraph_runner::<graph_chain_arweave::Chain>(
-                                logger.clone(),
-                                self.env_vars.cheap_clone(),
-                                loc.clone(),
-                                manifest,
-                                stop_block,
-                                Box::new(SubgraphTriggerProcessor {}),
-                                deployment_status_metric,
-                            )
-                            .await?;
-
-                        self.start_subgraph_inner(logger, loc, runner).await
-                    }
                     BlockchainKind::Ethereum => {
                         let runner = instance_manager
                             .build_subgraph_runner::<graph_chain_ethereum::Chain>(
