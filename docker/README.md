@@ -12,7 +12,7 @@ docker run -it \
   -e postgres_pass=<PASSWORD> \
   -e postgres_db=<DBNAME> \
   -e ipfs=<HOST>:<PORT> \
-  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL> \
+  -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL>,<NETWORK_NAME_1>:<ETHEREUM_RPC_URL_1> \
   graphprotocol/graph-node:latest
 ```
 
@@ -26,7 +26,7 @@ docker run -it \
   -e postgres_pass=oh-hello \
   -e postgres_db=graph-node \
   -e ipfs=host.docker.internal:5001 \
-  -e ethereum=mainnet:http://localhost:8545/ \
+  -e ethereum=mainnet:http://localhost:8545/,testnet:http://localhost:8845/ \
   graphprotocol/graph-node:latest
 ```
 
@@ -35,7 +35,7 @@ docker run -it \
 The Docker Compose setup requires an Ethereum network name and node
 to connect to. By default, it will use `mainnet:http://host.docker.internal:8545`
 in order to connect to an Ethereum node running on your host machine.
-You can replace this with anything else in `docker-compose.yaml`.
+You can replace this with anything else in `docker-compose.yaml`, multiple network is supported.
 
 After you have set up an Ethereum node—e.g. Ganache or Parity—simply
 clone this repository and run
