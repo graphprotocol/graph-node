@@ -16,7 +16,7 @@ mod query_tests;
 
 pub(crate) mod dsl;
 pub(crate) mod index;
-mod prune;
+pub(crate) mod prune;
 mod rollup;
 pub(crate) mod value;
 

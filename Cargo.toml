@@ -45,7 +45,7 @@ async-graphql-axum = "7.0.15"
 axum = "0.8.1"
 chrono = "0.4.38"
 bs58 = "0.5.1"
-clap = { version = "4.5.4", features = ["derive", "env"] }
+clap = { version = "4.5.4", features = ["derive", "env", "wrap_help"] }
 derivative = "2.2.0"
 diesel = { version = "2.2.7", features = [
     "postgres",

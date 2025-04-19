@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::manager::deployment::DeploymentSearch;
+use crate::manager::fmt;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
 use diesel::PgConnection;
@@ -51,19 +52,6 @@ pub async fn account_like(
     Ok(())
 }
 
-pub fn abbreviate_table_name(table: &str, size: usize) -> String {
-    if table.len() > size {
-        let fragment = size / 2 - 2;
-        let last = table.len() - fragment;
-        let mut table = table.to_string();
-        table.replace_range(fragment..last, "..");
-        let table = table.trim().to_string();
-        table
-    } else {
-        table.to_string()
-    }
-}
-
 pub fn show_stats(
     stats: &[VersionStats],
     account_like: HashSet<String>,
@@ -83,7 +71,7 @@ pub fn show_stats(
     fn print_stats(s: &VersionStats, account_like: bool) {
         println!(
             "{:<26} {:3} | {:>10} | {:>10} | {:>5.1}%",
-            abbreviate_table_name(&s.tablename, 26),
+            fmt::abbreviate(&s.tablename, 26),
             if account_like { "(a)" } else { "   " },
             s.entities,
             s.versions,

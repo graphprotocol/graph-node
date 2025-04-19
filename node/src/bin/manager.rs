@@ -297,35 +297,13 @@ pub enum Command {
     #[clap(subcommand)]
     Index(IndexCommand),
 
-    /// Prune a deployment
+    /// Prune subgraphs by removing old entity versions
     ///
     /// Keep only entity versions that are needed to respond to queries at
     /// block heights that are within `history` blocks of the subgraph head;
     /// all other entity versions are removed.
-    ///
-    /// Unless `--once` is given, this setting is permanent and the subgraph
-    /// will periodically be pruned to remove history as the subgraph head
-    /// moves forward.
-    Prune {
-        /// The deployment to prune (see `help info`)
-        deployment: DeploymentSearch,
-        /// Prune by rebuilding tables when removing more than this fraction
-        /// of history. Defaults to GRAPH_STORE_HISTORY_REBUILD_THRESHOLD
-        #[clap(long, short)]
-        rebuild_threshold: Option<f64>,
-        /// Prune by deleting when removing more than this fraction of
-        /// history but less than rebuild_threshold. Defaults to
-        /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
-        #[clap(long, short)]
-        delete_threshold: Option<f64>,
-        /// How much history to keep in blocks. Defaults to
-        /// GRAPH_MIN_HISTORY_BLOCKS
-        #[clap(long, short = 'y')]
-        history: Option<usize>,
-        /// Prune only this once
-        #[clap(long, short)]
-        once: bool,
-    },
+    #[clap(subcommand)]
+    Prune(PruneCommand),
 
     /// General database management
     #[clap(subcommand)]
@@ -691,6 +669,67 @@ pub enum StatsCommand {
         entity: Option<String>,
         /// The columns to which to apply the target. Defaults to `id, block_range`
         columns: Vec<String>,
+    },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum PruneCommand {
+    /// Prune a deployment in the foreground
+    ///
+    /// Unless `--once` is given, this setting is permanent and the subgraph
+    /// will periodically be pruned to remove history as the subgraph head
+    /// moves forward.
+    Run {
+        /// The deployment to prune (see `help info`)
+        deployment: DeploymentSearch,
+        /// Prune by rebuilding tables when removing more than this fraction
+        /// of history. Defaults to GRAPH_STORE_HISTORY_REBUILD_THRESHOLD
+        #[clap(long, short)]
+        rebuild_threshold: Option<f64>,
+        /// Prune by deleting when removing more than this fraction of
+        /// history but less than rebuild_threshold. Defaults to
+        /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
+        #[clap(long, short)]
+        delete_threshold: Option<f64>,
+        /// How much history to keep in blocks. Defaults to
+        /// GRAPH_MIN_HISTORY_BLOCKS
+        #[clap(long, short = 'y')]
+        history: Option<usize>,
+        /// Prune only this once
+        #[clap(long, short)]
+        once: bool,
+    },
+    /// Prune a deployment in the background
+    ///
+    /// Set the amount of history the subgraph should retain. The actual
+    /// data removal happens in the background and can be monitored with
+    /// `prune status`. It can take several minutes of the first pruning to
+    /// start, during which time `prune status` will not return any
+    /// information
+    Set {
+        /// The deployment to prune (see `help info`)
+        deployment: DeploymentSearch,
+        /// Prune by rebuilding tables when removing more than this fraction
+        /// of history. Defaults to GRAPH_STORE_HISTORY_REBUILD_THRESHOLD
+        #[clap(long, short)]
+        rebuild_threshold: Option<f64>,
+        /// Prune by deleting when removing more than this fraction of
+        /// history but less than rebuild_threshold. Defaults to
+        /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
+        #[clap(long, short)]
+        delete_threshold: Option<f64>,
+        /// How much history to keep in blocks. Defaults to
+        /// GRAPH_MIN_HISTORY_BLOCKS
+        #[clap(long, short = 'y')]
+        history: Option<usize>,
+    },
+    /// Show the status of a pruning operation
+    Status {
+        /// The number of the pruning run
+        #[clap(long, short)]
+        run: Option<usize>,
+        /// The deployment to check (see `help info`)
+        deployment: DeploymentSearch,
     },
 }
 
@@ -1613,25 +1652,52 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Prune {
-            deployment,
-            history,
-            rebuild_threshold,
-            delete_threshold,
-            once,
-        } => {
-            let (store, primary_pool) = ctx.store_and_primary();
-            let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
-            commands::prune::run(
-                store,
-                primary_pool,
-                deployment,
-                history,
-                rebuild_threshold,
-                delete_threshold,
-                once,
-            )
-            .await
+        Prune(cmd) => {
+            use PruneCommand::*;
+            match cmd {
+                Run {
+                    deployment,
+                    history,
+                    rebuild_threshold,
+                    delete_threshold,
+                    once,
+                } => {
+                    let (store, primary_pool) = ctx.store_and_primary();
+                    let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
+                    commands::prune::run(
+                        store,
+                        primary_pool,
+                        deployment,
+                        history,
+                        rebuild_threshold,
+                        delete_threshold,
+                        once,
+                    )
+                    .await
+                }
+                Set {
+                    deployment,
+                    rebuild_threshold,
+                    delete_threshold,
+                    history,
+                } => {
+                    let (store, primary_pool) = ctx.store_and_primary();
+                    let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
+                    commands::prune::set(
+                        store,
+                        primary_pool,
+                        deployment,
+                        history,
+                        rebuild_threshold,
+                        delete_threshold,
+                    )
+                    .await
+                }
+                Status { run, deployment } => {
+                    let (store, primary_pool) = ctx.store_and_primary();
+                    commands::prune::status(store, primary_pool, deployment, run).await
+                }
+            }
         }
         Drop {
             deployment,
