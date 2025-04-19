@@ -12,42 +12,45 @@ use std::time::Duration;
 ///
 /// Created by calling `cancelable` extension method.
 /// Can be canceled through the corresponding `CancelGuard`.
-pub struct Cancelable<T, C> {
+pub struct Cancelable<T> {
     inner: T,
     cancel_receiver: Fuse<oneshot::Receiver<()>>,
-    on_cancel: C,
 }
 
-impl<T, C> Cancelable<T, C> {
+impl<T> Cancelable<T> {
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.inner
     }
 }
 
 /// It's not viable to use `select` directly, so we do a custom implementation.
-impl<S: Stream + Unpin, C: Fn() -> S::Item + Unpin> Stream for Cancelable<S, C> {
-    type Item = S::Item;
+impl<S: Stream<Item = Result<R, E>> + Unpin, R, E: Display + Debug> Stream for Cancelable<S> {
+    type Item = Result<R, CancelableError<E>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         // Error if the stream was canceled by dropping the sender.
         match self.cancel_receiver.poll_unpin(cx) {
             Poll::Ready(Ok(_)) => unreachable!(),
-            Poll::Ready(Err(_)) => Poll::Ready(Some((self.on_cancel)())),
-            Poll::Pending => Pin::new(&mut self.inner).poll_next(cx),
+            Poll::Ready(Err(_)) => Poll::Ready(Some(Err(CancelableError::Cancel))),
+            Poll::Pending => Pin::new(&mut self.inner)
+                .poll_next(cx)
+                .map_err(|x| CancelableError::Error(x)),
         }
     }
 }
 
-impl<F: Future + Unpin, C: Fn() -> F::Output + Unpin> Future for Cancelable<F, C> {
-    type Output = F::Output;
+impl<F: Future<Output = Result<R, E>> + Unpin, R, E: Display + Debug> Future for Cancelable<F> {
+    type Output = Result<R, CancelableError<E>>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Error if the future was canceled by dropping the sender.
         // `canceled` is fused so we may ignore `Ok`s.
         match self.cancel_receiver.poll_unpin(cx) {
             Poll::Ready(Ok(_)) => unreachable!(),
-            Poll::Ready(Err(_)) => Poll::Ready((self.on_cancel)()),
-            Poll::Pending => Pin::new(&mut self.inner).poll(cx),
+            Poll::Ready(Err(_)) => Poll::Ready(Err(CancelableError::Cancel)),
+            Poll::Pending => Pin::new(&mut self.inner)
+                .poll(cx)
+                .map_err(|x| CancelableError::Error(x)),
         }
     }
 }
@@ -209,25 +212,16 @@ pub trait StreamExtension: Stream + Sized {
     /// When `cancel` is called on a `CancelGuard` or it is dropped,
     /// `Cancelable` receives an error.
     ///
-    fn cancelable<C: Fn() -> Self::Item>(
-        self,
-        guard: &impl Canceler,
-        on_cancel: C,
-    ) -> Cancelable<Self, C>;
+    fn cancelable(self, guard: &impl Canceler) -> Cancelable<Self>;
 }
 
 impl<S: Stream> StreamExtension for S {
-    fn cancelable<C: Fn() -> S::Item>(
-        self,
-        guard: &impl Canceler,
-        on_cancel: C,
-    ) -> Cancelable<Self, C> {
+    fn cancelable(self, guard: &impl Canceler) -> Cancelable<Self> {
         let (canceler, cancel_receiver) = oneshot::channel();
         guard.add_cancel_sender(canceler);
         Cancelable {
             inner: self,
             cancel_receiver: cancel_receiver.fuse(),
-            on_cancel,
         }
     }
 }
@@ -237,27 +231,18 @@ pub trait FutureExtension: Future + Sized {
     /// `Cancelable` receives an error.
     ///
     /// `on_cancel` is called to make an error value upon cancelation.
-    fn cancelable<C: Fn() -> Self::Output>(
-        self,
-        guard: &impl Canceler,
-        on_cancel: C,
-    ) -> Cancelable<Self, C>;
+    fn cancelable(self, guard: &impl Canceler) -> Cancelable<Self>;
 
     fn timeout(self, dur: Duration) -> tokio::time::Timeout<Self>;
 }
 
 impl<F: Future> FutureExtension for F {
-    fn cancelable<C: Fn() -> F::Output>(
-        self,
-        guard: &impl Canceler,
-        on_cancel: C,
-    ) -> Cancelable<Self, C> {
+    fn cancelable(self, guard: &impl Canceler) -> Cancelable<Self> {
         let (canceler, cancel_receiver) = oneshot::channel();
         guard.add_cancel_sender(canceler);
         Cancelable {
             inner: self,
             cancel_receiver: cancel_receiver.fuse(),
-            on_cancel,
         }
     }
 
