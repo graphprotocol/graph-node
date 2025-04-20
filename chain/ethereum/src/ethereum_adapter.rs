@@ -500,12 +500,12 @@ impl EthereumAdapter {
         }
     }
 
-    fn code(
+    async fn code(
         &self,
         logger: &Logger,
         address: Address,
         block_ptr: BlockPtr,
-    ) -> impl Future<Item = Bytes, Error = EthereumRpcError> + Send {
+    ) -> Result<Bytes, EthereumRpcError> {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -531,17 +531,16 @@ impl EthereumAdapter {
                     }
                 }
             })
+            .await
             .map_err(|e| e.into_inner().unwrap_or(EthereumRpcError::Timeout))
-            .boxed()
-            .compat()
     }
 
-    fn balance(
+    async fn balance(
         &self,
         logger: &Logger,
         address: Address,
         block_ptr: BlockPtr,
-    ) -> impl Future<Item = U256, Error = EthereumRpcError> + Send {
+    ) -> Result<U256, EthereumRpcError> {
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -567,9 +566,8 @@ impl EthereumAdapter {
                     }
                 }
             })
+            .await
             .map_err(|e| e.into_inner().unwrap_or(EthereumRpcError::Timeout))
-            .boxed()
-            .compat()
     }
 
     async fn call(
@@ -1470,32 +1468,32 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
     }
 
-    fn get_balance(
+    async fn get_balance(
         &self,
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = EthereumRpcError> + Send> {
+    ) -> Result<U256, EthereumRpcError> {
         debug!(
             logger, "eth_getBalance";
             "address" => format!("{}", address),
             "block" => format!("{}", block_ptr)
         );
-        Box::new(self.balance(logger, address, block_ptr))
+        self.balance(logger, address, block_ptr).await
     }
 
-    fn get_code(
+    async fn get_code(
         &self,
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = Bytes, Error = EthereumRpcError> + Send> {
+    ) -> Result<Bytes, EthereumRpcError> {
         debug!(
             logger, "eth_getCode";
             "address" => format!("{}", address),
             "block" => format!("{}", block_ptr)
         );
-        Box::new(self.code(logger, address, block_ptr))
+        self.code(logger, address, block_ptr).await
     }
 
     async fn next_existing_ptr_to_number(

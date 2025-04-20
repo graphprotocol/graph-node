@@ -7,7 +7,6 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
-use graph::futures01::Future;
 use graph::prelude::web3::types::Bytes;
 use graph::prelude::web3::types::H160;
 use graph::prelude::web3::types::U256;
@@ -1170,20 +1169,20 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError>;
 
-    fn get_balance(
+    async fn get_balance(
         &self,
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = U256, Error = EthereumRpcError> + Send>;
+    ) -> Result<U256, EthereumRpcError>;
 
     // Returns the compiled bytecode of a smart contract
-    fn get_code(
+    async fn get_code(
         &self,
         logger: &Logger,
         address: H160,
         block_ptr: BlockPtr,
-    ) -> Box<dyn Future<Item = Bytes, Error = EthereumRpcError> + Send>;
+    ) -> Result<Bytes, EthereumRpcError>;
 }
 
 #[cfg(test)]

@@ -14,7 +14,6 @@ use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::data_source;
 use graph::data_source::common::{ContractCall, MappingABI};
-use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
@@ -227,11 +226,7 @@ fn eth_get_balance(
 
     let address: H160 = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
 
-    let result = graph::block_on(
-        eth_adapter
-            .get_balance(logger, address, block_ptr.clone())
-            .compat(),
-    );
+    let result = graph::block_on(eth_adapter.get_balance(logger, address, block_ptr.clone()));
 
     match result {
         Ok(v) => {
@@ -265,12 +260,8 @@ fn eth_has_code(
 
     let address: H160 = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
 
-    let result = graph::block_on(
-        eth_adapter
-            .get_code(logger, address, block_ptr.clone())
-            .compat(),
-    )
-    .map(|v| !v.0.is_empty());
+    let result = graph::block_on(eth_adapter.get_code(logger, address, block_ptr.clone()))
+        .map(|v| !v.0.is_empty());
 
     match result {
         Ok(v) => Ok(asc_new(ctx.heap, &AscWrapped { inner: v }, &ctx.gas)?),
