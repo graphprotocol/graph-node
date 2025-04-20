@@ -1133,11 +1133,11 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// those confirmations.
     /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
     /// reorgs.
-    fn block_hash_by_block_number(
+    async fn block_hash_by_block_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
+    ) -> Result<Option<H256>, Error>;
 
     /// Finds the hash and number of the lowest non-null block with height greater than or equal to
     /// the given number.

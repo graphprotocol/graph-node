@@ -1435,42 +1435,39 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
     }
 
-    fn block_hash_by_block_number(
+    async fn block_hash_by_block_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send> {
+    ) -> Result<Option<H256>, Error> {
         let web3 = self.web3.clone();
         let retry_log_message = format!(
             "eth_getBlockByNumber RPC call for block number {}",
             block_number
         );
-        Box::new(
-            retry(retry_log_message, logger)
-                .redact_log_urls(true)
-                .no_limit()
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    let web3 = web3.cheap_clone();
-                    async move {
-                        web3.eth()
-                            .block(BlockId::Number(block_number.into()))
-                            .await
-                            .map(|block_opt| block_opt.and_then(|block| block.hash))
-                            .map_err(Error::from)
-                    }
+        retry(retry_log_message, logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    web3.eth()
+                        .block(BlockId::Number(block_number.into()))
+                        .await
+                        .map(|block_opt| block_opt.and_then(|block| block.hash))
+                        .map_err(Error::from)
+                }
+            })
+            .await
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!(
+                        "Ethereum node took too long to return data for block #{}",
+                        block_number
+                    )
                 })
-                .boxed()
-                .compat()
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or_else(move || {
-                        anyhow!(
-                            "Ethereum node took too long to return data for block #{}",
-                            block_number
-                        )
-                    })
-                }),
-        )
+            })
     }
 
     fn get_balance(
