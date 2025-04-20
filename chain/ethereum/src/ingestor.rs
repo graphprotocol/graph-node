@@ -210,7 +210,6 @@ impl PollingBlockIngestor {
     ) -> Result<BlockPtr, IngestorError> {
         eth_adapter
             .latest_block_header(&logger)
-            .compat()
             .await
             .map(|block| block.into())
     }

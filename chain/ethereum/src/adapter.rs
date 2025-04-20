@@ -1088,10 +1088,10 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = bc::IngestorError> + Send + Unpin>;
 
     /// Get the latest block, with only the header and transaction hashes.
-    fn latest_block_header(
+    async fn latest_block_header(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = bc::IngestorError> + Send>;
+    ) -> Result<web3::types::Block<H256>, bc::IngestorError>;
 
     fn load_block(
         &self,
