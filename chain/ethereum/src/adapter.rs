@@ -17,7 +17,6 @@ use prost_types::Any;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::marker::Unpin;
 use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Log, H256};
@@ -1082,10 +1081,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
-    fn latest_block(
-        &self,
-        logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = bc::IngestorError> + Send + Unpin>;
+    async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, bc::IngestorError>;
 
     /// Get the latest block, with only the header and transaction hashes.
     async fn latest_block_header(
