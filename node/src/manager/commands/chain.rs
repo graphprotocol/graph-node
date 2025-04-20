@@ -10,7 +10,6 @@ use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainIdentifierStore;
 use graph::components::network_provider::ChainName;
 use graph::components::store::StoreError;
-use graph::futures03::compat::Future01CompatExt as _;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
 use graph::prelude::LightEthereumBlockExt;
@@ -273,7 +272,6 @@ pub async fn ingest(
 ) -> Result<(), Error> {
     let Some(block) = ethereum_adapter
         .block_by_number(logger, number)
-        .compat()
         .await
         .map_err(|e| anyhow!("error getting block number {number}: {}", e))?
     else {

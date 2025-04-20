@@ -1089,11 +1089,11 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
     ) -> Result<web3::types::Block<H256>, bc::IngestorError>;
 
-    fn load_block(
+    async fn load_block(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
+    ) -> Result<LightEthereumBlock, Error>;
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     /// May use the `chain_store` as a cache.
@@ -1105,17 +1105,17 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Result<Vec<Arc<LightEthereumBlock>>, Error>;
 
     /// Find a block by its hash.
-    fn block_by_hash(
+    async fn block_by_hash(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
+    ) -> Result<Option<LightEthereumBlock>, Error>;
 
-    fn block_by_number(
+    async fn block_by_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
+    ) -> Result<Option<LightEthereumBlock>, Error>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
     fn load_full_block(

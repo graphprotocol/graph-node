@@ -1314,92 +1314,87 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .await
     }
 
-    fn load_block(
+    async fn load_block(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send> {
-        Box::new(
-            self.block_by_hash(logger, block_hash)
-                .and_then(move |block_opt| {
-                    block_opt.ok_or_else(move || {
-                        anyhow!(
-                            "Ethereum node could not find block with hash {}",
-                            block_hash
-                        )
-                    })
-                }),
-        )
+    ) -> Result<LightEthereumBlock, Error> {
+        self.block_by_hash(logger, block_hash)
+            .await?
+            .ok_or_else(move || {
+                anyhow!(
+                    "Ethereum node could not find block with hash {}",
+                    block_hash
+                )
+            })
     }
 
-    fn block_by_hash(
+    async fn block_by_hash(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
+    ) -> Result<Option<LightEthereumBlock>, Error> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
             "eth_getBlockByHash RPC call for block hash {:?}",
             block_hash
         );
-        Box::new(
-            retry(retry_log_message, &logger)
-                .redact_log_urls(true)
-                .limit(ENV_VARS.request_retries)
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    Box::pin(web3.eth().block_with_txs(BlockId::Hash(block_hash)))
-                        .compat()
-                        .from_err()
-                        .compat()
+
+        retry(retry_log_message, &logger)
+            .redact_log_urls(true)
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    web3.eth()
+                        .block_with_txs(BlockId::Hash(block_hash))
+                        .await
+                        .map_err(Error::from)
+                }
+            })
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!("Ethereum node took too long to return block {}", block_hash)
                 })
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or_else(move || {
-                        anyhow!("Ethereum node took too long to return block {}", block_hash)
-                    })
-                })
-                .boxed()
-                .compat(),
-        )
+            })
+            .await
     }
 
-    fn block_by_number(
+    async fn block_by_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send> {
+    ) -> Result<Option<LightEthereumBlock>, Error> {
         let web3 = self.web3.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
             "eth_getBlockByNumber RPC call for block number {}",
             block_number
         );
-        Box::new(
-            retry(retry_log_message, &logger)
-                .redact_log_urls(true)
-                .no_limit()
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    let web3 = web3.cheap_clone();
-                    async move {
-                        web3.eth()
-                            .block_with_txs(BlockId::Number(block_number.into()))
-                            .await
-                            .map_err(Error::from)
-                    }
+        retry(retry_log_message, &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    web3.eth()
+                        .block_with_txs(BlockId::Number(block_number.into()))
+                        .await
+                        .map_err(Error::from)
+                }
+            })
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!(
+                        "Ethereum node took too long to return block {}",
+                        block_number
+                    )
                 })
-                .map_err(move |e| {
-                    e.into_inner().unwrap_or_else(move || {
-                        anyhow!(
-                            "Ethereum node took too long to return block {}",
-                            block_number
-                        )
-                    })
-                })
-                .boxed()
-                .compat(),
-        )
+            })
+            .await
     }
 
     fn load_full_block(

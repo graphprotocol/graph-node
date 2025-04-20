@@ -3,7 +3,6 @@ use crate::{EthereumAdapter, EthereumAdapterTrait as _};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
 use graph::components::network_provider::ChainName;
-use graph::futures03::compat::Future01CompatExt as _;
 use graph::slog::o;
 use graph::util::backoff::ExponentialBackoff;
 use graph::{
@@ -175,7 +174,6 @@ impl PollingBlockIngestor {
         // Get the fully populated block
         let block = eth_adapter
             .block_by_hash(logger, block_hash)
-            .compat()
             .await?
             .ok_or(IngestorError::BlockUnavailable(block_hash))?;
         let ethereum_block = eth_adapter.load_full_block(&logger, block).await?;

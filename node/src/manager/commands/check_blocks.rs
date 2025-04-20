@@ -153,7 +153,6 @@ async fn handle_multiple_block_hashes(
 mod steps {
     use super::*;
 
-    use graph::futures03::compat::Future01CompatExt;
     use graph::{
         anyhow::bail,
         prelude::serde_json::{self, Value},
@@ -204,7 +203,6 @@ mod steps {
     ) -> anyhow::Result<Value> {
         let provider_block = ethereum_adapter
             .block_by_hash(logger, *block_hash)
-            .compat()
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
             .ok_or_else(|| anyhow!("JRPC provider found no block with hash {block_hash:?}"))?;
