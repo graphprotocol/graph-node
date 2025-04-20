@@ -1734,7 +1734,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send> {
+    ) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks: Vec<Arc<LightEthereumBlock>> = chain_store
@@ -1756,27 +1756,25 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         // Return a stream that lazily loads batches of blocks.
         debug!(logger, "Requesting {} block(s)", missing_blocks.len());
-        Box::new(
-            self.load_blocks_rpc(logger.clone(), missing_blocks)
-                .collect()
-                .map(move |new_blocks| {
-                    let upsert_blocks: Vec<_> = new_blocks
-                        .iter()
-                        .map(|block| BlockFinality::Final(block.clone()))
-                        .collect();
-                    let block_refs: Vec<_> = upsert_blocks
-                        .iter()
-                        .map(|block| block as &dyn graph::blockchain::Block)
-                        .collect();
-                    if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
-                        error!(logger, "Error writing to block cache {}", e);
-                    }
-                    blocks.extend(new_blocks);
-                    blocks.sort_by_key(|block| block.number);
-                    stream::iter_ok(blocks)
-                })
-                .flatten_stream(),
-        )
+        let new_blocks = self
+            .load_blocks_rpc(logger.clone(), missing_blocks)
+            .collect()
+            .compat()
+            .await?;
+        let upsert_blocks: Vec<_> = new_blocks
+            .iter()
+            .map(|block| BlockFinality::Final(block.clone()))
+            .collect();
+        let block_refs: Vec<_> = upsert_blocks
+            .iter()
+            .map(|block| block as &dyn graph::blockchain::Block)
+            .collect();
+        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
+            error!(logger, "Error writing to block cache {}", e);
+        }
+        blocks.extend(new_blocks);
+        blocks.sort_by_key(|block| block.number);
+        Ok(blocks)
     }
 }
 
@@ -1911,10 +1909,11 @@ pub(crate) async fn blocks_with_triggers(
 
     let logger2 = logger.cheap_clone();
 
-    let blocks = eth
+    let blocks: Vec<_> = eth
         .load_blocks(logger.cheap_clone(), chain_store.clone(), block_hashes)
-        .await
-        .and_then(
+        .await?
+        .into_iter()
+        .map(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
                     BlockFinality::Final(block),
@@ -1927,9 +1926,7 @@ pub(crate) async fn blocks_with_triggers(
                 )),
             },
         )
-        .collect()
-        .compat()
-        .await?;
+        .collect::<Result<_, _>>()?;
 
     // Filter out call triggers that come from unsuccessful transactions
     let futures = blocks.into_iter().map(|block| {

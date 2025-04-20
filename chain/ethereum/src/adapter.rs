@@ -26,7 +26,6 @@ use graph::prelude::*;
 use graph::{
     blockchain as bc,
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
-    futures01::Stream,
     petgraph::{self, graphmap::GraphMap},
 };
 
@@ -1107,7 +1106,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send>;
+    ) -> Result<Vec<Arc<LightEthereumBlock>>, Error>;
 
     /// Find a block by its hash.
     fn block_by_hash(

@@ -10,7 +10,6 @@ use graph::components::network_provider::ChainName;
 use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
-use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
     retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
@@ -1060,7 +1059,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        use graph::futures01::stream::Stream;
         use graph::prelude::LightEthereumBlockExt;
 
         let block = match self.chain_client.as_ref() {
@@ -1111,9 +1109,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         self.chain_store.cheap_clone(),
                         HashSet::from_iter(Some(block.hash_as_h256())),
                     )
-                    .await
-                    .collect()
-                    .compat()
                     .await?;
                 assert_eq!(blocks.len(), 1);
 
