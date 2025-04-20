@@ -1397,12 +1397,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .await
     }
 
-    fn load_full_block(
+    async fn load_full_block(
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, IngestorError>> + Send + '_>>
-    {
+    ) -> Result<EthereumBlock, IngestorError> {
         let web3 = Arc::clone(&self.web3);
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
@@ -1411,36 +1410,29 @@ impl EthereumAdapterTrait for EthereumAdapter {
         // request an empty batch which is not valid in JSON-RPC.
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
-            return Box::pin(std::future::ready(Ok(EthereumBlock {
+            return Ok(EthereumBlock {
                 block: Arc::new(block),
                 transaction_receipts: Vec::new(),
-            })));
+            });
         }
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
 
-        let supports_block_receipts_future = self.check_block_receipt_support_and_update_cache(
-            web3.clone(),
-            block_hash,
-            self.supports_eip_1898,
-            self.call_only,
-            logger.clone(),
-        );
+        let supports_block_receipts = self
+            .check_block_receipt_support_and_update_cache(
+                web3.clone(),
+                block_hash,
+                self.supports_eip_1898,
+                self.call_only,
+                logger.clone(),
+            )
+            .await;
 
-        let receipts_future = supports_block_receipts_future
-            .then(move |supports_block_receipts| {
-                fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
+        fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
+            .await
+            .map(|transaction_receipts| EthereumBlock {
+                block: Arc::new(block),
+                transaction_receipts,
             })
-            .boxed();
-
-        let block_future =
-            futures03::TryFutureExt::map_ok(receipts_future, move |transaction_receipts| {
-                EthereumBlock {
-                    block: Arc::new(block),
-                    transaction_receipts,
-                }
-            });
-
-        Box::pin(block_future)
     }
 
     fn block_hash_by_block_number(

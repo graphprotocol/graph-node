@@ -1118,13 +1118,11 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     ) -> Result<Option<LightEthereumBlock>, Error>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
-    fn load_full_block(
+    async fn load_full_block(
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Pin<
-        Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send + '_>,
-    >;
+    ) -> Result<EthereumBlock, bc::IngestorError>;
 
     /// Find a block by its number, according to the Ethereum node.
     ///
