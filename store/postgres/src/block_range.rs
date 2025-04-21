@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, QueryFragment};
 use diesel::result::QueryResult;
