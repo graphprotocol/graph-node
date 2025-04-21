@@ -336,10 +336,10 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     println!();
 
     println!(
-        "{:^30} | {:^8} | {:^8} | {:^8} | {:^8}",
+        "{:^30} | {:^10} | {:^10} | {:^8} | {:^10}",
         "entity type", "next", "target", "batch", "duration"
     );
-    println!("{:-<74}", "-");
+    println!("{:-<80}", "-");
     for table in tables {
         let status = match &table.finished_at {
             // table finished
@@ -352,7 +352,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
             None => ".",
         };
         println!(
-            "{} {:<28} | {:>8} | {:>8} | {:>8} | {:>8}",
+            "{} {:<28} | {:>10} | {:>10} | {:>8} | {:>10}",
             status,
             table.entity_type,
             table.next_vid,
