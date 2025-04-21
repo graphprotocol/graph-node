@@ -26,5 +26,5 @@ tokio = { version = "1.44.2", features = ["rt", "macros", "process"] }
 secp256k1 = { version = "0.21", features = ["recovery"] }
 
 [dev-dependencies]
-anyhow = "1.0.86"
+anyhow = "1.0.98"
 tokio-stream = "0.1"
