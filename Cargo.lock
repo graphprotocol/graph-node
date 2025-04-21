@@ -233,7 +233,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util 0.7.11",
- "tower-service 0.3.3",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -361,9 +361,9 @@ dependencies = [
  "rustversion",
  "serde",
  "sync_wrapper 1.0.1",
- "tower 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower 0.4.13",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -397,9 +397,9 @@ dependencies = [
  "sync_wrapper 1.0.1",
  "tokio",
  "tokio-tungstenite",
- "tower 0.5.2",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -419,8 +419,8 @@ dependencies = [
  "pin-project-lite",
  "rustversion",
  "sync_wrapper 0.1.2",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -438,8 +438,8 @@ dependencies = [
  "pin-project-lite",
  "rustversion",
  "sync_wrapper 1.0.1",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -2036,7 +2036,7 @@ dependencies = [
  "graph-chain-substreams",
  "graph-runtime-wasm",
  "serde_yaml",
- "tower 0.4.13 (git+https://github.com/tower-rs/tower.git)",
+ "tower 0.5.2 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
  "wiremock",
 ]
@@ -2583,7 +2583,7 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio",
- "tower-service 0.3.3",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
  "want",
 ]
@@ -2624,7 +2624,7 @@ dependencies = [
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
- "tower-service 0.3.3",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2637,7 +2637,7 @@ dependencies = [
  "hyper-util",
  "pin-project-lite",
  "tokio",
- "tower-service 0.3.3",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2653,7 +2653,7 @@ dependencies = [
  "native-tls",
  "tokio",
  "tokio-native-tls",
- "tower-service 0.3.3",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2671,7 +2671,7 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "tokio",
- "tower-service 0.3.3",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -4317,8 +4317,8 @@ dependencies = [
  "tokio-native-tls",
  "tokio-rustls",
  "tokio-util 0.7.11",
- "tower 0.5.2",
- "tower-service 0.3.3",
+ "tower 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -5634,9 +5634,9 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-stream",
- "tower 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower 0.4.13",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -5669,27 +5669,8 @@ dependencies = [
  "slab",
  "tokio",
  "tokio-util 0.7.11",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
- "tracing",
-]
-
-[[package]]
-name = "tower"
-version = "0.4.13"
-source = "git+https://github.com/tower-rs/tower.git#39adf5c509a1b2141f679654d8317524ca96b58b"
-dependencies = [
- "futures-core",
- "futures-util",
- "hdrhistogram",
- "indexmap 1.9.3",
- "pin-project-lite",
- "slab",
- "sync_wrapper 0.1.2",
- "tokio",
- "tokio-util 0.7.11",
- "tower-layer 0.3.2",
- "tower-service 0.3.2",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -5704,8 +5685,27 @@ dependencies = [
  "pin-project-lite",
  "sync_wrapper 1.0.1",
  "tokio",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tracing",
+]
+
+[[package]]
+name = "tower"
+version = "0.5.2"
+source = "git+https://github.com/tower-rs/tower.git#abb375d08cf0ba34c1fe76f66f1aba3dc4341013"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "hdrhistogram",
+ "indexmap 2.9.0",
+ "pin-project-lite",
+ "slab",
+ "sync_wrapper 1.0.1",
+ "tokio",
+ "tokio-util 0.7.11",
+ "tower-layer 0.3.3 (git+https://github.com/tower-rs/tower.git)",
+ "tower-service 0.3.3 (git+https://github.com/tower-rs/tower.git)",
  "tracing",
 ]
 
@@ -5721,14 +5721,9 @@ dependencies = [
  "http-body 1.0.0",
  "http-body-util",
  "pin-project-lite",
- "tower-layer 0.3.3",
- "tower-service 0.3.3",
+ "tower-layer 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tower-service 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "tower-layer"
-version = "0.3.2"
-source = "git+https://github.com/tower-rs/tower.git#39adf5c509a1b2141f679654d8317524ca96b58b"
 
 [[package]]
 name = "tower-layer"
@@ -5737,9 +5732,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 
 [[package]]
-name = "tower-service"
-version = "0.3.2"
-source = "git+https://github.com/tower-rs/tower.git#39adf5c509a1b2141f679654d8317524ca96b58b"
+name = "tower-layer"
+version = "0.3.3"
+source = "git+https://github.com/tower-rs/tower.git#abb375d08cf0ba34c1fe76f66f1aba3dc4341013"
 
 [[package]]
 name = "tower-service"
@@ -5748,16 +5743,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
+name = "tower-service"
+version = "0.3.3"
+source = "git+https://github.com/tower-rs/tower.git#abb375d08cf0ba34c1fe76f66f1aba3dc4341013"
+
+[[package]]
 name = "tower-test"
-version = "0.4.0"
-source = "git+https://github.com/tower-rs/tower.git#39adf5c509a1b2141f679654d8317524ca96b58b"
+version = "0.4.1"
+source = "git+https://github.com/tower-rs/tower.git#abb375d08cf0ba34c1fe76f66f1aba3dc4341013"
 dependencies = [
  "futures-util",
  "pin-project-lite",
  "tokio",
  "tokio-test",
- "tower-layer 0.3.2",
- "tower-service 0.3.2",
+ "tower-layer 0.3.3 (git+https://github.com/tower-rs/tower.git)",
+ "tower-service 0.3.3 (git+https://github.com/tower-rs/tower.git)",
 ]
 
 [[package]]
