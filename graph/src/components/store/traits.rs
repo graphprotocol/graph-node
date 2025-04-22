@@ -395,7 +395,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     /// Cheap, cached operation.
     fn is_deployment_synced(&self) -> bool;
 
-    fn unassign_subgraph(&self) -> Result<(), StoreError>;
+    fn pause_subgraph(&self) -> Result<(), StoreError>;
 
     /// Load the dynamic data sources for the given deployment
     async fn load_dynamic_data_sources(

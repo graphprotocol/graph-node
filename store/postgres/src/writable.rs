@@ -358,6 +358,17 @@ impl SyncStore {
         })
     }
 
+    fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
+        retry::forever(&self.logger, "unassign_subgraph", || {
+            let mut pconn = self.store.primary_conn()?;
+            pconn.transaction(|conn| -> Result<_, StoreError> {
+                let mut pconn = primary::Connection::new(conn);
+                let changes = pconn.pause_subgraph(site)?;
+                self.store.send_store_event(&StoreEvent::new(changes))
+            })
+        })
+    }
+
     async fn load_dynamic_data_sources(
         &self,
         block: BlockNumber,
@@ -1722,8 +1733,8 @@ impl WritableStoreTrait for WritableStore {
         self.is_deployment_synced.load(Ordering::SeqCst)
     }
 
-    fn unassign_subgraph(&self) -> Result<(), StoreError> {
-        self.store.unassign_subgraph(&self.store.site)
+    fn pause_subgraph(&self) -> Result<(), StoreError> {
+        self.store.pause_subgraph(&self.store.site)
     }
 
     async fn load_dynamic_data_sources(

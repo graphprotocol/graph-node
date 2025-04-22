@@ -141,7 +141,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unassign_subgraph(&self) -> Result<(), StoreError> {
+    fn pause_subgraph(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 

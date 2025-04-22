@@ -527,7 +527,7 @@ where
         let store = &self.inputs.store;
         if !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
-                .unassign_subgraph()
+                .pause_subgraph()
                 .map_err(|e| ProcessingError::Unknown(e.into()))?;
 
             // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
