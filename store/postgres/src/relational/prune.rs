@@ -233,6 +233,7 @@ impl TablePair {
                 query,
                 "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
             )?;
+            writeln!(query, "drop sequence {src_nsp}.{vid_seq} cascade;")?;
         }
 
         writeln!(query, "drop table {src_qname};")?;
