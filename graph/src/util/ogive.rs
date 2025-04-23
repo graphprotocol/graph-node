@@ -19,7 +19,7 @@ use crate::{internal_error, prelude::StoreError};
 /// more fun to say.
 pub struct Ogive {
     /// The breakpoints of the piecewise linear function
-    points: Vec<f64>,
+    points: Vec<i64>,
     /// The size of each bin; the linear piece from `points[i]` to
     /// `points[i+1]` rises by this much
     bin_size: f64,
@@ -46,7 +46,6 @@ impl Ogive {
         let bins = points.len() - 1;
         let bin_size = total as f64 / bins as f64;
         let range = points[0]..=points[bins];
-        let points = points.into_iter().map(|p| p as f64).collect();
         Ok(Self {
             points,
             bin_size,
@@ -90,7 +89,6 @@ impl Ogive {
     fn interval_start(&self, point: i64) -> Result<usize, StoreError> {
         self.check_in_range(point)?;
 
-        let point = point as f64;
         let idx = self
             .points
             .iter()
@@ -102,16 +100,22 @@ impl Ogive {
 
     /// Return the value of the ogive at `point`, i.e., `f(point)`. It is an
     /// error if `point` is outside the range of points of this ogive.
+    ///
+    /// If `i` is such that
+    /// `points[i] <= point < points[i+1]`, then
+    /// ```text
+    ///   f(point) = i * bin_size + (point - points[i]) / (points[i+1] - points[i]) * bin_size
+    /// ```
+    // See the comment on `inverse` for numerical considerations
     fn value(&self, point: i64) -> Result<i64, StoreError> {
         if self.points.len() == 1 {
             return Ok(*self.range.end());
         }
 
         let idx = self.interval_start(point)?;
-        let bin_size = self.bin_size as f64;
         let (a, b) = (self.points[idx], self.points[idx + 1]);
-        let point = point as f64;
-        let value = (idx as f64 + (point - a) / (b - a)) * bin_size;
+        let offset = (point - a) as f64 / (b - a) as f64;
+        let value = (idx as f64 + offset) * self.bin_size;
         Ok(value as i64)
     }
 
@@ -119,18 +123,38 @@ impl Ogive {
     /// It is an error if `value` is negative. If `value` is greater than
     /// the total count of the ogive, the maximum point of the ogive is
     /// returned.
+    ///
+    /// For `points[j] <= v < points[j+1]`, the value of `g(v)` is
+    /// ```text
+    ///  g(v) = (1-lambda)*points[j] + lambda * points[j+1]
+    /// ```
+    /// where `lambda = (v - j * bin_size) / bin_size`
+    ///
+    // Note that in the definition of `lambda`, the numerator is
+    // `v.rem_euclid(bin_size)`
+    //
+    // Numerical consideration: in these calculations, we need to be careful
+    // to never convert one of the points directly to f64 since they can be
+    // so large that the conversion from i64 to f64 loses precision. That
+    // loss of precision can cause the convex combination of `points[j]` and
+    // `points[j+1]` above to lie outside of that interval when `(points[j]
+    // as f64) as i64 < points[j]`
+    //
+    // We therefore try to only convert differences between points to f64
+    // which are much smaller.
     fn inverse(&self, value: i64) -> Result<i64, StoreError> {
-        let value = value as f64;
-        if value < 0.0 {
+        if value < 0 {
             return Err(internal_error!("value {} can not be negative", value));
         }
-        let idx = (value / self.bin_size) as usize;
-        if idx >= self.points.len() - 1 {
+        let j = (value / self.bin_size as i64) as usize;
+        if j >= self.points.len() - 1 {
             return Ok(*self.range.end());
         }
-        let (a, b) = (self.points[idx] as f64, self.points[idx + 1] as f64);
-        let lambda = (value - idx as f64 * self.bin_size) / self.bin_size;
-        let x = (1.0 - lambda) * a + lambda * b;
+        let (a, b) = (self.points[j], self.points[j + 1]);
+        // This is the same calculation as in the comment above, but
+        // rewritten to be more friendly to lossy calculations with f64
+        let offset = (value as f64).rem_euclid(self.bin_size) * (b - a) as f64;
+        let x = a + (offset / self.bin_size) as i64;
         Ok(x as i64)
     }
 
