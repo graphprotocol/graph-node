@@ -277,17 +277,26 @@ impl Cond {
                 .map(Cond::Partial)
         }
 
-        if &cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
+        let cond = cond.trim();
+        let cond = if cond.starts_with("(") && cond.ends_with(")") {
+            &cond[1..cond.len() - 1]
+        } else {
+            cond
+        };
+        let cond = cond.trim();
+        if cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
             Cond::Closed
         } else {
-            parse_partial(&cond).unwrap_or(Cond::Unknown(cond))
+            parse_partial(cond).unwrap_or(Cond::Unknown(cond.to_string()))
         }
     }
 
     fn to_sql(&self) -> String {
         match self {
-            Cond::Partial(number) => format!("coalesce(upper(block_range), 2147483647) > {number}"),
-            Cond::Closed => "coalesce(upper(block_range), 2147483647) < 2147483647".to_string(),
+            Cond::Partial(number) => {
+                format!("(coalesce(upper(block_range), 2147483647) > {number})")
+            }
+            Cond::Closed => "(coalesce(upper(block_range), 2147483647) < 2147483647)".to_string(),
             Cond::Unknown(cond) => cond.to_string(),
         }
     }
@@ -402,8 +411,8 @@ impl CreateIndex {
                 "create (?P<unique>unique )?index (?P<name>\"?[a-z0-9$_]+\"?) \
             on (?P<nsp>sgd[0-9]+)\\.(?P<table>\"?[a-z0-9$_]+\"?) \
             using (?P<method>[a-z]+) \\((?P<columns>.*?)\\)\
-            ( where \\((?P<cond>.*)\\))?\
-            ( with \\((?P<with>.*)\\))?$",
+            ( with \\((?P<with>.*)\\))?\
+            ( where (?P<cond>.*))?$",
             )
             .unwrap();
 
@@ -752,7 +761,7 @@ impl CreateIndex {
                     write!(sql, " with ({with})")?;
                 }
                 if let Some(cond) = cond {
-                    write!(sql, " where ({})", cond.to_sql())?;
+                    write!(sql, " where {}", cond.to_sql())?;
                 }
                 Ok(sql)
             }
@@ -987,7 +996,7 @@ mod tests {
             }
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         enum TestCond {
             Partial(BlockNumber),
             Closed,
@@ -1004,7 +1013,7 @@ mod tests {
             }
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         struct Parsed {
             unique: bool,
             name: &'static str,
@@ -1042,12 +1051,33 @@ mod tests {
         }
 
         #[track_caller]
-        fn parse_one(defn: &str, exp: Parsed) {
+        fn parses_to(defn: &str, exp: &Parsed) -> CreateIndex {
             let act = CreateIndex::parse(defn.to_string());
-            let exp = CreateIndex::from(exp);
+            let exp = CreateIndex::from(exp.clone());
             assert_eq!(exp, act);
+            act
+        }
+
+        #[track_caller]
+        fn parse_one(defn: &str, exp: Parsed) {
+            let act = parses_to(defn, &exp);
 
             let defn = defn.to_ascii_lowercase();
+            let creat = IndexCreator::new(false, false, false);
+            assert_eq!(defn, creat.to_sql(&act).unwrap());
+        }
+
+        // Test that the equivalent index definitions in `defns` are parsed to
+        // the same `CreateIndex` and that turning those index definitions into
+        // a SQL string produces `defns[0]`
+        #[track_caller]
+        fn parse_many(defns: &[&str], exp: Parsed) {
+            let act = parses_to(defns[0], &exp);
+            for defn in &defns[1..] {
+                parses_to(defn, &exp);
+            }
+
+            let defn = defns[0].to_ascii_lowercase();
             let creat = IndexCreator::new(false, false, false);
             assert_eq!(defn, creat.to_sql(&act).unwrap());
         }
@@ -1223,8 +1253,10 @@ mod tests {
         };
         parse_one(sql, exp);
 
-        let sql =
-            "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where (amount > 0)";
+        let sqls = &[
+            "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where amount > 0",
+            "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where (amount > 0)",
+        ];
         let exp = Parsed {
             unique: false,
             name: "brin_scy",
@@ -1234,9 +1266,13 @@ mod tests {
             columns: &[Block, Vid],
             cond: Some(TestCond::Unknown("amount > 0")),
         };
-        parse_one(sql, exp);
+        parse_many(sqls, exp);
 
-        let sql = "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE (decimals > (5)::numeric)";
+        let sqls = &[
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE decimals > (5)::numeric",
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (decimals) WHERE decimals > (5)::numeric",
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (decimals) WHERE ( decimals > (5)::numeric )",
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE ( decimals > (5)::numeric )"];
         let exp = Parsed {
             unique: false,
             name: "manual_token_random_cond",
@@ -1246,7 +1282,21 @@ mod tests {
             columns: &[Name("decimals")],
             cond: Some(TestCond::Unknown("decimals > (5)::numeric")),
         };
-        parse_one(sql, exp);
+        parse_many(sqls, exp);
+
+        let sqls = &[
+        "CREATE INDEX manual_pool_swap_enabled_total_liquidity ON sgd12.pool USING btree (\"total_liquidity\") WHERE swap_enabled",
+        "CREATE INDEX manual_pool_swap_enabled_total_liquidity ON sgd12.pool USING btree (total_liquidity) WHERE swap_enabled"];
+        let exp = Parsed {
+            unique: false,
+            name: "manual_pool_swap_enabled_total_liquidity",
+            nsp: "sgd12",
+            table: "pool",
+            method: BTree,
+            columns: &[Name("total_liquidity")],
+            cond: Some(TestCond::Unknown("swap_enabled")),
+        };
+        parse_many(sqls, exp);
     }
 
     #[test]
