@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{io, sync::Mutex};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use graph::prelude::{isatty, lazy_static};
@@ -53,6 +53,11 @@ impl Terminal {
         self.out.set_color(&self.spec).map_err(Into::into)
     }
 
+    pub fn red(&mut self) -> CmdResult {
+        self.spec.set_fg(Some(Color::Red));
+        self.out.set_color(&self.spec).map_err(Into::into)
+    }
+
     pub fn dim(&mut self) -> CmdResult {
         self.spec.set_dimmed(true);
         self.out.set_color(&self.spec).map_err(Into::into)
@@ -66,6 +71,18 @@ impl Terminal {
     pub fn reset(&mut self) -> CmdResult {
         self.spec = ColorSpec::new();
         self.out.reset().map_err(Into::into)
+    }
+
+    pub fn with_color<F, R>(&mut self, color: Color, f: F) -> io::Result<R>
+    where
+        F: FnOnce(&mut Self) -> io::Result<R>,
+    {
+        self.spec.set_fg(Some(color));
+        self.out.set_color(&self.spec).map_err(io::Error::from)?;
+        let res = f(self);
+        self.spec = ColorSpec::new();
+        self.out.set_color(&self.spec).map_err(io::Error::from)?;
+        res
     }
 }
 

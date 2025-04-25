@@ -18,8 +18,10 @@ use graph_store_postgres::{
     command_support::{Phase, PruneTableState},
     ConnectionPool, Store,
 };
+use termcolor::Color;
 
 use crate::manager::{
+    color::Terminal,
     commands::stats::show_stats,
     deployment::DeploymentSearch,
     fmt::{self, MapOrNull as _},
@@ -329,6 +331,8 @@ pub async fn status(
         }
     }
 
+    let mut term = Terminal::new();
+
     let deployment = search.locate_unique(&primary_pool)?;
 
     let viewer = store.subgraph_store().prune_viewer(&deployment).await?;
@@ -353,37 +357,43 @@ pub async fn status(
             "No information about prune run #{run} found for deployment {deployment}.\n  {runs}"
         ));
     };
-    println!("prune {deployment} (run #{run})");
+    writeln!(term, "prune {deployment} (run #{run})")?;
 
     if let (Some(errored_at), Some(error)) = (&state.errored_at, &state.error) {
-        println!("     error: {error}");
-        println!("        at: {}", fmt::date_time(errored_at));
+        term.with_color(Color::Red, |term| {
+            writeln!(term, "     error: {error}")?;
+            writeln!(term, "        at: {}", fmt::date_time(errored_at))
+        })?;
     }
-    println!(
+    writeln!(
+        term,
         "     range: {} - {} ({} blocks, should keep {} blocks)",
         state.first_block,
         state.latest_block,
         state.latest_block - state.first_block,
         state.history_blocks
-    );
-    println!("   started: {}", fmt::date_time(&state.started_at));
+    )?;
+    writeln!(term, "   started: {}", fmt::date_time(&state.started_at))?;
     match &state.finished_at {
-        Some(finished_at) => println!("  finished: {}", fmt::date_time(finished_at)),
-        None => println!("  finished: still running"),
+        Some(finished_at) => writeln!(term, "  finished: {}", fmt::date_time(finished_at))?,
+        None => writeln!(term, "  finished: still running")?,
     }
-    println!(
+    writeln!(
+        term,
         "  duration: {}",
         fmt::duration(&state.started_at, &state.finished_at)
-    );
+    )?;
 
-    println!(
+    writeln!(
+        term,
         "\n{:^30} | {:^22} | {:^8} | {:^11} | {:^8}",
         "table", "status", "rows", "batch_size", "duration"
-    );
-    println!(
+    )?;
+    writeln!(
+        term,
         "{:-^30}-+-{:-^22}-+-{:-^8}-+-{:-^11}-+-{:-^8}",
         "", "", "", "", ""
-    );
+    )?;
     for ts in table_states {
         #[allow(unused_variables)]
         let PruneTableState {
@@ -416,10 +426,10 @@ pub async fn status(
         let batch_size = batch_size.map_or_null(|b| b.to_string());
         let duration = started_at.map_or_null(|s| fmt::duration(&s, &finished_at));
         let phase = phase.as_str();
-        println!(
+        writeln!(term,
             "{table_name:<30} | {:<15} {complete:>6} | {rows:>8} | {batch_size:>11} | {duration:>8}",
             format!("{strategy}/{phase}")
-        );
+        )?;
     }
     Ok(())
 }
