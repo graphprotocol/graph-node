@@ -1277,7 +1277,8 @@ impl DeploymentStore {
             )?;
 
             let deployment_id = site.id;
-            let handle = graph::spawn(run(logger.cheap_clone(), self.clone(), site, req));
+            let logger = Logger::new(&logger, o!("component" => "Prune"));
+            let handle = graph::spawn(run(logger, self.clone(), site, req));
             self.prune_handles
                 .lock()
                 .unwrap()
