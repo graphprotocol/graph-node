@@ -2079,6 +2079,7 @@ dependencies = [
  "itertools 0.13.0",
  "json-structural-diff",
  "lazy_static",
+ "pgtemp",
  "prometheus",
  "serde",
  "shellexpand",
@@ -3703,6 +3704,17 @@ dependencies = [
  "hashbrown 0.15.2",
  "indexmap 2.9.0",
  "serde",
+]
+
+[[package]]
+name = "pgtemp"
+version = "0.6.0"
+source = "git+https://github.com/incrypto32/pgtemp?branch=initdb-args#929a9f96eab841d880c2ebf280e00054ca55ec0e"
+dependencies = [
+ "libc",
+ "tempfile",
+ "tokio",
+ "url",
 ]
 
 [[package]]

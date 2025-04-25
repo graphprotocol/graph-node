@@ -10,7 +10,7 @@ use crate::network_setup::Networks;
 use crate::opt::Opt;
 use crate::store_builder::StoreBuilder;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
+use graph::components::link_resolver::{ArweaveClient, FileLinkResolver, FileSizeLimit};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::endpoint::EndpointMetrics;
@@ -267,7 +267,7 @@ fn build_subgraph_registrar(
     blockchain_map: Arc<BlockchainMap>,
     node_id: NodeId,
     subgraph_settings: Settings,
-    link_resolver: Arc<IpfsResolver>,
+    link_resolver: Arc<dyn LinkResolver>,
     subscription_manager: Arc<SubscriptionManager>,
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
@@ -347,7 +347,11 @@ fn build_graphql_server(
     graphql_server
 }
 
-pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
+pub async fn run(
+    opt: Opt,
+    env_vars: Arc<EnvVars>,
+    file_link_resolver: Option<Arc<FileLinkResolver>>,
+) {
     env_logger::init();
     // Set up logger
     let logger = logger(opt.debug);
@@ -436,7 +440,13 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
+    let link_resolver: Arc<dyn LinkResolver> = if let Some(file_link_resolver) = file_link_resolver
+    {
+        file_link_resolver
+    } else {
+        Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()))
+    };
+
     let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
