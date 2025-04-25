@@ -363,6 +363,11 @@ impl Layout {
     /// also block queries to the deployment, often for extended periods of
     /// time. The rebuild strategy never blocks reads, it only ever blocks
     /// writes.
+    ///
+    /// This method will only return an `Err` if storing pruning status
+    /// fails, e.g. because the database is not available. All errors that
+    /// happen during pruning itself will be stored in the `prune_state`
+    /// table and this method will return `Ok`
     pub fn prune(
         self: Arc<Self>,
         logger: &Logger,
@@ -373,28 +378,38 @@ impl Layout {
     ) -> Result<(), CancelableError<StoreError>> {
         let tracker = status::Tracker::new(conn, self.clone())?;
 
+        let res = self.prune_inner(logger, reporter, conn, req, cancel, &tracker);
+
+        match res {
+            Ok(_) => {
+                tracker.finish(conn)?;
+            }
+            Err(e) => {
+                // If we get an error, we need to set the error in the
+                // database and finish the tracker
+                let err = e.to_string();
+                tracker.error(conn, &err)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn prune_inner(
+        self: Arc<Self>,
+        logger: &Logger,
+        reporter: &mut dyn PruneReporter,
+        conn: &mut PgConnection,
+        req: &PruneRequest,
+        cancel: &CancelHandle,
+        tracker: &status::Tracker,
+    ) -> Result<(), CancelableError<StoreError>> {
         reporter.start(req);
-
         let stats = self.version_stats(conn, reporter, true, cancel)?;
-
         let prunable_tables: Vec<_> = self.prunable_tables(&stats, req).into_iter().collect();
         tracker.start(conn, req, &prunable_tables)?;
-
-        // create a shadow namespace where we will put the copies of our
-        // tables, but only create it in the database if we really need it
         let dst_nsp = Namespace::prune(self.site.id);
         let mut recreate_dst_nsp = true;
-
-        // Go table by table; note that the subgraph writer can write in
-        // between the execution of the `with_lock` block below, and might
-        // therefore work with tables where some are pruned and some are not
-        // pruned yet. That does not affect correctness since we make no
-        // assumption about where the subgraph head is. If the subgraph
-        // advances during this loop, we might have an unnecessarily
-        // pessimistic but still safe value for `final_block`. We do assume
-        // that `final_block` is far enough from the subgraph head that it
-        // stays final even if a revert happens during this loop, but that
-        // is the definition of 'final'
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
             tracker.start_table(conn, table)?;
@@ -417,7 +432,7 @@ impl Layout {
                     pair.copy_final_entities(
                         conn,
                         reporter,
-                        &tracker,
+                        tracker,
                         req.earliest_block,
                         req.final_block,
                         cancel,
@@ -427,7 +442,7 @@ impl Layout {
                     // see also: deployment-lock-for-update
                     reporter.start_switch();
                     deployment::with_lock(conn, &self.site, |conn| -> Result<_, StoreError> {
-                        pair.copy_nonfinal_entities(conn, reporter, &tracker, req.final_block)?;
+                        pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)?;
                         cancel.check_cancel().map_err(CancelableError::from)?;
 
                         conn.transaction(|conn| pair.switch(logger, conn))?;
@@ -473,22 +488,15 @@ impl Layout {
             reporter.finish_table(table.name.as_str());
             tracker.finish_table(conn, table)?;
         }
-        // Get rid of the temporary prune schema if we actually created it
         if !recreate_dst_nsp {
             catalog::drop_schema(conn, dst_nsp.as_str())?;
         }
-
         for (table, _) in &prunable_tables {
             catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)?;
         }
-
-        // Analyze the new tables
         let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
         self.analyze_tables(conn, reporter, tables, cancel)?;
-
         reporter.finish();
-        tracker.finish(conn)?;
-
         Ok(())
     }
 }
@@ -872,6 +880,21 @@ mod status {
                 .filter(ps::id.eq(self.layout.site.id))
                 .filter(ps::run.eq(self.run))
                 .set((ps::finished_at.eq(diesel::dsl::now),))
+                .execute(conn)?;
+            Ok(())
+        }
+
+        pub(crate) fn error(&self, conn: &mut PgConnection, err: &str) -> StoreResult<()> {
+            use prune_state as ps;
+
+            update(ps::table)
+                .filter(ps::id.eq(self.layout.site.id))
+                .filter(ps::run.eq(self.run))
+                .set((
+                    ps::finished_at.eq(diesel::dsl::now),
+                    ps::errored_at.eq(diesel::dsl::now),
+                    ps::error.eq(err),
+                ))
                 .execute(conn)?;
             Ok(())
         }
