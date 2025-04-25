@@ -354,6 +354,11 @@ pub async fn status(
         ));
     };
     println!("prune {deployment} (run #{run})");
+
+    if let (Some(errored_at), Some(error)) = (&state.errored_at, &state.error) {
+        println!("     error: {error}");
+        println!("        at: {}", fmt::date_time(errored_at));
+    }
     println!(
         "     range: {} - {} ({} blocks, should keep {} blocks)",
         state.first_block,
