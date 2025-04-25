@@ -534,6 +534,8 @@ mod status {
 
             started_at -> Timestamptz,
             finished_at -> Nullable<Timestamptz>,
+            errored_at -> Nullable<Timestamptz>,
+            error -> Nullable<Text>,
         }
     }
 
@@ -633,6 +635,9 @@ mod status {
 
         pub started_at: DateTime<Utc>,
         pub finished_at: Option<DateTime<Utc>>,
+
+        pub errored_at: Option<DateTime<Utc>>,
+        pub error: Option<String>,
     }
 
     /// Per-table information about the pruning run for a deployment
