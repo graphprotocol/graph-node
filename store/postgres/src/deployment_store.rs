@@ -1181,13 +1181,20 @@ impl DeploymentStore {
             // how long pruning itself takes
             let _section = stopwatch.start_section("transact_blocks_prune");
 
-            self.spawn_prune(
+            if let Err(res) = self.spawn_prune(
                 logger,
-                site,
+                site.cheap_clone(),
                 layout.history_blocks,
                 earliest_block,
                 batch.block_ptr.number,
-            )?;
+            ) {
+                warn!(
+                    logger,
+                    "Failed to spawn prune task. Will try to prune again later";
+                    "subgraph" => site.deployment.to_string(),
+                    "error" => res.to_string(),
+                );
+            }
         }
 
         Ok(())
