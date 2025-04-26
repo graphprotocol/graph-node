@@ -444,8 +444,8 @@ mod queries {
     use diesel::dsl::{exists, sql};
     use diesel::pg::PgConnection;
     use diesel::prelude::{
-        BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
-        OptionalExtension, QueryDsl, RunQueryDsl,
+        ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
+        RunQueryDsl,
     };
     use diesel::sql_types::Text;
     use graph::prelude::NodeId;
@@ -723,44 +723,6 @@ mod queries {
             .filter(v::id.eq(version))
             .first::<(String, String)>(conn)
             .optional()?)
-    }
-
-    pub(super) fn versions_for_subgraph_id(
-        conn: &mut PgConnection,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
-        Ok(s::table
-            .select((s::current_version.nullable(), s::pending_version.nullable()))
-            .filter(s::id.eq(subgraph_id))
-            .first::<(Option<String>, Option<String>)>(conn)
-            .optional()?
-            .unwrap_or((None, None)))
-    }
-
-    /// Returns all (subgraph_name, version) pairs for a given deployment hash.
-    pub fn subgraphs_by_deployment_hash(
-        conn: &mut PgConnection,
-        deployment_hash: &str,
-    ) -> Result<Vec<(String, String)>, StoreError> {
-        v::table
-                .inner_join(
-                    s::table.on(v::id
-                        .nullable()
-                        .eq(s::current_version)
-                        .or(v::id.nullable().eq(s::pending_version))),
-                )
-                .filter(v::deployment.eq(&deployment_hash))
-                .select((
-                    s::name,
-                    sql::<Text>(
-                        "(case when subgraphs.subgraph.pending_version = subgraphs.subgraph_version.id then 'pending'
-                               when subgraphs.subgraph.current_version = subgraphs.subgraph_version.id then 'current'
-                               else 'unused'
-                         end) as version",
-                    ),
-                ))
-                .get_results(conn)
-                .map_err(Into::into)
     }
 }
 
@@ -2115,21 +2077,6 @@ impl Mirror {
 
     pub fn version_info(&self, version: &str) -> Result<Option<(String, String)>, StoreError> {
         self.read(|conn| queries::version_info(conn, version))
-    }
-
-    pub fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.read(|conn| queries::versions_for_subgraph_id(conn, subgraph_id))
-    }
-
-    /// Returns all (subgraph_name, version) pairs for a given deployment hash.
-    pub fn subgraphs_by_deployment_hash(
-        &self,
-        deployment_hash: &str,
-    ) -> Result<Vec<(String, String)>, StoreError> {
-        self.read(|conn| queries::subgraphs_by_deployment_hash(conn, deployment_hash))
     }
 
     pub fn find_site_in_shard(

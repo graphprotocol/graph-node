@@ -50,6 +50,14 @@ impl Store {
     pub fn block_store(&self) -> Arc<BlockStore> {
         self.block_store.cheap_clone()
     }
+
+    pub fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
+        let mut info = self.subgraph_store.version_info(version_id)?;
+
+        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
+
+        Ok(info)
+    }
 }
 
 impl StoreTrait for Store {
@@ -115,29 +123,6 @@ impl StatusStore for Store {
             }
         }
         Ok(infos)
-    }
-
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        let mut info = self.subgraph_store.version_info(version_id)?;
-
-        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
-
-        Ok(info)
-    }
-
-    fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.subgraph_store.versions_for_subgraph_id(subgraph_id)
-    }
-
-    fn subgraphs_for_deployment_hash(
-        &self,
-        deployment_hash: &str,
-    ) -> Result<Vec<(String, String)>, StoreError> {
-        self.subgraph_store
-            .subgraphs_for_deployment_hash(deployment_hash)
     }
 
     async fn get_proof_of_indexing(
