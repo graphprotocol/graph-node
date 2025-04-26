@@ -168,15 +168,6 @@ pub struct EnvVars {
     /// Set by the flag `GRAPH_LOG_TRIGGER_DATA`. Off by
     /// default.
     pub log_trigger_data: bool,
-    /// Set by the environment variable `GRAPH_EXPLORER_TTL`
-    /// (expressed in seconds). The default value is 10s.
-    pub explorer_ttl: Duration,
-    /// Set by the environment variable `GRAPH_EXPLORER_LOCK_THRESHOLD`
-    /// (expressed in milliseconds). The default value is 100ms.
-    pub explorer_lock_threshold: Duration,
-    /// Set by the environment variable `GRAPH_EXPLORER_QUERY_THRESHOLD`
-    /// (expressed in milliseconds). The default value is 500ms.
-    pub explorer_query_threshold: Duration,
     /// Set by the environment variable `EXTERNAL_HTTP_BASE_URL`. No default
     /// value is provided.
     pub external_http_base_url: Option<String>,
@@ -313,9 +304,6 @@ impl EnvVars {
             postpone_attribute_index_creation: inner.postpone_attribute_index_creation.0
                 || cfg!(debug_assertions),
             log_trigger_data: inner.log_trigger_data.0,
-            explorer_ttl: Duration::from_secs(inner.explorer_ttl_in_secs),
-            explorer_lock_threshold: Duration::from_millis(inner.explorer_lock_threshold_in_msec),
-            explorer_query_threshold: Duration::from_millis(inner.explorer_query_threshold_in_msec),
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
@@ -476,12 +464,6 @@ struct Inner {
     postpone_attribute_index_creation: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
-    explorer_ttl_in_secs: u64,
-    #[envconfig(from = "GRAPH_EXPLORER_LOCK_THRESHOLD", default = "100")]
-    explorer_lock_threshold_in_msec: u64,
-    #[envconfig(from = "GRAPH_EXPLORER_QUERY_THRESHOLD", default = "500")]
-    explorer_query_threshold_in_msec: u64,
     #[envconfig(from = "EXTERNAL_HTTP_BASE_URL")]
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
