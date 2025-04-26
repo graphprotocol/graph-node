@@ -1,9 +1,6 @@
 use graph::futures03;
 use graph::{
-    components::{
-        server::index_node::VersionInfo,
-        store::{DeploymentId, DeploymentLocator, StatusStore},
-    },
+    components::store::{DeploymentId, DeploymentLocator, StatusStore},
     data::query::QueryTarget,
     data::subgraph::{schema::SubgraphHealth, SubgraphFeature},
     data::subgraph::{
@@ -22,7 +19,7 @@ use graph::{
     schema::InputSchema,
     semver::Version,
 };
-use graph_store_postgres::layout_for_tests::Connection as Primary;
+use graph_store_postgres::layout_for_tests::{Connection as Primary, VersionInfo};
 use graph_store_postgres::SubgraphStore;
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
@@ -470,48 +467,6 @@ fn status() {
         let error = info.fatal_error.as_ref().unwrap();
         assert_eq!(MSG, error.message.as_str());
         assert!(error.deterministic);
-    })
-}
-
-#[test]
-fn version_info() {
-    const NAME: &str = "versionInfoSubgraph";
-
-    async fn setup() -> DeploymentLocator {
-        let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
-        block_store::set_chain(vec![], NETWORK_NAME).await;
-        create_test_subgraph(&id, SUBGRAPH_GQL).await
-    }
-
-    run_test_sequentially(|store| async move {
-        let deployment = setup().await;
-        transact_and_wait(
-            &store.subgraph_store(),
-            &deployment,
-            BLOCK_ONE.clone(),
-            vec![],
-        )
-        .await
-        .unwrap();
-
-        let vi = get_version_info(&store, NAME);
-        assert_eq!(NAME, vi.deployment_id.as_str());
-        assert_eq!(false, vi.synced);
-        assert_eq!(false, vi.failed);
-        assert_eq!(
-            Some("manifest for versionInfoSubgraph"),
-            vi.description.as_deref()
-        );
-        assert_eq!(
-            Some("repo for versionInfoSubgraph"),
-            vi.repository.as_deref()
-        );
-        assert_eq!(NAME, vi.schema.id().as_str());
-        assert_eq!(Some(1), vi.latest_ethereum_block_number);
-        assert_eq!(NETWORK_NAME, vi.network.as_str());
-        // We set the head for the network to null in the test framework
-        assert_eq!(None, vi.total_ethereum_blocks_count);
     })
 }
 
