@@ -441,13 +441,12 @@ pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network
 /// read-only
 mod queries {
     use diesel::data_types::PgTimestamp;
-    use diesel::dsl::{exists, sql};
+    use diesel::dsl::exists;
     use diesel::pg::PgConnection;
     use diesel::prelude::{
         ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
         RunQueryDsl,
     };
-    use diesel::sql_types::Text;
     use graph::prelude::NodeId;
     use graph::{
         components::store::DeploymentId as GraphDeploymentId,
@@ -714,14 +713,14 @@ mod queries {
             .transpose()
     }
 
-    pub(super) fn version_info(
+    pub(super) fn deployment_for_version(
         conn: &mut PgConnection,
         version: &str,
-    ) -> Result<Option<(String, String)>, StoreError> {
+    ) -> Result<Option<String>, StoreError> {
         Ok(v::table
-            .select((v::deployment, sql::<Text>("created_at::text")))
+            .select(v::deployment)
             .filter(v::id.eq(version))
-            .first::<(String, String)>(conn)
+            .first::<String>(conn)
             .optional()?)
     }
 }
@@ -2075,8 +2074,8 @@ impl Mirror {
         self.read(|conn| queries::fill_assignments(conn, infos))
     }
 
-    pub fn version_info(&self, version: &str) -> Result<Option<(String, String)>, StoreError> {
-        self.read(|conn| queries::version_info(conn, version))
+    pub fn deployment_for_version(&self, version: &str) -> Result<Option<String>, StoreError> {
+        self.read(|conn| queries::deployment_for_version(conn, version))
     }
 
     pub fn find_site_in_shard(
