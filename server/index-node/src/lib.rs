@@ -1,5 +1,4 @@
 mod auth;
-mod explorer;
 mod resolver;
 mod schema;
 mod server;

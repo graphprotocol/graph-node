@@ -23,7 +23,6 @@ use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecuti
 
 use crate::auth::bearer_token;
 
-use crate::explorer::Explorer;
 use crate::resolver::IndexNodeResolver;
 use crate::schema::SCHEMA;
 
@@ -43,7 +42,6 @@ pub struct IndexNodeService<S> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
-    explorer: Arc<Explorer<S>>,
     link_resolver: Arc<dyn LinkResolver>,
 }
 
@@ -57,13 +55,10 @@ where
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
     ) -> Self {
-        let explorer = Arc::new(Explorer::new(store.clone()));
-
         IndexNodeService {
             logger,
             blockchain_map,
             store,
-            explorer,
             link_resolver,
         }
     }
@@ -228,8 +223,6 @@ where
                 Ok(self.handle_graphql_query(req).await?.as_http_response())
             }
             (Method::OPTIONS, ["graphql"]) => Ok(Self::handle_graphql_options(req)),
-
-            (Method::GET, ["explorer", rest @ ..]) => self.explorer.handle(&self.logger, rest),
 
             _ => Ok(Self::handle_not_found()),
         }
