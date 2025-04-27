@@ -215,8 +215,6 @@ impl TablePair {
         let src_nsp = &self.src_nsp;
         let dst_nsp = &self.dst_nsp;
 
-        let vid_seq = format!("{}_{VID_COLUMN}_seq", self.src.name);
-
         let mut query = String::new();
 
         // What we are about to do would get blocked by autovacuum on our
@@ -229,6 +227,8 @@ impl TablePair {
         // Make sure the vid sequence continues from where it was in case
         // that we use autoincrementing order of the DB
         if !self.src.object.has_vid_seq() {
+            let vid_seq = catalog::seq_name(&self.src.name, VID_COLUMN);
+
             writeln!(
                 query,
                 "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"

@@ -1002,3 +1002,42 @@ pub(crate) fn histogram_bounds(
         .map(|bounds| bounds.map(|b| b.bounds).unwrap_or_default())
         .map_err(StoreError::from)
 }
+
+/// Return the name of the sequence that Postgres uses to handle
+/// auto-incrementing columns. This takes Postgres' way of dealing with long
+/// table and sequence names into account.
+pub(crate) fn seq_name(table_name: &str, column_name: &str) -> String {
+    // Postgres limits all identifiers to 63 characters. When it
+    // constructs the name of a sequence for a column in a table, it
+    // truncates the table name so that appending '_{column}_seq' to
+    // it is at most 63 characters
+    let len = 63 - (5 + column_name.len());
+    let len = len.min(table_name.len());
+    format!("{}_{column_name}_seq", &table_name[0..len])
+}
+
+#[cfg(test)]
+mod test {
+    use super::seq_name;
+
+    #[test]
+    fn seq_name_works() {
+        // Pairs of (table_name, vid_seq_name)
+        const DATA: &[(&str, &str)] = &[
+            ("token", "token_vid_seq"),
+            (
+                "frax_vst_curve_strategy_total_reward_token_collected_event",
+                "frax_vst_curve_strategy_total_reward_token_collected_ev_vid_seq",
+            ),
+            (
+                "rolling_asset_sent_for_last_24_hours_per_chain_and_token",
+                "rolling_asset_sent_for_last_24_hours_per_chain_and_toke_vid_seq",
+            ),
+        ];
+
+        for (tbl, exp) in DATA {
+            let act = seq_name(tbl, "vid");
+            assert_eq!(exp, &act);
+        }
+    }
+}
