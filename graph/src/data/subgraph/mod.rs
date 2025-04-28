@@ -116,21 +116,24 @@ impl DeploymentHash {
     pub fn new(s: impl Into<String>) -> Result<Self, String> {
         let s = s.into();
 
-        // Enforce length limit
-        if s.len() > 46 {
-            return Err(s);
-        }
+        // This section is being temporarily commented out. This is to allow file link resolver to work
+        // TODO(krishna): Figure out how to do this better or remove this check
 
-        // Check that the ID contains only allowed characters.
-        if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            return Err(s);
-        }
+        // // Enforce length limit
+        // if s.len() > 46 {
+        //     return Err(s);
+        // }
 
-        // Allow only deployment id's for 'real' subgraphs, not the old
-        // metadata subgraph.
-        if s == "subgraphs" {
-            return Err(s);
-        }
+        // // Check that the ID contains only allowed characters.
+        // if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        //     return Err(s);
+        // }
+
+        // // Allow only deployment id's for 'real' subgraphs, not the old
+        // // metadata subgraph.
+        // if s == "subgraphs" {
+        //     return Err(s);
+        // }
 
         Ok(DeploymentHash(s))
     }
@@ -397,10 +400,63 @@ impl From<HashMap<Word, Value>> for DataSourceContext {
 }
 
 /// IPLD link.
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq)]
 pub struct Link {
-    #[serde(rename = "/")]
     pub link: String,
+}
+
+/// Custom deserializer for Link
+/// This handles both formats:
+/// 1. Simple string: "schema.graphql" or "subgraph.yaml" which is used in [`FileLinkResolver`]
+/// FileLinkResolver is used in local development environments
+/// 2. IPLD format: { "/": "Qm..." } which is used in [`IpfsLinkResolver`]
+impl<'de> de::Deserialize<'de> for Link {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct LinkVisitor;
+
+        impl<'de> de::Visitor<'de> for LinkVisitor {
+            type Value = Link;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("string or map with '/' key")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Link, E>
+            where
+                E: de::Error,
+            {
+                Ok(Link {
+                    link: value.to_string(),
+                })
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Link, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let mut link = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "/" {
+                        if link.is_some() {
+                            return Err(de::Error::duplicate_field("/"));
+                        }
+                        link = Some(map.next_value()?);
+                    } else {
+                        return Err(de::Error::unknown_field(&key, &["/"]));
+                    }
+                }
+
+                link.map(|l: String| Link { link: l })
+                    .ok_or_else(|| de::Error::missing_field("/"))
+            }
+        }
+
+        deserializer.deserialize_any(LinkVisitor)
+    }
 }
 
 impl<S: ToString> From<S> for Link {
