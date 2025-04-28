@@ -49,6 +49,14 @@ impl FileLinkResolver {
     }
 }
 
+pub fn remove_prefix(link: &str) -> &str {
+    if link.starts_with("/ipfs/") {
+        &link[6..] // Skip the "/ipfs/" prefix (6 characters)
+    } else {
+        link
+    }
+}
+
 #[async_trait]
 impl LinkResolverTrait for FileLinkResolver {
     fn with_timeout(&self, timeout: Duration) -> Box<dyn LinkResolverTrait> {
@@ -62,9 +70,10 @@ impl LinkResolverTrait for FileLinkResolver {
     }
 
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
-        let path = self.resolve_path(&link.link);
+        let link = remove_prefix(&link.link);
+        let path = self.resolve_path(&link);
 
-        slog::trace!(logger, "File resolver: reading file"; 
+        slog::debug!(logger, "File resolver: reading file"; 
             "path" => path.to_string_lossy().to_string());
 
         match tokio::fs::read(&path).await {
