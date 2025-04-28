@@ -657,7 +657,7 @@ async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_ganache_reverts(ctx: TestContext) -> anyhow::Result<()> {
+async fn test_reverted_calls_are_indexed(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
 
@@ -1028,7 +1028,7 @@ async fn integration_tests() -> anyhow::Result<()> {
     let test_name_to_run = std::env::var("TEST_CASE").ok();
 
     let cases = vec![
-        TestCase::new("ganache-reverts", test_ganache_reverts),
+        TestCase::new("reverted-calls", test_reverted_calls_are_indexed),
         TestCase::new("host-exports", test_host_exports),
         TestCase::new("non-fatal-errors", test_non_fatal_errors),
         TestCase::new("overloaded-functions", test_overloaded_functions),

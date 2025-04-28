@@ -1,6 +1,6 @@
 {
-  "name": "ganache-reverts",
-  "version": "0.1.0",
+  "name": "reverted-calls",
+  "version": "0.1.1",
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen --skip-migrations",

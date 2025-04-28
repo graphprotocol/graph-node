@@ -113,21 +113,12 @@ impl EthereumAdapter {
     ) -> Self {
         let web3 = Arc::new(Web3::new(transport));
 
-        // Use the client version to check if it is ganache. For compatibility with unit tests, be
-        // are lenient with errors, defaulting to false.
-        let is_ganache = web3
-            .web3()
-            .client_version()
-            .await
-            .map(|s| s.contains("TestRPC"))
-            .unwrap_or(false);
-
         EthereumAdapter {
             logger,
             provider,
             web3,
             metrics: provider_metrics,
-            supports_eip_1898: supports_eip_1898 && !is_ganache,
+            supports_eip_1898,
             call_only,
             supports_block_receipts: Arc::new(RwLock::new(None)),
         }
