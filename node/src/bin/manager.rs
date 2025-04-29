@@ -309,29 +309,6 @@ pub enum Command {
     #[clap(subcommand)]
     Database(DatabaseCommand),
 
-    /// Delete a deployment and all it's indexed data
-    ///
-    /// The deployment can be specified as either a subgraph name, an IPFS
-    /// hash `Qm..`, or the database namespace `sgdNNN`. Since the same IPFS
-    /// hash can be deployed in multiple shards, it is possible to specify
-    /// the shard by adding `:shard` to the IPFS hash.
-    Drop {
-        /// The deployment identifier
-        deployment: DeploymentSearch,
-        /// Search only for current version
-        #[clap(long, short)]
-        current: bool,
-        /// Search only for pending versions
-        #[clap(long, short)]
-        pending: bool,
-        /// Search only for used (current and pending) versions
-        #[clap(long, short)]
-        used: bool,
-        /// Skip confirmation prompt
-        #[clap(long, short)]
-        force: bool,
-    },
-
     /// Deploy a subgraph
     Deploy {
         name: DeploymentSearch,
@@ -1698,29 +1675,6 @@ async fn main() -> anyhow::Result<()> {
                     commands::prune::status(store, primary_pool, deployment, run).await
                 }
             }
-        }
-        Drop {
-            deployment,
-            current,
-            pending,
-            used,
-            force,
-        } => {
-            let sender = ctx.notification_sender();
-            let (store, primary_pool) = ctx.store_and_primary();
-            let subgraph_store = store.subgraph_store();
-
-            commands::drop::run(
-                primary_pool,
-                subgraph_store,
-                sender,
-                deployment,
-                current,
-                pending,
-                used,
-                force,
-            )
-            .await
         }
 
         Deploy {
