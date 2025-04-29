@@ -23,7 +23,7 @@ maybe-owned = "0.3.4"
 postgres = "0.19.1"
 openssl = "0.10.72"
 postgres-openssl = "0.5.1"
-rand = "0.8.4"
+rand = "0.9.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }

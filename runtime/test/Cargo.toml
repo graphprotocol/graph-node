@@ -10,7 +10,7 @@ graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-derive = { path = "../derive" }
 graph-runtime-wasm = { path = "../wasm" }
-rand = "0.8.5"
+rand = "0.9.0"
 
 
 [dev-dependencies]
