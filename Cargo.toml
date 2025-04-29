@@ -94,6 +94,7 @@ wasmtime = "15.0.1"
 substreams = "=0.6.0"
 substreams-entity-change = "2"
 substreams-near-core = "=0.10.2"
+rand = { version = "0.9.1", features = ["os_rng"] }
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]

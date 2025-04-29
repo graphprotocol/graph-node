@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Error};
 use chrono::{DateTime, Utc};
 use hex;
 use rand::rngs::OsRng;
-use rand::Rng;
+use rand::TryRngCore as _;
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
@@ -272,11 +272,9 @@ impl_stable_hash!(SubgraphError {
 });
 
 pub fn generate_entity_id() -> String {
-    // Fast crypto RNG from operating system
-    let mut rng = OsRng::default();
-
     // 128 random bits
-    let id_bytes: [u8; 16] = rng.gen();
+    let mut id_bytes = [0u8; 16];
+    OsRng.try_fill_bytes(&mut id_bytes).unwrap();
 
     // 32 hex chars
     // Comparable to uuidv4, but without the hyphens,

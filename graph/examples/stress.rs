@@ -9,8 +9,8 @@ use clap::Parser;
 use graph::data::value::{Object, Word};
 use graph::object;
 use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
-use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
+use rand::{RngCore, SeedableRng};
 
 use graph::util::cache_weight::CacheWeight;
 use graph::util::lfu_cache::LfuCache;
@@ -240,8 +240,8 @@ impl Template for BigInt {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         let f = match rng {
             Some(rng) => {
-                let mag = rng.gen_range(1..100);
-                if rng.gen_bool(0.5) {
+                let mag = rng.random_range(1..100);
+                if rng.random_bool(0.5) {
                     mag
                 } else {
                     -mag
@@ -261,8 +261,8 @@ impl Template for BigDecimal {
     fn create(size: usize, mut rng: Option<&mut SmallRng>) -> Self {
         let f = match rng.as_deref_mut() {
             Some(rng) => {
-                let mag = rng.gen_range(1i32..100);
-                if rng.gen_bool(0.5) {
+                let mag = rng.random_range(1i32..100);
+                if rng.random_bool(0.5) {
                     mag
                 } else {
                     -mag
@@ -271,7 +271,7 @@ impl Template for BigDecimal {
             None => 1,
         };
         let exp = match rng {
-            Some(rng) => rng.gen_range(-100..=100),
+            Some(rng) => rng.random_range(-100..=100),
             None => 1,
         };
         let bi = BigInt::from(3u64).pow(size as u8).unwrap() * BigInt::from(f);
@@ -307,7 +307,7 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
     for i in 0..size {
         let kind = rng
             .as_deref_mut()
-            .map(|rng| rng.gen_range(0..modulus))
+            .map(|rng| rng.random_range(0..modulus))
             .unwrap_or(i % modulus);
 
         let value = match kind {
@@ -334,7 +334,11 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
             _ => unreachable!(),
         };
 
-        let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
+        let key = rng
+            .as_deref_mut()
+            .map(|rng| rng.next_u32() as usize)
+            .unwrap_or(i)
+            % modulus;
         obj.push((Word::from(format!("val{}", key)), value));
     }
     Object::from_iter(obj)
@@ -406,7 +410,7 @@ impl ValueMap {
         for i in 0..size {
             let kind = rng
                 .as_deref_mut()
-                .map(|rng| rng.gen_range(0..modulus))
+                .map(|rng| rng.random_range(0..modulus))
                 .unwrap_or(i % modulus);
 
             let value = match kind {
@@ -431,7 +435,11 @@ impl ValueMap {
                 _ => unreachable!(),
             };
 
-            let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
+            let key = rng
+                .as_deref_mut()
+                .map(|rng| rng.next_u32() as usize)
+                .unwrap_or(i)
+                % modulus;
             map.insert(format!("val{}", key), value);
         }
         MapMeasure(map)
@@ -466,7 +474,10 @@ impl UsizeMap {
     fn make_map(size: usize, mut rng: Option<&mut SmallRng>) -> Self {
         let mut map = BTreeMap::new();
         for i in 0..size {
-            let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(2 * i);
+            let key = rng
+                .as_deref_mut()
+                .map(|rng| rng.next_u32() as usize)
+                .unwrap_or(2 * i);
             map.insert(key, i * 3);
         }
         MapMeasure(map)
@@ -563,7 +574,10 @@ fn maybe_rng<'a>(opt: &'a Opt, rng: &'a mut SmallRng) -> Option<&'a mut SmallRng
 
 fn stress<T: Template>(opt: &Opt) {
     let mut rng = match opt.seed {
-        None => SmallRng::from_entropy(),
+        None => {
+            let mut rng = rand::rng();
+            SmallRng::from_rng(&mut rng)
+        }
         Some(seed) => SmallRng::seed_from_u64(seed),
     };
 
@@ -624,7 +638,7 @@ fn stress<T: Template>(opt: &Opt) {
         let size = if opt.fixed || opt.obj_size == 0 {
             opt.obj_size
         } else {
-            rng.gen_range(0..opt.obj_size)
+            rng.random_range(0..opt.obj_size)
         };
         let before = ALLOCATED.load(SeqCst);
         let sample = template.sample(size, maybe_rng(opt, &mut rng));
@@ -638,7 +652,7 @@ fn stress<T: Template>(opt: &Opt) {
         cache.insert(key, Entry::from(*sample));
         // Do a few random reads from the cache
         for _attempt in 0..5 {
-            let read = rng.gen_range(0..=key);
+            let read = rng.random_range(0..=key);
             let _v = cache.get(&read);
         }
     }

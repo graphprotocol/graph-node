@@ -1,7 +1,7 @@
 //! Utilities to keep moving statistics about queries
 
 use prometheus::core::GenericCounter;
-use rand::{prelude::Rng, thread_rng};
+use rand::{prelude::Rng, rng};
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
@@ -439,7 +439,7 @@ impl LoadManager {
         // that cause at least 20% of the effort
         let kill_rate = self.update_kill_rate(shard, kill_rate, last_update, overloaded, wait_ms);
         let decline =
-            thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
+            rng().random_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
         if decline {
             if ENV_VARS.load_simulate {
                 debug!(self.logger, "Declining query";

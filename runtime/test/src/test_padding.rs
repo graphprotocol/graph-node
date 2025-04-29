@@ -8,8 +8,8 @@ const WASM_FILE_NAME: &str = "test_padding.wasm";
 
 //for tests, to run in parallel, sub graph name has be unique
 fn rnd_sub_graph_name(size: usize) -> String {
-    use rand::{distributions::Alphanumeric, Rng};
-    rand::thread_rng()
+    use rand::{distr::Alphanumeric, Rng};
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(size)
         .map(char::from)

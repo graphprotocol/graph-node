@@ -196,11 +196,9 @@ impl EthereumNetworkAdapters {
         required_capabilities: &NodeCapabilities,
         retest_percent: f64,
     ) -> Result<Arc<EthereumAdapter>, Error> {
-        let retest_rng: f64 = (&mut rand::thread_rng()).gen();
+        let retest_rng: f64 = (&mut rand::rng()).random();
 
-        let cheapest = input
-            .into_iter()
-            .choose_multiple(&mut rand::thread_rng(), 3);
+        let cheapest = input.into_iter().choose_multiple(&mut rand::rng(), 3);
         let cheapest = cheapest.iter();
 
         // If request falls below the retest threshold, use this request to try and
@@ -231,7 +229,7 @@ impl EthereumNetworkAdapters {
         let cheapest = self.all_unverified_cheapest_with(required_capabilities);
 
         Self::cheapest_from(
-            cheapest.choose_multiple(&mut rand::thread_rng(), 3),
+            cheapest.choose_multiple(&mut rand::rng(), 3),
             required_capabilities,
             self.retest_percent,
         )
@@ -245,7 +243,7 @@ impl EthereumNetworkAdapters {
         let cheapest = self
             .all_cheapest_with(required_capabilities)
             .await
-            .choose_multiple(&mut rand::thread_rng(), 3);
+            .choose_multiple(&mut rand::rng(), 3);
 
         Self::cheapest_from(cheapest, required_capabilities, self.retest_percent)
     }
