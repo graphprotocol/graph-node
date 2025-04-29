@@ -51,7 +51,7 @@ impl ExponentialBackoff {
         if delay > self.ceiling {
             delay = self.ceiling;
         }
-        let jitter = rand::Rng::gen_range(&mut rand::thread_rng(), -self.jitter..=self.jitter);
+        let jitter = rand::Rng::random_range(&mut rand::rng(), -self.jitter..=self.jitter);
         delay.mul_f64(1.0 + jitter)
     }
 

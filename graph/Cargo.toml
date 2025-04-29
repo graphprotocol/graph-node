@@ -12,7 +12,9 @@ atomic_refcell = "0.1.13"
 # We require this precise version of bigdecimal. Updating to later versions
 # has caused PoI differences; if you update this version, you will need to
 # make sure that it does not cause PoI changes
-old_bigdecimal = { version = "=0.1.2", features = ["serde"], package = "bigdecimal" }
+old_bigdecimal = { version = "=0.1.2", features = [
+    "serde",
+], package = "bigdecimal" }
 bytes = "1.0.1"
 bs58 = { workspace = true }
 cid = "0.11.1"
@@ -40,7 +42,7 @@ lazy_static = "1.5.0"
 num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.19"
-rand = "0.9.0"
+rand.workspace = true
 regex = "1.5.4"
 semver = { version = "1.0.23", features = ["serde"] }
 serde = { workspace = true }
@@ -93,7 +95,8 @@ defer = "0.2"
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = [
-    "arbitrary_precision", "test"
+    "arbitrary_precision",
+    "test",
 ] }
 serde_plain = "1.0.2"
 csv = "1.3.0"

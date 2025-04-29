@@ -26,7 +26,7 @@ use graph::semver::Version;
 use graph::tokio::task::JoinHandle;
 use itertools::Itertools;
 use lru_time_cache::LruCache;
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{rng, seq::SliceRandom};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::ops::{Bound, DerefMut};
@@ -156,7 +156,7 @@ impl DeploymentStore {
                 vec![replica; *weight]
             })
             .collect();
-        let mut rng = thread_rng();
+        let mut rng = rng();
         replica_order.shuffle(&mut rng);
         debug!(logger, "Using postgres host order {:?}", replica_order);
 
