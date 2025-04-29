@@ -80,6 +80,24 @@ impl RunnerTestRecipe {
             },
         }
     }
+
+    async fn new_with_file_link_resolver(name: &str, subgraph_name: &str, manifest: &str) -> Self {
+        let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+
+        let stores = stores(name, "./runner-tests/config.simple.toml").await;
+        build_subgraph(&test_dir, None).await;
+        let hash = DeploymentHash::new(manifest).unwrap();
+        Self {
+            stores,
+            test_info: TestInfo {
+                test_dir,
+                test_name: name.to_string(),
+                subgraph_name,
+                hash,
+            },
+        }
+    }
 }
 
 fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
@@ -1150,6 +1168,58 @@ async fn retry_create_ds() {
         .await
         .unwrap();
     assert_eq!(runner.context().hosts_len(), 2);
+}
+
+#[tokio::test]
+async fn file_link_resolver() -> anyhow::Result<()> {
+    let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_file_link_resolver(
+        "file_link_resolver",
+        "file-link-resolver",
+        "subgraph.yaml",
+    )
+    .await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
+
+        vec![block_0, block_1, block_2, block_3]
+    };
+
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+
+    let ctx = fixture::setup_with_file_link_resolver(&test_info, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(test_ptr(3)).await;
+    let query = r#"{ blocks(first: 4, orderBy: number) { id, hash } }"#;
+    let query_res = ctx.query(query).await.unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            blocks: vec![
+                object! {
+                    id: test_ptr(0).number.to_string(),
+                    hash: format!("0x{}", test_ptr(0).hash_hex()),
+                },
+                object! {
+                    id: test_ptr(1).number.to_string(),
+                    hash: format!("0x{}", test_ptr(1).hash_hex()),
+                },
+                object! {
+                    id: test_ptr(2).number.to_string(),
+                    hash: format!("0x{}", test_ptr(2).hash_hex()),
+                },
+                object! {
+                    id: test_ptr(3).number.to_string(),
+                    hash: format!("0x{}", test_ptr(3).hash_hex()),
+                },
+            ]
+        })
+    );
+
+    Ok(())
 }
 
 #[tokio::test]
