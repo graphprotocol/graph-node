@@ -204,6 +204,61 @@ async fn spawn_block_ingestor(
     graph::spawn_blocking(job_runner.start());
 }
 
+fn deploy_subgraph_from_flag(
+    subgraph: String,
+    opt: &Opt,
+    subgraph_registrar: Arc<impl SubgraphRegistrar>,
+    node_id: NodeId,
+) {
+    let (name, hash) = if subgraph.contains(':') {
+        let mut split = subgraph.split(':');
+        (split.next().unwrap(), split.next().unwrap().to_owned())
+    } else {
+        ("cli", subgraph)
+    };
+
+    let name = SubgraphName::new(name)
+        .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+    let subgraph_id = DeploymentHash::new(hash).expect("Subgraph hash must be a valid IPFS hash");
+    let debug_fork = opt
+        .debug_fork
+        .clone()
+        .map(DeploymentHash::new)
+        .map(|h| h.expect("Debug fork hash must be a valid IPFS hash"));
+    let start_block = opt
+        .start_block
+        .clone()
+        .map(|block| {
+            let mut split = block.split(':');
+            (
+                // BlockHash
+                split.next().unwrap().to_owned(),
+                // BlockNumber
+                split.next().unwrap().parse::<i64>().unwrap(),
+            )
+        })
+        .map(|(hash, number)| BlockPtr::try_from((hash.as_str(), number)))
+        .map(Result::unwrap);
+
+    graph::spawn(
+        async move {
+            subgraph_registrar.create_subgraph(name.clone()).await?;
+            subgraph_registrar
+                .create_subgraph_version(
+                    name,
+                    subgraph_id,
+                    node_id,
+                    debug_fork,
+                    start_block,
+                    None,
+                    None,
+                )
+                .await
+        }
+        .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
+    );
+}
+
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     env_logger::init();
     // Set up logger
@@ -308,7 +363,7 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     // TODO: make option loadable from configuration TOML and environment:
     let expensive_queries =
-        read_expensive_queries(&logger, opt.expensive_queries_filename).unwrap();
+        read_expensive_queries(&logger, opt.expensive_queries_filename.clone()).unwrap();
 
     let (primary_pool, subscription_manager, chain_head_update_listener, network_store) =
         setup_store(
@@ -446,52 +501,7 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
         // Add the CLI subgraph with a REST request to the admin server.
         if let Some(subgraph) = subgraph {
-            let (name, hash) = if subgraph.contains(':') {
-                let mut split = subgraph.split(':');
-                (split.next().unwrap(), split.next().unwrap().to_owned())
-            } else {
-                ("cli", subgraph)
-            };
-
-            let name = SubgraphName::new(name)
-                .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
-            let subgraph_id =
-                DeploymentHash::new(hash).expect("Subgraph hash must be a valid IPFS hash");
-            let debug_fork = opt
-                .debug_fork
-                .map(DeploymentHash::new)
-                .map(|h| h.expect("Debug fork hash must be a valid IPFS hash"));
-            let start_block = opt
-                .start_block
-                .map(|block| {
-                    let mut split = block.split(':');
-                    (
-                        // BlockHash
-                        split.next().unwrap().to_owned(),
-                        // BlockNumber
-                        split.next().unwrap().parse::<i64>().unwrap(),
-                    )
-                })
-                .map(|(hash, number)| BlockPtr::try_from((hash.as_str(), number)))
-                .map(Result::unwrap);
-
-            graph::spawn(
-                async move {
-                    subgraph_registrar.create_subgraph(name.clone()).await?;
-                    subgraph_registrar
-                        .create_subgraph_version(
-                            name,
-                            subgraph_id,
-                            node_id,
-                            debug_fork,
-                            start_block,
-                            None,
-                            None,
-                        )
-                        .await
-                }
-                .map_err(|e| panic!("Failed to deploy subgraph from `--subgraph` flag: {}", e)),
-            );
+            deploy_subgraph_from_flag(subgraph, &opt, subgraph_registrar.clone(), node_id);
         }
 
         // Serve GraphQL queries over HTTP
