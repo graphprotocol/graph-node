@@ -41,44 +41,6 @@ use tokio::sync::mpsc;
 
 git_testament!(TESTAMENT);
 
-fn read_expensive_queries(
-    logger: &Logger,
-    expensive_queries_filename: String,
-) -> Result<Vec<Arc<q::Document>>, std::io::Error> {
-    // A file with a list of expensive queries, one query per line
-    // Attempts to run these queries will return a
-    // QueryExecutionError::TooExpensive to clients
-    let path = Path::new(&expensive_queries_filename);
-    let mut queries = Vec::new();
-    if path.exists() {
-        info!(
-            logger,
-            "Reading expensive queries file: {}", expensive_queries_filename
-        );
-        let file = std::fs::File::open(path)?;
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let line = line?;
-            let query = q::parse_query(&line)
-                .map_err(|e| {
-                    let msg = format!(
-                        "invalid GraphQL query in {}: {}\n{}",
-                        expensive_queries_filename, e, line
-                    );
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
-                })?
-                .into_static();
-            queries.push(Arc::new(query));
-        }
-    } else {
-        warn!(
-            logger,
-            "Expensive queries file not set to a valid file: {}", expensive_queries_filename
-        );
-    }
-    Ok(queries)
-}
-
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     env_logger::init();
     // Set up logger
@@ -98,36 +60,8 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
         );
     }
 
-    let config = match Config::load(&logger, &opt.clone().into()) {
-        Err(e) => {
-            eprintln!("configuration error: {}", e);
-            std::process::exit(1);
-        }
-        Ok(config) => config,
-    };
-
-    let subgraph_settings = match env_vars.subgraph_settings {
-        Some(ref path) => {
-            info!(logger, "Reading subgraph configuration file `{}`", path);
-            match Settings::from_file(path) {
-                Ok(rules) => rules,
-                Err(e) => {
-                    eprintln!("configuration error in subgraph settings {}: {}", path, e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        None => Settings::default(),
-    };
-
-    if opt.check_config {
-        match config.to_json() {
-            Ok(txt) => println!("{}", txt),
-            Err(e) => eprintln!("error serializing config: {}", e),
-        }
-        eprintln!("Successfully validated configuration");
-        std::process::exit(0);
-    }
+    // Get configuration
+    let (config, subgraph_settings, fork_base) = setup_configuration(&opt, &logger, &env_vars);
 
     let node_id = NodeId::new(opt.node_id.clone())
         .expect("Node ID must be between 1 and 63 characters in length");
@@ -146,29 +80,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
-
-    // Obtain the fork base URL
-    let fork_base = match &opt.fork_base {
-        Some(url) => {
-            // Make sure the endpoint ends with a terminating slash.
-            let url = if !url.ends_with('/') {
-                let mut url = url.clone();
-                url.push('/');
-                Url::parse(&url)
-            } else {
-                Url::parse(url)
-            };
-
-            Some(url.expect("Failed to parse the fork base URL"))
-        }
-        None => {
-            warn!(
-                logger,
-                "No fork base URL specified, subgraph forking is disabled"
-            );
-            None
-        }
-    };
 
     info!(logger, "Starting up");
 
@@ -549,6 +460,69 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     graph::futures03::future::pending::<()>().await;
 }
 
+/// Sets up and loads configuration based on command line options
+fn setup_configuration(
+    opt: &Opt,
+    logger: &Logger,
+    env_vars: &Arc<EnvVars>,
+) -> (Config, Settings, Option<Url>) {
+    let config = match Config::load(logger, &opt.clone().into()) {
+        Err(e) => {
+            eprintln!("configuration error: {}", e);
+            std::process::exit(1);
+        }
+        Ok(config) => config,
+    };
+
+    let subgraph_settings = match env_vars.subgraph_settings {
+        Some(ref path) => {
+            info!(logger, "Reading subgraph configuration file `{}`", path);
+            match Settings::from_file(path) {
+                Ok(rules) => rules,
+                Err(e) => {
+                    eprintln!("configuration error in subgraph settings {}: {}", path, e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        None => Settings::default(),
+    };
+
+    if opt.check_config {
+        match config.to_json() {
+            Ok(txt) => println!("{}", txt),
+            Err(e) => eprintln!("error serializing config: {}", e),
+        }
+        eprintln!("Successfully validated configuration");
+        std::process::exit(0);
+    }
+
+    // Obtain the fork base URL
+    let fork_base = match &opt.fork_base {
+        Some(url) => {
+            // Make sure the endpoint ends with a terminating slash.
+            let url = if !url.ends_with('/') {
+                let mut url = url.clone();
+                url.push('/');
+                Url::parse(&url)
+            } else {
+                Url::parse(url)
+            };
+
+            Some(url.expect("Failed to parse the fork base URL"))
+        }
+        None => {
+            warn!(
+                logger,
+                "No fork base URL specified, subgraph forking is disabled"
+            );
+            None
+        }
+    };
+
+    (config, subgraph_settings, fork_base)
+}
+
 async fn start_graphman_server(port: u16, config: Option<GraphmanServerConfig<'_>>) {
     let Some(config) = config else {
         return;
@@ -589,4 +563,42 @@ fn make_graphman_server_config<'a>(
         logger_factory,
         auth_token: auth_token.to_owned(),
     })
+}
+
+fn read_expensive_queries(
+    logger: &Logger,
+    expensive_queries_filename: String,
+) -> Result<Vec<Arc<q::Document>>, std::io::Error> {
+    // A file with a list of expensive queries, one query per line
+    // Attempts to run these queries will return a
+    // QueryExecutionError::TooExpensive to clients
+    let path = Path::new(&expensive_queries_filename);
+    let mut queries = Vec::new();
+    if path.exists() {
+        info!(
+            logger,
+            "Reading expensive queries file: {}", expensive_queries_filename
+        );
+        let file = std::fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            let line = line?;
+            let query = q::parse_query(&line)
+                .map_err(|e| {
+                    let msg = format!(
+                        "invalid GraphQL query in {}: {}\n{}",
+                        expensive_queries_filename, e, line
+                    );
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
+                })?
+                .into_static();
+            queries.push(Arc::new(query));
+        }
+    } else {
+        warn!(
+            logger,
+            "Expensive queries file not set to a valid file: {}", expensive_queries_filename
+        );
+    }
+    Ok(queries)
 }
