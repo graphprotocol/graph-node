@@ -357,8 +357,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
         metrics_registry.cheap_clone(),
     ));
 
-    let graphql_metrics_registry = metrics_registry.clone();
-
     // TODO: make option loadable from configuration TOML and environment:
     let expensive_queries =
         read_expensive_queries(&logger, opt.expensive_queries_filename.clone()).unwrap();
@@ -403,20 +401,14 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
             cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store);
         }
 
-        let shards: Vec<_> = config.stores.keys().cloned().collect();
-        let load_manager = Arc::new(LoadManager::new(
+        let graphql_server = build_graphql_server(
+            &config,
             &logger,
-            shards,
             expensive_queries,
             metrics_registry.clone(),
-        ));
-        let graphql_runner = Arc::new(GraphQlRunner::new(
-            &logger,
-            network_store.clone(),
-            load_manager,
-            graphql_metrics_registry,
-        ));
-        let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
+            &network_store,
+            &logger_factory,
+        );
 
         let index_node_server = IndexNodeServer::new(
             &logger_factory,
@@ -521,6 +513,32 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     spawn_contention_checker(logger.clone());
 
     graph::futures03::future::pending::<()>().await;
+}
+
+fn build_graphql_server(
+    config: &Config,
+    logger: &Logger,
+    expensive_queries: Vec<Arc<q::Document>>,
+    metrics_registry: Arc<MetricsRegistry>,
+    network_store: &Arc<Store>,
+    logger_factory: &LoggerFactory,
+) -> GraphQLQueryServer<GraphQlRunner<Store>> {
+    let shards: Vec<_> = config.stores.keys().cloned().collect();
+    let load_manager = Arc::new(LoadManager::new(
+        &logger,
+        shards,
+        expensive_queries,
+        metrics_registry.clone(),
+    ));
+    let graphql_runner = Arc::new(GraphQlRunner::new(
+        &logger,
+        network_store.clone(),
+        load_manager,
+        metrics_registry,
+    ));
+    let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
+
+    graphql_server
 }
 
 fn spawn_contention_checker(logger: Logger) {
