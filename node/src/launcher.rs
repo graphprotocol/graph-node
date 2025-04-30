@@ -143,6 +143,37 @@ async fn build_blockchain_map(
     Arc::new(blockchain_map)
 }
 
+fn cleanup_ethereum_shallow_blocks(blockchain_map: &BlockchainMap, network_store: &Arc<Store>) {
+    match blockchain_map
+        .get_all_by_kind::<graph_chain_ethereum::Chain>(BlockchainKind::Ethereum)
+        .ok()
+        .map(|chains| {
+            chains
+                .iter()
+                .flat_map(|c| {
+                    if !c.chain_client().is_firehose() {
+                        Some(c.name.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }) {
+        Some(eth_network_names) => {
+            network_store
+                .block_store()
+                .cleanup_ethereum_shallow_blocks(eth_network_names)
+                .unwrap();
+        }
+        // This code path only happens if the downcast on the blockchain map fails, that
+        // probably means we have a problem with the chain loading logic so it's probably
+        // safest to just refuse to start.
+        None => unreachable!(
+            "If you are seeing this message just use a different version of graph-node"
+        ),
+    }
+}
+
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     env_logger::init();
     // Set up logger
@@ -286,34 +317,7 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
         // see comment on cleanup_ethereum_shallow_blocks
         if !opt.disable_block_ingestor {
-            match blockchain_map
-                .get_all_by_kind::<graph_chain_ethereum::Chain>(BlockchainKind::Ethereum)
-                .ok()
-                .map(|chains| {
-                    chains
-                        .iter()
-                        .flat_map(|c| {
-                            if !c.chain_client().is_firehose() {
-                                Some(c.name.to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect()
-                }) {
-                Some(eth_network_names) => {
-                    network_store
-                        .block_store()
-                        .cleanup_ethereum_shallow_blocks(eth_network_names)
-                        .unwrap();
-                }
-                // This code path only happens if the downcast on the blockchain map fails, that
-                // probably means we have a problem with the chain loading logic so it's probably
-                // safest to just refuse to start.
-                None => unreachable!(
-                    "If you are seeing this message just use a different version of graph-node"
-                ),
-            }
+            cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store);
         }
 
         let shards: Vec<_> = config.stores.keys().cloned().collect();
