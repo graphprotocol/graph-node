@@ -19,7 +19,7 @@ use graph::log::logger;
 use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
-use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use graph_core::polling_monitor::{arweave_service, ipfs_service, ArweaveService, IpfsService};
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -31,7 +31,7 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_store_postgres::{
     register_jobs as register_store_jobs, ChainHeadUpdateListener, ConnectionPool,
-    NotificationSender, Store, SubscriptionManager,
+    NotificationSender, Store, SubgraphStore, SubscriptionManager,
 };
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
@@ -259,6 +259,94 @@ fn deploy_subgraph_from_flag(
     );
 }
 
+fn build_subgraph_registrar(
+    metrics_registry: Arc<MetricsRegistry>,
+    network_store: &Arc<Store>,
+    logger_factory: &LoggerFactory,
+    env_vars: &Arc<EnvVars>,
+    blockchain_map: Arc<BlockchainMap>,
+    node_id: NodeId,
+    subgraph_settings: Settings,
+    link_resolver: Arc<IpfsResolver>,
+    subscription_manager: Arc<SubscriptionManager>,
+    arweave_service: ArweaveService,
+    ipfs_service: IpfsService,
+) -> Arc<
+    IpfsSubgraphRegistrar<
+        IpfsSubgraphAssignmentProvider<SubgraphInstanceManager<SubgraphStore>>,
+        SubgraphStore,
+        SubscriptionManager,
+    >,
+> {
+    let static_filters = ENV_VARS.experimental_static_filters;
+    let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
+
+    let subgraph_instance_manager = SubgraphInstanceManager::new(
+        &logger_factory,
+        env_vars.cheap_clone(),
+        network_store.subgraph_store(),
+        blockchain_map.cheap_clone(),
+        sg_count.cheap_clone(),
+        metrics_registry.clone(),
+        link_resolver.clone(),
+        ipfs_service,
+        arweave_service,
+        static_filters,
+    );
+
+    // Create IPFS-based subgraph provider
+    let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+        &logger_factory,
+        link_resolver.clone(),
+        subgraph_instance_manager,
+        sg_count,
+    );
+
+    // Check version switching mode environment variable
+    let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
+
+    // Create named subgraph provider for resolving subgraph name->ID mappings
+    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+        &logger_factory,
+        link_resolver,
+        Arc::new(subgraph_provider),
+        network_store.subgraph_store(),
+        subscription_manager,
+        blockchain_map,
+        node_id.clone(),
+        version_switching_mode,
+        Arc::new(subgraph_settings),
+    ));
+
+    subgraph_registrar
+}
+
+fn build_graphql_server(
+    config: &Config,
+    logger: &Logger,
+    expensive_queries: Vec<Arc<q::Document>>,
+    metrics_registry: Arc<MetricsRegistry>,
+    network_store: &Arc<Store>,
+    logger_factory: &LoggerFactory,
+) -> GraphQLQueryServer<GraphQlRunner<Store>> {
+    let shards: Vec<_> = config.stores.keys().cloned().collect();
+    let load_manager = Arc::new(LoadManager::new(
+        &logger,
+        shards,
+        expensive_queries,
+        metrics_registry.clone(),
+    ));
+    let graphql_runner = Arc::new(GraphQlRunner::new(
+        &logger,
+        network_store.clone(),
+        load_manager,
+        metrics_registry,
+    ));
+    let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
+
+    graphql_server
+}
+
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     env_logger::init();
     // Set up logger
@@ -428,46 +516,20 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
             .await;
         }
 
-        let static_filters = ENV_VARS.experimental_static_filters;
-
-        let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
-
-        let subgraph_instance_manager = SubgraphInstanceManager::new(
-            &logger_factory,
-            env_vars.cheap_clone(),
-            network_store.subgraph_store(),
-            blockchain_map.cheap_clone(),
-            sg_count.cheap_clone(),
+        let subgraph_registrar = build_subgraph_registrar(
             metrics_registry.clone(),
-            link_resolver.clone(),
-            ipfs_service,
-            arweave_service,
-            static_filters,
-        );
-
-        // Create IPFS-based subgraph provider
-        let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
+            &network_store,
             &logger_factory,
-            link_resolver.clone(),
-            subgraph_instance_manager,
-            sg_count,
-        );
-
-        // Check version switching mode environment variable
-        let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
-
-        // Create named subgraph provider for resolving subgraph name->ID mappings
-        let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
-            &logger_factory,
-            link_resolver,
-            Arc::new(subgraph_provider),
-            network_store.subgraph_store(),
-            subscription_manager,
-            blockchain_map,
+            &env_vars,
+            blockchain_map.clone(),
             node_id.clone(),
-            version_switching_mode,
-            Arc::new(subgraph_settings),
-        ));
+            subgraph_settings,
+            link_resolver.clone(),
+            subscription_manager,
+            arweave_service,
+            ipfs_service,
+        );
+
         graph::spawn(
             subgraph_registrar
                 .start()
@@ -513,32 +575,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     spawn_contention_checker(logger.clone());
 
     graph::futures03::future::pending::<()>().await;
-}
-
-fn build_graphql_server(
-    config: &Config,
-    logger: &Logger,
-    expensive_queries: Vec<Arc<q::Document>>,
-    metrics_registry: Arc<MetricsRegistry>,
-    network_store: &Arc<Store>,
-    logger_factory: &LoggerFactory,
-) -> GraphQLQueryServer<GraphQlRunner<Store>> {
-    let shards: Vec<_> = config.stores.keys().cloned().collect();
-    let load_manager = Arc::new(LoadManager::new(
-        &logger,
-        shards,
-        expensive_queries,
-        metrics_registry.clone(),
-    ));
-    let graphql_runner = Arc::new(GraphQlRunner::new(
-        &logger,
-        network_store.clone(),
-        load_manager,
-        metrics_registry,
-    ));
-    let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
-
-    graphql_server
 }
 
 fn spawn_contention_checker(logger: Logger) {
