@@ -174,6 +174,36 @@ fn cleanup_ethereum_shallow_blocks(blockchain_map: &BlockchainMap, network_store
     }
 }
 
+async fn spawn_block_ingestor(
+    logger: &Logger,
+    blockchain_map: &Arc<BlockchainMap>,
+    network_store: &Arc<Store>,
+    primary_pool: ConnectionPool,
+    metrics_registry: &Arc<MetricsRegistry>,
+) {
+    let logger = logger.clone();
+    let ingestors = Networks::block_ingestors(&logger, &blockchain_map)
+        .await
+        .expect("unable to start block ingestors");
+
+    ingestors.into_iter().for_each(|ingestor| {
+        let logger = logger.clone();
+        info!(logger,"Starting block ingestor for network";"network_name" => &ingestor.network_name().as_str(), "kind" => ingestor.kind().to_string());
+
+        graph::spawn(ingestor.run());
+    });
+
+    // Start a task runner
+    let mut job_runner = graph::util::jobs::Runner::new(&logger);
+    register_store_jobs(
+        &mut job_runner,
+        network_store.clone(),
+        primary_pool,
+        metrics_registry.clone(),
+    );
+    graph::spawn_blocking(job_runner.start());
+}
+
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     env_logger::init();
     // Set up logger
@@ -343,28 +373,16 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
         );
 
         if !opt.disable_block_ingestor {
-            let logger = logger.clone();
-            let ingestors = Networks::block_ingestors(&logger, &blockchain_map)
-                .await
-                .expect("unable to start block ingestors");
-
-            ingestors.into_iter().for_each(|ingestor| {
-                let logger = logger.clone();
-                info!(logger,"Starting block ingestor for network";"network_name" => &ingestor.network_name().as_str(), "kind" => ingestor.kind().to_string());
-
-                graph::spawn(ingestor.run());
-            });
-
-            // Start a task runner
-            let mut job_runner = graph::util::jobs::Runner::new(&logger);
-            register_store_jobs(
-                &mut job_runner,
-                network_store.clone(),
+            spawn_block_ingestor(
+                &logger,
+                &blockchain_map,
+                &network_store,
                 primary_pool,
-                metrics_registry.clone(),
-            );
-            graph::spawn_blocking(job_runner.start());
+                &metrics_registry,
+            )
+            .await;
         }
+
         let static_filters = ENV_VARS.experimental_static_filters;
 
         let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
