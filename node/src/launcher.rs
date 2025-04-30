@@ -30,7 +30,8 @@ use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_store_postgres::{
-    register_jobs as register_store_jobs, ConnectionPool, NotificationSender, Store,
+    register_jobs as register_store_jobs, ChainHeadUpdateListener, ConnectionPool,
+    NotificationSender, Store, SubscriptionManager,
 };
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
@@ -51,6 +52,41 @@ fn setup_metrics(logger: &Logger) -> (Arc<Registry>, Arc<MetricsRegistry>) {
     ));
 
     (prometheus_registry, metrics_registry)
+}
+
+/// Sets up the store and database connections
+async fn setup_store(
+    logger: &Logger,
+    node_id: &NodeId,
+    config: &Config,
+    fork_base: Option<Url>,
+    metrics_registry: Arc<MetricsRegistry>,
+) -> (
+    ConnectionPool,
+    Arc<SubscriptionManager>,
+    Arc<ChainHeadUpdateListener>,
+    Arc<Store>,
+) {
+    let store_builder = StoreBuilder::new(
+        logger,
+        node_id,
+        config,
+        fork_base,
+        metrics_registry.cheap_clone(),
+    )
+    .await;
+
+    let primary_pool = store_builder.primary_pool();
+    let subscription_manager = store_builder.subscription_manager();
+    let chain_head_update_listener = store_builder.chain_head_update_listener();
+    let network_store = store_builder.network_store(config.chain_ids());
+
+    (
+        primary_pool,
+        subscription_manager,
+        chain_head_update_listener,
+        network_store,
+    )
 }
 
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
@@ -159,19 +195,15 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     let expensive_queries =
         read_expensive_queries(&logger, opt.expensive_queries_filename).unwrap();
 
-    let store_builder = StoreBuilder::new(
-        &logger,
-        &node_id,
-        &config,
-        fork_base,
-        metrics_registry.cheap_clone(),
-    )
-    .await;
-
-    let primary_pool = store_builder.primary_pool();
-    let subscription_manager = store_builder.subscription_manager();
-    let chain_head_update_listener = store_builder.chain_head_update_listener();
-    let network_store = store_builder.network_store(config.chain_ids());
+    let (primary_pool, subscription_manager, chain_head_update_listener, network_store) =
+        setup_store(
+            &logger,
+            &node_id,
+            &config,
+            fork_base,
+            metrics_registry.cheap_clone(),
+        )
+        .await;
 
     let graphman_server_config = make_graphman_server_config(
         primary_pool.clone(),
