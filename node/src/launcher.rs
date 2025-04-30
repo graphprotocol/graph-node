@@ -359,8 +359,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     let graphql_metrics_registry = metrics_registry.clone();
 
-    let contention_logger = logger.clone();
-
     // TODO: make option loadable from configuration TOML and environment:
     let expensive_queries =
         read_expensive_queries(&logger, opt.expensive_queries_filename.clone()).unwrap();
@@ -520,6 +518,12 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     graph::spawn(launch_services(logger.clone(), env_vars.cheap_clone()));
 
+    spawn_contention_checker(logger.clone());
+
+    graph::futures03::future::pending::<()>().await;
+}
+
+fn spawn_contention_checker(logger: Logger) {
     // Periodically check for contention in the tokio threadpool. First spawn a
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
@@ -534,26 +538,24 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
         std::thread::sleep(Duration::from_secs(1));
         let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
         if graph::futures03::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
-            debug!(contention_logger, "Shutting down contention checker thread");
+            debug!(logger, "Shutting down contention checker thread");
             break;
         }
         let mut timeout = Duration::from_millis(10);
         while pong_receive.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
         {
-            debug!(contention_logger, "Possible contention in tokio threadpool";
+            debug!(logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention);
             if timeout < ENV_VARS.kill_if_unresponsive_timeout {
                 timeout *= 10;
             } else if ENV_VARS.kill_if_unresponsive {
                 // The node is unresponsive, kill it in hopes it will be restarted.
-                crit!(contention_logger, "Node is unresponsive, killing process");
+                crit!(logger, "Node is unresponsive, killing process");
                 std::process::abort()
             }
         }
     });
-
-    graph::futures03::future::pending::<()>().await;
 }
 
 /// Sets up and loads configuration based on command line options
