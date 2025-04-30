@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::network_setup::Networks;
 use crate::opt::Opt;
 use crate::store_builder::StoreBuilder;
-use graph::blockchain::{Blockchain, BlockchainKind};
+use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
@@ -87,6 +87,60 @@ async fn setup_store(
         chain_head_update_listener,
         network_store,
     )
+}
+
+async fn build_blockchain_map(
+    logger: &Logger,
+    config: &Config,
+    env_vars: &Arc<EnvVars>,
+    node_id: &NodeId,
+    network_store: Arc<Store>,
+    metrics_registry: Arc<MetricsRegistry>,
+    endpoint_metrics: Arc<EndpointMetrics>,
+    chain_head_update_listener: Arc<ChainHeadUpdateListener>,
+    logger_factory: &LoggerFactory,
+) -> Arc<BlockchainMap> {
+    use graph::components::network_provider;
+    let block_store = network_store.block_store();
+
+    let mut provider_checks: Vec<Arc<dyn network_provider::ProviderCheck>> = Vec::new();
+
+    if env_vars.genesis_validation_enabled {
+        provider_checks.push(Arc::new(network_provider::GenesisHashCheck::new(
+            block_store.clone(),
+        )));
+    }
+
+    provider_checks.push(Arc::new(network_provider::ExtendedBlocksCheck::new(
+        env_vars
+            .firehose_disable_extended_blocks_for_chains
+            .iter()
+            .map(|x| x.as_str().into()),
+    )));
+
+    let network_adapters = Networks::from_config(
+        logger.cheap_clone(),
+        &config,
+        metrics_registry.cheap_clone(),
+        endpoint_metrics,
+        &provider_checks,
+    )
+    .await
+    .expect("unable to parse network configuration");
+
+    let blockchain_map = network_adapters
+        .blockchain_map(
+            &env_vars,
+            &node_id,
+            &logger,
+            block_store,
+            &logger_factory,
+            metrics_registry.cheap_clone(),
+            chain_head_update_listener,
+        )
+        .await;
+
+    Arc::new(blockchain_map)
 }
 
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
@@ -217,46 +271,18 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     start_graphman_server(opt.graphman_port, graphman_server_config).await;
 
     let launch_services = |logger: Logger, env_vars: Arc<EnvVars>| async move {
-        use graph::components::network_provider;
-
-        let block_store = network_store.block_store();
-
-        let mut provider_checks: Vec<Arc<dyn network_provider::ProviderCheck>> = Vec::new();
-
-        if env_vars.genesis_validation_enabled {
-            provider_checks.push(Arc::new(network_provider::GenesisHashCheck::new(
-                block_store.clone(),
-            )));
-        }
-
-        provider_checks.push(Arc::new(network_provider::ExtendedBlocksCheck::new(
-            env_vars
-                .firehose_disable_extended_blocks_for_chains
-                .iter()
-                .map(|x| x.as_str().into()),
-        )));
-
-        let network_adapters = Networks::from_config(
-            logger.cheap_clone(),
+        let blockchain_map = build_blockchain_map(
+            &logger,
             &config,
-            metrics_registry.cheap_clone(),
+            &env_vars,
+            &node_id,
+            network_store.clone(),
+            metrics_registry.clone(),
             endpoint_metrics,
-            &provider_checks,
+            chain_head_update_listener,
+            &logger_factory,
         )
-        .await
-        .expect("unable to parse network configuration");
-
-        let blockchain_map = network_adapters
-            .blockchain_map(
-                &env_vars,
-                &node_id,
-                &logger,
-                block_store,
-                &logger_factory,
-                metrics_registry.cheap_clone(),
-                chain_head_update_listener,
-            )
-            .await;
+        .await;
 
         // see comment on cleanup_ethereum_shallow_blocks
         if !opt.disable_block_ingestor {
@@ -289,8 +315,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
                 ),
             }
         }
-
-        let blockchain_map = Arc::new(blockchain_map);
 
         let shards: Vec<_> = config.stores.keys().cloned().collect();
         let load_manager = Arc::new(LoadManager::new(
