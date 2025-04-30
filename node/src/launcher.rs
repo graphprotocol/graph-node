@@ -41,6 +41,18 @@ use tokio::sync::mpsc;
 
 git_testament!(TESTAMENT);
 
+/// Sets up metrics and monitoring
+fn setup_metrics(logger: &Logger) -> (Arc<Registry>, Arc<MetricsRegistry>) {
+    // Set up Prometheus registry
+    let prometheus_registry = Arc::new(Registry::new());
+    let metrics_registry = Arc::new(MetricsRegistry::new(
+        logger.clone(),
+        prometheus_registry.clone(),
+    ));
+
+    (prometheus_registry, metrics_registry)
+}
+
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
     env_logger::init();
     // Set up logger
@@ -83,6 +95,9 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     info!(logger, "Starting up");
 
+    // Set up metrics
+    let (prometheus_registry, metrics_registry) = setup_metrics(&logger);
+
     // Optionally, identify the Elasticsearch logging configuration
     let elastic_config = opt
         .elasticsearch_url
@@ -93,13 +108,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
             password: opt.elasticsearch_password.clone(),
             client: reqwest::Client::new(),
         });
-
-    // Set up Prometheus registry
-    let prometheus_registry = Arc::new(Registry::new());
-    let metrics_registry = Arc::new(MetricsRegistry::new(
-        logger.clone(),
-        prometheus_registry.clone(),
-    ));
 
     // Create a component and subgraph logger factory
     let logger_factory =
