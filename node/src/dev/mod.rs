@@ -1,3 +1,2 @@
-
-pub mod watcher;
 pub mod helpers;
+pub mod watcher;
