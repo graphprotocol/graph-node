@@ -3,8 +3,17 @@ use std::{path::Path, sync::Arc};
 use anyhow::{Context, Result};
 use clap::Parser;
 use git_testament::{git_testament, render_testament};
-use graph::{components::link_resolver::FileLinkResolver, env::EnvVars, tokio};
-use graph_node::{launcher, opt::Opt};
+use graph::{
+    components::link_resolver::FileLinkResolver,
+    env::EnvVars,
+    log::logger,
+    tokio::{self, sync::mpsc},
+};
+use graph_node::{
+    dev::{helpers::DevModeContext, watcher::watch_subgraph_dir},
+    launcher,
+    opt::Opt,
+};
 use lazy_static::lazy_static;
 use pgtemp::PgTempDBBuilder;
 
@@ -101,15 +110,16 @@ fn get_build_dir(manifest_path_str: &str) -> Result<std::path::PathBuf> {
         .context("Failed to canonicalize build directory path")
 }
 
-async fn run_graph_node(opt: Opt, file_link_resolver: Arc<FileLinkResolver>) -> Result<()> {
+async fn run_graph_node(opt: Opt, ctx: Option<DevModeContext>) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
-    launcher::run(opt, env_vars, Some(file_link_resolver)).await;
+    launcher::run(opt, env_vars, ctx).await;
     Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
     let dev_opt = DevOpt::parse();
 
     let build_dir = get_build_dir(&dev_opt.manifest)?;
@@ -121,11 +131,39 @@ async fn main() -> Result<()> {
         .start_async()
         .await;
 
+    let (tx, rx) = mpsc::channel(1);
     let opt = build_args(&dev_opt, &db.connection_uri(), &dev_opt.manifest)?;
     let file_link_resolver = Arc::new(FileLinkResolver::with_base_dir(&build_dir));
 
-    // Run graph node
-    run_graph_node(opt, file_link_resolver).await?;
+    let ctx = DevModeContext {
+        watch: dev_opt.watch,
+        file_link_resolver,
+        updates_rx: rx,
+    };
 
+    let subgraph = opt.subgraph.clone().unwrap();
+
+    // Set up logger
+    let logger = logger(opt.debug);
+
+    // Run graph node
+    graph::spawn(async move {
+        let _ = run_graph_node(opt, Some(ctx)).await;
+    });
+
+    if dev_opt.watch {
+        graph::spawn_blocking(async move {
+            watch_subgraph_dir(
+                &logger,
+                build_dir,
+                subgraph,
+                vec!["pgtemp-*".to_string()],
+                tx,
+            )
+            .await;
+        });
+    }
+
+    graph::futures03::future::pending::<()>().await;
     Ok(())
 }
