@@ -59,9 +59,9 @@ pub enum StoreError {
     #[error("panic in subgraph writer: {0}")]
     WriterPanic(JoinError),
     #[error(
-        "found schema version {0} but this graph node only supports versions up to {}. \
+        "found schema version {0} but this graph node only supports versions up to {latest}. \
          Did you downgrade Graph Node?",
-        DeploymentSchemaVersion::LATEST
+        latest = DeploymentSchemaVersion::LATEST
     )]
     UnsupportedDeploymentSchemaVersion(i32),
     #[error("pruning failed: {0}")]

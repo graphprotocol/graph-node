@@ -1922,7 +1922,7 @@ dependencies = [
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
  "strum_macros 0.27.1",
- "thiserror 1.0.61",
+ "thiserror 2.0.12",
  "tiny-keccak 1.5.0",
  "tokio",
  "tokio-retry",
@@ -1979,6 +1979,7 @@ dependencies = [
  "prost-types",
  "semver",
  "serde",
+ "thiserror 2.0.12",
  "tiny-keccak 1.5.0",
  "tonic-build",
 ]
@@ -2033,6 +2034,7 @@ dependencies = [
  "graph-chain-substreams",
  "graph-runtime-wasm",
  "serde_yaml",
+ "thiserror 2.0.12",
  "tower 0.5.2 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
  "wiremock",
@@ -2250,7 +2252,7 @@ dependencies = [
  "graph-store-postgres",
  "graphman-store",
  "itertools 0.13.0",
- "thiserror 1.0.61",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -2274,7 +2276,7 @@ dependencies = [
  "serde_json",
  "slog",
  "test-store",
- "thiserror 1.0.61",
+ "thiserror 2.0.12",
  "tokio",
  "tower-http",
 ]
