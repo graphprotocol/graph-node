@@ -43,7 +43,7 @@ anyhow = "1.0"
 async-graphql = { version = "7.0.15", features = ["chrono"] }
 async-graphql-axum = "7.0.15"
 axum = "0.8.3"
-chrono = "0.4.38"
+chrono = "0.4.41"
 bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env", "wrap_help"] }
 derivative = "2.2.0"
