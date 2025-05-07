@@ -17,7 +17,7 @@ pub trait EventExt {
 impl EventExt for Event {
     fn decode_log(&self, log: &Log) -> Result<Vec<DynSolParam>> {
         let log_data = log_to_log_data(log)?;
-        let decoded_event = alloy::dyn_abi::EventExt::decode_log(self, &log_data, true)?;
+        let decoded_event = alloy::dyn_abi::EventExt::decode_log(self, &log_data)?;
         let mut indexed: VecDeque<DynSolValue> = decoded_event.indexed.into();
         let mut body: VecDeque<DynSolValue> = decoded_event.body.into();
 
