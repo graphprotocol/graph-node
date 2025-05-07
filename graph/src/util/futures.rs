@@ -66,6 +66,7 @@ pub fn retry<I, E>(operation_name: impl ToString, logger: &Logger) -> RetryConfi
         redact_log_urls: false,
         phantom_item: PhantomData,
         phantom_error: PhantomData,
+        max_delay: RETRY_DEFAULT_LIMIT,
     }
 }
 
@@ -79,6 +80,7 @@ pub struct RetryConfig<I, E> {
     phantom_item: PhantomData<I>,
     phantom_error: PhantomData<E>,
     redact_log_urls: bool,
+    max_delay: Duration,
 }
 
 impl<I, E> RetryConfig<I, E>
@@ -159,6 +161,12 @@ where
     pub fn no_timeout(self) -> RetryConfigNoTimeout<I, E> {
         RetryConfigNoTimeout { inner: self }
     }
+
+    /// Set the maximum delay between retries.
+    pub fn max_delay(mut self, max_delay: Duration) -> Self {
+        self.max_delay = max_delay;
+        self
+    }
 }
 
 pub struct RetryConfigWithTimeout<I, E> {
@@ -184,6 +192,7 @@ where
         let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
         let redact_log_urls = self.inner.redact_log_urls;
+        let max_delay = self.inner.max_delay;
         let timeout = self.timeout;
 
         trace!(logger, "Run with retry: {}", operation_name);
@@ -196,6 +205,7 @@ where
             warn_after,
             limit_opt,
             redact_log_urls,
+            max_delay,
             move || {
                 try_it()
                     .timeout(timeout)
@@ -227,6 +237,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
         let warn_after = self.inner.warn_after;
         let limit_opt = self.inner.limit.unwrap(&operation_name, "limit");
         let redact_log_urls = self.inner.redact_log_urls;
+        let max_delay = self.inner.max_delay;
 
         trace!(logger, "Run with retry: {}", operation_name);
 
@@ -238,6 +249,7 @@ impl<I, E> RetryConfigNoTimeout<I, E> {
             warn_after,
             limit_opt,
             redact_log_urls,
+            max_delay,
             // No timeout, so all errors are inner errors
             move || try_it().map_err(TimeoutError::Inner),
         )
@@ -280,6 +292,7 @@ fn run_retry<O, E, F, R>(
     warn_after: u64,
     limit_opt: Option<usize>,
     redact_log_urls: bool,
+    max_delay: Duration,
     mut try_it_with_timeout: F,
 ) -> impl Future<Output = Result<O, TimeoutError<E>>> + Send
 where
@@ -292,7 +305,7 @@ where
 
     let mut attempt_count = 0;
 
-    Retry::spawn(retry_strategy(limit_opt, RETRY_DEFAULT_LIMIT), move || {
+    Retry::spawn(retry_strategy(limit_opt, max_delay), move || {
         let operation_name = operation_name.clone();
         let logger = logger.clone();
         let condition = condition.clone();
