@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use slog::Logger;
 
 use crate::ipfs::error::IpfsError;
@@ -7,6 +9,9 @@ use crate::util::futures::RetryConfig;
 /// This is a safety mechanism to prevent infinite spamming of IPFS servers
 /// in the event of logical or unhandled deterministic errors.
 const DEFAULT_MAX_ATTEMPTS: usize = 10_0000;
+
+/// The default maximum delay between retries.
+const DEFAULT_MAX_DELAY: Duration = Duration::from_secs(60);
 
 /// Describes retry behavior when IPFS requests fail.
 #[derive(Clone, Copy, Debug)]
@@ -31,6 +36,7 @@ impl RetryPolicy {
     ) -> RetryConfig<O, IpfsError> {
         retry(operation_name, logger)
             .limit(DEFAULT_MAX_ATTEMPTS)
+            .max_delay(DEFAULT_MAX_DELAY)
             .when(move |result: &Result<O, IpfsError>| match result {
                 Ok(_) => false,
                 Err(err) => match self {
