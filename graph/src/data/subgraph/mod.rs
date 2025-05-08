@@ -116,24 +116,24 @@ impl DeploymentHash {
     pub fn new(s: impl Into<String>) -> Result<Self, String> {
         let s = s.into();
 
-        // This section is being temporarily commented out. This is to allow file link resolver to work
-        // TODO(krishna): Figure out how to do this better or remove this check
+        // When the disable_deployment_hash_validation flag is set, we skip the validation
+        if !ENV_VARS.disable_deployment_hash_validation {
+            // Enforce length limit
+            if s.len() > 46 {
+                return Err(s);
+            }
 
-        // // Enforce length limit
-        // if s.len() > 46 {
-        //     return Err(s);
-        // }
+            // Check that the ID contains only allowed characters.
+            if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Err(s);
+            }
 
-        // // Check that the ID contains only allowed characters.
-        // if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        //     return Err(s);
-        // }
-
-        // // Allow only deployment id's for 'real' subgraphs, not the old
-        // // metadata subgraph.
-        // if s == "subgraphs" {
-        //     return Err(s);
-        // }
+            // Allow only deployment id's for 'real' subgraphs, not the old
+            // metadata subgraph.
+            if s == "subgraphs" {
+                return Err(s);
+            }
+        }
 
         Ok(DeploymentHash(s))
     }

@@ -225,6 +225,12 @@ pub struct EnvVars {
     /// if no genesis hash can be retrieved from an adapter. If enabled, the adapter is
     /// ignored if unable to produce a genesis hash or produces a different an unexpected hash.
     pub genesis_validation_enabled: bool,
+    /// Whether to enforce deployment hash validation rules.
+    /// When disabled, any string can be used as a deployment hash.
+    /// When enabled, deployment hashes must meet length and character constraints.
+    ///
+    /// Set by the flag `GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION`. Enabled by default.
+    pub disable_deployment_hash_validation: bool,
     /// How long do we wait for a response from the provider before considering that it is unavailable.
     /// Default is 30s.
     pub genesis_validation_timeout: Duration,
@@ -332,6 +338,7 @@ impl EnvVars {
             section_map: inner.section_map,
             firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
             genesis_validation_enabled: inner.genesis_validation_enabled.0,
+            disable_deployment_hash_validation: inner.disable_deployment_hash_validation.0,
             genesis_validation_timeout: Duration::from_secs(inner.genesis_validation_timeout),
             graphman_server_auth_token: inner.graphman_server_auth_token,
             firehose_disable_extended_blocks_for_chains:
@@ -528,6 +535,11 @@ struct Inner {
     firehose_block_fetch_timeout: u64,
     #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_BATCH_SIZE", default = "10")]
     firehose_block_fetch_batch_size: usize,
+    #[envconfig(
+        from = "GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION",
+        default = "false"
+    )]
+    disable_deployment_hash_validation: EnvVarBoolean,
 }
 
 #[derive(Clone, Debug)]
