@@ -39,13 +39,11 @@ impl FileLinkResolver {
     fn resolve_path(&self, link: &str) -> PathBuf {
         let path = Path::new(link);
 
-        // If the path is already absolute or if we don't have a base_dir, return it as is
-        if path.is_absolute() || self.base_dir.is_none() {
-            path.to_owned()
-        } else {
-            // Otherwise, join with base_dir
-            self.base_dir.as_ref().unwrap().join(link)
-        }
+        // Return the path as is if base_dir is None, or join with base_dir if present.
+        // if "link" is an absolute path, join will simply return that path.
+        self.base_dir
+            .as_ref()
+            .map_or_else(|| path.to_owned(), |base_dir| base_dir.join(link))
     }
 }
 
