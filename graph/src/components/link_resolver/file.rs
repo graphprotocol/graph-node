@@ -50,8 +50,9 @@ impl FileLinkResolver {
 }
 
 pub fn remove_prefix(link: &str) -> &str {
-    if link.starts_with("/ipfs/") {
-        &link[6..] // Skip the "/ipfs/" prefix (6 characters)
+    const IPFS: &str = "/ipfs/";
+    if link.starts_with(IPFS) {
+        &link[IPFS.len()..]
     } else {
         link
     }
