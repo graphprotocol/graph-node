@@ -124,8 +124,6 @@ mod tests {
         let link = Link {
             link: test_file_path.to_string_lossy().to_string(),
         };
-        let resolved_path = resolver.resolve_path(&link.link);
-        println!("Absolute mode - Resolved path: {:?}", resolved_path);
         let result = resolver.cat(&logger, &link).await.unwrap();
         assert_eq!(result, test_content);
 
@@ -133,11 +131,6 @@ mod tests {
         let link = Link {
             link: "/test.txt".to_string(),
         };
-        let resolved_path = resolver.resolve_path(&link.link);
-        println!(
-            "Absolute mode - Path with leading slash: {:?}",
-            resolved_path
-        );
         let result = resolver.cat(&logger, &link).await;
         assert!(
             result.is_err(),
@@ -167,44 +160,17 @@ mod tests {
         let resolver = FileLinkResolver::with_base_dir(&temp_dir);
         let logger = slog::Logger::root(slog::Discard, slog::o!());
 
-        println!("Base directory mode - base dir: {:?}", temp_dir);
-
         // Test relative path (no leading slash)
         let link = Link {
             link: "test.txt".to_string(),
         };
-        let resolved_path = resolver.resolve_path(&link.link);
-        println!(
-            "Base directory mode - Resolved relative path: {:?}",
-            resolved_path
-        );
         let result = resolver.cat(&logger, &link).await.unwrap();
         assert_eq!(result, test_content);
-
-        // Test relative path with leading slash (should be treated as absolute on Unix)
-        let link = Link {
-            link: "/test.txt".to_string(),
-        };
-        let resolved_path = resolver.resolve_path(&link.link);
-        println!(
-            "Base directory mode - Resolved path with leading slash: {:?}",
-            resolved_path
-        );
-
-        println!(
-            "Result for path with leading slash: {:?}",
-            resolver.cat(&logger, &link).await
-        );
 
         // Test absolute path
         let link = Link {
             link: test_file_path.to_string_lossy().to_string(),
         };
-        let resolved_path = resolver.resolve_path(&link.link);
-        println!(
-            "Base directory mode - Resolved absolute path: {:?}",
-            resolved_path
-        );
         let result = resolver.cat(&logger, &link).await.unwrap();
         assert_eq!(result, test_content);
 
