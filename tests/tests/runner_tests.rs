@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::process::Command;
 use std::str::FromStr;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
@@ -13,14 +12,11 @@ use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::env::{EnvVars, TEST_WITH_NO_REORG};
-use graph::ipfs;
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::Address;
-use graph::prelude::{
-    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
-};
+use graph::prelude::{hex, CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
     push_test_polling_trigger,
@@ -28,77 +24,11 @@ use graph_tests::fixture::ethereum::{
 
 use graph_tests::fixture::substreams::chain as substreams_chain;
 use graph_tests::fixture::{
-    self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
-    TestChainTrait, TestContext, TestInfo,
+    self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, TestChainTrait,
+    TestContext, TestInfo,
 };
-use graph_tests::helpers::run_cmd;
+use graph_tests::recipe::{build_subgraph_with_yarn_cmd_and_arg, RunnerTestRecipe};
 use slog::{o, Discard, Logger};
-
-struct RunnerTestRecipe {
-    pub stores: Stores,
-    pub test_info: TestInfo,
-}
-
-impl RunnerTestRecipe {
-    async fn new(test_name: &str, subgraph_name: &str) -> Self {
-        let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
-        let test_dir = format!("./runner-tests/{}", subgraph_name);
-
-        let (stores, hash) = tokio::join!(
-            stores(test_name, "./runner-tests/config.simple.toml"),
-            build_subgraph(&test_dir, None)
-        );
-
-        Self {
-            stores,
-            test_info: TestInfo {
-                test_dir,
-                test_name: test_name.to_string(),
-                subgraph_name,
-                hash,
-            },
-        }
-    }
-
-    /// Builds a new test subgraph with a custom deploy command.
-    async fn new_with_custom_cmd(name: &str, subgraph_name: &str, deploy_cmd: &str) -> Self {
-        let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
-        let test_dir = format!("./runner-tests/{}", subgraph_name);
-
-        let (stores, hash) = tokio::join!(
-            stores(name, "./runner-tests/config.simple.toml"),
-            build_subgraph(&test_dir, Some(deploy_cmd))
-        );
-
-        Self {
-            stores,
-            test_info: TestInfo {
-                test_dir,
-                test_name: name.to_string(),
-                subgraph_name,
-                hash,
-            },
-        }
-    }
-
-    async fn new_with_file_link_resolver(name: &str, subgraph_name: &str, manifest: &str) -> Self {
-        let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
-        let test_dir = format!("./runner-tests/{}", subgraph_name);
-
-        let stores = stores(name, "./runner-tests/config.simple.toml").await;
-        build_subgraph(&test_dir, None).await;
-        let hash = DeploymentHash::new(manifest).unwrap();
-        Self {
-            stores,
-            test_info: TestInfo {
-                test_dir,
-                test_name: name.to_string(),
-                subgraph_name,
-                hash,
-            },
-        }
-    }
-}
 
 fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
     let equal = {
@@ -1171,58 +1101,6 @@ async fn retry_create_ds() {
 }
 
 #[tokio::test]
-async fn file_link_resolver() -> anyhow::Result<()> {
-    let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_file_link_resolver(
-        "file_link_resolver",
-        "file-link-resolver",
-        "subgraph.yaml",
-    )
-    .await;
-
-    let blocks = {
-        let block_0 = genesis();
-        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
-        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
-        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
-
-        vec![block_0, block_1, block_2, block_3]
-    };
-
-    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
-
-    let ctx = fixture::setup_with_file_link_resolver(&test_info, &stores, &chain, None, None).await;
-    ctx.start_and_sync_to(test_ptr(3)).await;
-    let query = r#"{ blocks(first: 4, orderBy: number) { id, hash } }"#;
-    let query_res = ctx.query(query).await.unwrap();
-
-    assert_eq!(
-        query_res,
-        Some(object! {
-            blocks: vec![
-                object! {
-                    id: test_ptr(0).number.to_string(),
-                    hash: format!("0x{}", test_ptr(0).hash_hex()),
-                },
-                object! {
-                    id: test_ptr(1).number.to_string(),
-                    hash: format!("0x{}", test_ptr(1).hash_hex()),
-                },
-                object! {
-                    id: test_ptr(2).number.to_string(),
-                    hash: format!("0x{}", test_ptr(2).hash_hex()),
-                },
-                object! {
-                    id: test_ptr(3).number.to_string(),
-                    hash: format!("0x{}", test_ptr(3).hash_hex()),
-                },
-            ]
-        })
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
 async fn fatal_error() -> anyhow::Result<()> {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("fatal_error", "fatal-error").await;
@@ -1347,61 +1225,4 @@ async fn arweave_file_data_sources() {
         query_res,
         Some(object! { file: object!{ id: id, content: content.clone() } })
     );
-}
-
-/// deploy_cmd is the command to run to deploy the subgraph. If it is None, the
-/// default `yarn deploy:test` is used.
-async fn build_subgraph(dir: &str, deploy_cmd: Option<&str>) -> DeploymentHash {
-    build_subgraph_with_yarn_cmd(dir, deploy_cmd.unwrap_or("deploy:test")).await
-}
-
-async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
-    build_subgraph_with_yarn_cmd_and_arg(dir, yarn_cmd, None).await
-}
-
-async fn build_subgraph_with_yarn_cmd_and_arg(
-    dir: &str,
-    yarn_cmd: &str,
-    arg: Option<&str>,
-) -> DeploymentHash {
-    // Test that IPFS is up.
-    ipfs::IpfsRpcClient::new(ipfs::ServerAddress::local_rpc_api(), &graph::log::discard())
-        .await
-        .expect("Could not connect to IPFS, make sure it's running at port 5001");
-
-    // Make sure dependencies are present.
-
-    run_cmd(
-        Command::new("yarn")
-            .arg("install")
-            .arg("--mutex")
-            .arg("file:.yarn-mutex")
-            .current_dir("./runner-tests/"),
-    );
-
-    // Run codegen.
-    run_cmd(Command::new("yarn").arg("codegen").current_dir(dir));
-
-    let mut args = vec![yarn_cmd];
-    args.extend(arg);
-
-    // Run `deploy` for the side effect of uploading to IPFS, the graph node url
-    // is fake and the actual deploy call is meant to fail.
-    let deploy_output = run_cmd(
-        Command::new("yarn")
-            .args(&args)
-            .env("IPFS_URI", "http://127.0.0.1:5001")
-            .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
-            .current_dir(dir),
-    );
-
-    // Hack to extract deployment id from `graph deploy` output.
-    const ID_PREFIX: &str = "Build completed: ";
-    let Some(mut line) = deploy_output.lines().find(|line| line.contains(ID_PREFIX)) else {
-        panic!("No deployment id found, graph deploy probably had an error")
-    };
-    if !line.starts_with(ID_PREFIX) {
-        line = &line[5..line.len() - 5]; // workaround for colored output
-    }
-    DeploymentHash::new(line.trim_start_matches(ID_PREFIX)).unwrap()
 }

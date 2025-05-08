@@ -5,5 +5,6 @@ pub mod helpers;
 #[macro_use]
 pub mod macros;
 pub mod subgraph;
+pub mod recipe;
 
 pub use config::{Config, DbConfig, EthConfig, CONFIG};
