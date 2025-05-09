@@ -53,6 +53,10 @@ pub struct EnvVarsMapping {
     ///
     /// Set by the environment variable `GRAPH_IPFS_REQUEST_LIMIT`. Defaults to 100.
     pub ipfs_request_limit: u16,
+    /// Limit of max IPFS attempts to retrieve a file.
+    ///
+    /// Set by the environment variable `GRAPH_IPFS_MAX_ATTEMPTS`. Defaults to 100000.
+    pub ipfs_max_attempts: usize,
 
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
     /// default.
@@ -94,6 +98,7 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
             max_ipfs_map_file_size: x.max_ipfs_map_file_size.0,
             max_ipfs_file_bytes: x.max_ipfs_file_bytes.0,
             ipfs_request_limit: x.ipfs_request_limit,
+            ipfs_max_attempts: x.ipfs_max_attempts,
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
             disable_declared_calls: x.disable_declared_calls.0,
             store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,
@@ -127,6 +132,8 @@ pub struct InnerMappingHandlers {
     max_ipfs_file_bytes: WithDefaultUsize<usize, { 25 * 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_IPFS_REQUEST_LIMIT", default = "100")]
     ipfs_request_limit: u16,
+    #[envconfig(from = "GRAPH_IPFS_MAX_ATTEMPTS", default = "100000")]
+    ipfs_max_attempts: usize,
     #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
     allow_non_deterministic_ipfs: EnvVarBoolean,
     #[envconfig(from = "GRAPH_DISABLE_DECLARED_CALLS", default = "false")]
