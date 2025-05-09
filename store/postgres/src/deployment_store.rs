@@ -82,8 +82,6 @@ pub(crate) struct SubgraphInfo {
     /// The deployment hash of the remote subgraph whose store
     /// will be GraphQL queried, for debugging purposes.
     pub(crate) debug_fork: Option<DeploymentHash>,
-    pub(crate) description: Option<String>,
-    pub(crate) repository: Option<String>,
     pub(crate) poi_version: ProofOfIndexingVersion,
     pub(crate) instrument: bool,
 }
@@ -499,8 +497,6 @@ impl DeploymentStore {
             api,
             graft_block,
             debug_fork,
-            description: manifest_info.description,
-            repository: manifest_info.repository,
             poi_version,
             instrument: manifest_info.instrument,
         };

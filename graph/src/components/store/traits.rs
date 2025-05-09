@@ -9,7 +9,6 @@ use super::*;
 use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
-use crate::components::server::index_node::VersionInfo;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
@@ -686,25 +685,6 @@ pub trait StatusStore: Send + Sync + 'static {
     async fn query_permit(&self) -> QueryPermit;
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
-
-    /// Support for the explorer-specific API
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
-
-    /// Support for the explorer-specific API; note that `subgraph_id` must be
-    /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.
-    /// The return values are the ids of the `subgraphs.subgraph_version` for
-    /// the current and pending versions of the subgraph
-    fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError>;
-
-    /// Support for the explorer-specific API. Returns a vector of (name, version) of all
-    /// subgraphs for a given deployment hash.
-    fn subgraphs_for_deployment_hash(
-        &self,
-        deployment_hash: &str,
-    ) -> Result<Vec<(String, String)>, StoreError>;
 
     /// A value of None indicates that the table is not available. Re-deploying
     /// the subgraph fixes this. It is undesirable to force everything to

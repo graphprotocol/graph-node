@@ -14,12 +14,9 @@ use std::{iter::FromIterator, time::Duration};
 use graph::futures03::future::join_all;
 use graph::{
     cheap_clone::CheapClone,
-    components::{
-        server::index_node::VersionInfo,
-        store::{
-            self, BlockPtrForNumber, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait,
-            PruneReporter, PruneRequest, SubgraphFork,
-        },
+    components::store::{
+        self, BlockPtrForNumber, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait,
+        PruneReporter, PruneRequest, SubgraphFork,
     },
     data::query::QueryTarget,
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
@@ -44,6 +41,7 @@ use crate::{
         index::{IndexList, Method},
         Layout,
     },
+    store::VersionInfo,
     writable::{SourceableStore, WritableStore},
     ConnectionPool, NotificationSender,
 };
@@ -981,7 +979,7 @@ impl SubgraphStoreInner {
     }
 
     pub(crate) fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
-        if let Some((deployment_id, created_at)) = self.mirror.version_info(version)? {
+        if let Some(deployment_id) = self.mirror.deployment_for_version(version)? {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| internal_error!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
@@ -995,40 +993,16 @@ impl SubgraphStoreInner {
                 .ok_or_else(|| internal_error!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|block| block.number());
-            let subgraph_info = store.subgraph_info(site.cheap_clone())?;
-            let layout = store.find_layout(site.cheap_clone())?;
-            let network = site.network.clone();
 
             let info = VersionInfo {
-                created_at,
                 deployment_id,
                 latest_ethereum_block_number,
-                total_ethereum_blocks_count: None,
-                synced: status.synced,
                 failed: status.health.is_failed(),
-                description: subgraph_info.description,
-                repository: subgraph_info.repository,
-                schema: layout.input_schema.cheap_clone(),
-                network,
             };
             Ok(info)
         } else {
             Err(StoreError::DeploymentNotFound(version.to_string()))
         }
-    }
-
-    pub(crate) fn versions_for_subgraph_id(
-        &self,
-        subgraph_id: &str,
-    ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.mirror.versions_for_subgraph_id(subgraph_id)
-    }
-
-    pub(crate) fn subgraphs_for_deployment_hash(
-        &self,
-        deployment_hash: &str,
-    ) -> Result<Vec<(String, String)>, StoreError> {
-        self.mirror.subgraphs_by_deployment_hash(deployment_hash)
     }
 
     #[cfg(debug_assertions)]
