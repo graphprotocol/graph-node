@@ -37,7 +37,7 @@ Mapping of subgraph names from `subgraph` to IPFS hashes. Maintained in the prim
 
 Directory of all deployments. Maintained in the primary, but there is a background job that periodically copies the table from the primary to all other shards. Those copies are used for queries when the primary is down.
 
-### `deployment_schemas`
+### `public.deployment_schemas`
 
 | Column       | Type           | Use                                          |
 |--------------|----------------|----------------------------------------------|
@@ -52,7 +52,7 @@ Directory of all deployments. Maintained in the primary, but there is a backgrou
 
 There can be multiple copies of the same deployment, but at most one per shard. The `active` flag indicates which of these copies will be used for queries; `graph-node` makes sure that there is always exactly one for each IPFS hash.
 
-### `subgraph_deployment`
+### `subgraphs.subgraph_deployment`
 
 Details about a deployment to track sync progress etc. Maintained in the
 shard alongside the deployment's data in `sgdNNN`. The table should only
@@ -88,7 +88,7 @@ set during indexing. They are used to determine whether a reorg happened
 while a query was running, and whether that reorg could have affected the
 query.
 
-### `subgraph_manifest`
+### `subgraphs.subgraph_manifest`
 
 Details about a deployment that rarely change. Maintained in the
 shard alongside the deployment's data in `sgdNNN`.
@@ -108,7 +108,7 @@ shard alongside the deployment's data in `sgdNNN`.
 | `on_sync`               | `text`     | Additional behavior when deployment becomes synced   |
 | `history_blocks`        | `int4!`    | How many blocks of history to keep                   |
 
-### `subgraph_deployment_assignment`
+### `subgraphs.subgraph_deployment_assignment`
 
 Tracks which index node is indexing a deployment. Maintained in the primary,
 but there is a background job that periodically copies the table from the
@@ -121,12 +121,12 @@ primary to all other shards.
 
 This table could simply be a column on `deployment_schemas`.
 
-### `dynamic_ethereum_contract_data_source`
+### `subgraphs.dynamic_ethereum_contract_data_source`
 
 Stores the dynamic data sources for all subgraphs (will be turned into a
 table that lives in each subgraph's namespace `sgdNNN` soon)
 
-### `subgraph_error`
+### `subgraphs.subgraph_error`
 
 Stores details about errors that subgraphs encounter during indexing.
 
