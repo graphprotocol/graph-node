@@ -3,22 +3,16 @@
 [![Build Status](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml/badge.svg)](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
 
-[The Graph](https://thegraph.com/) is a protocol that organizes and serves web3 data.
+## Overview
 
-Graph Node extracts and transforms blockchain data and makes the transformed
-data available to decentralized applications (dApps) via GraphQL queries.
-You can find more details on how to write these transformations, called
-_subgraphs_, in the official [Graph
-documentation](https://thegraph.com/docs/en/subgraphs/quick-start/). If you
-are not familiar already with subgraphs, we highly recommend at least
-reading through that documentation first.
+[The Graph](https://thegraph.com/) is decentralized protocol that organizes and distributes blockchain data across the leading Web3 networks. A key component of The Graph's tech stack is Graph Node.
 
-The rest of this page is geared towards two audiences:
+Before using `graph-node,` it is highly recommended that you read the [official Graph documentation](https://thegraph.com/docs/en/subgraphs/quick-start/) to understand Subgraphs, which are the central mechanism for extracting and organizing blockchain data.
 
-1. Subgraph developers who want to run `graph-node` locally so they can test
-   their subgraphs during development
-2. Developers who want to contribute bug fixes and features to `graph-node`
-   itself
+This guide is for:
+
+1. Subgraph developers who want to run `graph-node` locally to test their Subgraphs during development
+2. Contributors who want to add features or fix bugs to `graph-node` itself
 
 ## Running `graph-node` from Docker images
 
@@ -32,26 +26,28 @@ This is usually only needed for developers who want to contribute to `graph-node
 
 ### Prerequisites
 
-To build and run this project you need to have the following installed on your system:
+To build and run this project, you need to have the following installed on your system:
 
-- Rust (latest stable) – [How to install Rust](https://www.rust-lang.org/en-US/install.html)
-  has general instructions. Run `rustup install stable` in this directory to make
-  sure all required components are installed. The `graph-node` code assumes that the
-  latest available `stable` compiler is used.
-- PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/) lists
-  downloads for almost all operating systems. For OSX users, we highly recommend
-  using [Postgres.app](https://postgresapp.com/). Linux users can simply use the
-  Postgres version that comes with their distribution.
-- IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
-- Protobuf Compiler - [Installing Protobuf](https://grpc.io/docs/protoc-installation/)
+- Rust (latest stable): Follow [How to install
+  Rust](https://www.rust-lang.org/en-US/install.html). Run `rustup install
+stable` in _this directory_ to make sure all required components are
+  installed. The `graph-node` code assumes that the latest available
+  `stable` compiler is used.
+- PostgreSQL: [PostgreSQL Downloads](https://www.postgresql.org/download/) lists
+  downloads for almost all operating systems.
+  - For OSX: We highly recommend [Postgres.app](https://postgresapp.com/).
+  - For Linux: Use the Postgres version that comes with the distribution.
+- IPFS: [Installing IPFS](https://docs.ipfs.io/install/)
+- Protobuf Compiler: [Installing Protobuf](https://grpc.io/docs/protoc-installation/)
 
 For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 
 ### Create a database
 
 Once Postgres is running, you need to issue the following commands to create a database
-and set it up so that `graph-node` can use it. The name of the `SUPERUSER` depends
-on your installation, but is usually `postgres` or your username.
+and configure it for use with `graph-node`.
+
+The name of the `SUPERUSER` depends on your installation, but is usually `postgres` or your username.
 
 ```bash
 psql -U <SUPERUSER> <<EOF
@@ -62,20 +58,24 @@ create extension btree_gist;
 create extension postgres_fdw;
 grant usage on foreign data wrapper postgres_fdw to graph;
 EOF
+```
 
-# Save this in ~/.bashrc or similar
+For convenience, set the connection string to the database in an environment
+variable, and save it, e.g., in `~/.bashrc`:
+
+```bash
 export POSTGRES_URL=postgresql://graph:<password>@localhost:5432/graph-node
 ```
 
-With this setup, the URL that you will use to have `graph-node` connect to the
-database will be `postgresql://graph:<password>@localhost:5432/graph-node`. If
-you ever need to manually inspect the contents of your database, you can do
-that by running `psql $POSTGRES_URL`.
+Use the `POSTGRES_URL` from above to have `graph-node` connect to the
+database. If you ever need to manually inspect the contents of your
+database, you can do that by running `psql $POSTGRES_URL`. Running this
+command is also a convenient way to check that the database is up and
+running and that the connection string is correct.
 
-### Build `graph-node`
+### Build and Run `graph-node`
 
-To build `graph-node`, clone this repository and run this command at the
-root of the repository:
+Clone this repository and run this command at the root of the repository:
 
 ```bash
 export GRAPH_LOG=debug
@@ -91,13 +91,16 @@ of the Ethereum node you want to connect to, usually a `https` URL, so that the
 entire argument might be `mainnet:archive,traces:https://provider.io/some/path`.
 
 When `graph-node` starts, it prints the various ports that it is listening on.
-The most important of these is the GraphQL HTTP server, which is by default
+The most important of these is the GraphQL HTTP server, which by default
 is at `http://localhost:8000`. You can use routes like `/subgraphs/name/<subgraph-name>`
 and `/subgraphs/id/<IPFS hash>` to query subgraphs once you have deployed them.
 
 ### Deploying a Subgraph
 
-Instructions for how to deploy subgraphs can be found [here](https://thegraph.com/docs/en/subgraphs/developing/introduction/) After setting up `graph-cli` as described there, you can deploy a subgraph to your local Graph Node instance.
+Follow the [Subgraph deployment
+guide](https://thegraph.com/docs/en/subgraphs/developing/introduction/).
+After setting up `graph-cli` as described, you can deploy a Subgraph to your
+local Graph Node instance.
 
 ### Advanced Configuration
 
