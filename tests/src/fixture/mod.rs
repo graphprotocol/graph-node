@@ -3,6 +3,7 @@ pub mod substreams;
 
 use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -17,7 +18,9 @@ use graph::blockchain::{
     TriggerFilterWrapper, TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
+use graph::components::link_resolver::{
+    ArweaveClient, ArweaveResolver, FileLinkResolver, FileSizeLimit,
+};
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
 use graph::components::store::{BlockStore, DeploymentLocator, EthereumCallCache, SourceableStore};
@@ -38,7 +41,7 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     async_trait, lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
-    GraphQlRunner as _, IpfsResolver, LoggerFactory, NodeId, QueryError,
+    GraphQlRunner as _, IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError,
     SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
@@ -456,6 +459,38 @@ pub async fn setup<C: Blockchain>(
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
+    setup_inner(test_info, stores, chain, graft_block, env_vars, None).await
+}
+
+pub async fn setup_with_file_link_resolver<C: Blockchain>(
+    test_info: &TestInfo,
+    stores: &Stores,
+    chain: &impl TestChainTrait<C>,
+    graft_block: Option<BlockPtr>,
+    env_vars: Option<EnvVars>,
+) -> TestContext {
+    let mut base_dir = PathBuf::from(test_info.test_dir.clone());
+    base_dir.push("build");
+    let link_resolver = Arc::new(FileLinkResolver::with_base_dir(base_dir));
+    setup_inner(
+        test_info,
+        stores,
+        chain,
+        graft_block,
+        env_vars,
+        Some(link_resolver),
+    )
+    .await
+}
+
+pub async fn setup_inner<C: Blockchain>(
+    test_info: &TestInfo,
+    stores: &Stores,
+    chain: &impl TestChainTrait<C>,
+    graft_block: Option<BlockPtr>,
+    env_vars: Option<EnvVars>,
+    link_resolver: Option<Arc<dyn LinkResolver>>,
+) -> TestContext {
     let env_vars = Arc::new(match env_vars {
         Some(ev) => ev,
         None => EnvVars::from_env().unwrap(),
@@ -483,10 +518,13 @@ pub async fn setup<C: Blockchain>(
         .unwrap(),
     );
 
-    let link_resolver = Arc::new(IpfsResolver::new(
-        ipfs_client.cheap_clone(),
-        Default::default(),
-    ));
+    let link_resolver = match link_resolver {
+        Some(link_resolver) => link_resolver,
+        None => Arc::new(IpfsResolver::new(
+            ipfs_client.cheap_clone(),
+            Default::default(),
+        )),
+    };
 
     let ipfs_service = ipfs_service(
         ipfs_client.cheap_clone(),

@@ -349,40 +349,6 @@
     which "2.0.2"
     yaml "1.10.2"
 
-"@graphprotocol/graph-cli@0.79.0-alpha-20240711124603-49edf22":
-  version "0.79.0-alpha-20240711124603-49edf22"
-  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-cli/-/graph-cli-0.79.0-alpha-20240711124603-49edf22.tgz#4e3f6201932a0b68ce64d6badd8432cf2bead3c2"
-  integrity sha512-fZrdPiFbbbBVMnvsjfKA+j48WzzquaHQIpozBqnUKRPCV1n1NenIaq2nH16mlMwovRIS7AAIVCpa0QYQuPzw7Q==
-  dependencies:
-    "@float-capital/float-subgraph-uncrashable" "^0.0.0-alpha.4"
-    "@oclif/core" "2.8.6"
-    "@oclif/plugin-autocomplete" "^2.3.6"
-    "@oclif/plugin-not-found" "^2.4.0"
-    "@whatwg-node/fetch" "^0.8.4"
-    assemblyscript "0.19.23"
-    binary-install-raw "0.0.13"
-    chalk "3.0.0"
-    chokidar "3.5.3"
-    debug "4.3.4"
-    docker-compose "0.23.19"
-    dockerode "2.5.8"
-    fs-extra "9.1.0"
-    glob "9.3.5"
-    gluegun "5.1.6"
-    graphql "15.5.0"
-    immutable "4.2.1"
-    ipfs-http-client "55.0.0"
-    jayson "4.0.0"
-    js-yaml "3.14.1"
-    open "8.4.2"
-    prettier "3.0.3"
-    semver "7.4.0"
-    sync-request "6.1.0"
-    tmp-promise "3.0.3"
-    web3-eth-abi "1.7.0"
-    which "2.0.2"
-    yaml "1.10.2"
-
 "@graphprotocol/graph-ts@0.30.0":
   version "0.30.0"
   resolved "https://registry.npmjs.org/@graphprotocol/graph-ts/-/graph-ts-0.30.0.tgz"
@@ -1507,11 +1473,6 @@ defaults@^1.0.3:
   dependencies:
     clone "^1.0.2"
 
-define-lazy-prop@^2.0.0:
-  version "2.0.0"
-  resolved "https://registry.yarnpkg.com/define-lazy-prop/-/define-lazy-prop-2.0.0.tgz#3f7ae421129bcaaac9bc74905c98a0009ec9ee7f"
-  integrity sha512-Ds09qNh8yw3khSjiJjiUInaGX9xlqZDY7JVryGxdxV7NPeuqQfplOpQ66yJFZut3jLa5zOwkXw1g9EI2uKh4Og==
-
 delay@^5.0.0:
   version "5.0.0"
   resolved "https://registry.npmjs.org/delay/-/delay-5.0.0.tgz"
@@ -1583,13 +1544,6 @@ ejs@3.1.6:
   integrity sha512-9lt9Zse4hPucPkoP7FHDF0LQAlGyF9JVpnClFLFH3aSSbxmyoqINRpp/9wePWJTUl4KOQwRL72Iw3InHPDkoGw==
   dependencies:
     jake "^10.6.1"
-
-ejs@3.1.8:
-  version "3.1.8"
-  resolved "https://registry.yarnpkg.com/ejs/-/ejs-3.1.8.tgz#758d32910c78047585c7ef1f92f9ee041c1c190b"
-  integrity sha512-/sXZeMlhS0ArkfX2Aw780gJzXSMPnKjtspYZv+f3NiKLlubezAHDU5+9xz6gd3/NhG3txQCo6xlglmTS+oTGEQ==
-  dependencies:
-    jake "^10.8.5"
 
 ejs@^3.1.8:
   version "3.1.9"
@@ -2055,42 +2009,6 @@ gluegun@5.1.2:
     which "2.0.2"
     yargs-parser "^21.0.0"
 
-gluegun@5.1.6:
-  version "5.1.6"
-  resolved "https://registry.yarnpkg.com/gluegun/-/gluegun-5.1.6.tgz#74ec13193913dc610f5c1a4039972c70c96a7bad"
-  integrity sha512-9zbi4EQWIVvSOftJWquWzr9gLX2kaDgPkNR5dYWbM53eVvCI3iKuxLlnKoHC0v4uPoq+Kr/+F569tjoFbA4DSA==
-  dependencies:
-    apisauce "^2.1.5"
-    app-module-path "^2.2.0"
-    cli-table3 "0.6.0"
-    colors "1.4.0"
-    cosmiconfig "7.0.1"
-    cross-spawn "7.0.3"
-    ejs "3.1.8"
-    enquirer "2.3.6"
-    execa "5.1.1"
-    fs-jetpack "4.3.1"
-    lodash.camelcase "^4.3.0"
-    lodash.kebabcase "^4.1.1"
-    lodash.lowercase "^4.3.0"
-    lodash.lowerfirst "^4.3.1"
-    lodash.pad "^4.5.1"
-    lodash.padend "^4.6.1"
-    lodash.padstart "^4.6.1"
-    lodash.repeat "^4.1.0"
-    lodash.snakecase "^4.1.1"
-    lodash.startcase "^4.4.0"
-    lodash.trim "^4.5.1"
-    lodash.trimend "^4.5.1"
-    lodash.trimstart "^4.5.1"
-    lodash.uppercase "^4.3.0"
-    lodash.upperfirst "^4.3.1"
-    ora "4.0.2"
-    pluralize "^8.0.0"
-    semver "7.3.5"
-    which "2.0.2"
-    yargs-parser "^21.0.0"
-
 graceful-fs@^4.1.6, graceful-fs@^4.2.0:
   version "4.2.11"
   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.11.tgz#4183e4e8bf08bb6e05bbb2f7d2e0c8f712ca40e3"
@@ -2377,7 +2295,7 @@ is-binary-path@~2.1.0:
   dependencies:
     binary-extensions "^2.0.0"
 
-is-docker@^2.0.0, is-docker@^2.1.1:
+is-docker@^2.0.0:
   version "2.2.1"
   resolved "https://registry.npmjs.org/is-docker/-/is-docker-2.2.1.tgz"
   integrity sha512-F+i2BKsFrH66iaUFc0woD8sLy8getkwTwtOBjvs56Cx4CgJDeKQeqfz8wAYiSb8JOprWhHH5p77PbmYCvvUuXQ==
@@ -3022,15 +2940,6 @@ onetime@^5.1.0, onetime@^5.1.2:
   dependencies:
     mimic-fn "^2.1.0"
 
-open@8.4.2:
-  version "8.4.2"
-  resolved "https://registry.yarnpkg.com/open/-/open-8.4.2.tgz#5b5ffe2a8f793dcd2aad73e550cb87b59cb084f9"
-  integrity sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ==
-  dependencies:
-    define-lazy-prop "^2.0.0"
-    is-docker "^2.1.1"
-    is-wsl "^2.2.0"
-
 ora@4.0.2:
   version "4.0.2"
   resolved "https://registry.npmjs.org/ora/-/ora-4.0.2.tgz"
@@ -3150,11 +3059,6 @@ prettier@1.19.1:
   version "1.19.1"
   resolved "https://registry.npmjs.org/prettier/-/prettier-1.19.1.tgz"
   integrity sha512-s7PoyDv/II1ObgQunCbB9PdLmUcBZcnWOcxDh7O0N/UwDEsHyqkW+Qh28jW+mVuCdx7gLB0BotYI1Y6uI9iyew==
-
-prettier@3.0.3:
-  version "3.0.3"
-  resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.0.3.tgz#432a51f7ba422d1469096c0fdc28e235db8f9643"
-  integrity sha512-L/4pUDMxcNa8R/EthV08Zt42WBO4h1rarVtK0K+QJG0X187OLo7l699jWw0GKuwzkPQ//jMFA/8Xm6Fh3J/DAg==
 
 process-nextick-args@~2.0.0:
   version "2.0.1"

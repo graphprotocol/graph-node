@@ -107,6 +107,13 @@ jobs:
           command: test
           args: --package graph-tests --test runner_tests
 
+      - name: Run file link resolver test
+        id: file-link-resolver-test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --package graph-tests --test file_link_resolver
+
   integration-tests:
     name: Run integration tests
     runs-on: ubuntu-latest
