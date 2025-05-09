@@ -87,6 +87,9 @@ those.
 - `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached (defaults to 50).
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of each cached file (in bytes, defaults to 1MiB).
 - `GRAPH_IPFS_REQUEST_LIMIT`: Limits the number of requests per second to IPFS for file data sources.
+- `GRAPH_IPFS_MAX_ATTEMPTS`: Safety mechanism to prevent infinite spamming
+  of IPFS servers in the event of logical or unhandled deterministic
+  error (default: 100 000)
   Defaults to 100.
 
 ## GraphQL
