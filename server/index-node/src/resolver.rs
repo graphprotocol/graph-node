@@ -540,23 +540,6 @@ impl<S: Store> IndexNodeResolver<S> {
                 )
                 .await?
             }
-            BlockchainKind::Arweave => {
-                let unvalidated_subgraph_manifest =
-                    UnvalidatedSubgraphManifest::<graph_chain_arweave::Chain>::resolve(
-                        deployment_hash.clone(),
-                        raw_yaml,
-                        &self.link_resolver,
-                        &self.logger,
-                        max_spec_version,
-                    )
-                    .await?;
-
-                Self::validate_and_extract_features(
-                    &self.store.subgraph_store(),
-                    unvalidated_subgraph_manifest,
-                )
-                .await?
-            }
             BlockchainKind::Substreams => {
                 let unvalidated_subgraph_manifest =
                     UnvalidatedSubgraphManifest::<graph_chain_substreams::Chain>::resolve(
@@ -680,7 +663,6 @@ impl<S: Store> IndexNodeResolver<S> {
         // Ugly, but we can't get back an object trait from the `BlockchainMap`,
         // so this seems like the next best thing.
         try_resolve_for_chain!(graph_chain_ethereum::Chain);
-        try_resolve_for_chain!(graph_chain_arweave::Chain);
         try_resolve_for_chain!(graph_chain_near::Chain);
 
         // If you're adding support for a new chain and this `match` clause just
@@ -689,10 +671,7 @@ impl<S: Store> IndexNodeResolver<S> {
         // type.
         match BlockchainKind::Ethereum {
             // Note: we don't actually care about substreams here.
-            BlockchainKind::Substreams
-            | BlockchainKind::Arweave
-            | BlockchainKind::Ethereum
-            | BlockchainKind::Near => (),
+            BlockchainKind::Substreams | BlockchainKind::Ethereum | BlockchainKind::Near => (),
         }
 
         // The given network does not exist.

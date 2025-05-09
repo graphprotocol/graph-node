@@ -7,7 +7,6 @@ edition.workspace = true
 blake3 = "1.8"
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
-graph-chain-arweave = { path = "../../chain/arweave" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-chain-near = { path = "../../chain/near" }
 graph-chain-substreams = { path = "../../chain/substreams" }
