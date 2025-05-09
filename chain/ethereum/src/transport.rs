@@ -17,6 +17,7 @@ pub enum Transport {
         client: http::Http,
         metrics: Arc<EndpointMetrics>,
         provider: ProviderName,
+        rpc_url: String,
     },
     IPC(ipc::Ipc),
     WS(ws::WebSocket),
@@ -56,10 +57,13 @@ impl Transport {
             .build()
             .unwrap();
 
+        let rpc_url = rpc.to_string();
+
         Transport::RPC {
             client: http::Http::with_client(client, rpc),
             metrics,
             provider: provider.as_ref().into(),
+            rpc_url,
         }
     }
 }
@@ -73,6 +77,7 @@ impl web3::Transport for Transport {
                 client,
                 metrics: _,
                 provider: _,
+                rpc_url: _,
             } => client.prepare(method, params),
             Transport::IPC(ipc) => ipc.prepare(method, params),
             Transport::WS(ws) => ws.prepare(method, params),
@@ -85,6 +90,7 @@ impl web3::Transport for Transport {
                 client,
                 metrics,
                 provider,
+                rpc_url: _,
             } => {
                 let metrics = metrics.cheap_clone();
                 let client = client.clone();
@@ -132,6 +138,7 @@ impl web3::BatchTransport for Transport {
                 client,
                 metrics: _,
                 provider: _,
+                rpc_url: _,
             } => Box::new(client.send_batch(requests)),
             Transport::IPC(ipc) => Box::new(ipc.send_batch(requests)),
             Transport::WS(ws) => Box::new(ws.send_batch(requests)),

@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+alloy.workspace = true
+alloy-rpc-types.workspace = true
 envconfig = "0.11.0"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
