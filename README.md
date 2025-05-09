@@ -5,7 +5,7 @@
 
 ## Overview
 
-[The Graph](https://thegraph.com/) is decentralized protocol that organizes and distributes blockchain data across the leading Web3 networks. A key component of The Graph's tech stack is Graph Node.
+[The Graph](https://thegraph.com/) is a decentralized protocol that organizes and distributes blockchain data across the leading Web3 networks. A key component of The Graph's tech stack is Graph Node.
 
 Before using `graph-node,` it is highly recommended that you read the [official Graph documentation](https://thegraph.com/docs/en/subgraphs/quick-start/) to understand Subgraphs, which are the central mechanism for extracting and organizing blockchain data.
 
