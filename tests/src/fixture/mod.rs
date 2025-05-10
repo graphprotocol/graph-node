@@ -228,6 +228,7 @@ impl TestContext {
                 tp,
                 deployment_status_metric,
                 true,
+                None,
             )
             .await
             .unwrap()
@@ -259,6 +260,7 @@ impl TestContext {
                 tp,
                 deployment_status_metric,
                 true,
+                None,
             )
             .await
             .unwrap()

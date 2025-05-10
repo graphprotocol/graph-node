@@ -102,7 +102,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
 
         self.instance_manager
             .cheap_clone()
-            .start_subgraph(loc, raw, stop_block)
+            .start_subgraph(loc, raw, stop_block, Some(link_resolver))
             .await;
 
         Ok(())

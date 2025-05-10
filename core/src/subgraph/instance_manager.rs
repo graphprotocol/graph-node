@@ -62,6 +62,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
         loc: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
+        link_resolver_override: Option<Arc<dyn LinkResolver>>,
     ) {
         let runner_index = self.subgraph_start_counter.fetch_add(1, Ordering::SeqCst);
 
@@ -89,6 +90,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 stop_block,
                                 Box::new(SubgraphTriggerProcessor {}),
                                 deployment_status_metric,
+                                link_resolver_override,
                             )
                             .await?;
 
@@ -104,6 +106,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 stop_block,
                                 Box::new(SubgraphTriggerProcessor {}),
                                 deployment_status_metric,
+                                link_resolver_override,
                             )
                             .await?;
 
@@ -119,6 +122,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 stop_block,
                                 Box::new(SubgraphTriggerProcessor {}),
                                 deployment_status_metric,
+                                link_resolver_override,
                             )
                             .await?;
 
@@ -136,6 +140,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                     loc.clone(),
                                 )),
                                 deployment_status_metric,
+                                link_resolver_override,
                             )
                             .await?;
 
@@ -247,6 +252,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         stop_block: Option<BlockNumber>,
         tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
         deployment_status_metric: DeploymentStatusMetric,
+        link_resolver_override: Option<Arc<dyn LinkResolver>>,
     ) -> anyhow::Result<SubgraphRunner<C, RuntimeHostBuilder<C>>>
     where
         C: Blockchain,
@@ -261,6 +267,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             tp,
             deployment_status_metric,
             false,
+            link_resolver_override,
         )
         .await
     }
@@ -275,6 +282,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
         deployment_status_metric: DeploymentStatusMetric,
         is_runner_test: bool,
+        link_resolver_override: Option<Arc<dyn LinkResolver>>,
     ) -> anyhow::Result<SubgraphRunner<C, RuntimeHostBuilder<C>>>
     where
         C: Blockchain,
@@ -287,7 +295,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let manifest = UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), manifest)?;
 
         // Allow for infinite retries for subgraph definition files.
-        let link_resolver = Arc::from(self.link_resolver.with_retries());
+        let link_resolver: Arc<dyn LinkResolver> = match link_resolver_override {
+            Some(link_resolver) => Arc::from(link_resolver.with_retries()),
+            None => Arc::from(self.link_resolver.with_retries()),
+        };
 
         // Make sure the `raw_yaml` is present on both this subgraph and the graft base.
         self.subgraph_store
@@ -295,8 +306,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .await?;
         if let Some(graft) = &manifest.graft {
             if self.subgraph_store.is_deployed(&graft.base)? {
-                let file_bytes = self
-                    .link_resolver
+                let file_bytes = link_resolver
                     .cat(&logger, &graft.base.to_ipfs_link())
                     .await?;
                 let yaml = String::from_utf8(file_bytes)?;
@@ -482,7 +492,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let (runtime_adapter, decoder_hook) = chain.runtime()?;
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             runtime_adapter,
-            self.link_resolver.cheap_clone(),
+            link_resolver.cheap_clone(),
             subgraph_store.ens_lookup(),
         );
 
