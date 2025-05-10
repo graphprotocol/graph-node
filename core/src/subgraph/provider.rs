@@ -74,6 +74,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
         &self,
         loc: DeploymentLocator,
         stop_block: Option<BlockNumber>,
+        link_resolver_override: Option<Arc<dyn LinkResolver>>,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         let logger = self.logger_factory.subgraph_logger(&loc);
 
@@ -86,8 +87,12 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
             ));
         }
 
-        let file_bytes = self
-            .link_resolver
+        let link_resolver = match link_resolver_override {
+            Some(link_resolver) => link_resolver,
+            None => self.link_resolver.clone(),
+        };
+
+        let file_bytes = link_resolver
             .cat(&logger, &loc.hash.to_ipfs_link())
             .await
             .map_err(SubgraphAssignmentProviderError::ResolveError)?;

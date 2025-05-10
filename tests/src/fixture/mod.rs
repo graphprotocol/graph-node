@@ -285,7 +285,7 @@ impl TestContext {
         self.provider.stop(self.deployment.clone()).await.unwrap();
 
         self.provider
-            .start(self.deployment.clone(), Some(stop_block.number))
+            .start(self.deployment.clone(), Some(stop_block.number), None)
             .await
             .expect("unable to start subgraph");
 
@@ -306,7 +306,7 @@ impl TestContext {
         self.provider.stop(self.deployment.clone()).await.unwrap();
 
         self.provider
-            .start(self.deployment.clone(), None)
+            .start(self.deployment.clone(), None, None)
             .await
             .expect("unable to start subgraph");
 

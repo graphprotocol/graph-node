@@ -9,6 +9,7 @@ pub trait SubgraphAssignmentProvider: Send + Sync + 'static {
         &self,
         deployment: DeploymentLocator,
         stop_block: Option<BlockNumber>,
+        link_resolver_override: Option<Arc<dyn LinkResolver>>,
     ) -> Result<(), SubgraphAssignmentProviderError>;
     async fn stop(
         &self,

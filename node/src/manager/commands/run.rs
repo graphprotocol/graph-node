@@ -218,7 +218,7 @@ pub async fn run(
 
     let locator = locate(subgraph_store.as_ref(), &hash)?;
 
-    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block))
+    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block), None)
         .await?;
 
     loop {
