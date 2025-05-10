@@ -278,6 +278,7 @@ where
         start_block_override: Option<BlockPtr>,
         graft_block_override: Option<BlockPtr>,
         history_blocks: Option<i32>,
+        link_resolver_override: Option<Arc<dyn LinkResolver>>,
     ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -286,9 +287,10 @@ where
             .logger_factory
             .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
+        let link_resolver = link_resolver_override.unwrap_or_else(|| self.resolver.clone());
+
         let raw: serde_yaml::Mapping = {
-            let file_bytes = self
-                .resolver
+            let file_bytes = link_resolver
                 .cat(&logger, &hash.to_ipfs_link())
                 .await
                 .map_err(|e| {
@@ -323,7 +325,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &link_resolver,
                     history_blocks,
                 )
                 .await?
@@ -341,7 +343,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &link_resolver,
                     history_blocks,
                 )
                 .await?
@@ -359,7 +361,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &link_resolver,
                     history_blocks,
                 )
                 .await?
@@ -377,7 +379,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &link_resolver,
                     history_blocks,
                 )
                 .await?

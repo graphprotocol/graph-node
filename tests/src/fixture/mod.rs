@@ -614,6 +614,7 @@ pub async fn setup_inner<C: Blockchain>(
         None,
         graft_block,
         None,
+        None,
     )
     .await
     .expect("failed to create subgraph version");
