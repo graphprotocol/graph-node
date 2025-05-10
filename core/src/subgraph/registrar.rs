@@ -32,7 +32,7 @@ pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<dyn LinkResolver>,
-    provider: Arc<P>,
+    pub provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
     chains: Arc<BlockchainMap>,
