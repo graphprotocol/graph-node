@@ -352,6 +352,7 @@ fn build_graphql_server(
 pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContext>) {
     // Set up logger
     let logger = logger(opt.debug);
+    let is_dev_mode = dev_ctx.is_some();
 
     // Log version information
     info!(
@@ -536,12 +537,14 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContex
             ipfs_service,
         );
 
-        graph::spawn(
-            subgraph_registrar
-                .start()
-                .map_err(|e| panic!("failed to initialize subgraph provider {}", e))
-                .compat(),
-        );
+        if !is_dev_mode {
+            graph::spawn(
+                subgraph_registrar
+                    .start()
+                    .map_err(|e| panic!("failed to initialize subgraph provider {}", e))
+                    .compat(),
+            );
+        }
 
         // Start admin JSON-RPC server.
         let json_rpc_server = JsonRpcServer::serve(
