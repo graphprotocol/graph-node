@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
+use super::helpers::DevSubgraph;
+
 const WATCH_DELAY: Duration = Duration::from_secs(5);
 
 /// Maps manifest files to their parent directories and returns a mapping of deployment hashes to directories
@@ -69,7 +71,7 @@ pub async fn watch_subgraphs(
     logger: &Logger,
     manifests: Vec<String>,
     exclusions: Vec<String>,
-    sender: Sender<(DeploymentHash, SubgraphName)>,
+    sender: Sender<DevSubgraph>,
 ) {
     let logger = logger.new(slog::o!("component" => ">>>>> Watcher"));
     info!(logger, "Watching subgraphs: {}", manifests.join(", "));
@@ -84,7 +86,7 @@ pub async fn watch_subgraph_dirs(
     logger: &Logger,
     hash_to_dir: BTreeMap<DeploymentHash, PathBuf>,
     exclusions: Vec<String>,
-    sender: Sender<(DeploymentHash, SubgraphName)>,
+    sender: Sender<DevSubgraph>,
 ) {
     if hash_to_dir.is_empty() {
         info!(logger, "No directories to watch");
@@ -133,7 +135,7 @@ async fn process_file_events(
     rx: mpsc::Receiver<Result<Event, notify::Error>>,
     exclusion_set: &GlobSet,
     hash_to_dir: &BTreeMap<DeploymentHash, PathBuf>,
-    sender: Sender<(DeploymentHash, SubgraphName)>,
+    sender: Sender<DevSubgraph>,
 ) {
     loop {
         // Wait for an event
@@ -182,17 +184,18 @@ fn is_relevant_event(
 async fn redeploy_all_subgraphs(
     logger: &Logger,
     hash_to_dir: &BTreeMap<DeploymentHash, PathBuf>,
-    sender: &Sender<(DeploymentHash, SubgraphName)>,
+    sender: &Sender<DevSubgraph>,
 ) {
     info!(logger, "File change detected, redeploying all subgraphs");
     let mut count = 0;
-    for id in hash_to_dir.keys() {
+    for (id, build_dir) in hash_to_dir.iter() {
         let _ = sender
-            .send((
-                id.clone(),
-                SubgraphName::new(format!("subgraph-{}", count))
+            .send(DevSubgraph {
+                hash: id.clone(),
+                name: SubgraphName::new(format!("subgraph-{}", count))
                     .expect("Failed to create subgraph name"),
-            ))
+                build_dir: build_dir.clone(),
+            })
             .await;
         count += 1;
     }
