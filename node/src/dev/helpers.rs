@@ -63,27 +63,29 @@ async fn deploy_subgraph(
     logger: &Logger,
     subgraph_registrar: &Arc<SubgraphRegistrarType>,
     name: SubgraphName,
-    subgraph_id: DeploymentHash,
+    hash: DeploymentHash,
     node_id: NodeId,
     debug_fork: Option<DeploymentHash>,
     start_block: Option<BlockPtr>,
+    link_resolver: Arc<FileLinkResolver>,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
-    info!(logger, "Re-deploying subgraph"; "name" => name.to_string(), "id" => subgraph_id.to_string());
+    info!(logger, "Re-deploying subgraph"; "name" => name.to_string(), "id" => hash.to_string());
+
     subgraph_registrar.create_subgraph(name.clone()).await?;
     subgraph_registrar
         .create_subgraph_version(
             name.clone(),
-            subgraph_id.clone(),
+            hash.clone(),
             node_id,
             debug_fork,
             start_block,
             None,
             None,
-            None,
+            Some(link_resolver) ,
         )
         .await
         .and_then(|locator| {
-            info!(logger, "Subgraph deployed"; "name" => name.to_string(), "id" => subgraph_id.to_string(), "locator" => locator.to_string());
+            info!(logger, "Subgraph deployed"; "name" => name.to_string(), "id" => hash.to_string(), "locator" => locator.to_string());
             Ok(locator)
         })
 }
@@ -112,6 +114,7 @@ pub async fn drop_and_recreate_subgraph(
         node_id,
         None,
         None,
+        link_resolver.clone(),
     )
     .await
     .map_err(|e| anyhow::anyhow!("Failed to deploy subgraph: {}", e))?;
