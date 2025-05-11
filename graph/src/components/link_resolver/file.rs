@@ -48,6 +48,8 @@ impl FileLinkResolver {
 
     /// This method creates a new resolver that is scoped to a specific subgraph
     /// It will set the base directory to the parent directory of the manifest path
+    /// This is required because paths mentioned in the subgraph manifest are relative paths
+    /// and we need a new resolver with the right base directory for the specific subgraph
     fn clone_for_deployment(&self, deployment: DeploymentHash) -> Result<Self, Error> {
         let mut resolver = self.clone();
         let deployment_str = deployment.to_string();
@@ -112,6 +114,13 @@ impl LinkResolverTrait for FileLinkResolver {
                 Err(anyhow!("Failed to read file {}: {}", path.display(), e).into())
             }
         }
+    }
+
+    fn for_deployment(
+        &self,
+        deployment: DeploymentHash,
+    ) -> Result<Box<dyn LinkResolverTrait>, Error> {
+        Ok(Box::new(self.clone_for_deployment(deployment)?))
     }
 
     async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
