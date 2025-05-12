@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -48,6 +48,14 @@ pub struct DevOpt {
         value_delimiter = ','
     )]
     pub manifests: Vec<String>,
+
+    #[clap(
+        long,
+        value_name = "ALIAS:MANIFEST:[BUILD_DIR]",
+        value_delimiter = ',',
+        help = "The location of the source subgraph manifest files. This is used to resolve aliases in the manifest files for subgraph data sources. The format is ALIAS:MANIFEST:[BUILD_DIR], where ALIAS is the alias name, BUILD_DIR is the build directory relative to the manifest file, and MANIFEST is the manifest file location."
+    )]
+    pub sources: Vec<String>,
 
     #[clap(
         long,
@@ -126,8 +134,9 @@ async fn main() -> Result<()> {
     let (tx, rx) = mpsc::channel(1);
     let opt = build_args(&dev_opt, &db.connection_uri())?;
 
-    let manifests_paths = parse_manifest_args(dev_opt.manifests, &logger)?;
-    let file_link_resolver = Arc::new(FileLinkResolver::new(None, HashMap::new()));
+    let (manifests_paths, source_subgraph_aliases) =
+        parse_manifest_args(dev_opt.manifests, dev_opt.sources, &logger)?;
+    let file_link_resolver = Arc::new(FileLinkResolver::new(None, source_subgraph_aliases.clone()));
 
     let ctx = DevModeContext {
         watch: dev_opt.watch,
@@ -142,8 +151,14 @@ async fn main() -> Result<()> {
 
     if dev_opt.watch {
         graph::spawn_blocking(async move {
-            let result =
-                watch_subgraphs(&logger, manifests_paths, vec!["pgtemp-*".to_string()], tx).await;
+            let result = watch_subgraphs(
+                &logger,
+                manifests_paths,
+                source_subgraph_aliases,
+                vec!["pgtemp-*".to_string()],
+                tx,
+            )
+            .await;
             if let Err(e) = result {
                 error!(logger, "Error watching subgraphs"; "error" => e.to_string());
                 std::process::exit(1);

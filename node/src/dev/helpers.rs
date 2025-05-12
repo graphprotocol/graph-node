@@ -126,6 +126,7 @@ pub async fn watch_subgraph_updates(
     std::process::exit(1);
 }
 
+/// Parse an alias string into a tuple of (alias_name, manifest, Option<build_dir>)
 pub fn parse_alias(alias: &str) -> anyhow::Result<(String, String, Option<String>)> {
     let mut split = alias.split(':');
     let alias_name = split.next();
@@ -139,12 +140,13 @@ pub fn parse_alias(alias: &str) -> anyhow::Result<(String, String, Option<String
     }
 
     let alias_name = alias_name.unwrap().to_owned();
-    let (build_dir, manifest) = parse_manifest_arg(alias_value.unwrap())
+    let (manifest, build_dir) = parse_manifest_arg(alias_value.unwrap())
         .with_context(|| format!("While parsing alias '{}'", alias))?;
 
-    Ok((alias_name, build_dir, manifest))
+    Ok((alias_name, manifest, build_dir))
 }
 
+/// Parse a manifest string into a tuple of (manifest, Option<build_dir>)
 pub fn parse_manifest_arg(value: &str) -> anyhow::Result<(String, Option<String>)> {
     match value.split_once(':') {
         Some((manifest, build_dir)) if !manifest.is_empty() => {

@@ -4,18 +4,33 @@ use graph::prelude::{DeploymentHash, SubgraphName};
 use graph::slog::{self, error, info, Logger};
 use graph::tokio::sync::mpsc::Sender;
 use notify::{recommended_watcher, Event, RecursiveMode, Watcher};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use super::helpers::parse_manifest_arg;
+use super::helpers::{parse_alias, parse_manifest_arg};
 
 const WATCH_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_BUILD_DIR: &str = "build";
 
 // Parses manifest arguments and returns a vector of paths to the manifest files
-pub fn parse_manifest_args(manifests: Vec<String>, logger: &Logger) -> Result<Vec<PathBuf>> {
+pub fn parse_manifest_args(
+    manifests: Vec<String>,
+    subgraph_sources: Vec<String>,
+    logger: &Logger,
+) -> Result<(Vec<PathBuf>, HashMap<String, PathBuf>)> {
     let mut manifests_paths = Vec::new();
+    let mut source_subgraph_aliases = HashMap::new();
+
+    for subgraph_source in subgraph_sources {
+        let (alias_name, manifest_path_str, build_dir_opt) = parse_alias(&subgraph_source)?;
+        let manifest_path =
+            process_manifest(build_dir_opt, &manifest_path_str, Some(&alias_name), logger)?;
+
+        manifests_paths.push(manifest_path.clone());
+        source_subgraph_aliases.insert(alias_name, manifest_path);
+    }
 
     for manifest_str in manifests {
         let (manifest_path_str, build_dir_opt) = parse_manifest_arg(&manifest_str)
@@ -27,7 +42,7 @@ pub fn parse_manifest_args(manifests: Vec<String>, logger: &Logger) -> Result<Ve
         manifests_paths.push(built_manifest_path);
     }
 
-    Ok(manifests_paths)
+    Ok((manifests_paths, source_subgraph_aliases))
 }
 
 /// Helper function to process a manifest
@@ -103,12 +118,20 @@ fn process_manifest(
 pub async fn watch_subgraphs(
     logger: &Logger,
     manifests_paths: Vec<PathBuf>,
+    source_subgraph_aliases: HashMap<String, PathBuf>,
     exclusions: Vec<String>,
     sender: Sender<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
     let logger = logger.new(slog::o!("component" => "Watcher"));
 
-    watch_subgraph_dirs(&logger, manifests_paths, exclusions, sender).await?;
+    watch_subgraph_dirs(
+        &logger,
+        manifests_paths,
+        source_subgraph_aliases,
+        exclusions,
+        sender,
+    )
+    .await?;
     Ok(())
 }
 
@@ -117,6 +140,7 @@ pub async fn watch_subgraphs(
 pub async fn watch_subgraph_dirs(
     logger: &Logger,
     manifests_paths: Vec<PathBuf>,
+    source_subgraph_aliases: HashMap<String, PathBuf>,
     exclusions: Vec<String>,
     sender: Sender<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
@@ -159,7 +183,15 @@ pub async fn watch_subgraph_dirs(
     }
 
     // Process file change events
-    process_file_events(logger, rx, &exclusion_set, &manifests_paths, sender).await
+    process_file_events(
+        logger,
+        rx,
+        &exclusion_set,
+        &manifests_paths,
+        &source_subgraph_aliases,
+        sender,
+    )
+    .await
 }
 
 /// Processes file change events and triggers redeployments
@@ -168,6 +200,7 @@ async fn process_file_events(
     rx: mpsc::Receiver<Result<Event, notify::Error>>,
     exclusion_set: &GlobSet,
     manifests_paths: &Vec<PathBuf>,
+    source_subgraph_aliases: &HashMap<String, PathBuf>,
     sender: Sender<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
     loop {
@@ -205,7 +238,7 @@ async fn process_file_events(
         }
 
         // Redeploy all subgraphs
-        redeploy_all_subgraphs(logger, manifests_paths, &sender).await?;
+        redeploy_all_subgraphs(logger, manifests_paths, source_subgraph_aliases, &sender).await?;
     }
 }
 
@@ -225,15 +258,24 @@ fn is_relevant_event(event: &Event, watched_dirs: Vec<PathBuf>, exclusion_set: &
 async fn redeploy_all_subgraphs(
     logger: &Logger,
     manifests_paths: &Vec<PathBuf>,
+    source_subgraph_aliases: &HashMap<String, PathBuf>,
     sender: &Sender<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
     info!(logger, "File change detected, redeploying all subgraphs");
     let mut count = 0;
     for manifest_path in manifests_paths {
+        let alias_name = source_subgraph_aliases
+            .iter()
+            .find(|(_, path)| path == &manifest_path)
+            .map(|(name, _)| name);
+
+        let id = alias_name
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| manifest_path.display().to_string());
+
         let _ = sender
             .send((
-                DeploymentHash::new(manifest_path.display().to_string())
-                    .map_err(|_| anyhow!("Failed to create deployment hash"))?,
+                DeploymentHash::new(id).map_err(|_| anyhow!("Failed to create deployment hash"))?,
                 SubgraphName::new(format!("subgraph-{}", count))
                     .map_err(|_| anyhow!("Failed to create subgraph name"))?,
             ))
