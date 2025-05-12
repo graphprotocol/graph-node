@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use graph::components::link_resolver::FileLinkResolver;
 use graph::prelude::{
     BlockPtr, DeploymentHash, NodeId, SubgraphRegistrarError, SubgraphStore as SubgraphStoreTrait,
@@ -118,9 +118,42 @@ pub async fn watch_subgraph_updates(
                 "hash" => hash.to_string(),
                 "error" => e.to_string()
             );
+            std::process::exit(1);
         }
     }
 
     error!(logger, "Subgraph watcher terminated unexpectedly"; "action" => "exiting");
     std::process::exit(1);
+}
+
+pub fn parse_alias(alias: &str) -> anyhow::Result<(String, String, Option<String>)> {
+    let mut split = alias.split(':');
+    let alias_name = split.next();
+    let alias_value = split.next();
+
+    if alias_name.is_none() || alias_value.is_none() || split.next().is_some() {
+        return Err(anyhow::anyhow!(
+            "Invalid alias format: expected 'alias=[BUILD_DIR:]manifest', got '{}'",
+            alias
+        ));
+    }
+
+    let alias_name = alias_name.unwrap().to_owned();
+    let (build_dir, manifest) = parse_manifest_arg(alias_value.unwrap())
+        .with_context(|| format!("While parsing alias '{}'", alias))?;
+
+    Ok((alias_name, build_dir, manifest))
+}
+
+pub fn parse_manifest_arg(value: &str) -> anyhow::Result<(String, Option<String>)> {
+    match value.split_once(':') {
+        Some((manifest, build_dir)) if !manifest.is_empty() => {
+            Ok((manifest.to_owned(), Some(build_dir.to_owned())))
+        }
+        Some(_) => Err(anyhow::anyhow!(
+            "Invalid manifest arg: missing manifest in '{}'",
+            value
+        )),
+        None => Ok((value.to_owned(), None)),
+    }
 }
