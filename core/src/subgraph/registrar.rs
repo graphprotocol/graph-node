@@ -278,6 +278,7 @@ where
         start_block_override: Option<BlockPtr>,
         graft_block_override: Option<BlockPtr>,
         history_blocks: Option<i32>,
+        ignore_graft_base: bool,
     ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -330,6 +331,7 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
+                    ignore_graft_base,
                 )
                 .await?
             }
@@ -348,6 +350,7 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
+                    ignore_graft_base,
                 )
                 .await?
             }
@@ -366,6 +369,7 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
+                    ignore_graft_base,
                 )
                 .await?
             }
@@ -384,6 +388,7 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
+                    ignore_graft_base,
                 )
                 .await?
             }
@@ -570,6 +575,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
     history_blocks_override: Option<i32>,
+    ignore_graft_base: bool,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
 
@@ -591,10 +597,21 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         Err(StoreError::DeploymentNotFound(_)) => true,
         Err(e) => return Err(SubgraphRegistrarError::StoreError(e)),
     };
-    let manifest = unvalidated
-        .validate(store.cheap_clone(), should_validate)
-        .await
-        .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+
+    let manifest = {
+        let should_validate = should_validate && !ignore_graft_base;
+
+        let mut manifest = unvalidated
+            .validate(store.cheap_clone(), should_validate)
+            .await
+            .map_err(SubgraphRegistrarError::ManifestValidationError)?;
+
+        if ignore_graft_base {
+            manifest.graft = None;
+        }
+
+        manifest
+    };
 
     let network_name: Word = manifest.network_name().into();
 

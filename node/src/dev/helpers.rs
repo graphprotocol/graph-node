@@ -55,6 +55,7 @@ async fn deploy_subgraph(
             start_block,
             None,
             None,
+            true
         )
         .await
         .and_then(|locator| {

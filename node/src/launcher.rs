@@ -253,6 +253,7 @@ fn deploy_subgraph_from_flag(
                     start_block,
                     None,
                     None,
+                    false,
                 )
                 .await
         }
