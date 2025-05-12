@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use slog::Logger;
 
 use crate::data::subgraph::Link;
-use crate::prelude::{Error, JsonValueStream, LinkResolver as LinkResolverTrait};
+use crate::prelude::{DeploymentHash, Error, JsonValueStream, LinkResolver as LinkResolverTrait};
 
 #[derive(Clone, Debug)]
 pub struct FileLinkResolver {
@@ -44,6 +44,34 @@ impl FileLinkResolver {
         self.base_dir
             .as_ref()
             .map_or_else(|| path.to_owned(), |base_dir| base_dir.join(link))
+    }
+
+    /// This method creates a new resolver that is scoped to a specific subgraph
+    /// It will set the base directory to the parent directory of the manifest path
+    fn clone_for_deployment(&self, deployment: DeploymentHash) -> Result<Self, Error> {
+        let mut resolver = self.clone();
+        let deployment_str = deployment.to_string();
+
+        // Create a path to the manifest based on the current resolver's
+        // base directory or default to using the deployment string as path
+        let manifest_path = match &resolver.base_dir {
+            Some(dir) => dir.join(&deployment_str),
+            None => PathBuf::from(deployment_str),
+        };
+
+        let canonical_manifest_path = manifest_path
+            .canonicalize()
+            .map_err(|e| Error::from(anyhow!("Failed to canonicalize manifest path: {}", e)))?;
+
+        // The manifest path is the path of the subgraph manifest file in the build directory
+        // We use the parent directory as the base directory for the new resolver
+        let base_dir = canonical_manifest_path
+            .parent()
+            .ok_or_else(|| Error::from(anyhow!("Manifest path has no parent directory")))?
+            .to_path_buf();
+
+        resolver.base_dir = Some(base_dir);
+        Ok(resolver)
     }
 }
 
