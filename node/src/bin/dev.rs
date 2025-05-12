@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -133,7 +133,10 @@ async fn main() -> Result<()> {
 
     let (tx, rx) = mpsc::channel(1);
     let opt = build_args(&dev_opt, &db.connection_uri(), &dev_opt.manifest)?;
-    let file_link_resolver = Arc::new(FileLinkResolver::with_base_dir(&build_dir));
+    let file_link_resolver = Arc::new(FileLinkResolver::new(
+        None,
+        HashMap::new(),
+    ));
 
     let ctx = DevModeContext {
         watch: dev_opt.watch,

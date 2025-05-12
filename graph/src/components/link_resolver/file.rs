@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -12,16 +13,29 @@ use crate::prelude::{DeploymentHash, Error, JsonValueStream, LinkResolver as Lin
 pub struct FileLinkResolver {
     base_dir: Option<PathBuf>,
     timeout: Duration,
+    // This is a hashmap that maps the alias name to the path of the file that is aliased
+    aliases: HashMap<String, PathBuf>,
+}
+
+impl Default for FileLinkResolver {
+    fn default() -> Self {
+        Self {
+            base_dir: None,
+            timeout: Duration::from_secs(30),
+            aliases: HashMap::new(),
+        }
+    }
 }
 
 impl FileLinkResolver {
     /// Create a new FileLinkResolver
     ///
     /// All paths are treated as absolute paths.
-    pub fn new() -> Self {
+    pub fn new(base_dir: Option<PathBuf>, aliases: HashMap<String, PathBuf>) -> Self {
         Self {
-            base_dir: None,
+            base_dir: base_dir,
             timeout: Duration::from_secs(30),
+            aliases,
         }
     }
 
@@ -33,11 +47,17 @@ impl FileLinkResolver {
         Self {
             base_dir: Some(base_dir.as_ref().to_owned()),
             timeout: Duration::from_secs(30),
+            aliases: HashMap::new(),
         }
     }
 
     fn resolve_path(&self, link: &str) -> PathBuf {
         let path = Path::new(link);
+
+        // If the path is an alias, use the aliased path
+        if let Some(aliased) = self.aliases.get(link) {
+            return aliased.clone();
+        }
 
         // Return the path as is if base_dir is None, or join with base_dir if present.
         // if "link" is an absolute path, join will simply return that path.
@@ -52,13 +72,19 @@ impl FileLinkResolver {
     /// and we need a new resolver with the right base directory for the specific subgraph
     fn clone_for_deployment(&self, deployment: DeploymentHash) -> Result<Self, Error> {
         let mut resolver = self.clone();
+
         let deployment_str = deployment.to_string();
 
         // Create a path to the manifest based on the current resolver's
         // base directory or default to using the deployment string as path
-        let manifest_path = match &resolver.base_dir {
-            Some(dir) => dir.join(&deployment_str),
-            None => PathBuf::from(deployment_str),
+        // If the deployment string is an alias, use the aliased path
+        let manifest_path = if let Some(aliased) = self.aliases.get(&deployment_str) {
+            aliased.clone()
+        } else {
+            match &resolver.base_dir {
+                Some(dir) => dir.join(&deployment_str),
+                None => PathBuf::from(deployment_str),
+            }
         };
 
         let canonical_manifest_path = manifest_path
@@ -154,7 +180,7 @@ mod tests {
         file.write_all(test_content).unwrap();
 
         // Create a resolver without a base directory
-        let resolver = FileLinkResolver::new();
+        let resolver = FileLinkResolver::default();
         let logger = slog::Logger::root(slog::Discard, slog::o!());
 
         // Test valid path resolution
@@ -220,6 +246,67 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_file(test_file_path);
+        let _ = fs::remove_dir(temp_dir);
+    }
+
+    #[tokio::test]
+    async fn test_file_resolver_with_aliases() {
+        // Create a temporary directory for test files
+        let temp_dir = env::temp_dir().join("file_resolver_test_aliases");
+        let _ = fs::create_dir_all(&temp_dir);
+
+        // Create two test files with different content
+        let test_file1_path = temp_dir.join("file.txt");
+        let test_content1 = b"This is the file content";
+        let mut file1 = fs::File::create(&test_file1_path).unwrap();
+        file1.write_all(test_content1).unwrap();
+
+        let test_file2_path = temp_dir.join("another_file.txt");
+        let test_content2 = b"This is another file content";
+        let mut file2 = fs::File::create(&test_file2_path).unwrap();
+        file2.write_all(test_content2).unwrap();
+
+        // Create aliases mapping
+        let mut aliases = HashMap::new();
+        aliases.insert("alias1".to_string(), test_file1_path.clone());
+        aliases.insert("alias2".to_string(), test_file2_path.clone());
+        aliases.insert("deployment-id".to_string(), test_file1_path.clone());
+
+        // Create resolver with aliases
+        let resolver = FileLinkResolver::new(Some(temp_dir.clone()), aliases);
+        let logger = slog::Logger::root(slog::Discard, slog::o!());
+
+        // Test resolving by aliases
+        let link1 = Link {
+            link: "alias1".to_string(),
+        };
+        let result1 = resolver.cat(&logger, &link1).await.unwrap();
+        assert_eq!(result1, test_content1);
+
+        let link2 = Link {
+            link: "alias2".to_string(),
+        };
+        let result2 = resolver.cat(&logger, &link2).await.unwrap();
+        assert_eq!(result2, test_content2);
+
+        // Test that the alias works in for_deployment as well
+        let deployment = DeploymentHash::new("deployment-id").unwrap();
+        let deployment_resolver = resolver.clone_for_deployment(deployment).unwrap();
+
+        let expected_dir = test_file1_path.parent().unwrap();
+        let deployment_base_dir = deployment_resolver.base_dir.clone().unwrap();
+
+        let canonical_expected_dir = expected_dir.canonicalize().unwrap();
+        let canonical_deployment_dir = deployment_base_dir.canonicalize().unwrap();
+
+        assert_eq!(
+            canonical_deployment_dir, canonical_expected_dir,
+            "Build directory paths don't match"
+        );
+
+        // Clean up
+        let _ = fs::remove_file(test_file1_path);
+        let _ = fs::remove_file(test_file2_path);
         let _ = fs::remove_dir(temp_dir);
     }
 }
