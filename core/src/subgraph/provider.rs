@@ -86,8 +86,12 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
             ));
         }
 
-        let file_bytes = self
+        let link_resolver = self
             .link_resolver
+            .for_deployment(loc.hash.clone())
+            .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+        let file_bytes = link_resolver
             .cat(&logger, &loc.hash.to_ipfs_link())
             .await
             .map_err(SubgraphAssignmentProviderError::ResolveError)?;

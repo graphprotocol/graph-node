@@ -287,7 +287,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let manifest = UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), manifest)?;
 
         // Allow for infinite retries for subgraph definition files.
-        let link_resolver = Arc::from(self.link_resolver.with_retries());
+        let link_resolver = Arc::from(
+            self.link_resolver
+                .for_deployment(deployment.hash.clone())
+                .map_err(SubgraphRegistrarError::Unknown)?
+                .with_retries(),
+        );
 
         // Make sure the `raw_yaml` is present on both this subgraph and the graft base.
         self.subgraph_store

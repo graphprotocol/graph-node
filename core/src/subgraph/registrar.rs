@@ -286,9 +286,14 @@ where
             .logger_factory
             .subgraph_logger(&DeploymentLocator::new(DeploymentId(0), hash.clone()));
 
+        let resolver: Arc<dyn LinkResolver> = Arc::from(
+            self.resolver
+                .for_deployment(hash.clone())
+                .map_err(SubgraphRegistrarError::Unknown)?,
+        );
+
         let raw: serde_yaml::Mapping = {
-            let file_bytes = self
-                .resolver
+            let file_bytes = resolver
                 .cat(&logger, &hash.to_ipfs_link())
                 .await
                 .map_err(|e| {
@@ -323,7 +328,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &resolver,
                     history_blocks,
                 )
                 .await?
@@ -341,7 +346,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &resolver,
                     history_blocks,
                 )
                 .await?
@@ -359,7 +364,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &resolver,
                     history_blocks,
                 )
                 .await?
@@ -377,7 +382,7 @@ where
                     node_id,
                     debug_fork,
                     self.version_switching_mode,
-                    &self.resolver,
+                    &resolver,
                     history_blocks,
                 )
                 .await?
@@ -567,10 +572,11 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     history_blocks_override: Option<i32>,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
+
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment.clone(),
         raw,
-        resolver,
+        &resolver,
         logger,
         ENV_VARS.max_spec_version.clone(),
     )
