@@ -44,7 +44,7 @@ pub struct DevOpt {
         long,
         value_name = "MANIFEST:[BUILD_DIR]",
         help = "The location of the subgraph manifest file. If no build directory is provided, the default is 'build'. The file can be an alias, in the format '[BUILD_DIR:]manifest' where 'manifest' is the path to the manifest file, and 'BUILD_DIR' is the path to the build directory relative to the manifest file.",
-        default_value = "./build/subgraph.yaml",
+        default_value = "./subgraph.yaml",
         value_delimiter = ','
     )]
     pub manifests: Vec<String>,
