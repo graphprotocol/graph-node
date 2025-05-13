@@ -19,6 +19,8 @@ use graph_node::{
     opt::Opt,
 };
 use lazy_static::lazy_static;
+
+#[cfg(unix)]
 use pgtemp::PgTempDBBuilder;
 
 git_testament!(TESTAMENT);
@@ -120,6 +122,33 @@ async fn run_graph_node(opt: Opt, ctx: Option<DevModeContext>) -> Result<()> {
     Ok(())
 }
 
+/// Get the database URL, either from the provided option or by creating a temporary database
+fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Result<String> {
+    if let Some(url) = postgres_url {
+        Ok(url.clone())
+    } else {
+        #[cfg(unix)]
+        {
+            let db = PgTempDBBuilder::new()
+                .with_data_dir_prefix(database_dir)
+                .with_initdb_param("-E", "UTF8")
+                .with_initdb_param("--locale", "C")
+                .start();
+            let url = db.connection_uri().to_string();
+            // Prevent the database from being dropped by forgetting it
+            mem::forget(db);
+            Ok(url)
+        }
+
+        #[cfg(not(unix))]
+        {
+            anyhow::bail!(
+                "Please provide a postgres_url manually using the --postgres-url option."
+            );
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
@@ -132,20 +161,8 @@ async fn main() -> Result<()> {
     info!(logger, "Starting Graph Node Dev");
     info!(logger, "Database directory: {}", database_dir.display());
 
-    // Create the database or use the provided URL
-    let db_url = if let Some(url) = dev_opt.postgres_url.as_ref() {
-        url.clone()
-    } else {
-        let db = PgTempDBBuilder::new()
-            .with_data_dir_prefix(database_dir)
-            .with_initdb_param("-E", "UTF8")
-            .with_initdb_param("--locale", "C")
-            .start();
-        let url = db.connection_uri().to_string();
-        // Prevent the database from being dropped by forgetting it
-        mem::forget(db);
-        url
-    };
+    // Get the database URL
+    let db_url = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
 
     let (tx, rx) = mpsc::channel(1);
     let opt = build_args(&dev_opt, &db_url)?;
