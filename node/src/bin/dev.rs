@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{mem, path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -66,6 +66,14 @@ pub struct DevOpt {
 
     #[clap(
         long,
+        value_name = "URL",
+        env = "POSTGRES_URL",
+        help = "Location of the Postgres database used for storing entities"
+    )]
+    pub postgres_url: Option<String>,
+
+    #[clap(
+        long,
         allow_negative_numbers = false,
         value_name = "NETWORK_NAME:[CAPABILITIES]:URL",
         env = "ETHEREUM_RPC",
@@ -124,15 +132,23 @@ async fn main() -> Result<()> {
     info!(logger, "Starting Graph Node Dev");
     info!(logger, "Database directory: {}", database_dir.display());
 
-    let db = PgTempDBBuilder::new()
-        .with_data_dir_prefix(database_dir)
-        .with_initdb_param("-E", "UTF8")
-        .with_initdb_param("--locale", "C")
-        .start_async()
-        .await;
+    // Create the database or use the provided URL
+    let db_url = if let Some(url) = dev_opt.postgres_url.as_ref() {
+        url.clone()
+    } else {
+        let db = PgTempDBBuilder::new()
+            .with_data_dir_prefix(database_dir)
+            .with_initdb_param("-E", "UTF8")
+            .with_initdb_param("--locale", "C")
+            .start();
+        let url = db.connection_uri().to_string();
+        // Prevent the database from being dropped by forgetting it
+        mem::forget(db);
+        url
+    };
 
     let (tx, rx) = mpsc::channel(1);
-    let opt = build_args(&dev_opt, &db.connection_uri())?;
+    let opt = build_args(&dev_opt, &db_url)?;
 
     let (manifests_paths, source_subgraph_aliases) =
         parse_manifest_args(dev_opt.manifests, dev_opt.sources, &logger)?;
