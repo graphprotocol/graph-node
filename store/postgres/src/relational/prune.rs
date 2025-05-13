@@ -18,7 +18,9 @@ use graph::{
 use itertools::Itertools;
 
 use crate::{
-    catalog, deployment,
+    catalog,
+    copy::BATCH_STATEMENT_TIMEOUT,
+    deployment,
     relational::{Table, VID_COLUMN},
     vid_batcher::{VidBatcher, VidRange},
 };
@@ -105,16 +107,15 @@ impl TablePair {
         tracker.start_copy_final(conn, &self.src, range)?;
 
         while !batcher.finished() {
-            let (_, rows) = batcher.step(|start, end| {
-                conn.transaction(|conn| {
-                    // Page through all rows in `src` in batches of `batch_size`
-                    // and copy the ones that are visible to queries at block
-                    // heights between `earliest_block` and `final_block`, but
-                    // whose block_range does not extend past `final_block`
-                    // since they could still be reverted while we copy.
-                    // The conditions on `block_range` are expressed redundantly
-                    // to make more indexes useable
-                    sql_query(format!(
+            let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
+                // Page through all rows in `src` in batches of `batch_size`
+                // and copy the ones that are visible to queries at block
+                // heights between `earliest_block` and `final_block`, but
+                // whose block_range does not extend past `final_block`
+                // since they could still be reverted while we copy.
+                // The conditions on `block_range` are expressed redundantly
+                // to make more indexes useable
+                sql_query(format!(
                     "/* controller=prune,phase=final,start_vid={start},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
@@ -128,13 +129,12 @@ impl TablePair {
                     dst = self.dst.qualified_name,
                     batch_size = end - start + 1,
                 ))
-                    .bind::<Integer, _>(earliest_block)
-                    .bind::<Integer, _>(final_block)
-                    .bind::<BigInt, _>(start)
-                    .bind::<BigInt, _>(end)
-                    .execute(conn)
-                    .map_err(StoreError::from)
-                })
+                .bind::<Integer, _>(earliest_block)
+                .bind::<Integer, _>(final_block)
+                .bind::<BigInt, _>(start)
+                .bind::<BigInt, _>(end)
+                .execute(conn)
+                .map_err(StoreError::from)
             })?;
             let rows = rows.unwrap_or(0);
             tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
@@ -168,14 +168,13 @@ impl TablePair {
         tracker.start_copy_nonfinal(conn, &self.src, range)?;
 
         while !batcher.finished() {
-            let (_, rows) = batcher.step(|start, end| {
+            let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
                 // Page through all the rows in `src` in batches of
                 // `batch_size` that are visible to queries at block heights
                 // starting right after `final_block`. The conditions on
                 // `block_range` are expressed redundantly to make more
                 // indexes useable
-                conn.transaction(|conn| {
-                    sql_query(format!(
+                sql_query(format!(
                         "/* controller=prune,phase=nonfinal,start_vid={start},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
@@ -192,7 +191,6 @@ impl TablePair {
                     .bind::<BigInt, _>(end)
                     .execute(conn)
                     .map_err(StoreError::from)
-                })
             })?;
             let rows = rows.unwrap_or(0);
 
@@ -460,7 +458,8 @@ impl Layout {
 
                     tracker.start_delete(conn, table, range, &batcher)?;
                     while !batcher.finished() {
-                        let (_, rows) = batcher.step(|start, end| {sql_query(format!(
+                        let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
+                            sql_query(format!(
                             "/* controller=prune,phase=delete,start_vid={start},batch_size={batch_size} */ \
                              delete from {qname} \
                                           where coalesce(upper(block_range), 2147483647) <= $1 \
@@ -471,7 +470,8 @@ impl Layout {
                         .bind::<Integer, _>(req.earliest_block)
                         .bind::<BigInt, _>(start)
                         .bind::<BigInt, _>(end)
-                        .execute(conn).map_err(StoreError::from)})?;
+                        .execute(conn).map_err(StoreError::from)
+                        })?;
                         let rows = rows.unwrap_or(0);
 
                         tracker.finish_batch(conn, table, -(rows as i64), &batcher)?;
@@ -499,6 +499,42 @@ impl Layout {
         reporter.finish();
         Ok(())
     }
+}
+
+/// Perform a step with the `batcher`. If that step takes longer than
+/// `BATCH_STATEMENT_TIMEOUT`, kill the query and reset the batch size of
+/// the batcher to 1 and perform a step with that size which we assume takes
+/// less than `BATCH_STATEMENT_TIMEOUT`.
+///
+/// Doing this serves as a safeguard against very bad batch size estimations
+/// so that batches never take longer than `BATCH_SIZE_TIMEOUT`
+fn batch_with_timeout<F, T>(
+    conn: &mut PgConnection,
+    batcher: &mut VidBatcher,
+    query: F,
+) -> Result<Option<T>, StoreError>
+where
+    F: Fn(&mut PgConnection, i64, i64) -> Result<T, StoreError>,
+{
+    let res = batcher
+        .step(|start, end| {
+            conn.transaction(|conn| {
+                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                    conn.batch_execute(timeout)?;
+                }
+                query(conn, start, end)
+            })
+        })
+        .map(|(_, res)| res);
+
+    if !matches!(res, Err(StoreError::StatementTimeout)) {
+        return res;
+    }
+
+    batcher.set_batch_size(1);
+    batcher
+        .step(|start, end| conn.transaction(|conn| query(conn, start, end)))
+        .map(|(_, res)| res)
 }
 
 mod status {

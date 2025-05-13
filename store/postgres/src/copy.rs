@@ -65,7 +65,7 @@ const ACCEPTABLE_REPLICATION_LAG: Duration = Duration::from_secs(30);
 const REPLICATION_SLEEP: Duration = Duration::from_secs(10);
 
 lazy_static! {
-    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+    pub(crate) static ref BATCH_STATEMENT_TIMEOUT: Option<String> = ENV_VARS
         .store
         .batch_timeout
         .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
@@ -792,7 +792,7 @@ impl CopyTableWorker {
                     }
 
                     match conn.transaction(|conn| {
-                        if let Some(timeout) = STATEMENT_TIMEOUT.as_ref() {
+                        if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
                             conn.batch_execute(timeout)?;
                         }
                         self.table.copy_batch(conn)
