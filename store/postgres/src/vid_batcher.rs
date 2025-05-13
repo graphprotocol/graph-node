@@ -209,9 +209,9 @@ impl VidBatcher {
     /// The function returns the time it took to process the batch and the
     /// result of `f`. If the batcher is finished, `f` will not be called,
     /// and `None` will be returned as its result.
-    pub fn step<F, T>(&mut self, mut f: F) -> Result<(Duration, Option<T>), StoreError>
+    pub fn step<F, T>(&mut self, f: F) -> Result<(Duration, Option<T>), StoreError>
     where
-        F: FnMut(i64, i64) -> Result<T, StoreError>,
+        F: FnOnce(i64, i64) -> Result<T, StoreError>,
     {
         if self.finished() {
             return Ok((Duration::from_secs(0), None));
