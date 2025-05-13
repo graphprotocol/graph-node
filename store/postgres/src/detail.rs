@@ -362,12 +362,11 @@ pub(crate) fn deployment_statuses(
         .collect()
 }
 
-#[derive(Queryable, QueryableByName, Identifiable, Associations)]
+#[derive(Queryable, Selectable, Identifiable, Associations)]
 #[diesel(table_name = subgraph_manifest)]
 #[diesel(belongs_to(GraphNodeVersion))]
 // We never read the id field but map it to make the interaction with Diesel
 // simpler
-#[allow(dead_code)]
 struct StoredSubgraphManifest {
     id: i32,
     spec_version: String,
@@ -376,12 +375,10 @@ struct StoredSubgraphManifest {
     features: Vec<String>,
     schema: String,
     graph_node_version_id: Option<i32>,
-    use_bytea_prefix: bool,
     start_block_number: Option<i32>,
     start_block_hash: Option<Bytes>,
     raw_yaml: Option<String>,
     entities_with_causality_region: Vec<String>,
-    on_sync: Option<String>,
     history_blocks: i32,
 }
 
@@ -480,6 +477,7 @@ pub fn deployment_entity(
 
     let manifest = m::table
         .find(site.id)
+        .select(StoredSubgraphManifest::as_select())
         .first::<StoredSubgraphManifest>(conn)?;
 
     let detail = d::table
