@@ -182,11 +182,12 @@ pub mod unused {
 /// metadata is stored in tables in the `subgraphs` namespace in the same
 /// shard as the deployment data. The most important of these tables are
 ///
-/// - `subgraphs.subgraph_deployment`: the main table for deployment
-///   metadata; most importantly, it stores the pointer to the current
-///   subgraph head, i.e., the block up to which the subgraph has indexed
-///   the chain, together with other things like whether the subgraph has
-///   synced, whether it has failed and whether it encountered any errors
+/// - `subgraphs.deployment` and `subgraphs.head`: the main table for
+///   deployment metadata; most importantly, it stores the pointer to the
+///   current subgraph head, i.e., the block up to which the subgraph has
+///   indexed the chain, together with other things like whether the
+///   subgraph has synced, whether it has failed and whether it encountered
+///   any errors
 /// - `subgraphs.subgraph_manifest`: immutable information derived from the
 ///   YAML manifest for the deployment
 /// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources
@@ -1011,7 +1012,7 @@ impl SubgraphStoreInner {
         store.error_count(id)
     }
 
-    /// Vacuum the `subgraph_deployment` table in each shard
+    /// Vacuum the `head` and `deployment` table in each shard
     pub(crate) async fn vacuum(&self) -> Vec<Result<(), StoreError>> {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }

@@ -117,10 +117,7 @@ impl QueryStoreTrait for QueryStore {
     }
 
     async fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError> {
-        Ok(self
-            .store
-            .deployment_state_from_id(self.site.deployment.clone())
-            .await?)
+        Ok(self.store.deployment_state(self.site.cheap_clone()).await?)
     }
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {

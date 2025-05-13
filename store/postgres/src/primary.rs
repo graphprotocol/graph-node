@@ -1638,10 +1638,10 @@ impl<'a> Connection<'a> {
 
         for detail in details {
             let (latest_hash, latest_number) = block(
-                &detail.deployment,
+                &detail.subgraph,
                 "latest_ethereum_block",
-                detail.latest_ethereum_block_hash.clone(),
-                detail.latest_ethereum_block_number.clone(),
+                detail.block_hash.clone(),
+                detail.block_number.clone(),
             )?
             .map(|b| b.to_ptr())
             .map(|ptr| (Some(Vec::from(ptr.hash_slice())), Some(ptr.number)))

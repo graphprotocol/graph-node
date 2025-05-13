@@ -523,7 +523,7 @@ impl DeploymentStore {
         conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Option<BlockPtr>, StoreError> {
-        deployment::block_ptr(conn, &site.deployment)
+        deployment::block_ptr(conn, &site)
     }
 
     pub(crate) fn deployment_details(
@@ -604,7 +604,7 @@ impl DeploymentStore {
         const QUERY: &str = "
         delete from subgraphs.dynamic_ethereum_contract_data_source;
         delete from subgraphs.subgraph;
-        delete from subgraphs.subgraph_deployment;
+        delete from subgraphs.head;
         delete from subgraphs.subgraph_deployment_assignment;
         delete from subgraphs.subgraph_version;
         delete from subgraphs.subgraph_manifest;
@@ -621,7 +621,7 @@ impl DeploymentStore {
 
     pub(crate) async fn vacuum(&self) -> Result<(), StoreError> {
         self.with_conn(|conn, _| {
-            conn.batch_execute("vacuum (analyze) subgraphs.subgraph_deployment")?;
+            conn.batch_execute("vacuum (analyze) subgraphs.head, subgraphs.deployment")?;
             Ok(())
         })
         .await
@@ -834,7 +834,7 @@ impl DeploymentStore {
         ) -> Result<Box<dyn PruneReporter>, CancelableError<StoreError>> {
             let layout = store.layout(&mut conn, site.clone())?;
             cancel.check_cancel()?;
-            let state = deployment::state(&mut conn, site.deployment.clone())?;
+            let state = deployment::state(&mut conn, &site)?;
 
             if state.latest_block.number <= req.history_blocks {
                 // We haven't accumulated enough history yet, nothing to prune
@@ -1297,12 +1297,7 @@ impl DeploymentStore {
                 // The revert functions want the number of the first block that we need to get rid of
                 let block = block_ptr_to.number + 1;
 
-                deployment::revert_block_ptr(
-                    conn,
-                    &site.deployment,
-                    block_ptr_to,
-                    firehose_cursor,
-                )?;
+                deployment::revert_block_ptr(conn, &site, block_ptr_to, firehose_cursor)?;
 
                 // Revert the data
                 let layout = self.layout(conn, site.clone())?;
@@ -1416,11 +1411,11 @@ impl DeploymentStore {
         self.rewind_or_truncate_with_conn(&mut conn, site, block_ptr_to, firehose_cursor, false)
     }
 
-    pub(crate) async fn deployment_state_from_id(
+    pub(crate) async fn deployment_state(
         &self,
-        id: DeploymentHash,
+        site: Arc<Site>,
     ) -> Result<DeploymentState, StoreError> {
-        self.with_conn(|conn, _| deployment::state(conn, id).map_err(|e| e.into()))
+        self.with_conn(move |conn, _| deployment::state(conn, &site).map_err(|e| e.into()))
             .await
     }
 
@@ -1604,7 +1599,7 @@ impl DeploymentStore {
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
-                crate::deployment::forward_block_ptr(conn, &dst.site.deployment, &block)?;
+                crate::deployment::forward_block_ptr(conn, &dst.site, &block)?;
                 info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
                 Ok(())

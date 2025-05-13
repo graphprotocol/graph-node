@@ -12,9 +12,10 @@ use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
 use graph::data::store::scalar::ToPrimitive;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
+use graph::prelude::BlockNumber;
 use graph::prelude::{
     chrono::{DateTime, Utc},
-    BigDecimal, BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity,
+    BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity,
 };
 use graph::schema::InputSchema;
 use graph::{data::subgraph::status, internal_error, prelude::web3::types::H256};
@@ -24,8 +25,8 @@ use std::convert::TryFrom;
 use std::{ops::Bound, sync::Arc};
 
 use crate::deployment::{
-    graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
-    SubgraphHealth as HealthType,
+    deployment as subgraph_deployment, graph_node_versions, head as subgraph_head, subgraph_error,
+    subgraph_manifest, SubgraphHealth as HealthType,
 };
 use crate::primary::{DeploymentId, Site};
 
@@ -39,29 +40,100 @@ const CARGO_PKG_VERSION_PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
 
 type Bytes = Vec<u8>;
 
-#[derive(Queryable, Selectable)]
-#[diesel(table_name = subgraph_deployment)]
-// We map all fields to make loading `Detail` with diesel easier, but we
-// don't need all the fields
 pub struct DeploymentDetail {
     pub id: DeploymentId,
-    pub deployment: String,
-    pub failed: bool,
-    health: HealthType,
-    pub synced_at: Option<DateTime<Utc>>,
-    pub synced_at_block_number: Option<i32>,
+    pub subgraph: String,
     /// The earliest block for which we have history
     pub earliest_block_number: i32,
-    pub latest_ethereum_block_hash: Option<Bytes>,
-    pub latest_ethereum_block_number: Option<BigDecimal>,
-    pub entity_count: BigDecimal,
+    health: HealthType,
+    pub failed: bool,
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
-    graft_block_number: Option<BigDecimal>,
-    debug_fork: Option<String>,
+    graft_block_number: Option<BlockNumber>,
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
+    debug_fork: Option<String>,
+    pub synced_at: Option<DateTime<Utc>>,
+    pub synced_at_block_number: Option<i32>,
+    pub block_hash: Option<Bytes>,
+    pub block_number: Option<BlockNumber>,
+    pub entity_count: usize,
+}
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = subgraph_deployment)]
+struct Deployment {
+    id: DeploymentId,
+    subgraph: String,
+    /// The earliest block for which we have history
+    earliest_block_number: i32,
+    health: HealthType,
+    failed: bool,
+    graft_base: Option<String>,
+    graft_block_hash: Option<Bytes>,
+    graft_block_number: Option<BlockNumber>,
+    reorg_count: i32,
+    current_reorg_depth: i32,
+    max_reorg_depth: i32,
+    debug_fork: Option<String>,
+    synced_at: Option<DateTime<Utc>>,
+    synced_at_block_number: Option<i32>,
+}
+
+#[derive(Queryable, Selectable)]
+#[diesel(table_name = subgraph_head)]
+struct Head {
+    block_hash: Option<Bytes>,
+    block_number: Option<BlockNumber>,
+    entity_count: i64,
+}
+
+impl From<(Deployment, Head)> for DeploymentDetail {
+    fn from((deployment, head): (Deployment, Head)) -> Self {
+        let Deployment {
+            id,
+            subgraph,
+            earliest_block_number,
+            health,
+            failed,
+            graft_base,
+            graft_block_hash,
+            graft_block_number,
+            reorg_count,
+            current_reorg_depth,
+            max_reorg_depth,
+            debug_fork,
+            synced_at,
+            synced_at_block_number,
+        } = deployment;
+
+        let Head {
+            block_hash,
+            block_number,
+            entity_count,
+        } = head;
+
+        Self {
+            id,
+            subgraph,
+            earliest_block_number,
+            health,
+            failed,
+            graft_base,
+            graft_block_hash,
+            graft_block_number,
+            reorg_count,
+            current_reorg_depth,
+            max_reorg_depth,
+            debug_fork,
+            synced_at,
+            synced_at_block_number,
+            block_hash: block_hash.clone(),
+            block_number: block_number.clone(),
+            entity_count: entity_count as usize,
+        }
+    }
 }
 
 #[derive(Queryable, Selectable)]
@@ -89,7 +161,7 @@ impl ErrorDetail {
         use subgraph_error as e;
 
         d::table
-            .filter(d::deployment.eq(deployment_id.as_str()))
+            .filter(d::subgraph.eq(deployment_id.as_str()))
             .inner_join(e::table.on(e::id.nullable().eq(d::fatal_error)))
             .select(ErrorDetail::as_select())
             .get_result(conn)
@@ -141,23 +213,13 @@ pub(crate) fn block(
     id: &str,
     name: &str,
     hash: Option<Vec<u8>>,
-    number: Option<BigDecimal>,
+    number: Option<BlockNumber>,
 ) -> Result<Option<status::EthereumBlock>, StoreError> {
     match (hash, number) {
-        (Some(hash), Some(number)) => {
-            let number = number.to_i32().ok_or_else(|| {
-                internal_error!(
-                    "the block number {} for {} in {} is not representable as an i32",
-                    number,
-                    name,
-                    id
-                )
-            })?;
-            Ok(Some(status::EthereumBlock::new(
-                BlockHash(hash.into_boxed_slice()),
-                number,
-            )))
-        }
+        (Some(hash), Some(number)) => Ok(Some(status::EthereumBlock::new(
+            BlockHash(hash.into_boxed_slice()),
+            number,
+        ))),
         (None, None) => Ok(None),
         (hash, number) => Err(internal_error!(
             "the hash and number \
@@ -180,13 +242,13 @@ pub(crate) fn info_from_details(
 ) -> Result<status::Info, StoreError> {
     let DeploymentDetail {
         id,
-        deployment,
+        subgraph,
         failed: _,
         health,
         synced_at,
         earliest_block_number,
-        latest_ethereum_block_hash,
-        latest_ethereum_block_number,
+        block_hash,
+        block_number,
         entity_count,
         graft_base: _,
         graft_block_hash: _,
@@ -200,18 +262,13 @@ pub(crate) fn info_from_details(
 
     let site = sites
         .iter()
-        .find(|site| site.deployment.as_str() == deployment)
-        .ok_or_else(|| internal_error!("missing site for subgraph `{}`", deployment))?;
+        .find(|site| site.deployment.as_str() == subgraph)
+        .ok_or_else(|| internal_error!("missing site for subgraph `{}`", subgraph))?;
 
     // This needs to be filled in later since it lives in a
     // different shard
     let chain_head_block = None;
-    let latest_block = block(
-        &deployment,
-        "latest_ethereum_block",
-        latest_ethereum_block_hash,
-        latest_ethereum_block_number,
-    )?;
+    let latest_block = block(&subgraph, "latest_ethereum_block", block_hash, block_number)?;
     let health = health.into();
     let chain = status::ChainInfo {
         network: site.network.clone(),
@@ -222,7 +279,7 @@ pub(crate) fn info_from_details(
     let entity_count = entity_count.to_u64().ok_or_else(|| {
         internal_error!(
             "the entityCount for {} is not representable as a u64",
-            deployment
+            subgraph
         )
     })?;
     let fatal_error = fatal.map(SubgraphError::try_from).transpose()?;
@@ -234,7 +291,7 @@ pub(crate) fn info_from_details(
     // 'node' needs to be filled in later from a different shard
     Ok(status::Info {
         id: id.into(),
-        subgraph: deployment,
+        subgraph,
         synced: synced_at.is_some(),
         health,
         paused: None,
@@ -253,18 +310,26 @@ pub(crate) fn deployment_details(
     deployments: Vec<String>,
 ) -> Result<Vec<DeploymentDetail>, StoreError> {
     use subgraph_deployment as d;
+    use subgraph_head as h;
 
-    let cols = DeploymentDetail::as_select();
+    let cols = <(Deployment, Head)>::as_select();
 
     // Empty deployments means 'all of them'
     let details = if deployments.is_empty() {
-        d::table.select(cols).load::<DeploymentDetail>(conn)?
+        d::table
+            .inner_join(h::table)
+            .select(cols)
+            .load::<(Deployment, Head)>(conn)?
     } else {
         d::table
-            .filter(d::deployment.eq_any(&deployments))
+            .inner_join(h::table)
+            .filter(d::subgraph.eq_any(&deployments))
             .select(cols)
-            .load::<DeploymentDetail>(conn)?
-    };
+            .load::<(Deployment, Head)>(conn)?
+    }
+    .into_iter()
+    .map(DeploymentDetail::from)
+    .collect();
     Ok(details)
 }
 
@@ -274,14 +339,17 @@ pub(crate) fn deployment_details_for_id(
     deployment: &DeploymentId,
 ) -> Result<DeploymentDetail, StoreError> {
     use subgraph_deployment as d;
+    use subgraph_head as h;
 
-    let cols = DeploymentDetail::as_select();
+    let cols = <(Deployment, Head)>::as_select();
 
     d::table
+        .inner_join(h::table)
         .filter(d::id.eq(&deployment))
         .select(cols)
-        .first::<DeploymentDetail>(conn)
+        .first::<(Deployment, Head)>(conn)
         .map_err(StoreError::from)
+        .map(DeploymentDetail::from)
 }
 
 pub(crate) fn deployment_statuses(
@@ -290,6 +358,7 @@ pub(crate) fn deployment_statuses(
 ) -> Result<Vec<status::Info>, StoreError> {
     use subgraph_deployment as d;
     use subgraph_error as e;
+    use subgraph_head as h;
     use subgraph_manifest as sm;
 
     // First, we fetch all deployment information along with any fatal errors.
@@ -299,27 +368,28 @@ pub(crate) fn deployment_statuses(
     let details_with_fatal_error = {
         let join = e::table.on(e::id.nullable().eq(d::fatal_error));
 
-        let cols = <(DeploymentDetail, Option<ErrorDetail>)>::as_select();
+        let cols = <(Deployment, Head, Option<ErrorDetail>)>::as_select();
 
         // Empty deployments means 'all of them'
         if sites.is_empty() {
             d::table
+                .inner_join(h::table)
                 .left_outer_join(join)
                 .select(cols)
-                .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
+                .load::<(Deployment, Head, Option<ErrorDetail>)>(conn)?
         } else {
             d::table
+                .inner_join(h::table)
                 .left_outer_join(join)
                 .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
                 .select(cols)
-                .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
+                .load::<(Deployment, Head, Option<ErrorDetail>)>(conn)?
         }
     };
 
     let mut non_fatal_errors = {
         #[allow(deprecated)]
-        let join =
-            e::table.on(e::id.eq(sql("any(subgraphs.subgraph_deployment.non_fatal_errors)")));
+        let join = e::table.on(e::id.eq(sql("any(subgraphs.deployment.non_fatal_errors)")));
 
         if sites.is_empty() {
             d::table
@@ -354,7 +424,8 @@ pub(crate) fn deployment_statuses(
 
     details_with_fatal_error
         .into_iter()
-        .map(|(detail, fatal)| {
+        .map(|(deployment, head, fatal)| {
+            let detail = DeploymentDetail::from((deployment, head));
             let non_fatal = non_fatal_errors.remove(&detail.id).unwrap_or_default();
             let subgraph_history_blocks = history_blocks_map.remove(&detail.id).unwrap_or_default();
             info_from_details(detail, fatal, non_fatal, sites, subgraph_history_blocks)
@@ -412,7 +483,7 @@ impl StoredDeploymentEntity {
         let (detail, manifest) = (self.0, self.1);
 
         let start_block = block(
-            &detail.deployment,
+            &detail.subgraph,
             "start_block",
             manifest.start_block_hash.clone(),
             manifest.start_block_number.map(|n| n.into()),
@@ -420,15 +491,15 @@ impl StoredDeploymentEntity {
         .map(|block| block.to_ptr());
 
         let latest_block = block(
-            &detail.deployment,
+            &detail.subgraph,
             "latest_block",
-            detail.latest_ethereum_block_hash,
-            detail.latest_ethereum_block_number,
+            detail.block_hash,
+            detail.block_number,
         )?
         .map(|block| block.to_ptr());
 
         let graft_block = block(
-            &detail.deployment,
+            &detail.subgraph,
             "graft_block",
             detail.graft_block_hash,
             detail.graft_block_number,
@@ -473,6 +544,7 @@ pub fn deployment_entity(
     schema: &InputSchema,
 ) -> Result<SubgraphDeploymentEntity, StoreError> {
     use subgraph_deployment as d;
+    use subgraph_head as h;
     use subgraph_manifest as m;
 
     let manifest = m::table
@@ -481,9 +553,11 @@ pub fn deployment_entity(
         .first::<StoredSubgraphManifest>(conn)?;
 
     let detail = d::table
-        .find(site.id)
-        .select(DeploymentDetail::as_select())
-        .first::<DeploymentDetail>(conn)?;
+        .inner_join(h::table)
+        .filter(d::id.eq(site.id))
+        .select(<(Deployment, Head)>::as_select())
+        .first::<(Deployment, Head)>(conn)
+        .map(DeploymentDetail::from)?;
 
     StoredDeploymentEntity(detail, manifest).as_subgraph_deployment(schema)
 }

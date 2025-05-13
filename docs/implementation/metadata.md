@@ -7,7 +7,7 @@
 List of all known subgraph names. Maintained in the primary, but there is a background job that periodically copies the table from the primary to all other shards. Those copies are used for queries when the primary is down.
 
 | Column            | Type         | Use                                       |
-|-------------------|--------------|-------------------------------------------|
+| ----------------- | ------------ | ----------------------------------------- |
 | `id`              | `text!`      | primary key, UUID                         |
 | `name`            | `text!`      | user-chosen name                          |
 | `current_version` | `text`       | `subgraph_version.id` for current version |
@@ -18,20 +18,18 @@ List of all known subgraph names. Maintained in the primary, but there is a back
 
 The `id` is used by the hosted explorer to reference the subgraph.
 
-
 ### `subgraphs.subgraph_version`
 
 Mapping of subgraph names from `subgraph` to IPFS hashes. Maintained in the primary, but there is a background job that periodically copies the table from the primary to all other shards. Those copies are used for queries when the primary is down.
 
 | Column        | Type         | Use                     |
-|---------------|--------------|-------------------------|
+| ------------- | ------------ | ----------------------- |
 | `id`          | `text!`      | primary key, UUID       |
 | `subgraph`    | `text!`      | `subgraph.id`           |
 | `deployment`  | `text!`      | IPFS hash of deployment |
 | `created_at`  | `numeric`    | UNIX timestamp          |
 | `vid`         | `int8!`      | unused                  |
 | `block_range` | `int4range!` | unused                  |
-
 
 ## Managing a deployment
 
@@ -40,7 +38,7 @@ Directory of all deployments. Maintained in the primary, but there is a backgrou
 ### `public.deployment_schemas`
 
 | Column       | Type           | Use                                          |
-|--------------|----------------|----------------------------------------------|
+| ------------ | -------------- | -------------------------------------------- |
 | `id`         | `int4!`        | primary key                                  |
 | `subgraph`   | `text!`        | IPFS hash of deployment                      |
 | `name`       | `text!`        | name of `sgdNNN` schema                      |
@@ -52,36 +50,53 @@ Directory of all deployments. Maintained in the primary, but there is a backgrou
 
 There can be multiple copies of the same deployment, but at most one per shard. The `active` flag indicates which of these copies will be used for queries; `graph-node` makes sure that there is always exactly one for each IPFS hash.
 
-### `subgraphs.subgraph_deployment`
+### `subgraphs.head`
+
+Details about a deployment that change on every block. Maintained in the
+shard alongside the deployment's data in `sgdNNN`.
+
+| Column            | Type       | Use                                          |
+| ----------------- | ---------- | -------------------------------------------- |
+| `id`              | `integer!` | primary key, same as `deployment_schemas.id` |
+| `block_hash`      | `bytea`    | current subgraph head                        |
+| `block_number`    | `numeric`  |                                              |
+| `entity_count`    | `numeric!` | total number of entities                     |
+| `firehose_cursor` | `text`     |                                              |
+
+The head block pointer in `block_number` and `block_hash` is the latest
+block that has been fully processed by the deployment. It will be `null`
+until the deployment is fully initialized, and only set when the deployment
+processes the first block. For deployments that are grafted or being copied,
+the head block pointer will be `null` until the graft/copy has finished
+which can take considerable time.
+
+### `subgraphs.deployment`
 
 Details about a deployment to track sync progress etc. Maintained in the
 shard alongside the deployment's data in `sgdNNN`. The table should only
-contain frequently changing data, but for historical reasons contains also
-static data.
+contain data that changes fairly infrequently, but for historical reasons
+contains also static data.
 
-| Column                               | Type       | Use                                          |
-|--------------------------------------|------------|----------------------------------------------|
-| `id`                                 | `integer!` | primary key, same as `deployment_schemas.id` |
-| `deployment`                         | `text!`    | IPFS hash                                    |
-| `failed`                             | `boolean!` |                                              |
-| `synced`                             | `boolean!` |                                              |
-| `earliest_block_number`              | `integer!` | earliest block for which we have data        |
-| `latest_ethereum_block_hash`         | `bytea`    | current subgraph head                        |
-| `latest_ethereum_block_number`       | `numeric`  |                                              |
-| `entity_count`                       | `numeric!` | total number of entities                     |
-| `graft_base`                         | `text`     | IPFS hash of graft base                      |
-| `graft_block_hash`                   | `bytea`    | graft block                                  |
-| `graft_block_number`                 | `numeric`  |                                              |
-| `reorg_count`                        | `integer!` |                                              |
-| `current_reorg_depth`                | `integer!` |                                              |
-| `max_reorg_depth`                    | `integer!` |                                              |
-| `fatal_error`                        | `text`     |                                              |
-| `non_fatal_errors`                   | `text[]`   |                                              |
-| `health`                             | `health!`  |                                              |
-| `last_healthy_ethereum_block_hash`   | `bytea`    |                                              |
-| `last_healthy_ethereum_block_number` | `numeric`  |                                              |
-| `firehose_cursor`                    | `text`     |                                              |
-| `debug_fork`                         | `text`     |                                              |
+| Column                               | Type          | Use                                                  |
+| ------------------------------------ | ------------- | ---------------------------------------------------- |
+| `id`                                 | `integer!`    | primary key, same as `deployment_schemas.id`         |
+| `subgraph`                           | `text!`       | IPFS hash                                            |
+| `earliest_block_number`              | `integer!`    | earliest block for which we have data                |
+| `health`                             | `health!`     |                                                      |
+| `failed`                             | `boolean!`    |                                                      |
+| `fatal_error`                        | `text`        |                                                      |
+| `non_fatal_errors`                   | `text[]`      |                                                      |
+| `graft_base`                         | `text`        | IPFS hash of graft base                              |
+| `graft_block_hash`                   | `bytea`       | graft block                                          |
+| `graft_block_number`                 | `numeric`     |                                                      |
+| `reorg_count`                        | `integer!`    |                                                      |
+| `current_reorg_depth`                | `integer!`    |                                                      |
+| `max_reorg_depth`                    | `integer!`    |                                                      |
+| `last_healthy_ethereum_block_hash`   | `bytea`       |                                                      |
+| `last_healthy_ethereum_block_number` | `numeric`     |                                                      |
+| `debug_fork`                         | `text`        |                                                      |
+| `synced_at`                          | `timestamptz` | time when deployment first reach chain head          |
+| `synced_at_block_number`             | `integer`     | block number where deployment first reach chain head |
 
 The columns `reorg_count`, `current_reorg_depth`, and `max_reorg_depth` are
 set during indexing. They are used to determine whether a reorg happened
@@ -94,7 +109,7 @@ Details about a deployment that rarely change. Maintained in the
 shard alongside the deployment's data in `sgdNNN`.
 
 | Column                  | Type       | Use                                                  |
-|-------------------------|------------|------------------------------------------------------|
+| ----------------------- | ---------- | ---------------------------------------------------- |
 | `id`                    | `integer!` | primary key, same as `deployment_schemas.id`         |
 | `spec_version`          | `text!`    |                                                      |
 | `description`           | `text`     |                                                      |
@@ -115,7 +130,7 @@ but there is a background job that periodically copies the table from the
 primary to all other shards.
 
 | Column  | Type  | Use                                         |
-|---------|-------|---------------------------------------------|
+| ------- | ----- | ------------------------------------------- |
 | id      | int4! | primary key, ref to `deployment_schemas.id` |
 | node_id | text! | name of index node                          |
 
@@ -147,7 +162,7 @@ should have the 'account-like' optimization turned on.
 Details about features that a deployment uses, Maintained in the primary.
 
 | Column         | Type      | Use         |
-|----------------|-----------|-------------|
+| -------------- | --------- | ----------- |
 | `id`           | `text!`   | primary key |
 | `spec_version` | `text!`   |             |
 | `api_version`  | `text`    |             |
