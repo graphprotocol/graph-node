@@ -68,9 +68,7 @@ pub struct DeploymentDetail {
 #[diesel(table_name = subgraph_error)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
-#[allow(dead_code)]
 pub(crate) struct ErrorDetail {
-    vid: i64,
     pub id: String,
     subgraph_id: String,
     message: String,
@@ -93,7 +91,7 @@ impl ErrorDetail {
         d::table
             .filter(d::deployment.eq(deployment_id.as_str()))
             .inner_join(e::table.on(e::id.nullable().eq(d::fatal_error)))
-            .select(e::all_columns)
+            .select(ErrorDetail::as_select())
             .get_result(conn)
             .optional()
             .map_err(StoreError::from)
@@ -105,7 +103,6 @@ impl TryFrom<ErrorDetail> for SubgraphError {
 
     fn try_from(value: ErrorDetail) -> Result<Self, Self::Error> {
         let ErrorDetail {
-            vid: _,
             id: _,
             subgraph_id,
             message,
@@ -327,13 +324,13 @@ pub(crate) fn deployment_statuses(
         if sites.is_empty() {
             d::table
                 .inner_join(join)
-                .select((d::id, e::all_columns))
+                .select((d::id, ErrorDetail::as_select()))
                 .load::<(DeploymentId, ErrorDetail)>(conn)?
         } else {
             d::table
                 .inner_join(join)
                 .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
-                .select((d::id, e::all_columns))
+                .select((d::id, ErrorDetail::as_select()))
                 .load::<(DeploymentId, ErrorDetail)>(conn)?
         }
         .into_iter()
