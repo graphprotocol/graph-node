@@ -5,7 +5,7 @@
 use diesel::dsl::sql;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
-    QueryDsl, RunQueryDsl,
+    QueryDsl, RunQueryDsl, SelectableHelper as _,
 };
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
@@ -39,11 +39,10 @@ const CARGO_PKG_VERSION_PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
 
 type Bytes = Vec<u8>;
 
-#[derive(Queryable, QueryableByName)]
+#[derive(Queryable, Selectable)]
 #[diesel(table_name = subgraph_deployment)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
-#[allow(dead_code)]
 pub struct DeploymentDetail {
     pub id: DeploymentId,
     pub deployment: String,
@@ -51,14 +50,10 @@ pub struct DeploymentDetail {
     health: HealthType,
     pub synced_at: Option<DateTime<Utc>>,
     pub synced_at_block_number: Option<i32>,
-    fatal_error: Option<String>,
-    non_fatal_errors: Vec<String>,
     /// The earliest block for which we have history
     pub earliest_block_number: i32,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,
-    last_healthy_ethereum_block_hash: Option<Bytes>,
-    last_healthy_ethereum_block_number: Option<BigDecimal>,
     pub entity_count: BigDecimal,
     graft_base: Option<String>,
     graft_block_hash: Option<Bytes>,
@@ -67,10 +62,9 @@ pub struct DeploymentDetail {
     reorg_count: i32,
     current_reorg_depth: i32,
     max_reorg_depth: i32,
-    firehose_cursor: Option<String>,
 }
 
-#[derive(Queryable, QueryableByName)]
+#[derive(Queryable, Selectable)]
 #[diesel(table_name = subgraph_error)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
@@ -193,8 +187,6 @@ pub(crate) fn info_from_details(
         failed: _,
         health,
         synced_at,
-        fatal_error: _,
-        non_fatal_errors: _,
         earliest_block_number,
         latest_ethereum_block_hash,
         latest_ethereum_block_number,
@@ -202,7 +194,11 @@ pub(crate) fn info_from_details(
         graft_base: _,
         graft_block_hash: _,
         graft_block_number: _,
-        ..
+        synced_at_block_number: _,
+        debug_fork: _,
+        reorg_count: _,
+        current_reorg_depth: _,
+        max_reorg_depth: _,
     } = detail;
 
     let site = sites
@@ -261,12 +257,15 @@ pub(crate) fn deployment_details(
 ) -> Result<Vec<DeploymentDetail>, StoreError> {
     use subgraph_deployment as d;
 
+    let cols = DeploymentDetail::as_select();
+
     // Empty deployments means 'all of them'
     let details = if deployments.is_empty() {
-        d::table.load::<DeploymentDetail>(conn)?
+        d::table.select(cols).load::<DeploymentDetail>(conn)?
     } else {
         d::table
             .filter(d::deployment.eq_any(&deployments))
+            .select(cols)
             .load::<DeploymentDetail>(conn)?
     };
     Ok(details)
@@ -278,8 +277,12 @@ pub(crate) fn deployment_details_for_id(
     deployment: &DeploymentId,
 ) -> Result<DeploymentDetail, StoreError> {
     use subgraph_deployment as d;
+
+    let cols = DeploymentDetail::as_select();
+
     d::table
         .filter(d::id.eq(&deployment))
+        .select(cols)
         .first::<DeploymentDetail>(conn)
         .map_err(StoreError::from)
 }
@@ -299,15 +302,19 @@ pub(crate) fn deployment_statuses(
     let details_with_fatal_error = {
         let join = e::table.on(e::id.nullable().eq(d::fatal_error));
 
+        let cols = <(DeploymentDetail, Option<ErrorDetail>)>::as_select();
+
         // Empty deployments means 'all of them'
         if sites.is_empty() {
             d::table
                 .left_outer_join(join)
+                .select(cols)
                 .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
         } else {
             d::table
                 .left_outer_join(join)
                 .filter(d::id.eq_any(sites.iter().map(|site| site.id)))
+                .select(cols)
                 .load::<(DeploymentDetail, Option<ErrorDetail>)>(conn)?
         }
     };
@@ -480,7 +487,8 @@ pub fn deployment_entity(
 
     let detail = d::table
         .find(site.id)
-        .first::<crate::detail::DeploymentDetail>(conn)?;
+        .select(DeploymentDetail::as_select())
+        .first::<DeploymentDetail>(conn)?;
 
     StoredDeploymentEntity(detail, manifest).as_subgraph_deployment(schema)
 }
