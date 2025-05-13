@@ -1,0 +1,170 @@
+name: Build gnd Binaries
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build gnd for ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            asset_name: gnd-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            asset_name: gnd-linux-aarch64
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            asset_name: gnd-macos-x86_64
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            asset_name: gnd-macos-aarch64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            asset_name: gnd-windows-x86_64.exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable
+          rustup target add ${{ matrix.target }}
+          rustup default stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install dependencies (Ubuntu)
+        if: startsWith(matrix.runner, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev protobuf-compiler musl-tools libssl-dev
+
+      - name: Install dependencies (macOS)
+        if: startsWith(matrix.runner, 'macos')
+        run: |
+          brew install postgresql protobuf
+
+      - name: Install protobuf (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        run: choco install protoc
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        if: startsWith(matrix.runner, 'windows')
+        id: vcpkg-cache
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg
+            C:/vcpkg/installed
+            C:/vcpkg/packages
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+
+      - name: Install vcpkg and dependencies (Windows)
+        if: startsWith(matrix.runner, 'windows') && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        run: |
+          # Install vcpkg
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+          
+          # Install libpq using vcpkg
+          .\vcpkg.exe install libpq:x64-windows
+        shell: pwsh
+
+      - name: Set Windows environment variables
+        if: startsWith(matrix.runner, 'windows')
+        run: |
+          echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "LIBPQ_DIR=${{ github.workspace }}/vcpkg/installed/x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "RUSTFLAGS=-L ${{ github.workspace }}/vcpkg/installed/x64-windows/lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: pwsh
+
+      - name: Build gnd binary (Unix/Mac)
+        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        run: cargo build --bin gnd --release --target ${{ matrix.target }}
+
+      - name: Build gnd binary (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        run: cargo build --bin gnd --release --target ${{ matrix.target }}
+        env:
+          LIBPQ_DIR: ${{ format('{0}/vcpkg/installed/x64-windows', github.workspace) }}
+          VCPKGRS_DYNAMIC: 1
+
+      - name: Prepare binary (Unix)
+        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        run: |
+          cp target/${{ matrix.target }}/release/gnd ${{ matrix.asset_name }}
+          chmod +x ${{ matrix.asset_name }}
+          gzip ${{ matrix.asset_name }}
+
+      - name: Prepare binary (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        run: |
+          copy target\${{ matrix.target }}\release\gnd.exe ${{ matrix.asset_name }}
+          7z a -tzip ${{ matrix.asset_name }}.zip ${{ matrix.asset_name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            ${{ matrix.asset_name }}.gz
+            ${{ matrix.asset_name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup GitHub CLI
+        run: |
+          # GitHub CLI is pre-installed on GitHub-hosted runners
+          gh --version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded artifacts
+        run: ls -R artifacts
+
+      - name: Upload Assets to Release
+        run: |
+          # Extract version from ref (remove refs/tags/ prefix)
+          VERSION=${GITHUB_REF#refs/tags/}
+          
+          # Upload Linux x86_64 asset
+          gh release upload $VERSION artifacts/gnd-linux-x86_64/gnd-linux-x86_64.gz --repo $GITHUB_REPOSITORY
+          
+          # Upload Linux ARM64 asset
+          gh release upload $VERSION artifacts/gnd-linux-aarch64/gnd-linux-aarch64.gz --repo $GITHUB_REPOSITORY
+          
+          # Upload macOS x86_64 asset
+          gh release upload $VERSION artifacts/gnd-macos-x86_64/gnd-macos-x86_64.gz --repo $GITHUB_REPOSITORY
+          
+          # Upload macOS ARM64 asset
+          gh release upload $VERSION artifacts/gnd-macos-aarch64/gnd-macos-aarch64.gz --repo $GITHUB_REPOSITORY
+          
+          # Upload Windows x86_64 asset
+          gh release upload $VERSION artifacts/gnd-windows-x86_64.exe/gnd-windows-x86_64.exe.zip --repo $GITHUB_REPOSITORY
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
