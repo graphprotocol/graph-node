@@ -1,14 +1,9 @@
-use std::time::Duration;
-
 use slog::Logger;
 
 use crate::ipfs::error::IpfsError;
 use crate::prelude::*;
 use crate::util::futures::retry;
 use crate::util::futures::RetryConfig;
-
-/// The default maximum delay between retries.
-const DEFAULT_MAX_DELAY: Duration = Duration::from_secs(60);
 
 /// Describes retry behavior when IPFS requests fail.
 #[derive(Clone, Copy, Debug)]
@@ -33,7 +28,7 @@ impl RetryPolicy {
     ) -> RetryConfig<O, IpfsError> {
         retry(operation_name, logger)
             .limit(ENV_VARS.mappings.ipfs_max_attempts)
-            .max_delay(DEFAULT_MAX_DELAY)
+            .max_delay(ENV_VARS.ipfs_request_timeout)
             .when(move |result: &Result<O, IpfsError>| match result {
                 Ok(_) => false,
                 Err(err) => match self {

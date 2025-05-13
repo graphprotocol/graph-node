@@ -9,6 +9,7 @@ use reqwest::Response;
 use reqwest::StatusCode;
 use slog::Logger;
 
+use crate::env::ENV_VARS;
 use crate::ipfs::IpfsClient;
 use crate::ipfs::IpfsError;
 use crate::ipfs::IpfsRequest;
@@ -16,10 +17,6 @@ use crate::ipfs::IpfsResponse;
 use crate::ipfs::IpfsResult;
 use crate::ipfs::RetryPolicy;
 use crate::ipfs::ServerAddress;
-
-/// The request that verifies that the IPFS RPC API is accessible is generally fast because
-/// it does not involve querying the distributed network.
-const TEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A client that connects to an IPFS RPC API.
 ///
@@ -60,7 +57,7 @@ impl IpfsRpcClient {
             server_address: ServerAddress::new(server_address)?,
             http_client: reqwest::Client::new(),
             logger: logger.to_owned(),
-            test_request_timeout: TEST_REQUEST_TIMEOUT,
+            test_request_timeout: ENV_VARS.ipfs_request_timeout,
         })
     }
 
@@ -88,7 +85,7 @@ impl IpfsRpcClient {
                 }
             });
 
-        let ok = tokio::time::timeout(TEST_REQUEST_TIMEOUT, fut)
+        let ok = tokio::time::timeout(ENV_VARS.ipfs_request_timeout, fut)
             .await
             .map_err(|_| anyhow!("request timed out"))??;
 

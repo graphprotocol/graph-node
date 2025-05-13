@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -9,6 +8,7 @@ use http::header::CACHE_CONTROL;
 use reqwest::StatusCode;
 use slog::Logger;
 
+use crate::env::ENV_VARS;
 use crate::ipfs::IpfsClient;
 use crate::ipfs::IpfsError;
 use crate::ipfs::IpfsRequest;
@@ -16,10 +16,6 @@ use crate::ipfs::IpfsResponse;
 use crate::ipfs::IpfsResult;
 use crate::ipfs::RetryPolicy;
 use crate::ipfs::ServerAddress;
-
-/// The request that verifies that the IPFS gateway is accessible is generally fast because
-/// it does not involve querying the distributed network.
-const TEST_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// A client that connects to an IPFS gateway.
 ///
@@ -99,7 +95,7 @@ impl IpfsGatewayClient {
                 }
             });
 
-        let ok = tokio::time::timeout(TEST_REQUEST_TIMEOUT, fut)
+        let ok = tokio::time::timeout(ENV_VARS.ipfs_request_timeout, fut)
             .await
             .map_err(|_| anyhow!("request timed out"))??;
 
@@ -151,6 +147,8 @@ impl IpfsClient for IpfsGatewayClient {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use bytes::BytesMut;
     use futures03::TryStreamExt;
     use wiremock::matchers as m;

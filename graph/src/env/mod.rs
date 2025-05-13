@@ -248,6 +248,11 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_FIREHOSE_BLOCK_BATCH_SIZE`.
     /// The default value is 10.
     pub firehose_block_batch_size: usize,
+    /// Timeouts to use for various IPFS requests set by
+    /// `GRAPH_IPFS_REQUEST_TIMEOUT`. Defaults to 60 seconds for release
+    /// builds and one second for debug builds to speed up tests. The value
+    /// is in seconds.
+    pub ipfs_request_timeout: Duration,
 }
 
 impl EnvVars {
@@ -256,6 +261,16 @@ impl EnvVars {
         let graphql = InnerGraphQl::init_from_env()?.into();
         let mapping_handlers = InnerMappingHandlers::init_from_env()?.into();
         let store = InnerStore::init_from_env()?.try_into()?;
+        let ipfs_request_timeout = match inner.ipfs_request_timeout {
+            Some(timeout) => Duration::from_secs(timeout),
+            None => {
+                if cfg!(debug_assertions) {
+                    Duration::from_secs(1)
+                } else {
+                    Duration::from_secs(60)
+                }
+            }
+        };
 
         Ok(Self {
             graphql,
@@ -330,6 +345,7 @@ impl EnvVars {
             firehose_block_fetch_retry_limit: inner.firehose_block_fetch_retry_limit,
             firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
             firehose_block_batch_size: inner.firehose_block_fetch_batch_size,
+            ipfs_request_timeout,
         })
     }
 
@@ -510,6 +526,8 @@ struct Inner {
     firehose_block_fetch_timeout: u64,
     #[envconfig(from = "GRAPH_FIREHOSE_FETCH_BLOCK_BATCH_SIZE", default = "10")]
     firehose_block_fetch_batch_size: usize,
+    #[envconfig(from = "GRAPH_IPFS_REQUEST_TIMEOUT")]
+    ipfs_request_timeout: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
