@@ -99,8 +99,8 @@ mod data {
     use graph::blockchain::{Block, BlockHash};
     use graph::data::store::scalar::Bytes;
     use graph::internal_error;
-    use graph::prelude::ethabi::ethereum_types::H160;
     use graph::prelude::transaction_receipt::LightTransactionReceipt;
+    use graph::prelude::web3::types::H160;
     use graph::prelude::web3::types::H256;
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
