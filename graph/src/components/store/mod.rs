@@ -1099,11 +1099,22 @@ impl PruneRequest {
             return None;
         }
 
-        // Estimate how much data we will throw away; we assume that
-        // entity versions are distributed evenly across all blocks so
-        // that `history_pct` will tell us how much of that data pruning
-        // will remove.
-        let removal_ratio = self.history_pct(stats) * (1.0 - stats.ratio);
+        let removal_ratio = if stats.block_range_upper.is_empty()
+            || ENV_VARS.store.prune_disable_range_bound_estimation
+        {
+            // Estimate how much data we will throw away; we assume that
+            // entity versions are distributed evenly across all blocks so
+            // that `history_pct` will tell us how much of that data pruning
+            // will remove.
+            self.history_pct(stats) * (1.0 - stats.ratio)
+        } else {
+            // This estimate is more accurate than the one above since it
+            // does not assume anything about the distribution of entities
+            // and versions but uses the estimates from Postgres statistics.
+            // Of course, we can only use it if we have statistics
+            self.remove_pct_from_bounds(stats)
+        };
+
         if removal_ratio >= self.rebuild_threshold {
             Some(PruningStrategy::Rebuild)
         } else if removal_ratio >= self.delete_threshold {
@@ -1127,6 +1138,18 @@ impl PruneRequest {
         } else {
             1.0 - self.history_blocks as f64 / total_blocks as f64
         }
+    }
+
+    /// Return the fraction of entities that we will remove according to the
+    /// histogram bounds in `stats`. That fraction can be estimated as the
+    /// fraction of histogram buckets that end before `self.earliest_block`
+    fn remove_pct_from_bounds(&self, stats: &VersionStats) -> f64 {
+        stats
+            .block_range_upper
+            .iter()
+            .filter(|b| **b <= self.earliest_block)
+            .count() as f64
+            / stats.block_range_upper.len() as f64
     }
 }
 
