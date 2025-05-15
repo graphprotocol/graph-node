@@ -10,6 +10,7 @@ use diesel::PgConnection;
 use graph::components::store::DeploymentLocator;
 use graph::components::store::VersionStats;
 use graph::prelude::anyhow;
+use graph::prelude::CheapClone as _;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::ConnectionPool;
@@ -20,7 +21,7 @@ use graph_store_postgres::PRIMARY_SHARD;
 fn site_and_conn(
     pools: HashMap<Shard, ConnectionPool>,
     search: &DeploymentSearch,
-) -> Result<(Site, PooledConnection<ConnectionManager<PgConnection>>), anyhow::Error> {
+) -> Result<(Arc<Site>, PooledConnection<ConnectionManager<PgConnection>>), anyhow::Error> {
     let primary_pool = pools.get(&*PRIMARY_SHARD).unwrap();
     let locator = search.locate_unique(primary_pool)?;
 
@@ -30,6 +31,7 @@ fn site_and_conn(
     let site = conn
         .locate_site(locator)?
         .ok_or_else(|| anyhow!("deployment `{}` does not exist", search))?;
+    let site = Arc::new(site);
 
     let conn = pools.get(&site.shard).unwrap().get()?;
 
@@ -96,7 +98,8 @@ pub fn show(
 ) -> Result<(), anyhow::Error> {
     let (site, mut conn) = site_and_conn(pools, search)?;
 
-    let stats = store_catalog::stats(&mut conn, &site)?;
+    let catalog = store_catalog::Catalog::load(&mut conn, site.cheap_clone(), false, vec![])?;
+    let stats = catalog.stats(&mut conn)?;
 
     let account_like = store_catalog::account_like(&mut conn, &site)?;
 

@@ -269,6 +269,70 @@ impl Catalog {
             MINMAX_OPS
         }
     }
+
+    pub fn stats(&self, conn: &mut PgConnection) -> Result<Vec<VersionStats>, StoreError> {
+        #[derive(Queryable, QueryableByName)]
+        pub struct DbStats {
+            #[diesel(sql_type = BigInt)]
+            pub entities: i64,
+            #[diesel(sql_type = BigInt)]
+            pub versions: i64,
+            #[diesel(sql_type = Text)]
+            pub tablename: String,
+            /// The ratio `entities / versions`
+            #[diesel(sql_type = Double)]
+            pub ratio: f64,
+            #[diesel(sql_type = Nullable<Integer>)]
+            pub last_pruned_block: Option<i32>,
+        }
+
+        impl From<DbStats> for VersionStats {
+            fn from(s: DbStats) -> Self {
+                VersionStats {
+                    entities: s.entities,
+                    versions: s.versions,
+                    tablename: s.tablename,
+                    ratio: s.ratio,
+                    last_pruned_block: s.last_pruned_block,
+                }
+            }
+        }
+
+        // Get an estimate of number of rows (pg_class.reltuples) and number of
+        // distinct entities (based on the planners idea of how many distinct
+        // values there are in the `id` column) See the [Postgres
+        // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
+        // the precise meaning of n_distinct
+        let query = "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int8
+                     else s.n_distinct::int8
+                 end as entities,
+                 c.reltuples::int8 as versions,
+                 c.relname as tablename,
+                case when c.reltuples = 0 then 0::float8
+                     when s.n_distinct < 0 then (-s.n_distinct)::float8
+                     else greatest(s.n_distinct, 1)::float8 / c.reltuples::float8
+                 end as ratio,
+                 ts.last_pruned_block
+           from pg_namespace n, pg_class c, pg_stats s
+                left outer join subgraphs.table_stats ts
+                     on (ts.table_name = s.tablename
+                     and ts.deployment = $1)
+          where n.nspname = $2
+            and c.relnamespace = n.oid
+            and s.schemaname = n.nspname
+            and s.attname = 'id'
+            and c.relname = s.tablename
+          order by c.relname"
+            .to_string();
+
+        let stats = sql_query(query)
+            .bind::<Integer, _>(self.site.id)
+            .bind::<Text, _>(self.site.namespace.as_str())
+            .load::<DbStats>(conn)
+            .map_err(StoreError::from)?;
+
+        Ok(stats.into_iter().map(|s| s.into()).collect())
+    }
 }
 
 fn get_text_columns(
@@ -762,70 +826,6 @@ pub(crate) fn drop_index(
         .execute(conn)
         .map_err::<StoreError, _>(Into::into)?;
     Ok(())
-}
-
-pub fn stats(conn: &mut PgConnection, site: &Site) -> Result<Vec<VersionStats>, StoreError> {
-    #[derive(Queryable, QueryableByName)]
-    pub struct DbStats {
-        #[diesel(sql_type = BigInt)]
-        pub entities: i64,
-        #[diesel(sql_type = BigInt)]
-        pub versions: i64,
-        #[diesel(sql_type = Text)]
-        pub tablename: String,
-        /// The ratio `entities / versions`
-        #[diesel(sql_type = Double)]
-        pub ratio: f64,
-        #[diesel(sql_type = Nullable<Integer>)]
-        pub last_pruned_block: Option<i32>,
-    }
-
-    impl From<DbStats> for VersionStats {
-        fn from(s: DbStats) -> Self {
-            VersionStats {
-                entities: s.entities,
-                versions: s.versions,
-                tablename: s.tablename,
-                ratio: s.ratio,
-                last_pruned_block: s.last_pruned_block,
-            }
-        }
-    }
-
-    // Get an estimate of number of rows (pg_class.reltuples) and number of
-    // distinct entities (based on the planners idea of how many distinct
-    // values there are in the `id` column) See the [Postgres
-    // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
-    // the precise meaning of n_distinct
-    let query = "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int8
-                     else s.n_distinct::int8
-                 end as entities,
-                 c.reltuples::int8 as versions,
-                 c.relname as tablename,
-                case when c.reltuples = 0 then 0::float8
-                     when s.n_distinct < 0 then (-s.n_distinct)::float8
-                     else greatest(s.n_distinct, 1)::float8 / c.reltuples::float8
-                 end as ratio,
-                 ts.last_pruned_block
-           from pg_namespace n, pg_class c, pg_stats s
-                left outer join subgraphs.table_stats ts
-                     on (ts.table_name = s.tablename
-                     and ts.deployment = $1)
-          where n.nspname = $2
-            and c.relnamespace = n.oid
-            and s.schemaname = n.nspname
-            and s.attname = 'id'
-            and c.relname = s.tablename
-          order by c.relname"
-        .to_string();
-
-    let stats = sql_query(query)
-        .bind::<Integer, _>(site.id)
-        .bind::<Text, _>(site.namespace.as_str())
-        .load::<DbStats>(conn)
-        .map_err(StoreError::from)?;
-
-    Ok(stats.into_iter().map(|s| s.into()).collect())
 }
 
 /// Return by how much the slowest replica connected to the database `conn`
