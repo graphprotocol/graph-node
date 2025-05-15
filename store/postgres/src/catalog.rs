@@ -19,10 +19,11 @@ use std::time::Duration;
 use graph::prelude::anyhow::anyhow;
 use graph::{
     data::subgraph::schema::POI_TABLE,
-    prelude::{lazy_static, StoreError},
+    prelude::{lazy_static, StoreError, BLOCK_NUMBER_MAX},
 };
 
 use crate::{
+    block_range::BLOCK_RANGE_COLUMN,
     pool::ForeignServer,
     primary::{Namespace, Site, NAMESPACE_PUBLIC},
     relational::SqlName,
@@ -190,7 +191,6 @@ pub struct Catalog {
     /// Whether the column `pg_stats.range_bounds_histogram` introduced in
     /// Postgres 17 exists. See the [Postgres
     /// docs](https://www.postgresql.org/docs/17/view-pg-stats.html)
-    #[allow(dead_code)]
     pg_stats_has_range_bounds_histogram: bool,
 }
 
@@ -305,8 +305,40 @@ impl Catalog {
                     tablename: s.tablename,
                     ratio: s.ratio,
                     last_pruned_block: s.last_pruned_block,
+                    block_range_lower: vec![],
+                    block_range_upper: vec![],
                 }
             }
+        }
+
+        #[derive(Queryable, QueryableByName)]
+        struct RangeHistogram {
+            #[diesel(sql_type = Text)]
+            tablename: String,
+            #[diesel(sql_type = Array<Integer>)]
+            lower: Vec<i32>,
+            #[diesel(sql_type = Array<Integer>)]
+            upper: Vec<i32>,
+        }
+
+        fn block_range_histogram(
+            conn: &mut PgConnection,
+            namespace: &Namespace,
+        ) -> Result<Vec<RangeHistogram>, StoreError> {
+            let query = format!(
+                "select tablename, \
+                array_agg(lower(block_range)) lower, \
+                array_agg(coalesce(upper(block_range), {BLOCK_NUMBER_MAX})) upper \
+           from (select tablename,
+                        unnest(range_bounds_histogram::text::int4range[]) block_range
+                   from pg_stats where schemaname = $1 and attname = '{BLOCK_RANGE_COLUMN}') a
+          group by tablename
+          order by tablename"
+            );
+            let result = sql_query(query)
+                .bind::<Text, _>(namespace.as_str())
+                .get_results::<RangeHistogram>(conn)?;
+            Ok(result)
         }
 
         // Get an estimate of number of rows (pg_class.reltuples) and number of
@@ -342,7 +374,34 @@ impl Catalog {
             .load::<DbStats>(conn)
             .map_err(StoreError::from)?;
 
-        Ok(stats.into_iter().map(|s| s.into()).collect())
+        let mut range_histogram = if self.pg_stats_has_range_bounds_histogram {
+            block_range_histogram(conn, &self.site.namespace)?
+        } else {
+            vec![]
+        };
+
+        let stats = stats
+            .into_iter()
+            .map(|s| {
+                let pos = range_histogram
+                    .iter()
+                    .position(|h| h.tablename == s.tablename);
+                let (mut lower, mut upper) = pos
+                    .map(|pos| range_histogram.swap_remove(pos))
+                    .map(|h| (h.lower, h.upper))
+                    .unwrap_or((vec![], vec![]));
+                // Since lower and upper are supposed to be histograms, we
+                // sort them
+                lower.sort_unstable();
+                upper.sort_unstable();
+                let mut vs = VersionStats::from(s);
+                vs.block_range_lower = lower;
+                vs.block_range_upper = upper;
+                vs
+            })
+            .collect::<Vec<_>>();
+
+        Ok(stats)
     }
 }
 
