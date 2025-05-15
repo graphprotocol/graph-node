@@ -8,6 +8,7 @@ use graph::blockchain::{
     client::ChainClient, substreams_block_stream::SubstreamsBlockStream, BlockIngestor,
 };
 use graph::components::network_provider::ChainName;
+use graph::components::store::ChainHeadStore;
 use graph::prelude::MetricsRegistry;
 use graph::slog::trace;
 use graph::substreams::Package;
@@ -15,7 +16,6 @@ use graph::tokio_stream::StreamExt;
 use graph::{
     blockchain::block_stream::BlockStreamEvent,
     cheap_clone::CheapClone,
-    components::store::ChainStore,
     prelude::{async_trait, error, info, DeploymentHash, Logger},
     util::backoff::ExponentialBackoff,
 };
@@ -26,7 +26,7 @@ const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] = include_bytes!(
 );
 
 pub struct SubstreamsBlockIngestor {
-    chain_store: Arc<dyn ChainStore>,
+    chain_store: Arc<dyn ChainHeadStore>,
     client: Arc<ChainClient<super::Chain>>,
     logger: Logger,
     chain_name: ChainName,
@@ -35,7 +35,7 @@ pub struct SubstreamsBlockIngestor {
 
 impl SubstreamsBlockIngestor {
     pub fn new(
-        chain_store: Arc<dyn ChainStore>,
+        chain_store: Arc<dyn ChainHeadStore>,
         client: Arc<ChainClient<super::Chain>>,
         logger: Logger,
         chain_name: ChainName,

@@ -1,5 +1,5 @@
-use anyhow::Error;
-use futures03::{stream::Stream, Future, FutureExt};
+use anyhow::{anyhow, Error};
+use graph::tokio;
 use std::cmp;
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -7,23 +7,24 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use super::block_stream::{
+use graph::blockchain::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
     FirehoseCursor, TriggersAdapterWrapper, BUFFERED_BLOCK_STREAM_SIZE,
 };
-use super::{Block, BlockPtr, Blockchain, TriggerFilterWrapper};
+use graph::blockchain::{Block, BlockPtr, TriggerFilterWrapper};
+use graph::futures03::{stream::Stream, Future, FutureExt};
+use graph::prelude::{DeploymentHash, BLOCK_NUMBER_MAX};
+use graph::slog::{debug, info, trace, warn, Logger};
 
-use crate::components::store::BlockNumber;
-use crate::data::subgraph::UnifiedMappingApiVersion;
-use crate::prelude::*;
+use graph::components::store::BlockNumber;
+use graph::data::subgraph::UnifiedMappingApiVersion;
+
+use crate::Chain;
 
 // A high number here forces a slow start.
 const STARTING_PREVIOUS_TRIGGERS_PER_BLOCK: f64 = 1_000_000.0;
 
-enum BlockStreamState<C>
-where
-    C: Blockchain,
-{
+enum BlockStreamState {
     /// Starting or restarting reconciliation.
     ///
     /// Valid next states: Reconciliation
@@ -32,13 +33,13 @@ where
     /// The BlockStream is reconciling the subgraph store state with the chain store state.
     ///
     /// Valid next states: YieldingBlocks, Idle, BeginReconciliation (in case of revert)
-    Reconciliation(Pin<Box<dyn Future<Output = Result<NextBlocks<C>, Error>> + Send>>),
+    Reconciliation(Pin<Box<dyn Future<Output = Result<NextBlocks, Error>> + Send>>),
 
     /// The BlockStream is emitting blocks that must be processed in order to bring the subgraph
     /// store up to date with the chain store.
     ///
     /// Valid next states: BeginReconciliation
-    YieldingBlocks(Box<VecDeque<BlockWithTriggers<C>>>),
+    YieldingBlocks(Box<VecDeque<BlockWithTriggers<Chain>>>),
 
     /// The BlockStream experienced an error and is pausing before attempting to produce
     /// blocks again.
@@ -55,16 +56,13 @@ where
 
 /// A single next step to take in reconciling the state of the subgraph store with the state of the
 /// chain store.
-enum ReconciliationStep<C>
-where
-    C: Blockchain,
-{
+enum ReconciliationStep {
     /// Revert(to) the block the subgraph should be reverted to, so it becomes the new subgraph
     /// head.
     Revert(BlockPtr),
 
     /// Move forwards, processing one or more blocks. Second element is the block range size.
-    ProcessDescendantBlocks(Vec<BlockWithTriggers<C>>, BlockNumber),
+    ProcessDescendantBlocks(Vec<BlockWithTriggers<Chain>>, BlockNumber),
 
     /// This step is a no-op, but we need to check again for a next step.
     Retry,
@@ -74,18 +72,13 @@ where
     Done,
 }
 
-struct PollingBlockStreamContext<C>
-where
-    C: Blockchain,
-{
-    chain_store: Arc<dyn ChainStore>,
-    adapter: Arc<TriggersAdapterWrapper<C>>,
-    node_id: NodeId,
+struct PollingBlockStreamContext {
+    adapter: Arc<TriggersAdapterWrapper<Chain>>,
     subgraph_id: DeploymentHash,
     // This is not really a block number, but the (unsigned) difference
     // between two block numbers
     reorg_threshold: BlockNumber,
-    filter: Arc<TriggerFilterWrapper<C>>,
+    filter: Arc<TriggerFilterWrapper<Chain>>,
     start_blocks: Vec<BlockNumber>,
     logger: Logger,
     previous_triggers_per_block: f64,
@@ -98,12 +91,10 @@ where
     current_block: Option<BlockPtr>,
 }
 
-impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
+impl Clone for PollingBlockStreamContext {
     fn clone(&self) -> Self {
         Self {
-            chain_store: self.chain_store.cheap_clone(),
             adapter: self.adapter.clone(),
-            node_id: self.node_id.clone(),
             subgraph_id: self.subgraph_id.clone(),
             reorg_threshold: self.reorg_threshold,
             filter: self.filter.clone(),
@@ -119,37 +110,29 @@ impl<C: Blockchain> Clone for PollingBlockStreamContext<C> {
     }
 }
 
-pub struct PollingBlockStream<C: Blockchain> {
-    state: BlockStreamState<C>,
+pub struct PollingBlockStream {
+    state: BlockStreamState,
     consecutive_err_count: u32,
     chain_head_update_stream: ChainHeadUpdateStream,
-    ctx: PollingBlockStreamContext<C>,
+    ctx: PollingBlockStreamContext,
 }
 
 // This is the same as `ReconciliationStep` but without retries.
-enum NextBlocks<C>
-where
-    C: Blockchain,
-{
+enum NextBlocks {
     /// Blocks and range size
-    Blocks(VecDeque<BlockWithTriggers<C>>, BlockNumber),
+    Blocks(VecDeque<BlockWithTriggers<Chain>>, BlockNumber),
 
     // The payload is block the subgraph should be reverted to, so it becomes the new subgraph head.
     Revert(BlockPtr),
     Done,
 }
 
-impl<C> PollingBlockStream<C>
-where
-    C: Blockchain,
-{
+impl PollingBlockStream {
     pub fn new(
-        chain_store: Arc<dyn ChainStore>,
         chain_head_update_stream: ChainHeadUpdateStream,
-        adapter: Arc<TriggersAdapterWrapper<C>>,
-        node_id: NodeId,
+        adapter: Arc<TriggersAdapterWrapper<Chain>>,
         subgraph_id: DeploymentHash,
-        filter: Arc<TriggerFilterWrapper<C>>,
+        filter: Arc<TriggerFilterWrapper<Chain>>,
         start_blocks: Vec<BlockNumber>,
         reorg_threshold: BlockNumber,
         logger: Logger,
@@ -164,9 +147,7 @@ where
             chain_head_update_stream,
             ctx: PollingBlockStreamContext {
                 current_block: start_block,
-                chain_store,
                 adapter,
-                node_id,
                 subgraph_id,
                 reorg_threshold,
                 logger,
@@ -182,12 +163,9 @@ where
     }
 }
 
-impl<C> PollingBlockStreamContext<C>
-where
-    C: Blockchain,
-{
+impl PollingBlockStreamContext {
     /// Perform reconciliation steps until there are blocks to yield or we are up-to-date.
-    async fn next_blocks(&self) -> Result<NextBlocks<C>, Error> {
+    async fn next_blocks(&self) -> Result<NextBlocks, Error> {
         let ctx = self.clone();
 
         loop {
@@ -212,7 +190,7 @@ where
     }
 
     /// Determine the next reconciliation step. Does not modify Store or ChainStore.
-    async fn get_next_step(&self) -> Result<ReconciliationStep<C>, Error> {
+    async fn get_next_step(&self) -> Result<ReconciliationStep, Error> {
         let ctx = self.clone();
         let start_blocks = self.start_blocks.clone();
         let max_block_range_size = self.max_block_range_size;
@@ -498,14 +476,14 @@ where
     }
 }
 
-impl<C: Blockchain> BlockStream<C> for PollingBlockStream<C> {
+impl BlockStream<Chain> for PollingBlockStream {
     fn buffer_size_hint(&self) -> usize {
         BUFFERED_BLOCK_STREAM_SIZE
     }
 }
 
-impl<C: Blockchain> Stream for PollingBlockStream<C> {
-    type Item = Result<BlockStreamEvent<C>, BlockStreamError>;
+impl Stream for PollingBlockStream {
+    type Item = Result<BlockStreamEvent<Chain>, BlockStreamError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let result = loop {

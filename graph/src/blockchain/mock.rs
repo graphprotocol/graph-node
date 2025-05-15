@@ -2,7 +2,11 @@ use crate::{
     bail,
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator, SourceableStore},
+        network_provider::ChainName,
+        store::{
+            BlockNumber, ChainHeadStore, ChainIdStore, DeploymentCursorTracker, DeploymentLocator,
+            SourceableStore,
+        },
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::UnifiedMappingApiVersion,
@@ -438,7 +442,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn chain_store(&self) -> std::sync::Arc<dyn crate::components::store::ChainStore> {
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
         todo!()
     }
 
@@ -472,6 +476,23 @@ pub struct MockChainStore {
 }
 
 #[async_trait]
+impl ChainHeadStore for MockChainStore {
+    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
+    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
+        unimplemented!()
+    }
+    async fn set_chain_head(
+        self: Arc<Self>,
+        _block: Arc<dyn Block>,
+        _cursor: String,
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+}
+
+#[async_trait]
 impl ChainStore for MockChainStore {
     async fn block_ptrs_by_numbers(
         self: Arc<Self>,
@@ -500,19 +521,6 @@ impl ChainStore for MockChainStore {
         self: Arc<Self>,
         _ancestor_count: BlockNumber,
     ) -> Result<Option<H256>, Error> {
-        unimplemented!()
-    }
-    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
-        unimplemented!()
-    }
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
-        unimplemented!()
-    }
-    async fn set_chain_head(
-        self: Arc<Self>,
-        _block: Arc<dyn Block>,
-        _cursor: String,
-    ) -> Result<(), Error> {
         unimplemented!()
     }
     async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<Value>, Error> {
@@ -562,7 +570,20 @@ impl ChainStore for MockChainStore {
     fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
-    fn set_chain_identifier(&self, _ident: &ChainIdentifier) -> Result<(), Error> {
+    fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore> {
+        self.clone()
+    }
+}
+
+impl ChainIdStore for MockChainStore {
+    fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
+        unimplemented!()
+    }
+    fn set_chain_identifier(
+        &self,
+        _name: &ChainName,
+        _ident: &ChainIdentifier,
+    ) -> Result<(), Error> {
         unimplemented!()
     }
 }

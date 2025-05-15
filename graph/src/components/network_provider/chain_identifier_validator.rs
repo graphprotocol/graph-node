@@ -1,14 +1,14 @@
-use anyhow::anyhow;
+use std::sync::Arc;
+
 use thiserror::Error;
 
 use crate::blockchain::BlockHash;
 use crate::blockchain::ChainIdentifier;
 use crate::components::network_provider::ChainName;
-use crate::components::store::BlockStore;
-use crate::components::store::ChainStore;
+use crate::components::store::ChainIdStore;
 
 /// Additional requirements for stores that are necessary for provider checks.
-pub trait ChainIdentifierStore: Send + Sync + 'static {
+pub trait ChainIdentifierValidator: Send + Sync + 'static {
     /// Verifies that the chain identifier returned by the network provider
     /// matches the previously stored value.
     ///
@@ -17,7 +17,7 @@ pub trait ChainIdentifierStore: Send + Sync + 'static {
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
-    ) -> Result<(), ChainIdentifierStoreError>;
+    ) -> Result<(), ChainIdentifierValidationError>;
 
     /// Saves the provided identifier that will be used as the source of truth
     /// for future validations.
@@ -25,11 +25,11 @@ pub trait ChainIdentifierStore: Send + Sync + 'static {
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
-    ) -> Result<(), ChainIdentifierStoreError>;
+    ) -> Result<(), ChainIdentifierValidationError>;
 }
 
 #[derive(Debug, Error)]
-pub enum ChainIdentifierStoreError {
+pub enum ChainIdentifierValidationError {
     #[error("identifier not set for chain '{0}'")]
     IdentifierNotSet(ChainName),
 
@@ -51,28 +51,33 @@ pub enum ChainIdentifierStoreError {
     Store(#[source] anyhow::Error),
 }
 
-impl<C, B> ChainIdentifierStore for B
-where
-    C: ChainStore,
-    B: BlockStore<ChainStore = C>,
-{
+pub fn chain_id_validator(store: Arc<dyn ChainIdStore>) -> Arc<dyn ChainIdentifierValidator> {
+    Arc::new(ChainIdentifierStore::new(store))
+}
+
+pub(crate) struct ChainIdentifierStore {
+    store: Arc<dyn ChainIdStore>,
+}
+
+impl ChainIdentifierStore {
+    pub fn new(store: Arc<dyn ChainIdStore>) -> Self {
+        Self { store }
+    }
+}
+
+impl ChainIdentifierValidator for ChainIdentifierStore {
     fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
-    ) -> Result<(), ChainIdentifierStoreError> {
-        let chain_store = self.chain_store(&chain_name).ok_or_else(|| {
-            ChainIdentifierStoreError::Store(anyhow!(
-                "unable to get store for chain '{chain_name}'"
-            ))
-        })?;
-
-        let store_identifier = chain_store
-            .chain_identifier()
-            .map_err(|err| ChainIdentifierStoreError::Store(err))?;
+    ) -> Result<(), ChainIdentifierValidationError> {
+        let store_identifier = self
+            .store
+            .chain_identifier(chain_name)
+            .map_err(|err| ChainIdentifierValidationError::Store(err))?;
 
         if store_identifier.is_default() {
-            return Err(ChainIdentifierStoreError::IdentifierNotSet(
+            return Err(ChainIdentifierValidationError::IdentifierNotSet(
                 chain_name.clone(),
             ));
         }
@@ -84,7 +89,7 @@ where
             // but it's possible that it will be created by Firehose. Firehose always returns "0"
             // for `net_version`, so we need to allow switching between the two.
             if store_identifier.net_version != "0" && chain_identifier.net_version != "0" {
-                return Err(ChainIdentifierStoreError::NetVersionMismatch {
+                return Err(ChainIdentifierValidationError::NetVersionMismatch {
                     chain_name: chain_name.clone(),
                     store_net_version: store_identifier.net_version,
                     chain_net_version: chain_identifier.net_version.clone(),
@@ -93,7 +98,7 @@ where
         }
 
         if store_identifier.genesis_block_hash != chain_identifier.genesis_block_hash {
-            return Err(ChainIdentifierStoreError::GenesisBlockHashMismatch {
+            return Err(ChainIdentifierValidationError::GenesisBlockHashMismatch {
                 chain_name: chain_name.clone(),
                 store_genesis_block_hash: store_identifier.genesis_block_hash,
                 chain_genesis_block_hash: chain_identifier.genesis_block_hash.clone(),
@@ -107,15 +112,9 @@ where
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
-    ) -> Result<(), ChainIdentifierStoreError> {
-        let chain_store = self.chain_store(&chain_name).ok_or_else(|| {
-            ChainIdentifierStoreError::Store(anyhow!(
-                "unable to get store for chain '{chain_name}'"
-            ))
-        })?;
-
-        chain_store
-            .set_chain_identifier(chain_identifier)
-            .map_err(|err| ChainIdentifierStoreError::Store(err))
+    ) -> Result<(), ChainIdentifierValidationError> {
+        self.store
+            .set_chain_identifier(chain_name, chain_identifier)
+            .map_err(|err| ChainIdentifierValidationError::Store(err))
     }
 }

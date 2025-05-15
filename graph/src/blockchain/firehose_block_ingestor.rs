@@ -2,7 +2,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use crate::{
     blockchain::Block as BlockchainBlock,
-    components::store::ChainStore,
+    components::store::ChainHeadStore,
     firehose::{self, decode_firehose_block, HeaderOnly},
     prelude::{error, info, Logger},
     util::backoff::ExponentialBackoff,
@@ -40,7 +40,7 @@ pub struct FirehoseBlockIngestor<M, C: Blockchain>
 where
     M: prost::Message + BlockchainBlock + Default + 'static,
 {
-    chain_store: Arc<dyn ChainStore>,
+    chain_head_store: Arc<dyn ChainHeadStore>,
     client: Arc<ChainClient<C>>,
     logger: Logger,
     default_transforms: Vec<Transforms>,
@@ -54,13 +54,13 @@ where
     M: prost::Message + BlockchainBlock + Default + 'static,
 {
     pub fn new(
-        chain_store: Arc<dyn ChainStore>,
+        chain_head_store: Arc<dyn ChainHeadStore>,
         client: Arc<ChainClient<C>>,
         logger: Logger,
         chain_name: ChainName,
     ) -> FirehoseBlockIngestor<M, C> {
         FirehoseBlockIngestor {
-            chain_store,
+            chain_head_store,
             client,
             logger,
             phantom: PhantomData {},
@@ -78,7 +78,7 @@ where
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
         loop {
-            match self.chain_store.clone().chain_head_cursor() {
+            match self.chain_head_store.clone().chain_head_cursor() {
                 Ok(cursor) => return cursor.unwrap_or_default(),
                 Err(e) => {
                     error!(self.logger, "Fetching chain head cursor failed: {:#}", e);
@@ -149,7 +149,7 @@ where
 
         trace!(self.logger, "Received new block to ingest {}", block.ptr());
 
-        self.chain_store
+        self.chain_head_store
             .clone()
             .set_chain_head(block, response.cursor.clone())
             .await

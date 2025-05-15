@@ -9,6 +9,7 @@ use super::*;
 use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
+use crate::components::network_provider::ChainName;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
@@ -442,20 +443,55 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }
 
-pub trait BlockStore: Send + Sync + 'static {
+pub trait BlockStore: ChainIdStore + Send + Sync + 'static {
     type ChainStore: ChainStore;
 
-    fn create_chain_store(
-        &self,
-        network: &str,
-        ident: ChainIdentifier,
-    ) -> anyhow::Result<Arc<Self::ChainStore>>;
     fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
+}
+
+/// An interface for tracking the chain head in the store used by most chain
+/// implementations
+#[async_trait]
+pub trait ChainHeadStore: Send + Sync {
+    /// Get the current head block pointer for this chain.
+    /// Any changes to the head block pointer will be to a block with a larger block number, never
+    /// to a block with a smaller or equal block number.
+    ///
+    /// The head block pointer will be None on initial set up.
+    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
+
+    /// Get the current head block cursor for this chain.
+    ///
+    /// The head block cursor will be None on initial set up.
+    fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
+
+    /// This method does actually three operations:
+    /// - Upserts received block into blocks table
+    /// - Update chain head block into networks table
+    /// - Update chain head cursor into networks table
+    async fn set_chain_head(
+        self: Arc<Self>,
+        block: Arc<dyn Block>,
+        cursor: String,
+    ) -> Result<(), Error>;
+}
+
+#[async_trait]
+pub trait ChainIdStore: Send + Sync + 'static {
+    /// Return the chain identifier for this store.
+    fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
+
+    /// Update the chain identifier for this store.
+    fn set_chain_identifier(
+        &self,
+        chain_name: &ChainName,
+        ident: &ChainIdentifier,
+    ) -> Result<(), Error>;
 }
 
 /// Common trait for blockchain store implementations.
 #[async_trait]
-pub trait ChainStore: Send + Sync + 'static {
+pub trait ChainStore: ChainHeadStore {
     /// Get a pointer to this blockchain's genesis block.
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
@@ -484,28 +520,6 @@ pub trait ChainStore: Send + Sync + 'static {
         self: Arc<Self>,
         ancestor_count: BlockNumber,
     ) -> Result<Option<H256>, Error>;
-
-    /// Get the current head block pointer for this chain.
-    /// Any changes to the head block pointer will be to a block with a larger block number, never
-    /// to a block with a smaller or equal block number.
-    ///
-    /// The head block pointer will be None on initial set up.
-    async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
-
-    /// Get the current head block cursor for this chain.
-    ///
-    /// The head block cursor will be None on initial set up.
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
-
-    /// This method does actually three operations:
-    /// - Upserts received block into blocks table
-    /// - Update chain head block into networks table
-    /// - Update chain head cursor into networks table
-    async fn set_chain_head(
-        self: Arc<Self>,
-        block: Arc<dyn Block>,
-        cursor: String,
-    ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
     async fn blocks(
@@ -584,8 +598,9 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Return the chain identifier for this store.
     fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
 
-    /// Update the chain identifier for this store.
-    fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error>;
+    /// Workaround for Rust issue #65991 that keeps us from using an
+    /// `Arc<dyn ChainStore>` as an `Arc<dyn ChainHeadStore>`
+    fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

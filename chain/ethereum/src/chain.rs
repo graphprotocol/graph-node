@@ -13,7 +13,7 @@ use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
     retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
-    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
+    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry, StoreError,
 };
 use graph::schema::InputSchema;
 use graph::slog::{debug, error, trace, warn};
@@ -25,7 +25,6 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        polling_block_stream::PollingBlockStream,
         Block, BlockPtr, Blockchain, ChainHeadUpdateListener, IngestorError,
         RuntimeAdapter as RuntimeAdapterTrait, TriggerFilter as _,
     },
@@ -34,7 +33,7 @@ use graph::{
     firehose,
     prelude::{
         async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Logger, LoggerFactory, NodeId,
+        Logger, LoggerFactory,
     },
 };
 use prost::Message;
@@ -49,6 +48,7 @@ use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
 use crate::network::EthereumNetworkAdapters;
+use crate::polling_block_stream::PollingBlockStream;
 use crate::runtime::runtime_adapter::eth_call_gas;
 use crate::{
     adapter::EthereumAdapter as _,
@@ -175,7 +175,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             .logger_factory
             .subgraph_logger(&deployment)
             .new(o!("component" => "BlockStream"));
-        let chain_store = chain.chain_store();
         let chain_head_update_stream = chain
             .chain_head_update_listener
             .subscribe(chain.name.to_string(), logger.clone());
@@ -213,10 +212,8 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         };
 
         Ok(Box::new(PollingBlockStream::new(
-            chain_store,
             chain_head_update_stream,
             Arc::new(adapter),
-            chain.node_id.clone(),
             deployment.hash,
             filter,
             start_blocks,
@@ -336,7 +333,6 @@ impl RuntimeAdapterBuilder for EthereumRuntimeAdapterBuilder {
 pub struct Chain {
     logger_factory: LoggerFactory,
     pub name: ChainName,
-    node_id: NodeId,
     registry: Arc<MetricsRegistry>,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
@@ -363,7 +359,6 @@ impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
         name: ChainName,
-        node_id: NodeId,
         registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
@@ -381,7 +376,6 @@ impl Chain {
         Chain {
             logger_factory,
             name,
-            node_id,
             registry,
             client,
             chain_store,
@@ -401,6 +395,13 @@ impl Chain {
     /// Returns a handler to this chain's [`EthereumCallCache`].
     pub fn call_cache(&self) -> Arc<dyn EthereumCallCache> {
         self.call_cache.clone()
+    }
+
+    pub async fn block_number(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+        self.chain_store.block_number(hash).await
     }
 
     // TODO: This is only used to build the block stream which could prolly
@@ -507,8 +508,8 @@ impl Blockchain for Chain {
         }
     }
 
-    fn chain_store(&self) -> Arc<dyn ChainStore> {
-        self.chain_store.clone()
+    async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        self.chain_store.cheap_clone().chain_head_ptr().await
     }
 
     async fn block_pointer_from_number(
@@ -578,7 +579,7 @@ impl Blockchain for Chain {
         let ingestor: Box<dyn BlockIngestor> = match self.chain_client().as_ref() {
             ChainClient::Firehose(_) => {
                 let ingestor = FirehoseBlockIngestor::<HeaderOnlyBlock, Self>::new(
-                    self.chain_store.cheap_clone(),
+                    self.chain_store.cheap_clone().as_head_store(),
                     self.chain_client(),
                     self.logger_factory
                         .component_logger("EthereumFirehoseBlockIngestor", None),
@@ -615,7 +616,7 @@ impl Blockchain for Chain {
                     logger,
                     graph::env::ENV_VARS.reorg_threshold(),
                     self.chain_client(),
-                    self.chain_store().cheap_clone(),
+                    self.chain_store.cheap_clone(),
                     self.polling_ingestor_interval,
                     self.name.clone(),
                 )?)

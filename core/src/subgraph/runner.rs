@@ -6,7 +6,6 @@ use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use anyhow::Context as _;
-use async_trait::async_trait;
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
@@ -1141,7 +1140,7 @@ where
         if cached_head_ptr.is_none()
             || close_to_chain_head(&block_ptr, &cached_head_ptr, CAUGHT_UP_DISTANCE)
         {
-            self.state.cached_head_ptr = self.inputs.chain.chain_store().chain_head_ptr().await?;
+            self.state.cached_head_ptr = self.inputs.chain.chain_head_ptr().await?;
         }
         let is_caught_up =
             close_to_chain_head(&block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
@@ -1162,6 +1161,7 @@ where
         &mut self,
         event: Option<Result<BlockStreamEvent<C>, CancelableError<BlockStreamError>>>,
     ) -> Result<Action, Error> {
+        let stopwatch = &self.metrics.stream.stopwatch;
         let action = match event {
             Some(Ok(BlockStreamEvent::ProcessWasmBlock(
                 block_ptr,
@@ -1170,11 +1170,7 @@ where
                 handler,
                 cursor,
             ))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
+                let _section = stopwatch.start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
                 let res = self
                     .handle_process_wasm_block(block_ptr.clone(), block_time, data, handler, cursor)
                     .await;
@@ -1182,19 +1178,11 @@ where
                 self.handle_action(start, block_ptr, res).await?
             }
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(PROCESS_BLOCK_SECTION_NAME);
+                let _section = stopwatch.start_section(PROCESS_BLOCK_SECTION_NAME);
                 self.handle_process_block(block, cursor).await?
             }
             Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
-                let _section = self
-                    .metrics
-                    .stream
-                    .stopwatch
-                    .start_section(HANDLE_REVERT_SECTION_NAME);
+                let _section = stopwatch.start_section(HANDLE_REVERT_SECTION_NAME);
                 self.handle_revert(revert_to_ptr, cursor).await?
             }
             // Log and drop the errors from the block_stream
@@ -1333,33 +1321,7 @@ impl Action {
     }
 }
 
-#[async_trait]
-trait StreamEventHandler<C: Blockchain> {
-    async fn handle_process_wasm_block(
-        &mut self,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, ProcessingError>;
-    async fn handle_process_block(
-        &mut self,
-        block: BlockWithTriggers<C>,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, Error>;
-    async fn handle_revert(
-        &mut self,
-        revert_to_ptr: BlockPtr,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, Error>;
-    async fn handle_err(&mut self, err: CancelableError<BlockStreamError>)
-        -> Result<Action, Error>;
-    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
-}
-
-#[async_trait]
-impl<C, T> StreamEventHandler<C> for SubgraphRunner<C, T>
+impl<C, T> SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
@@ -1463,7 +1425,7 @@ where
             && !self.inputs.store.is_deployment_synced()
             && !close_to_chain_head(
                 &block_ptr,
-                &self.inputs.chain.chain_store().chain_head_ptr().await?,
+                &self.inputs.chain.chain_head_ptr().await?,
                 // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
                 // behind the chain head.
                 1000,

@@ -290,7 +290,7 @@ async fn main_inner() {
         let mut provider_checks: Vec<Arc<dyn network_provider::ProviderCheck>> = Vec::new();
 
         if env_vars.genesis_validation_enabled {
-            provider_checks.push(Arc::new(network_provider::GenesisHashCheck::new(
+            provider_checks.push(Arc::new(network_provider::GenesisHashCheck::from_id_store(
                 block_store.clone(),
             )));
         }
@@ -315,7 +315,6 @@ async fn main_inner() {
         let blockchain_map = network_adapters
             .blockchain_map(
                 &env_vars,
-                &node_id,
                 &logger,
                 block_store,
                 &logger_factory,

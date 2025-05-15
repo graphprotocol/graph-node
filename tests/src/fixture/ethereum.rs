@@ -40,7 +40,6 @@ pub async fn chain(
         mock_registry,
         chain_store,
         firehose_endpoints,
-        node_id,
     } = CommonChainConfig::new(test_name, stores).await;
 
     let client = Arc::new(ChainClient::<Chain>::new_firehose(firehose_endpoints));
@@ -53,7 +52,6 @@ pub async fn chain(
     let chain = Chain::new(
         logger_factory,
         stores.network_name.clone(),
-        node_id,
         mock_registry,
         chain_store.cheap_clone(),
         chain_store,
