@@ -186,6 +186,12 @@ pub struct Catalog {
     /// Whether the database supports `int4_minmax_multi_ops` etc.
     /// See the [Postgres docs](https://www.postgresql.org/docs/15/brin-builtin-opclasses.html)
     has_minmax_multi_ops: bool,
+
+    /// Whether the column `pg_stats.range_bounds_histogram` introduced in
+    /// Postgres 17 exists. See the [Postgres
+    /// docs](https://www.postgresql.org/docs/17/view-pg-stats.html)
+    #[allow(dead_code)]
+    pg_stats_has_range_bounds_histogram: bool,
 }
 
 impl Catalog {
@@ -199,6 +205,7 @@ impl Catalog {
         let text_columns = get_text_columns(conn, &site.namespace)?;
         let use_poi = supports_proof_of_indexing(conn, &site.namespace)?;
         let has_minmax_multi_ops = has_minmax_multi_ops(conn)?;
+        let pg_stats_has_range_bounds_histogram = pg_stats_has_range_bounds_histogram(conn)?;
 
         Ok(Catalog {
             site,
@@ -207,6 +214,7 @@ impl Catalog {
             use_bytea_prefix,
             entities_with_causality_region: entities_with_causality_region.into_iter().collect(),
             has_minmax_multi_ops,
+            pg_stats_has_range_bounds_histogram,
         })
     }
 
@@ -217,6 +225,7 @@ impl Catalog {
         entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Self, StoreError> {
         let has_minmax_multi_ops = has_minmax_multi_ops(conn)?;
+        let pg_stats_has_range_bounds_histogram = pg_stats_has_range_bounds_histogram(conn)?;
 
         Ok(Catalog {
             site,
@@ -228,6 +237,7 @@ impl Catalog {
             use_bytea_prefix: true,
             entities_with_causality_region,
             has_minmax_multi_ops,
+            pg_stats_has_range_bounds_histogram,
         })
     }
 
@@ -245,6 +255,7 @@ impl Catalog {
             use_bytea_prefix: true,
             entities_with_causality_region,
             has_minmax_multi_ops: false,
+            pg_stats_has_range_bounds_histogram: false,
         })
     }
 
@@ -973,6 +984,28 @@ fn has_minmax_multi_ops(conn: &mut PgConnection) -> Result<bool, StoreError> {
     }
 
     Ok(sql_query(QUERY).get_result::<Ops>(conn)?.has_ops)
+}
+
+/// Check whether the database for `conn` has the column
+/// `pg_stats.range_bounds_histogram` introduced in Postgres 17
+fn pg_stats_has_range_bounds_histogram(conn: &mut PgConnection) -> Result<bool, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct HasIt {
+        #[diesel(sql_type = Bool)]
+        has_it: bool,
+    }
+
+    let query = "
+          select exists (\
+            select 1 \
+              from information_schema.columns \
+             where table_name = 'pg_stats' \
+               and table_schema = 'pg_catalog' \
+               and column_name = 'range_bounds_histogram') as has_it";
+    sql_query(query)
+        .get_result::<HasIt>(conn)
+        .map(|h| h.has_it)
+        .map_err(StoreError::from)
 }
 
 pub(crate) fn histogram_bounds(
