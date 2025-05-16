@@ -331,7 +331,7 @@ mod test {
         blockchain::{DataSource as _, UnresolvedDataSource as _},
         components::link_resolver::LinkResolver,
         data::subgraph::LATEST_VERSION,
-        prelude::{async_trait, serde_yaml, JsonValueStream, Link},
+        prelude::{async_trait, serde_yaml, DeploymentHash, JsonValueStream, Link},
         slog::{o, Discard, Logger},
         substreams::{
             module::{
@@ -702,6 +702,13 @@ mod test {
         }
 
         fn with_retries(&self) -> Box<dyn LinkResolver> {
+            unimplemented!()
+        }
+
+        fn for_deployment(
+            &self,
+            _deployment: DeploymentHash,
+        ) -> Result<Box<dyn LinkResolver>, Error> {
             unimplemented!()
         }
 

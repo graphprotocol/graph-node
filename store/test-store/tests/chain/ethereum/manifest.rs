@@ -91,6 +91,13 @@ impl LinkResolverTrait for TextResolver {
         Box::new(self.clone())
     }
 
+    fn for_deployment(
+        &self,
+        _deployment: DeploymentHash,
+    ) -> Result<Box<dyn LinkResolverTrait>, anyhow::Error> {
+        Ok(Box::new(self.clone()))
+    }
+
     async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)

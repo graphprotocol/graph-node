@@ -74,6 +74,13 @@ impl LinkResolverTrait for IpfsResolver {
         Box::new(s)
     }
 
+    fn for_deployment(
+        &self,
+        _deployment: DeploymentHash,
+    ) -> Result<Box<dyn LinkResolverTrait>, Error> {
+        Ok(Box::new(self.cheap_clone()))
+    }
+
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         let path = ContentPath::new(&link.link)?;
         let timeout = self.timeout;
