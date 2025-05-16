@@ -928,6 +928,14 @@ pub struct VersionStats {
     pub ratio: f64,
     /// The last block to which this table was pruned
     pub last_pruned_block: Option<BlockNumber>,
+    /// Histograms for the lower and upper bounds of the block ranges in
+    /// this table. Each histogram bucket contains roughly the same number
+    /// of rows; values might be repeated to achieve that. The vectors are
+    /// empty if the table hasn't been analyzed, the subgraph is stored in
+    /// Postgres version 16 or lower, or if the table doesn't have a
+    /// block_range column.
+    pub block_range_lower: Vec<BlockNumber>,
+    pub block_range_upper: Vec<BlockNumber>,
 }
 
 /// What phase of pruning we are working on
@@ -1091,11 +1099,22 @@ impl PruneRequest {
             return None;
         }
 
-        // Estimate how much data we will throw away; we assume that
-        // entity versions are distributed evenly across all blocks so
-        // that `history_pct` will tell us how much of that data pruning
-        // will remove.
-        let removal_ratio = self.history_pct(stats) * (1.0 - stats.ratio);
+        let removal_ratio = if stats.block_range_upper.is_empty()
+            || ENV_VARS.store.prune_disable_range_bound_estimation
+        {
+            // Estimate how much data we will throw away; we assume that
+            // entity versions are distributed evenly across all blocks so
+            // that `history_pct` will tell us how much of that data pruning
+            // will remove.
+            self.history_pct(stats) * (1.0 - stats.ratio)
+        } else {
+            // This estimate is more accurate than the one above since it
+            // does not assume anything about the distribution of entities
+            // and versions but uses the estimates from Postgres statistics.
+            // Of course, we can only use it if we have statistics
+            self.remove_pct_from_bounds(stats)
+        };
+
         if removal_ratio >= self.rebuild_threshold {
             Some(PruningStrategy::Rebuild)
         } else if removal_ratio >= self.delete_threshold {
@@ -1119,6 +1138,18 @@ impl PruneRequest {
         } else {
             1.0 - self.history_blocks as f64 / total_blocks as f64
         }
+    }
+
+    /// Return the fraction of entities that we will remove according to the
+    /// histogram bounds in `stats`. That fraction can be estimated as the
+    /// fraction of histogram buckets that end before `self.earliest_block`
+    fn remove_pct_from_bounds(&self, stats: &VersionStats) -> f64 {
+        stats
+            .block_range_upper
+            .iter()
+            .filter(|b| **b <= self.earliest_block)
+            .count() as f64
+            / stats.block_range_upper.len() as f64
     }
 }
 

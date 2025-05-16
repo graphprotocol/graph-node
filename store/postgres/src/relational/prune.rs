@@ -267,7 +267,7 @@ impl Layout {
             reporter.finish_analyze_table(table.name.as_str());
             cancel.check_cancel()?;
         }
-        let stats = catalog::stats(conn, &self.site)?;
+        let stats = self.catalog.stats(conn)?;
 
         let analyzed: Vec<_> = tables.iter().map(|table| table.name.as_str()).collect();
         reporter.finish_analyze(&stats, &analyzed);

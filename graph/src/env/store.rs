@@ -114,6 +114,10 @@ pub struct EnvVarsStore {
     /// For how many prune runs per deployment to keep status information.
     /// Set by `GRAPH_STORE_HISTORY_KEEP_STATUS`. The default is 5
     pub prune_keep_history: usize,
+    /// Temporary switch to disable range bound estimation for pruning.
+    /// Set by `GRAPH_STORE_PRUNE_DISABLE_RANGE_BOUND_ESTIMATION`.
+    /// Defaults to false. Remove after 2025-07-15
+    pub prune_disable_range_bound_estimation: bool,
     /// How long to accumulate changes into a batch before a write has to
     /// happen. Set by the environment variable
     /// `GRAPH_STORE_WRITE_BATCH_DURATION` in seconds. The default is 300s.
@@ -188,6 +192,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             delete_threshold: x.delete_threshold.0,
             history_slack_factor: x.history_slack_factor.0,
             prune_keep_history: x.prune_keep_status,
+            prune_disable_range_bound_estimation: x.prune_disable_range_bound_estimation,
             write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
             write_batch_size: x.write_batch_size * 1_000,
             create_gin_indexes: x.create_gin_indexes,
@@ -263,6 +268,11 @@ pub struct InnerStore {
     history_slack_factor: HistorySlackF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_KEEP_STATUS", default = "5")]
     prune_keep_status: usize,
+    #[envconfig(
+        from = "GRAPH_STORE_PRUNE_DISABLE_RANGE_BOUND_ESTIMATION",
+        default = "false"
+    )]
+    prune_disable_range_bound_estimation: bool,
     #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_DURATION", default = "300")]
     write_batch_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_SIZE", default = "10000")]

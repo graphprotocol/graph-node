@@ -648,6 +648,8 @@ fn prune() {
                 tablename: USER.to_ascii_lowercase(),
                 ratio: 3.0 / 5.0,
                 last_pruned_block: None,
+                block_range_lower: vec![],
+                block_range_upper: vec![],
             };
             assert_eq!(
                 Some(strategy),
