@@ -309,11 +309,6 @@ fn build_glob_set(patterns: &[String], logger: &Logger) -> GlobSet {
 
 /// Determines if an event should be processed based on exclusion patterns
 fn should_process_event(event: &Event, base_dir: &Path, exclusion_set: &GlobSet) -> bool {
-    // If no exclusions, process all events
-    if exclusion_set.is_empty() {
-        return true;
-    }
-
     // Check each path in the event
     for path in event.paths.iter() {
         // Get the relative path from the base directory
