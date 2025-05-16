@@ -7,14 +7,13 @@ use graph::{
     components::link_resolver::FileLinkResolver,
     env::EnvVars,
     log::logger,
-    slog::{error, info},
+    prelude::{CheapClone, DeploymentHash, LinkResolver, SubgraphName},
+    slog::{error, info, Logger},
     tokio::{self, sync::mpsc},
 };
+use graph_core::polling_monitor::ipfs_service;
 use graph_node::{
-    dev::{
-        helpers::DevModeContext,
-        watcher::{parse_manifest_args, watch_subgraphs},
-    },
+    dev::watcher::{parse_manifest_args, watch_subgraphs},
     launcher,
     opt::Opt,
 };
@@ -115,10 +114,34 @@ fn build_args(dev_opt: &DevOpt, db_url: &str) -> Result<Opt> {
     Ok(opt)
 }
 
-async fn run_graph_node(opt: Opt, ctx: Option<DevModeContext>) -> Result<()> {
+async fn run_graph_node(
+    logger: &Logger,
+    opt: Opt,
+    link_resolver: Arc<dyn LinkResolver>,
+    subgraph_updates_channel: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
+) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
-    launcher::run(opt, env_vars, ctx).await;
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
+        .await
+        .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
+
+    let ipfs_service = ipfs_service(
+        ipfs_client.cheap_clone(),
+        env_vars.mappings.max_ipfs_file_bytes,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
+    );
+
+    launcher::run(
+        logger.clone(),
+        opt,
+        env_vars,
+        ipfs_service,
+        link_resolver,
+        subgraph_updates_channel,
+    )
+    .await;
     Ok(())
 }
 
@@ -164,35 +187,30 @@ async fn main() -> Result<()> {
     // Get the database URL
     let db_url = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
 
-    let (tx, rx) = mpsc::channel(1);
     let opt = build_args(&dev_opt, &db_url)?;
 
     let (manifests_paths, source_subgraph_aliases) =
         parse_manifest_args(dev_opt.manifests, dev_opt.sources, &logger)?;
     let file_link_resolver = Arc::new(FileLinkResolver::new(None, source_subgraph_aliases.clone()));
 
-    let ctx = DevModeContext {
-        watch: dev_opt.watch,
-        file_link_resolver,
-        updates_rx: rx,
-    };
+    let (tx, rx) = dev_opt.watch.then(|| mpsc::channel(1)).unzip();
 
-    // Run graph node
+    let logger_clone = logger.clone();
     graph::spawn(async move {
-        let _ = run_graph_node(opt, Some(ctx)).await;
+        let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx).await;
     });
 
-    if dev_opt.watch {
+    if let Some(tx) = tx {
         graph::spawn_blocking(async move {
-            let result = watch_subgraphs(
+            if let Err(e) = watch_subgraphs(
                 &logger,
                 manifests_paths,
                 source_subgraph_aliases,
                 vec!["pgtemp-*".to_string()],
                 tx,
             )
-            .await;
-            if let Err(e) = result {
+            .await
+            {
                 error!(logger, "Error watching subgraphs"; "error" => e.to_string());
                 std::process::exit(1);
             }

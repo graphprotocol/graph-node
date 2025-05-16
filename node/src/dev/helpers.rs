@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use graph::components::link_resolver::FileLinkResolver;
 use graph::prelude::{
     BlockPtr, DeploymentHash, NodeId, SubgraphRegistrarError, SubgraphStore as SubgraphStoreTrait,
 };
@@ -15,7 +14,6 @@ use graph_store_postgres::SubgraphStore;
 
 pub struct DevModeContext {
     pub watch: bool,
-    pub file_link_resolver: Arc<FileLinkResolver>,
     pub updates_rx: Receiver<(DeploymentHash, SubgraphName)>,
 }
 
