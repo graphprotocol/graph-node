@@ -152,6 +152,14 @@ fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Resul
     } else {
         #[cfg(unix)]
         {
+            // Check the database directory exists
+            if !database_dir.exists() {
+                anyhow::bail!(
+                    "Database directory does not exist: {}",
+                    database_dir.display()
+                );
+            }
+
             let db = PgTempDBBuilder::new()
                 .with_data_dir_prefix(database_dir)
                 .with_initdb_param("-E", "UTF8")
