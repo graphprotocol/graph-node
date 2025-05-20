@@ -928,13 +928,12 @@ pub struct VersionStats {
     pub ratio: f64,
     /// The last block to which this table was pruned
     pub last_pruned_block: Option<BlockNumber>,
-    /// Histograms for the lower and upper bounds of the block ranges in
+    /// Histograms for the upper bounds of the block ranges in
     /// this table. Each histogram bucket contains roughly the same number
     /// of rows; values might be repeated to achieve that. The vectors are
     /// empty if the table hasn't been analyzed, the subgraph is stored in
     /// Postgres version 16 or lower, or if the table doesn't have a
     /// block_range column.
-    pub block_range_lower: Vec<BlockNumber>,
     pub block_range_upper: Vec<BlockNumber>,
 }
 

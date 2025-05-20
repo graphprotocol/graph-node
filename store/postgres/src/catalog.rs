@@ -305,7 +305,6 @@ impl Catalog {
                     tablename: s.tablename,
                     ratio: s.ratio,
                     last_pruned_block: s.last_pruned_block,
-                    block_range_lower: vec![],
                     block_range_upper: vec![],
                 }
             }
@@ -316,8 +315,6 @@ impl Catalog {
             #[diesel(sql_type = Text)]
             tablename: String,
             #[diesel(sql_type = Array<Integer>)]
-            lower: Vec<i32>,
-            #[diesel(sql_type = Array<Integer>)]
             upper: Vec<i32>,
         }
 
@@ -327,7 +324,6 @@ impl Catalog {
         ) -> Result<Vec<RangeHistogram>, StoreError> {
             let query = format!(
                 "select tablename, \
-                array_agg(lower(block_range)) lower, \
                 array_agg(coalesce(upper(block_range), {BLOCK_NUMBER_MAX})) upper \
            from (select tablename,
                         unnest(range_bounds_histogram::text::int4range[]) block_range
@@ -386,16 +382,14 @@ impl Catalog {
                 let pos = range_histogram
                     .iter()
                     .position(|h| h.tablename == s.tablename);
-                let (mut lower, mut upper) = pos
+                let mut upper = pos
                     .map(|pos| range_histogram.swap_remove(pos))
-                    .map(|h| (h.lower, h.upper))
-                    .unwrap_or((vec![], vec![]));
+                    .map(|h| h.upper)
+                    .unwrap_or(vec![]);
                 // Since lower and upper are supposed to be histograms, we
                 // sort them
-                lower.sort_unstable();
                 upper.sort_unstable();
                 let mut vs = VersionStats::from(s);
-                vs.block_range_lower = lower;
                 vs.block_range_upper = upper;
                 vs
             })
