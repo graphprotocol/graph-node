@@ -1,3 +1,12 @@
+
+-- Grab locks on all tables we are going to touch; otherwise, concurrently
+-- running operations might cause deadlocks
+lock table subgraphs.subgraph_deployment in access exclusive mode;
+lock table subgraphs.subgraph_manifest  in access exclusive mode;
+lock table subgraphs.subgraph_error in access exclusive mode;
+lock table subgraphs.table_stats in access exclusive mode;
+lock table subgraphs.copy_state in access exclusive mode;
+
 create table subgraphs.head (
     id                    int4 primary key,
     entity_count          int8 not null,
