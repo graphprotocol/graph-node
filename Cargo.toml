@@ -55,6 +55,7 @@ diesel = { version = "2.2.7", features = [
     "chrono",
     "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
 ] }
+pq-sys = { version = "0.6", features = ["bundled"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.2.3"
