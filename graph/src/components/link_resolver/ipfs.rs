@@ -24,6 +24,31 @@ use crate::ipfs::IpfsClient;
 use crate::ipfs::RetryPolicy;
 use crate::prelude::{LinkResolver as LinkResolverTrait, *};
 
+#[derive(Clone, CheapClone)]
+struct Cache {
+    cache: Arc<Mutex<LruCache<ContentPath, Vec<u8>>>>,
+}
+
+impl Cache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            cache: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
+        }
+    }
+
+    fn find(&self, path: &ContentPath) -> Option<Vec<u8>> {
+        self.cache.lock().unwrap().get(path).cloned()
+    }
+
+    fn insert(&self, path: ContentPath, data: Vec<u8>) {
+        let mut cache = self.cache.lock().unwrap();
+
+        if !cache.contains_key(&path) {
+            cache.insert(path.clone(), data.clone());
+        }
+    }
+}
+
 #[derive(Clone, CheapClone, Derivative)]
 #[derivative(Debug)]
 pub struct IpfsResolver {
@@ -31,7 +56,7 @@ pub struct IpfsResolver {
     client: Arc<dyn IpfsClient>,
 
     #[derivative(Debug = "ignore")]
-    cache: Arc<Mutex<LruCache<ContentPath, Vec<u8>>>>,
+    cache: Cache,
 
     timeout: Duration,
     max_file_size: usize,
@@ -48,9 +73,7 @@ impl IpfsResolver {
 
         Self {
             client,
-            cache: Arc::new(Mutex::new(LruCache::with_capacity(
-                env.max_ipfs_cache_size as usize,
-            ))),
+            cache: Cache::new(env.max_ipfs_cache_size as usize),
             timeout: env.ipfs_timeout,
             max_file_size: env.max_ipfs_file_bytes,
             max_map_file_size: env.max_ipfs_map_file_size,
@@ -80,7 +103,7 @@ impl LinkResolverTrait for IpfsResolver {
         let max_file_size = self.max_file_size;
         let max_cache_file_size = self.max_cache_file_size;
 
-        if let Some(data) = self.cache.lock().unwrap().get(&path) {
+        if let Some(data) = self.cache.find(&path) {
             trace!(logger, "IPFS cat cache hit"; "hash" => path.to_string());
             return Ok(data.to_owned());
         }
@@ -101,11 +124,7 @@ impl LinkResolverTrait for IpfsResolver {
             .to_vec();
 
         if data.len() <= max_cache_file_size {
-            let mut cache = self.cache.lock().unwrap();
-
-            if !cache.contains_key(&path) {
-                cache.insert(path.clone(), data.clone());
-            }
+            self.cache.insert(path.clone(), data.clone());
         } else {
             debug!(
                 logger,
