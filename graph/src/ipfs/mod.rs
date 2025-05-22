@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use cache::CachingClient;
 use futures03::future::BoxFuture;
 use futures03::stream::FuturesUnordered;
 use futures03::stream::StreamExt;
@@ -40,6 +41,8 @@ pub type IpfsResult<T> = Result<T, IpfsError>;
 /// If multiple IPFS server addresses are specified, an IPFS client pool is created internally
 /// and for each IPFS request, the fastest client that can provide the content is
 /// automatically selected and the response is streamed from that client.
+///
+/// All clients are set up to cache results
 pub async fn new_ipfs_client<I, S>(
     server_addresses: I,
     logger: &Logger,
@@ -59,7 +62,8 @@ where
             SafeDisplay(server_address)
         );
 
-        clients.push(use_first_valid_api(server_address, logger).await?);
+        let client = CachingClient::new(use_first_valid_api(server_address, logger).await?);
+        clients.push(Arc::new(client));
     }
 
     match clients.len() {

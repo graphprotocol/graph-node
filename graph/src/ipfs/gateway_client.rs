@@ -34,7 +34,7 @@ pub struct IpfsGatewayClient {
 impl IpfsGatewayClient {
     /// Creates a new [IpfsGatewayClient] with the specified server address.
     /// Verifies that the server is responding to IPFS gateway requests.
-    pub async fn new(server_address: impl AsRef<str>, logger: &Logger) -> IpfsResult<Self> {
+    pub(crate) async fn new(server_address: impl AsRef<str>, logger: &Logger) -> IpfsResult<Self> {
         let client = Self::new_unchecked(server_address, logger)?;
 
         client

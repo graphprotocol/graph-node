@@ -11,7 +11,7 @@ use lru_time_cache::LruCache;
 use object_store::{local::LocalFileSystem, path::Path, ObjectStore};
 use slog::{warn, Logger};
 
-use crate::prelude::CheapClone;
+use crate::{env::ENV_VARS, prelude::CheapClone};
 
 use super::{ContentPath, IpfsClient, IpfsRequest, IpfsResponse, IpfsResult, RetryPolicy};
 
@@ -119,14 +119,14 @@ pub struct CachingClient {
 }
 
 impl CachingClient {
-    #[allow(dead_code)]
-    pub fn new(
-        client: Arc<dyn IpfsClient>,
-        max_entry_size: usize,
-        cache_capacity: usize,
-        cache_path: Option<PathBuf>,
-    ) -> Self {
-        let cache = Cache::new(cache_capacity, max_entry_size, cache_path);
+    pub fn new(client: Arc<dyn IpfsClient>) -> Self {
+        let env = &ENV_VARS.mappings;
+
+        let cache = Cache::new(
+            env.max_ipfs_cache_size as usize,
+            env.max_ipfs_cache_file_size,
+            env.ipfs_cache_location.clone(),
+        );
         CachingClient { client, cache }
     }
 
