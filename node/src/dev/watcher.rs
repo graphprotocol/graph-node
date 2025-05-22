@@ -254,7 +254,7 @@ fn is_relevant_event(event: &Event, watched_dirs: Vec<PathBuf>, exclusion_set: &
     false
 }
 
-/// Redeploys all subgraphs in the order defined by the BTreeMap
+/// Redeploys all subgraphs in the order it appears in the manifests_paths
 async fn redeploy_all_subgraphs(
     logger: &Logger,
     manifests_paths: &Vec<PathBuf>,
