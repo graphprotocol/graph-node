@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::Bytes;
 use graph_derive::CheapClone;
@@ -13,7 +14,9 @@ use slog::{warn, Logger};
 
 use crate::{env::ENV_VARS, prelude::CheapClone};
 
-use super::{ContentPath, IpfsClient, IpfsRequest, IpfsResponse, IpfsResult, RetryPolicy};
+use super::{
+    ContentPath, IpfsClient, IpfsError, IpfsRequest, IpfsResponse, IpfsResult, RetryPolicy,
+};
 
 #[derive(Clone, CheapClone)]
 enum Cache {
@@ -37,27 +40,26 @@ fn log_err(logger: &Logger, e: &object_store::Error, log_not_found: bool) {
 }
 
 impl Cache {
-    fn new(capacity: usize, max_entry_size: usize, path: Option<PathBuf>) -> Self {
+    fn new(capacity: usize, max_entry_size: usize, path: Option<PathBuf>) -> IpfsResult<Self> {
         match path {
             Some(path) => {
-                let fs = match LocalFileSystem::new_with_prefix(&path) {
-                    Err(e) => {
-                        panic!(
+                let fs = LocalFileSystem::new_with_prefix(&path).map_err(|e| {
+                    IpfsError::InvalidCacheConfig {
+                        source: anyhow!(
                             "Failed to create IPFS file based cache at {}: {}",
                             path.display(),
                             e
-                        );
+                        ),
                     }
-                    Ok(fs) => fs,
-                };
-                Cache::Disk {
+                })?;
+                Ok(Cache::Disk {
                     store: Arc::new(fs),
-                }
+                })
             }
-            None => Self::Memory {
+            None => Ok(Self::Memory {
                 cache: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
                 max_entry_size,
-            },
+            }),
         }
     }
 
@@ -119,15 +121,15 @@ pub struct CachingClient {
 }
 
 impl CachingClient {
-    pub fn new(client: Arc<dyn IpfsClient>) -> Self {
+    pub fn new(client: Arc<dyn IpfsClient>) -> IpfsResult<Self> {
         let env = &ENV_VARS.mappings;
 
         let cache = Cache::new(
             env.max_ipfs_cache_size as usize,
             env.max_ipfs_cache_file_size,
             env.ipfs_cache_location.clone(),
-        );
-        CachingClient { client, cache }
+        )?;
+        Ok(CachingClient { client, cache })
     }
 
     async fn with_cache<F>(&self, path: &ContentPath, f: F) -> IpfsResult<Bytes>

@@ -49,6 +49,9 @@ pub enum IpfsError {
 
     #[error(transparent)]
     RequestFailed(RequestError),
+
+    #[error("Invalid cache configuration: {source}")]
+    InvalidCacheConfig { source: anyhow::Error },
 }
 
 #[derive(Debug, Error)]
@@ -91,6 +94,7 @@ impl IpfsError {
             Self::RequestTimeout { .. } => false,
             Self::DeterministicFailure { .. } => true,
             Self::RequestFailed(_) => false,
+            Self::InvalidCacheConfig { .. } => true,
         }
     }
 }

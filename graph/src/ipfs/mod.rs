@@ -62,7 +62,7 @@ where
             SafeDisplay(server_address)
         );
 
-        let client = CachingClient::new(use_first_valid_api(server_address, logger).await?);
+        let client = CachingClient::new(use_first_valid_api(server_address, logger).await?)?;
         clients.push(Arc::new(client));
     }
 
