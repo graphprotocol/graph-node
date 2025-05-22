@@ -1,6 +1,4 @@
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -10,10 +8,6 @@ use derivative::Derivative;
 use futures03::compat::Stream01CompatExt;
 use futures03::stream::StreamExt;
 use futures03::stream::TryStreamExt;
-use lru_time_cache::LruCache;
-use object_store::local::LocalFileSystem;
-use object_store::path::Path;
-use object_store::ObjectStore;
 use serde_json::Value;
 
 use crate::derive::CheapClone;
@@ -28,99 +22,15 @@ use crate::ipfs::IpfsClient;
 use crate::ipfs::RetryPolicy;
 use crate::prelude::{LinkResolver as LinkResolverTrait, *};
 
-#[derive(Clone, CheapClone)]
-enum Cache {
-    Memory {
-        cache: Arc<Mutex<LruCache<ContentPath, Vec<u8>>>>,
-    },
-    Disk {
-        store: Arc<dyn ObjectStore>,
-    },
-}
-
-fn log_err(logger: &Logger, e: &object_store::Error, log_not_found: bool) {
-    if log_not_found || !matches!(e, object_store::Error::NotFound { .. }) {
-        warn!(
-            logger,
-            "Failed to get IPFS object from disk cache; fetching from IPFS";
-            "error" => e.to_string(),
-        );
-    }
-}
-
-impl Cache {
-    fn new(capacity: usize, path: Option<PathBuf>) -> Self {
-        match path {
-            Some(path) => {
-                let fs = match LocalFileSystem::new_with_prefix(&path) {
-                    Err(e) => {
-                        panic!(
-                            "Failed to create IPFS file based cache at {}: {}",
-                            path.display(),
-                            e
-                        );
-                    }
-                    Ok(fs) => fs,
-                };
-                Cache::Disk {
-                    store: Arc::new(fs),
-                }
-            }
-            None => Self::Memory {
-                cache: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
-            },
-        }
-    }
-
-    async fn find(&self, logger: &Logger, path: &ContentPath) -> Option<Vec<u8>> {
-        match self {
-            Cache::Memory { cache } => cache.lock().unwrap().get(path).cloned(),
-            Cache::Disk { store } => {
-                let log_err = |e: &object_store::Error| log_err(logger, e, false);
-
-                let path = Path::from(path.cid().to_string());
-                let object = store.get(&path).await.inspect_err(log_err).ok()?;
-                let data = object.bytes().await.inspect_err(log_err).ok()?;
-                Some(data.to_vec())
-            }
-        }
-    }
-
-    async fn insert(&self, logger: &Logger, path: ContentPath, data: Vec<u8>) {
-        match self {
-            Cache::Memory { cache } => {
-                let mut cache = cache.lock().unwrap();
-
-                if !cache.contains_key(&path) {
-                    cache.insert(path.clone(), data.clone());
-                }
-            }
-            Cache::Disk { store } => {
-                let log_err = |e: &object_store::Error| log_err(logger, e, true);
-                let path = Path::from(path.cid().to_string());
-                store
-                    .put(&path, data.into())
-                    .await
-                    .inspect_err(log_err)
-                    .ok();
-            }
-        }
-    }
-}
-
 #[derive(Clone, CheapClone, Derivative)]
 #[derivative(Debug)]
 pub struct IpfsResolver {
     #[derivative(Debug = "ignore")]
     client: Arc<dyn IpfsClient>,
 
-    #[derivative(Debug = "ignore")]
-    cache: Cache,
-
     timeout: Duration,
     max_file_size: usize,
     max_map_file_size: usize,
-    max_cache_file_size: usize,
 
     /// When set to `true`, it means infinite retries, ignoring the timeout setting.
     retry: bool,
@@ -132,14 +42,9 @@ impl IpfsResolver {
 
         Self {
             client,
-            cache: Cache::new(
-                env.max_ipfs_cache_size as usize,
-                env.ipfs_cache_location.clone(),
-            ),
             timeout: env.ipfs_timeout,
             max_file_size: env.max_ipfs_file_bytes,
             max_map_file_size: env.max_ipfs_map_file_size,
-            max_cache_file_size: env.max_ipfs_cache_file_size,
             retry: false,
         }
     }
@@ -159,18 +64,10 @@ impl LinkResolverTrait for IpfsResolver {
         Box::new(s)
     }
 
-    async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
+    async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         let path = ContentPath::new(&link.link)?;
         let timeout = self.timeout;
         let max_file_size = self.max_file_size;
-        let max_cache_file_size = self.max_cache_file_size;
-
-        if let Some(data) = self.cache.find(&logger, &path).await {
-            trace!(logger, "IPFS cat cache hit"; "hash" => path.to_string());
-            return Ok(data.to_owned());
-        }
-
-        trace!(logger, "IPFS cat cache miss"; "hash" => path.to_string());
 
         let (timeout, retry_policy) = if self.retry {
             (None, RetryPolicy::NonDeterministic)
@@ -184,17 +81,6 @@ impl LinkResolverTrait for IpfsResolver {
             .cat(&path, max_file_size, timeout, retry_policy)
             .await?
             .to_vec();
-
-        if data.len() <= max_cache_file_size {
-            self.cache.insert(&logger, path.clone(), data.clone()).await;
-        } else {
-            debug!(
-                logger,
-                "IPFS file too large for cache";
-                "path" => path.to_string(),
-                "size" => data.len(),
-            );
-        }
 
         Ok(data)
     }
