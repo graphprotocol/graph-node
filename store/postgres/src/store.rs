@@ -2,9 +2,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use graph::{
-    components::store::{
-        BlockPtrForNumber, BlockStore as BlockStoreTrait, QueryPermit, QueryStoreManager,
-        StatusStore, Store as StoreTrait,
+    components::{
+        server::index_node::VersionInfo,
+        store::{
+            BlockPtrForNumber, BlockStore as BlockStoreTrait, QueryPermit, QueryStoreManager,
+            StatusStore, Store as StoreTrait,
+        },
     },
     data::subgraph::status,
     internal_error,
@@ -15,14 +18,6 @@ use graph::{
 };
 
 use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
-
-/// This is only needed for some tests
-#[derive(Debug)]
-pub struct VersionInfo {
-    pub deployment_id: String,
-    pub latest_ethereum_block_number: Option<BlockNumber>,
-    pub failed: bool,
-}
 
 /// The overall store of the system, consisting of a [`SubgraphStore`] and a
 /// [`BlockStore`], each of which multiplex across multiple database shards.
@@ -57,7 +52,9 @@ impl Store {
     }
 
     pub fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        let info = self.subgraph_store.version_info(version_id)?;
+        let mut info = self.subgraph_store.version_info(version_id)?;
+
+        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
 
         Ok(info)
     }
