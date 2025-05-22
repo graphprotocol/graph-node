@@ -68,6 +68,7 @@ itertools = "0.13.0"
 lazy_static = "1.5.0"
 prost = "0.13"
 prost-types = "0.13"
+redis = { version = "0.31.0", features = ["aio", "connection-manager", "tokio-comp"] }
 regex = "1.5.4"
 reqwest = "0.12.15"
 serde = { version = "1.0.126", features = ["rc"] }

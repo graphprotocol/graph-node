@@ -10,13 +10,68 @@ use bytes::Bytes;
 use graph_derive::CheapClone;
 use lru_time_cache::LruCache;
 use object_store::{local::LocalFileSystem, path::Path, ObjectStore};
-use slog::{warn, Logger};
+use redis::{
+    aio::{ConnectionManager, ConnectionManagerConfig},
+    AsyncCommands as _, RedisResult, Value,
+};
+use slog::{debug, info, warn, Logger};
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{env::ENV_VARS, prelude::CheapClone};
 
 use super::{
     ContentPath, IpfsClient, IpfsError, IpfsRequest, IpfsResponse, IpfsResult, RetryPolicy,
 };
+
+struct RedisClient {
+    mgr: AsyncMutex<ConnectionManager>,
+}
+
+impl RedisClient {
+    async fn new(logger: &Logger, path: &str) -> RedisResult<Self> {
+        let env = &ENV_VARS.mappings;
+        let client = redis::Client::open(path)?;
+        let cfg = ConnectionManagerConfig::default()
+            .set_connection_timeout(env.ipfs_timeout)
+            .set_response_timeout(env.ipfs_timeout);
+        info!(logger, "Connecting to Redis for IPFS caching"; "url" => path);
+        // Try to connect once synchronously to check if the server is reachable.
+        let _ = client.get_connection()?;
+        let mgr = AsyncMutex::new(client.get_connection_manager_with_config(cfg).await?);
+        info!(logger, "Connected to Redis for IPFS caching"; "url" => path);
+        Ok(RedisClient { mgr })
+    }
+
+    async fn get(&self, path: &ContentPath) -> IpfsResult<Bytes> {
+        let mut mgr = self.mgr.lock().await;
+
+        let key = Self::key(path);
+        let data: Vec<u8> = mgr
+            .get(&key)
+            .await
+            .map_err(|e| IpfsError::InvalidCacheConfig {
+                source: anyhow!("Failed to get IPFS object {key} from Redis cache: {e}"),
+            })?;
+        Ok(data.into())
+    }
+
+    async fn put(&self, path: &ContentPath, data: &Bytes) -> IpfsResult<()> {
+        let mut mgr = self.mgr.lock().await;
+
+        let key = Self::key(path);
+        mgr.set(&key, data.as_ref())
+            .await
+            .map(|_: Value| ())
+            .map_err(|e| IpfsError::InvalidCacheConfig {
+                source: anyhow!("Failed to put IPFS object {key} in Redis cache: {e}"),
+            })?;
+        Ok(())
+    }
+
+    fn key(path: &ContentPath) -> String {
+        format!("ipfs:{path}")
+    }
+}
 
 #[derive(Clone, CheapClone)]
 enum Cache {
@@ -27,9 +82,12 @@ enum Cache {
     Disk {
         store: Arc<dyn ObjectStore>,
     },
+    Redis {
+        client: Arc<RedisClient>,
+    },
 }
 
-fn log_err(logger: &Logger, e: &object_store::Error, log_not_found: bool) {
+fn log_object_store_err(logger: &Logger, e: &object_store::Error, log_not_found: bool) {
     if log_not_found || !matches!(e, object_store::Error::NotFound { .. }) {
         warn!(
             logger,
@@ -39,9 +97,32 @@ fn log_err(logger: &Logger, e: &object_store::Error, log_not_found: bool) {
     }
 }
 
+fn log_redis_err(logger: &Logger, e: &IpfsError) {
+    warn!(
+        logger,
+        "Failed to get IPFS object from Redis cache; fetching from IPFS";
+        "error" => e.to_string(),
+    );
+}
+
 impl Cache {
-    fn new(capacity: usize, max_entry_size: usize, path: Option<PathBuf>) -> IpfsResult<Self> {
+    async fn new(
+        logger: &Logger,
+        capacity: usize,
+        max_entry_size: usize,
+        path: Option<PathBuf>,
+    ) -> IpfsResult<Self> {
         match path {
+            Some(path) if path.starts_with("redis://") => {
+                let path = path.to_string_lossy();
+                let client = RedisClient::new(logger, path.as_ref())
+                    .await
+                    .map(Arc::new)
+                    .map_err(|e| IpfsError::InvalidCacheConfig {
+                        source: anyhow!("Failed to create IPFS Redis cache at {path}: {e}"),
+                    })?;
+                Ok(Cache::Redis { client })
+            }
             Some(path) => {
                 let fs = LocalFileSystem::new_with_prefix(&path).map_err(|e| {
                     IpfsError::InvalidCacheConfig {
@@ -52,14 +133,18 @@ impl Cache {
                         ),
                     }
                 })?;
+                debug!(logger, "Using IPFS file based cache"; "path" => path.display());
                 Ok(Cache::Disk {
                     store: Arc::new(fs),
                 })
             }
-            None => Ok(Self::Memory {
-                cache: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
-                max_entry_size,
-            }),
+            None => {
+                debug!(logger, "Using IPFS in-memory cache"; "capacity" => capacity, "max_entry_size" => max_entry_size);
+                Ok(Self::Memory {
+                    cache: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
+                    max_entry_size,
+                })
+            }
         }
     }
 
@@ -70,13 +155,19 @@ impl Cache {
                 max_entry_size: _,
             } => cache.lock().unwrap().get(path).cloned(),
             Cache::Disk { store } => {
-                let log_err = |e: &object_store::Error| log_err(logger, e, false);
+                let log_err = |e: &object_store::Error| log_object_store_err(logger, e, false);
 
                 let path = Self::disk_path(path);
                 let object = store.get(&path).await.inspect_err(log_err).ok()?;
                 let data = object.bytes().await.inspect_err(log_err).ok()?;
                 Some(data)
             }
+            Cache::Redis { client } => client
+                .get(path)
+                .await
+                .inspect_err(|e| log_redis_err(logger, e))
+                .ok()
+                .and_then(|data| if data.is_empty() { None } else { Some(data) }),
         }
     }
 
@@ -93,13 +184,18 @@ impl Cache {
                 }
             }
             Cache::Disk { store } => {
-                let log_err = |e: &object_store::Error| log_err(logger, e, true);
+                let log_err = |e: &object_store::Error| log_object_store_err(logger, e, true);
                 let path = Self::disk_path(&path);
                 store
                     .put(&path, data.into())
                     .await
                     .inspect_err(log_err)
                     .ok();
+            }
+            Cache::Redis { client } => {
+                if let Err(e) = client.put(&path, &data).await {
+                    log_redis_err(logger, &e);
+                }
             }
         }
     }
@@ -121,14 +217,16 @@ pub struct CachingClient {
 }
 
 impl CachingClient {
-    pub fn new(client: Arc<dyn IpfsClient>) -> IpfsResult<Self> {
+    pub async fn new(client: Arc<dyn IpfsClient>) -> IpfsResult<Self> {
         let env = &ENV_VARS.mappings;
 
         let cache = Cache::new(
+            client.logger(),
             env.max_ipfs_cache_size as usize,
             env.max_ipfs_cache_file_size,
             env.ipfs_cache_location.clone(),
-        )?;
+        )
+        .await?;
         Ok(CachingClient { client, cache })
     }
 

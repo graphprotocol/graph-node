@@ -62,8 +62,9 @@ where
             SafeDisplay(server_address)
         );
 
-        let client = CachingClient::new(use_first_valid_api(server_address, logger).await?)?;
-        clients.push(Arc::new(client));
+        let client = use_first_valid_api(server_address, logger).await?;
+        let client = Arc::new(CachingClient::new(client).await?);
+        clients.push(client);
     }
 
     match clients.len() {

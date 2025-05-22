@@ -91,6 +91,12 @@ those.
   file not found or logical issue working as a safety mechanism to
   prevent infinite spamming of IPFS servers and network congestion
   (default: 100 000).
+- `GRAPH_IPFS_CACHE_LOCATION`: When set, files retrieved from IPFS will be
+  cached in that location; future accesses to the same file will be served
+  from cache rather than IPFS. This can either be a URL starting with
+  `redis://`, in which case there must be a Redis instance running at that
+  URL, or an absolute file system path which must be a directory writable
+  by the `graph-node` process (experimental)
 
 ## GraphQL
 

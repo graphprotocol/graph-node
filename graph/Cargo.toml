@@ -43,6 +43,7 @@ num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.19"
 rand.workspace = true
+redis = { workspace = true }
 regex = "1.5.4"
 semver = { version = "1.0.23", features = ["serde"] }
 serde = { workspace = true }
@@ -85,7 +86,7 @@ tonic = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 
-futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
+futures03 = { version = "0.3.31", package = "futures", features = ["compat"] }
 wasmparser = "0.118.1"
 thiserror = "2.0.12"
 parking_lot = "0.12.3"

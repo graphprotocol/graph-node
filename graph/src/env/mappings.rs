@@ -1,8 +1,9 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use super::*;
+use anyhow::anyhow;
 
+use super::*;
 #[derive(Clone)]
 pub struct EnvVarsMapping {
     /// Forces the cache eviction policy to take its own memory overhead into account.
@@ -159,7 +160,16 @@ pub struct InnerMappingHandlers {
 }
 
 fn validate_ipfs_cache_location(path: PathBuf) -> Result<PathBuf, anyhow::Error> {
-    let path = path.canonicalize()?;
+    if path.starts_with("redis://") {
+        // We validate this later when we set up the Redis client
+        return Ok(path);
+    }
+    let path = path.canonicalize().map_err(|e| {
+        anyhow!(
+            "GRAPH_IPFS_CACHE_LOCATION {} is invalid: {e}",
+            path.display()
+        )
+    })?;
     if !path.is_absolute() {
         return Err(anyhow::anyhow!(
             "GRAPH_IPFS_CACHE_LOCATION must be an absolute path: {}",
