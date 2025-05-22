@@ -268,7 +268,7 @@ impl EnvVars {
     pub fn from_env() -> Result<Self, anyhow::Error> {
         let inner = Inner::init_from_env()?;
         let graphql = InnerGraphQl::init_from_env()?.into();
-        let mapping_handlers = InnerMappingHandlers::init_from_env()?.into();
+        let mapping_handlers = InnerMappingHandlers::init_from_env()?.try_into()?;
         let store = InnerStore::init_from_env()?.try_into()?;
         let ipfs_request_timeout = match inner.ipfs_request_timeout {
             Some(timeout) => Duration::from_secs(timeout),

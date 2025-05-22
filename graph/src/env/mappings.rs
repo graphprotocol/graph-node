@@ -82,9 +82,11 @@ impl fmt::Debug for EnvVarsMapping {
     }
 }
 
-impl From<InnerMappingHandlers> for EnvVarsMapping {
-    fn from(x: InnerMappingHandlers) -> Self {
-        Self {
+impl TryFrom<InnerMappingHandlers> for EnvVarsMapping {
+    type Error = anyhow::Error;
+
+    fn try_from(x: InnerMappingHandlers) -> Result<Self, Self::Error> {
+        let vars = Self {
             entity_cache_dead_weight: x.entity_cache_dead_weight.0,
             entity_cache_size: x.entity_cache_size_in_kb * 1000,
 
@@ -102,7 +104,8 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
             disable_declared_calls: x.disable_declared_calls.0,
             store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,
-        }
+        };
+        Ok(vars)
     }
 }
 
