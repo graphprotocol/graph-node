@@ -1018,6 +1018,20 @@ impl SubgraphStoreInner {
         }
     }
 
+    pub(crate) fn versions_for_subgraph_id(
+        &self,
+        subgraph_id: &str,
+    ) -> Result<(Option<String>, Option<String>), StoreError> {
+        self.mirror.versions_for_subgraph_id(subgraph_id)
+    }
+
+    pub(crate) fn subgraphs_for_deployment_hash(
+        &self,
+        deployment_hash: &str,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        self.mirror.subgraphs_by_deployment_hash(deployment_hash)
+    }
+
     #[cfg(debug_assertions)]
     pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let (store, _) = self.store(id)?;
