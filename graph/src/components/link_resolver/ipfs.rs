@@ -38,13 +38,13 @@ impl Cache {
         }
     }
 
-    fn find(&self, path: &ContentPath) -> Option<Vec<u8>> {
+    async fn find(&self, path: &ContentPath) -> Option<Vec<u8>> {
         match self {
             Cache::Memory { cache } => cache.lock().unwrap().get(path).cloned(),
         }
     }
 
-    fn insert(&self, path: ContentPath, data: Vec<u8>) {
+    async fn insert(&self, path: ContentPath, data: Vec<u8>) {
         match self {
             Cache::Memory { cache } => {
                 let mut cache = cache.lock().unwrap();
@@ -111,7 +111,7 @@ impl LinkResolverTrait for IpfsResolver {
         let max_file_size = self.max_file_size;
         let max_cache_file_size = self.max_cache_file_size;
 
-        if let Some(data) = self.cache.find(&path) {
+        if let Some(data) = self.cache.find(&path).await {
             trace!(logger, "IPFS cat cache hit"; "hash" => path.to_string());
             return Ok(data.to_owned());
         }
@@ -132,7 +132,7 @@ impl LinkResolverTrait for IpfsResolver {
             .to_vec();
 
         if data.len() <= max_cache_file_size {
-            self.cache.insert(path.clone(), data.clone());
+            self.cache.insert(path.clone(), data.clone()).await;
         } else {
             debug!(
                 logger,
