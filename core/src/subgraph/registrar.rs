@@ -293,18 +293,27 @@ where
                 .map_err(SubgraphRegistrarError::Unknown)?,
         );
 
-        let raw: serde_yaml::Mapping = {
-            let file_bytes = resolver
-                .cat(&logger, &hash.to_ipfs_link())
-                .await
-                .map_err(|e| {
-                    SubgraphRegistrarError::ResolveError(
-                        SubgraphManifestResolveError::ResolveError(e),
-                    )
-                })?;
+        let raw = {
+            let mut raw: serde_yaml::Mapping = {
+                let file_bytes =
+                    resolver
+                        .cat(&logger, &hash.to_ipfs_link())
+                        .await
+                        .map_err(|e| {
+                            SubgraphRegistrarError::ResolveError(
+                                SubgraphManifestResolveError::ResolveError(e),
+                            )
+                        })?;
 
-            serde_yaml::from_slice(&file_bytes)
-                .map_err(|e| SubgraphRegistrarError::ResolveError(e.into()))?
+                serde_yaml::from_slice(&file_bytes)
+                    .map_err(|e| SubgraphRegistrarError::ResolveError(e.into()))?
+            };
+
+            if ignore_graft_base {
+                raw.remove("graft");
+            }
+
+            raw
         };
 
         let kind = BlockchainKind::from_manifest(&raw).map_err(|e| {
@@ -331,7 +340,6 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
-                    ignore_graft_base,
                 )
                 .await?
             }
@@ -350,7 +358,6 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
-                    ignore_graft_base,
                 )
                 .await?
             }
@@ -369,7 +376,6 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
-                    ignore_graft_base,
                 )
                 .await?
             }
@@ -388,7 +394,6 @@ where
                     self.version_switching_mode,
                     &resolver,
                     history_blocks,
-                    ignore_graft_base,
                 )
                 .await?
             }
@@ -575,7 +580,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
     history_blocks_override: Option<i32>,
-    ignore_graft_base: bool,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
 
@@ -597,21 +601,10 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         Err(StoreError::DeploymentNotFound(_)) => true,
         Err(e) => return Err(SubgraphRegistrarError::StoreError(e)),
     };
-
-    let manifest = {
-        let should_validate = should_validate && !ignore_graft_base;
-
-        let mut manifest = unvalidated
-            .validate(store.cheap_clone(), should_validate)
-            .await
-            .map_err(SubgraphRegistrarError::ManifestValidationError)?;
-
-        if ignore_graft_base {
-            manifest.graft = None;
-        }
-
-        manifest
-    };
+    let manifest = unvalidated
+        .validate(store.cheap_clone(), should_validate)
+        .await
+        .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
     let network_name: Word = manifest.network_name().into();
 
