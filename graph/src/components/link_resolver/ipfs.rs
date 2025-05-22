@@ -25,26 +25,34 @@ use crate::ipfs::RetryPolicy;
 use crate::prelude::{LinkResolver as LinkResolverTrait, *};
 
 #[derive(Clone, CheapClone)]
-struct Cache {
-    cache: Arc<Mutex<LruCache<ContentPath, Vec<u8>>>>,
+enum Cache {
+    Memory {
+        cache: Arc<Mutex<LruCache<ContentPath, Vec<u8>>>>,
+    },
 }
 
 impl Cache {
     fn new(capacity: usize) -> Self {
-        Self {
+        Self::Memory {
             cache: Arc::new(Mutex::new(LruCache::with_capacity(capacity))),
         }
     }
 
     fn find(&self, path: &ContentPath) -> Option<Vec<u8>> {
-        self.cache.lock().unwrap().get(path).cloned()
+        match self {
+            Cache::Memory { cache } => cache.lock().unwrap().get(path).cloned(),
+        }
     }
 
     fn insert(&self, path: ContentPath, data: Vec<u8>) {
-        let mut cache = self.cache.lock().unwrap();
+        match self {
+            Cache::Memory { cache } => {
+                let mut cache = cache.lock().unwrap();
 
-        if !cache.contains_key(&path) {
-            cache.insert(path.clone(), data.clone());
+                if !cache.contains_key(&path) {
+                    cache.insert(path.clone(), data.clone());
+                }
+            }
         }
     }
 }
