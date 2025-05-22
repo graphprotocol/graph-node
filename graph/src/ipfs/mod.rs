@@ -9,6 +9,7 @@ use slog::Logger;
 
 use crate::util::security::SafeDisplay;
 
+mod cache;
 mod client;
 mod content_path;
 mod error;
