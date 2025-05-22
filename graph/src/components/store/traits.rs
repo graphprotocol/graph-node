@@ -460,9 +460,7 @@ pub trait ChainStore: Send + Sync + 'static {
     fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
-    async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
-
-    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
+    async fn upsert_block_ptr(&self, block: BlockPtr) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
@@ -508,10 +506,7 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
-    async fn blocks(
-        self: Arc<Self>,
-        hashes: Vec<BlockHash>,
-    ) -> Result<Vec<serde_json::Value>, Error>;
+    async fn blocks_ptrs(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<BlockPtr>, Error>;
 
     /// Returns the blocks present in the store for the given block numbers.
     async fn block_ptrs_by_numbers(
@@ -538,7 +533,7 @@ pub trait ChainStore: Send + Sync + 'static {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(serde_json::Value, BlockPtr)>, Error>;
+    ) -> Result<Option<BlockPtr>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained

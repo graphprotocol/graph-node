@@ -1983,12 +1983,12 @@ impl ChainStoreTrait for ChainStore {
         })
     }
 
-    async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
+    async fn upsert_block_ptr(&self, block: BlockPtr) -> Result<(), Error> {
         // We should always have the parent block available to us at this point.
-        if let Some(parent_hash) = block.parent_hash() {
-            let block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
-            self.recent_blocks_cache.insert_block(block);
-        }
+        // if let Some(parent_hash) = block.parent_hash() {
+        //     let block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
+        //     self.recent_blocks_cache.insert_block(block);
+        // }
 
         let pool = self.pool.clone();
         let network = self.chain.clone();
@@ -2004,14 +2004,14 @@ impl ChainStoreTrait for ChainStore {
         .map_err(Error::from)
     }
 
-    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
-        let mut conn = self.pool.get()?;
-        for block in blocks {
-            self.storage
-                .upsert_block(&mut conn, &self.chain, *block, false)?;
-        }
-        Ok(())
-    }
+    // fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
+    //     let mut conn = self.pool.get()?;
+    //     for block in blocks {
+    //         self.storage
+    //             .upsert_block(&mut conn, &self.chain, *block, false)?;
+    //     }
+    //     Ok(())
+    // }
 
     async fn attempt_chain_head_update(
         self: Arc<Self>,
@@ -2244,7 +2244,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(ptrs)
     }
 
-    async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<json::Value>, Error> {
+    async fn blocks_ptrs(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<BlockPtr>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
             let values = self
                 .blocks_from_store(hashes)
@@ -2322,7 +2322,7 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
+    ) -> Result<Option<BlockPtr>, Error> {
         ensure!(
             block_ptr.number >= offset,
             "block offset {} for block `{}` points to before genesis block",
@@ -2347,6 +2347,7 @@ impl ChainStoreTrait for ChainStore {
                 chain_store
                     .storage
                     .ancestor_block(conn, block_ptr_clone, offset, root)
+                    .map(|opt| opt.map(|(_, ptr)| ptr))
                     .map_err(StoreError::from)
                     .map_err(CancelableError::from)
             })
