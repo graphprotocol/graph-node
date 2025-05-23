@@ -1,9 +1,11 @@
 use anyhow::anyhow;
+use diesel::migration::Migration;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use diesel_migrations::EmbeddedMigrations;
 use graph::data::store::ethereum::call;
 use graph::derive::CheapClone;
 use graph::env::ENV_VARS;
@@ -372,6 +374,57 @@ mod data {
             Ok(Self::Private(Schema::new(s)))
         }
 
+        /// Ensures the chain schema is up to date.
+        /// Applies to the same types of Stores/Schemas create would apply to.
+        pub(super) fn split_block_cache_update(
+            &self,
+            conn: &mut PgConnection,
+        ) -> Result<(), Error> {
+            fn make_ddl(nsp: &str) -> String {
+                format!(
+                    "
+                create schema {nsp};
+                create table {nsp}.block_pointers (
+                  hash         bytea  not null primary key,
+                  number       int8  not null,
+                  parent_hash  bytea  not null,
+                  timestamp    int8 not null,
+                );
+                create index ptrs_blocks_number ON {nsp}.block_pointers using btree(number);
+
+                create table {nsp}.blocks (
+                  hash         bytea  not null primary key,
+                  number       int8  not null,
+                  data         jsonb not null
+                );
+                create index blocks_number ON {nsp}.blocks using btree(number);
+
+                create table {nsp}.call_cache (
+                  id               bytea not null primary key,
+                  return_value     bytea not null,
+                  contract_address bytea not null,
+                  block_number     int4 not null
+                );
+                create index call_cache_block_number_idx ON {nsp}.call_cache(block_number);
+
+                create table {nsp}.call_meta (
+                    contract_address bytea not null primary key,
+                    accessed_at      date  not null
+                );
+            ",
+                    nsp = nsp
+                )
+            }
+
+            match self {
+                Storage::Shared => Ok(()),
+                Storage::Private(Schema { name, .. }) => {
+                    conn.batch_execute(&make_ddl(name))?;
+                    Ok(())
+                }
+            }
+        }
+
         /// Create dedicated database tables for this chain if it uses
         /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
         /// a regular migration will already have created the `ethereum_blocks`
@@ -381,10 +434,17 @@ mod data {
                 format!(
                     "
                 create schema {nsp};
-                create table {nsp}.blocks (
+                create table {nsp}.block_pointers (
                   hash         bytea  not null primary key,
                   number       int8  not null,
                   parent_hash  bytea  not null,
+                  timestamp    int8 not null,
+                );
+                create index ptrs_blocks_number ON {nsp}.block_pointers using btree(number);
+
+                create table {nsp}.blocks (
+                  hash         bytea  not null primary key,
+                  number       int8  not null,
                   data         jsonb not null
                 );
                 create index blocks_number ON {nsp}.blocks using btree(number);
@@ -1777,8 +1837,16 @@ impl ChainStore {
                 .on_conflict(name)
                 .do_nothing()
                 .execute(conn)?;
+
             self.storage.create(conn)
         })?;
+
+        Ok(())
+    }
+
+    pub(crate) fn ensure_up_to_date(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+        let mut conn = self.get_conn()?;
+        self.storage.split_block_cache_update(&mut conn)?;
 
         Ok(())
     }
