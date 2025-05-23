@@ -65,13 +65,13 @@ impl FunctionExt for Function {
 
     fn abi_decode_input(&self, data: &[u8]) -> Result<Vec<DynSolValue>> {
         (self as &dyn alloy::dyn_abi::FunctionExt)
-            .abi_decode_input(data, true)
+            .abi_decode_input(data)
             .map_err(Into::into)
     }
 
     fn abi_decode_output(&self, data: &[u8]) -> Result<Vec<DynSolValue>> {
         (self as &dyn alloy::dyn_abi::FunctionExt)
-            .abi_decode_output(data, true)
+            .abi_decode_output(data)
             .map_err(Into::into)
     }
 
