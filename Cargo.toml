@@ -64,7 +64,7 @@ graph-store-postgres = { path = "./store/postgres" }
 graphman-server = { path = "./server/graphman" }
 graphman = { path = "./core/graphman" }
 graphman-store = { path = "./core/graphman_store" }
-itertools = "0.13.0"
+itertools = "0.14.0"
 lazy_static = "1.5.0"
 prost = "0.13"
 prost-types = "0.13"
