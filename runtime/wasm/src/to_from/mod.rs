@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
@@ -17,13 +18,14 @@ use crate::asc_abi::class::*;
 ///! Standard Rust types go in `mod.rs` and external types in `external.rs`.
 mod external;
 
-impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+#[async_trait]
+impl<T: AscValue + Sync> ToAscObj<TypedArray<T>> for [T] {
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<TypedArray<T>, HostExportError> {
-        TypedArray::new(self, heap, gas)
+        TypedArray::new(self, heap, gas).await
     }
 }
 
@@ -54,8 +56,9 @@ impl<T: AscValue + Send + Sync, const LEN: usize> FromAscObj<TypedArray<T>> for 
     }
 }
 
+#[async_trait]
 impl ToAscObj<AscString> for str {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         _gas: &GasCounter,
@@ -67,8 +70,9 @@ impl ToAscObj<AscString> for str {
     }
 }
 
+#[async_trait]
 impl ToAscObj<AscString> for &str {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         _gas: &GasCounter,
@@ -80,23 +84,25 @@ impl ToAscObj<AscString> for &str {
     }
 }
 
+#[async_trait]
 impl ToAscObj<AscString> for String {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscString, HostExportError> {
-        self.as_str().to_asc_obj(heap, gas)
+        self.as_str().to_asc_obj(heap, gas).await
     }
 }
 
+#[async_trait]
 impl ToAscObj<AscString> for Word {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscString, HostExportError> {
-        self.as_str().to_asc_obj(heap, gas)
+        self.as_str().to_asc_obj(heap, gas).await
     }
 }
 
@@ -132,15 +138,20 @@ impl FromAscObj<AscString> for Word {
     }
 }
 
-impl<C: AscType + AscIndexId, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+#[async_trait]
+impl<C: AscType + AscIndexId + Send + Sync, T: ToAscObj<C> + Sync> ToAscObj<Array<AscPtr<C>>>
+    for [T]
+{
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Array<AscPtr<C>>, HostExportError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
-        let content = content?;
-        Array::new(&content, heap, gas)
+        let mut content = Vec::with_capacity(self.len());
+        for x in self {
+            content.push(asc_new(heap, x, gas).await?);
+        }
+        Array::new(&content, heap, gas).await
     }
 }
 
@@ -175,17 +186,22 @@ impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: FromAscObj<K>, U: From
     }
 }
 
-impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: ToAscObj<K>, U: ToAscObj<V>>
-    ToAscObj<AscTypedMapEntry<K, V>> for (T, U)
+#[async_trait]
+impl<K, V, T, U> ToAscObj<AscTypedMapEntry<K, V>> for (T, U)
+where
+    K: AscType + AscIndexId + Send,
+    V: AscType + AscIndexId + Send,
+    T: ToAscObj<K> + Sync,
+    U: ToAscObj<V> + Sync,
 {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscTypedMapEntry<K, V>, HostExportError> {
         Ok(AscTypedMapEntry {
-            key: asc_new(heap, &self.0, gas)?,
-            value: asc_new(heap, &self.1, gas)?,
+            key: asc_new(heap, &self.0, gas).await?,
+            value: asc_new(heap, &self.1, gas).await?,
         })
     }
 }

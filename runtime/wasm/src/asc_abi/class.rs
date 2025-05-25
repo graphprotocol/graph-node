@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use ethabi;
 
 use graph::{
@@ -92,18 +93,18 @@ pub enum TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub async fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         match heap.api_version() {
             version if version <= &API_VERSION_0_0_4 => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::TypedArray::new(content, heap, gas)?,
+                v0_0_4::TypedArray::new(content, heap, gas).await?,
             )),
-            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::TypedArray::new(
-                content, heap, gas,
-            )?)),
+            _ => Ok(Self::ApiVersion0_0_5(
+                v0_0_5::TypedArray::new(content, heap, gas).await?,
+            )),
         }
     }
 
@@ -146,13 +147,14 @@ impl<T> AscType for TypedArray<T> {
 pub struct Bytes<'a>(pub &'a Vec<u8>);
 
 pub type Uint8Array = TypedArray<u8>;
+#[async_trait]
 impl ToAscObj<Uint8Array> for Bytes<'_> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + Send + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas)
+        self.0.to_asc_obj(heap, gas).await
     }
 }
 
@@ -272,18 +274,18 @@ pub enum Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub async fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         match heap.api_version() {
             version if version <= &API_VERSION_0_0_4 => Ok(Self::ApiVersion0_0_4(
-                v0_0_4::Array::new(content, heap, gas)?,
+                v0_0_4::Array::new(content, heap, gas).await?,
             )),
-            _ => Ok(Self::ApiVersion0_0_5(v0_0_5::Array::new(
-                content, heap, gas,
-            )?)),
+            _ => Ok(Self::ApiVersion0_0_5(
+                v0_0_5::Array::new(content, heap, gas).await?,
+            )),
         }
     }
 

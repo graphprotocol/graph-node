@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
-use graph::futures03::stream::StreamExt;
+use graph::futures03::StreamExt;
 use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
@@ -476,17 +476,7 @@ impl HostExports {
         ))
     }
 
-    pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
-        // Does not consume gas because this is not a part of the deterministic feature set.
-        // Ideally this would first consume gas for fetching the file stats, and then again
-        // for the bytes of the file.
-        graph::block_on(self.link_resolver.cat(
-            &LinkResolverContext::new(&self.subgraph_id, logger),
-            &Link { link },
-        ))
-    }
-
-    pub(crate) fn ipfs_get_block(
+    pub(crate) async fn ipfs_cat(
         &self,
         logger: &Logger,
         link: String,
@@ -494,10 +484,28 @@ impl HostExports {
         // Does not consume gas because this is not a part of the deterministic feature set.
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
-        graph::block_on(self.link_resolver.get_block(
-            &LinkResolverContext::new(&self.subgraph_id, logger),
-            &Link { link },
-        ))
+        self.link_resolver
+            .cat(
+                &LinkResolverContext::new(&self.subgraph_id, logger),
+                &Link { link },
+            )
+            .await
+    }
+
+    pub(crate) async fn ipfs_get_block(
+        &self,
+        logger: &Logger,
+        link: String,
+    ) -> Result<Vec<u8>, anyhow::Error> {
+        // Does not consume gas because this is not a part of the deterministic feature set.
+        // Ideally this would first consume gas for fetching the file stats, and then again
+        // for the bytes of the file.
+        self.link_resolver
+            .get_block(
+                &LinkResolverContext::new(&self.subgraph_id, logger),
+                &Link { link },
+            )
+            .await
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -507,7 +515,7 @@ impl HostExports {
     // which is identical to `module` when it was first started. The signature
     // of the callback must be `callback(JSONValue, Value)`, and the `userData`
     // parameter is passed to the callback without any changes
-    pub(crate) fn ipfs_map(
+    pub(crate) async fn ipfs_map(
         &self,
         wasm_ctx: &WasmInstanceData,
         link: String,
@@ -540,20 +548,26 @@ impl HostExports {
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
         let result = {
-            let mut stream: JsonValueStream = graph::block_on(self.link_resolver.json_stream(
-                &LinkResolverContext::new(&self.subgraph_id, &logger),
-                &Link { link },
-            ))?;
+            let mut stream: JsonValueStream = self
+                .link_resolver
+                .json_stream(
+                    &LinkResolverContext::new(&self.subgraph_id, &logger),
+                    &Link { link },
+                )
+                .await?;
             let mut v = Vec::new();
-            while let Some(sv) = graph::block_on(stream.next()) {
+            while let Some(sv) = stream.next().await {
                 let sv = sv?;
-                let module = WasmInstance::from_valid_module_with_ctx(
+                let module = WasmInstance::from_valid_module_with_ctx_boxed(
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     wasm_ctx.experimental_features,
-                )?;
-                let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
+                )
+                .await?;
+                let result = module
+                    .handle_json_callback(&callback, &sv.value, &user_data)
+                    .await?;
                 // Log progress every 15s
                 if last_log.elapsed() > Duration::from_secs(15) {
                     debug!(

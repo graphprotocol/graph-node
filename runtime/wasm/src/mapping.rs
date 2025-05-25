@@ -36,8 +36,16 @@ where
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
 
-    // wasmtime instances are not `Send` therefore they cannot be scheduled by
-    // the regular tokio executor, so we create a dedicated thread.
+    // It used to be that we had to create a dedicated thread since wasmtime
+    // instances were not `Send` and could therefore not be scheduled by the
+    // regular tokio executor. This isn't an issue anymore, but we still
+    // spawn a dedicated thread since running WASM code async can block and
+    // lock up the executor. See [the wasmtime
+    // docs](https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#execution-in-poll)
+    // on how this should be handled properly. As that is a fairly large
+    // change to how we use wasmtime, we keep the threading model for now.
+    // Once we are confident that things are working that way, we should
+    // revisit this and remove the dedicated thread.
     //
     // In case of failure, this thread may panic or simply terminate,
     // dropping the `mapping_request_receiver` which ultimately causes the
@@ -59,24 +67,29 @@ where
                 } = request;
                 let logger = ctx.logger.clone();
 
-                let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    instantiate_module::<C>(
+                let handle_fut = async {
+                    let result = instantiate_module::<C>(
                         valid_module.cheap_clone(),
                         ctx,
                         host_metrics.cheap_clone(),
                         experimental_features,
                     )
-                    .map_err(Into::into)
-                    .and_then(|module| match inner {
-                        WasmRequestInner::TriggerRequest(trigger) => {
-                            handle_trigger(&logger, module, trigger, host_metrics.cheap_clone())
-                        }
-                        WasmRequestInner::BlockRequest(BlockRequest {
-                            block_data,
-                            handler,
-                        }) => module.handle_block(&logger, &handler, block_data),
-                    })
-                }));
+                    .await;
+                    match result {
+                        Ok(module) => match inner {
+                            WasmRequestInner::TriggerRequest(trigger) => {
+                                handle_trigger(&logger, module, trigger, host_metrics.cheap_clone())
+                                    .await
+                            }
+                            WasmRequestInner::BlockRequest(BlockRequest {
+                                block_data,
+                                handler,
+                            }) => module.handle_block(&logger, &handler, block_data).await,
+                        },
+                        Err(e) => Err(MappingError::Unknown(e)),
+                    }
+                };
+                let result = panic::catch_unwind(AssertUnwindSafe(|| graph::block_on(handle_fut)));
 
                 let result = match result {
                     Ok(result) => result,
@@ -111,7 +124,7 @@ where
     Ok(mapping_request_sender)
 }
 
-fn instantiate_module<C: Blockchain>(
+async fn instantiate_module<C: Blockchain>(
     valid_module: Arc<ValidModule>,
     ctx: MappingContext,
     host_metrics: Arc<HostMetrics>,
@@ -128,10 +141,11 @@ where
         host_metrics.cheap_clone(),
         experimental_features,
     )
+    .await
     .context("module instantiation failed")
 }
 
-fn handle_trigger<C: Blockchain>(
+async fn handle_trigger<C: Blockchain>(
     logger: &Logger,
     module: WasmInstance,
     trigger: TriggerWithHandler<MappingTrigger<C>>,
@@ -146,7 +160,7 @@ where
     if ENV_VARS.log_trigger_data {
         debug!(logger, "trigger data: {:?}", trigger);
     }
-    module.handle_trigger(trigger)
+    module.handle_trigger(trigger).await
 }
 
 pub struct WasmRequest<C: Blockchain> {
@@ -312,6 +326,7 @@ impl ValidModule {
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
+        config.async_support(true);
 
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;

@@ -22,7 +22,8 @@ async fn test_unbounded_loop(api_version: Version) {
         .get_func("loop")
         .typed(&mut instance.store.as_context_mut())
         .unwrap()
-        .call(&mut instance.store.as_context_mut(), ());
+        .call_async(&mut instance.store.as_context_mut(), ())
+        .await;
     let err = res.unwrap_err();
     assert!(
         format!("{err:?}").contains("wasm trap: interrupt"),
@@ -55,7 +56,8 @@ async fn test_unbounded_recursion(api_version: Version) {
         .get_func("rabbit_hole")
         .typed(&mut instance.store.as_context_mut())
         .unwrap()
-        .call(&mut instance.store.as_context_mut(), ());
+        .call_async(&mut instance.store.as_context_mut(), ())
+        .await;
     let err_msg = res.unwrap_err();
     assert!(
         format!("{err_msg:?}").contains("call stack exhausted"),
@@ -91,7 +93,8 @@ async fn test_abi_array(api_version: Version, gas_used: u64) {
         "3".to_owned(),
         "4".to_owned(),
     ];
-    let new_vec_obj: AscPtr<Array<AscPtr<AscString>>> = module.invoke_export1("test_array", &vec);
+    let new_vec_obj: AscPtr<Array<AscPtr<AscString>>> =
+        module.invoke_export1("test_array", &vec).await;
     let new_vec: Vec<String> = module.asc_get(new_vec_obj).unwrap();
 
     assert_eq!(module.gas_used(), gas_used);
@@ -129,8 +132,9 @@ async fn test_abi_subarray(api_version: Version) {
     .await;
 
     let vec: Vec<u8> = vec![1, 2, 3, 4];
-    let new_vec_obj: AscPtr<TypedArray<u8>> =
-        module.invoke_export1("byte_array_third_quarter", vec.as_slice());
+    let new_vec_obj: AscPtr<TypedArray<u8>> = module
+        .invoke_export1("byte_array_third_quarter", vec.as_slice())
+        .await;
     let new_vec: Vec<u8> = module.asc_get(new_vec_obj).unwrap();
 
     assert_eq!(new_vec, vec![3]);
@@ -158,7 +162,7 @@ async fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     .await;
     let bytes1: Vec<u8> = vec![42, 45, 7, 245, 45];
     let bytes2: Vec<u8> = vec![3, 12, 0, 1, 255];
-    let new_vec_obj: AscPtr<Uint8Array> = module.invoke_export2("concat", &*bytes1, &*bytes2);
+    let new_vec_obj: AscPtr<Uint8Array> = module.invoke_export2("concat", &*bytes1, &*bytes2).await;
 
     // This should be bytes1 and bytes2 concatenated.
     let new_vec: Vec<u8> = module.asc_get(new_vec_obj).unwrap();
@@ -193,28 +197,37 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
     let token_address = Token::Address(address);
 
-    let new_address_obj: AscPtr<AscAddress> =
-        instance.invoke_export1("token_to_address", &token_address);
+    let new_address_obj: AscPtr<AscAddress> = instance
+        .invoke_export1("token_to_address", &token_address)
+        .await;
 
-    let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_address", new_address_obj);
+    let new_token_ptr = instance
+        .takes_ptr_returns_ptr("token_from_address", new_address_obj)
+        .await;
     let new_token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_address, new_token);
 
     // Token::Bytes
     let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
-    let new_bytes_obj: AscPtr<ArrayBuffer> =
-        instance.invoke_export1("token_to_bytes", &token_bytes);
-    let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj);
+    let new_bytes_obj: AscPtr<ArrayBuffer> = instance
+        .invoke_export1("token_to_bytes", &token_bytes)
+        .await;
+    let new_token_ptr = instance
+        .takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj)
+        .await;
     let new_token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_bytes, new_token);
 
     // Token::Int
     let int_token = Token::Int(U256([256, 453452345, 0, 42]));
-    let new_int_obj: AscPtr<ArrayBuffer> = instance.invoke_export1("token_to_int", &int_token);
+    let new_int_obj: AscPtr<ArrayBuffer> =
+        instance.invoke_export1("token_to_int", &int_token).await;
 
-    let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_int", new_int_obj);
+    let new_token_ptr = instance
+        .takes_ptr_returns_ptr("token_from_int", new_int_obj)
+        .await;
     let new_token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(int_token, new_token);
@@ -222,8 +235,11 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     // Token::Uint
     let uint_token = Token::Uint(U256([256, 453452345, 0, 42]));
 
-    let new_uint_obj: AscPtr<ArrayBuffer> = instance.invoke_export1("token_to_uint", &uint_token);
-    let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_uint", new_uint_obj);
+    let new_uint_obj: AscPtr<ArrayBuffer> =
+        instance.invoke_export1("token_to_uint", &uint_token).await;
+    let new_token_ptr = instance
+        .takes_ptr_returns_ptr("token_from_uint", new_uint_obj)
+        .await;
     let new_token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(uint_token, new_token);
@@ -232,29 +248,35 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     // Token::Bool
     let token_bool = Token::Bool(true);
 
-    let token_bool_ptr = instance.asc_new(&token_bool).unwrap();
+    let token_bool_ptr = instance.asc_new(&token_bool).await.unwrap();
     let func = instance
         .get_func("token_to_bool")
         .typed(&mut instance.store.as_context_mut())
         .unwrap()
         .clone();
     let boolean: i32 = func
-        .call(
+        .call_async(
             &mut instance.store.as_context_mut(),
             token_bool_ptr.wasm_ptr(),
         )
+        .await
         .unwrap();
 
-    let new_token_ptr = instance.takes_val_returns_ptr("token_from_bool", boolean);
+    let new_token_ptr = instance
+        .takes_val_returns_ptr("token_from_bool", boolean)
+        .await;
     let new_token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_bool, new_token);
 
     // Token::String
     let token_string = Token::String("漢字Go🇧🇷".into());
-    let new_string_obj: AscPtr<AscString> =
-        instance.invoke_export1("token_to_string", &token_string);
-    let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_string", new_string_obj);
+    let new_string_obj: AscPtr<AscString> = instance
+        .invoke_export1("token_to_string", &token_string)
+        .await;
+    let new_token_ptr = instance
+        .takes_ptr_returns_ptr("token_from_string", new_string_obj)
+        .await;
     let new_token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_string, new_token);
@@ -262,10 +284,13 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     // Token::Array
     let token_array = Token::Array(vec![token_address, token_bytes, token_bool]);
     let token_array_nested = Token::Array(vec![token_string, token_array]);
-    let new_array_obj: AscEnumArray<EthereumValueKind> =
-        instance.invoke_export1("token_to_array", &token_array_nested);
+    let new_array_obj: AscEnumArray<EthereumValueKind> = instance
+        .invoke_export1("token_to_array", &token_array_nested)
+        .await;
 
-    let new_token_ptr = instance.takes_ptr_returns_ptr("token_from_array", new_array_obj);
+    let new_token_ptr = instance
+        .takes_ptr_returns_ptr("token_from_array", new_array_obj)
+        .await;
     let new_token: Token = instance.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(new_token, token_array_nested);
@@ -302,43 +327,54 @@ async fn test_abi_store_value(api_version: Version) {
         .typed(&mut instance.store.as_context_mut())
         .unwrap()
         .clone();
-    let ptr: u32 = func.call(&mut instance.store.as_context_mut(), ()).unwrap();
+    let ptr: u32 = func
+        .call_async(&mut instance.store.as_context_mut(), ())
+        .await
+        .unwrap();
     let null_value_ptr: AscPtr<AscEnum<StoreValueKind>> = ptr.into();
     let null_value: Value = instance.asc_get(null_value_ptr).unwrap();
     assert_eq!(null_value, Value::Null);
 
     // Value::String
     let string = "some string";
-    let new_value_ptr = instance.invoke_export1("value_from_string", string);
+    let new_value_ptr = instance.invoke_export1("value_from_string", string).await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::from(string));
 
     // Value::Int
     let int = i32::min_value();
-    let new_value_ptr = instance.takes_val_returns_ptr("value_from_int", int);
+    let new_value_ptr = instance.takes_val_returns_ptr("value_from_int", int).await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Int(int));
 
     // Value::Int8
     let int8 = i64::min_value();
-    let new_value_ptr = instance.takes_val_returns_ptr("value_from_int8", int8);
+    let new_value_ptr = instance
+        .takes_val_returns_ptr("value_from_int8", int8)
+        .await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Int8(int8));
 
     // Value::BigDecimal
     let big_decimal = BigDecimal::from_str("3.14159001").unwrap();
-    let new_value_ptr = instance.invoke_export1("value_from_big_decimal", &big_decimal);
+    let new_value_ptr = instance
+        .invoke_export1("value_from_big_decimal", &big_decimal)
+        .await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(big_decimal));
 
     let big_decimal = BigDecimal::new(10.into(), 5);
-    let new_value_ptr = instance.invoke_export1("value_from_big_decimal", &big_decimal);
+    let new_value_ptr = instance
+        .invoke_export1("value_from_big_decimal", &big_decimal)
+        .await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(1_000_000.into()));
 
     // Value::Bool
     let boolean = true;
-    let new_value_ptr = instance.takes_val_returns_ptr("value_from_bool", boolean as i32);
+    let new_value_ptr = instance
+        .takes_val_returns_ptr("value_from_bool", boolean as i32)
+        .await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bool(boolean));
 
@@ -349,9 +385,10 @@ async fn test_abi_store_value(api_version: Version) {
         .unwrap()
         .clone();
 
-    let wasm_ptr = instance.asc_new(string).unwrap().wasm_ptr();
+    let wasm_ptr = instance.asc_new(string).await.unwrap().wasm_ptr();
     let new_value_ptr: u32 = func
-        .call(&mut instance.store.as_context_mut(), (wasm_ptr, int))
+        .call_async(&mut instance.store.as_context_mut(), (wasm_ptr, int))
+        .await
         .unwrap();
     let new_value_ptr = AscPtr::from(new_value_ptr);
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
@@ -364,7 +401,7 @@ async fn test_abi_store_value(api_version: Version) {
         Value::String("foo".to_owned()),
         Value::String("bar".to_owned()),
     ];
-    let new_value_ptr = instance.invoke_export1("value_from_array", array);
+    let new_value_ptr = instance.invoke_export1("value_from_array", array).await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
@@ -376,13 +413,13 @@ async fn test_abi_store_value(api_version: Version) {
 
     // Value::Bytes
     let bytes: &[u8] = &[0, 2, 5];
-    let new_value_ptr = instance.invoke_export1("value_from_bytes", bytes);
+    let new_value_ptr = instance.invoke_export1("value_from_bytes", bytes).await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bytes(bytes.into()));
 
     // Value::BigInt
     let bytes: &[u8] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
-    let new_value_ptr = instance.invoke_export1("value_from_bigint", bytes);
+    let new_value_ptr = instance.invoke_export1("value_from_bigint", bytes).await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
@@ -413,7 +450,7 @@ async fn test_abi_h160(api_version: Version) {
     let address = H160::zero();
 
     // As an `Uint8Array`
-    let new_address_obj: AscPtr<Uint8Array> = module.invoke_export1("test_address", &address);
+    let new_address_obj: AscPtr<Uint8Array> = module.invoke_export1("test_address", &address).await;
 
     // This should have 1 added to the first and last byte.
     let new_address: H160 = module.asc_get(new_address_obj).unwrap();
@@ -445,7 +482,7 @@ async fn test_string(api_version: Version) {
     )
     .await;
     let string = "    漢字Double_Me🇧🇷  ";
-    let trimmed_string_obj: AscPtr<AscString> = module.invoke_export1("repeat_twice", string);
+    let trimmed_string_obj: AscPtr<AscString> = module.invoke_export1("repeat_twice", string).await;
     let doubled_string: String = module.asc_get(trimmed_string_obj).unwrap();
     assert_eq!(doubled_string, string.repeat(2));
 }
@@ -473,8 +510,9 @@ async fn test_abi_big_int(api_version: Version) {
 
     // Test passing in 0 and increment it by 1
     let old_uint = U256::zero();
-    let new_uint_obj: AscPtr<AscBigInt> =
-        module.invoke_export1("test_uint", &BigInt::from_unsigned_u256(&old_uint));
+    let new_uint_obj: AscPtr<AscBigInt> = module
+        .invoke_export1("test_uint", &BigInt::from_unsigned_u256(&old_uint))
+        .await;
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(1_i32));
     let new_uint = new_uint.to_unsigned_u256();
@@ -482,7 +520,7 @@ async fn test_abi_big_int(api_version: Version) {
 
     // Test passing in -50 and increment it by 1
     let old_uint = BigInt::from(-50);
-    let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", &old_uint);
+    let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", &old_uint).await;
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(-49_i32));
     let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
@@ -512,7 +550,7 @@ async fn test_big_int_to_string(api_version: Version) {
 
     let big_int_str = "30145144166666665000000000000000000";
     let big_int = BigInt::from_str(big_int_str).unwrap();
-    let string_obj: AscPtr<AscString> = module.invoke_export1("big_int_to_string", &big_int);
+    let string_obj: AscPtr<AscString> = module.invoke_export1("big_int_to_string", &big_int).await;
     let string: String = module.asc_get(string_obj).unwrap();
     assert_eq!(string, big_int_str);
 }
@@ -543,7 +581,10 @@ async fn test_invalid_discriminant(api_version: Version) {
         .typed(&mut instance.store.as_context_mut())
         .unwrap()
         .clone();
-    let ptr: u32 = func.call(&mut instance.store.as_context_mut(), ()).unwrap();
+    let ptr: u32 = func
+        .call_async(&mut instance.store.as_context_mut(), ())
+        .await
+        .unwrap();
     let _value: Value = instance.asc_get(ptr.into()).unwrap();
 }
 

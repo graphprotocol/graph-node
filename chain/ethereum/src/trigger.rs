@@ -4,6 +4,7 @@ use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
+use graph::prelude::async_trait;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::ethabi::ethereum_types::U128;
@@ -129,8 +130,9 @@ impl std::fmt::Debug for MappingTrigger {
     }
 }
 
+#[async_trait]
 impl ToAscPtr for MappingTrigger {
-    fn to_asc_ptr<H: AscHeap>(
+    async fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
         gas: &GasCounter,
@@ -159,28 +161,31 @@ impl ToAscPtr for MappingTrigger {
                         >,
                         _,
                         _,
-                    >(heap, &(ethereum_event_data, receipt.as_deref()), gas)?
+                    >(heap, &(ethereum_event_data, receipt.as_deref()), gas)
+                    .await?
                     .erase()
                 } else if api_version >= &API_VERSION_0_0_6 {
                     asc_new::<
                         AscEthereumEvent<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
                         _,
                         _,
-                    >(heap, &ethereum_event_data, gas)?
+                    >(heap, &ethereum_event_data, gas)
+                    .await?
                     .erase()
                 } else if api_version >= &API_VERSION_0_0_2 {
                     asc_new::<
                             AscEthereumEvent<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
                             _,
                             _,
-                        >(heap, &ethereum_event_data, gas)?
+                        >(heap, &ethereum_event_data, gas)
+                        .await?
                         .erase()
                 } else {
                     asc_new::<
                         AscEthereumEvent<AscEthereumTransaction_0_0_1, AscEthereumBlock>,
                         _,
                         _,
-                    >(heap, &ethereum_event_data, gas)?
+                    >(heap, &ethereum_event_data, gas).await?
                     .erase()
                 }
             }
@@ -197,25 +202,33 @@ impl ToAscPtr for MappingTrigger {
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_6, AscEthereumBlock_0_0_6>,
                         _,
                         _,
-                    >(heap, &call, gas)?
+                    >(heap, &call, gas)
+                    .await?
                     .erase()
                 } else if heap.api_version() >= &Version::new(0, 0, 3) {
                     asc_new::<
                         AscEthereumCall_0_0_3<AscEthereumTransaction_0_0_2, AscEthereumBlock>,
                         _,
                         _,
-                    >(heap, &call, gas)?
+                    >(heap, &call, gas)
+                    .await?
                     .erase()
                 } else {
-                    asc_new::<AscEthereumCall, _, _>(heap, &call, gas)?.erase()
+                    asc_new::<AscEthereumCall, _, _>(heap, &call, gas)
+                        .await?
+                        .erase()
                 }
             }
             MappingTrigger::Block { block } => {
                 let block = EthereumBlockData::from(block.as_ref());
                 if heap.api_version() >= &Version::new(0, 0, 6) {
-                    asc_new::<AscEthereumBlock_0_0_6, _, _>(heap, &block, gas)?.erase()
+                    asc_new::<AscEthereumBlock_0_0_6, _, _>(heap, &block, gas)
+                        .await?
+                        .erase()
                 } else {
-                    asc_new::<AscEthereumBlock, _, _>(heap, &block, gas)?.erase()
+                    asc_new::<AscEthereumBlock, _, _>(heap, &block, gas)
+                        .await?
+                        .erase()
                 }
             }
         })
