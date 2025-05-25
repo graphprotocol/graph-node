@@ -149,7 +149,7 @@ pub struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap + ?Sized>(
+    pub(crate) async fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
@@ -160,7 +160,7 @@ impl<T: AscValue> TypedArray<T> {
         } else {
             unreachable!("Only the correct ArrayBuffer will be constructed")
         };
-        let ptr = AscPtr::alloc_obj(buffer, heap, gas)?;
+        let ptr = AscPtr::alloc_obj(buffer, heap, gas).await?;
         Ok(TypedArray {
             byte_length: buffer_byte_length,
             buffer: AscPtr::new(ptr.wasm_ptr()),
@@ -303,13 +303,13 @@ pub struct Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub async fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
-        let arr_buffer_ptr = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
+        let arr_buffer_ptr = AscPtr::alloc_obj(arr_buffer, heap, gas).await?;
         Ok(Array {
             buffer: AscPtr::new(arr_buffer_ptr.wasm_ptr()),
             // If this cast would overflow, the above line has already panicked.

@@ -39,9 +39,10 @@ impl blockchain::TriggerData for TriggerData {
     }
 }
 
+#[async_trait]
 impl ToAscPtr for TriggerData {
     // substreams doesn't rely on wasm on the graph-node so this is not needed.
-    fn to_asc_ptr<H: graph::runtime::AscHeap>(
+    async fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
         _heap: &mut H,
         _gas: &graph::runtime::gas::GasCounter,

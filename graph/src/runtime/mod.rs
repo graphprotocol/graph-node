@@ -21,6 +21,8 @@ use std::mem::size_of;
 
 use self::gas::GasCounter;
 
+use crate::prelude::async_trait;
+
 /// Marker trait for AssemblyScript types that the id should
 /// be in the header.
 pub trait AscIndexId {
@@ -337,8 +339,9 @@ pub enum IndexForAscTypeId {
     UnitTestNetworkUnitTestTypeBoolArray = u32::MAX,
 }
 
+#[async_trait]
 impl ToAscObj<u32> for IndexForAscTypeId {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + Send + ?Sized>(
         &self,
         _heap: &mut H,
         _gas: &GasCounter,
