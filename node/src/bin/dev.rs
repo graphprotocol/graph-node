@@ -13,6 +13,7 @@ use graph::{
 };
 use graph_core::polling_monitor::ipfs_service;
 use graph_node::{
+    dev::watcher,
     dev::watcher::{parse_manifest_args, watch_subgraphs},
     launcher,
     opt::Opt,
@@ -142,8 +143,8 @@ fn build_args(dev_opt: &DevOpt, db_url: &str) -> Result<Opt> {
 
     opt.http_port = dev_opt.http_port;
     opt.admin_port = dev_opt.admin_port;
-    opt.metrics_port = dev_opt.admin_port;
-    opt.index_node_port = dev_opt.admin_port;
+    opt.metrics_port = dev_opt.metrics_port;
+    opt.index_node_port = dev_opt.index_node_port;
 
     Ok(opt)
 }
@@ -152,7 +153,7 @@ async fn run_graph_node(
     logger: &Logger,
     opt: Opt,
     link_resolver: Arc<dyn LinkResolver>,
-    subgraph_updates_channel: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
+    subgraph_updates_channel: mpsc::Receiver<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
@@ -173,7 +174,7 @@ async fn run_graph_node(
         env_vars,
         ipfs_service,
         link_resolver,
-        subgraph_updates_channel,
+        Some(subgraph_updates_channel),
     )
     .await;
     Ok(())
@@ -235,14 +236,22 @@ async fn main() -> Result<()> {
         parse_manifest_args(dev_opt.manifests, dev_opt.sources, &logger)?;
     let file_link_resolver = Arc::new(FileLinkResolver::new(None, source_subgraph_aliases.clone()));
 
-    let (tx, rx) = dev_opt.watch.then(|| mpsc::channel(1)).unzip();
+    let (tx, rx) = mpsc::channel(1);
 
     let logger_clone = logger.clone();
     graph::spawn(async move {
         let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx).await;
     });
 
-    if let Some(tx) = tx {
+    if let Err(e) =
+        watcher::deploy_all_subgraphs(&logger, &manifests_paths, &source_subgraph_aliases, &tx)
+            .await
+    {
+        error!(logger, "Error deploying subgraphs"; "error" => e.to_string());
+        std::process::exit(1);
+    }
+
+    if dev_opt.watch {
         graph::spawn_blocking(async move {
             if let Err(e) = watch_subgraphs(
                 &logger,
