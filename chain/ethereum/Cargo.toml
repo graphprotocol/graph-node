@@ -16,7 +16,7 @@ hex = "0.4.3"
 semver = "1.0.23"
 thiserror = { workspace = true }
 
-itertools = "0.13.0"
+itertools = "0.14.0"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
