@@ -90,6 +90,35 @@ pub struct DevOpt {
         default_value = "https://api.thegraph.com/ipfs"
     )]
     pub ipfs: Vec<String>,
+    #[clap(
+        long,
+        default_value = "8000",
+        value_name = "PORT",
+        help = "Port for the GraphQL HTTP server",
+        env = "GRAPH_GRAPHQL_HTTP_PORT"
+    )]
+    pub http_port: u16,
+    #[clap(
+        long,
+        default_value = "8030",
+        value_name = "PORT",
+        help = "Port for the index node server"
+    )]
+    pub index_node_port: u16,
+    #[clap(
+        long,
+        default_value = "8020",
+        value_name = "PORT",
+        help = "Port for the JSON-RPC admin server"
+    )]
+    pub admin_port: u16,
+    #[clap(
+        long,
+        default_value = "8040",
+        value_name = "PORT",
+        help = "Port for the Prometheus metrics server"
+    )]
+    pub metrics_port: u16,
 }
 
 /// Builds the Graph Node options from DevOpt
@@ -109,7 +138,12 @@ fn build_args(dev_opt: &DevOpt, db_url: &str) -> Result<Opt> {
     args.push("--postgres-url".to_string());
     args.push(db_url.to_string());
 
-    let opt = Opt::parse_from(args);
+    let mut opt = Opt::parse_from(args);
+
+    opt.http_port = dev_opt.http_port;
+    opt.admin_port = dev_opt.admin_port;
+    opt.metrics_port = dev_opt.admin_port;
+    opt.index_node_port = dev_opt.admin_port;
 
     Ok(opt)
 }
