@@ -97,7 +97,7 @@ impl TestResult {
 struct TestCase {
     name: String,
     test: TestFn,
-    source_subgraph: Option<String>,
+    source_subgraph: Option<Vec<String>>,
 }
 
 impl TestCase {
@@ -117,7 +117,7 @@ impl TestCase {
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
         let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(base_subgraph.to_string());
+        test_case.source_subgraph = Some(vec![base_subgraph.to_string()]);
         test_case
     }
 
@@ -130,7 +130,7 @@ impl TestCase {
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
         let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(source_subgraph.to_string());
+        test_case.source_subgraph = Some(vec![source_subgraph.to_string()]);
         test_case
     }
 
@@ -143,7 +143,12 @@ impl TestCase {
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
         let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(source_subgraphs.join(","));
+        test_case.source_subgraph = Some(
+            source_subgraphs
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
         test_case
     }
 
@@ -253,7 +258,7 @@ impl TestCase {
 
     async fn deploy_multiple_sources(&self, contracts: &[Contract]) -> Result<()> {
         if let Some(sources) = &self.source_subgraph {
-            for source in sources.split(",") {
+            for source in sources {
                 let subgraph = self.deploy_and_wait(source, contracts).await?;
                 status!(
                     source,
