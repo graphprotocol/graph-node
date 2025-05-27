@@ -1,3 +1,4 @@
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use std::{fs, path::PathBuf};
 
@@ -13,6 +14,15 @@ use crate::status;
 
 lazy_static! {
     pub static ref CONFIG: Config = Config::default();
+    static ref DEV_MODE: OnceLock<bool> = OnceLock::new();
+}
+
+pub fn set_dev_mode(val: bool) {
+    DEV_MODE.set(val).expect("DEV_MODE already set");
+}
+
+pub fn dev_mode() -> bool {
+    *DEV_MODE.get().unwrap_or(&false)
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +127,26 @@ impl GraphNodeConfig {
             }
         }
     }
+
+    pub fn from_env() -> Self {
+        if dev_mode() {
+            Self::gnd()
+        } else {
+            Self::default()
+        }
+    }
+
+    fn gnd() -> Self {
+        let bin = fs::canonicalize("../target/debug/gnd")
+            .expect("failed to infer `graph-node` program location. (Was it built already?)");
+
+        Self {
+            bin,
+            ports: GraphNodePorts::default(),
+            ipfs_uri: "http://localhost:3001".to_string(),
+            log_file: TestFile::new("integration-tests/graph-node.log"),
+        }
+    }
 }
 
 impl Default for GraphNodeConfig {
@@ -145,6 +175,13 @@ pub struct Config {
 
 impl Config {
     pub async fn spawn_graph_node(&self) -> anyhow::Result<Child> {
+        self.spawn_graph_node_with_args(&[]).await
+    }
+
+    pub async fn spawn_graph_node_with_args(
+        &self,
+        additional_args: &[&str],
+    ) -> anyhow::Result<Child> {
         let ports = &self.graph_node.ports;
 
         let args = [
@@ -163,6 +200,12 @@ impl Config {
             "--metrics-port",
             &ports.metrics.to_string(),
         ];
+
+        let args = args
+            .iter()
+            .chain(additional_args.iter())
+            .cloned()
+            .collect::<Vec<_>>();
         let stdout = self.graph_node.log_file.create();
         let stderr = stdout.try_clone()?;
         status!(
@@ -174,7 +217,7 @@ impl Config {
         command
             .stdout(stdout)
             .stderr(stderr)
-            .args(args)
+            .args(args.clone())
             .env("GRAPH_STORE_WRITE_BATCH_DURATION", "5")
             .env("ETHEREUM_REORG_THRESHOLD", "0");
 
@@ -254,7 +297,7 @@ impl Default for Config {
                 port: 3021,
                 host: "localhost".to_string(),
             },
-            graph_node: GraphNodeConfig::default(),
+            graph_node: GraphNodeConfig::from_env(),
             graph_cli,
             num_parallel_tests,
             timeout: Duration::from_secs(600),
