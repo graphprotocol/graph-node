@@ -47,8 +47,11 @@ impl Subgraph {
         Ok(())
     }
 
-    /// Deploy the subgraph by running the required `graph` commands
-    pub async fn deploy(name: &str, contracts: &[Contract]) -> anyhow::Result<String> {
+    /// Prepare the subgraph for deployment by patching contracts and checking for subgraph datasources
+    pub async fn prepare(
+        name: &str,
+        contracts: &[Contract],
+    ) -> anyhow::Result<(TestFile, String, bool)> {
         let dir = Self::dir(name);
         let name = format!("test/{name}");
 
@@ -61,6 +64,13 @@ impl Subgraph {
             .as_sequence()
             .and_then(|ds| ds.iter().find(|d| d["kind"].as_str() == Some("subgraph")))
             .is_some();
+
+        Ok((dir, name, has_subgraph_datasource))
+    }
+
+    /// Deploy the subgraph by running the required `graph` commands
+    pub async fn deploy(name: &str, contracts: &[Contract]) -> anyhow::Result<String> {
+        let (dir, name, has_subgraph_datasource) = Self::prepare(name, contracts).await?;
 
         // graph codegen subgraph.yaml
         let mut prog = Command::new(&CONFIG.graph_cli);
