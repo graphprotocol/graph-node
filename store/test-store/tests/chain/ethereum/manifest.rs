@@ -91,6 +91,13 @@ impl LinkResolverTrait for TextResolver {
         Box::new(self.clone())
     }
 
+    fn for_manifest(
+        &self,
+        _manifest_path: &str,
+    ) -> Result<Box<dyn LinkResolverTrait>, anyhow::Error> {
+        Ok(Box::new(self.clone()))
+    }
+
     async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)

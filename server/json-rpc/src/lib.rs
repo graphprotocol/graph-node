@@ -133,6 +133,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 None,
                 None,
                 params.history_blocks,
+                false,
             )
             .await
         {
