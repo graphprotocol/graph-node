@@ -121,20 +121,7 @@ impl TestCase {
         test_case
     }
 
-    fn new_with_source_subgraph<T>(
-        name: &str,
-        test: fn(TestContext) -> T,
-        source_subgraph: &str,
-    ) -> Self
-    where
-        T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
-    {
-        let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(vec![source_subgraph.to_string()]);
-        test_case
-    }
-
-    fn new_with_multiple_source_subgraphs<T>(
+    pub fn new_with_source_subgraphs<T>(
         name: &str,
         test: fn(TestContext) -> T,
         source_subgraphs: Vec<&str>,
@@ -1046,12 +1033,12 @@ async fn integration_tests() -> anyhow::Result<()> {
         TestCase::new("ethereum-api-tests", test_eth_api),
         TestCase::new("topic-filter", test_topic_filters),
         TestCase::new_with_grafting("grafted", test_subgraph_grafting, "base"),
-        TestCase::new_with_source_subgraph(
+        TestCase::new_with_source_subgraphs(
             "subgraph-data-sources",
             subgraph_data_sources,
-            "source-subgraph",
+            vec!["source-subgraph"],
         ),
-        TestCase::new_with_multiple_source_subgraphs(
+        TestCase::new_with_source_subgraphs(
             "multiple-subgraph-datasources",
             test_multiple_subgraph_datasources,
             vec!["source-subgraph-a", "source-subgraph-b"],
