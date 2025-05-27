@@ -165,6 +165,7 @@ impl EthereumAdapter {
         to: BlockNumber,
         addresses: Vec<H160>,
     ) -> Result<Vec<Trace>, Error> {
+        info!(logger, "!!!! traces");
         assert!(!self.call_only);
 
         let eth = self.clone();
@@ -270,6 +271,7 @@ impl EthereumAdapter {
             }
         }
 
+        info!(logger, "!!!! check_block_receipt_support_and_update_cache");
         info!(logger, "Checking eth_getBlockReceipts support");
         let result = timeout(
             ENV_VARS.block_receipts_check_timeout,
@@ -556,6 +558,7 @@ impl EthereumAdapter {
         address: Address,
         block_ptr: BlockPtr,
     ) -> Result<Bytes, EthereumRpcError> {
+        info!(logger, "!!!! code");
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -591,6 +594,7 @@ impl EthereumAdapter {
         address: Address,
         block_ptr: BlockPtr,
     ) -> Result<U256, EthereumRpcError> {
+        info!(logger, "!!!! balances");
         let web3 = self.web3.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
@@ -627,6 +631,7 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
         gas: Option<u32>,
     ) -> Result<call::Retval, ContractCallError> {
+        info!(logger, "!!!! call");
         fn reverted(logger: &Logger, reason: &str) -> Result<call::Retval, ContractCallError> {
             info!(logger, "Contract call reverted"; "reason" => reason);
             Ok(call::Retval::Null)
@@ -907,6 +912,7 @@ impl EthereumAdapter {
         logger: Logger,
         numbers: Vec<BlockNumber>,
     ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
+        info!(logger, "!!!! load_block_ptrs_by_numbers_rpc");
         let web3 = self.web3.clone();
 
         futures03::stream::iter(numbers.into_iter().map(move |number| {
@@ -1326,6 +1332,7 @@ impl EthereumAdapter {
     pub async fn chain_id(&self) -> Result<u64, Error> {
         let logger = self.logger.clone();
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         u64::try_from(
             retry("chain_id RPC call", &logger)
                 .redact_log_urls(true)
@@ -1333,7 +1340,16 @@ impl EthereumAdapter {
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
-                    async move { web3.eth().chain_id().await }
+                    let alloy = alloy.clone();
+                    async move {
+                        let ch = web3.eth().chain_id().await;
+                        let ch2 = alloy.get_chain_id().await.map(u64_to_u256);
+                        match (&ch, &ch2) {
+                            (Ok(c1), Ok(c2)) => assert_eq!(c1, c2),
+                            (_, _) => panic!("chain_id"),
+                        };
+                        ch
+                    }
                 })
                 .await?,
         )
@@ -1356,8 +1372,6 @@ impl EthereumAdapter {
         &self,
         logger: &Logger,
     ) -> Result<Arc<web3::types::Block<H256>>, IngestorError> {
-        // info!(logger, "!!!! latest_block_header");
-        // let web3 = self.web3.clone();
         let alloy = self.alloy.clone();
         let logger2 = logger.clone();
         retry("eth_getBlockByNumber(latest) no txs RPC call", &logger2)
@@ -1365,7 +1379,6 @@ impl EthereumAdapter {
             .no_limit()
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                // let web3 = web3.cheap_clone();
                 let alloy = alloy.clone();
                 let logger = logger2.clone();
                 async move {
@@ -1491,6 +1504,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error> {
         let logger = self.logger.clone();
+        info!(logger, "!!!! net_identifiers");
 
         let web3 = self.web3.clone();
         let metrics = self.metrics.clone();
@@ -1592,7 +1606,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 
     async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, IngestorError> {
-        info!(logger, "!!!! latest_block1");
+        info!(logger, "!!!! latest_block");
         let web3 = self.web3.clone();
         retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
             .redact_log_urls(true)
@@ -1657,8 +1671,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 )
             });
 
-        // info!(logger, "!!! RET1: {:?}", ret);
-        // info!(logger, "!!! RET2: {:?}", ret2);
         match (&ret, &ret2) {
             (Ok(r1), Ok(r2)) => assert_eq!(r1, r2),
             (r1, r2) => panic!("Error(s): {:?} {:?}", r1, r2),
@@ -1709,6 +1721,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         block: LightEthereumBlock,
     ) -> Result<EthereumBlock, IngestorError> {
         let web3 = Arc::clone(&self.web3);
+        let alloy: Arc<dyn Provider + 'static> = self.alloy.clone();
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -1721,7 +1734,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 transaction_receipts: Vec::new(),
             });
         }
-        info!(logger, "!!!! load_full_block");
         let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
 
         let supports_block_receipts = self
@@ -1735,13 +1747,19 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .await;
 
         let log = logger.clone();
-        let ret =
-            fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
-                .await
-                .map(|transaction_receipts| EthereumBlock {
-                    block: Arc::new(block),
-                    transaction_receipts,
-                });
+        let ret = fetch_receipts_with_retry(
+            alloy,
+            web3,
+            hashes,
+            block_hash,
+            logger,
+            supports_block_receipts,
+        )
+        .await
+        .map(|transaction_receipts| EthereumBlock {
+            block: Arc::new(block),
+            transaction_receipts,
+        });
         info!(log, "load_full_block is OK: {}", ret.is_ok());
         ret
     }
@@ -1751,7 +1769,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Result<Option<H256>, Error> {
-        // info!(logger, "!!!! block_hash_by_block_number");
+        info!(logger, "!!!! block_hash_by_block_number");
         let web3 = self.web3.clone();
         let retry_log_message = format!(
             "eth_getBlockByNumber RPC call for block number {}",
@@ -1815,6 +1833,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
+        info!(logger, "!!!! next_existing_ptr_to_number");
         let mut next_number = block_number;
         loop {
             let retry_log_message = format!(
@@ -1876,6 +1895,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<Vec<(Option<Vec<abi::DynSolValue>>, call::Source)>, ContractCallError> {
+        info!(logger, "!!!! contract_calls");
         fn as_req(
             logger: &Logger,
             call: &ContractCall,
@@ -2117,6 +2137,7 @@ pub(crate) async fn blocks_with_triggers(
     filter: &TriggerFilter,
     unified_api_version: UnifiedMappingApiVersion,
 ) -> Result<(Vec<BlockWithTriggers<crate::Chain>>, BlockNumber), Error> {
+    info!(logger, "???? blocks_with_triggers");
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
@@ -2663,6 +2684,10 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     block_hash: H256,
     logger: Logger,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+    info!(
+        logger,
+        "!!!! fetch_transaction_receipts_in_batch_with_retry"
+    );
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
         block_hash
@@ -2742,6 +2767,7 @@ pub(crate) async fn check_block_receipt_support(
 // based on whether block receipts are supported or individual transaction receipts
 // need to be fetched.
 async fn fetch_receipts_with_retry(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
     block_hash: H256,
@@ -2749,7 +2775,7 @@ async fn fetch_receipts_with_retry(
     supports_block_receipts: bool,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
     if supports_block_receipts {
-        return fetch_block_receipts_with_retry(web3, hashes, block_hash, logger).await;
+        return fetch_block_receipts_with_retry(alloy, web3, hashes, block_hash, logger).await;
     }
     fetch_individual_receipts_with_retry(web3, hashes, block_hash, logger).await
 }
@@ -2787,23 +2813,42 @@ async fn fetch_individual_receipts_with_retry(
 
 /// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
 async fn fetch_block_receipts_with_retry(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
     block_hash: H256,
     logger: Logger,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
-    info!(logger, "!!!! fetch_block_receipts_with_retry");
     let logger = logger.cheap_clone();
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
 
     // Perform the retry operation
-    let receipts_option = retry(retry_log_message, &logger)
+    let receipts_option = retry(retry_log_message.clone(), &logger)
         .redact_log_urls(true)
         .limit(ENV_VARS.request_retries)
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-        .run(move || web3.eth().block_receipts(BlockId::Hash(block_hash)).boxed())
+        .run({
+            let block_hash = block_hash.clone();
+            move || web3.eth().block_receipts(BlockId::Hash(block_hash)).boxed()
+        })
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
+
+    // Perform the retry operation
+    let receipts_option2 = retry(retry_log_message, &logger)
+        .redact_log_urls(true)
+        .limit(ENV_VARS.request_retries)
+        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+        .run(move || {
+            let hash: alloy_rpc_types::BlockId =
+                alloy_rpc_types::BlockId::hash(B256::new(*block_hash.as_fixed_bytes()));
+            alloy.get_block_receipts(hash)
+        })
+        .await
+        .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
+    // info!(logger, "receipts_option2: {:?}", receipts_option2);
+    let receipts_option3: Option<Vec<TransactionReceipt>> = convert_receipts(receipts_option2);
+    assert_eq!(receipts_option, receipts_option3);
 
     // Check if receipts are available, and transform them if they are
     match receipts_option {
@@ -3091,10 +3136,13 @@ fn u64_to_u256(in_data: u64) -> web3::types::U256 {
 fn u64_to_u64(in_data: u64) -> web3::types::U64 {
     web3::types::U64([in_data])
 }
+fn bool_to_u64(in_data: bool) -> web3::types::U64 {
+    web3::types::U64([if in_data { 1 } else { 0 }])
+}
 fn u128_to_u64(in_data: u128) -> web3::types::U64 {
     web3::types::U64([(in_data & 0xffffffffffffffff) as u64])
 }
-fn address_to_h160(fixed_bytes: &alloy::primitives::Address) -> H160 {
+fn address_to_h160(fixed_bytes: alloy::primitives::Address) -> H160 {
     let address = H160(fixed_bytes.as_slice().try_into().unwrap());
     address
 }
@@ -3107,6 +3155,11 @@ fn h256_to_b256(fixed_bytes: &H256) -> B256 {
     let bytes = fixed_bytes.as_bytes()[0..32].try_into().unwrap();
     bytes
 }
+fn convert_bloom(logs_bloom: &alloy::primitives::Bloom) -> H2048 {
+    let bytes: [u8; 256] = logs_bloom.as_slice()[0..256].try_into().unwrap();
+    H2048::from(bytes)
+}
+
 fn convert_topic(
     h256s: &Option<Vec<H256>>,
 ) -> alloy_rpc_types::FilterSet<alloy::primitives::FixedBytes<32>> {
@@ -3117,11 +3170,11 @@ fn convert_topic(
     }
 }
 
-fn convert_log(alloy_logs: &Vec<alloy_rpc_types::Log<alloy::primitives::LogData>>) -> Vec<Log> {
+fn convert_log(alloy_logs: &[alloy_rpc_types::Log<alloy::primitives::LogData>]) -> Vec<Log> {
     alloy_logs
         .iter()
         .map(|log| {
-            let address = address_to_h160(&log.inner.address);
+            let address = address_to_h160(log.inner.address);
             let topics = log.topics().iter().map(|t| b256_to_h256(*t)).collect();
             let data = log.inner.data.data.clone().into();
             let block_hash = log.block_hash.map(b256_to_h256);
@@ -3149,6 +3202,51 @@ fn convert_log(alloy_logs: &Vec<alloy_rpc_types::Log<alloy::primitives::LogData>
         .collect()
 }
 
+fn convert_receipts(
+    receipts_option: Option<Vec<alloy_rpc_types::TransactionReceipt>>,
+) -> Option<Vec<TransactionReceipt>> {
+    receipts_option.map(|receipts| {
+        receipts
+            .into_iter()
+            .map(|receipt| {
+                let transaction_hash = b256_to_h256(receipt.transaction_hash);
+                let transaction_index = u64_to_u64(receipt.transaction_index.unwrap());
+                let block_hash = receipt.block_hash.map(b256_to_h256);
+                let block_number = receipt.block_number.map(u64_to_u64);
+                let from = address_to_h160(receipt.from);
+                let to = receipt.to.map(address_to_h160);
+                let cumulative_gas_used = u64_to_u256(receipt.gas_used);
+                let gas_used = Some(cumulative_gas_used);
+                let contract_address = receipt.contract_address.map(address_to_h160);
+                let logs = convert_log(receipt.logs());
+                let status = Some(bool_to_u64(receipt.status()));
+                let root = None; // TODO: fix it
+                let logs_bloom = convert_bloom(receipt.inner.logs_bloom());
+                let transaction_type = Some(u64_to_u64(0)); // TODO fix it
+                let effective_gas_price = Some(u128_to_u256(receipt.effective_gas_price));
+
+                TransactionReceipt {
+                    transaction_hash,
+                    transaction_index,
+                    block_hash,
+                    block_number,
+                    from,
+                    to,
+                    cumulative_gas_used,
+                    gas_used,
+                    contract_address,
+                    logs,
+                    status,
+                    root,
+                    logs_bloom,
+                    transaction_type,
+                    effective_gas_price,
+                }
+            })
+            .collect()
+    })
+}
+
 fn tx_to_tx(
     logger: &Logger,
     in_data: BlockTransactions<alloy_rpc_types::Transaction>,
@@ -3168,7 +3266,7 @@ fn tx_to_tx(
                     let block_hash = tx.block_hash.map(b256_to_h256);
                     let block_number = tx.block_number.map(u64_to_u64);
                     let transaction_index = tx.transaction_index.map(u64_to_u64);
-                    let from = Some(address_to_h160(tx.inner.signer_ref()));
+                    let from = Some(address_to_h160(tx.inner.signer()));
 
                     let gas_price = tx.effective_gas_price.map(u128_to_u256);
                     let raw = None; // TODO: fix it
@@ -3178,7 +3276,7 @@ fn tx_to_tx(
                             // info!(logger, "SIG legacy: {:?}", signed.signature());
                             let nonce = u64_to_u256(signed.tx().nonce);
                             let to = if let alloy::primitives::TxKind::Call(to) = signed.tx().to {
-                                Some(address_to_h160(&to))
+                                Some(address_to_h160(to))
                             } else {
                                 None
                             };
@@ -3232,7 +3330,7 @@ fn tx_to_tx(
                             // info!(logger, "TX eip1559: {:?}", signed.tx());
                             let nonce = u64_to_u256(signed.tx().nonce);
                             let to = if let alloy::primitives::TxKind::Call(to) = signed.tx().to {
-                                Some(address_to_h160(&to))
+                                Some(address_to_h160(to))
                             } else {
                                 None
                             };
@@ -3312,8 +3410,7 @@ fn convert_block_alloy2web3(
     // info!(logger, "parent_hash: {:?}", parent_hash);
     let uncles_hash = b256_to_h256(block.header.inner.ommers_hash);
     // info!(logger, "uncles_hash: {:?}", uncles_hash);
-    let fixed_bytes = &block.header.inner.beneficiary;
-    let author = address_to_h160(fixed_bytes);
+    let author = address_to_h160(block.header.inner.beneficiary);
     // info!(logger, "author: {:?}", author);
     let state_root = b256_to_h256(block.header.state_root);
     // info!(logger, "state_root: {:?}", state_root);
@@ -3411,8 +3508,7 @@ fn convert_block_hash_alloy2web3(
     // info!(logger, "parent_hash: {:?}", parent_hash);
     let uncles_hash = b256_to_h256(block.header.inner.ommers_hash);
     // info!(logger, "uncles_hash: {:?}", uncles_hash);
-    let fixed_bytes = &block.header.inner.beneficiary;
-    let author = address_to_h160(fixed_bytes);
+    let author = address_to_h160(block.header.inner.beneficiary);
     // info!(logger, "author: {:?}", author);
     let state_root = b256_to_h256(block.header.state_root);
     // info!(logger, "state_root: {:?}", state_root);
