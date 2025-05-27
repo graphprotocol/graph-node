@@ -33,25 +33,25 @@ type TestFn = Box<
         + Send,
 >;
 
-struct TestContext {
-    subgraph: Subgraph,
-    contracts: Vec<Contract>,
+pub struct TestContext {
+    pub subgraph: Subgraph,
+    pub contracts: Vec<Contract>,
 }
 
-enum TestStatus {
+pub enum TestStatus {
     Ok,
     Err(anyhow::Error),
     Panic(JoinError),
 }
 
-struct TestResult {
-    name: String,
-    subgraph: Option<Subgraph>,
-    status: TestStatus,
+pub struct TestResult {
+    pub name: String,
+    pub subgraph: Option<Subgraph>,
+    pub status: TestStatus,
 }
 
 impl TestResult {
-    fn success(&self) -> bool {
+    pub fn success(&self) -> bool {
         match self.status {
             TestStatus::Ok => true,
             _ => false,
@@ -64,7 +64,7 @@ impl TestResult {
         }
     }
 
-    fn print(&self) {
+    pub fn print(&self) {
         // ANSI escape sequences; see the comment in macros.rs about better colorization
         const GREEN: &str = "\x1b[1;32m";
         const RED: &str = "\x1b[1;31m";
@@ -94,14 +94,44 @@ impl TestResult {
     }
 }
 
-struct TestCase {
-    name: String,
-    test: TestFn,
-    source_subgraph: Option<Vec<String>>,
+#[derive(Debug, Clone)]
+pub enum SourceSubgraph {
+    Subgraph(String),
+    WithAlias((String, String)), // (alias, test_name)
+}
+
+impl SourceSubgraph {
+    pub fn from_str(s: &str) -> Self {
+        if let Some((alias, subgraph)) = s.split_once(':') {
+            Self::WithAlias((alias.to_string(), subgraph.to_string()))
+        } else {
+            Self::Subgraph(s.to_string())
+        }
+    }
+
+    pub fn test_name(&self) -> &str {
+        match self {
+            Self::Subgraph(name) => name,
+            Self::WithAlias((_, name)) => name,
+        }
+    }
+
+    pub fn alias(&self) -> Option<&str> {
+        match self {
+            Self::Subgraph(_) => None,
+            Self::WithAlias((alias, _)) => Some(alias),
+        }
+    }
+}
+
+pub struct TestCase {
+    pub name: String,
+    pub test: TestFn,
+    pub source_subgraph: Option<Vec<SourceSubgraph>>,
 }
 
 impl TestCase {
-    fn new<T>(name: &str, test: fn(TestContext) -> T) -> Self
+    pub fn new<T>(name: &str, test: fn(TestContext) -> T) -> Self
     where
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
@@ -117,7 +147,7 @@ impl TestCase {
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
         let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(vec![base_subgraph.to_string()]);
+        test_case.source_subgraph = Some(vec![SourceSubgraph::from_str(base_subgraph)]);
         test_case
     }
 
@@ -133,7 +163,7 @@ impl TestCase {
         test_case.source_subgraph = Some(
             source_subgraphs
                 .into_iter()
-                .map(|s| s.to_string())
+                .map(SourceSubgraph::from_str)
                 .collect(),
         );
         test_case
@@ -171,32 +201,37 @@ impl TestCase {
         Ok(subgraph)
     }
 
-    async fn run(self, contracts: &[Contract]) -> TestResult {
-        // If a subgraph has subgraph datasources, deploy them first
+    pub async fn prepare(&self, contracts: &[Contract]) -> anyhow::Result<String> {
+        // If a subgraph has subgraph datasources, prepare them first
         if let Some(_subgraphs) = &self.source_subgraph {
-            if let Err(e) = self.deploy_multiple_sources(contracts).await {
-                error!(&self.name, "source subgraph deployment failed");
-                return TestResult {
-                    name: self.name.clone(),
-                    subgraph: None,
-                    status: TestStatus::Err(e),
-                };
+            if let Err(e) = self.prepare_multiple_sources(contracts).await {
+                error!(&self.name, "source subgraph deployment failed: {:?}", e);
+                return Err(e);
             }
         }
 
-        status!(&self.name, "Deploying subgraph");
-        let subgraph_name = match Subgraph::deploy(&self.name, contracts).await {
+        status!(&self.name, "Preparing subgraph");
+        let (_, subgraph_name, _) = match Subgraph::prepare(&self.name, contracts).await {
             Ok(name) => name,
             Err(e) => {
-                error!(&self.name, "Deploy failed");
-                return TestResult {
-                    name: self.name.clone(),
-                    subgraph: None,
-                    status: TestStatus::Err(e.context("Deploy failed")),
-                };
+                error!(&self.name, "Prepare failed: {:?}", e);
+                return Err(e);
             }
         };
-        status!(&self.name, "Waiting for subgraph to become ready");
+
+        Ok(subgraph_name)
+    }
+
+    pub async fn check_health_and_test(
+        self,
+        contracts: &[Contract],
+        subgraph_name: String,
+    ) -> TestResult {
+        status!(
+            &self.name,
+            "Waiting for subgraph ({}) to become ready",
+            subgraph_name
+        );
         let subgraph = match Subgraph::wait_ready(&subgraph_name).await {
             Ok(subgraph) => subgraph,
             Err(e) => {
@@ -208,6 +243,7 @@ impl TestCase {
                 };
             }
         };
+
         if subgraph.healthy {
             status!(&self.name, "Subgraph ({}) is synced", subgraph.deployment);
         } else {
@@ -243,12 +279,50 @@ impl TestCase {
         }
     }
 
+    async fn run(self, contracts: &[Contract]) -> TestResult {
+        // If a subgraph has subgraph datasources, deploy them first
+        if let Some(_subgraphs) = &self.source_subgraph {
+            if let Err(e) = self.deploy_multiple_sources(contracts).await {
+                error!(&self.name, "source subgraph deployment failed");
+                return TestResult {
+                    name: self.name.clone(),
+                    subgraph: None,
+                    status: TestStatus::Err(e),
+                };
+            }
+        }
+
+        status!(&self.name, "Deploying subgraph");
+        let subgraph_name = match Subgraph::deploy(&self.name, contracts).await {
+            Ok(name) => name,
+            Err(e) => {
+                error!(&self.name, "Deploy failed");
+                return TestResult {
+                    name: self.name.clone(),
+                    subgraph: None,
+                    status: TestStatus::Err(e.context("Deploy failed")),
+                };
+            }
+        };
+
+        self.check_health_and_test(contracts, subgraph_name).await
+    }
+
+    async fn prepare_multiple_sources(&self, contracts: &[Contract]) -> Result<()> {
+        if let Some(sources) = &self.source_subgraph {
+            for source in sources {
+                let _ = Subgraph::prepare(source.test_name(), contracts).await?;
+            }
+        }
+        Ok(())
+    }
+
     async fn deploy_multiple_sources(&self, contracts: &[Contract]) -> Result<()> {
         if let Some(sources) = &self.source_subgraph {
             for source in sources {
-                let subgraph = self.deploy_and_wait(source, contracts).await?;
+                let subgraph = self.deploy_and_wait(source.test_name(), contracts).await?;
                 status!(
-                    source,
+                    source.test_name(),
                     "Source subgraph deployed with hash {}",
                     subgraph.deployment
                 );
@@ -331,7 +405,7 @@ async fn test_int8(ctx: TestContext) -> anyhow::Result<()> {
 * the `cases` variable in `integration_tests`.
 */
 
-async fn test_timestamp(ctx: TestContext) -> anyhow::Result<()> {
+pub async fn test_timestamp(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
 
@@ -359,7 +433,7 @@ async fn test_timestamp(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_block_handlers(ctx: TestContext) -> anyhow::Result<()> {
+pub async fn test_block_handlers(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
 
@@ -520,7 +594,7 @@ async fn test_eth_api(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
+pub async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
     let expected_response = json!({
@@ -965,9 +1039,11 @@ async fn test_missing(_sg: Subgraph) -> anyhow::Result<()> {
     Err(anyhow!("This test is missing"))
 }
 
-async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<()> {
+pub async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
+
+    println!("subgraph: {:?}", subgraph);
 
     // Test querying data aggregated from multiple sources
     let exp = json!({
@@ -1112,13 +1188,13 @@ async fn integration_tests() -> anyhow::Result<()> {
     }
 }
 
-async fn stop_graph_node(child: &mut Child) -> anyhow::Result<()> {
+pub async fn stop_graph_node(child: &mut Child) -> anyhow::Result<()> {
     child.kill().await.context("Failed to kill graph-node")?;
 
     Ok(())
 }
 
-async fn yarn_workspace() -> anyhow::Result<()> {
+pub async fn yarn_workspace() -> anyhow::Result<()> {
     // We shouldn't really have to do this since we use the bundled version
     // of graph-cli, but that gets very unhappy if the workspace isn't
     // initialized
