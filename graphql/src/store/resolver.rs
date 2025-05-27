@@ -219,7 +219,7 @@ impl StoreResolver {
             .unwrap_or(r::Value::Null);
 
         let timestamp = timestamp
-            .map(|ts| r::Value::Int(ts as i64))
+            .map(|ts| r::Value::Int(ts.as_secs_since_epoch()))
             .unwrap_or(r::Value::Null);
 
         let parent_hash = parent_hash

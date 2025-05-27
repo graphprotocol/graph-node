@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
+use graph::blockchain::BlockTime;
 use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::store::QueryObject;
@@ -72,7 +73,7 @@ impl QueryStoreTrait for QueryStore {
     async fn block_number_with_timestamp_and_parent_hash(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+    ) -> Result<Option<(BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError> {
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
         // very expensive though with the data structures we have currently

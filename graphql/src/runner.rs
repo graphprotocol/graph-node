@@ -115,7 +115,7 @@ where
                     .await
                     .ok()
                     .flatten()
-                    .and_then(|(_, t, _)| t),
+                    .and_then(|(_, t, _)| t.map(|ts| ts.as_secs_since_epoch() as u64)),
                 hash: block.hash,
                 number: block.number,
             }),

@@ -1698,7 +1698,7 @@ fn parse_timestamp() {
             .expect("block_number to return correct number and timestamp")
             .unwrap();
         assert_eq!(number, 3);
-        assert_eq!(timestamp.unwrap(), EXPECTED_TS);
+        assert_eq!(timestamp.unwrap().as_secs_since_epoch() as u64, EXPECTED_TS);
     })
 }
 
@@ -1732,7 +1732,7 @@ fn parse_timestamp_firehose() {
             .expect("block_number to return correct number and timestamp")
             .unwrap();
         assert_eq!(number, 3);
-        assert_eq!(timestamp.unwrap(), EXPECTED_TS);
+        assert_eq!(timestamp.unwrap().as_secs_since_epoch() as u64, EXPECTED_TS);
     })
 }
 

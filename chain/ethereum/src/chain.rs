@@ -400,7 +400,8 @@ impl Chain {
     pub async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+    {
         self.chain_store.block_number(hash).await
     }
 

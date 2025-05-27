@@ -4,6 +4,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::blockchain::BlockTime;
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
 use graph::derive::CheapClone;
@@ -97,7 +98,7 @@ mod data {
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
     };
-    use graph::blockchain::{Block, BlockHash};
+    use graph::blockchain::{Block, BlockHash, BlockTime};
     use graph::data::store::scalar::Bytes;
     use graph::internal_error;
     use graph::prelude::ethabi::ethereum_types::H160;
@@ -225,8 +226,8 @@ mod data {
             self.table.column::<Bytea, _>("parent_hash")
         }
 
-        fn timestamp(&self) -> DynColumn<i64> {
-            self.table.column::<i64, _>("timestamp")
+        fn timestamp(&self) -> DynColumn<Timestamptz> {
+            self.table.column::<Timestamptz, _>("timestamp")
         }
     }
 
@@ -894,7 +895,8 @@ mod data {
             &self,
             conn: &mut PgConnection,
             hash: &BlockHash,
-        ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+        ) -> Result<Option<(BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+        {
             const TIMESTAMP_QUERY: &str =
                 "coalesce(data->'block'->>'timestamp', data->>'timestamp')";
 
@@ -912,6 +914,10 @@ mod data {
                         .first::<(i64, Option<String>, Option<String>)>(conn)
                         .optional()?
                         .map(|(number, ts, parent_hash)| {
+                            let ts = crate::chain_store::try_parse_timestamp(ts)
+                                .unwrap_or_default()
+                                .map(|ts| BlockTime::since_epoch(ts as i64, 0));
+
                             // Convert parent_hash from Hex String to Vec<u8>
                             let parent_hash_bytes = parent_hash
                                 .map(|h| hex::decode(&h).expect("Invalid hex in parent_hash"));
@@ -922,13 +928,13 @@ mod data {
                     .table()
                     .select((
                         block_pointers.number(),
-                        sql::<Nullable<Text>>(TIMESTAMP_QUERY),
+                        block_pointers.timestamp(),
                         block_pointers.parent_hash(),
                     ))
                     .filter(block_pointers.hash().eq(hash.as_slice()))
-                    .first::<(i64, Option<String>, Vec<u8>)>(conn)
+                    .first::<(i64, BlockTime, Vec<u8>)>(conn)
                     .optional()?
-                    .map(|(number, ts, parent_hash)| (number, ts, Some(parent_hash))),
+                    .map(|(number, ts, parent_hash)| (number, Some(ts), Some(parent_hash))),
             };
 
             match number {
@@ -938,7 +944,8 @@ mod data {
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
                     Ok(Some((
                         number,
-                        crate::chain_store::try_parse_timestamp(ts)?,
+                        ts,
+                        // crate::chain_store::try_parse_timestamp(ts)?,
                         parent_hash.map(|h| BlockHash::from(h)),
                     )))
                 }
@@ -2609,7 +2616,8 @@ impl ChainStoreTrait for ChainStore {
     async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+    {
         let hash = hash.clone();
         let storage = self.storage.clone();
         let chain = self.chain.clone();
