@@ -26,7 +26,7 @@ pub struct Subgraph {
 }
 
 impl Subgraph {
-    fn dir(name: &str) -> TestFile {
+    pub fn dir(name: &str) -> TestFile {
         TestFile::new(&format!("integration-tests/{name}"))
     }
 
