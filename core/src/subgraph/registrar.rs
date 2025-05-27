@@ -289,7 +289,7 @@ where
 
         let resolver: Arc<dyn LinkResolver> = Arc::from(
             self.resolver
-                .for_deployment(hash.clone())
+                .for_manifest(&hash.to_string())
                 .map_err(SubgraphRegistrarError::Unknown)?,
         );
 

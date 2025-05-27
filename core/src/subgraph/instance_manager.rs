@@ -289,7 +289,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // Allow for infinite retries for subgraph definition files.
         let link_resolver = Arc::from(
             self.link_resolver
-                .for_deployment(deployment.hash.clone())
+                .for_manifest(&deployment.hash.to_string())
                 .map_err(SubgraphRegistrarError::Unknown)?
                 .with_retries(),
         );

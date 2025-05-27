@@ -88,7 +88,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
 
         let link_resolver = self
             .link_resolver
-            .for_deployment(loc.hash.clone())
+            .for_manifest(&loc.hash.to_string())
             .map_err(SubgraphAssignmentProviderError::ResolveError)?;
 
         let file_bytes = link_resolver

@@ -74,10 +74,7 @@ impl LinkResolverTrait for IpfsResolver {
         Box::new(s)
     }
 
-    fn for_deployment(
-        &self,
-        _deployment: DeploymentHash,
-    ) -> Result<Box<dyn LinkResolverTrait>, Error> {
+    fn for_manifest(&self, _manifest_path: &str) -> Result<Box<dyn LinkResolverTrait>, Error> {
         Ok(Box::new(self.cheap_clone()))
     }
 

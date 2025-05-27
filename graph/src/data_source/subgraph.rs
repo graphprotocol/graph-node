@@ -260,7 +260,7 @@ impl UnresolvedDataSource {
         logger: &Logger,
     ) -> Result<Arc<SubgraphManifest<C>>, Error> {
         let resolver: Arc<dyn LinkResolver> =
-            Arc::from(resolver.for_deployment(self.source.address.clone())?);
+            Arc::from(resolver.for_manifest(&self.source.address.to_string())?);
         let source_raw = resolver
             .cat(logger, &self.source.address.to_ipfs_link())
             .await
@@ -284,7 +284,7 @@ impl UnresolvedDataSource {
         ))?;
 
         let resolver: Arc<dyn LinkResolver> =
-            Arc::from(resolver.for_deployment(self.source.address.clone())?);
+            Arc::from(resolver.for_manifest(&self.source.address.to_string())?);
         source_manifest
             .resolve(&resolver, logger, LATEST_VERSION.clone())
             .await

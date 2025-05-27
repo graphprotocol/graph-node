@@ -91,9 +91,9 @@ impl LinkResolverTrait for TextResolver {
         Box::new(self.clone())
     }
 
-    fn for_deployment(
+    fn for_manifest(
         &self,
-        _deployment: DeploymentHash,
+        _manifest_path: &str,
     ) -> Result<Box<dyn LinkResolverTrait>, anyhow::Error> {
         Ok(Box::new(self.clone()))
     }

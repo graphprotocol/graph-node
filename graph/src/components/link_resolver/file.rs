@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use slog::Logger;
 
 use crate::data::subgraph::Link;
-use crate::prelude::{DeploymentHash, Error, JsonValueStream, LinkResolver as LinkResolverTrait};
+use crate::prelude::{Error, JsonValueStream, LinkResolver as LinkResolverTrait};
 
 #[derive(Clone, Debug)]
 pub struct FileLinkResolver {
@@ -70,20 +70,19 @@ impl FileLinkResolver {
     /// It will set the base directory to the parent directory of the manifest path
     /// This is required because paths mentioned in the subgraph manifest are relative paths
     /// and we need a new resolver with the right base directory for the specific subgraph
-    fn clone_for_deployment(&self, deployment: DeploymentHash) -> Result<Self, Error> {
+    fn clone_for_manifest(&self, manifest_path_str: &str) -> Result<Self, Error> {
         let mut resolver = self.clone();
-
-        let deployment_str = deployment.to_string();
 
         // Create a path to the manifest based on the current resolver's
         // base directory or default to using the deployment string as path
         // If the deployment string is an alias, use the aliased path
-        let manifest_path = if let Some(aliased) = self.aliases.get(&deployment_str) {
+        let manifest_path = if let Some(aliased) = self.aliases.get(&manifest_path_str.to_string())
+        {
             aliased.clone()
         } else {
             match &resolver.base_dir {
-                Some(dir) => dir.join(&deployment_str),
-                None => PathBuf::from(deployment_str),
+                Some(dir) => dir.join(&manifest_path_str),
+                None => PathBuf::from(manifest_path_str),
             }
         };
 
@@ -142,11 +141,8 @@ impl LinkResolverTrait for FileLinkResolver {
         }
     }
 
-    fn for_deployment(
-        &self,
-        deployment: DeploymentHash,
-    ) -> Result<Box<dyn LinkResolverTrait>, Error> {
-        Ok(Box::new(self.clone_for_deployment(deployment)?))
+    fn for_manifest(&self, manifest_path: &str) -> Result<Box<dyn LinkResolverTrait>, Error> {
+        Ok(Box::new(self.clone_for_manifest(manifest_path)?))
     }
 
     async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
@@ -290,8 +286,7 @@ mod tests {
         assert_eq!(result2, test_content2);
 
         // Test that the alias works in for_deployment as well
-        let deployment = DeploymentHash::new("deployment-id").unwrap();
-        let deployment_resolver = resolver.clone_for_deployment(deployment).unwrap();
+        let deployment_resolver = resolver.clone_for_manifest("deployment-id").unwrap();
 
         let expected_dir = test_file1_path.parent().unwrap();
         let deployment_base_dir = deployment_resolver.base_dir.clone().unwrap();

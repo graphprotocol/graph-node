@@ -331,7 +331,7 @@ mod test {
         blockchain::{DataSource as _, UnresolvedDataSource as _},
         components::link_resolver::LinkResolver,
         data::subgraph::LATEST_VERSION,
-        prelude::{async_trait, serde_yaml, DeploymentHash, JsonValueStream, Link},
+        prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
         substreams::{
             module::{
@@ -705,10 +705,7 @@ mod test {
             unimplemented!()
         }
 
-        fn for_deployment(
-            &self,
-            _deployment: DeploymentHash,
-        ) -> Result<Box<dyn LinkResolver>, Error> {
+        fn for_manifest(&self, _manifest_path: &str) -> Result<Box<dyn LinkResolver>, Error> {
             unimplemented!()
         }
 
