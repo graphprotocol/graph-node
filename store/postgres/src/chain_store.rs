@@ -550,14 +550,33 @@ mod data {
             conn: &mut PgConnection,
             lowest_block: i32,
         ) -> Result<(), StoreError> {
-            let table_name = match &self {
-                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
-                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            let query = match &self {
+                Storage::Shared => format!(
+                    "
+                        DELETE FROM {}
+                        WHERE data->'block'->'data' = 'null'::jsonb
+                        AND number >= {};",
+                    ETHEREUM_BLOCKS_TABLE_NAME, lowest_block,
+                ),
+
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => format!(
+                    "
+                                    delete from {}
+                                    WHERE data->'block'->'data' = 'null'::jsonb
+                                    AND hash IN (
+                                        SELECT hash
+                                        FROM {}
+                                        WHERE number >= {}
+                                    );",
+                    blocks.qname, block_pointers.qname, lowest_block,
+                ),
             };
-            conn.batch_execute(&format!(
-                "delete from {} WHERE number >= {} AND data->'block'->'data' = 'null'::jsonb;",
-                table_name, lowest_block,
-            ))?;
+
+            conn.batch_execute(&query)?;
             Ok(())
         }
 
@@ -652,7 +671,7 @@ mod data {
                             "insert into {pointers_table}(hash, number, parent_hash, timestamp) \
                              values ($1, $2, $3, $5) \
                                  on conflict(hash) \
-                                 do update set number = $2, parent_hash = $3;
+                                 do update set number = $2, parent_hash = $3, timestamp = $5;
                                  ",
                             pointers_table = block_pointers.qname,
                         )
@@ -875,10 +894,10 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
+                Storage::Private(Schema { block_pointers, .. }) => {
                     let query = format!(
                         "delete from {} where number = $1 and hash != $2",
-                        blocks.qname
+                        block_pointers.qname
                     );
                     sql_query(query)
                         .bind::<BigInt, _>(number)
@@ -934,7 +953,17 @@ mod data {
                     .filter(block_pointers.hash().eq(hash.as_slice()))
                     .first::<(i64, BlockTime, Vec<u8>)>(conn)
                     .optional()?
-                    .map(|(number, ts, parent_hash)| (number, Some(ts), Some(parent_hash))),
+                    .map(|(number, ts, parent_hash)| {
+                        (
+                            number,
+                            if ts == BlockTime::NONE {
+                                None
+                            } else {
+                                Some(ts)
+                            },
+                            Some(parent_hash),
+                        )
+                    }),
             };
 
             match number {
@@ -1055,7 +1084,7 @@ mod data {
                     };
                     Ok(missing)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
+                Storage::Private(Schema { block_pointers, .. }) => {
                     // This is the same as `MISSING_PARENT_SQL` above except that
                     // the blocks table has a different name and that it does
                     // not have a `network_name` column
@@ -1082,7 +1111,7 @@ mod data {
                from chain
               where chain.parent_hash is null;
             ",
-                        qname = blocks.qname
+                        qname = block_pointers.qname
                     );
 
                     let missing = sql_query(query)
@@ -1148,7 +1177,7 @@ mod data {
         fn ancestor_block_query(
             &self,
             short_circuit_predicate: &str,
-            blocks_table_name: &str,
+            block_ptrs_table_name: &str,
         ) -> String {
             format!(
                 "
@@ -1156,17 +1185,17 @@ mod data {
                     values ($1, 0)
                     union all
                     select b.parent_hash, a.block_offset + 1
-                    from ancestors a, {blocks_table_name} b
+                    from ancestors a, {block_ptrs_table_name} b
                     where a.block_hash = b.hash
                     and a.block_offset < $2
                     {short_circuit_predicate}
                 )
                 select a.block_hash as hash, b.number as number
                 from ancestors a
-                inner join {blocks_table_name} b on a.block_hash = b.hash
+                inner join {block_ptrs_table_name} b on a.block_hash = b.hash
                 order by a.block_offset desc limit 1
                 ",
-                blocks_table_name = blocks_table_name,
+                block_ptrs_table_name = block_ptrs_table_name,
                 short_circuit_predicate = short_circuit_predicate,
             )
         }
@@ -1229,9 +1258,15 @@ mod data {
                         )),
                     }
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query =
-                        self.ancestor_block_query(short_circuit_predicate, blocks.qname.as_str());
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => {
+                    let query = self.ancestor_block_query(
+                        short_circuit_predicate,
+                        block_pointers.qname.as_str(),
+                    );
 
                     #[derive(QueryableByName)]
                     struct BlockHashAndNumber {
@@ -1307,16 +1342,33 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query = format!(
-                        "delete from {} where number < $1 and number > 0",
-                        blocks.qname
-                    );
-                    sql_query(query)
-                        .bind::<BigInt, _>(block)
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => conn.transaction(|conn| {
+                    sql_query(&format!(
+                        "
+                        DELETE FROM {blocks}
+                        WHERE hash in (
+                            SELECT hash
+                            FROM {block_ptrs}
+                            WHERE number < $1 AND number > 0
+                        );",
+                        blocks = blocks.qname,
+                        block_ptrs = block_pointers.qname,
+                    ))
+                    .bind::<BigInt, _>(block)
+                    .execute(conn)
+                    .and_then(|_| {
+                        sql_query(format!(
+                            "DELETE FROM {block_ptrs} WHERE number < {block} AND number > 0;",
+                            block_ptrs = block_pointers.qname
+                        ))
                         .execute(conn)
-                        .map_err(Error::from)
-                }
+                    })
+                    .map_err(Error::from)
+                }),
             }
         }
 
@@ -1342,10 +1394,22 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => {
                     let query = format!(
-                        "delete from {} where hash = any($1) and number > 0",
-                        blocks.qname
+                        "
+                        DELETE FROM {blocks}
+                        WHERE hash in (
+                            SELECT FROM {block_ptrs}
+                            WHERE hash = any($1) AND number > 0;
+                        );
+                        DELETE FROM {block_ptrs} WHERE hash = any($1) AND number > 0;
+                        ",
+                        blocks = blocks.qname,
+                        block_ptrs = block_pointers.qname
                     );
 
                     let hashes: Vec<&[u8]> =
@@ -1688,9 +1752,15 @@ mod data {
                     blocks,
                     call_meta,
                     call_cache,
+                    block_pointers,
                     ..
                 }) => {
-                    for qname in &[&blocks.qname, &call_meta.qname, &call_cache.qname] {
+                    for qname in &[
+                        &blocks.qname,
+                        &call_meta.qname,
+                        &call_cache.qname,
+                        &block_pointers.qname,
+                    ] {
                         let query = format!("delete from {}", qname);
                         sql_query(query)
                             .execute(conn)
