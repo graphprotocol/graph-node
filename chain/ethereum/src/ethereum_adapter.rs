@@ -1504,7 +1504,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error> {
         let logger = self.logger.clone();
-        info!(logger, "!!!! net_identifiers");
 
         let web3 = self.web3.clone();
         let metrics = self.metrics.clone();
@@ -1522,6 +1521,34 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         metrics.set_status(ProviderStatus::VersionFail, &provider);
                         e.into()
                     })
+                }
+            })
+            .map_err(|e| {
+                self.metrics
+                    .set_status(ProviderStatus::VersionTimeout, self.provider());
+                e
+            })
+            .boxed();
+        let alloy = self.alloy.clone();
+        let metrics = self.metrics.clone();
+        let provider = self.provider().to_string();
+        let net_version_future2 = retry("net_version RPC call", &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(20)
+            .run(move || {
+                let alloy = alloy.cheap_clone();
+                let metrics = metrics.cheap_clone();
+                let provider = provider.clone();
+                async move {
+                    alloy
+                        .get_net_version()
+                        .await
+                        .map(|version| format!("{}", version))
+                        .map_err(|e| {
+                            metrics.set_status(ProviderStatus::VersionFail, &provider);
+                            e.into()
+                        })
                 }
             })
             .map_err(|e| {
@@ -1565,19 +1592,62 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .set_status(ProviderStatus::GenesisTimeout, self.provider());
                 e
             });
+        let alloy = self.alloy.clone();
+        let logger2 = logger.clone();
+        let metrics = self.metrics.clone();
+        let provider = self.provider().to_string();
+        let retry_log_message = format!(
+            "eth_getBlockByNumber({}, false) RPC call",
+            ENV_VARS.genesis_block_number
+        );
+        let gen_block_hash_future2 = retry(retry_log_message, &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(30)
+            .run(move || {
+                let alloy = alloy.cheap_clone();
+                let logger = logger2.clone();
+                let metrics = metrics.cheap_clone();
+                let provider = provider.clone();
+                async move {
+                    Self::load_block_rpc_alloy(alloy, ENV_VARS.genesis_block_number, &logger)
+                        .await
+                        .map_err(|e| {
+                            metrics.set_status(ProviderStatus::GenesisFail, &provider);
+                            e
+                        })?
+                        .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
+                        .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
+                }
+            })
+            .map_err(|e| {
+                self.metrics
+                    .set_status(ProviderStatus::GenesisTimeout, self.provider());
+                e
+            });
 
-        let (net_version, genesis_block_hash) =
-            try_join!(net_version_future, gen_block_hash_future).map_err(|e| {
-                anyhow!(
-                    "Ethereum node took too long to read network identifiers: {}",
-                    e
-                )
-            })?;
+        let (net_version, net_version2, genesis_block_hash, genesis_block_hash2) = try_join!(
+            net_version_future,
+            net_version_future2,
+            gen_block_hash_future,
+            gen_block_hash_future2
+        )
+        .map_err(|e| {
+            anyhow!(
+                "Ethereum node took too long to read network identifiers: {}",
+                e
+            )
+        })?;
 
         let ident = ChainIdentifier {
             net_version,
             genesis_block_hash,
         };
+        let ident2 = ChainIdentifier {
+            net_version: net_version2,
+            genesis_block_hash: genesis_block_hash2,
+        };
+        assert_eq!(ident, ident2);
 
         self.metrics
             .set_status(ProviderStatus::Working, self.provider());
@@ -1833,7 +1903,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
-        info!(logger, "!!!! next_existing_ptr_to_number");
         let mut next_number = block_number;
         loop {
             let retry_log_message = format!(
@@ -1841,6 +1910,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 next_number
             );
             let web3 = self.web3.clone();
+            let alloy = self.alloy.clone();
             let logger = logger.clone();
             let res = retry(retry_log_message, &logger)
                 .redact_log_urls(true)
@@ -1849,12 +1919,25 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
+                    let alloy = alloy.clone();
+                    let logger = logger.clone();
                     async move {
-                        web3.eth()
+                        let block1 = web3
+                            .eth()
                             .block(BlockId::Number(next_number.into()))
                             .await
                             .map(|block_opt| block_opt.and_then(|block| block.hash))
-                            .map_err(Error::from)
+                            .map_err(Error::from);
+                        let block2 = Self::load_block_rpc_alloy(alloy, next_number as u64, &logger)
+                            .await
+                            .map(|block_opt| block_opt.and_then(|block| block.hash))
+                            .map_err(Error::from);
+                        match (&block1, &block2) {
+                            (Ok(bl1), Ok(bl2)) => assert_eq!(bl1, bl2),
+                            (_, _) => panic!("next_existing_ptr_to_number"),
+                        };
+
+                        block1
                     }
                 })
                 .await
