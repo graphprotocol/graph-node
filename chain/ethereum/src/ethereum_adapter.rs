@@ -247,6 +247,7 @@ impl EthereumAdapter {
     // cached. The result is not used for anything critical, so it is fine to be lazy.
     async fn check_block_receipt_support_and_update_cache(
         &self,
+        alloy: Arc<dyn Provider + 'static>,
         web3: Arc<Web3<Transport>>,
         block_hash: H256,
         supports_eip_1898: bool,
@@ -262,11 +263,10 @@ impl EthereumAdapter {
             }
         }
 
-        info!(logger, "!!!! check_block_receipt_support_and_update_cache");
         info!(logger, "Checking eth_getBlockReceipts support");
         let result = timeout(
             ENV_VARS.block_receipts_check_timeout,
-            check_block_receipt_support(web3, block_hash, supports_eip_1898, call_only),
+            check_block_receipt_support(alloy, web3, block_hash, supports_eip_1898, call_only),
         )
         .await;
 
@@ -1799,6 +1799,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let supports_block_receipts = self
             .check_block_receipt_support_and_update_cache(
+                alloy.clone(),
                 web3.clone(),
                 block_hash,
                 self.supports_eip_1898,
@@ -2603,6 +2604,7 @@ async fn fetch_receipt_from_ethereum_client(
     eth: &EthereumAdapter,
     transaction_hash: &H256,
 ) -> anyhow::Result<TransactionReceipt> {
+    println!("!!!! fetch_receipt_from_ethereum_client");
     match eth.web3.eth().transaction_receipt(*transaction_hash).await {
         Ok(Some(receipt)) => Ok(receipt),
         Ok(None) => bail!("Could not find transaction receipt"),
@@ -2813,6 +2815,7 @@ async fn fetch_transaction_receipts_in_batch(
 }
 
 pub(crate) async fn check_block_receipt_support(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<impl web3::Transport>>,
     block_hash: H256,
     supports_eip_1898: bool,
@@ -2828,13 +2831,23 @@ pub(crate) async fn check_block_receipt_support(
 
     // Fetch block receipts from the provider for the latest block.
     let block_receipts_result = web3.eth().block_receipts(BlockId::Hash(block_hash)).await;
+    let hash: alloy_rpc_types::BlockId =
+        alloy_rpc_types::BlockId::hash(B256::new(*block_hash.as_fixed_bytes()));
+    let block_receipts_result2 = alloy.get_block_receipts(hash).await;
 
     // Determine if the provider supports block receipts based on the fetched result.
-    match block_receipts_result {
+    let ret = match block_receipts_result {
         Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
         Ok(_) => Err(anyhow!("Block receipts are empty")),
         Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
-    }
+    };
+    let ret2 = match block_receipts_result2 {
+        Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
+        Ok(_) => Err(anyhow!("Block receipts are empty")),
+        Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
+    };
+    assert_eq!(ret.is_ok(), ret2.is_ok());
+    ret
 }
 
 // Fetches transaction receipts with retries. This function acts as a dispatcher
@@ -2920,7 +2933,6 @@ async fn fetch_block_receipts_with_retry(
         })
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
-    // info!(logger, "receipts_option2: {:?}", receipts_option2);
     let receipts_option3: Option<Vec<TransactionReceipt>> = convert_receipts(receipts_option2);
     assert_eq!(receipts_option, receipts_option3);
 
@@ -3746,7 +3758,12 @@ mod tests {
             // transport.add_response(json_value);
 
             let web3 = Arc::new(Web3::new(transport.clone()));
+            let asserter = alloy::transports::mock::Asserter::new();
+            // asserter.push(json_value);
+            let alloy =
+                Arc::new(alloy::providers::ProviderBuilder::new().connect_mocked_client(asserter));
             let result = check_block_receipt_support(
+                alloy,
                 web3.clone(),
                 H256::zero(),
                 supports_eip_1898,
