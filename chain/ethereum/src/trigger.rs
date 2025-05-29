@@ -572,10 +572,13 @@ impl<'a> EthereumEventData<'a> {
     }
 
     pub fn transaction_log_index(&self) -> &U256 {
-        self.log
-            .transaction_log_index
-            .as_ref()
-            .unwrap_or(&U256_DEFAULT)
+        // We purposely use the `log_index` here. Geth does not support
+        // `transaction_log_index`, and subgraphs that use it only care that
+        // it identifies the log, the specific value is not important. Still
+        // this will change the output of subgraphs that use this field.
+        //
+        // This was initially changed in commit b95c6953
+        self.log.log_index.as_ref().unwrap_or(&U256_DEFAULT)
     }
 
     pub fn log_type(&self) -> &Option<String> {
