@@ -10,6 +10,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 use graph::cheap_clone::CheapClone;
+use graph::env::ENV_VARS;
 use graph::futures03::future::BoxFuture;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::{stream, Future, FutureExt, TryFutureExt};
@@ -29,8 +30,6 @@ pub use ipfs_service::{ipfs_service, IpfsService};
 
 const MIN_BACKOFF: Duration = Duration::from_secs(5);
 
-const MAX_BACKOFF: Duration = Duration::from_secs(600);
-
 struct Backoffs<ID> {
     backoff_maker: ExponentialBackoffMaker,
     backoffs: HashMap<ID, ExponentialBackoff>,
@@ -42,7 +41,7 @@ impl<ID: Eq + Hash> Backoffs<ID> {
         Self {
             backoff_maker: ExponentialBackoffMaker::new(
                 MIN_BACKOFF,
-                MAX_BACKOFF,
+                ENV_VARS.mappings.fds_max_backoff,
                 1.0,
                 HasherRng::new(),
             )

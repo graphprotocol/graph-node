@@ -78,6 +78,10 @@ pub struct EnvVarsMapping {
     /// measure and can be removed after 2025-07-01, once we are sure the
     /// new behavior works as intended.
     pub store_errors_are_nondeterministic: bool,
+
+    /// Maximum backoff time for FDS requests. Set by
+    /// `GRAPH_FDS_MAX_BACKOFF` in seconds, defaults to 600.
+    pub fds_max_backoff: Duration,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -116,6 +120,7 @@ impl TryFrom<InnerMappingHandlers> for EnvVarsMapping {
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
             disable_declared_calls: x.disable_declared_calls.0,
             store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,
+            fds_max_backoff: Duration::from_secs(x.fds_max_backoff),
         };
         Ok(vars)
     }
@@ -157,6 +162,8 @@ pub struct InnerMappingHandlers {
     disable_declared_calls: EnvVarBoolean,
     #[envconfig(from = "GRAPH_STORE_ERRORS_ARE_NON_DETERMINISTIC", default = "false")]
     store_errors_are_nondeterministic: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_FDS_MAX_BACKOFF", default = "600")]
+    fds_max_backoff: u64,
 }
 
 fn validate_ipfs_cache_location(path: PathBuf) -> Result<PathBuf, anyhow::Error> {
