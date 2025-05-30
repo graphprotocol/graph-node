@@ -549,7 +549,8 @@ impl ChainStore for MockChainStore {
     async fn block_number(
         &self,
         _hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+    {
         unimplemented!()
     }
     async fn block_numbers(

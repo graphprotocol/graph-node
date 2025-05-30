@@ -579,7 +579,7 @@ pub trait ChainStore: ChainHeadStore {
     async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError>;
+    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>;
 
     /// Do the same lookup as `block_number`, but in bulk
     async fn block_numbers(
@@ -668,7 +668,7 @@ pub trait QueryStore: Send + Sync {
     async fn block_number_with_timestamp_and_parent_hash(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError>;
+    ) -> Result<Option<(BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>;
 
     fn wait_stats(&self) -> PoolWaitStats;
 

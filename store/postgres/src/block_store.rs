@@ -391,6 +391,8 @@ impl BlockStore {
         if create {
             store.create(&ident)?;
         }
+        store.ensure_up_to_date(&ident)?;
+
         let store = Arc::new(store);
         self.stores
             .write()
