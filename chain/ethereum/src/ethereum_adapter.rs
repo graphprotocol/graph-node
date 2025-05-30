@@ -976,11 +976,12 @@ impl EthereumAdapter {
         logger: Logger,
         numbers: Vec<BlockNumber>,
     ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
-        info!(logger, "!!!! load_block_ptrs_by_numbers_rpc");
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
 
         futures03::stream::iter(numbers.into_iter().map(move |number| {
             let web3 = web3.clone();
+            let alloy = alloy.clone();
             let logger = logger.clone();
 
             async move {
@@ -990,15 +991,24 @@ impl EthereumAdapter {
                     .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                     .run(move || {
                         let web3 = web3.clone();
+                        let alloy = alloy.clone();
+                        let logger = logger.clone();
 
                         async move {
                             let block_result = web3
                                 .eth()
                                 .block(BlockId::Number(Web3BlockNumber::Number(number.into())))
                                 .await;
+                            let block_number =
+                                alloy_rpc_types::BlockNumberOrTag::from(number as u64);
+                            let block_result2 =
+                                alloy.get_block_by_number(block_number).await.map(|block| {
+                                    block.map(|bl| convert_block_hash_alloy2web3(&logger, bl))
+                                });
 
-                            match block_result {
+                            let ret = match block_result {
                                 Ok(Some(block)) => {
+                                    assert_eq!(*block_result2.unwrap().unwrap(), block);
                                     let ptr = ExtendedBlockPtr::try_from((
                                         block.hash,
                                         block.number,
@@ -1015,7 +1025,8 @@ impl EthereumAdapter {
                                     number
                                 )),
                                 Err(e) => Err(anyhow::anyhow!("Failed to fetch block: {}", e)),
-                            }
+                            };
+                            ret
                         }
                     })
                     .await
@@ -3546,16 +3557,12 @@ fn tx_to_tx(
             // info!(logger, "DONE WITH ITEMS");
             ret
         }
-        BlockTransactions::Hashes(items) => {
-            let _ = items
-                .iter()
-                .map(|hash| {
-                    // info!(logger, "HASH: {:?}", hash);
-                    hash
-                })
-                .collect::<Vec<_>>();
+        BlockTransactions::Hashes(_items) => {
+            // items
+            //     .iter()
+            //     .map(|hash| b256_to_h256(*hash))
+            //     .collect::<Vec<_>>();
             panic!("Not implemented variant: Hashes");
-            // vec![]
         }
         BlockTransactions::Uncle => panic!("Not implemented variant: Uncle"),
     }
