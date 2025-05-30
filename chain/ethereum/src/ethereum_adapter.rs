@@ -1,6 +1,6 @@
-use alloy::primitives::{B256, B64};
+use alloy::primitives::{TxKind, B256, B64};
 use alloy::providers::{Provider, ProviderBuilder};
-use alloy_rpc_types::{BlockTransactions, FilterBlockOption};
+use alloy_rpc_types::{BlockTransactions, FilterBlockOption, TransactionInput, TransactionRequest};
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
@@ -552,17 +552,30 @@ impl EthereumAdapter {
         }
     }
 
+    // Method to determine block_id based on support for EIP-1898
+    fn block_ptr_to_id2(&self, block_ptr: &BlockPtr) -> alloy_rpc_types::BlockId {
+        // Ganache does not support calls by block hash.
+        // See https://github.com/trufflesuite/ganache-cli/issues/973
+        if !self.supports_eip_1898 {
+            alloy_rpc_types::BlockId::number(block_ptr.number as u64)
+        } else {
+            alloy_rpc_types::BlockId::hash(h256_to_b256(&block_ptr.hash_as_h256()))
+        }
+    }
+
     async fn code(
         &self,
         logger: &Logger,
         address: Address,
         block_ptr: BlockPtr,
     ) -> Result<Bytes, EthereumRpcError> {
-        info!(logger, "!!!! code");
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id2 = self.block_ptr_to_id2(&block_ptr);
+        let address2 = h160_to_address(&address);
         let retry_log_message = format!("eth_getCode RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -575,11 +588,20 @@ impl EthereumAdapter {
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 async move {
                     let result: Result<Bytes, web3::Error> =
                         web3.eth().code(address, Some(block_id)).boxed().await;
+                    let result2 = alloy
+                        .get_code_at(address2)
+                        .block_id(block_id2)
+                        .await
+                        .map(bytes_to_bytes);
                     match result {
-                        Ok(code) => Ok(code),
+                        Ok(code) => {
+                            assert_eq!(result2.unwrap(), code);
+                            Ok(code)
+                        }
                         Err(err) => Err(EthereumRpcError::Web3Error(err)),
                     }
                 }
@@ -594,11 +616,13 @@ impl EthereumAdapter {
         address: Address,
         block_ptr: BlockPtr,
     ) -> Result<U256, EthereumRpcError> {
-        info!(logger, "!!!! balances");
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id2 = self.block_ptr_to_id2(&block_ptr);
+        let address2 = h160_to_address(&address);
         let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -611,11 +635,20 @@ impl EthereumAdapter {
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 async move {
                     let result: Result<U256, web3::Error> =
                         web3.eth().balance(address, Some(block_id)).boxed().await;
+                    let result2 = alloy
+                        .get_balance(address2)
+                        .block_id(block_id2)
+                        .await
+                        .map(u256_to_u256);
                     match result {
-                        Ok(balance) => Ok(balance),
+                        Ok(balance) => {
+                            assert_eq!(result2.unwrap(), balance);
+                            Ok(balance)
+                        }
                         Err(err) => Err(EthereumRpcError::Web3Error(err)),
                     }
                 }
@@ -631,13 +664,13 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
         gas: Option<u32>,
     ) -> Result<call::Retval, ContractCallError> {
-        info!(logger, "!!!! call");
         fn reverted(logger: &Logger, reason: &str) -> Result<call::Retval, ContractCallError> {
             info!(logger, "Contract call reverted"; "reason" => reason);
             Ok(call::Retval::Null)
         }
 
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
@@ -649,6 +682,7 @@ impl EthereumAdapter {
             .run(move || {
                 let call_data = call_data.clone();
                 let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 let logger = logger.cheap_clone();
                 async move {
                     let req = CallRequest {
@@ -664,6 +698,33 @@ impl EthereumAdapter {
                         transaction_type: None,
                     };
                     let result = web3.eth().call(req, Some(block_id)).boxed().await;
+                    let gas = gas.map(|val| val as u64);
+                    let to = Some(TxKind::from(h160_to_address(&call_data.address)));
+                    let input = TransactionInput {
+                        input: None,
+                        data: Some(alloy::primitives::Bytes::from(
+                            call_data.encoded_call.to_vec(),
+                        )),
+                    };
+                    let tx_req = TransactionRequest {
+                        from: None,
+                        to,
+                        gas_price: None,
+                        max_fee_per_gas: None,
+                        max_priority_fee_per_gas: None,
+                        max_fee_per_blob_gas: None,
+                        gas,
+                        value: None,
+                        input,
+                        nonce: None,
+                        chain_id: None,
+                        access_list: None,
+                        transaction_type: None,
+                        blob_versioned_hashes: None,
+                        sidecar: None,
+                        authorization_list: None,
+                    };
+                    let result2 = alloy.call(tx_req).await.map(bytes_to_bytes);
 
                     // Try to check if the call was reverted. The JSON-RPC response for reverts is
                     // not standardized, so we have ad-hoc checks for each Ethereum client.
@@ -728,7 +789,10 @@ impl EthereumAdapter {
 
                     match result {
                         // A successful response.
-                        Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
+                        Ok(bytes) => {
+                            assert_eq!(result2.unwrap(), bytes);
+                            Ok(call::Retval::Value(scalar::Bytes::from(bytes)))
+                        }
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
@@ -1184,7 +1248,6 @@ impl EthereumAdapter {
                 + std::marker::Send,
         >,
     > {
-        info!(logger, "!!!! blocks_matching_polling_intervals");
         // Create a HashMap of block numbers to Vec<EthereumBlockTriggerType>
         let matching_blocks = (from..=to)
             .filter_map(|block_number| {
@@ -1979,7 +2042,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
         calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
     ) -> Result<Vec<(Option<Vec<abi::DynSolValue>>, call::Source)>, ContractCallError> {
-        info!(logger, "!!!! contract_calls");
         fn as_req(
             logger: &Logger,
             call: &ContractCall,
@@ -3253,6 +3315,10 @@ fn h256_to_b256(fixed_bytes: &H256) -> B256 {
 fn convert_bloom(logs_bloom: &alloy::primitives::Bloom) -> H2048 {
     let bytes: [u8; 256] = logs_bloom.as_slice()[0..256].try_into().unwrap();
     H2048::from(bytes)
+}
+fn bytes_to_bytes(in_data: alloy::primitives::Bytes) -> Bytes {
+    let slice = in_data.iter().as_slice();
+    Bytes::from(slice)
 }
 
 fn convert_topic(
