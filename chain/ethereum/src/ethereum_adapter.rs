@@ -1,3 +1,6 @@
+use alloy::primitives::{TxKind, B256, B64};
+use alloy::providers::{Provider, ProviderBuilder};
+use alloy_rpc_types::{BlockTransactions, FilterBlockOption, TransactionInput, TransactionRequest};
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
@@ -20,7 +23,7 @@ use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
 use graph::prelude::tokio::try_join;
-use graph::prelude::web3::types::U256;
+use graph::prelude::web3::types::{H2048, H64, U256};
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
@@ -49,6 +52,7 @@ use graph::{
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
+use std::fmt::Formatter;
 use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -72,15 +76,23 @@ use crate::{
     ENV_VARS,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
     web3: Arc<Web3<Transport>>,
+    alloy: Arc<dyn Provider>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
     supports_block_receipts: Arc<RwLock<Option<bool>>>,
+}
+
+// TODO: remove this hacky implementation
+impl std::fmt::Debug for EthereumAdapter {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "EthereumAdapter")
+    }
 }
 
 impl CheapClone for EthereumAdapter {
@@ -89,6 +101,7 @@ impl CheapClone for EthereumAdapter {
             logger: self.logger.clone(),
             provider: self.provider.clone(),
             web3: self.web3.cheap_clone(),
+            alloy: self.alloy.clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
@@ -110,7 +123,18 @@ impl EthereumAdapter {
         supports_eip_1898: bool,
         call_only: bool,
     ) -> Self {
+        let rpc_url = match &transport {
+            Transport::RPC {
+                client: _,
+                metrics: _,
+                provider: _,
+                rpc_url,
+            } => rpc_url.clone(),
+            Transport::IPC(_ipc) => todo!(),
+            Transport::WS(_web_socket) => todo!(),
+        };
         let web3 = Arc::new(Web3::new(transport));
+        let alloy = Arc::new(ProviderBuilder::new().connect(&rpc_url).await.unwrap());
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
         // are lenient with errors, defaulting to false.
@@ -125,6 +149,7 @@ impl EthereumAdapter {
             logger,
             provider,
             web3,
+            alloy,
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
             call_only,
@@ -140,6 +165,7 @@ impl EthereumAdapter {
         to: BlockNumber,
         addresses: Vec<H160>,
     ) -> Result<Vec<Trace>, Error> {
+        info!(logger, "!!!! traces");
         assert!(!self.call_only);
 
         let eth = self.clone();
@@ -230,6 +256,7 @@ impl EthereumAdapter {
     // cached. The result is not used for anything critical, so it is fine to be lazy.
     async fn check_block_receipt_support_and_update_cache(
         &self,
+        alloy: Arc<dyn Provider + 'static>,
         web3: Arc<Web3<Transport>>,
         block_hash: H256,
         supports_eip_1898: bool,
@@ -248,7 +275,7 @@ impl EthereumAdapter {
         info!(logger, "Checking eth_getBlockReceipts support");
         let result = timeout(
             ENV_VARS.block_receipts_check_timeout,
-            check_block_receipt_support(web3, block_hash, supports_eip_1898, call_only),
+            check_block_receipt_support(alloy, web3, block_hash, supports_eip_1898, call_only),
         )
         .await;
 
@@ -313,6 +340,27 @@ impl EthereumAdapter {
 
                 async move {
                     let start = Instant::now();
+                    let block_option = FilterBlockOption::default()
+                        .with_from_block((from as u64).into())
+                        .with_to_block((to as u64).into());
+                    let address: alloy_rpc_types::FilterSet<alloy::primitives::Address> = filter
+                        .contracts
+                        .iter()
+                        .map(|c| h160_to_address(c))
+                        .collect();
+                    let topic0 = convert_topic(&Some(filter.event_signatures.clone()));
+                    let topic1 = convert_topic(&filter.topic1);
+                    let topic2 = convert_topic(&filter.topic2);
+                    let topic3 = convert_topic(&filter.topic3);
+                    let topics = [topic0, topic1, topic2, topic3];
+                    let filter2 = alloy_rpc_types::Filter {
+                        block_option,
+                        address,
+                        topics,
+                    };
+                    let result1 = eth_adapter.alloy.get_logs(&filter2).await.unwrap();
+                    let result2 = convert_log(&result1);
+
                     // Create a log filter
                     let log_filter: Filter = FilterBuilder::default()
                         .from_block(from.into())
@@ -327,15 +375,20 @@ impl EthereumAdapter {
                         .build();
 
                     // Request logs from client
-                    let result = eth_adapter.web3.eth().logs(log_filter).boxed().await;
+                    let result3 = eth_adapter.web3.eth().logs(log_filter).boxed().await;
+                    match &result3 {
+                        Ok(res) => assert_eq!(&result2, res),
+                        Err(_) => {}
+                    }
+                    // assert_eq!(Ok(result2), result3);
                     let elapsed = start.elapsed().as_secs_f64();
                     provider_metrics.observe_request(elapsed, "eth_getLogs", &provider);
                     subgraph_metrics.observe_request(elapsed, "eth_getLogs", &provider);
-                    if result.is_err() {
+                    if result3.is_err() {
                         provider_metrics.add_error("eth_getLogs", &provider);
                         subgraph_metrics.add_error("eth_getLogs", &provider);
                     }
-                    result
+                    Ok(result2)
                 }
             })
             .await
@@ -499,6 +552,17 @@ impl EthereumAdapter {
         }
     }
 
+    // Method to determine block_id based on support for EIP-1898
+    fn block_ptr_to_id2(&self, block_ptr: &BlockPtr) -> alloy_rpc_types::BlockId {
+        // Ganache does not support calls by block hash.
+        // See https://github.com/trufflesuite/ganache-cli/issues/973
+        if !self.supports_eip_1898 {
+            alloy_rpc_types::BlockId::number(block_ptr.number as u64)
+        } else {
+            alloy_rpc_types::BlockId::hash(h256_to_b256(&block_ptr.hash_as_h256()))
+        }
+    }
+
     async fn code(
         &self,
         logger: &Logger,
@@ -506,9 +570,12 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
     ) -> Result<Bytes, EthereumRpcError> {
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id2 = self.block_ptr_to_id2(&block_ptr);
+        let address2 = h160_to_address(&address);
         let retry_log_message = format!("eth_getCode RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -521,11 +588,20 @@ impl EthereumAdapter {
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 async move {
                     let result: Result<Bytes, web3::Error> =
                         web3.eth().code(address, Some(block_id)).boxed().await;
+                    let result2 = alloy
+                        .get_code_at(address2)
+                        .block_id(block_id2)
+                        .await
+                        .map(bytes_to_bytes);
                     match result {
-                        Ok(code) => Ok(code),
+                        Ok(code) => {
+                            assert_eq!(result2.unwrap(), code);
+                            Ok(code)
+                        }
                         Err(err) => Err(EthereumRpcError::Web3Error(err)),
                     }
                 }
@@ -541,9 +617,12 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
     ) -> Result<U256, EthereumRpcError> {
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id2 = self.block_ptr_to_id2(&block_ptr);
+        let address2 = h160_to_address(&address);
         let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -556,11 +635,20 @@ impl EthereumAdapter {
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 async move {
                     let result: Result<U256, web3::Error> =
                         web3.eth().balance(address, Some(block_id)).boxed().await;
+                    let result2 = alloy
+                        .get_balance(address2)
+                        .block_id(block_id2)
+                        .await
+                        .map(u256_to_u256);
                     match result {
-                        Ok(balance) => Ok(balance),
+                        Ok(balance) => {
+                            assert_eq!(result2.unwrap(), balance);
+                            Ok(balance)
+                        }
                         Err(err) => Err(EthereumRpcError::Web3Error(err)),
                     }
                 }
@@ -582,6 +670,7 @@ impl EthereumAdapter {
         }
 
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
@@ -593,6 +682,7 @@ impl EthereumAdapter {
             .run(move || {
                 let call_data = call_data.clone();
                 let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 let logger = logger.cheap_clone();
                 async move {
                     let req = CallRequest {
@@ -608,6 +698,33 @@ impl EthereumAdapter {
                         transaction_type: None,
                     };
                     let result = web3.eth().call(req, Some(block_id)).boxed().await;
+                    let gas = gas.map(|val| val as u64);
+                    let to = Some(TxKind::from(h160_to_address(&call_data.address)));
+                    let input = TransactionInput {
+                        input: None,
+                        data: Some(alloy::primitives::Bytes::from(
+                            call_data.encoded_call.to_vec(),
+                        )),
+                    };
+                    let tx_req = TransactionRequest {
+                        from: None,
+                        to,
+                        gas_price: None,
+                        max_fee_per_gas: None,
+                        max_priority_fee_per_gas: None,
+                        max_fee_per_blob_gas: None,
+                        gas,
+                        value: None,
+                        input,
+                        nonce: None,
+                        chain_id: None,
+                        access_list: None,
+                        transaction_type: None,
+                        blob_versioned_hashes: None,
+                        sidecar: None,
+                        authorization_list: None,
+                    };
+                    let result2 = alloy.call(tx_req).await.map(bytes_to_bytes);
 
                     // Try to check if the call was reverted. The JSON-RPC response for reverts is
                     // not standardized, so we have ad-hoc checks for each Ethereum client.
@@ -672,7 +789,10 @@ impl EthereumAdapter {
 
                     match result {
                         // A successful response.
-                        Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
+                        Ok(bytes) => {
+                            assert_eq!(result2.unwrap(), bytes);
+                            Ok(call::Retval::Value(scalar::Bytes::from(bytes)))
+                        }
 
                         // Check for Geth revert.
                         Err(web3::Error::Rpc(rpc_error))
@@ -757,6 +877,67 @@ impl EthereumAdapter {
 
         Ok(req.response(result, call::Source::Rpc))
     }
+
+    async fn load_latest_block_rpc_alloy(
+        alloy: Arc<dyn Provider>,
+        logger: &Logger,
+    ) -> Result<Option<Arc<web3::types::Block<H256>>>, anyhow::Error> {
+        let latest_block = alloy.get_block_number().await?;
+        Self::load_block_rpc_alloy(alloy, latest_block, logger).await
+    }
+
+    async fn load_block_rpc_alloy(
+        alloy: Arc<dyn Provider>,
+        block_number: u64,
+        logger: &Logger,
+    ) -> Result<Option<Arc<web3::types::Block<H256>>>, anyhow::Error> {
+        let number = alloy_rpc_types::BlockId::number(block_number);
+        let block = alloy
+            .get_block(number)
+            .await?
+            .map(|block| convert_block_hash_alloy2web3(&logger, block));
+        Ok(block)
+    }
+
+    async fn load_full_block_rpc_alloy(
+        alloy: Arc<dyn Provider>,
+        logger: Logger,
+        id: H256,
+    ) -> Result<Arc<LightEthereumBlock>, anyhow::Error> {
+        let hash: alloy_rpc_types::BlockId =
+            alloy_rpc_types::BlockId::hash(B256::new(*id.as_fixed_bytes()));
+        let block = alloy.get_block(hash).full().await.unwrap();
+        if let Some(block) = block {
+            Ok(convert_block_alloy2web3(&logger, block))
+        } else {
+            Err(anyhow!("Ethereum node did not find block {:?}", hash))
+        }
+    }
+
+    fn load_blocks_rpc_alloy(
+        &self,
+        logger: Logger,
+        ids: Vec<H256>,
+    ) -> impl Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send {
+        let alloy = self.alloy.clone();
+        let logger = logger.clone();
+
+        stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
+            let alloy = alloy.clone();
+            let logger = logger.clone();
+
+            retry(format!("load block {}", hash), &logger)
+                .redact_log_urls(true)
+                .limit(ENV_VARS.request_retries)
+                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                .run(move || Self::load_full_block_rpc_alloy(alloy.clone(), logger.clone(), hash))
+                .boxed()
+                .compat()
+                .from_err()
+        }))
+        .buffered(ENV_VARS.block_batch_size)
+    }
+
     /// Request blocks by hash through JSON-RPC.
     fn load_blocks_rpc(
         &self,
@@ -796,9 +977,11 @@ impl EthereumAdapter {
         numbers: Vec<BlockNumber>,
     ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
 
         futures03::stream::iter(numbers.into_iter().map(move |number| {
             let web3 = web3.clone();
+            let alloy = alloy.clone();
             let logger = logger.clone();
 
             async move {
@@ -808,15 +991,24 @@ impl EthereumAdapter {
                     .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                     .run(move || {
                         let web3 = web3.clone();
+                        let alloy = alloy.clone();
+                        let logger = logger.clone();
 
                         async move {
                             let block_result = web3
                                 .eth()
                                 .block(BlockId::Number(Web3BlockNumber::Number(number.into())))
                                 .await;
+                            let block_number =
+                                alloy_rpc_types::BlockNumberOrTag::from(number as u64);
+                            let block_result2 =
+                                alloy.get_block_by_number(block_number).await.map(|block| {
+                                    block.map(|bl| convert_block_hash_alloy2web3(&logger, bl))
+                                });
 
-                            match block_result {
+                            let ret = match block_result {
                                 Ok(Some(block)) => {
+                                    assert_eq!(*block_result2.unwrap().unwrap(), block);
                                     let ptr = ExtendedBlockPtr::try_from((
                                         block.hash,
                                         block.number,
@@ -833,7 +1025,8 @@ impl EthereumAdapter {
                                     number
                                 )),
                                 Err(e) => Err(anyhow::anyhow!("Failed to fetch block: {}", e)),
-                            }
+                            };
+                            ret
                         }
                     })
                     .await
@@ -851,12 +1044,63 @@ impl EthereumAdapter {
     /// Request blocks ptrs for numbers through JSON-RPC.
     ///
     /// Reorg safety: If ids are numbers, they must be a final blocks.
+    fn load_block_ptrs_rpc_alloy(
+        &self,
+        logger: Logger,
+        block_nums: Vec<BlockNumber>,
+    ) -> impl Stream<Item = BlockPtr, Error = Error> + Send {
+        let alloy = self.alloy.clone();
+        let logger = logger.clone();
+
+        stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
+            let alloy = alloy.clone();
+            retry(format!("load block ptr {}", block_num), &logger)
+                .redact_log_urls(true)
+                .when(|res| !res.is_ok() && !detect_null_block(res))
+                .no_limit()
+                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                .run({
+                    let logger = logger.clone();
+                    let ret = move || {
+                        let alloy = alloy.clone();
+                        let logger = logger.clone();
+                        async move {
+                            let block =
+                                Self::load_block_rpc_alloy(alloy, block_num as u64, &logger).await;
+                            block.transpose().unwrap().map(|b| (*b).clone())
+                        }
+                    };
+                    ret
+                })
+                .boxed()
+                .compat()
+                .from_err()
+                .then(|res| {
+                    if detect_null_block(&res) {
+                        Ok(None)
+                    } else {
+                        Some(res).transpose()
+                    }
+                })
+        }))
+        .buffered(ENV_VARS.block_batch_size)
+        .filter_map(|b| b)
+        .map(|b| {
+            let ret = b.into();
+            ret
+        })
+    }
+
+    /// Request blocks ptrs for numbers through JSON-RPC.
+    ///
+    /// Reorg safety: If ids are numbers, they must be a final blocks.
     fn load_block_ptrs_rpc(
         &self,
         logger: Logger,
         block_nums: Vec<BlockNumber>,
     ) -> impl Stream<Item = BlockPtr, Error = Error> + Send {
         let web3 = self.web3.clone();
+        let logger = logger.clone();
 
         stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
             let web3 = web3.clone();
@@ -865,19 +1109,22 @@ impl EthereumAdapter {
                 .when(|res| !res.is_ok() && !detect_null_block(res))
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    let web3 = web3.clone();
-                    async move {
-                        let block = web3
-                            .eth()
-                            .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
-                            .boxed()
-                            .await?;
+                .run({
+                    let ret = move || {
+                        let web3 = web3.clone();
 
-                        block.ok_or_else(|| {
-                            anyhow!("Ethereum node did not find block {:?}", block_num)
-                        })
-                    }
+                        async move {
+                            let block = web3
+                                .eth()
+                                .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
+                                .boxed()
+                                .await?;
+                            block.ok_or_else(|| {
+                                anyhow!("Ethereum node did not find block {:?}", block_num)
+                            })
+                        }
+                    };
+                    ret
                 })
                 .boxed()
                 .compat()
@@ -952,6 +1199,7 @@ impl EthereumAdapter {
         to: BlockNumber,
         call_filter: &'a EthereumCallFilter,
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send + 'a> {
+        info!(logger, "!!!! calls_in_block_range");
         let eth = self.clone();
 
         let EthereumCallFilter {
@@ -1129,6 +1377,20 @@ impl EthereumAdapter {
                 .collect(),
         )
     }
+    pub(crate) fn block_range_to_ptrs_alloy(
+        &self,
+        logger: Logger,
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send> {
+        // Currently we can't go to the DB for this because there might be duplicate entries for
+        // the same block number.
+        debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
+        Box::new(
+            self.load_block_ptrs_rpc_alloy(logger, (from..=to).collect())
+                .collect(),
+        )
+    }
 
     pub(crate) fn load_ptrs_for_blocks(
         &self,
@@ -1144,6 +1406,7 @@ impl EthereumAdapter {
     pub async fn chain_id(&self) -> Result<u64, Error> {
         let logger = self.logger.clone();
         let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         u64::try_from(
             retry("chain_id RPC call", &logger)
                 .redact_log_urls(true)
@@ -1151,7 +1414,16 @@ impl EthereumAdapter {
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
-                    async move { web3.eth().chain_id().await }
+                    let alloy = alloy.clone();
+                    async move {
+                        let ch = web3.eth().chain_id().await;
+                        let ch2 = alloy.get_chain_id().await.map(u64_to_u256);
+                        match (&ch, &ch2) {
+                            (Ok(c1), Ok(c2)) => assert_eq!(c1, c2),
+                            (_, _) => panic!("chain_id"),
+                        };
+                        ch
+                    }
                 })
                 .await?,
         )
@@ -1166,6 +1438,135 @@ fn detect_null_block<T>(res: &Result<T, Error>) -> bool {
     match res {
         Ok(_) => false,
         Err(e) => e.to_string().contains("requested epoch was a null round"),
+    }
+}
+
+impl EthereumAdapter {
+    async fn latest_block_header_alloy(
+        &self,
+        logger: &Logger,
+    ) -> Result<Arc<web3::types::Block<H256>>, IngestorError> {
+        let alloy = self.alloy.clone();
+        let logger2 = logger.clone();
+        retry("eth_getBlockByNumber(latest) no txs RPC call", &logger2)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let alloy = alloy.clone();
+                let logger = logger2.clone();
+                async move {
+                    let block_opt = Self::load_latest_block_rpc_alloy(alloy, &logger)
+                        .await
+                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
+
+                    block_opt
+                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                }
+            })
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!("Ethereum node took too long to return latest block").into()
+                })
+            })
+            .await
+    }
+
+    async fn latest_block_header_web3(
+        &self,
+        logger: &Logger,
+    ) -> Result<web3::types::Block<H256>, IngestorError> {
+        let web3 = self.web3.clone();
+        retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    let block_opt = web3
+                        .eth()
+                        .block(Web3BlockNumber::Latest.into())
+                        .await
+                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
+
+                    block_opt
+                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                }
+            })
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!("Ethereum node took too long to return latest block").into()
+                })
+            })
+            .await
+    }
+
+    async fn block_by_hash_alloy(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+    ) -> Result<Option<LightEthereumBlock>, Error> {
+        let alloy = self.alloy.clone();
+        let logger = logger.clone();
+        let retry_log_message = format!(
+            "eth_getBlockByHash RPC call for block hash {:?}",
+            block_hash
+        );
+
+        retry(retry_log_message, &logger)
+            .redact_log_urls(true)
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let alloy = alloy.clone();
+                let logger = logger.clone();
+                async move {
+                    Self::load_full_block_rpc_alloy(alloy.clone(), logger.clone(), block_hash)
+                        .await
+                        .map_err(Error::from)
+                }
+            })
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!("Ethereum node took too long to return block {}", block_hash)
+                })
+            })
+            .await
+            .map(|block| Some((*block).clone()))
+    }
+
+    async fn block_by_hash_web3(
+        &self,
+        logger: &Logger,
+        block_hash: H256,
+    ) -> Result<Option<LightEthereumBlock>, Error> {
+        let web3 = self.web3.clone();
+        let logger = logger.clone();
+        let retry_log_message = format!(
+            "eth_getBlockByHash RPC call for block hash {:?}",
+            block_hash
+        );
+
+        retry(retry_log_message, &logger)
+            .redact_log_urls(true)
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let web3 = web3.cheap_clone();
+                async move {
+                    web3.eth()
+                        .block_with_txs(BlockId::Hash(block_hash))
+                        .await
+                        .map_err(Error::from)
+                }
+            })
+            .map_err(move |e| {
+                e.into_inner().unwrap_or_else(move || {
+                    anyhow!("Ethereum node took too long to return block {}", block_hash)
+                })
+            })
+            .await
     }
 }
 
@@ -1194,6 +1595,34 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         metrics.set_status(ProviderStatus::VersionFail, &provider);
                         e.into()
                     })
+                }
+            })
+            .map_err(|e| {
+                self.metrics
+                    .set_status(ProviderStatus::VersionTimeout, self.provider());
+                e
+            })
+            .boxed();
+        let alloy = self.alloy.clone();
+        let metrics = self.metrics.clone();
+        let provider = self.provider().to_string();
+        let net_version_future2 = retry("net_version RPC call", &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(20)
+            .run(move || {
+                let alloy = alloy.cheap_clone();
+                let metrics = metrics.cheap_clone();
+                let provider = provider.clone();
+                async move {
+                    alloy
+                        .get_net_version()
+                        .await
+                        .map(|version| format!("{}", version))
+                        .map_err(|e| {
+                            metrics.set_status(ProviderStatus::VersionFail, &provider);
+                            e.into()
+                        })
                 }
             })
             .map_err(|e| {
@@ -1237,19 +1666,62 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .set_status(ProviderStatus::GenesisTimeout, self.provider());
                 e
             });
+        let alloy = self.alloy.clone();
+        let logger2 = logger.clone();
+        let metrics = self.metrics.clone();
+        let provider = self.provider().to_string();
+        let retry_log_message = format!(
+            "eth_getBlockByNumber({}, false) RPC call",
+            ENV_VARS.genesis_block_number
+        );
+        let gen_block_hash_future2 = retry(retry_log_message, &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(30)
+            .run(move || {
+                let alloy = alloy.cheap_clone();
+                let logger = logger2.clone();
+                let metrics = metrics.cheap_clone();
+                let provider = provider.clone();
+                async move {
+                    Self::load_block_rpc_alloy(alloy, ENV_VARS.genesis_block_number, &logger)
+                        .await
+                        .map_err(|e| {
+                            metrics.set_status(ProviderStatus::GenesisFail, &provider);
+                            e
+                        })?
+                        .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
+                        .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
+                }
+            })
+            .map_err(|e| {
+                self.metrics
+                    .set_status(ProviderStatus::GenesisTimeout, self.provider());
+                e
+            });
 
-        let (net_version, genesis_block_hash) =
-            try_join!(net_version_future, gen_block_hash_future).map_err(|e| {
-                anyhow!(
-                    "Ethereum node took too long to read network identifiers: {}",
-                    e
-                )
-            })?;
+        let (net_version, net_version2, genesis_block_hash, genesis_block_hash2) = try_join!(
+            net_version_future,
+            net_version_future2,
+            gen_block_hash_future,
+            gen_block_hash_future2
+        )
+        .map_err(|e| {
+            anyhow!(
+                "Ethereum node took too long to read network identifiers: {}",
+                e
+            )
+        })?;
 
         let ident = ChainIdentifier {
             net_version,
             genesis_block_hash,
         };
+        let ident2 = ChainIdentifier {
+            net_version: net_version2,
+            genesis_block_hash: genesis_block_hash2,
+        };
+        assert_eq!(ident, ident2);
 
         self.metrics
             .set_status(ProviderStatus::Working, self.provider());
@@ -1260,33 +1732,25 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
     ) -> Result<web3::types::Block<H256>, IngestorError> {
-        let web3 = self.web3.clone();
-        retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
-            .redact_log_urls(true)
-            .no_limit()
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-            .run(move || {
-                let web3 = web3.cheap_clone();
-                async move {
-                    let block_opt = web3
-                        .eth()
-                        .block(Web3BlockNumber::Latest.into())
-                        .await
-                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
-
-                    block_opt
-                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+        let ret = self.latest_block_header_web3(logger).await;
+        let ret2 = self.latest_block_header_alloy(logger).await;
+        match (&ret, &ret2) {
+            (Ok(bl1), Ok(bl2)) => {
+                if bl1.number == bl2.number {
+                    assert_eq!(Arc::new(bl1.clone()), *bl2)
+                } else {
+                    let diff =
+                        bl1.number.unwrap().as_u32() as i64 - bl2.number.unwrap().as_u32() as i64;
+                    assert!(diff > -2 && diff < 2)
                 }
-            })
-            .map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    anyhow!("Ethereum node took too long to return latest block").into()
-                })
-            })
-            .await
+            }
+            (a, b) => panic!("Not same types: {:?} and {:?}", a, b),
+        };
+        ret
     }
 
     async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, IngestorError> {
+        info!(logger, "!!!! latest_block");
         let web3 = self.web3.clone();
         retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
             .redact_log_urls(true)
@@ -1332,32 +1796,31 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block_hash: H256,
     ) -> Result<Option<LightEthereumBlock>, Error> {
-        let web3 = self.web3.clone();
-        let logger = logger.clone();
-        let retry_log_message = format!(
-            "eth_getBlockByHash RPC call for block hash {:?}",
-            block_hash
-        );
+        let ret = self
+            .block_by_hash_web3(logger, block_hash)
+            .await?
+            .ok_or_else(move || {
+                anyhow!(
+                    "Ethereum node could not find block with hash {}",
+                    block_hash
+                )
+            });
+        let ret2 = self
+            .block_by_hash_alloy(logger, block_hash)
+            .await?
+            .ok_or_else(move || {
+                anyhow!(
+                    "Ethereum node could not find block with hash {}",
+                    block_hash
+                )
+            });
 
-        retry(retry_log_message, &logger)
-            .redact_log_urls(true)
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-            .run(move || {
-                let web3 = web3.cheap_clone();
-                async move {
-                    web3.eth()
-                        .block_with_txs(BlockId::Hash(block_hash))
-                        .await
-                        .map_err(Error::from)
-                }
-            })
-            .map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    anyhow!("Ethereum node took too long to return block {}", block_hash)
-                })
-            })
-            .await
+        match (&ret, &ret2) {
+            (Ok(r1), Ok(r2)) => assert_eq!(r1, r2),
+            (r1, r2) => panic!("Error(s): {:?} {:?}", r1, r2),
+        }
+
+        ret.map(Some)
     }
 
     async fn block_by_number(
@@ -1365,6 +1828,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Result<Option<LightEthereumBlock>, Error> {
+        info!(logger, "!!!! block_by_number");
         let web3 = self.web3.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
@@ -1401,6 +1865,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         block: LightEthereumBlock,
     ) -> Result<EthereumBlock, IngestorError> {
         let web3 = Arc::clone(&self.web3);
+        let alloy: Arc<dyn Provider + 'static> = self.alloy.clone();
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -1417,6 +1882,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let supports_block_receipts = self
             .check_block_receipt_support_and_update_cache(
+                alloy.clone(),
                 web3.clone(),
                 block_hash,
                 self.supports_eip_1898,
@@ -1425,12 +1891,22 @@ impl EthereumAdapterTrait for EthereumAdapter {
             )
             .await;
 
-        fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
-            .await
-            .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(block),
-                transaction_receipts,
-            })
+        let log = logger.clone();
+        let ret = fetch_receipts_with_retry(
+            alloy,
+            web3,
+            hashes,
+            block_hash,
+            logger,
+            supports_block_receipts,
+        )
+        .await
+        .map(|transaction_receipts| EthereumBlock {
+            block: Arc::new(block),
+            transaction_receipts,
+        });
+        info!(log, "load_full_block is OK: {}", ret.is_ok());
+        ret
     }
 
     async fn block_hash_by_block_number(
@@ -1438,6 +1914,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block_number: BlockNumber,
     ) -> Result<Option<H256>, Error> {
+        info!(logger, "!!!! block_hash_by_block_number");
         let web3 = self.web3.clone();
         let retry_log_message = format!(
             "eth_getBlockByNumber RPC call for block number {}",
@@ -1508,6 +1985,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 next_number
             );
             let web3 = self.web3.clone();
+            let alloy = self.alloy.clone();
             let logger = logger.clone();
             let res = retry(retry_log_message, &logger)
                 .redact_log_urls(true)
@@ -1516,12 +1994,25 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
                     let web3 = web3.cheap_clone();
+                    let alloy = alloy.clone();
+                    let logger = logger.clone();
                     async move {
-                        web3.eth()
+                        let block1 = web3
+                            .eth()
                             .block(BlockId::Number(next_number.into()))
                             .await
                             .map(|block_opt| block_opt.and_then(|block| block.hash))
-                            .map_err(Error::from)
+                            .map_err(Error::from);
+                        let block2 = Self::load_block_rpc_alloy(alloy, next_number as u64, &logger)
+                            .await
+                            .map(|block_opt| block_opt.and_then(|block| block.hash))
+                            .map_err(Error::from);
+                        match (&block1, &block2) {
+                            (Ok(bl1), Ok(bl2)) => assert_eq!(bl1, bl2),
+                            (_, _) => panic!("next_existing_ptr_to_number"),
+                        };
+
+                        block1
                     }
                 })
                 .await
@@ -1730,12 +2221,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
         );
 
         // Return a stream that lazily loads batches of blocks.
-        debug!(logger, "Requesting {} block(s)", missing_blocks.len());
+        info!(logger, "Requesting {} block(s)", missing_blocks.len());
         let new_blocks = self
-            .load_blocks_rpc(logger.clone(), missing_blocks)
+            .load_blocks_rpc(logger.clone(), missing_blocks.clone())
             .collect()
             .compat()
             .await?;
+        let new_blocks2 = self
+            .load_blocks_rpc_alloy(logger.clone(), missing_blocks.clone())
+            .collect()
+            .compat()
+            .await?;
+        assert_eq!(new_blocks.len(), new_blocks2.len());
+        for i in 0..new_blocks.len() {
+            let mut bl1: web3::types::Block<Transaction> = (*new_blocks[i]).clone();
+            fix_v_values(&mut bl1);
+            let mut bl2: web3::types::Block<Transaction> = (*new_blocks[i]).clone();
+            fix_v_values(&mut bl2);
+            let str = format!("{:?}", bl1);
+            let str2 = format!("{:?}", bl2);
+            assert_eq!(str, str2);
+        }
         let upsert_blocks: Vec<_> = new_blocks
             .iter()
             .map(|block| BlockFinality::Final(block.clone()))
@@ -1750,6 +2256,17 @@ impl EthereumAdapterTrait for EthereumAdapter {
         blocks.extend(new_blocks);
         blocks.sort_by_key(|block| block.number);
         Ok(blocks)
+    }
+}
+
+fn fix_v_values(bl1: &mut web3::types::Block<Transaction>) {
+    for i in 0..bl1.transactions.len() {
+        let v_new = if let Some(v) = bl1.transactions[i].v {
+            Some(v % 62709)
+        } else {
+            None
+        };
+        bl1.transactions[i].v = v_new;
     }
 }
 
@@ -1777,6 +2294,7 @@ pub(crate) async fn blocks_with_triggers(
     filter: &TriggerFilter,
     unified_api_version: UnifiedMappingApiVersion,
 ) -> Result<(Vec<BlockWithTriggers<crate::Chain>>, BlockNumber), Error> {
+    info!(logger, "???? blocks_with_triggers");
     // Each trigger filter needs to be queried for the same block range
     // and the blocks yielded need to be deduped. If any error occurs
     // while searching for a trigger type, the entire operation fails.
@@ -1811,7 +2329,64 @@ pub(crate) async fn blocks_with_triggers(
             })
             .compat()
             .boxed();
-        trigger_futs.push(block_future)
+        trigger_futs.push(block_future);
+
+        //////////////////////////////////////////////////////////////////////////////////
+        // Do comparison from here here:
+        //////////////////////////////////////////////////////////////////////////////////
+        let trigger_futs1: FuturesUnordered<
+            BoxFuture<Result<Vec<EthereumTrigger>, anyhow::Error>>,
+        > = FuturesUnordered::new();
+        let block_future1 = eth
+            .block_range_to_ptrs(logger.clone(), from, to)
+            .map(move |ptrs| {
+                ptrs.into_iter()
+                    .flat_map(|ptr| {
+                        vec![
+                            EthereumTrigger::Block(ptr.clone(), EthereumBlockTriggerType::Start),
+                            EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End),
+                        ]
+                    })
+                    .collect()
+            })
+            .compat()
+            .boxed();
+        trigger_futs1.push(block_future1);
+        let trigger_futs2: FuturesUnordered<
+            BoxFuture<Result<Vec<EthereumTrigger>, anyhow::Error>>,
+        > = FuturesUnordered::new();
+        let block_future2 = eth
+            .block_range_to_ptrs_alloy(logger.clone(), from, to)
+            .map(move |ptrs| {
+                ptrs.into_iter()
+                    .flat_map(|ptr| {
+                        vec![
+                            EthereumTrigger::Block(ptr.clone(), EthereumBlockTriggerType::Start),
+                            EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End),
+                        ]
+                    })
+                    .collect()
+            })
+            .compat()
+            .boxed();
+        trigger_futs2.push(block_future2);
+        // request them
+        let triggers1 = trigger_futs1
+            .try_concat()
+            .await
+            .with_context(|| format!("Failed to obtain triggers for block {}", to))?;
+        let block_hashes1: HashSet<H256> =
+            triggers1.iter().map(EthereumTrigger::block_hash).collect();
+        let triggers2 = trigger_futs2
+            .try_concat()
+            .await
+            .with_context(|| format!("Failed to obtain triggers for block {}", to))?;
+        let block_hashes2: HashSet<H256> =
+            triggers2.iter().map(EthereumTrigger::block_hash).collect();
+        assert_eq!(block_hashes1, block_hashes2)
+        //////////////////////////////////////////////////////////////////////////////////
+        // to here
+        //////////////////////////////////////////////////////////////////////////////////
     } else if !filter.block.polling_intervals.is_empty() {
         let block_futures_matching_once_filter =
             eth.blocks_matching_polling_intervals(logger.clone(), from, to, &filter.block);
@@ -1867,6 +2442,9 @@ pub(crate) async fn blocks_with_triggers(
         .try_concat()
         .await
         .with_context(|| format!("Failed to obtain triggers for block {}", to))?;
+
+    // info!(logger, "TRIGGERS:");
+    // triggers.iter().for_each(|t| info!(logger, "TR: {:?}", t));
 
     let mut block_hashes: HashSet<H256> =
         triggers.iter().map(EthereumTrigger::block_hash).collect();
@@ -2108,6 +2686,7 @@ async fn fetch_receipt_from_ethereum_client(
     eth: &EthereumAdapter,
     transaction_hash: &H256,
 ) -> anyhow::Result<TransactionReceipt> {
+    println!("!!!! fetch_receipt_from_ethereum_client");
     match eth.web3.eth().transaction_receipt(*transaction_hash).await {
         Ok(Some(receipt)) => Ok(receipt),
         Ok(None) => bail!("Could not find transaction receipt"),
@@ -2263,6 +2842,10 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     block_hash: H256,
     logger: Logger,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+    info!(
+        logger,
+        "!!!! fetch_transaction_receipts_in_batch_with_retry"
+    );
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
         block_hash
@@ -2289,6 +2872,7 @@ async fn fetch_transaction_receipts_in_batch(
     block_hash: H256,
     logger: Logger,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+    info!(logger, "!!!! fetch_transaction_receipts_in_batch");
     let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
     let eth = batching_web3.eth();
     let receipt_futures = hashes
@@ -2313,6 +2897,7 @@ async fn fetch_transaction_receipts_in_batch(
 }
 
 pub(crate) async fn check_block_receipt_support(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<impl web3::Transport>>,
     block_hash: H256,
     supports_eip_1898: bool,
@@ -2328,19 +2913,30 @@ pub(crate) async fn check_block_receipt_support(
 
     // Fetch block receipts from the provider for the latest block.
     let block_receipts_result = web3.eth().block_receipts(BlockId::Hash(block_hash)).await;
+    let hash: alloy_rpc_types::BlockId =
+        alloy_rpc_types::BlockId::hash(B256::new(*block_hash.as_fixed_bytes()));
+    let block_receipts_result2 = alloy.get_block_receipts(hash).await;
 
     // Determine if the provider supports block receipts based on the fetched result.
-    match block_receipts_result {
+    let ret = match block_receipts_result {
         Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
         Ok(_) => Err(anyhow!("Block receipts are empty")),
         Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
-    }
+    };
+    let ret2 = match block_receipts_result2 {
+        Ok(Some(receipts)) if !receipts.is_empty() => Ok(()),
+        Ok(_) => Err(anyhow!("Block receipts are empty")),
+        Err(err) => Err(anyhow!("Error fetching block receipts: {}", err)),
+    };
+    assert_eq!(ret.is_ok(), ret2.is_ok());
+    ret
 }
 
 // Fetches transaction receipts with retries. This function acts as a dispatcher
 // based on whether block receipts are supported or individual transaction receipts
 // need to be fetched.
 async fn fetch_receipts_with_retry(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
     block_hash: H256,
@@ -2348,7 +2944,7 @@ async fn fetch_receipts_with_retry(
     supports_block_receipts: bool,
 ) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
     if supports_block_receipts {
-        return fetch_block_receipts_with_retry(web3, hashes, block_hash, logger).await;
+        return fetch_block_receipts_with_retry(alloy, web3, hashes, block_hash, logger).await;
     }
     fetch_individual_receipts_with_retry(web3, hashes, block_hash, logger).await
 }
@@ -2386,6 +2982,7 @@ async fn fetch_individual_receipts_with_retry(
 
 /// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
 async fn fetch_block_receipts_with_retry(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
     block_hash: H256,
@@ -2395,13 +2992,31 @@ async fn fetch_block_receipts_with_retry(
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
 
     // Perform the retry operation
-    let receipts_option = retry(retry_log_message, &logger)
+    let receipts_option = retry(retry_log_message.clone(), &logger)
         .redact_log_urls(true)
         .limit(ENV_VARS.request_retries)
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-        .run(move || web3.eth().block_receipts(BlockId::Hash(block_hash)).boxed())
+        .run({
+            let block_hash = block_hash.clone();
+            move || web3.eth().block_receipts(BlockId::Hash(block_hash)).boxed()
+        })
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
+
+    // Perform the retry operation
+    let receipts_option2 = retry(retry_log_message, &logger)
+        .redact_log_urls(true)
+        .limit(ENV_VARS.request_retries)
+        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+        .run(move || {
+            let hash: alloy_rpc_types::BlockId =
+                alloy_rpc_types::BlockId::hash(B256::new(*block_hash.as_fixed_bytes()));
+            alloy.get_block_receipts(hash)
+        })
+        .await
+        .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
+    let receipts_option3: Option<Vec<TransactionReceipt>> = convert_receipts(receipts_option2);
+    assert_eq!(receipts_option, receipts_option3);
 
     // Check if receipts are available, and transform them if they are
     match receipts_option {
@@ -2435,6 +3050,7 @@ async fn fetch_transaction_receipt_with_retry(
     block_hash: H256,
     logger: Logger,
 ) -> Result<Arc<TransactionReceipt>, IngestorError> {
+    info!(logger, "!!!! fetch_transaction_receipt_with_retry");
     let logger = logger.cheap_clone();
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
@@ -2595,7 +3211,10 @@ async fn get_transaction_receipts_for_transaction_hashes(
     if transaction_hashes_by_block.is_empty() {
         return Ok(receipts_by_hash);
     }
-
+    info!(
+        logger,
+        "!!!! get_transaction_receipts_for_transaction_hashes"
+    );
     // Keep a record of all unique transaction hashes for which we'll request receipts. We will
     // later use this to check if we have collected the receipts from all required transactions.
     let mut unique_transaction_hashes: HashSet<&H256> = HashSet::new();
@@ -2656,8 +3275,472 @@ async fn get_transaction_receipts_for_transaction_hashes(
         unique_transaction_hashes.is_empty(),
         "Didn't receive all necessary transaction receipts"
     );
+    info!(logger, "RCP: {:?}", receipts_by_hash);
 
     Ok(receipts_by_hash)
+}
+
+fn b256_to_h256(in_data: B256) -> H256 {
+    H256(in_data.as_slice()[0..32].try_into().unwrap())
+}
+fn b64_to_h64(in_data: B64) -> H64 {
+    H64(in_data.as_slice()[0..8].try_into().unwrap())
+}
+fn u256_to_u256(in_data: alloy::primitives::U256) -> web3::types::U256 {
+    let u1 = u64::from_le_bytes(in_data.as_le_slice()[0..8].try_into().unwrap_or_default());
+    let u2 = u64::from_le_bytes(in_data.as_le_slice()[8..16].try_into().unwrap_or_default());
+    let u3 = u64::from_le_bytes(in_data.as_le_slice()[16..24].try_into().unwrap_or_default());
+    let u4 = u64::from_le_bytes(in_data.as_le_slice()[24..32].try_into().unwrap_or_default());
+    U256([u1, u2, u3, u4])
+}
+fn u128_to_u256(in_data: u128) -> web3::types::U256 {
+    let u1 = (in_data & 0xffffffffffffffff) as u64;
+    let u2 = (in_data >> 64) as u64;
+    U256([u1, u2, 0, 0])
+}
+fn u64_to_u256(in_data: u64) -> web3::types::U256 {
+    web3::types::U256([in_data, 0, 0, 0])
+}
+fn u64_to_u64(in_data: u64) -> web3::types::U64 {
+    web3::types::U64([in_data])
+}
+fn bool_to_u64(in_data: bool) -> web3::types::U64 {
+    web3::types::U64([if in_data { 1 } else { 0 }])
+}
+fn u128_to_u64(in_data: u128) -> web3::types::U64 {
+    web3::types::U64([(in_data & 0xffffffffffffffff) as u64])
+}
+fn address_to_h160(fixed_bytes: alloy::primitives::Address) -> H160 {
+    let address = H160(fixed_bytes.as_slice().try_into().unwrap());
+    address
+}
+fn h160_to_address(fixed_bytes: &H160) -> alloy::primitives::Address {
+    let address =
+        alloy::primitives::Address::new(fixed_bytes.as_bytes()[0..20].try_into().unwrap());
+    address
+}
+fn h256_to_b256(fixed_bytes: &H256) -> B256 {
+    let bytes = fixed_bytes.as_bytes()[0..32].try_into().unwrap();
+    bytes
+}
+fn convert_bloom(logs_bloom: &alloy::primitives::Bloom) -> H2048 {
+    let bytes: [u8; 256] = logs_bloom.as_slice()[0..256].try_into().unwrap();
+    H2048::from(bytes)
+}
+fn bytes_to_bytes(in_data: alloy::primitives::Bytes) -> Bytes {
+    let slice = in_data.iter().as_slice();
+    Bytes::from(slice)
+}
+
+fn convert_topic(
+    h256s: &Option<Vec<H256>>,
+) -> alloy_rpc_types::FilterSet<alloy::primitives::FixedBytes<32>> {
+    if let Some(topic1) = h256s {
+        topic1.into_iter().map(|b| h256_to_b256(&b)).collect()
+    } else {
+        alloy_rpc_types::Topic::default()
+    }
+}
+
+fn convert_log(alloy_logs: &[alloy_rpc_types::Log<alloy::primitives::LogData>]) -> Vec<Log> {
+    alloy_logs
+        .iter()
+        .map(|log| {
+            let address = address_to_h160(log.inner.address);
+            let topics = log.topics().iter().map(|t| b256_to_h256(*t)).collect();
+            let data = log.inner.data.data.clone().into();
+            let block_hash = log.block_hash.map(b256_to_h256);
+            let block_number = log.block_number.map(u64_to_u64);
+            let transaction_hash = log.transaction_hash.map(b256_to_h256);
+            let transaction_index = log.transaction_index.map(u64_to_u64);
+            let log_index = log.log_index.map(u64_to_u256);
+            let transaction_log_index = None; // TODO: fix it
+            let log_type = None; // TODO: fix it
+            let removed = Some(log.removed);
+            Log {
+                address,
+                topics,
+                data,
+                block_hash,
+                block_number,
+                transaction_hash,
+                transaction_index,
+                log_index,
+                transaction_log_index,
+                log_type,
+                removed,
+            }
+        })
+        .collect()
+}
+
+fn convert_receipts(
+    receipts_option: Option<Vec<alloy_rpc_types::TransactionReceipt>>,
+) -> Option<Vec<TransactionReceipt>> {
+    receipts_option.map(|receipts| {
+        receipts
+            .into_iter()
+            .map(|receipt| {
+                let transaction_hash = b256_to_h256(receipt.transaction_hash);
+                let transaction_index = u64_to_u64(receipt.transaction_index.unwrap());
+                let block_hash = receipt.block_hash.map(b256_to_h256);
+                let block_number = receipt.block_number.map(u64_to_u64);
+                let from = address_to_h160(receipt.from);
+                let to = receipt.to.map(address_to_h160);
+                let cumulative_gas_used = u64_to_u256(receipt.gas_used);
+                let gas_used = Some(cumulative_gas_used);
+                let contract_address = receipt.contract_address.map(address_to_h160);
+                let logs = convert_log(receipt.logs());
+                let status = Some(bool_to_u64(receipt.status()));
+                let root = None; // TODO: fix it
+                let logs_bloom = convert_bloom(receipt.inner.logs_bloom());
+                let transaction_type = Some(u64_to_u64(0)); // TODO fix it
+                let effective_gas_price = Some(u128_to_u256(receipt.effective_gas_price));
+
+                TransactionReceipt {
+                    transaction_hash,
+                    transaction_index,
+                    block_hash,
+                    block_number,
+                    from,
+                    to,
+                    cumulative_gas_used,
+                    gas_used,
+                    contract_address,
+                    logs,
+                    status,
+                    root,
+                    logs_bloom,
+                    transaction_type,
+                    effective_gas_price,
+                }
+            })
+            .collect()
+    })
+}
+
+fn tx_to_tx(
+    logger: &Logger,
+    in_data: BlockTransactions<alloy_rpc_types::Transaction>,
+) -> Vec<web3::types::Transaction> {
+    let _ = logger;
+    match in_data {
+        BlockTransactions::Full(items) => {
+            // if items.len() > 0 {
+            //     info!(logger, "ITEMS: {}", items.len());
+            // }
+            let ret = items
+                .iter()
+                .map(|tx| {
+                    // info!(logger, "TX: {:?}", tx);
+                    let inner = tx.inner.inner();
+                    let hash = b256_to_h256(inner.hash().clone());
+                    let block_hash = tx.block_hash.map(b256_to_h256);
+                    let block_number = tx.block_number.map(u64_to_u64);
+                    let transaction_index = tx.transaction_index.map(u64_to_u64);
+                    let from = Some(address_to_h160(tx.inner.signer()));
+
+                    let gas_price = tx.effective_gas_price.map(u128_to_u256);
+                    let raw = None; // TODO: fix it
+                    match inner {
+                        alloy::consensus::EthereumTxEnvelope::Legacy(signed) => {
+                            // info!(logger, "TX legacy: {:?}", signed.tx());
+                            // info!(logger, "SIG legacy: {:?}", signed.signature());
+                            let nonce = u64_to_u256(signed.tx().nonce);
+                            let to = if let alloy::primitives::TxKind::Call(to) = signed.tx().to {
+                                Some(address_to_h160(to))
+                            } else {
+                                None
+                            };
+                            let value = u256_to_u256(signed.tx().value);
+                            let gas = u64_to_u256(signed.tx().gas_limit);
+                            let input: web3::types::Bytes = signed.tx().input.clone().into();
+                            // let v: Option<web3::types::U64> =
+                            //     Some(if signed.signature().v() { 1 } else { 0 }.into());
+                            let r = Some(u256_to_u256(signed.signature().r()));
+                            let s = Some(u256_to_u256(signed.signature().s()));
+
+                            let v_val =
+                                u128_to_u64(alloy::consensus::transaction::to_eip155_value(
+                                    signed.signature().v(),
+                                    signed.tx().chain_id,
+                                ));
+                            // info!(
+                            //     logger,
+                            //     "V_VAL: {:?} LEGACY #{:?} NOT USED", v_val, block_number
+                            // );
+                            let v = Some(v_val);
+                            let transaction_type: Option<web3::types::U64> = Some(0.into()); // TODO: fix it
+                            let access_list = None; // TODO: fix it
+                            let max_fee_per_gas = None; // TODO: fix it
+                            let max_priority_fee_per_gas = None; // TODO: fix it
+
+                            web3::types::Transaction {
+                                hash,
+                                nonce,
+                                block_hash,
+                                block_number,
+                                transaction_index,
+                                from,
+                                to,
+                                value,
+                                gas_price,
+                                gas,
+                                input,
+                                v,
+                                r,
+                                s,
+                                raw,
+                                transaction_type,
+                                access_list,
+                                max_fee_per_gas,
+                                max_priority_fee_per_gas,
+                            }
+                        }
+                        alloy::consensus::EthereumTxEnvelope::Eip2930(_signed) => todo!(),
+                        alloy::consensus::EthereumTxEnvelope::Eip1559(signed) => {
+                            // info!(logger, "TX eip1559: {:?}", signed.tx());
+                            let nonce = u64_to_u256(signed.tx().nonce);
+                            let to = if let alloy::primitives::TxKind::Call(to) = signed.tx().to {
+                                Some(address_to_h160(to))
+                            } else {
+                                None
+                            };
+                            let value = u256_to_u256(signed.tx().value);
+                            let gas = u64_to_u256(signed.tx().gas_limit);
+                            let input: web3::types::Bytes = signed.tx().input.clone().into();
+                            // let v: Option<web3::types::U64> =
+                            //     Some(if signed.signature().v() { 1 } else { 0 }.into());
+                            let r = Some(u256_to_u256(signed.signature().r()));
+                            let s = Some(u256_to_u256(signed.signature().s()));
+                            let v_val =
+                                u128_to_u64(alloy::consensus::transaction::to_eip155_value(
+                                    signed.signature().v(),
+                                    Some(signed.tx().chain_id),
+                                ));
+                            // info!(logger, "V_VAL: {:?} EIP #{:?}", v_val, block_number);
+                            let v = Some(v_val);
+
+                            let transaction_type: Option<web3::types::U64> = Some(2.into()); // TODO: fix it
+                            let access_list = Some(vec![]); // TODO: fix it
+                            let max_fee_per_gas = Some(u128_to_u256(signed.tx().max_fee_per_gas));
+                            let max_priority_fee_per_gas =
+                                Some(u128_to_u256(signed.tx().max_priority_fee_per_gas));
+
+                            web3::types::Transaction {
+                                hash,
+                                nonce,
+                                block_hash,
+                                block_number,
+                                transaction_index,
+                                from,
+                                to,
+                                value,
+                                gas_price,
+                                gas,
+                                input,
+                                v,
+                                r,
+                                s,
+                                raw,
+                                transaction_type,
+                                access_list,
+                                max_fee_per_gas,
+                                max_priority_fee_per_gas,
+                            }
+                        }
+                        alloy::consensus::EthereumTxEnvelope::Eip4844(_signed) => todo!(),
+                        alloy::consensus::EthereumTxEnvelope::Eip7702(_signed) => todo!(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            // info!(logger, "DONE WITH ITEMS");
+            ret
+        }
+        BlockTransactions::Hashes(_items) => {
+            // items
+            //     .iter()
+            //     .map(|hash| b256_to_h256(*hash))
+            //     .collect::<Vec<_>>();
+            panic!("Not implemented variant: Hashes");
+        }
+        BlockTransactions::Uncle => panic!("Not implemented variant: Uncle"),
+    }
+}
+
+fn convert_block_alloy2web3(
+    logger: &Logger,
+    block: alloy_rpc_types::Block,
+) -> Arc<LightEthereumBlock> {
+    let hash = Some(b256_to_h256(block.header.hash));
+    // info!(logger, "hash: {:?}", hash);
+    let parent_hash = b256_to_h256(block.header.inner.parent_hash);
+    // info!(logger, "parent_hash: {:?}", parent_hash);
+    let uncles_hash = b256_to_h256(block.header.inner.ommers_hash);
+    // info!(logger, "uncles_hash: {:?}", uncles_hash);
+    let author = address_to_h160(block.header.inner.beneficiary);
+    // info!(logger, "author: {:?}", author);
+    let state_root = b256_to_h256(block.header.state_root);
+    // info!(logger, "state_root: {:?}", state_root);
+    let transactions_root = b256_to_h256(block.header.transactions_root);
+    // info!(logger, "transactions_root: {:?}", transactions_root);
+    let receipts_root = b256_to_h256(block.header.receipts_root);
+    // info!(logger, "receipts_root: {:?}", receipts_root);
+    let number = Some(web3::types::U64([block.header.number; 1]));
+    // info!(logger, "number: {:?}", number);
+    let gas_used = u64_to_u256(block.header.gas_used);
+    // info!(logger, "gas_used: {:?}", gas_used);
+    let gas_limit = u64_to_u256(block.header.gas_limit);
+    // info!(logger, "gas_limit: {:?}", gas_limit);
+    let base_fee_per_gas = block.header.base_fee_per_gas.map(|n| u64_to_u256(n));
+    // info!(logger, "base_fee_per_gas: {:?}", base_fee_per_gas);
+    let extra_data = web3::types::Bytes(block.header.extra_data.to_vec());
+    // info!(logger, "extra_data: {:?}", extra_data);
+    let logs_bloom = Some(H2048(
+        block.header.inner.logs_bloom.as_slice()[0..256]
+            .try_into()
+            .unwrap(),
+    ));
+    // info!(logger, "logs_bloom: {:?}", logs_bloom);
+    let timestamp = u64_to_u256(block.header.inner.timestamp);
+    // info!(logger, "timestamp: {:?}", timestamp);
+    let difficulty = u256_to_u256(block.header.inner.difficulty);
+    // info!(logger, "difficulty: {:?}", difficulty);
+    let total_difficulty = block.header.total_difficulty.map(|n| u256_to_u256(n));
+    // info!(logger, "total_difficulty: {:?}", total_difficulty);
+    let uncles = block.uncles.into_iter().map(|h| b256_to_h256(h)).collect();
+    // info!(logger, "uncles: {:?}", uncles);
+    let transactions = tx_to_tx(logger, block.transactions);
+    let size = block.header.size.map(|n| u256_to_u256(n));
+    // info!(logger, "size: {:?}", size);
+    let mix_hash = Some(b256_to_h256(block.header.mix_hash));
+    // info!(logger, "mix_hash: {:?}", mix_hash);
+    let nonce = Some(b64_to_h64(block.header.nonce));
+    // info!(logger, "nonce: {:?}", nonce);
+    let light_block = LightEthereumBlock {
+        hash,
+        parent_hash,
+        uncles_hash,
+        author,
+        state_root,
+        transactions_root,
+        receipts_root,
+        number,
+        gas_used,
+        gas_limit,
+        base_fee_per_gas,
+        extra_data,
+        logs_bloom,
+        timestamp,
+        difficulty,
+        total_difficulty,
+        seal_fields: vec![], // TODO: fix this
+        uncles,
+        transactions,
+        size,
+        mix_hash,
+        nonce,
+    };
+    // info!(logger, "light_block: {:?}", light_block);
+    Arc::new(light_block)
+}
+
+fn tx_hash_to_tx(
+    logger: &Logger,
+    in_data: BlockTransactions<alloy_rpc_types::Transaction>,
+) -> Vec<H256> {
+    let _ = logger;
+    match in_data {
+        BlockTransactions::Full(_) => panic!("Wrong variant: Full"),
+        BlockTransactions::Hashes(items) => {
+            let v = items
+                .iter()
+                .map(|hash| {
+                    // info!(logger, "HASH: {:?}", hash);
+                    b256_to_h256(*hash)
+                })
+                .collect::<Vec<_>>();
+            v
+        }
+        BlockTransactions::Uncle => panic!("Not implemented variant: Uncle"),
+    }
+}
+
+fn convert_block_hash_alloy2web3(
+    logger: &Logger,
+    block: alloy_rpc_types::Block,
+) -> Arc<web3::types::Block<H256>> {
+    let hash = Some(b256_to_h256(block.header.hash));
+    // info!(logger, "hash: {:?}", hash);
+    let parent_hash = b256_to_h256(block.header.inner.parent_hash);
+    // info!(logger, "parent_hash: {:?}", parent_hash);
+    let uncles_hash = b256_to_h256(block.header.inner.ommers_hash);
+    // info!(logger, "uncles_hash: {:?}", uncles_hash);
+    let author = address_to_h160(block.header.inner.beneficiary);
+    // info!(logger, "author: {:?}", author);
+    let state_root = b256_to_h256(block.header.state_root);
+    // info!(logger, "state_root: {:?}", state_root);
+    let transactions_root = b256_to_h256(block.header.transactions_root);
+    // info!(logger, "transactions_root: {:?}", transactions_root);
+    let receipts_root = b256_to_h256(block.header.receipts_root);
+    // info!(logger, "receipts_root: {:?}", receipts_root);
+    let number = Some(web3::types::U64([block.header.number; 1]));
+    // info!(logger, "number: {:?}", number);
+    let gas_used = u64_to_u256(block.header.gas_used);
+    // info!(logger, "gas_used: {:?}", gas_used);
+    let gas_limit = u64_to_u256(block.header.gas_limit);
+    // info!(logger, "gas_limit: {:?}", gas_limit);
+    let base_fee_per_gas = block.header.base_fee_per_gas.map(|n| u64_to_u256(n));
+    // info!(logger, "base_fee_per_gas: {:?}", base_fee_per_gas);
+    let extra_data = web3::types::Bytes(block.header.extra_data.to_vec());
+    // info!(logger, "extra_data: {:?}", extra_data);
+    let logs_bloom = Some(H2048(
+        block.header.inner.logs_bloom.as_slice()[0..256]
+            .try_into()
+            .unwrap(),
+    ));
+    // info!(logger, "logs_bloom: {:?}", logs_bloom);
+    let timestamp = u64_to_u256(block.header.inner.timestamp);
+    // info!(logger, "timestamp: {:?}", timestamp);
+    let difficulty = u256_to_u256(block.header.inner.difficulty);
+    // info!(logger, "difficulty: {:?}", difficulty);
+    let total_difficulty = block.header.total_difficulty.map(|n| u256_to_u256(n));
+    // info!(logger, "total_difficulty: {:?}", total_difficulty);
+    let uncles = block.uncles.into_iter().map(|h| b256_to_h256(h)).collect();
+    // info!(logger, "uncles: {:?}", uncles);
+    let transactions = tx_hash_to_tx(logger, block.transactions);
+    // let transactions = block.transactions.map(|hash|);
+    let size = block.header.size.map(|n| u256_to_u256(n));
+    // info!(logger, "size: {:?}", size);
+    let mix_hash = Some(b256_to_h256(block.header.mix_hash));
+    // info!(logger, "mix_hash: {:?}", mix_hash);
+    let nonce = Some(b64_to_h64(block.header.nonce));
+    // info!(logger, "nonce: {:?}", nonce);
+    let block = web3::types::Block::<H256> {
+        hash,
+        parent_hash,
+        uncles_hash,
+        author,
+        state_root,
+        transactions_root,
+        receipts_root,
+        number,
+        gas_used,
+        gas_limit,
+        base_fee_per_gas,
+        extra_data,
+        logs_bloom,
+        timestamp,
+        difficulty,
+        total_difficulty,
+        seal_fields: vec![], // TODO: fix this
+        uncles,
+        transactions,
+        size,
+        mix_hash,
+        nonce,
+    };
+    Arc::new(block)
 }
 
 #[cfg(test)]
@@ -2757,7 +3840,12 @@ mod tests {
             // transport.add_response(json_value);
 
             let web3 = Arc::new(Web3::new(transport.clone()));
+            let asserter = alloy::transports::mock::Asserter::new();
+            // asserter.push(json_value);
+            let alloy =
+                Arc::new(alloy::providers::ProviderBuilder::new().connect_mocked_client(asserter));
             let result = check_block_receipt_support(
+                alloy,
                 web3.clone(),
                 H256::zero(),
                 supports_eip_1898,

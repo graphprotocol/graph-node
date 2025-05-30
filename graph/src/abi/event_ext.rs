@@ -15,7 +15,7 @@ pub trait EventExt {
 impl EventExt for Event {
     fn decode_log(&self, log: &Log) -> Result<Vec<DynSolParam>> {
         let log_data = log_to_log_data(log)?;
-        let decoded_event = alloy::dyn_abi::EventExt::decode_log(self, &log_data, true)?;
+        let decoded_event = alloy::dyn_abi::EventExt::decode_log(self, &log_data)?;
 
         if self.inputs.len() != decoded_event.indexed.len() + decoded_event.body.len() {
             return Err(anyhow!(
