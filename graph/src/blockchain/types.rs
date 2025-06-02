@@ -591,16 +591,22 @@ impl TryFrom<Option<String>> for BlockTime {
 
     fn try_from(ts: Option<String>) -> Result<Self, Self::Error> {
         match ts {
-            Some(str) => return BlockTime::from_str(&str),
+            Some(str) => return BlockTime::from_hex_str(&str),
             None => return Ok(BlockTime::NONE),
         };
     }
 }
 
-impl FromStr for BlockTime {
-    type Err = ParseIntError;
+impl BlockTime {
+    /// A timestamp from a long long time ago used to indicate that we don't
+    /// have a timestamp
+    pub const NONE: Self = Self::MIN;
 
-    fn from_str(ts: &str) -> Result<Self, Self::Err> {
+    pub const MAX: Self = Self(Timestamp::MAX);
+
+    pub const MIN: Self = Self(Timestamp(DateTime::from_timestamp_nanos(0)));
+
+    pub fn from_hex_str(ts: &str) -> Result<Self, ParseIntError> {
         let (radix, idx) = if ts.starts_with("0x") {
             (16, 2)
         } else {
@@ -609,16 +615,6 @@ impl FromStr for BlockTime {
 
         u64::from_str_radix(&ts[idx..], radix).map(|ts| BlockTime::since_epoch(ts as i64, 0))
     }
-}
-
-impl BlockTime {
-    // /// A timestamp from a long long time ago used to indicate that we don't
-    // /// have a timestamp
-    pub const NONE: Self = Self::MIN;
-
-    pub const MAX: Self = Self(Timestamp::MAX);
-
-    pub const MIN: Self = Self(Timestamp(DateTime::from_timestamp_nanos(0)));
 
     /// Construct a block time that is the given number of seconds and
     /// nanoseconds after the Unix epoch

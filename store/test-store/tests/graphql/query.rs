@@ -53,7 +53,6 @@ lazy_static! {
     /// The id of the sole publisher in the test data
     static ref PUB1: IdVal = IdType::Bytes.parse("0xb1");
     /// The chain we actually put into the chain store, blocks 0 to 3
-    // static ref CHAIN: Vec<FakeBlock> = vec![GENESIS_BLOCK.clone(), BLOCK_ONE.clone(), BLOCK_TWO.clone(), BLOCK_THREE.clone()];
     static ref CHAIN: Vec<FakeBlock> = vec![GENESIS_BLOCK.clone(), BLOCK_ONE.clone(), BLOCK_TWO.clone(), BLOCK_THREE.clone()];
     /// The known block pointers for blocks 0 to 3 from the chain plus a
     /// nonexistent block 4

@@ -402,7 +402,7 @@ impl Chain {
         hash: &BlockHash,
     ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
     {
-        self.chain_store.block_number(hash).await
+        self.chain_store.block_pointer(hash).await
     }
 
     // TODO: This is only used to build the block stream which could prolly

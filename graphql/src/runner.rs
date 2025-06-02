@@ -111,7 +111,7 @@ where
         let latest_block = match store.block_ptr().await.ok().flatten() {
             Some(block) => Some(LatestBlockInfo {
                 timestamp: store
-                    .block_number_with_timestamp_and_parent_hash(&block.hash)
+                    .block_pointer(&block.hash)
                     .await
                     .ok()
                     .flatten()

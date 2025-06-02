@@ -58,7 +58,7 @@ lazy_static! {
 pub const NO_PARENT: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 /// The parts of an Ethereum block that are interesting for these tests:
 /// the block number, hash, and the hash of the parent block
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FakeBlock {
     pub number: BlockNumber,
     pub hash: String,

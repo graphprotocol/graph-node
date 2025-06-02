@@ -186,7 +186,7 @@ impl StoreResolver {
         let (timestamp, parent_hash) = if lookup_needed(field) {
             match self
                 .store
-                .block_number_with_timestamp_and_parent_hash(&block_ptr.hash)
+                .block_pointer(&block_ptr.hash)
                 .await
                 .map_err(Into::<QueryExecutionError>::into)?
             {

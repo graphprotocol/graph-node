@@ -669,16 +669,16 @@ mod data {
                     let pointers_query = if overwrite {
                         format!(
                             "insert into {pointers_table}(hash, number, parent_hash, timestamp) \
-                             values ($1, $2, $3, $5) \
+                             values ($1, $2, $3, $4) \
                                  on conflict(hash) \
-                                 do update set number = $2, parent_hash = $3, timestamp = $5;
+                                 do update set number = $2, parent_hash = $3, timestamp = $4;
                                  ",
                             pointers_table = block_pointers.qname,
                         )
                     } else {
                         format!(
                             "insert into {pointers_table}(hash, number, parent_hash, timestamp) \
-                                values ($1, $2, $3, $5) \
+                                values ($1, $2, $3, $4) \
                                 on conflict(hash) do nothing;
                                 ",
                             pointers_table = block_pointers.qname,
@@ -688,15 +688,15 @@ mod data {
                     let blocks_query = if overwrite {
                         format!(
                             "insert into {blocks_table}(hash, data) \
-                                  values ($1, $4) \
+                                  values ($1, $2) \
                                       on conflict(hash) \
-                                      do update set data = $4;",
+                                      do update set data = $2;",
                             blocks_table = blocks.qname,
                         )
                     } else {
                         format!(
                             "insert into {blocks_table}(hash, data) \
-                                values ($1, $4) \
+                                values ($1, $2) \
                                 on conflict(hash) do nothing;",
                             blocks_table = blocks.qname,
                         )
@@ -706,21 +706,17 @@ mod data {
                         let data = data;
                         sql_query(blocks_query)
                             .bind::<Bytea, _>(hash.as_slice())
-                            .bind::<BigInt, _>(number)
-                            .bind::<Bytea, _>(parent_hash.as_slice())
                             .bind::<Jsonb, _>(&data)
                             .execute(conn)
+                            .map_err(StoreError::from)?;
+
+                        sql_query(pointers_query)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .bind::<BigInt, _>(number)
+                            .bind::<Bytea, _>(parent_hash.as_slice())
+                            .bind::<Timestamptz, _>(&block.timestamp())
+                            .execute(conn)
                             .map_err(StoreError::from)
-                            .and_then(|_| {
-                                sql_query(pointers_query)
-                                    .bind::<Bytea, _>(hash.as_slice())
-                                    .bind::<BigInt, _>(number)
-                                    .bind::<Bytea, _>(parent_hash.as_slice())
-                                    .bind::<Jsonb, _>(data)
-                                    .bind::<Timestamptz, _>(&block.timestamp())
-                                    .execute(conn)
-                                    .map_err(StoreError::from)
-                            })
                     })?;
                 }
             };
@@ -894,16 +890,41 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { block_pointers, .. }) => {
-                    let query = format!(
+                Storage::Private(Schema {
+                    block_pointers,
+                    blocks,
+                    ..
+                }) => {
+                    let blocks_query = format!(
+                        "
+                        DELETE FROM {block_table}
+                        WHERE hash in (
+                            SELECT hash
+                            FROM {ptrs_table}
+                            WHERE number = $1 AND hash != $2
+                        )
+                        ",
+                        block_table = blocks.qname,
+                        ptrs_table = block_pointers.qname
+                    );
+                    let ptrs_query = format!(
                         "delete from {} where number = $1 and hash != $2",
                         block_pointers.qname
                     );
-                    sql_query(query)
-                        .bind::<BigInt, _>(number)
-                        .bind::<Bytea, _>(hash.as_slice())
-                        .execute(conn)
-                        .map_err(Error::from)
+
+                    conn.transaction(|conn| {
+                        sql_query(blocks_query)
+                            .bind::<BigInt, _>(number)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .execute(conn)
+                            .map_err(Error::from)?;
+
+                        sql_query(ptrs_query)
+                            .bind::<BigInt, _>(number)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .execute(conn)
+                            .map_err(Error::from)
+                    })
                 }
             }
         }
@@ -971,12 +992,7 @@ mod data {
                 Some((number, ts, parent_hash)) => {
                     let number = BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
-                    Ok(Some((
-                        number,
-                        ts,
-                        // crate::chain_store::try_parse_timestamp(ts)?,
-                        parent_hash.map(|h| BlockHash::from(h)),
-                    )))
+                    Ok(Some((number, ts, parent_hash.map(|h| BlockHash::from(h)))))
                 }
             }
         }
@@ -1006,14 +1022,11 @@ mod data {
                         })
                         .collect::<Vec<_>>()
                 }
-                Storage::Private(Schema { block_pointers, .. }) => {
-                    // let hashes: Vec<_> = hashes.into_iter().map(|hash| &hash.0).collect();
-                    block_pointers
-                        .table()
-                        .select((block_pointers.hash(), block_pointers.number()))
-                        .filter(block_pointers.hash().eq_any(hashes))
-                        .load::<(BlockHash, i64)>(conn)?
-                }
+                Storage::Private(Schema { block_pointers, .. }) => block_pointers
+                    .table()
+                    .select((block_pointers.hash(), block_pointers.number()))
+                    .filter(block_pointers.hash().eq_any(hashes))
+                    .load::<(BlockHash, i64)>(conn)?,
             };
 
             let pairs = pairs
@@ -1403,7 +1416,8 @@ mod data {
                         "
                         DELETE FROM {blocks}
                         WHERE hash in (
-                            SELECT FROM {block_ptrs}
+                            SELECT hash
+                            FROM {block_ptrs}
                             WHERE hash = any($1) AND number > 0;
                         );
                         DELETE FROM {block_ptrs} WHERE hash = any($1) AND number > 0;
@@ -1998,7 +2012,7 @@ impl ChainStore {
         Ok(())
     }
 
-    pub(crate) fn ensure_up_to_date(&self, _ident: &ChainIdentifier) -> Result<(), Error> {
+    pub(crate) fn migrate(&self, _ident: &ChainIdentifier) -> Result<(), Error> {
         let mut conn = self.get_conn()?;
         // no version (which implicitly is version 1) to version 2 upgrade.
         self.storage.split_block_cache_update(&mut conn)?;
@@ -2683,7 +2697,7 @@ impl ChainStoreTrait for ChainStore {
             .confirm_block_hash(&mut conn, &self.chain, number, hash)
     }
 
-    async fn block_number(
+    async fn block_pointer(
         &self,
         hash: &BlockHash,
     ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
