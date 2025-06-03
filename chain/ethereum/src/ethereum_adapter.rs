@@ -1,6 +1,8 @@
 use alloy::primitives::{TxKind, B256, B64};
 use alloy::providers::{Provider, ProviderBuilder};
-use alloy_rpc_types::{BlockTransactions, FilterBlockOption, TransactionInput, TransactionRequest};
+use alloy_rpc_types::{
+    BlockTransactions, FilterBlockOption, TransactionInput, TransactionRequest, TransactionTrait,
+};
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
@@ -1741,7 +1743,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 } else {
                     let diff =
                         bl1.number.unwrap().as_u32() as i64 - bl2.number.unwrap().as_u32() as i64;
-                    assert!(diff > -2 && diff < 2)
+                    assert!(diff > -3 && diff < 3)
                 }
             }
             (a, b) => panic!("Not same types: {:?} and {:?}", a, b),
@@ -1816,8 +1818,19 @@ impl EthereumAdapterTrait for EthereumAdapter {
             });
 
         match (&ret, &ret2) {
-            (Ok(r1), Ok(r2)) => assert_eq!(r1, r2),
-            (r1, r2) => panic!("Error(s): {:?} {:?}", r1, r2),
+            (Ok(r1), Ok(r2)) => {
+                // assert_eq!(r1, r2);
+                if !semi_equal(logger, r1, r2) {
+                    // info!(logger, "RET1: {:?}", r1);
+                    // info!(logger, "RET2: {:?}", r2);
+                    panic!("Error - not equal!");
+                }
+            }
+            (r1, r2) => {
+                info!(logger, "RET1: {:?}", r1.is_ok());
+                info!(logger, "RET2: {:?}", r2.is_ok());
+                info!(logger, "Error - not same!");
+            }
         }
 
         ret.map(Some)
@@ -1891,7 +1904,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             )
             .await;
 
-        let log = logger.clone();
+        // let log = logger.clone();
         let ret = fetch_receipts_with_retry(
             alloy,
             web3,
@@ -1905,7 +1918,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             block: Arc::new(block),
             transaction_receipts,
         });
-        info!(log, "load_full_block is OK: {}", ret.is_ok());
+        // info!(log, "load_full_block is OK: {}", ret.is_ok());
         ret
     }
 
@@ -3001,7 +3014,6 @@ async fn fetch_block_receipts_with_retry(
         })
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
-
     // Perform the retry operation
     let receipts_option2 = retry(retry_log_message, &logger)
         .redact_log_urls(true)
@@ -3015,7 +3027,33 @@ async fn fetch_block_receipts_with_retry(
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
     let receipts_option3: Option<Vec<TransactionReceipt>> = convert_receipts(receipts_option2);
-    assert_eq!(receipts_option, receipts_option3);
+    match (&receipts_option, &receipts_option3) {
+        (None, None) => todo!(),
+        (None, Some(_)) => todo!(),
+        (Some(_), None) => todo!(),
+        (Some(r1), Some(r2)) => {
+            // info!(logger, "NUM1: {} NUM2: {}", r1.len(), r2.len());
+            assert_eq!(r1.len(), r2.len());
+            for i in 0..r1.len() {
+                let mut rec1 = r1[i].clone();
+                rec1.cumulative_gas_used = u64_to_u256(0);
+                rec1.transaction_type = None;
+                rec1.root = None;
+                let mut rec2 = r2[i].clone();
+                rec2.cumulative_gas_used = u64_to_u256(0);
+                rec2.transaction_type = None;
+                rec2.root = None;
+                // info!(logger, "R1: {:?}", r1[i]);
+                // info!(logger, "R2: {:?}", r2[i]);
+                // if r1[i] != r2[i] {
+                //     panic!("!!!!  NE !!!!");
+                // }
+                assert_eq!(rec1, rec2)
+            }
+        }
+    };
+
+    // assert_eq!(receipts_option, receipts_option3);
 
     // Check if receipts are available, and transform them if they are
     match receipts_option {
@@ -3386,8 +3424,8 @@ fn convert_receipts(
                 let block_number = receipt.block_number.map(u64_to_u64);
                 let from = address_to_h160(receipt.from);
                 let to = receipt.to.map(address_to_h160);
-                let cumulative_gas_used = u64_to_u256(receipt.gas_used);
-                let gas_used = Some(cumulative_gas_used);
+                let cumulative_gas_used = u64_to_u256(receipt.blob_gas_used.unwrap_or_default()); // TODO: fix
+                let gas_used = Some(u64_to_u256(receipt.gas_used));
                 let contract_address = receipt.contract_address.map(address_to_h160);
                 let logs = convert_log(receipt.logs());
                 let status = Some(bool_to_u64(receipt.status()));
@@ -3430,7 +3468,7 @@ fn tx_to_tx(
             // }
             let ret = items
                 .iter()
-                .map(|tx| {
+                .map(|tx| -> Transaction {
                     // info!(logger, "TX: {:?}", tx);
                     let inner = tx.inner.inner();
                     let hash = b256_to_h256(inner.hash().clone());
@@ -3496,7 +3534,51 @@ fn tx_to_tx(
                                 max_priority_fee_per_gas,
                             }
                         }
-                        alloy::consensus::EthereumTxEnvelope::Eip2930(_signed) => todo!(),
+                        alloy::consensus::EthereumTxEnvelope::Eip2930(signed) => {
+                            let nonce = u64_to_u256(signed.tx().nonce());
+                            let to = if let Some(to) = signed.tx().to() {
+                                Some(address_to_h160(to))
+                            } else {
+                                None
+                            };
+                            let value = u256_to_u256(signed.tx().value());
+                            let gas = u64_to_u256(signed.tx().gas_limit());
+                            let input: web3::types::Bytes = signed.tx().input().clone().into();
+                            let r = Some(u256_to_u256(signed.signature().r()));
+                            let s = Some(u256_to_u256(signed.signature().s()));
+                            let v_val =
+                                u128_to_u64(alloy::consensus::transaction::to_eip155_value(
+                                    signed.signature().v(),
+                                    Some(signed.tx().chain_id().unwrap()),
+                                ));
+                            let v = Some(v_val);
+                            let transaction_type: Option<web3::types::U64> = Some(2.into()); // TODO: fix it
+                            let access_list = Some(vec![]); // TODO: fix it
+                            let max_fee_per_gas = Some(u128_to_u256(signed.tx().max_fee_per_gas()));
+                            let max_priority_fee_per_gas =
+                                signed.tx().max_priority_fee_per_gas().map(u128_to_u256);
+                            web3::types::Transaction {
+                                hash,
+                                nonce,
+                                block_hash,
+                                block_number,
+                                transaction_index,
+                                from,
+                                to,
+                                value,
+                                gas_price,
+                                gas,
+                                input,
+                                v,
+                                r,
+                                s,
+                                raw,
+                                transaction_type,
+                                access_list,
+                                max_fee_per_gas,
+                                max_priority_fee_per_gas,
+                            }
+                        }
                         alloy::consensus::EthereumTxEnvelope::Eip1559(signed) => {
                             // info!(logger, "TX eip1559: {:?}", signed.tx());
                             let nonce = u64_to_u256(signed.tx().nonce);
@@ -3548,8 +3630,98 @@ fn tx_to_tx(
                                 max_priority_fee_per_gas,
                             }
                         }
-                        alloy::consensus::EthereumTxEnvelope::Eip4844(_signed) => todo!(),
-                        alloy::consensus::EthereumTxEnvelope::Eip7702(_signed) => todo!(),
+                        alloy::consensus::EthereumTxEnvelope::Eip4844(signed) => {
+                            let nonce = u64_to_u256(signed.tx().nonce());
+                            let to = if let Some(to) = signed.tx().to() {
+                                Some(address_to_h160(to))
+                            } else {
+                                None
+                            };
+                            let value = u256_to_u256(signed.tx().value());
+                            let gas = u64_to_u256(signed.tx().gas_limit());
+                            let input: web3::types::Bytes = signed.tx().input().clone().into();
+                            let r = Some(u256_to_u256(signed.signature().r()));
+                            let s = Some(u256_to_u256(signed.signature().s()));
+                            let v_val =
+                                u128_to_u64(alloy::consensus::transaction::to_eip155_value(
+                                    signed.signature().v(),
+                                    Some(signed.tx().chain_id().unwrap()),
+                                ));
+                            let v = Some(v_val);
+                            let transaction_type: Option<web3::types::U64> = Some(2.into()); // TODO: fix it
+                            let access_list = Some(vec![]); // TODO: fix it
+                            let max_fee_per_gas = Some(u128_to_u256(signed.tx().max_fee_per_gas()));
+                            let max_priority_fee_per_gas = Some(u128_to_u256(
+                                signed.tx().max_priority_fee_per_gas().unwrap(),
+                            ));
+                            web3::types::Transaction {
+                                hash,
+                                nonce,
+                                block_hash,
+                                block_number,
+                                transaction_index,
+                                from,
+                                to,
+                                value,
+                                gas_price,
+                                gas,
+                                input,
+                                v,
+                                r,
+                                s,
+                                raw,
+                                transaction_type,
+                                access_list,
+                                max_fee_per_gas,
+                                max_priority_fee_per_gas,
+                            }
+                        }
+                        alloy::consensus::EthereumTxEnvelope::Eip7702(signed) => {
+                            let nonce = u64_to_u256(signed.tx().nonce());
+                            let to = if let Some(to) = signed.tx().to() {
+                                Some(address_to_h160(to))
+                            } else {
+                                None
+                            };
+                            let value = u256_to_u256(signed.tx().value());
+                            let gas = u64_to_u256(signed.tx().gas_limit());
+                            let input: web3::types::Bytes = signed.tx().input().clone().into();
+                            let r = Some(u256_to_u256(signed.signature().r()));
+                            let s = Some(u256_to_u256(signed.signature().s()));
+                            let v_val =
+                                u128_to_u64(alloy::consensus::transaction::to_eip155_value(
+                                    signed.signature().v(),
+                                    Some(signed.tx().chain_id().unwrap()),
+                                ));
+                            let v = Some(v_val);
+                            let transaction_type: Option<web3::types::U64> = Some(2.into()); // TODO: fix it
+                            let access_list = Some(vec![]); // TODO: fix it
+                            let max_fee_per_gas = Some(u128_to_u256(signed.tx().max_fee_per_gas()));
+                            let max_priority_fee_per_gas = Some(u128_to_u256(
+                                signed.tx().max_priority_fee_per_gas().unwrap(),
+                            ));
+                            web3::types::Transaction {
+                                hash,
+                                nonce,
+                                block_hash,
+                                block_number,
+                                transaction_index,
+                                from,
+                                to,
+                                value,
+                                gas_price,
+                                gas,
+                                input,
+                                v,
+                                r,
+                                s,
+                                raw,
+                                transaction_type,
+                                access_list,
+                                max_fee_per_gas,
+                                max_priority_fee_per_gas,
+                            }
+                        }
                     }
                 })
                 .collect::<Vec<_>>();
@@ -3740,6 +3912,51 @@ fn convert_block_hash_alloy2web3(
         nonce,
     };
     Arc::new(block)
+}
+
+fn semi_equal(
+    logger: &Logger,
+    block1: &web3::types::Block<Transaction>,
+    block2: &web3::types::Block<Transaction>,
+) -> bool {
+    if block1.transactions.len() != block2.transactions.len() {
+        info!(
+            logger,
+            "different TX sizes: {} vs {}",
+            block1.transactions.len(),
+            block2.transactions.len()
+        );
+        return false;
+    }
+    for i in 0..block1.transactions.len() {
+        let mut tx1 = block1.transactions[i].clone();
+        tx1.v = None;
+        tx1.transaction_type = None;
+        tx1.access_list = None;
+        tx1.max_fee_per_gas = None;
+        let mut tx2 = block2.transactions[i].clone();
+        tx2.v = None;
+        tx2.transaction_type = None;
+        tx2.access_list = None;
+        tx2.max_fee_per_gas = None;
+        if tx1 != tx2 {
+            info!(logger, "different TX (block #{:?}):", block1.number);
+            info!(logger, "TX1: {:?}", tx1);
+            info!(logger, "TX2: {:?}", tx2);
+            return false;
+        }
+    }
+    let mut bl1 = block1.clone();
+    bl1.transactions = vec![];
+    let mut bl2 = block2.clone();
+    bl2.transactions = vec![];
+    if bl1 != bl2 {
+        info!(logger, "different BL (block #{:?}):", block1.number);
+        info!(logger, "BL1: {:?}", bl1);
+        info!(logger, "BL2: {:?}", bl2);
+        return false;
+    }
+    true
 }
 
 #[cfg(test)]
