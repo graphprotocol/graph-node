@@ -393,7 +393,6 @@ mod data {
     impl Storage {
         const PREFIX: &'static str = "chain";
         const PUBLIC: &'static str = "public";
-        const CHAINS_SCHEMA_VERSION: i16 = 2;
 
         pub fn new(s: String) -> Result<Self, String> {
             if s.as_str() == Self::PUBLIC {
@@ -412,6 +411,13 @@ mod data {
             Ok(Self::Private(Schema::new(s)))
         }
 
+        pub(super) fn schema_name(&self) -> &str {
+            match self {
+                Storage::Shared => Self::PUBLIC,
+                Storage::Private(schema) => &schema.name,
+            }
+        }
+
         /// Ensures the chain schema is up to date.
         /// Applies to the same types of Stores/Schemas create would apply to.
         pub(super) fn split_block_cache_update(
@@ -421,28 +427,43 @@ mod data {
             fn make_ddl(nsp: &str) -> String {
                 format!(
                     "
-                CREATE TABLE IF NOT EXISTS {nsp}.block_pointers (
+                CREATE TABLE {nsp}.block_pointers (
                   hash         BYTEA not null primary key,
                   number       INT8  not null,
                   parent_hash  BYTEA not null,
                   timestamp    TIMESTAMPTZ not null
                 );
-                CREATE INDEX IF NOT EXISTS ptrs_blocks_number ON {nsp}.block_pointers USING BTREE(number);
+                CREATE INDEX ptrs_blocks_number ON {nsp}.block_pointers USING BTREE(number);
 
-                ALTER TABLE {nsp}.blocks DROP COLUMN IF EXISTS parent_hash;
-                ALTER TABLE {nsp}.blocks DROP COLUMN IF EXISTS number;
-                -- ALTER TABLE {nsp}.blocks DROP CONSTRAINT IF EXISTS blocks_pkey;
-                -- ALTER TABLE {nsp}.blocks DROP COLUMN IF EXISTS hash;
-
-                CREATE TABLE IF NOT EXISTS {nsp}.version (
-                    version SMALLINT NOT NULL PRIMARY KEY
-                );
-
-                INSERT INTO {nsp}.version VALUES ({version}) ON CONFLICT DO NOTHING;
+                ALTER TABLE {nsp}.blocks DROP COLUMN parent_hash;
+                ALTER TABLE {nsp}.blocks DROP COLUMN number;
             ",
                     nsp = nsp,
-                    version = Storage::CHAINS_SCHEMA_VERSION,
                 )
+            }
+            let schema = self.schema_name();
+
+            #[derive(QueryableByName, Debug)]
+            struct TableExists {
+                #[diesel(sql_type = diesel::sql_types::Bool)]
+                exists: bool,
+            }
+
+            let block_pointers_table = sql_query(format!(
+                "
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_name = 'block_pointers'
+                    AND table_schema = '{}'
+                )
+                    ",
+                schema
+            ))
+            .get_result::<TableExists>(conn)?;
+
+            if block_pointers_table.exists {
+                return Ok(());
             }
 
             match self {
@@ -2012,9 +2033,10 @@ impl ChainStore {
         Ok(())
     }
 
+    /// migrate ensures all the necessary chain schema updates have been executed (when needed)
     pub(crate) fn migrate(&self, _ident: &ChainIdentifier) -> Result<(), Error> {
         let mut conn = self.get_conn()?;
-        // no version (which implicitly is version 1) to version 2 upgrade.
+
         self.storage.split_block_cache_update(&mut conn)?;
 
         Ok(())
