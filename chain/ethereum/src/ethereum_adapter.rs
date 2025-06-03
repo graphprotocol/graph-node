@@ -3028,11 +3028,7 @@ async fn fetch_block_receipts_with_retry(
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
     let receipts_option3: Option<Vec<TransactionReceipt>> = convert_receipts(receipts_option2);
     match (&receipts_option, &receipts_option3) {
-        (None, None) => todo!(),
-        (None, Some(_)) => todo!(),
-        (Some(_), None) => todo!(),
         (Some(r1), Some(r2)) => {
-            // info!(logger, "NUM1: {} NUM2: {}", r1.len(), r2.len());
             assert_eq!(r1.len(), r2.len());
             for i in 0..r1.len() {
                 let mut rec1 = r1[i].clone();
@@ -3043,17 +3039,11 @@ async fn fetch_block_receipts_with_retry(
                 rec2.cumulative_gas_used = u64_to_u256(0);
                 rec2.transaction_type = None;
                 rec2.root = None;
-                // info!(logger, "R1: {:?}", r1[i]);
-                // info!(logger, "R2: {:?}", r2[i]);
-                // if r1[i] != r2[i] {
-                //     panic!("!!!!  NE !!!!");
-                // }
                 assert_eq!(rec1, rec2)
             }
         }
+        (_, _) => info!(logger, "One side of receipes are missing"),
     };
-
-    // assert_eq!(receipts_option, receipts_option3);
 
     // Check if receipts are available, and transform them if they are
     match receipts_option {
