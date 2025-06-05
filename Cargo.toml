@@ -68,7 +68,11 @@ itertools = "0.14.0"
 lazy_static = "1.5.0"
 prost = "0.13"
 prost-types = "0.13"
-redis = { version = "0.31.0", features = ["aio", "connection-manager", "tokio-comp"] }
+redis = { version = "0.31.0", features = [
+    "aio",
+    "connection-manager",
+    "tokio-comp",
+] }
 regex = "1.5.4"
 reqwest = "0.12.15"
 serde = { version = "1.0.126", features = ["rc"] }
@@ -90,7 +94,7 @@ tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.12.3", features = ["prost"] }
 tower-http = { version = "0.5.2", features = ["cors"] }
 wasmparser = "0.118.1"
-wasmtime = "15.0.1"
+wasmtime = "33.0.0"
 substreams = "=0.6.0"
 substreams-entity-change = "2"
 substreams-near-core = "=0.10.2"
