@@ -2963,11 +2963,12 @@ async fn fetch_receipts_with_retry(
     if supports_block_receipts {
         return fetch_block_receipts_with_retry(alloy, web3, hashes, block_hash, logger).await;
     }
-    fetch_individual_receipts_with_retry(web3, hashes, block_hash, logger).await
+    fetch_individual_receipts_with_retry(alloy, web3, hashes, block_hash, logger).await
 }
 
 // Fetches receipts for each transaction in the block individually.
 async fn fetch_individual_receipts_with_retry(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
     block_hash: H256,
@@ -2983,6 +2984,7 @@ async fn fetch_individual_receipts_with_retry(
     let receipt_stream = hash_stream
         .map(move |tx_hash| {
             fetch_transaction_receipt_with_retry(
+                alloy.clone(),
                 web3.cheap_clone(),
                 tx_hash,
                 block_hash,
@@ -3077,18 +3079,20 @@ async fn fetch_block_receipts_with_retry(
 
 /// Retries fetching a single transaction receipt.
 async fn fetch_transaction_receipt_with_retry(
+    alloy: Arc<dyn Provider + 'static>,
     web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
     block_hash: H256,
     logger: Logger,
 ) -> Result<Arc<TransactionReceipt>, IngestorError> {
-    info!(logger, "!!!! fetch_transaction_receipt_with_retry");
     let logger = logger.cheap_clone();
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
         transaction_hash
     );
-    retry(retry_log_message, &logger)
+    let logger2 = logger.cheap_clone();
+    let retry_log_message2 = retry_log_message.clone();
+    let rcp1 = retry(retry_log_message, &logger)
         .redact_log_urls(true)
         .limit(ENV_VARS.request_retries)
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
@@ -3098,7 +3102,40 @@ async fn fetch_transaction_receipt_with_retry(
         .and_then(move |some_receipt| {
             resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
         })
-        .map(Arc::new)
+        .map(Arc::new);
+
+    let mut rcp2: Result<Arc<TransactionReceipt>, IngestorError> =
+        retry(retry_log_message2, &logger2)
+            .redact_log_urls(true)
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                alloy
+                    .get_transaction_receipt(h256_to_b256(&transaction_hash))
+                    .boxed()
+            })
+            .await
+            .map_err(|_timeout| anyhow!(block_hash).into())
+            .and_then(move |some_receipt| {
+                let rcp = some_receipt.map(convert_receipt);
+                resolve_transaction_receipt(rcp, transaction_hash, block_hash, logger2)
+            })
+            .map(Arc::new);
+    match (&rcp1, &mut rcp2) {
+        (Ok(r1), Ok(r2)) => {
+            let r2 = std::sync::Arc::<graph::prelude::web3::types::TransactionReceipt>::get_mut(r2)
+                .unwrap();
+            r2.cumulative_gas_used = r1.cumulative_gas_used;
+            r2.root = r1.root;
+            r2.transaction_type = r1.transaction_type;
+            let r2 = r2.clone();
+            let r2 = Arc::new(r2);
+            assert_eq!(r1, &r2);
+        }
+        (_, _) => todo!(),
+    };
+
+    rcp1
 }
 
 fn resolve_transaction_receipt(
@@ -3243,10 +3280,6 @@ async fn get_transaction_receipts_for_transaction_hashes(
     if transaction_hashes_by_block.is_empty() {
         return Ok(receipts_by_hash);
     }
-    info!(
-        logger,
-        "!!!! get_transaction_receipts_for_transaction_hashes"
-    );
     // Keep a record of all unique transaction hashes for which we'll request receipts. We will
     // later use this to check if we have collected the receipts from all required transactions.
     let mut unique_transaction_hashes: HashSet<&H256> = HashSet::new();
@@ -3255,10 +3288,12 @@ async fn get_transaction_receipts_for_transaction_hashes(
     let receipt_futures = FuturesUnordered::new();
 
     let web3 = Arc::clone(&adapter.web3);
+    let alloy = adapter.alloy.clone();
     for (block_hash, transaction_hashes) in transaction_hashes_by_block {
         for transaction_hash in transaction_hashes {
             unique_transaction_hashes.insert(transaction_hash);
             let receipt_future = fetch_transaction_receipt_with_retry(
+                alloy.clone(),
                 web3.cheap_clone(),
                 *transaction_hash,
                 *block_hash,
@@ -3307,7 +3342,6 @@ async fn get_transaction_receipts_for_transaction_hashes(
         unique_transaction_hashes.is_empty(),
         "Didn't receive all necessary transaction receipts"
     );
-    info!(logger, "RCP: {:?}", receipts_by_hash);
 
     Ok(receipts_by_hash)
 }
@@ -3409,46 +3443,43 @@ fn convert_log(alloy_logs: &[alloy_rpc_types::Log<alloy::primitives::LogData>]) 
 fn convert_receipts(
     receipts_option: Option<Vec<alloy_rpc_types::TransactionReceipt>>,
 ) -> Option<Vec<TransactionReceipt>> {
-    receipts_option.map(|receipts| {
-        receipts
-            .into_iter()
-            .map(|receipt| {
-                let transaction_hash = b256_to_h256(receipt.transaction_hash);
-                let transaction_index = u64_to_u64(receipt.transaction_index.unwrap());
-                let block_hash = receipt.block_hash.map(b256_to_h256);
-                let block_number = receipt.block_number.map(u64_to_u64);
-                let from = address_to_h160(receipt.from);
-                let to = receipt.to.map(address_to_h160);
-                let cumulative_gas_used = u64_to_u256(receipt.blob_gas_used.unwrap_or_default()); // TODO: fix
-                let gas_used = Some(u64_to_u256(receipt.gas_used));
-                let contract_address = receipt.contract_address.map(address_to_h160);
-                let logs = convert_log(receipt.logs());
-                let status = Some(bool_to_u64(receipt.status()));
-                let root = None; // TODO: fix it
-                let logs_bloom = convert_bloom(receipt.inner.logs_bloom());
-                let transaction_type = Some(u64_to_u64(0)); // TODO fix it
-                let effective_gas_price = Some(u128_to_u256(receipt.effective_gas_price));
+    receipts_option.map(|receipts| receipts.into_iter().map(convert_receipt).collect())
+}
 
-                TransactionReceipt {
-                    transaction_hash,
-                    transaction_index,
-                    block_hash,
-                    block_number,
-                    from,
-                    to,
-                    cumulative_gas_used,
-                    gas_used,
-                    contract_address,
-                    logs,
-                    status,
-                    root,
-                    logs_bloom,
-                    transaction_type,
-                    effective_gas_price,
-                }
-            })
-            .collect()
-    })
+fn convert_receipt(receipt: alloy_rpc_types::TransactionReceipt) -> TransactionReceipt {
+    let transaction_hash = b256_to_h256(receipt.transaction_hash);
+    let transaction_index = u64_to_u64(receipt.transaction_index.unwrap());
+    let block_hash = receipt.block_hash.map(b256_to_h256);
+    let block_number = receipt.block_number.map(u64_to_u64);
+    let from = address_to_h160(receipt.from);
+    let to = receipt.to.map(address_to_h160);
+    let cumulative_gas_used = u64_to_u256(receipt.blob_gas_used.unwrap_or_default()); // TODO: fix
+    let gas_used = Some(u64_to_u256(receipt.gas_used));
+    let contract_address = receipt.contract_address.map(address_to_h160);
+    let logs = convert_log(receipt.logs());
+    let status = Some(bool_to_u64(receipt.status()));
+    let root = None; // TODO: fix it
+    let logs_bloom = convert_bloom(receipt.inner.logs_bloom());
+    let transaction_type = Some(u64_to_u64(0)); // TODO fix it
+    let effective_gas_price = Some(u128_to_u256(receipt.effective_gas_price));
+
+    TransactionReceipt {
+        transaction_hash,
+        transaction_index,
+        block_hash,
+        block_number,
+        from,
+        to,
+        cumulative_gas_used,
+        gas_used,
+        contract_address,
+        logs,
+        status,
+        root,
+        logs_bloom,
+        transaction_type,
+        effective_gas_price,
+    }
 }
 
 fn tx_to_tx(
