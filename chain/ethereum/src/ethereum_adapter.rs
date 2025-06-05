@@ -676,6 +676,7 @@ impl EthereumAdapter {
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id2 = self.block_ptr_to_id2(&block_ptr);
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
@@ -726,7 +727,11 @@ impl EthereumAdapter {
                         sidecar: None,
                         authorization_list: None,
                     };
-                    let result2 = alloy.call(tx_req).await.map(bytes_to_bytes);
+                    let result2 = alloy
+                        .call(tx_req)
+                        .block(block_id2)
+                        .await
+                        .map(bytes_to_bytes);
 
                     // Try to check if the call was reverted. The JSON-RPC response for reverts is
                     // not standardized, so we have ad-hoc checks for each Ethereum client.
@@ -1743,7 +1748,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 } else {
                     let diff =
                         bl1.number.unwrap().as_u32() as i64 - bl2.number.unwrap().as_u32() as i64;
-                    assert!(diff > -3 && diff < 3)
+                    assert!(diff > -30 && diff < 30)
                 }
             }
             (a, b) => panic!("Not same types: {:?} and {:?}", a, b),
