@@ -400,8 +400,9 @@ impl Chain {
     pub async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
-        self.chain_store.block_number(hash).await
+    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+    {
+        self.chain_store.block_pointer(hash).await
     }
 
     // TODO: This is only used to build the block stream which could prolly
@@ -1130,6 +1131,9 @@ pub struct FirehoseMapper {
 impl BlockStreamMapper<Chain> for FirehoseMapper {
     fn decode_block(
         &self,
+        // We share the trait with substreams but for firehose the timestamp
+        // is in the block header so we don't need to use it here.
+        _timestamp: BlockTime,
         output: Option<&[u8]>,
     ) -> Result<Option<BlockFinality>, BlockStreamError> {
         let block = match output {
@@ -1198,12 +1202,19 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the firehose::Response or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
+        let timestamp = block
+            .header()
+            .timestamp
+            .map(|ts| BlockTime::since_epoch(ts.seconds, ts.nanos as u32))
+            .unwrap_or_default();
 
         use firehose::ForkStep::*;
         match step {
             StepNew => {
                 // unwrap: Input cannot be None so output will be error or block.
-                let block = self.decode_block(Some(any_block.value.as_ref()))?.unwrap();
+                let block = self
+                    .decode_block(timestamp, Some(any_block.value.as_ref()))?
+                    .unwrap();
                 let block_with_triggers = self.block_with_triggers(logger, block).await?;
 
                 Ok(BlockStreamEvent::ProcessBlock(

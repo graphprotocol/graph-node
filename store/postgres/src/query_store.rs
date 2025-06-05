@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
+use graph::blockchain::BlockTime;
 use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::store::QueryObject;
@@ -69,10 +70,10 @@ impl QueryStoreTrait for QueryStore {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.store.block_ptr(self.site.cheap_clone()).await
     }
-    async fn block_number_with_timestamp_and_parent_hash(
+    async fn block_pointer(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+    ) -> Result<Option<(BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError> {
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
         // very expensive though with the data structures we have currently
@@ -81,7 +82,7 @@ impl QueryStoreTrait for QueryStore {
         // database the blocks on the main chain that we consider final
         let subgraph_network = self.network_name();
         self.chain_store
-            .block_number(block_hash)
+            .block_pointer(block_hash)
             .await?
             .map(|(network_name, number, timestamp, parent_hash)| {
                 if network_name == subgraph_network {
@@ -100,7 +101,7 @@ impl QueryStoreTrait for QueryStore {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockNumber>, StoreError> {
-        self.block_number_with_timestamp_and_parent_hash(block_hash)
+        self.block_pointer(block_hash)
             .await
             .map(|opt| opt.map(|(number, _, _)| number))
     }

@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use chrono::DateTime;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
@@ -7,6 +8,7 @@ use diesel::sql_types::{Bytea, Nullable, Text};
 use diesel_derives::{AsExpression, FromSqlRow};
 use serde::{Deserialize, Deserializer};
 use std::convert::TryFrom;
+use std::num::ParseIntError;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256, U256, U64};
@@ -16,9 +18,9 @@ use crate::components::store::BlockNumber;
 use crate::data::graphql::IntoValue;
 use crate::data::store::scalar::Timestamp;
 use crate::derive::CheapClone;
-use crate::object;
 use crate::prelude::{r, Value};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
+use crate::{bail, object};
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]
@@ -477,10 +479,7 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
         let block_number =
             i32::try_from(number).map_err(|_| anyhow!("Block number out of range"))?;
 
-        // Convert `U256` to `BlockTime`
-        let secs =
-            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
-        let block_time = BlockTime::since_epoch(secs, 0);
+        let block_time = BlockTime::try_from(timestamp_u256)?;
 
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
@@ -497,16 +496,13 @@ impl TryFrom<(H256, i32, H256, U256)> for ExtendedBlockPtr {
     fn try_from(tuple: (H256, i32, H256, U256)) -> Result<Self, Self::Error> {
         let (hash, block_number, parent_hash, timestamp_u256) = tuple;
 
-        // Convert `U256` to `BlockTime`
-        let secs =
-            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
-        let block_time = BlockTime::since_epoch(secs, 0);
+        let timestamp = BlockTime::try_from(timestamp_u256)?;
 
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
             number: block_number,
             parent_hash: parent_hash.into(),
-            timestamp: block_time,
+            timestamp,
         })
     }
 }
@@ -562,14 +558,63 @@ impl fmt::Display for ChainIdentifier {
 #[diesel(sql_type = Timestamptz)]
 pub struct BlockTime(Timestamp);
 
+impl Default for BlockTime {
+    fn default() -> Self {
+        BlockTime::NONE
+    }
+}
+
+impl TryFrom<BlockTime> for U256 {
+    type Error = anyhow::Error;
+
+    fn try_from(value: BlockTime) -> Result<Self, Self::Error> {
+        if value.as_secs_since_epoch() < 0 {
+            bail!("unable to convert block time into U256");
+        }
+
+        Ok(U256::from(value.as_secs_since_epoch() as u64))
+    }
+}
+
+impl TryFrom<U256> for BlockTime {
+    type Error = anyhow::Error;
+
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        i64::try_from(value)
+            .map_err(|_| anyhow!("Timestamp out of range for i64"))
+            .map(|ts| BlockTime::since_epoch(ts, 0))
+    }
+}
+
+impl TryFrom<Option<String>> for BlockTime {
+    type Error = ParseIntError;
+
+    fn try_from(ts: Option<String>) -> Result<Self, Self::Error> {
+        match ts {
+            Some(str) => return BlockTime::from_hex_str(&str),
+            None => return Ok(BlockTime::NONE),
+        };
+    }
+}
+
 impl BlockTime {
     /// A timestamp from a long long time ago used to indicate that we don't
     /// have a timestamp
-    pub const NONE: Self = Self(Timestamp::NONE);
+    pub const NONE: Self = Self::MIN;
 
     pub const MAX: Self = Self(Timestamp::MAX);
 
-    pub const MIN: Self = Self(Timestamp::MIN);
+    pub const MIN: Self = Self(Timestamp(DateTime::from_timestamp_nanos(0)));
+
+    pub fn from_hex_str(ts: &str) -> Result<Self, ParseIntError> {
+        let (radix, idx) = if ts.starts_with("0x") {
+            (16, 2)
+        } else {
+            (10, 0)
+        };
+
+        u64::from_str_radix(&ts[idx..], radix).map(|ts| BlockTime::since_epoch(ts as i64, 0))
+    }
 
     /// Construct a block time that is the given number of seconds and
     /// nanoseconds after the Unix epoch
@@ -586,7 +631,12 @@ impl BlockTime {
     /// hourly rollups in tests
     #[cfg(debug_assertions)]
     pub fn for_test(ptr: &BlockPtr) -> Self {
-        Self::since_epoch(ptr.number as i64 * 45 * 60, 0)
+        Self::for_test_number(&ptr.number)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn for_test_number(number: &BlockNumber) -> Self {
+        Self::since_epoch(*number as i64 * 45 * 60, 0)
     }
 
     pub fn as_secs_since_epoch(&self) -> i64 {

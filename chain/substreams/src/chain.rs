@@ -43,6 +43,7 @@ pub enum ParsedChanges {
 pub struct Block {
     pub hash: BlockHash,
     pub number: BlockNumber,
+    pub timestamp: BlockTime,
     pub changes: EntityChanges,
     pub parsed_changes: Vec<ParsedChanges>,
 }
@@ -60,7 +61,7 @@ impl blockchain::Block for Block {
     }
 
     fn timestamp(&self) -> BlockTime {
-        BlockTime::NONE
+        self.timestamp
     }
 }
 
