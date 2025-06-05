@@ -237,7 +237,7 @@ impl AscHeap for WasmInstanceContext<'_> {
             // Unwrap: This may panic if more memory needs to be requested from the OS and that
             // fails. This error is not deterministic since it depends on the operating conditions
             // of the node.
-            let memory_allocate = self.asc_heap_ref().memory_allocate;
+            let memory_allocate = self.asc_heap_ref().memory_allocate.clone();
             self.asc_heap_mut().arena_start_ptr = memory_allocate
                 .call(self.as_context_mut(), arena_size)
                 .unwrap();
@@ -321,7 +321,7 @@ impl AscHeap for WasmInstanceContext<'_> {
     }
 
     fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
-        let func = self.asc_heap_ref().id_of_type.unwrap();
+        let func = self.asc_heap_ref().id_of_type.clone().unwrap();
 
         // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
         func.call(self.as_context_mut(), type_id_index as u32)
