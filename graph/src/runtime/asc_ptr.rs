@@ -1,3 +1,5 @@
+use crate::data::subgraph::API_VERSION_0_0_4;
+
 use super::gas::GasCounter;
 use super::{padding_to_16, DeterministicHostError, HostExportError};
 
@@ -61,7 +63,7 @@ impl<C: AscType> AscPtr<C> {
         let len = match heap.api_version() {
             // TODO: The version check here conflicts with the comment on C::asc_size,
             // which states "Only used for version <= 0.0.3."
-            version if version <= Version::new(0, 0, 4) => C::asc_size(self, heap, gas),
+            version if version <= &API_VERSION_0_0_4 => C::asc_size(self, heap, gas),
             _ => self.read_len(heap, gas),
         }?;
 
@@ -91,7 +93,7 @@ impl<C: AscType> AscPtr<C> {
         C: AscIndexId,
     {
         match heap.api_version() {
-            version if version <= Version::new(0, 0, 4) => {
+            version if version <= &API_VERSION_0_0_4 => {
                 let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?, gas)?;
                 Ok(AscPtr::new(heap_ptr))
             }

@@ -344,8 +344,8 @@ impl AscHeap for WasmInstanceContext<'_> {
         Ok(init_slice(src, buffer))
     }
 
-    fn api_version(&self) -> Version {
-        self.asc_heap().api_version.clone()
+    fn api_version(&self) -> &Version {
+        &self.asc_heap().api_version
     }
 
     fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {

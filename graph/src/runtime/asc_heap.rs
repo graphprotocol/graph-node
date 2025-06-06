@@ -28,7 +28,7 @@ pub trait AscHeap {
 
     fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
-    fn api_version(&self) -> Version;
+    fn api_version(&self) -> &Version;
 
     fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError>;
 }

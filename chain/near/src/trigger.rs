@@ -497,8 +497,8 @@ mod tests {
             Ok(init_slice(src, buffer))
         }
 
-        fn api_version(&self) -> graph::semver::Version {
-            self.api_version.clone()
+        fn api_version(&self) -> &graph::semver::Version {
+            &self.api_version
         }
 
         fn asc_type_id(
