@@ -104,7 +104,7 @@ pub mod call {
     /// on the call's return value
     #[derive(Debug, Clone, CheapClone)]
     pub struct Request {
-        pub address: ethabi::Address,
+        pub address: web3::types::Address,
         pub encoded_call: Arc<Bytes>,
         /// The index is set by the caller and is used to identify the
         /// request in related data structures that the caller might have
@@ -112,7 +112,7 @@ pub mod call {
     }
 
     impl Request {
-        pub fn new(address: ethabi::Address, encoded_call: Vec<u8>, index: u32) -> Self {
+        pub fn new(address: web3::types::Address, encoded_call: Vec<u8>, index: u32) -> Self {
             Request {
                 address,
                 encoded_call: Arc::new(Bytes::from(encoded_call)),
