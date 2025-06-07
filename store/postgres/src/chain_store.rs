@@ -4,6 +4,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::blockchain::BlockTime;
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
 use graph::derive::CheapClone;
@@ -83,7 +84,7 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-    use diesel::sql_types::{Array, Binary, Bool, Nullable};
+    use diesel::sql_types::{Array, Binary, Bool, Nullable, Timestamptz};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
     use diesel::{
@@ -97,7 +98,7 @@ mod data {
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
     };
-    use graph::blockchain::{Block, BlockHash};
+    use graph::blockchain::{Block, BlockHash, BlockTime};
     use graph::data::store::scalar::Bytes;
     use graph::internal_error;
     use graph::prelude::ethabi::ethereum_types::H160;
@@ -188,6 +189,48 @@ mod data {
     type DynTable = diesel_dynamic_schema::Table<String>;
     type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
 
+    /// The table that holds block pointers when we store a chain in its own
+    /// dedicated database schema
+    #[derive(Clone, Debug)]
+    struct BlockPointersTable {
+        /// The fully qualified name of the block pointers table, including the
+        /// schema
+        qname: String,
+        table: DynTable,
+    }
+
+    impl BlockPointersTable {
+        const TABLE_NAME: &'static str = "block_pointers";
+
+        fn new(namespace: &str) -> Self {
+            Self {
+                qname: format!("{}.{}", namespace, Self::TABLE_NAME),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
+            }
+        }
+
+        fn table(&self) -> DynTable {
+            self.table.clone()
+        }
+
+        fn hash(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("hash")
+        }
+
+        fn number(&self) -> DynColumn<BigInt> {
+            self.table.column::<BigInt, _>("number")
+        }
+
+        fn parent_hash(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("parent_hash")
+        }
+
+        fn timestamp(&self) -> DynColumn<Timestamptz> {
+            self.table.column::<Timestamptz, _>("timestamp")
+        }
+    }
+
     /// The table that holds blocks when we store a chain in its own
     /// dedicated database schema
     #[derive(Clone, Debug)]
@@ -215,14 +258,6 @@ mod data {
 
         fn hash(&self) -> DynColumn<Bytea> {
             self.table.column::<Bytea, _>("hash")
-        }
-
-        fn number(&self) -> DynColumn<BigInt> {
-            self.table.column::<BigInt, _>("number")
-        }
-
-        fn parent_hash(&self) -> DynColumn<Bytea> {
-            self.table.column::<Bytea, _>("parent_hash")
         }
 
         fn data(&self) -> DynColumn<Jsonb> {
@@ -298,6 +333,7 @@ mod data {
     #[derive(Clone, Debug)]
     pub struct Schema {
         name: String,
+        block_pointers: BlockPointersTable,
         blocks: BlocksTable,
         call_meta: CallMetaTable,
         call_cache: CallCacheTable,
@@ -305,6 +341,7 @@ mod data {
 
     impl Schema {
         fn new(name: String) -> Self {
+            let block_pointers = BlockPointersTable::new(&name);
             let blocks = BlocksTable::new(&name);
             let call_meta = CallMetaTable::new(&name);
             let call_cache = CallCacheTable::new(&name);
@@ -313,6 +350,7 @@ mod data {
                 blocks,
                 call_meta,
                 call_cache,
+                block_pointers,
             }
         }
     }
@@ -371,6 +409,70 @@ mod data {
             }
 
             Ok(Self::Private(Schema::new(s)))
+        }
+
+        pub(super) fn schema_name(&self) -> &str {
+            match self {
+                Storage::Shared => Self::PUBLIC,
+                Storage::Private(schema) => &schema.name,
+            }
+        }
+
+        /// Ensures the chain schema is up to date.
+        /// Applies to the same types of Stores/Schemas create would apply to.
+        pub(super) fn split_block_cache_update(
+            &self,
+            conn: &mut PgConnection,
+        ) -> Result<(), Error> {
+            fn make_ddl(nsp: &str) -> String {
+                format!(
+                    "
+                CREATE TABLE {nsp}.block_pointers (
+                  hash         BYTEA not null primary key,
+                  number       INT8  not null,
+                  parent_hash  BYTEA not null,
+                  timestamp    TIMESTAMPTZ not null
+                );
+                CREATE INDEX ptrs_blocks_number ON {nsp}.block_pointers USING BTREE(number);
+
+                ALTER TABLE {nsp}.blocks DROP COLUMN parent_hash;
+                ALTER TABLE {nsp}.blocks DROP COLUMN number;
+            ",
+                    nsp = nsp,
+                )
+            }
+            let schema = self.schema_name();
+
+            #[derive(QueryableByName, Debug)]
+            struct TableExists {
+                #[diesel(sql_type = diesel::sql_types::Bool)]
+                exists: bool,
+            }
+
+            let block_pointers_table = sql_query(format!(
+                "
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_name = 'block_pointers'
+                    AND table_schema = '{}'
+                )
+                    ",
+                schema
+            ))
+            .get_result::<TableExists>(conn)?;
+
+            if block_pointers_table.exists {
+                return Ok(());
+            }
+
+            match self {
+                Storage::Shared => Ok(()),
+                Storage::Private(Schema { name, .. }) => {
+                    conn.batch_execute(&make_ddl(name))?;
+                    Ok(())
+                }
+            }
         }
 
         /// Create dedicated database tables for this chain if it uses
@@ -469,14 +571,33 @@ mod data {
             conn: &mut PgConnection,
             lowest_block: i32,
         ) -> Result<(), StoreError> {
-            let table_name = match &self {
-                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
-                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            let query = match &self {
+                Storage::Shared => format!(
+                    "
+                        DELETE FROM {}
+                        WHERE data->'block'->'data' = 'null'::jsonb
+                        AND number >= {};",
+                    ETHEREUM_BLOCKS_TABLE_NAME, lowest_block,
+                ),
+
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => format!(
+                    "
+                                    delete from {}
+                                    WHERE data->'block'->'data' = 'null'::jsonb
+                                    AND hash IN (
+                                        SELECT hash
+                                        FROM {}
+                                        WHERE number >= {}
+                                    );",
+                    blocks.qname, block_pointers.qname, lowest_block,
+                ),
             };
-            conn.batch_execute(&format!(
-                "delete from {} WHERE number >= {} AND data->'block'->'data' = 'null'::jsonb;",
-                table_name, lowest_block,
-            ))?;
+
+            conn.batch_execute(&query)?;
             Ok(())
         }
 
@@ -561,29 +682,63 @@ mod data {
                             .execute(conn)?;
                     }
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query = if overwrite {
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => {
+                    let pointers_query = if overwrite {
                         format!(
-                            "insert into {}(hash, number, parent_hash, data) \
+                            "insert into {pointers_table}(hash, number, parent_hash, timestamp) \
                              values ($1, $2, $3, $4) \
                                  on conflict(hash) \
-                                 do update set number = $2, parent_hash = $3, data = $4",
-                            blocks.qname,
+                                 do update set number = $2, parent_hash = $3, timestamp = $4;
+                                 ",
+                            pointers_table = block_pointers.qname,
                         )
                     } else {
                         format!(
-                            "insert into {}(hash, number, parent_hash, data) \
-                             values ($1, $2, $3, $4) \
-                                 on conflict(hash) do nothing",
-                            blocks.qname
+                            "insert into {pointers_table}(hash, number, parent_hash, timestamp) \
+                                values ($1, $2, $3, $4) \
+                                on conflict(hash) do nothing;
+                                ",
+                            pointers_table = block_pointers.qname,
                         )
                     };
-                    sql_query(query)
-                        .bind::<Bytea, _>(hash.as_slice())
-                        .bind::<BigInt, _>(number)
-                        .bind::<Bytea, _>(parent_hash.as_slice())
-                        .bind::<Jsonb, _>(data)
-                        .execute(conn)?;
+
+                    let blocks_query = if overwrite {
+                        format!(
+                            "insert into {blocks_table}(hash, data) \
+                                  values ($1, $2) \
+                                      on conflict(hash) \
+                                      do update set data = $2;",
+                            blocks_table = blocks.qname,
+                        )
+                    } else {
+                        format!(
+                            "insert into {blocks_table}(hash, data) \
+                                values ($1, $2) \
+                                on conflict(hash) do nothing;",
+                            blocks_table = blocks.qname,
+                        )
+                    };
+
+                    conn.transaction(move |conn| {
+                        let data = data;
+                        sql_query(blocks_query)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .bind::<Jsonb, _>(&data)
+                            .execute(conn)
+                            .map_err(StoreError::from)?;
+
+                        sql_query(pointers_query)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .bind::<BigInt, _>(number)
+                            .bind::<Bytea, _>(parent_hash.as_slice())
+                            .bind::<Timestamptz, _>(&block.timestamp())
+                            .execute(conn)
+                            .map_err(StoreError::from)
+                    })?;
                 }
             };
             Ok(())
@@ -610,16 +765,25 @@ mod data {
                         .filter(b::number.eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))))
                         .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => blocks
                     .table()
+                    .inner_join(
+                        block_pointers
+                            .table()
+                            .on(blocks.hash().eq(block_pointers.hash())),
+                    )
                     .select((
-                        blocks.hash(),
-                        blocks.number(),
-                        blocks.parent_hash(),
+                        block_pointers.hash(),
+                        block_pointers.number(),
+                        block_pointers.parent_hash(),
                         sql::<Jsonb>("coalesce(data -> 'block', data)"),
                     ))
                     .filter(
-                        blocks
+                        block_pointers
                             .number()
                             .eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))),
                     )
@@ -664,12 +828,21 @@ mod data {
                         )
                         .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => blocks
                     .table()
+                    .inner_join(
+                        block_pointers
+                            .table()
+                            .on(blocks.hash().eq(block_pointers.hash())),
+                    )
                     .select((
-                        blocks.hash(),
-                        blocks.number(),
-                        blocks.parent_hash(),
+                        block_pointers.hash(),
+                        block_pointers.number(),
+                        block_pointers.parent_hash(),
                         sql::<Jsonb>("coalesce(data -> 'block', data)"),
                     ))
                     .filter(
@@ -706,10 +879,10 @@ mod data {
                         .collect::<Result<Vec<BlockHash>, _>>()
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => Ok(blocks
+                Storage::Private(Schema { block_pointers, .. }) => Ok(block_pointers
                     .table()
-                    .select(blocks.hash())
-                    .filter(blocks.number().eq(number as i64))
+                    .select(block_pointers.hash())
+                    .filter(block_pointers.number().eq(number as i64))
                     .get_results::<Vec<u8>>(conn)?
                     .into_iter()
                     .map(BlockHash::from)
@@ -738,16 +911,41 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query = format!(
-                        "delete from {} where number = $1 and hash != $2",
-                        blocks.qname
+                Storage::Private(Schema {
+                    block_pointers,
+                    blocks,
+                    ..
+                }) => {
+                    let blocks_query = format!(
+                        "
+                        DELETE FROM {block_table}
+                        WHERE hash in (
+                            SELECT hash
+                            FROM {ptrs_table}
+                            WHERE number = $1 AND hash != $2
+                        )
+                        ",
+                        block_table = blocks.qname,
+                        ptrs_table = block_pointers.qname
                     );
-                    sql_query(query)
-                        .bind::<BigInt, _>(number)
-                        .bind::<Bytea, _>(hash.as_slice())
-                        .execute(conn)
-                        .map_err(Error::from)
+                    let ptrs_query = format!(
+                        "delete from {} where number = $1 and hash != $2",
+                        block_pointers.qname
+                    );
+
+                    conn.transaction(|conn| {
+                        sql_query(blocks_query)
+                            .bind::<BigInt, _>(number)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .execute(conn)
+                            .map_err(Error::from)?;
+
+                        sql_query(ptrs_query)
+                            .bind::<BigInt, _>(number)
+                            .bind::<Bytea, _>(hash.as_slice())
+                            .execute(conn)
+                            .map_err(Error::from)
+                    })
                 }
             }
         }
@@ -758,7 +956,8 @@ mod data {
             &self,
             conn: &mut PgConnection,
             hash: &BlockHash,
-        ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+        ) -> Result<Option<(BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+        {
             const TIMESTAMP_QUERY: &str =
                 "coalesce(data->'block'->>'timestamp', data->>'timestamp')";
 
@@ -776,23 +975,37 @@ mod data {
                         .first::<(i64, Option<String>, Option<String>)>(conn)
                         .optional()?
                         .map(|(number, ts, parent_hash)| {
+                            let ts = crate::chain_store::try_parse_timestamp(ts)
+                                .unwrap_or_default()
+                                .map(|ts| BlockTime::since_epoch(ts as i64, 0));
+
                             // Convert parent_hash from Hex String to Vec<u8>
                             let parent_hash_bytes = parent_hash
                                 .map(|h| hex::decode(&h).expect("Invalid hex in parent_hash"));
                             (number, ts, parent_hash_bytes)
                         })
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
+                Storage::Private(Schema { block_pointers, .. }) => block_pointers
                     .table()
                     .select((
-                        blocks.number(),
-                        sql::<Nullable<Text>>(TIMESTAMP_QUERY),
-                        blocks.parent_hash(),
+                        block_pointers.number(),
+                        block_pointers.timestamp(),
+                        block_pointers.parent_hash(),
                     ))
-                    .filter(blocks.hash().eq(hash.as_slice()))
-                    .first::<(i64, Option<String>, Vec<u8>)>(conn)
+                    .filter(block_pointers.hash().eq(hash.as_slice()))
+                    .first::<(i64, BlockTime, Vec<u8>)>(conn)
                     .optional()?
-                    .map(|(number, ts, parent_hash)| (number, ts, Some(parent_hash))),
+                    .map(|(number, ts, parent_hash)| {
+                        (
+                            number,
+                            if ts == BlockTime::NONE {
+                                None
+                            } else {
+                                Some(ts)
+                            },
+                            Some(parent_hash),
+                        )
+                    }),
             };
 
             match number {
@@ -800,11 +1013,7 @@ mod data {
                 Some((number, ts, parent_hash)) => {
                     let number = BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
-                    Ok(Some((
-                        number,
-                        crate::chain_store::try_parse_timestamp(ts)?,
-                        parent_hash.map(|h| BlockHash::from(h)),
-                    )))
+                    Ok(Some((number, ts, parent_hash.map(|h| BlockHash::from(h)))))
                 }
             }
         }
@@ -834,14 +1043,11 @@ mod data {
                         })
                         .collect::<Vec<_>>()
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    // let hashes: Vec<_> = hashes.into_iter().map(|hash| &hash.0).collect();
-                    blocks
-                        .table()
-                        .select((blocks.hash(), blocks.number()))
-                        .filter(blocks.hash().eq_any(hashes))
-                        .load::<(BlockHash, i64)>(conn)?
-                }
+                Storage::Private(Schema { block_pointers, .. }) => block_pointers
+                    .table()
+                    .select((block_pointers.hash(), block_pointers.number()))
+                    .filter(block_pointers.hash().eq_any(hashes))
+                    .load::<(BlockHash, i64)>(conn)?,
             };
 
             let pairs = pairs
@@ -912,7 +1118,7 @@ mod data {
                     };
                     Ok(missing)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
+                Storage::Private(Schema { block_pointers, .. }) => {
                     // This is the same as `MISSING_PARENT_SQL` above except that
                     // the blocks table has a different name and that it does
                     // not have a `network_name` column
@@ -939,7 +1145,7 @@ mod data {
                from chain
               where chain.parent_hash is null;
             ",
-                        qname = blocks.qname
+                        qname = block_pointers.qname
                     );
 
                     let missing = sql_query(query)
@@ -990,11 +1196,11 @@ mod data {
                         .map(|(hash, number)| BlockPtr::try_from((hash.as_str(), number)))
                         .transpose()
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
+                Storage::Private(Schema { block_pointers, .. }) => block_pointers
                     .table()
-                    .filter(blocks.number().gt(head))
-                    .order_by((blocks.number().desc(), blocks.hash()))
-                    .select((blocks.hash(), blocks.number()))
+                    .filter(block_pointers.number().gt(head))
+                    .order_by((block_pointers.number().desc(), block_pointers.hash()))
+                    .select((block_pointers.hash(), block_pointers.number()))
                     .first::<(Vec<u8>, i64)>(conn)
                     .optional()?
                     .map(|(hash, number)| BlockPtr::try_from((hash.as_slice(), number)))
@@ -1005,7 +1211,7 @@ mod data {
         fn ancestor_block_query(
             &self,
             short_circuit_predicate: &str,
-            blocks_table_name: &str,
+            block_ptrs_table_name: &str,
         ) -> String {
             format!(
                 "
@@ -1013,17 +1219,17 @@ mod data {
                     values ($1, 0)
                     union all
                     select b.parent_hash, a.block_offset + 1
-                    from ancestors a, {blocks_table_name} b
+                    from ancestors a, {block_ptrs_table_name} b
                     where a.block_hash = b.hash
                     and a.block_offset < $2
                     {short_circuit_predicate}
                 )
                 select a.block_hash as hash, b.number as number
                 from ancestors a
-                inner join {blocks_table_name} b on a.block_hash = b.hash
+                inner join {block_ptrs_table_name} b on a.block_hash = b.hash
                 order by a.block_offset desc limit 1
                 ",
-                blocks_table_name = blocks_table_name,
+                block_ptrs_table_name = block_ptrs_table_name,
                 short_circuit_predicate = short_circuit_predicate,
             )
         }
@@ -1086,9 +1292,15 @@ mod data {
                         )),
                     }
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query =
-                        self.ancestor_block_query(short_circuit_predicate, blocks.qname.as_str());
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => {
+                    let query = self.ancestor_block_query(
+                        short_circuit_predicate,
+                        block_pointers.qname.as_str(),
+                    );
 
                     #[derive(QueryableByName)]
                     struct BlockHashAndNumber {
@@ -1164,16 +1376,33 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
-                    let query = format!(
-                        "delete from {} where number < $1 and number > 0",
-                        blocks.qname
-                    );
-                    sql_query(query)
-                        .bind::<BigInt, _>(block)
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => conn.transaction(|conn| {
+                    sql_query(&format!(
+                        "
+                        DELETE FROM {blocks}
+                        WHERE hash in (
+                            SELECT hash
+                            FROM {block_ptrs}
+                            WHERE number < $1 AND number > 0
+                        );",
+                        blocks = blocks.qname,
+                        block_ptrs = block_pointers.qname,
+                    ))
+                    .bind::<BigInt, _>(block)
+                    .execute(conn)
+                    .and_then(|_| {
+                        sql_query(format!(
+                            "DELETE FROM {block_ptrs} WHERE number < {block} AND number > 0;",
+                            block_ptrs = block_pointers.qname
+                        ))
                         .execute(conn)
-                        .map_err(Error::from)
-                }
+                    })
+                    .map_err(Error::from)
+                }),
             }
         }
 
@@ -1199,10 +1428,23 @@ mod data {
                         .execute(conn)
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => {
+                Storage::Private(Schema {
+                    blocks,
+                    block_pointers,
+                    ..
+                }) => {
                     let query = format!(
-                        "delete from {} where hash = any($1) and number > 0",
-                        blocks.qname
+                        "
+                        DELETE FROM {blocks}
+                        WHERE hash in (
+                            SELECT hash
+                            FROM {block_ptrs}
+                            WHERE hash = any($1) AND number > 0;
+                        );
+                        DELETE FROM {block_ptrs} WHERE hash = any($1) AND number > 0;
+                        ",
+                        blocks = blocks.qname,
+                        block_ptrs = block_pointers.qname
                     );
 
                     let hashes: Vec<&[u8]> =
@@ -1545,9 +1787,15 @@ mod data {
                     blocks,
                     call_meta,
                     call_cache,
+                    block_pointers,
                     ..
                 }) => {
-                    for qname in &[&blocks.qname, &call_meta.qname, &call_cache.qname] {
+                    for qname in &[
+                        &blocks.qname,
+                        &call_meta.qname,
+                        &call_cache.qname,
+                        &block_pointers.qname,
+                    ] {
                         let query = format!("delete from {}", qname);
                         sql_query(query)
                             .execute(conn)
@@ -1778,8 +2026,18 @@ impl ChainStore {
                 .on_conflict(name)
                 .do_nothing()
                 .execute(conn)?;
+
             self.storage.create(conn)
         })?;
+
+        Ok(())
+    }
+
+    /// migrate ensures all the necessary chain schema updates have been executed (when needed)
+    pub(crate) fn migrate(&self, _ident: &ChainIdentifier) -> Result<(), Error> {
+        let mut conn = self.get_conn()?;
+
+        self.storage.split_block_cache_update(&mut conn)?;
 
         Ok(())
     }
@@ -2461,10 +2719,11 @@ impl ChainStoreTrait for ChainStore {
             .confirm_block_hash(&mut conn, &self.chain, number, hash)
     }
 
-    async fn block_number(
+    async fn block_pointer(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
+    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>
+    {
         let hash = hash.clone();
         let storage = self.storage.clone();
         let chain = self.chain.clone();

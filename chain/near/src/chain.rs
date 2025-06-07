@@ -3,8 +3,8 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopDecoderHook,
-    NoopRuntimeAdapter, Trigger, TriggerFilterWrapper,
+    BasicBlockchainBuilder, BlockIngestor, BlockTime, BlockchainBuilder, BlockchainKind,
+    NoopDecoderHook, NoopRuntimeAdapter, Trigger, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
@@ -432,6 +432,7 @@ pub struct FirehoseMapper {
 impl BlockStreamMapper<Chain> for FirehoseMapper {
     fn decode_block(
         &self,
+        _timestamp: BlockTime,
         output: Option<&[u8]>,
     ) -> Result<Option<codec::Block>, BlockStreamError> {
         let block = match output {
@@ -528,7 +529,10 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode_block(Some(any_block.value.as_ref()))?.unwrap();
+        let block = self
+            // the block time is inside the block.
+            .decode_block(BlockTime::MIN, Some(any_block.value.as_ref()))?
+            .unwrap();
 
         use ForkStep::*;
         match step {
