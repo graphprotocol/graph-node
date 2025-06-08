@@ -11,7 +11,7 @@ use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::HostMetrics;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
-use graph::data::subgraph::API_VERSION_0_0_9;
+use graph::data::subgraph::{API_VERSION_0_0_4, API_VERSION_0_0_9};
 use graph::data_source;
 use graph::data_source::common::{ContractCall, MappingABI};
 use graph::prelude::web3::types::H160;
@@ -26,7 +26,6 @@ use graph::{
         EthereumCallCache,
     },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
-    semver::Version,
     slog::Logger,
 };
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, AscWrapped, EthereumValueKind};
@@ -185,7 +184,7 @@ fn ethereum_call(
     // For apiVersion >= 0.0.4 the call passed from the mapping includes the
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
     // the signature along with the call.
-    let call: UnresolvedContractCall = if ctx.heap.api_version() >= Version::new(0, 0, 4) {
+    let call: UnresolvedContractCall = if ctx.heap.api_version() >= &API_VERSION_0_0_4 {
         asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
     } else {
         asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
@@ -215,7 +214,7 @@ fn eth_get_balance(
     ctx.gas
         .consume_host_fn_with_metrics(ETH_GET_BALANCE, "eth_get_balance")?;
 
-    if ctx.heap.api_version() < API_VERSION_0_0_9 {
+    if ctx.heap.api_version() < &API_VERSION_0_0_9 {
         return Err(HostExportError::Deterministic(anyhow!(
             "ethereum.getBalance call is not supported before API version 0.0.9"
         )));
@@ -249,7 +248,7 @@ fn eth_has_code(
     ctx.gas
         .consume_host_fn_with_metrics(ETH_HAS_CODE, "eth_has_code")?;
 
-    if ctx.heap.api_version() < API_VERSION_0_0_9 {
+    if ctx.heap.api_version() < &API_VERSION_0_0_9 {
         return Err(HostExportError::Deterministic(anyhow!(
             "ethereum.hasCode call is not supported before API version 0.0.9"
         )));
