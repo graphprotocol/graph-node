@@ -23,8 +23,9 @@ fn main() {
 }
 
 async fn main_inner() {
+    env_logger::init();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let opt = opt::Opt::parse();
 
-    launcher::run(opt, env_vars).await;
+    launcher::run(opt, env_vars, None).await;
 }
