@@ -101,6 +101,15 @@ jobs:
           LIBPQ_DIR: ${{ format('{0}/vcpkg/installed/x64-windows', github.workspace) }}
           VCPKGRS_DYNAMIC: 1
 
+      - name: Sign macOS binary
+        if: startsWith(matrix.runner, 'macos')
+        uses: lando/code-sign-action@v3
+        with:
+          file: target/${{ matrix.target }}/release/gnd
+          certificate-data: ${{ secrets.APPLE_CERT_DATA }}
+          certificate-password: ${{ secrets.APPLE_CERT_PASSWORD }}
+          certificate-id: ${{ secrets.APPLE_TEAM_ID }}
+
       - name: Prepare binary (Unix)
         if: ${{ !startsWith(matrix.runner, 'windows') }}
         run: |
