@@ -7,10 +7,12 @@ use crate::prelude::Error;
 use std::fmt::Debug;
 
 mod arweave;
+mod file;
 mod ipfs;
 
 pub use arweave::*;
 use async_trait::async_trait;
+pub use file::*;
 pub use ipfs::*;
 
 /// Resolves links to subgraph manifests and resources referenced by them.
