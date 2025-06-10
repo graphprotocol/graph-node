@@ -7,11 +7,11 @@ extern crate diesel;
 
 pub mod chain;
 pub mod config;
+pub mod launcher;
+pub mod manager;
 pub mod network_setup;
 pub mod opt;
 pub mod store_builder;
-
-pub mod manager;
 
 pub struct MetricsContext {
     pub prometheus: Arc<Registry>,
