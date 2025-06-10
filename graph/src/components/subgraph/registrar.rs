@@ -45,6 +45,7 @@ pub trait SubgraphRegistrar: Send + Sync + 'static {
         start_block_block: Option<BlockPtr>,
         graft_block_override: Option<BlockPtr>,
         history_blocks: Option<i32>,
+        ignore_graft_base: bool,
     ) -> Result<DeploymentLocator, SubgraphRegistrarError>;
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError>;

@@ -43,6 +43,8 @@ termcolor = "1.4.1"
 diesel = { workspace = true }
 prometheus = { version = "0.13.4", features = ["push"] }
 json-structural-diff = { version = "0.2", features = ["colorize"] }
-pgtemp = { git = "https://github.com/incrypto32/pgtemp", branch = "initdb-args" }
 globset = "0.4.16"
 notify = "8.0.0"
+
+[target.'cfg(unix)'.dependencies]
+pgtemp = { git = "https://github.com/incrypto32/pgtemp", branch = "initdb-args" }

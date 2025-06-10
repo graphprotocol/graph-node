@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{mem, path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -7,14 +7,19 @@ use graph::{
     components::link_resolver::FileLinkResolver,
     env::EnvVars,
     log::logger,
+    prelude::{CheapClone, DeploymentHash, LinkResolver, SubgraphName},
+    slog::{error, info, Logger},
     tokio::{self, sync::mpsc},
 };
+use graph_core::polling_monitor::ipfs_service;
 use graph_node::{
-    dev::{helpers::DevModeContext, watcher::watch_subgraph_dir},
+    dev::watcher::{parse_manifest_args, watch_subgraphs},
     launcher,
     opt::Opt,
 };
 use lazy_static::lazy_static;
+
+#[cfg(unix)]
 use pgtemp::PgTempDBBuilder;
 
 git_testament!(TESTAMENT);
@@ -38,10 +43,35 @@ pub struct DevOpt {
 
     #[clap(
         long,
-        help = "The location of the subgraph manifest file.",
-        default_value = "./build/subgraph.yaml"
+        value_name = "MANIFEST:[BUILD_DIR]",
+        help = "The location of the subgraph manifest file. If no build directory is provided, the default is 'build'. The file can be an alias, in the format '[BUILD_DIR:]manifest' where 'manifest' is the path to the manifest file, and 'BUILD_DIR' is the path to the build directory relative to the manifest file.",
+        default_value = "./subgraph.yaml",
+        value_delimiter = ','
     )]
-    pub manifest: String,
+    pub manifests: Vec<String>,
+
+    #[clap(
+        long,
+        value_name = "ALIAS:MANIFEST:[BUILD_DIR]",
+        value_delimiter = ',',
+        help = "The location of the source subgraph manifest files. This is used to resolve aliases in the manifest files for subgraph data sources. The format is ALIAS:MANIFEST:[BUILD_DIR], where ALIAS is the alias name, BUILD_DIR is the build directory relative to the manifest file, and MANIFEST is the manifest file location."
+    )]
+    pub sources: Vec<String>,
+
+    #[clap(
+        long,
+        help = "The location of the database directory.",
+        default_value = "./build"
+    )]
+    pub database_dir: String,
+
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "POSTGRES_URL",
+        help = "Location of the Postgres database used for storing entities"
+    )]
+    pub postgres_url: Option<String>,
 
     #[clap(
         long,
@@ -63,7 +93,7 @@ pub struct DevOpt {
 }
 
 /// Builds the Graph Node options from DevOpt
-fn build_args(dev_opt: &DevOpt, db_url: &str, manifest_path: &str) -> Result<Opt> {
+fn build_args(dev_opt: &DevOpt, db_url: &str) -> Result<Opt> {
     let mut args = vec!["gnd".to_string()];
 
     if !dev_opt.ipfs.is_empty() {
@@ -76,16 +106,6 @@ fn build_args(dev_opt: &DevOpt, db_url: &str, manifest_path: &str) -> Result<Opt
         args.push(dev_opt.ethereum_rpc.join(","));
     }
 
-    let path = Path::new(manifest_path);
-    let file_name = path
-        .file_name()
-        .context("Invalid manifest path: no file name component")?
-        .to_str()
-        .context("Invalid file name")?;
-
-    args.push("--subgraph".to_string());
-    args.push(file_name.to_string());
-
     args.push("--postgres-url".to_string());
     args.push(db_url.to_string());
 
@@ -94,27 +114,70 @@ fn build_args(dev_opt: &DevOpt, db_url: &str, manifest_path: &str) -> Result<Opt
     Ok(opt)
 }
 
-/// Validates the manifest file exists and returns the build directory
-fn get_build_dir(manifest_path_str: &str) -> Result<std::path::PathBuf> {
-    let manifest_path = Path::new(manifest_path_str);
-
-    if !manifest_path.exists() {
-        anyhow::bail!("Subgraph manifest file not found at {}", manifest_path_str);
-    }
-
-    let dir = manifest_path
-        .parent()
-        .context("Failed to get parent directory of manifest")?;
-
-    dir.canonicalize()
-        .context("Failed to canonicalize build directory path")
-}
-
-async fn run_graph_node(opt: Opt, ctx: Option<DevModeContext>) -> Result<()> {
+async fn run_graph_node(
+    logger: &Logger,
+    opt: Opt,
+    link_resolver: Arc<dyn LinkResolver>,
+    subgraph_updates_channel: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
+) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
-    launcher::run(opt, env_vars, ctx).await;
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
+        .await
+        .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
+
+    let ipfs_service = ipfs_service(
+        ipfs_client.cheap_clone(),
+        env_vars.mappings.max_ipfs_file_bytes,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
+    );
+
+    launcher::run(
+        logger.clone(),
+        opt,
+        env_vars,
+        ipfs_service,
+        link_resolver,
+        subgraph_updates_channel,
+    )
+    .await;
     Ok(())
+}
+
+/// Get the database URL, either from the provided option or by creating a temporary database
+fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Result<String> {
+    if let Some(url) = postgres_url {
+        Ok(url.clone())
+    } else {
+        #[cfg(unix)]
+        {
+            // Check the database directory exists
+            if !database_dir.exists() {
+                anyhow::bail!(
+                    "Database directory does not exist: {}",
+                    database_dir.display()
+                );
+            }
+
+            let db = PgTempDBBuilder::new()
+                .with_data_dir_prefix(database_dir)
+                .with_initdb_param("-E", "UTF8")
+                .with_initdb_param("--locale", "C")
+                .start();
+            let url = db.connection_uri().to_string();
+            // Prevent the database from being dropped by forgetting it
+            mem::forget(db);
+            Ok(url)
+        }
+
+        #[cfg(not(unix))]
+        {
+            anyhow::bail!(
+                "Please provide a postgres_url manually using the --postgres-url option."
+            );
+        }
+    }
 }
 
 #[tokio::main]
@@ -122,45 +185,43 @@ async fn main() -> Result<()> {
     env_logger::init();
     let dev_opt = DevOpt::parse();
 
-    let build_dir = get_build_dir(&dev_opt.manifest)?;
+    let database_dir = Path::new(&dev_opt.database_dir);
 
-    let db = PgTempDBBuilder::new()
-        .with_data_dir_prefix(build_dir.clone())
-        .with_initdb_param("-E", "UTF8")
-        .with_initdb_param("--locale", "C")
-        .start_async()
-        .await;
+    let logger = logger(true);
 
-    let (tx, rx) = mpsc::channel(1);
-    let opt = build_args(&dev_opt, &db.connection_uri(), &dev_opt.manifest)?;
-    let file_link_resolver = Arc::new(FileLinkResolver::with_base_dir(&build_dir));
+    info!(logger, "Starting Graph Node Dev");
+    info!(logger, "Database directory: {}", database_dir.display());
 
-    let ctx = DevModeContext {
-        watch: dev_opt.watch,
-        file_link_resolver,
-        updates_rx: rx,
-    };
+    // Get the database URL
+    let db_url = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
 
-    let subgraph = opt.subgraph.clone().unwrap();
+    let opt = build_args(&dev_opt, &db_url)?;
 
-    // Set up logger
-    let logger = logger(opt.debug);
+    let (manifests_paths, source_subgraph_aliases) =
+        parse_manifest_args(dev_opt.manifests, dev_opt.sources, &logger)?;
+    let file_link_resolver = Arc::new(FileLinkResolver::new(None, source_subgraph_aliases.clone()));
 
-    // Run graph node
+    let (tx, rx) = dev_opt.watch.then(|| mpsc::channel(1)).unzip();
+
+    let logger_clone = logger.clone();
     graph::spawn(async move {
-        let _ = run_graph_node(opt, Some(ctx)).await;
+        let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx).await;
     });
 
-    if dev_opt.watch {
+    if let Some(tx) = tx {
         graph::spawn_blocking(async move {
-            watch_subgraph_dir(
+            if let Err(e) = watch_subgraphs(
                 &logger,
-                build_dir,
-                subgraph,
+                manifests_paths,
+                source_subgraph_aliases,
                 vec!["pgtemp-*".to_string()],
                 tx,
             )
-            .await;
+            .await
+            {
+                error!(logger, "Error watching subgraphs"; "error" => e.to_string());
+                std::process::exit(1);
+            }
         });
     }
 
