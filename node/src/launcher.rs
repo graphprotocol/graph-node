@@ -6,6 +6,7 @@ use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
 
 use crate::config::Config;
+use crate::dev::helpers::{watch_subgraph_updates, DevModeContext};
 use crate::network_setup::Networks;
 use crate::opt::Opt;
 use crate::store_builder::StoreBuilder;
@@ -265,7 +266,7 @@ fn build_subgraph_registrar(
     blockchain_map: Arc<BlockchainMap>,
     node_id: NodeId,
     subgraph_settings: Settings,
-    link_resolver: Arc<IpfsResolver>,
+    link_resolver: Arc<dyn LinkResolver>,
     subscription_manager: Arc<SubscriptionManager>,
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
@@ -345,8 +346,7 @@ fn build_graphql_server(
     graphql_server
 }
 
-pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
-    env_logger::init();
+pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContext>) {
     // Set up logger
     let logger = logger(opt.debug);
 
@@ -434,7 +434,12 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
+    let link_resolver: Arc<dyn LinkResolver> = if let Some(dev_ctx) = &dev_ctx {
+        dev_ctx.file_link_resolver.clone()
+    } else {
+        Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()))
+    };
+
     let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
@@ -550,7 +555,7 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
 
         // Add the CLI subgraph with a REST request to the admin server.
         if let Some(subgraph) = subgraph {
-            deploy_subgraph_from_flag(subgraph, &opt, subgraph_registrar.clone(), node_id);
+            deploy_subgraph_from_flag(subgraph, &opt, subgraph_registrar.clone(), node_id.clone());
         }
 
         // Serve GraphQL queries over HTTP
@@ -565,6 +570,23 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>) {
                 .await
                 .expect("Failed to start metrics server")
         });
+
+        // If we are in dev mode, watch for subgraph updates
+        // And drop and recreate the subgraph when it changes
+        if let Some(dev_ctx) = dev_ctx {
+            if dev_ctx.watch {
+                graph::spawn(async move {
+                    watch_subgraph_updates(
+                        &logger,
+                        network_store.subgraph_store(),
+                        subgraph_registrar.clone(),
+                        node_id.clone(),
+                        dev_ctx.updates_rx,
+                    )
+                    .await;
+                });
+            }
+        }
     };
 
     graph::spawn(launch_services(logger.clone(), env_vars.cheap_clone()));
