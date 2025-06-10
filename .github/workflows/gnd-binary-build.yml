@@ -109,6 +109,16 @@ jobs:
           certificate-data: ${{ secrets.APPLE_CERT_DATA }}
           certificate-password: ${{ secrets.APPLE_CERT_PASSWORD }}
           certificate-id: ${{ secrets.APPLE_TEAM_ID }}
+          options: --options runtime
+
+      - name: Notarize macOS binary
+        if: startsWith(matrix.runner, 'macos')
+        uses: lando/notarize-action@v2
+        with:
+          product-path: target/${{ matrix.target }}/release/gnd
+          appstore-connect-username: ${{ secrets.NOTARIZATION_USERNAME }}
+          appstore-connect-password: ${{ secrets.NOTARIZATION_PASSWORD }}
+          appstore-connect-team-id: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Prepare binary (Unix)
         if: ${{ !startsWith(matrix.runner, 'windows') }}
