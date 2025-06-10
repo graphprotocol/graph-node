@@ -259,6 +259,8 @@ impl UnresolvedDataSource {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<Arc<SubgraphManifest<C>>, Error> {
+        let resolver: Arc<dyn LinkResolver> =
+            Arc::from(resolver.for_manifest(&self.source.address.to_string())?);
         let source_raw = resolver
             .cat(logger, &self.source.address.to_ipfs_link())
             .await
@@ -281,8 +283,10 @@ impl UnresolvedDataSource {
             self.source.address
         ))?;
 
+        let resolver: Arc<dyn LinkResolver> =
+            Arc::from(resolver.for_manifest(&self.source.address.to_string())?);
         source_manifest
-            .resolve(resolver, logger, LATEST_VERSION.clone())
+            .resolve(&resolver, logger, LATEST_VERSION.clone())
             .await
             .context(format!(
                 "Failed to resolve source subgraph [{}] manifest",

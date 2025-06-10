@@ -32,6 +32,11 @@ impl Transport {
             .expect("Failed to connect to Ethereum IPC")
     }
 
+    #[cfg(not(unix))]
+    pub async fn new_ipc(_ipc: &str) -> Self {
+        panic!("IPC connections are not supported on non-Unix platforms")
+    }
+
     /// Creates a WebSocket transport.
     pub async fn new_ws(ws: &str) -> Self {
         ws::WebSocket::new(ws)

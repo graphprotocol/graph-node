@@ -6,7 +6,7 @@ use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
 
 use crate::config::Config;
-use crate::dev::helpers::{watch_subgraph_updates, DevModeContext};
+use crate::dev::helpers::watch_subgraph_updates;
 use crate::network_setup::Networks;
 use crate::opt::Opt;
 use crate::store_builder::StoreBuilder;
@@ -16,11 +16,10 @@ use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
-use graph::log::logger;
 use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
-use graph_core::polling_monitor::{arweave_service, ipfs_service, ArweaveService, IpfsService};
+use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
     SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -253,6 +252,7 @@ fn deploy_subgraph_from_flag(
                     start_block,
                     None,
                     None,
+                    false,
                 )
                 .await
         }
@@ -348,10 +348,24 @@ fn build_graphql_server(
     graphql_server
 }
 
-pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContext>) {
-    // Set up logger
-    let logger = logger(opt.debug);
-
+/// Runs the Graph Node by initializing all components and starting all required services
+/// This function is the main entry point for running a Graph Node instance
+///
+/// # Arguments
+///
+/// * `opt` - Command line options controlling node behavior and configuration
+/// * `env_vars` - Environment variables for configuring the node
+/// * `ipfs_service` - Service for interacting with IPFS for subgraph deployments
+/// * `link_resolver` - Resolver for IPFS links in subgraph manifests and files
+/// * `dev_updates` - Optional channel for receiving subgraph update notifications in development mode
+pub async fn run(
+    logger: Logger,
+    opt: Opt,
+    env_vars: Arc<EnvVars>,
+    ipfs_service: IpfsService,
+    link_resolver: Arc<dyn LinkResolver>,
+    dev_updates: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
+) {
     // Log version information
     info!(
         logger,
@@ -407,17 +421,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContex
     let logger_factory =
         LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
 
-    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
-        .await
-        .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
-
-    let ipfs_service = ipfs_service(
-        ipfs_client.cheap_clone(),
-        ENV_VARS.mappings.max_ipfs_file_bytes,
-        ENV_VARS.mappings.ipfs_timeout,
-        ENV_VARS.mappings.ipfs_request_limit,
-    );
-
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),
         opt.arweave
@@ -433,14 +436,6 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContex
             n => FileSizeLimit::MaxBytes(n as u64),
         },
     );
-
-    // Convert the clients into a link resolver. Since we want to get past
-    // possible temporary DNS failures, make the resolver retry
-    let link_resolver: Arc<dyn LinkResolver> = if let Some(dev_ctx) = &dev_ctx {
-        dev_ctx.file_link_resolver.clone()
-    } else {
-        Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()))
-    };
 
     let metrics_server = PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
@@ -576,19 +571,17 @@ pub async fn run(opt: Opt, env_vars: Arc<EnvVars>, dev_ctx: Option<DevModeContex
 
         // If we are in dev mode, watch for subgraph updates
         // And drop and recreate the subgraph when it changes
-        if let Some(dev_ctx) = dev_ctx {
-            if dev_ctx.watch {
-                graph::spawn(async move {
-                    watch_subgraph_updates(
-                        &logger,
-                        network_store.subgraph_store(),
-                        subgraph_registrar.clone(),
-                        node_id.clone(),
-                        dev_ctx.updates_rx,
-                    )
-                    .await;
-                });
-            }
+        if let Some(dev_updates) = dev_updates {
+            graph::spawn(async move {
+                watch_subgraph_updates(
+                    &logger,
+                    network_store.subgraph_store(),
+                    subgraph_registrar.clone(),
+                    node_id.clone(),
+                    dev_updates,
+                )
+                .await;
+            });
         }
     };
 
