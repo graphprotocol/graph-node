@@ -119,8 +119,7 @@ impl IpfsGatewayClient {
     }
 
     fn ipfs_url(&self, path_and_query: impl AsRef<str>) -> String {
-        // The final slash is used to prevent redirects in the case of directory CIDs.
-        format!("{}ipfs/{}/", self.server_address, path_and_query.as_ref())
+        format!("{}ipfs/{}", self.server_address, path_and_query.as_ref())
     }
 }
 
