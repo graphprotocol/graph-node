@@ -91,9 +91,13 @@ pub async fn build_subgraph_with_pnpm_cmd_and_arg(
     arg: Option<&str>,
 ) -> DeploymentHash {
     // Test that IPFS is up.
-    ipfs::IpfsRpcClient::new(ipfs::ServerAddress::local_rpc_api(), &graph::log::discard())
-        .await
-        .expect("Could not connect to IPFS, make sure it's running at port 5001");
+    ipfs::IpfsRpcClient::new(
+        ipfs::ServerAddress::local_rpc_api(),
+        ipfs::IpfsMetrics::default(),
+        &graph::log::discard(),
+    )
+    .await
+    .expect("Could not connect to IPFS, make sure it's running at port 5001");
 
     // Run codegen.
     run_cmd(Command::new("pnpm").arg("codegen").current_dir(dir));

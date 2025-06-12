@@ -1,7 +1,12 @@
 use crate::blockchain::block_stream::EntitySourceOperation;
 use crate::data::subgraph::SPEC_VERSION_1_4_0;
 use crate::prelude::{BlockPtr, Value};
-use crate::{components::link_resolver::LinkResolver, data::value::Word, prelude::Link};
+use crate::{
+    components::link_resolver::{LinkResolver, LinkResolverContext},
+    data::subgraph::DeploymentHash,
+    data::value::Word,
+    prelude::Link,
+};
 use anyhow::{anyhow, Context, Error};
 use ethabi::{Address, Contract, Function, LogParam, ParamType, Token};
 use graph_derive::CheapClone;
@@ -337,15 +342,22 @@ pub struct UnresolvedMappingABI {
 impl UnresolvedMappingABI {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<(MappingABI, AbiJson), anyhow::Error> {
-        let contract_bytes = resolver.cat(logger, &self.file).await.with_context(|| {
-            format!(
-                "failed to resolve ABI {} from {}",
-                self.name, self.file.link
+        let contract_bytes = resolver
+            .cat(
+                LinkResolverContext::new(deployment_hash, logger),
+                &self.file,
             )
-        })?;
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to resolve ABI {} from {}",
+                    self.name, self.file.link
+                )
+            })?;
         let contract = Contract::load(&*contract_bytes)
             .with_context(|| format!("failed to load ABI {}", self.name))?;
 

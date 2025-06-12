@@ -375,6 +375,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
 {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -405,6 +406,7 @@ pub trait UnresolvedDataSource<C: Blockchain>:
 {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,

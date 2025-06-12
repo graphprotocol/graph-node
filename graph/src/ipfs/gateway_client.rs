@@ -5,17 +5,14 @@ use async_trait::async_trait;
 use derivative::Derivative;
 use http::header::ACCEPT;
 use http::header::CACHE_CONTROL;
-use reqwest::StatusCode;
+use reqwest::{redirect::Policy as RedirectPolicy, StatusCode};
 use slog::Logger;
 
 use crate::env::ENV_VARS;
-use crate::ipfs::IpfsClient;
-use crate::ipfs::IpfsError;
-use crate::ipfs::IpfsRequest;
-use crate::ipfs::IpfsResponse;
-use crate::ipfs::IpfsResult;
-use crate::ipfs::RetryPolicy;
-use crate::ipfs::ServerAddress;
+use crate::ipfs::{
+    IpfsClient, IpfsError, IpfsMetrics, IpfsRequest, IpfsResponse, IpfsResult, RetryPolicy,
+    ServerAddress,
+};
 
 /// A client that connects to an IPFS gateway.
 ///
@@ -28,14 +25,19 @@ pub struct IpfsGatewayClient {
     #[derivative(Debug = "ignore")]
     http_client: reqwest::Client,
 
+    metrics: IpfsMetrics,
     logger: Logger,
 }
 
 impl IpfsGatewayClient {
     /// Creates a new [IpfsGatewayClient] with the specified server address.
     /// Verifies that the server is responding to IPFS gateway requests.
-    pub(crate) async fn new(server_address: impl AsRef<str>, logger: &Logger) -> IpfsResult<Self> {
-        let client = Self::new_unchecked(server_address, logger)?;
+    pub(crate) async fn new(
+        server_address: impl AsRef<str>,
+        metrics: IpfsMetrics,
+        logger: &Logger,
+    ) -> IpfsResult<Self> {
+        let client = Self::new_unchecked(server_address, metrics, logger)?;
 
         client
             .send_test_request()
@@ -50,10 +52,20 @@ impl IpfsGatewayClient {
 
     /// Creates a new [IpfsGatewayClient] with the specified server address.
     /// Does not verify that the server is responding to IPFS gateway requests.
-    pub fn new_unchecked(server_address: impl AsRef<str>, logger: &Logger) -> IpfsResult<Self> {
+    pub fn new_unchecked(
+        server_address: impl AsRef<str>,
+        metrics: IpfsMetrics,
+        logger: &Logger,
+    ) -> IpfsResult<Self> {
         Ok(Self {
             server_address: ServerAddress::new(server_address)?,
-            http_client: reqwest::Client::new(),
+            http_client: reqwest::Client::builder()
+                // IPFS gateways allow requests to directory CIDs.
+                // However, they sometimes redirect before displaying the directory listing.
+                // This policy permits that behavior.
+                .redirect(RedirectPolicy::limited(1))
+                .build()?,
+            metrics,
             logger: logger.to_owned(),
         })
     }
@@ -107,14 +119,15 @@ impl IpfsGatewayClient {
     }
 
     fn ipfs_url(&self, path_and_query: impl AsRef<str>) -> String {
-        format!("{}ipfs/{}", self.server_address, path_and_query.as_ref())
+        // The final slash is used to prevent redirects in the case of directory CIDs.
+        format!("{}ipfs/{}/", self.server_address, path_and_query.as_ref())
     }
 }
 
 #[async_trait]
 impl IpfsClient for IpfsGatewayClient {
-    fn logger(&self) -> &Logger {
-        &self.logger
+    fn metrics(&self) -> &IpfsMetrics {
+        &self.metrics
     }
 
     async fn call(self: Arc<Self>, req: IpfsRequest) -> IpfsResult<IpfsResponse> {
@@ -189,7 +202,8 @@ mod tests {
 
     async fn make_client() -> (MockServer, Arc<IpfsGatewayClient>) {
         let server = mock_server().await;
-        let client = IpfsGatewayClient::new_unchecked(server.uri(), &discard()).unwrap();
+        let client =
+            IpfsGatewayClient::new_unchecked(server.uri(), Default::default(), &discard()).unwrap();
 
         (server, Arc::new(client))
     }
@@ -206,7 +220,7 @@ mod tests {
     async fn new_fails_to_create_the_client_if_gateway_is_not_accessible() {
         let server = mock_server().await;
 
-        IpfsGatewayClient::new(server.uri(), &discard())
+        IpfsGatewayClient::new(server.uri(), Default::default(), &discard())
             .await
             .unwrap_err();
     }
@@ -222,7 +236,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        IpfsGatewayClient::new(server.uri(), &discard())
+        IpfsGatewayClient::new(server.uri(), Default::default(), &discard())
             .await
             .unwrap();
 
@@ -232,7 +246,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        IpfsGatewayClient::new(server.uri(), &discard())
+        IpfsGatewayClient::new(server.uri(), Default::default(), &discard())
             .await
             .unwrap();
     }
@@ -252,7 +266,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        IpfsGatewayClient::new(server.uri(), &discard())
+        IpfsGatewayClient::new(server.uri(), Default::default(), &discard())
             .await
             .unwrap();
     }
@@ -261,7 +275,7 @@ mod tests {
     async fn new_unchecked_creates_the_client_without_checking_the_gateway() {
         let server = mock_server().await;
 
-        IpfsGatewayClient::new_unchecked(server.uri(), &discard()).unwrap();
+        IpfsGatewayClient::new_unchecked(server.uri(), Default::default(), &discard()).unwrap();
     }
 
     #[tokio::test]
@@ -275,7 +289,7 @@ mod tests {
             .await;
 
         let bytes = client
-            .cat_stream(&make_path(), None, RetryPolicy::None)
+            .cat_stream(Default::default(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -300,7 +314,12 @@ mod tests {
             .await;
 
         let result = client
-            .cat_stream(&make_path(), Some(ms(300)), RetryPolicy::None)
+            .cat_stream(
+                Default::default(),
+                &make_path(),
+                Some(ms(300)),
+                RetryPolicy::None,
+            )
             .await;
 
         assert!(matches!(result, Err(_)));
@@ -324,7 +343,12 @@ mod tests {
             .await;
 
         let _stream = client
-            .cat_stream(&make_path(), None, RetryPolicy::NonDeterministic)
+            .cat_stream(
+                Default::default(),
+                &make_path(),
+                None,
+                RetryPolicy::NonDeterministic,
+            )
             .await
             .unwrap();
     }
@@ -340,7 +364,13 @@ mod tests {
             .await;
 
         let bytes = client
-            .cat(&make_path(), usize::MAX, None, RetryPolicy::None)
+            .cat(
+                Default::default(),
+                &make_path(),
+                usize::MAX,
+                None,
+                RetryPolicy::None,
+            )
             .await
             .unwrap();
 
@@ -360,7 +390,13 @@ mod tests {
             .await;
 
         let bytes = client
-            .cat(&make_path(), data.len(), None, RetryPolicy::None)
+            .cat(
+                Default::default(),
+                &make_path(),
+                data.len(),
+                None,
+                RetryPolicy::None,
+            )
             .await
             .unwrap();
 
@@ -380,7 +416,13 @@ mod tests {
             .await;
 
         client
-            .cat(&make_path(), data.len() - 1, None, RetryPolicy::None)
+            .cat(
+                Default::default(),
+                &make_path(),
+                data.len() - 1,
+                None,
+                RetryPolicy::None,
+            )
             .await
             .unwrap_err();
     }
@@ -396,7 +438,13 @@ mod tests {
             .await;
 
         client
-            .cat(&make_path(), usize::MAX, Some(ms(300)), RetryPolicy::None)
+            .cat(
+                Default::default(),
+                &make_path(),
+                usize::MAX,
+                Some(ms(300)),
+                RetryPolicy::None,
+            )
             .await
             .unwrap_err();
     }
@@ -420,6 +468,7 @@ mod tests {
 
         let bytes = client
             .cat(
+                Default::default(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -442,7 +491,7 @@ mod tests {
             .await;
 
         let bytes = client
-            .get_block(&make_path(), None, RetryPolicy::None)
+            .get_block(Default::default(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap();
 
@@ -460,7 +509,12 @@ mod tests {
             .await;
 
         client
-            .get_block(&make_path(), Some(ms(300)), RetryPolicy::None)
+            .get_block(
+                Default::default(),
+                &make_path(),
+                Some(ms(300)),
+                RetryPolicy::None,
+            )
             .await
             .unwrap_err();
     }
@@ -483,7 +537,12 @@ mod tests {
             .await;
 
         let bytes = client
-            .get_block(&make_path(), None, RetryPolicy::NonDeterministic)
+            .get_block(
+                Default::default(),
+                &make_path(),
+                None,
+                RetryPolicy::NonDeterministic,
+            )
             .await
             .unwrap();
 
@@ -522,7 +581,9 @@ mod tests {
         let logger = Logger::root(drain.fuse(), o!());
 
         let server = mock_server().await;
-        let client = Arc::new(IpfsGatewayClient::new_unchecked(server.uri(), &logger).unwrap());
+        let client = Arc::new(
+            IpfsGatewayClient::new_unchecked(server.uri(), Default::default(), &logger).unwrap(),
+        );
 
         // Set up mock to fail twice then succeed to trigger retry with warning logs
         mock_get()
@@ -542,7 +603,13 @@ mod tests {
 
         // This should trigger retry logs because we set up failures first
         let _result = client
-            .cat(&path, usize::MAX, None, RetryPolicy::NonDeterministic)
+            .cat(
+                Default::default(),
+                &path,
+                usize::MAX,
+                None,
+                RetryPolicy::NonDeterministic,
+            )
             .await
             .unwrap();
 

@@ -3,6 +3,8 @@ pub mod common;
 pub mod offchain;
 pub mod subgraph;
 
+use crate::data::subgraph::DeploymentHash;
+
 pub use self::DataSource as DataSourceEnum;
 pub use causality_region::CausalityRegion;
 
@@ -329,6 +331,7 @@ pub enum UnresolvedDataSource<C: Blockchain> {
 impl<C: Blockchain> UnresolvedDataSource<C> {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -336,11 +339,23 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
     ) -> Result<DataSource<C>, anyhow::Error> {
         match self {
             Self::Onchain(unresolved) => unresolved
-                .resolve(resolver, logger, manifest_idx, spec_version)
+                .resolve(
+                    deployment_hash,
+                    resolver,
+                    logger,
+                    manifest_idx,
+                    spec_version,
+                )
                 .await
                 .map(DataSource::Onchain),
             Self::Subgraph(unresolved) => unresolved
-                .resolve::<C>(resolver, logger, manifest_idx, spec_version)
+                .resolve::<C>(
+                    deployment_hash,
+                    resolver,
+                    logger,
+                    manifest_idx,
+                    spec_version,
+                )
                 .await
                 .map(DataSource::Subgraph),
             Self::Offchain(_unresolved) => {
@@ -459,6 +474,7 @@ impl<C: Blockchain> Default for UnresolvedDataSourceTemplate<C> {
 impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         schema: &InputSchema,
         logger: &Logger,
@@ -467,15 +483,27 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
     ) -> Result<DataSourceTemplate<C>, Error> {
         match self {
             Self::Onchain(ds) => ds
-                .resolve(resolver, logger, manifest_idx, spec_version)
+                .resolve(
+                    deployment_hash,
+                    resolver,
+                    logger,
+                    manifest_idx,
+                    spec_version,
+                )
                 .await
                 .map(|ti| DataSourceTemplate::Onchain(ti)),
             Self::Offchain(ds) => ds
-                .resolve(resolver, logger, manifest_idx, schema)
+                .resolve(deployment_hash, resolver, logger, manifest_idx, schema)
                 .await
                 .map(DataSourceTemplate::Offchain),
             Self::Subgraph(ds) => ds
-                .resolve(resolver, logger, manifest_idx, spec_version)
+                .resolve(
+                    deployment_hash,
+                    resolver,
+                    logger,
+                    manifest_idx,
+                    spec_version,
+                )
                 .await
                 .map(DataSourceTemplate::Subgraph),
         }

@@ -4,7 +4,11 @@ use anyhow::{anyhow, Context, Error};
 use graph::{
     blockchain,
     cheap_clone::CheapClone,
-    components::{link_resolver::LinkResolver, subgraph::InstanceDSTemplateInfo},
+    components::{
+        link_resolver::{LinkResolver, LinkResolverContext},
+        subgraph::InstanceDSTemplateInfo,
+    },
+    data::subgraph::DeploymentHash,
     prelude::{async_trait, BlockNumber, Link},
     slog::Logger,
 };
@@ -184,12 +188,18 @@ pub struct UnresolvedMapping {
 impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         _manifest_idx: u32,
         _spec_version: &semver::Version,
     ) -> Result<DataSource, Error> {
-        let content = resolver.cat(logger, &self.source.package.file).await?;
+        let content = resolver
+            .cat(
+                LinkResolverContext::new(deployment_hash, logger),
+                &self.source.package.file,
+            )
+            .await?;
 
         let mut package = graph::substreams::Package::decode(content.as_ref())?;
 
@@ -235,7 +245,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         let handler = match (self.mapping.handler, self.mapping.file) {
             (Some(handler), Some(file)) => {
                 let module_bytes = resolver
-                    .cat(logger, &file)
+                    .cat(LinkResolverContext::new(deployment_hash, logger), &file)
                     .await
                     .with_context(|| format!("failed to resolve mapping {}", file.link))?;
 
@@ -315,6 +325,7 @@ impl blockchain::DataSourceTemplate<Chain> for NoopDataSourceTemplate {
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for NoopDataSourceTemplate {
     async fn resolve(
         self,
+        _deployment_hash: &DeploymentHash,
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &Logger,
         _manifest_idx: u32,
@@ -331,8 +342,8 @@ mod test {
     use anyhow::Error;
     use graph::{
         blockchain::{DataSource as _, UnresolvedDataSource as _},
-        components::link_resolver::LinkResolver,
-        data::subgraph::{LATEST_VERSION, SPEC_VERSION_1_2_0},
+        components::link_resolver::{LinkResolver, LinkResolverContext},
+        data::subgraph::{DeploymentHash, LATEST_VERSION, SPEC_VERSION_1_2_0},
         prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
         substreams::{
@@ -436,7 +447,13 @@ mod test {
         let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
         let logger = Logger::root(Discard, o!());
         let ds: DataSource = ds
-            .resolve(&link_resolver, &logger, 0, &SPEC_VERSION_1_2_0)
+            .resolve(
+                &DeploymentHash::default(),
+                &link_resolver,
+                &logger,
+                0,
+                &SPEC_VERSION_1_2_0,
+            )
             .await
             .unwrap();
         let expected = DataSource {
@@ -476,7 +493,13 @@ mod test {
         let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
         let logger = Logger::root(Discard, o!());
         let ds: DataSource = ds
-            .resolve(&link_resolver, &logger, 0, &SPEC_VERSION_1_2_0)
+            .resolve(
+                &DeploymentHash::default(),
+                &link_resolver,
+                &logger,
+                0,
+                &SPEC_VERSION_1_2_0,
+            )
             .await
             .unwrap();
         let expected = DataSource {
@@ -717,17 +740,21 @@ mod test {
             unimplemented!()
         }
 
-        async fn cat(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
+        async fn cat(&self, _ctx: LinkResolverContext, _link: &Link) -> Result<Vec<u8>, Error> {
             Ok(gen_package().encode_to_vec())
         }
 
-        async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
+        async fn get_block(
+            &self,
+            _ctx: LinkResolverContext,
+            _link: &Link,
+        ) -> Result<Vec<u8>, Error> {
             unimplemented!()
         }
 
         async fn json_stream(
             &self,
-            _logger: &Logger,
+            _ctx: LinkResolverContext,
             _link: &Link,
         ) -> Result<JsonValueStream, Error> {
             unimplemented!()

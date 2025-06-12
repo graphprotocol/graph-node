@@ -20,7 +20,8 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::{env::ENV_VARS, prelude::CheapClone};
 
 use super::{
-    ContentPath, IpfsClient, IpfsError, IpfsRequest, IpfsResponse, IpfsResult, RetryPolicy,
+    ContentPath, IpfsClient, IpfsContext, IpfsError, IpfsMetrics, IpfsRequest, IpfsResponse,
+    IpfsResult, RetryPolicy,
 };
 
 struct RedisClient {
@@ -217,39 +218,38 @@ pub struct CachingClient {
 }
 
 impl CachingClient {
-    pub async fn new(client: Arc<dyn IpfsClient>) -> IpfsResult<Self> {
+    pub async fn new(client: Arc<dyn IpfsClient>, logger: &Logger) -> IpfsResult<Self> {
         let env = &ENV_VARS.mappings;
 
         let cache = Cache::new(
-            client.logger(),
+            logger,
             env.max_ipfs_cache_size as usize,
             env.max_ipfs_cache_file_size,
             env.ipfs_cache_location.clone(),
         )
         .await?;
+
         Ok(CachingClient { client, cache })
     }
 
-    async fn with_cache<F>(&self, path: &ContentPath, f: F) -> IpfsResult<Bytes>
+    async fn with_cache<F>(&self, logger: Logger, path: &ContentPath, f: F) -> IpfsResult<Bytes>
     where
         F: AsyncFnOnce() -> IpfsResult<Bytes>,
     {
-        if let Some(data) = self.cache.find(self.logger(), path).await {
+        if let Some(data) = self.cache.find(&logger, path).await {
             return Ok(data);
         }
 
         let data = f().await?;
-        self.cache
-            .insert(self.logger(), path.clone(), data.clone())
-            .await;
+        self.cache.insert(&logger, path.clone(), data.clone()).await;
         Ok(data)
     }
 }
 
 #[async_trait]
 impl IpfsClient for CachingClient {
-    fn logger(&self) -> &Logger {
-        self.client.logger()
+    fn metrics(&self) -> &IpfsMetrics {
+        self.client.metrics()
     }
 
     async fn call(self: Arc<Self>, req: IpfsRequest) -> IpfsResult<IpfsResponse> {
@@ -258,16 +258,17 @@ impl IpfsClient for CachingClient {
 
     async fn cat(
         self: Arc<Self>,
+        ctx: IpfsContext,
         path: &ContentPath,
         max_size: usize,
         timeout: Option<Duration>,
         retry_policy: RetryPolicy,
     ) -> IpfsResult<Bytes> {
-        self.with_cache(path, async || {
+        self.with_cache(ctx.logger(path), path, async || {
             {
                 self.client
                     .cheap_clone()
-                    .cat(path, max_size, timeout, retry_policy)
+                    .cat(ctx, path, max_size, timeout, retry_policy)
                     .await
             }
         })
@@ -276,14 +277,15 @@ impl IpfsClient for CachingClient {
 
     async fn get_block(
         self: Arc<Self>,
+        ctx: IpfsContext,
         path: &ContentPath,
         timeout: Option<Duration>,
         retry_policy: RetryPolicy,
     ) -> IpfsResult<Bytes> {
-        self.with_cache(path, async || {
+        self.with_cache(ctx.logger(path), path, async || {
             self.client
                 .cheap_clone()
-                .get_block(path, timeout, retry_policy)
+                .get_block(ctx, path, timeout, retry_policy)
                 .await
         })
         .await
