@@ -117,10 +117,11 @@ pub async fn info(
     let head_block = chain_store.cheap_clone().chain_head_ptr().await?;
     let ancestor = match &head_block {
         None => None,
-        Some(head_block) => chain_store
-            .ancestor_block(head_block.clone(), offset, None)
-            .await?
-            .map(|x| x.1),
+        Some(head_block) => {
+            chain_store
+                .ancestor_block(head_block.clone(), offset, None)
+                .await?
+        }
     };
 
     row("name", chain.name);
@@ -132,7 +133,11 @@ pub async fn info(
     }
     print_ptr("head block", head_block, hashes);
     row("reorg threshold", offset);
-    print_ptr("reorg ancestor", ancestor, hashes);
+    print_ptr(
+        "reorg ancestor",
+        ancestor.map(|ptr| ptr.as_block_ptr()),
+        hashes,
+    );
 
     Ok(())
 }

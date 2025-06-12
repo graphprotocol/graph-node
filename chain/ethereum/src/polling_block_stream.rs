@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Error};
-use graph::tokio;
+use graph::{bail, tokio};
 use std::cmp;
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -430,9 +430,9 @@ impl PollingBlockStreamContext {
                     // It's easiest to start over at this point.
                     Ok(ReconciliationStep::Retry)
                 }
-                Some(head_ancestor) => {
+                Some((head_ancestor, block)) => {
                     // Check if there was an interceding skipped (null) block.
-                    if head_ancestor.number() != subgraph_ptr.number + 1 {
+                    if head_ancestor.number != subgraph_ptr.number + 1 {
                         warn!(
                             ctx.logger,
                             "skipped block detected: {}",
@@ -442,7 +442,16 @@ impl PollingBlockStreamContext {
 
                     // We stopped one block short, so we'll compare the parent hash to the
                     // subgraph ptr.
-                    if head_ancestor.parent_hash().as_ref() == Some(&subgraph_ptr.hash) {
+                    if head_ancestor.parent_hash == subgraph_ptr.hash {
+                        let head_ancestor =
+                            match self.adapter.load_block_by_hash(&head_ancestor.hash).await? {
+                                Some(blk) => blk,
+                                None => bail!(
+                                    "error loading block data for block {:?}",
+                                    head_ancestor.hash.hash_hex()
+                                ),
+                            };
+
                         // The subgraph ptr is an ancestor of the head block.
                         // We cannot use an RPC call here to find the first interesting block
                         // due to the race conditions previously mentioned,

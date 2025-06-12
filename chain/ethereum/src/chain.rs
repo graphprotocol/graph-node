@@ -1043,21 +1043,31 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<BlockFinality>, Error> {
-        let block: Option<EthereumBlock> = self
+    ) -> Result<Option<(ExtendedBlockPtr, Option<BlockFinality>)>, Error> {
+        let (ptr, data) = match self
             .chain_store
             .cheap_clone()
             .ancestor_block(ptr, offset, root)
             .await?
-            .map(|x| x.0)
-            .map(json::from_value)
-            .transpose()?;
-        Ok(block.map(|block| {
-            BlockFinality::NonFinal(EthereumBlockWithCalls {
-                ethereum_block: block,
-                calls: None,
-            })
-        }))
+        {
+            Some(pair) => pair,
+            None => return Ok(None),
+        };
+
+        let block = data
+            .map(|data| json::from_value::<LightEthereumBlock>(data))
+            .transpose()?
+            .map(Arc::new)
+            .map(BlockFinality::Final);
+
+        Ok(Some((ptr, block)))
+    }
+
+    async fn load_block_by_hash(
+        &self,
+        _block_hash: &BlockHash,
+    ) -> Result<Option<BlockFinality>, Error> {
+        unimplemented!()
     }
 
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {

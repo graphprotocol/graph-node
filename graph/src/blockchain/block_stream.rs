@@ -15,7 +15,9 @@ use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::substreams_block_stream::SubstreamsLogData;
-use super::{Block, BlockPtr, BlockTime, Blockchain, Trigger, TriggerFilterWrapper};
+use super::{
+    Block, BlockPtr, BlockTime, Blockchain, ExtendedBlockPtr, Trigger, TriggerFilterWrapper,
+};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator, SourceableStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -415,6 +417,10 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
         futures03::future::try_join_all(futures).await
     }
+
+    pub async fn load_block_by_hash(&self, block_hash: &BlockHash) -> Result<Option<C::Block>> {
+        self.adapter.load_block_by_hash(block_hash).await
+    }
 }
 
 fn create_subgraph_trigger_from_entities(
@@ -507,7 +513,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
         ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<C::Block>, Error> {
+    ) -> Result<Option<(ExtendedBlockPtr, Option<C::Block>)>, Error> {
         self.adapter.ancestor_block(ptr, offset, root).await
     }
 
@@ -593,7 +599,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
 #[async_trait]
 pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
-    // Return the block that is `offset` blocks before the block pointed to by `ptr` from the local
+    // Return the block pointer to the block that is `offset` blocks before the block pointed to by `ptr` from the local
     // cache. An offset of 0 means the block itself, an offset of 1 means the block's parent etc. If
     // `root` is passed, short-circuit upon finding a child of `root`. If the block is not in the
     // local cache, return `None`.
@@ -602,7 +608,7 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<C::Block>, Error>;
+    ) -> Result<Option<(ExtendedBlockPtr, Option<C::Block>)>, Error>;
 
     // Returns a sequence of blocks in increasing order of block number.
     // Each block will include all of its triggers that match the given `filter`.
@@ -634,6 +640,8 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error>;
+
+    async fn load_block_by_hash(&self, block_hash: &BlockHash) -> Result<Option<C::Block>>;
 
     async fn load_block_ptrs_by_numbers(
         &self,

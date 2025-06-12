@@ -4,7 +4,7 @@ use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockTime, BlockchainBuilder, BlockchainKind,
-    NoopDecoderHook, NoopRuntimeAdapter, Trigger, TriggerFilterWrapper,
+    ExtendedBlockPtr, NoopDecoderHook, NoopRuntimeAdapter, Trigger, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
@@ -325,6 +325,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
+    async fn load_block_by_hash(&self, _block_hash: &BlockHash) -> Result<Option<Block>> {
+        unimplemented!()
+    }
+
     async fn load_block_ptrs_by_numbers(
         &self,
         _logger: Logger,
@@ -408,7 +412,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         _ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<codec::Block>, Error> {
+    ) -> Result<Option<ExtendedBlockPtr>, Error> {
         panic!("Should never be called since FirehoseBlockStream cannot resolve it")
     }
 

@@ -98,7 +98,7 @@ mod data {
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
     };
-    use graph::blockchain::{Block, BlockHash, BlockTime};
+    use graph::blockchain::{Block, BlockHash, BlockTime, ExtendedBlockPtr};
     use graph::data::store::scalar::Bytes;
     use graph::internal_error;
     use graph::prelude::ethabi::ethereum_types::H160;
@@ -1224,7 +1224,7 @@ mod data {
                     and a.block_offset < $2
                     {short_circuit_predicate}
                 )
-                select a.block_hash as hash, b.number as number
+                select a.block_hash as hash, b.number as number, b.parent_hash
                 from ancestors a
                 inner join {block_ptrs_table_name} b on a.block_hash = b.hash
                 order by a.block_offset desc limit 1
@@ -1243,13 +1243,17 @@ mod data {
             block_ptr: BlockPtr,
             offset: BlockNumber,
             root: Option<BlockHash>,
-        ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
+            load_block: bool,
+        ) -> Result<Option<(ExtendedBlockPtr, Option<json::Value>)>, Error> {
+            const TIMESTAMP_QUERY: &str =
+                "coalesce(data->'block'->>'timestamp', data->>'timestamp')";
+
             let short_circuit_predicate = match root {
                 Some(_) => "and b.parent_hash <> $3",
                 None => "",
             };
 
-            let data_and_ptr = match self {
+            let ptr: Option<ExtendedBlockPtr> = match self {
                 Storage::Shared => {
                     let query =
                         self.ancestor_block_query(short_circuit_predicate, "ethereum_blocks");
@@ -1261,6 +1265,8 @@ mod data {
                         hash: String,
                         #[diesel(sql_type = BigInt)]
                         number: i64,
+                        #[diesel(sql_type = Text)]
+                        parent_hash: String,
                     }
 
                     let block = match root {
@@ -1280,21 +1286,48 @@ mod data {
 
                     match block {
                         None => None,
-                        Some(block) => Some((
-                            b::table
-                                .filter(b::hash.eq(&block.hash))
-                                .select(b::data)
-                                .first::<json::Value>(conn)?,
-                            BlockPtr::new(
-                                BlockHash::from_str(&block.hash)?,
-                                i32::try_from(block.number).unwrap(),
-                            ),
-                        )),
+                        Some(block) => {
+                            if load_block {
+                                let (ts, data) = b::table
+                                    .filter(b::hash.eq(&block.hash))
+                                    .select((sql::<Nullable<Text>>(TIMESTAMP_QUERY), b::data))
+                                    .first::<(Option<String>, json::Value)>(conn)?;
+                                let ts = ts
+                                    .map(|ts| BlockTime::from_hex_str(&ts))
+                                    .transpose()?
+                                    .unwrap_or(BlockTime::NONE);
+
+                                return Ok(Some((
+                                    ExtendedBlockPtr {
+                                        hash: BlockHash::from_str(&block.hash)?,
+                                        number: block.number as i32,
+                                        parent_hash: BlockHash::from_str(&block.parent_hash)?,
+                                        timestamp: ts,
+                                    },
+                                    Some(data),
+                                )));
+                            } else {
+                                let ts = b::table
+                                    .filter(b::hash.eq(&block.hash))
+                                    .select(sql::<Nullable<Text>>(TIMESTAMP_QUERY))
+                                    .first::<Option<String>>(conn)?
+                                    .map(|ts| BlockTime::from_hex_str(&ts))
+                                    .transpose()?
+                                    .unwrap_or(BlockTime::NONE);
+
+                                Some(ExtendedBlockPtr {
+                                    hash: BlockHash::from_str(&block.hash)?,
+                                    number: block.number as i32,
+                                    parent_hash: BlockHash::from_str(&block.parent_hash)?,
+                                    timestamp: ts,
+                                })
+                            }
+                        }
                     }
                 }
                 Storage::Private(Schema {
-                    blocks,
                     block_pointers,
+                    blocks,
                     ..
                 }) => {
                     let query = self.ancestor_block_query(
@@ -1308,6 +1341,8 @@ mod data {
                         hash: Vec<u8>,
                         #[diesel(sql_type = BigInt)]
                         number: i64,
+                        #[diesel(sql_type = Bytea)]
+                        parent_hash: Vec<u8>,
                     }
 
                     let block = match root {
@@ -1325,38 +1360,46 @@ mod data {
 
                     match block {
                         None => None,
-                        Some(block) => Some((
-                            blocks
-                                .table()
-                                .filter(blocks.hash().eq(&block.hash))
-                                .select(blocks.data())
-                                .first::<json::Value>(conn)?,
-                            BlockPtr::from((block.hash, block.number)),
-                        )),
+                        Some(block) => {
+                            if load_block {
+                                let (ts, data) = block_pointers
+                                    .table()
+                                    .filter(block_pointers.hash().eq(&block.hash))
+                                    .select((block_pointers.timestamp(), blocks.data().nullable()))
+                                    .inner_join(
+                                        blocks.table().on(block_pointers.hash().eq(blocks.hash())),
+                                    )
+                                    .first::<(BlockTime, Option<json::Value>)>(conn)?;
+
+                                return Ok(Some((
+                                    ExtendedBlockPtr {
+                                        hash: BlockHash::from(block.hash),
+                                        number: block.number as i32,
+                                        parent_hash: BlockHash::from(block.parent_hash),
+                                        timestamp: ts,
+                                    },
+                                    data,
+                                )));
+                            } else {
+                                let ts = block_pointers
+                                    .table()
+                                    .filter(block_pointers.hash().eq(&block.hash))
+                                    .select(block_pointers.timestamp())
+                                    .first::<BlockTime>(conn)?;
+
+                                Some(ExtendedBlockPtr {
+                                    hash: BlockHash::from(block.hash),
+                                    number: block.number as i32,
+                                    parent_hash: BlockHash::from(block.parent_hash),
+                                    timestamp: ts,
+                                })
+                            }
+                        }
                     }
                 }
             };
 
-            // We need to deal with chain stores where some entries have a
-            // toplevel 'blocks' field and others directly contain what
-            // would be in the 'blocks' field. Make sure the value we return
-            // has a 'block' entry
-            //
-            // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
-            let data_and_ptr = {
-                use graph::prelude::serde_json::json;
-
-                data_and_ptr.map(|(data, ptr)| {
-                    (
-                        match data.get("block") {
-                            Some(_) => data,
-                            None => json!({ "block": data, "transaction_receipts": [] }),
-                        },
-                        ptr,
-                    )
-                })
-            };
-            Ok(data_and_ptr)
+            Ok(ptr.map(|ptr| (ptr, None)))
         }
 
         pub(super) fn delete_blocks_before(
@@ -2605,7 +2648,7 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
+    ) -> Result<Option<(ExtendedBlockPtr, Option<serde_json::Value>)>, Error> {
         ensure!(
             block_ptr.number >= offset,
             "block offset {} for block `{}` points to before genesis block",
@@ -2614,12 +2657,9 @@ impl ChainStoreTrait for ChainStore {
         );
 
         // Check the local cache first.
-        let block_cache = self
-            .recent_blocks_cache
-            .get_ancestor(&block_ptr, offset)
-            .and_then(|x| Some(x.0).zip(x.1));
-        if let Some((ptr, data)) = block_cache {
-            return Ok(Some((data, ptr)));
+        let block_cache = self.recent_blocks_cache.get_ancestor(&block_ptr, offset);
+        if let Some(ptr) = block_cache {
+            return Ok(Some(ptr));
         }
 
         let block_ptr_clone = block_ptr.clone();
@@ -2629,7 +2669,42 @@ impl ChainStoreTrait for ChainStore {
             .with_conn(move |conn, _| {
                 chain_store
                     .storage
-                    .ancestor_block(conn, block_ptr_clone, offset, root)
+                    .ancestor_block(conn, block_ptr_clone, offset, root, true)
+                    .map_err(StoreError::from)
+                    .map_err(CancelableError::from)
+            })
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        block_ptr: BlockPtr,
+        offset: BlockNumber,
+        root: Option<BlockHash>,
+    ) -> Result<Option<ExtendedBlockPtr>, Error> {
+        ensure!(
+            block_ptr.number >= offset,
+            "block offset {} for block `{}` points to before genesis block",
+            offset,
+            block_ptr.hash_hex()
+        );
+
+        // Check the local cache first.
+        let block_cache = self.recent_blocks_cache.get_ancestor(&block_ptr, offset);
+        if let Some((ptr, _)) = block_cache {
+            return Ok(Some(ptr));
+        }
+
+        let block_ptr_clone = block_ptr.clone();
+        let chain_store = self.cheap_clone();
+
+        self.pool
+            .with_conn(move |conn, _| {
+                chain_store
+                    .storage
+                    .ancestor_block(conn, block_ptr_clone, offset, root, false)
+                    .map(|b| b.map(|b| b.0))
                     .map_err(StoreError::from)
                     .map_err(CancelableError::from)
             })
@@ -2802,6 +2877,8 @@ impl ChainStoreTrait for ChainStore {
 }
 
 mod recent_blocks_cache {
+    use serde_json::Value;
+
     use super::*;
     use std::collections::BTreeMap;
 
@@ -2833,7 +2910,7 @@ mod recent_blocks_cache {
             &self,
             child_ptr: &BlockPtr,
             offset: BlockNumber,
-        ) -> Option<(&BlockPtr, Option<&json::Value>)> {
+        ) -> Option<(ExtendedBlockPtr, Option<json::Value>)> {
             let child = self.blocks.get(&child_ptr.number)?;
             if &child.ptr != child_ptr {
                 return None;
@@ -2847,7 +2924,18 @@ mod recent_blocks_cache {
                 }
                 child = parent;
             }
-            Some((&child.ptr, child.data.as_ref()))
+            Some((
+                ExtendedBlockPtr {
+                    hash: child.ptr.hash.clone(),
+                    number: child.ptr.number,
+                    parent_hash: child.parent_hash.clone(),
+                    timestamp: child
+                        .timestamp()
+                        .and_then(|ts| Some(BlockTime::try_from(ts)))?
+                        .unwrap_or(BlockTime::NONE),
+                },
+                child.data.clone(),
+            ))
         }
 
         fn chain_head(&self) -> Option<&BlockPtr> {
@@ -2919,12 +3007,8 @@ mod recent_blocks_cache {
             &self,
             child: &BlockPtr,
             offset: BlockNumber,
-        ) -> Option<(BlockPtr, Option<json::Value>)> {
-            let block_opt = self
-                .inner
-                .read()
-                .get_ancestor(child, offset)
-                .map(|b| (b.0.clone(), b.1.cloned()));
+        ) -> Option<(ExtendedBlockPtr, Option<json::Value>)> {
+            let block_opt = self.inner.read().get_ancestor(child, offset);
 
             let inner = self.inner.read();
             if block_opt.is_some() {

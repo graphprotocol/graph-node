@@ -553,7 +553,14 @@ pub trait ChainStore: ChainHeadStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(serde_json::Value, BlockPtr)>, Error>;
+    ) -> Result<Option<(ExtendedBlockPtr, Option<serde_json::Value>)>, Error>;
+
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        block_ptr: BlockPtr,
+        offset: BlockNumber,
+        root: Option<BlockHash>,
+    ) -> Result<Option<ExtendedBlockPtr>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained

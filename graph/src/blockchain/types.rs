@@ -385,6 +385,13 @@ impl ExtendedBlockPtr {
         }
     }
 
+    pub fn as_block_ptr(&self) -> BlockPtr {
+        BlockPtr {
+            hash: self.hash.clone(),
+            number: self.number,
+        }
+    }
+
     /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
     /// Hashes are stored in the database in this format.
     pub fn hash_hex(&self) -> String {
@@ -613,7 +620,13 @@ impl BlockTime {
             (10, 0)
         };
 
-        u64::from_str_radix(&ts[idx..], radix).map(|ts| BlockTime::since_epoch(ts as i64, 0))
+        u64::from_str_radix(&ts[idx..], radix).map(|ts| {
+            if ts == 0 {
+                BlockTime::NONE
+            } else {
+                BlockTime::since_epoch(ts as i64, 0)
+            }
+        })
     }
 
     /// Construct a block time that is the given number of seconds and

@@ -310,14 +310,19 @@ fn check_ancestor(
     ))?
     .ok_or_else(|| anyhow!("block {} has no ancestor at offset {}", child.hash, offset))?;
 
-    let act_ptr = act.1;
+    let act_ptr = act.as_block_ptr();
     let exp_ptr = exp.block_ptr();
 
     if exp_ptr != act_ptr {
         return Err(anyhow!("expected ptr `{}` but got `{}`", exp_ptr, act_ptr));
     }
 
-    let act_block = json::from_value::<EthereumBlock>(act.0)?;
+    let act_block = executor::block_on(store.cheap_clone().blocks(vec![act_ptr.hash]))
+        .expect("block should exist and be loaded");
+    assert_eq!(1, act_block.len());
+
+    let act_block = act_block.into_iter().next().unwrap();
+    let act_block = json::from_value::<EthereumBlock>(act_block)?;
     let act_hash = format!("{:x}", act_block.block.hash.unwrap());
     let exp_hash = &exp.hash;
 

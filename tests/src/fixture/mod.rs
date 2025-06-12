@@ -13,8 +13,8 @@ use graph::blockchain::block_stream::{
     BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
-    Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
-    TriggerFilterWrapper, TriggersAdapter, TriggersAdapterSelector,
+    Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, ExtendedBlockPtr,
+    RuntimeAdapter, TriggerFilterWrapper, TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
@@ -985,8 +985,12 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         _ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<<C as Blockchain>::Block>, Error> {
+    ) -> Result<Option<ExtendedBlockPtr>, Error> {
         todo!()
+    }
+
+    async fn load_block_by_hash(&self, _block_hash: &BlockHash) -> Result<Option<C::Block>, Error> {
+        unimplemented!()
     }
 
     async fn load_block_ptrs_by_numbers(

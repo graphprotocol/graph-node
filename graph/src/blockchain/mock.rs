@@ -257,8 +257,11 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
         _ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<MockBlock>, Error> {
+    ) -> Result<Option<(ExtendedBlockPtr, Option<MockBlock>)>, Error> {
         todo!()
+    }
+    async fn load_block_by_hash(&self, _block_hash: &BlockHash) -> Result<Option<MockBlock>> {
+        unimplemented!()
     }
 
     async fn load_block_ptrs_by_numbers(
@@ -531,7 +534,15 @@ impl ChainStore for MockChainStore {
         _block_ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<(Value, BlockPtr)>, Error> {
+    ) -> Result<Option<(ExtendedBlockPtr, Option<serde_json::Value>)>, Error> {
+        unimplemented!()
+    }
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        _block_ptr: BlockPtr,
+        _offset: BlockNumber,
+        _root: Option<BlockHash>,
+    ) -> Result<Option<ExtendedBlockPtr>, Error> {
         unimplemented!()
     }
     fn cleanup_cached_blocks(

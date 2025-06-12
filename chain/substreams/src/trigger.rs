@@ -1,7 +1,8 @@
 use anyhow::Error;
 use graph::{
     blockchain::{
-        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
+        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, ExtendedBlockPtr,
+        MappingTriggerTrait,
     },
     components::{
         store::{DeploymentLocator, SubgraphFork},
@@ -131,7 +132,10 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
         _ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<Block>, Error> {
+    ) -> Result<Option<ExtendedBlockPtr>, Error> {
+        unimplemented!()
+    }
+    async fn load_block_by_hash(&self, _block_hash: &BlockHash) -> Result<Option<Block>, Error> {
         unimplemented!()
     }
 
