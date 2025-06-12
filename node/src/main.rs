@@ -211,7 +211,7 @@ async fn main_inner() {
     let logger_factory =
         LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
 
-    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &metrics_registry, &logger)
         .await
         .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
 

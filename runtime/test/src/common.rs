@@ -65,7 +65,9 @@ fn mock_host_exports(
         Arc::new(templates.iter().map(|t| t.into()).collect()),
     );
 
-    let client = IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &LOGGER).unwrap();
+    let client =
+        IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), Default::default(), &LOGGER)
+            .unwrap();
 
     HostExports::new(
         subgraph_id,

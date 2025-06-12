@@ -8,6 +8,7 @@ use futures03::stream::StreamExt;
 use slog::info;
 use slog::Logger;
 
+use crate::components::metrics::MetricsRegistry;
 use crate::util::security::SafeDisplay;
 
 mod cache;
@@ -15,6 +16,7 @@ mod client;
 mod content_path;
 mod error;
 mod gateway_client;
+mod metrics;
 mod pool;
 mod retry_policy;
 mod rpc_client;
@@ -22,13 +24,12 @@ mod server_address;
 
 pub mod test_utils;
 
-pub use self::client::IpfsClient;
-pub use self::client::IpfsRequest;
-pub use self::client::IpfsResponse;
+pub use self::client::{IpfsClient, IpfsContext, IpfsRequest, IpfsResponse};
 pub use self::content_path::ContentPath;
 pub use self::error::IpfsError;
 pub use self::error::RequestError;
 pub use self::gateway_client::IpfsGatewayClient;
+pub use self::metrics::IpfsMetrics;
 pub use self::pool::IpfsClientPool;
 pub use self::retry_policy::RetryPolicy;
 pub use self::rpc_client::IpfsRpcClient;
@@ -45,12 +46,14 @@ pub type IpfsResult<T> = Result<T, IpfsError>;
 /// All clients are set up to cache results
 pub async fn new_ipfs_client<I, S>(
     server_addresses: I,
+    registry: &MetricsRegistry,
     logger: &Logger,
 ) -> IpfsResult<Arc<dyn IpfsClient>>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
+    let metrics = IpfsMetrics::new(registry);
     let mut clients: Vec<Arc<dyn IpfsClient>> = Vec::new();
 
     for server_address in server_addresses {
@@ -62,8 +65,8 @@ where
             SafeDisplay(server_address)
         );
 
-        let client = use_first_valid_api(server_address, logger).await?;
-        let client = Arc::new(CachingClient::new(client).await?);
+        let client = use_first_valid_api(server_address, metrics.clone(), logger).await?;
+        let client = Arc::new(CachingClient::new(client, logger).await?);
         clients.push(client);
     }
 
@@ -76,8 +79,7 @@ where
         n => {
             info!(logger, "Creating a pool of {} IPFS clients", n);
 
-            let pool = IpfsClientPool::new(clients, logger);
-
+            let pool = IpfsClientPool::new(clients);
             Ok(Arc::new(pool))
         }
     }
@@ -85,11 +87,12 @@ where
 
 async fn use_first_valid_api(
     server_address: &str,
+    metrics: IpfsMetrics,
     logger: &Logger,
 ) -> IpfsResult<Arc<dyn IpfsClient>> {
     let supported_apis: Vec<BoxFuture<IpfsResult<Arc<dyn IpfsClient>>>> = vec![
         Box::pin(async {
-            IpfsGatewayClient::new(server_address, logger)
+            IpfsGatewayClient::new(server_address, metrics.clone(), logger)
                 .await
                 .map(|client| {
                     info!(
@@ -102,7 +105,7 @@ async fn use_first_valid_api(
                 })
         }),
         Box::pin(async {
-            IpfsRpcClient::new(server_address, logger)
+            IpfsRpcClient::new(server_address, metrics.clone(), logger)
                 .await
                 .map(|client| {
                     info!(
