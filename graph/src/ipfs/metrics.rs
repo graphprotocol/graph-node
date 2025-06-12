@@ -11,7 +11,7 @@ pub struct IpfsMetrics {
 }
 
 impl IpfsMetrics {
-    pub(super) fn new(registry: &MetricsRegistry) -> Self {
+    pub fn new(registry: &MetricsRegistry) -> Self {
         let request_count = registry
             .new_int_counter_vec(
                 "ipfs_request_count",
