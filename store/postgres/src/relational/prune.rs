@@ -828,6 +828,8 @@ mod status {
 
             let values = (
                 pts::phase.eq(Phase::CopyNonfinal),
+                pts::start_vid.eq(range.min),
+                pts::next_vid.eq(range.min),
                 pts::nonfinal_vid.eq(range.max),
             );
             self.update_table_state(conn, table, values)
