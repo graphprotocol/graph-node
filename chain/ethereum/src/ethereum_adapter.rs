@@ -1,5 +1,3 @@
-use alloy::primitives::B256;
-use alloy::providers::{Provider, ProviderBuilder};
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
@@ -21,6 +19,7 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
+use graph::prelude::alloy;
 use graph::prelude::tokio::try_join;
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
@@ -78,7 +77,7 @@ pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
     web3: Arc<Web3<Transport>>,
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<dyn alloy::providers::Provider>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
@@ -139,7 +138,12 @@ impl EthereumAdapter {
             Transport::WS(_web_socket) => todo!(),
         };
         let web3 = Arc::new(Web3::new(transport));
-        let alloy = Arc::new(ProviderBuilder::new().connect(&rpc_url).await.unwrap());
+        let alloy = Arc::new(
+            alloy::providers::ProviderBuilder::new()
+                .connect(&rpc_url)
+                .await
+                .unwrap(),
+        );
 
         EthereumAdapter {
             logger,
@@ -520,11 +524,13 @@ impl EthereumAdapter {
         }
     }
 
-    fn block_ptr_to_alloy_block_id(&self, block_ptr: &BlockPtr) -> alloy_rpc_types::BlockId {
+    fn block_ptr_to_alloy_block_id(&self, block_ptr: &BlockPtr) -> alloy::rpc::types::BlockId {
         if !self.supports_eip_1898 {
-            alloy_rpc_types::BlockId::number(block_ptr.number as u64)
+            alloy::rpc::types::BlockId::number(block_ptr.number as u64)
         } else {
-            alloy_rpc_types::BlockId::hash(B256::new(*block_ptr.hash_as_h256().as_fixed_bytes()))
+            alloy::rpc::types::BlockId::hash(alloy::primitives::B256::new(
+                *block_ptr.hash_as_h256().as_fixed_bytes(),
+            ))
         }
     }
 
@@ -838,7 +844,7 @@ impl EthereumAdapter {
 
                         async move {
                             let block_result = alloy
-                                .get_block_by_number(alloy_rpc_types::BlockNumberOrTag::Number(
+                                .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
                                     number as u64,
                                 ))
                                 .await;
@@ -897,7 +903,7 @@ impl EthereumAdapter {
                     let alloy = alloy.cheap_clone();
                     async move {
                         let block = alloy
-                            .get_block_by_number(alloy_rpc_types::BlockNumberOrTag::Number(
+                            .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
                                 block_num as u64,
                             ))
                             .await?;
@@ -1509,7 +1515,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     let alloy = alloy.cheap_clone();
                     async move {
                         alloy
-                            .get_block_by_number(alloy_rpc_types::BlockNumberOrTag::Number(
+                            .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
                                 next_number as u64,
                             ))
                             .await

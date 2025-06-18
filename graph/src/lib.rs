@@ -79,6 +79,7 @@ pub use url;
 /// ```
 pub mod prelude {
     pub use ::anyhow;
+    pub use alloy;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use async_trait::async_trait;
     pub use atty;

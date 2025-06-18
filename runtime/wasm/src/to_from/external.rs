@@ -8,8 +8,12 @@ use graph::runtime::{
     asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
 };
 use graph::{data::store, runtime::DeterministicHostError};
-use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
+use graph::{
+    prelude::{alloy, serde_json},
+    runtime::FromAscObj,
+};
+use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class::*;
 
