@@ -22,7 +22,6 @@ use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
 use graph::prelude::tokio::try_join;
-use graph::prelude::web3::types::U256;
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
@@ -134,7 +133,7 @@ impl EthereumAdapter {
                 client: _,
                 metrics: _,
                 provider: _,
-                rpc_url,
+                url: rpc_url,
             } => rpc_url.clone(),
             Transport::IPC(_ipc) => todo!(),
             Transport::WS(_web_socket) => todo!(),
@@ -521,6 +520,14 @@ impl EthereumAdapter {
         }
     }
 
+    fn block_ptr_to_alloy_block_id(&self, block_ptr: &BlockPtr) -> alloy_rpc_types::BlockId {
+        if !self.supports_eip_1898 {
+            alloy_rpc_types::BlockId::number(block_ptr.number as u64)
+        } else {
+            alloy_rpc_types::BlockId::hash(B256::new(*block_ptr.hash_as_h256().as_fixed_bytes()))
+        }
+    }
+
     async fn code(
         &self,
         logger: &Logger,
@@ -559,13 +566,13 @@ impl EthereumAdapter {
     async fn balance(
         &self,
         logger: &Logger,
-        address: Address,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<U256, EthereumRpcError> {
-        let web3 = self.web3.clone();
+    ) -> Result<alloy::primitives::U256, EthereumRpcError> {
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id = self.block_ptr_to_alloy_block_id(&block_ptr);
         let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -577,13 +584,12 @@ impl EthereumAdapter {
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    let result: Result<U256, web3::Error> =
-                        web3.eth().balance(address, Some(block_id)).boxed().await;
+                    let result = alloy.get_balance(address).block_id(block_id).await;
                     match result {
                         Ok(balance) => Ok(balance),
-                        Err(err) => Err(EthereumRpcError::Web3Error(err)),
+                        Err(err) => Err(EthereumRpcError::AlloyError(err)),
                     }
                 }
             })
@@ -1493,9 +1499,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn get_balance(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<U256, EthereumRpcError> {
+    ) -> Result<alloy::primitives::U256, EthereumRpcError> {
         debug!(
             logger, "eth_getBalance";
             "address" => format!("{}", address),

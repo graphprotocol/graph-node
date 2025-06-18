@@ -1,3 +1,5 @@
+use alloy::transports::RpcError;
+use alloy::transports::TransportErrorKind;
 use anyhow::Error;
 use graph::abi;
 use graph::blockchain::ChainIdentifier;
@@ -9,7 +11,6 @@ use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
 use graph::prelude::web3::types::Bytes;
 use graph::prelude::web3::types::H160;
-use graph::prelude::web3::types::U256;
 use itertools::Itertools;
 use prost::Message;
 use prost_types::Any;
@@ -95,6 +96,8 @@ impl EventSignatureWithTopics {
 pub enum EthereumRpcError {
     #[error("call error: {0}")]
     Web3Error(web3::Error),
+    #[error("call error: {0}")]
+    AlloyError(RpcError<TransportErrorKind>),
     #[error("ethereum node took too long to perform call")]
     Timeout,
 }
@@ -1171,9 +1174,9 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn get_balance(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<U256, EthereumRpcError>;
+    ) -> Result<alloy::primitives::U256, EthereumRpcError>;
 
     // Returns the compiled bytecode of a smart contract
     async fn get_code(
