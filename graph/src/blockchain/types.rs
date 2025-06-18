@@ -241,6 +241,15 @@ impl From<(H256, i32)> for BlockPtr {
     }
 }
 
+impl From<(alloy::primitives::B256, i32)> for BlockPtr {
+    fn from((hash, number): (alloy::primitives::B256, i32)) -> BlockPtr {
+        BlockPtr {
+            hash: hash.into(),
+            number,
+        }
+    }
+}
+
 impl From<(Vec<u8>, u64)> for BlockPtr {
     fn from((bytes, number): (Vec<u8>, u64)) -> Self {
         let number = i32::try_from(number).unwrap();

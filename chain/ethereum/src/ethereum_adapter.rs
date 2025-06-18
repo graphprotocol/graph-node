@@ -884,22 +884,22 @@ impl EthereumAdapter {
         logger: Logger,
         block_nums: Vec<BlockNumber>,
     ) -> impl Stream<Item = BlockPtr, Error = Error> + Send {
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
 
         stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
-            let web3 = web3.clone();
+            let alloy = alloy.clone();
             retry(format!("load block ptr {}", block_num), &logger)
                 .redact_log_urls(true)
                 .when(|res| !res.is_ok() && !detect_null_block(res))
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
-                    let web3 = web3.clone();
+                    let alloy = alloy.cheap_clone();
                     async move {
-                        let block = web3
-                            .eth()
-                            .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
-                            .boxed()
+                        let block = alloy
+                            .get_block_by_number(alloy_rpc_types::BlockNumberOrTag::Number(
+                                block_num as u64,
+                            ))
                             .await?;
 
                         block.ok_or_else(|| {
@@ -920,7 +920,7 @@ impl EthereumAdapter {
         }))
         .buffered(ENV_VARS.block_batch_size)
         .filter_map(|b| b)
-        .map(|b| b.into())
+        .map(|b| BlockPtr::from((b.header.hash, b.header.number as i32)))
     }
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
