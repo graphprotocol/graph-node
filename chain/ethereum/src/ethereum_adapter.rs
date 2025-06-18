@@ -1635,9 +1635,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 source,
                 req: _,
             } = resp;
-            use call::Retval::*;
             match retval {
-                Value(output) => match call.function.abi_decode_output(&output) {
+                call::Retval::Value(output) => match call.function.abi_decode_output(&output) {
                     Ok(tokens) => (Some(tokens), source),
                     Err(e) => {
                         // Decode failures are reverts. The reasoning is that if Solidity fails to
@@ -1647,7 +1646,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         (None, call::Source::Rpc)
                     }
                 },
-                Null => {
+                call::Retval::Null => {
                     // We got a `0x` response. For old Geth, this can mean a revert. It can also be
                     // that the contract actually returned an empty response. A view call is meant
                     // to return something, so we treat empty responses the same as reverts.
