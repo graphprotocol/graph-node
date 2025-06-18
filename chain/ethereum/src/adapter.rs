@@ -9,7 +9,6 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
-use graph::prelude::web3::types::Bytes;
 use graph::prelude::web3::types::H160;
 use itertools::Itertools;
 use prost::Message;
@@ -1182,9 +1181,9 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn get_code(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<Bytes, EthereumRpcError>;
+    ) -> Result<alloy::primitives::Bytes, EthereumRpcError>;
 }
 
 #[cfg(test)]
