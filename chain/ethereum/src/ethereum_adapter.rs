@@ -32,8 +32,8 @@ use graph::{
         web3::{
             self,
             types::{
-                BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter, FilterBuilder,
-                Log, Transaction, TransactionReceipt, H256,
+                BlockId, Bytes, CallRequest, Filter, FilterBuilder, Log, Transaction,
+                TransactionReceipt, H256,
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
@@ -1309,32 +1309,6 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         block.header.hash,
                         block.header.number as i32,
                     )))
-                }
-            })
-            .map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    anyhow!("Ethereum node took too long to return latest block").into()
-                })
-            })
-            .await
-    }
-
-    async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, IngestorError> {
-        let web3 = self.web3.clone();
-        retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
-            .redact_log_urls(true)
-            .no_limit()
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-            .run(move || {
-                let web3 = web3.cheap_clone();
-                async move {
-                    let block_opt = web3
-                        .eth()
-                        .block_with_txs(Web3BlockNumber::Latest.into())
-                        .await
-                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
-                    block_opt
-                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
                 }
             })
             .map_err(move |e| {
