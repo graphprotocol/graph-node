@@ -1235,7 +1235,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
             .boxed();
 
-        let web3 = self.web3.clone();
+        let alloy_provider = self.alloy.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
         let retry_log_message = format!(
@@ -1247,20 +1247,20 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .no_limit()
             .timeout_secs(30)
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy_genesis = alloy_provider.cheap_clone();
                 let metrics = metrics.cheap_clone();
                 let provider = provider.clone();
                 async move {
-                    web3.eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(
-                            ENV_VARS.genesis_block_number.into(),
-                        )))
+                    alloy_genesis
+                        .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
+                            ENV_VARS.genesis_block_number as u64,
+                        ))
                         .await
                         .map_err(|e| {
                             metrics.set_status(ProviderStatus::GenesisFail, &provider);
                             e
                         })?
-                        .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
+                        .map(|gen_block| BlockHash::from(gen_block.header.hash))
                         .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
                 }
             })
