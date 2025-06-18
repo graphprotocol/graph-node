@@ -1203,7 +1203,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error> {
         let logger = self.logger.clone();
 
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
         let net_version_future = retry("net_version RPC call", &logger)
@@ -1211,11 +1211,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .no_limit()
             .timeout_secs(20)
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 let metrics = metrics.cheap_clone();
                 let provider = provider.clone();
                 async move {
-                    web3.net().version().await.map_err(|e| {
+                    alloy.get_net_version().await.map_err(|e| {
                         metrics.set_status(ProviderStatus::VersionFail, &provider);
                         e.into()
                     })
@@ -1272,7 +1272,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })?;
 
         let ident = ChainIdentifier {
-            net_version,
+            net_version: net_version.to_string(),
             genesis_block_hash,
         };
 
