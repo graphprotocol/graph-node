@@ -1,3 +1,5 @@
+use alloy::primitives::B256;
+use alloy::providers::{Provider, ProviderBuilder};
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
@@ -72,15 +74,31 @@ use crate::{
     ENV_VARS,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
     web3: Arc<Web3<Transport>>,
+    alloy: Arc<dyn Provider>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
     supports_block_receipts: Arc<RwLock<Option<bool>>>,
+}
+
+impl std::fmt::Debug for EthereumAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EthereumAdapter")
+            .field("logger", &self.logger)
+            .field("provider", &self.provider)
+            .field("web3", &self.web3)
+            .field("alloy", &"<Provider>")
+            .field("metrics", &self.metrics)
+            .field("supports_eip_1898", &self.supports_eip_1898)
+            .field("call_only", &self.call_only)
+            .field("supports_block_receipts", &self.supports_block_receipts)
+            .finish()
+    }
 }
 
 impl CheapClone for EthereumAdapter {
@@ -89,6 +107,7 @@ impl CheapClone for EthereumAdapter {
             logger: self.logger.clone(),
             provider: self.provider.clone(),
             web3: self.web3.cheap_clone(),
+            alloy: self.alloy.clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
@@ -110,12 +129,24 @@ impl EthereumAdapter {
         supports_eip_1898: bool,
         call_only: bool,
     ) -> Self {
+        let rpc_url = match &transport {
+            Transport::RPC {
+                client: _,
+                metrics: _,
+                provider: _,
+                rpc_url,
+            } => rpc_url.clone(),
+            Transport::IPC(_ipc) => todo!(),
+            Transport::WS(_web_socket) => todo!(),
+        };
         let web3 = Arc::new(Web3::new(transport));
+        let alloy = Arc::new(ProviderBuilder::new().connect(&rpc_url).await.unwrap());
 
         EthereumAdapter {
             logger,
             provider,
             web3,
+            alloy,
             metrics: provider_metrics,
             supports_eip_1898,
             call_only,
