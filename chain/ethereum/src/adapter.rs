@@ -1085,7 +1085,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, bc::IngestorError>;
 
     /// Get the latest block, with only the header and transaction hashes.
-    async fn latest_block_header(&self, logger: &Logger) -> Result<BlockPtr, bc::IngestorError>;
+    async fn latest_block_ptr(&self, logger: &Logger) -> Result<BlockPtr, bc::IngestorError>;
 
     async fn load_block(
         &self,
