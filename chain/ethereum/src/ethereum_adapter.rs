@@ -1497,7 +1497,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 "eth_getBlockByNumber RPC call for block number {}",
                 next_number
             );
-            let web3 = self.web3.clone();
+            let alloy = self.alloy.clone();
             let logger = logger.clone();
             let res = retry(retry_log_message, &logger)
                 .redact_log_urls(true)
@@ -1505,12 +1505,16 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
-                    let web3 = web3.cheap_clone();
+                    let alloy = alloy.cheap_clone();
                     async move {
-                        web3.eth()
-                            .block(BlockId::Number(next_number.into()))
+                        alloy
+                            .get_block_by_number(alloy_rpc_types::BlockNumberOrTag::Number(
+                                next_number as u64,
+                            ))
                             .await
-                            .map(|block_opt| block_opt.and_then(|block| block.hash))
+                            .map(|block_opt| {
+                                block_opt.map(|block| BlockHash::from(block.header.hash.0.to_vec()))
+                            })
                             .map_err(Error::from)
                     }
                 })
@@ -1528,7 +1532,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 continue;
             }
             return match res {
-                Ok(Some(hash)) => Ok(BlockPtr::new(hash.into(), next_number)),
+                Ok(Some(hash)) => Ok(BlockPtr::new(hash, next_number)),
                 Ok(None) => Err(anyhow!("Block {} does not contain hash", next_number)),
                 Err(e) => Err(e),
             };
