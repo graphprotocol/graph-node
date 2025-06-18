@@ -206,7 +206,7 @@ impl PollingBlockIngestor {
         logger: &Logger,
         eth_adapter: &Arc<EthereumAdapter>,
     ) -> Result<BlockPtr, IngestorError> {
-        eth_adapter.latest_block_header(&logger).await
+        eth_adapter.latest_block_ptr(&logger).await
     }
 
     async fn eth_adapter(&self) -> anyhow::Result<Arc<EthereumAdapter>> {

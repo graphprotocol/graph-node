@@ -1288,7 +1288,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Ok(ident)
     }
 
-    async fn latest_block_header(&self, logger: &Logger) -> Result<BlockPtr, IngestorError> {
+    async fn latest_block_ptr(&self, logger: &Logger) -> Result<BlockPtr, IngestorError> {
         let alloy = self.alloy.clone();
         retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
             .redact_log_urls(true)
