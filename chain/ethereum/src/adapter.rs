@@ -1124,21 +1124,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block: LightEthereumBlock,
     ) -> Result<EthereumBlock, bc::IngestorError>;
 
-    /// Find a block by its number, according to the Ethereum node.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    async fn block_hash_by_block_number(
-        &self,
-        logger: &Logger,
-        block_number: BlockNumber,
-    ) -> Result<Option<H256>, Error>;
-
     /// Finds the hash and number of the lowest non-null block with height greater than or equal to
     /// the given number.
     ///
