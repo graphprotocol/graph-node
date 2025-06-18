@@ -186,6 +186,12 @@ impl BigInt {
         BigInt::from_unsigned_bytes_le(&bytes).unwrap()
     }
 
+    pub fn from_unsigned_alloy_u256(n: &alloy::primitives::U256) -> Self {
+        let bytes = n.to_le_bytes_trimmed_vec();
+        // Unwrap: 256 bits is much less than BigInt::MAX_BITS
+        BigInt::from_unsigned_bytes_le(&bytes).unwrap()
+    }
+
     pub fn from_signed_u256(n: &U256) -> Self {
         let mut bytes: [u8; 32] = [0; 32];
         n.to_little_endian(&mut bytes);

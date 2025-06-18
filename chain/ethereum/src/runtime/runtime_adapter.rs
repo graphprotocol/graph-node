@@ -224,17 +224,18 @@ fn eth_get_balance(
     let logger = &ctx.logger;
     let block_ptr = &ctx.block_ptr;
 
-    let address: H160 = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
+    let address: alloy::primitives::Address = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
 
     let result = graph::block_on(eth_adapter.get_balance(logger, address, block_ptr.clone()));
 
     match result {
         Ok(v) => {
-            let bigint = BigInt::from_unsigned_u256(&v);
+            let bigint = BigInt::from_unsigned_alloy_u256(&v);
             Ok(asc_new(ctx.heap, &bigint, &ctx.gas)?)
         }
         // Retry on any kind of error
         Err(EthereumRpcError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(EthereumRpcError::AlloyError(e)) => Err(HostExportError::PossibleReorg(e.into())),
         Err(EthereumRpcError::Timeout) => Err(HostExportError::PossibleReorg(
             EthereumRpcError::Timeout.into(),
         )),
@@ -267,6 +268,7 @@ fn eth_has_code(
         Ok(v) => Ok(asc_new(ctx.heap, &AscWrapped { inner: v }, &ctx.gas)?),
         // Retry on any kind of error
         Err(EthereumRpcError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
+        Err(EthereumRpcError::AlloyError(e)) => Err(HostExportError::PossibleReorg(e.into())),
         Err(EthereumRpcError::Timeout) => Err(HostExportError::PossibleReorg(
             EthereumRpcError::Timeout.into(),
         )),

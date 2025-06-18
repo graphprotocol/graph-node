@@ -45,6 +45,28 @@ impl FromAscObj<Uint8Array> for web3::H160 {
     }
 }
 
+impl FromAscObj<Uint8Array> for alloy::primitives::Address {
+    fn from_asc_obj<H: AscHeap + ?Sized>(
+        typed_array: Uint8Array,
+        heap: &H,
+        gas: &GasCounter,
+        depth: usize,
+    ) -> Result<Self, DeterministicHostError> {
+        let data = <[u8; 20]>::from_asc_obj(typed_array, heap, gas, depth)?;
+        Ok(Self::from(data))
+    }
+}
+
+impl ToAscObj<Uint8Array> for alloy::primitives::Address {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<Uint8Array, HostExportError> {
+        self.as_slice().to_asc_obj(heap, gas)
+    }
+}
+
 impl FromAscObj<Uint8Array> for web3::H256 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
