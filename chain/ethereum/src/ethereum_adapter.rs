@@ -1288,26 +1288,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Ok(ident)
     }
 
-    async fn latest_block_header(
-        &self,
-        logger: &Logger,
-    ) -> Result<web3::types::Block<H256>, IngestorError> {
-        let web3 = self.web3.clone();
+    async fn latest_block_header(&self, logger: &Logger) -> Result<BlockPtr, IngestorError> {
+        let alloy = self.alloy.clone();
         retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
             .redact_log_urls(true)
             .no_limit()
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    let block_opt = web3
-                        .eth()
-                        .block(Web3BlockNumber::Latest.into())
+                    let block_opt = alloy
+                        .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Latest)
                         .await
                         .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
 
-                    block_opt
-                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                    let block = block_opt
+                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum"))?;
+
+                    Ok(BlockPtr::from((
+                        block.header.hash,
+                        block.header.number as i32,
+                    )))
                 }
             })
             .map_err(move |e| {
