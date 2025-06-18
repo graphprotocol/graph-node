@@ -17,7 +17,6 @@ use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::data_source;
 use graph::data_source::common::{ContractCall, MappingABI};
 use graph::prelude::web3::types::Address;
-use graph::prelude::web3::types::H160;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::slog::debug;
@@ -259,10 +258,10 @@ fn eth_has_code(
     let logger = &ctx.logger;
     let block_ptr = &ctx.block_ptr;
 
-    let address: H160 = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
+    let address: alloy::primitives::Address = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
 
     let result = graph::block_on(eth_adapter.get_code(logger, address, block_ptr.clone()))
-        .map(|v| !v.0.is_empty());
+        .map(|v| !v.is_empty());
 
     match result {
         Ok(v) => Ok(asc_new(ctx.heap, &AscWrapped { inner: v }, &ctx.gas)?),

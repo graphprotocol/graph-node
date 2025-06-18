@@ -33,8 +33,8 @@ use graph::{
         web3::{
             self,
             types::{
-                Address, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter,
-                FilterBuilder, Log, Transaction, TransactionReceipt, H256,
+                BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter, FilterBuilder,
+                Log, Transaction, TransactionReceipt, H256,
             },
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
@@ -531,13 +531,13 @@ impl EthereumAdapter {
     async fn code(
         &self,
         logger: &Logger,
-        address: Address,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<Bytes, EthereumRpcError> {
-        let web3 = self.web3.clone();
+    ) -> Result<alloy::primitives::Bytes, EthereumRpcError> {
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        let block_id = self.block_ptr_to_id(&block_ptr);
+        let block_id = self.block_ptr_to_alloy_block_id(&block_ptr);
         let retry_log_message = format!("eth_getCode RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -549,13 +549,12 @@ impl EthereumAdapter {
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    let result: Result<Bytes, web3::Error> =
-                        web3.eth().code(address, Some(block_id)).boxed().await;
+                    let result = alloy.get_code_at(address).block_id(block_id).await;
                     match result {
                         Ok(code) => Ok(code),
-                        Err(err) => Err(EthereumRpcError::Web3Error(err)),
+                        Err(err) => Err(EthereumRpcError::AlloyError(err)),
                     }
                 }
             })
@@ -1513,9 +1512,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn get_code(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<Bytes, EthereumRpcError> {
+    ) -> Result<alloy::primitives::Bytes, EthereumRpcError> {
         debug!(
             logger, "eth_getCode";
             "address" => format!("{}", address),
