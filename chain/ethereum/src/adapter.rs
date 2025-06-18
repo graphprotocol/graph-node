@@ -1,5 +1,3 @@
-use alloy::transports::RpcError;
-use alloy::transports::TransportErrorKind;
 use anyhow::Error;
 use graph::abi;
 use graph::blockchain::ChainIdentifier;
@@ -9,6 +7,7 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
+use graph::prelude::alloy::transports::{RpcError, TransportErrorKind};
 use graph::prelude::web3::types::H160;
 use itertools::Itertools;
 use prost::Message;

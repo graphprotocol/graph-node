@@ -23,7 +23,7 @@ use graph::slog::debug;
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::EthereumCallCache,
+    prelude::{alloy, EthereumCallCache},
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::Logger,

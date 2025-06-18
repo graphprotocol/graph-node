@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-alloy = { workspace = true }
 async-trait = "0.1.50"
 hex = "0.4.3"
 graph = { path = "../../graph" }
