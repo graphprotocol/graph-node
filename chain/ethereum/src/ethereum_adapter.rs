@@ -1170,19 +1170,17 @@ impl EthereumAdapter {
 
     pub async fn chain_id(&self) -> Result<u64, Error> {
         let logger = self.logger.clone();
-        let web3 = self.web3.clone();
-        u64::try_from(
-            retry("chain_id RPC call", &logger)
-                .redact_log_urls(true)
-                .no_limit()
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    let web3 = web3.cheap_clone();
-                    async move { web3.eth().chain_id().await }
-                })
-                .await?,
-        )
-        .map_err(Error::msg)
+        let alloy = self.alloy.clone();
+        retry("chain_id RPC call", &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let alloy = alloy.cheap_clone();
+                async move { alloy.get_chain_id().await.map_err(Error::from) }
+            })
+            .await
+            .map_err(|e| e.into_inner().unwrap_or(EthereumRpcError::Timeout.into()))
     }
 }
 
