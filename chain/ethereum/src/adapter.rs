@@ -26,6 +26,8 @@ use graph::{
     petgraph::{self, graphmap::GraphMap},
 };
 
+use graph::blockchain::BlockPtr;
+
 const COMBINED_FILTER_TYPE_URL: &str =
     "type.googleapis.com/sf.ethereum.transform.v1.CombinedFilter";
 
@@ -1083,10 +1085,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, bc::IngestorError>;
 
     /// Get the latest block, with only the header and transaction hashes.
-    async fn latest_block_header(
-        &self,
-        logger: &Logger,
-    ) -> Result<web3::types::Block<H256>, bc::IngestorError>;
+    async fn latest_block_header(&self, logger: &Logger) -> Result<BlockPtr, bc::IngestorError>;
 
     async fn load_block(
         &self,
