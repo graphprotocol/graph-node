@@ -822,10 +822,10 @@ impl EthereumAdapter {
         logger: Logger,
         numbers: Vec<BlockNumber>,
     ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
 
         futures03::stream::iter(numbers.into_iter().map(move |number| {
-            let web3 = web3.clone();
+            let alloy = alloy.clone();
             let logger = logger.clone();
 
             async move {
@@ -834,21 +834,22 @@ impl EthereumAdapter {
                     .limit(ENV_VARS.request_retries)
                     .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                     .run(move || {
-                        let web3 = web3.clone();
+                        let alloy = alloy.cheap_clone();
 
                         async move {
-                            let block_result = web3
-                                .eth()
-                                .block(BlockId::Number(Web3BlockNumber::Number(number.into())))
+                            let block_result = alloy
+                                .get_block_by_number(alloy_rpc_types::BlockNumberOrTag::Number(
+                                    number as u64,
+                                ))
                                 .await;
 
                             match block_result {
                                 Ok(Some(block)) => {
                                     let ptr = ExtendedBlockPtr::try_from((
-                                        block.hash,
-                                        block.number,
-                                        block.parent_hash,
-                                        block.timestamp,
+                                        block.header.hash,
+                                        block.header.number as i32,
+                                        block.header.parent_hash,
+                                        block.header.timestamp,
                                     ))
                                     .map_err(|e| {
                                         anyhow::anyhow!("Failed to convert block: {}", e)
