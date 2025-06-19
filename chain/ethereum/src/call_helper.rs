@@ -2,7 +2,10 @@ use crate::{ContractCallError, ENV_VARS};
 use graph::{
     abi,
     data::store::ethereum::call,
-    prelude::{web3, Logger},
+    prelude::{
+        alloy::transports::{RpcError, TransportErrorKind},
+        Logger,
+    },
     slog::info,
 };
 
@@ -79,33 +82,33 @@ fn as_solidity_revert_reason(bytes: &[u8]) -> Option<String> {
 /// EVM reverts. Returns `Ok(Null)` for reverts or a proper error otherwise.
 pub fn interpret_eth_call_error(
     logger: &Logger,
-    err: web3::Error,
+    err: RpcError<TransportErrorKind>,
 ) -> Result<call::Retval, ContractCallError> {
     fn reverted(logger: &Logger, reason: &str) -> Result<call::Retval, ContractCallError> {
         info!(logger, "Contract call reverted"; "reason" => reason);
         Ok(call::Retval::Null)
     }
 
-    if let web3::Error::Rpc(rpc_error) = &err {
+    if let RpcError::ErrorResp(rpc_error) = &err {
         if is_geth_revert_message(&rpc_error.message) {
             return reverted(logger, &rpc_error.message);
         }
     }
 
-    if let web3::Error::Rpc(rpc_error) = &err {
-        let code = rpc_error.code.code();
-        let data = rpc_error.data.as_ref().and_then(|d| d.as_str());
+    if let RpcError::ErrorResp(rpc_error) = &err {
+        let code = rpc_error.code;
+        let data = rpc_error.data.as_ref().map(|d| d.to_string());
 
         if code == PARITY_VM_EXECUTION_ERROR {
             if let Some(data) = data {
-                if is_parity_revert(data) {
-                    return reverted(logger, &parity_revert_reason(data));
+                if is_parity_revert(&data) {
+                    return reverted(logger, &parity_revert_reason(&data));
                 }
             }
         }
     }
 
-    Err(ContractCallError::Web3Error(err))
+    Err(ContractCallError::AlloyError(err))
 }
 
 fn is_parity_revert(data: &str) -> bool {

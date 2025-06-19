@@ -112,6 +112,8 @@ pub enum ContractCallError {
     EncodingError(anyhow::Error),
     #[error("call error: {0}")]
     Web3Error(web3::Error),
+    #[error("call error: {0}")]
+    AlloyError(RpcError<TransportErrorKind>),
     #[error("ethereum node took too long to perform call")]
     Timeout,
     #[error("internal error: {0}")]
