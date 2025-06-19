@@ -186,7 +186,7 @@ impl StoreResolver {
         let (timestamp, parent_hash) = if lookup_needed(field) {
             match self
                 .store
-                .block_pointer(&block_ptr.hash)
+                .block_number_with_timestamp_and_parent_hash(&block_ptr.hash)
                 .await
                 .map_err(Into::<QueryExecutionError>::into)?
             {
@@ -219,7 +219,7 @@ impl StoreResolver {
             .unwrap_or(r::Value::Null);
 
         let timestamp = timestamp
-            .map(|ts| r::Value::Int(ts.as_secs_since_epoch()))
+            .map(|ts| r::Value::Int(ts as i64))
             .unwrap_or(r::Value::Null);
 
         let parent_hash = parent_hash

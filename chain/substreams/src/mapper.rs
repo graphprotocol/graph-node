@@ -32,7 +32,6 @@ pub struct WasmBlockMapper {
 impl BlockStreamMapper<Chain> for WasmBlockMapper {
     fn decode_block(
         &self,
-        _timestamp: BlockTime,
         _output: Option<&[u8]>,
     ) -> Result<Option<crate::Block>, BlockStreamError> {
         unreachable!("WasmBlockMapper does not do block decoding")
@@ -105,11 +104,7 @@ pub struct Mapper {
 
 #[async_trait]
 impl BlockStreamMapper<Chain> for Mapper {
-    fn decode_block(
-        &self,
-        timestamp: BlockTime,
-        output: Option<&[u8]>,
-    ) -> Result<Option<Block>, BlockStreamError> {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<Block>, BlockStreamError> {
         let changes: EntityChanges = match output {
             Some(msg) => Message::decode(msg).map_err(SubstreamsError::DecodingError)?,
             None => EntityChanges {
@@ -130,7 +125,6 @@ impl BlockStreamMapper<Chain> for Mapper {
             number,
             changes,
             parsed_changes,
-            timestamp,
         };
 
         Ok(Some(block))
@@ -158,13 +152,9 @@ impl BlockStreamMapper<Chain> for Mapper {
     ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
         let block_number: BlockNumber = clock.number.try_into().map_err(Error::from)?;
         let block_hash = clock.id.as_bytes().to_vec().into();
-        let timestamp = clock
-            .timestamp
-            .map(|ts| BlockTime::since_epoch(ts.seconds, ts.nanos as u32))
-            .unwrap_or_default();
 
         let block = self
-            .decode_block(timestamp, Some(&block))?
+            .decode_block(Some(&block))?
             .ok_or_else(|| anyhow!("expected block to not be empty"))?;
 
         let block = self.block_with_triggers(logger, block).await.map(|bt| {

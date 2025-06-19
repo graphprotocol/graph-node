@@ -328,7 +328,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         block: object! {
                             hash: cached_call.block_ptr.hash.hash_hex(),
                             number: cached_call.block_ptr.number,
-                            timestamp: timestamp.map(|ts| ts.as_secs_since_epoch() as u64),
+                            timestamp: timestamp,
                         },
                         contractAddress: &cached_call.contract_address[..],
                         returnValue: &cached_call.return_value[..],

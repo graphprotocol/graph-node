@@ -576,10 +576,10 @@ pub trait ChainStore: ChainHeadStore {
     /// Currently, the timestamp is only returned if it's present in the top level block. This format is
     /// depends on the chain and the implementation of Blockchain::Block for the specific chain.
     /// eg: {"block": { "timestamp": 123123123 } }
-    async fn block_pointer(
+    async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>;
+    ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError>;
 
     /// Do the same lookup as `block_number`, but in bulk
     async fn block_numbers(
@@ -665,10 +665,10 @@ pub trait QueryStore: Send + Sync {
     /// Returns the blocknumber, timestamp and the parentHash. Timestamp depends on the chain block type
     /// and can have multiple formats, it can also not be prevent. For now this is only available
     /// for EVM chains both firehose and rpc.
-    async fn block_pointer(
+    async fn block_number_with_timestamp_and_parent_hash(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<BlockTime>, Option<BlockHash>)>, StoreError>;
+    ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError>;
 
     fn wait_stats(&self) -> PoolWaitStats;
 

@@ -391,8 +391,6 @@ impl BlockStore {
         if create {
             store.create(&ident)?;
         }
-        store.migrate(&ident)?;
-
         let store = Arc::new(store);
         self.stores
             .write()

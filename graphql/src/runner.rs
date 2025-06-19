@@ -111,11 +111,11 @@ where
         let latest_block = match store.block_ptr().await.ok().flatten() {
             Some(block) => Some(LatestBlockInfo {
                 timestamp: store
-                    .block_pointer(&block.hash)
+                    .block_number_with_timestamp_and_parent_hash(&block.hash)
                     .await
                     .ok()
                     .flatten()
-                    .and_then(|(_, t, _)| t.map(|ts| ts.as_secs_since_epoch() as u64)),
+                    .and_then(|(_, t, _)| t),
                 hash: block.hash,
                 number: block.number,
             }),

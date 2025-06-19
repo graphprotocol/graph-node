@@ -685,11 +685,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 
 #[async_trait]
 pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
-    fn decode_block(
-        &self,
-        timestamp: BlockTime,
-        output: Option<&[u8]>,
-    ) -> Result<Option<C::Block>, BlockStreamError>;
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<C::Block>, BlockStreamError>;
 
     async fn block_with_triggers(
         &self,
