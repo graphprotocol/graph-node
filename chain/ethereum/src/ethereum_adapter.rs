@@ -20,6 +20,7 @@ use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
 use graph::prelude::alloy;
+use graph::prelude::alloy::rpc::types::{TransactionInput, TransactionRequest};
 use graph::prelude::tokio::try_join;
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
@@ -31,10 +32,7 @@ use graph::{
         async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn,
         web3::{
             self,
-            types::{
-                BlockId, Bytes, CallRequest, Filter, FilterBuilder, Log, Transaction,
-                TransactionReceipt, H256,
-            },
+            types::{BlockId, Filter, FilterBuilder, Log, Transaction, TransactionReceipt, H256},
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
         TimeoutError,
@@ -514,18 +512,7 @@ impl EthereumAdapter {
         .boxed()
     }
 
-    // Method to determine block_id based on support for EIP-1898
-    fn block_ptr_to_id(&self, block_ptr: &BlockPtr) -> BlockId {
-        // Ganache does not support calls by block hash.
-        // See https://github.com/trufflesuite/ganache-cli/issues/973
-        if !self.supports_eip_1898 {
-            BlockId::Number(block_ptr.number.into())
-        } else {
-            BlockId::Hash(block_ptr.hash_as_h256())
-        }
-    }
-
-    fn block_ptr_to_alloy_block_id(&self, block_ptr: &BlockPtr) -> alloy::rpc::types::BlockId {
+    fn block_ptr_to_id(&self, block_ptr: &BlockPtr) -> alloy::rpc::types::BlockId {
         if !self.supports_eip_1898 {
             alloy::rpc::types::BlockId::number(block_ptr.number as u64)
         } else {
@@ -544,7 +531,7 @@ impl EthereumAdapter {
         let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        let block_id = self.block_ptr_to_alloy_block_id(&block_ptr);
+        let block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_getCode RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -578,7 +565,7 @@ impl EthereumAdapter {
         let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        let block_id = self.block_ptr_to_alloy_block_id(&block_ptr);
+        let block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
@@ -610,10 +597,10 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
         gas: Option<u32>,
     ) -> Result<call::Retval, ContractCallError> {
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        let block_id = self.block_ptr_to_id(&block_ptr);
+        let alloy_block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
@@ -621,22 +608,22 @@ impl EthereumAdapter {
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let call_data = call_data.clone();
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 let logger = logger.cheap_clone();
                 async move {
-                    let req = CallRequest {
-                        to: Some(call_data.address),
-                        gas: gas.map(|val| web3::types::U256::from(val)),
-                        data: Some(Bytes::from(call_data.encoded_call.to_vec())),
-                        from: None,
-                        gas_price: None,
-                        value: None,
-                        access_list: None,
-                        max_fee_per_gas: None,
-                        max_priority_fee_per_gas: None,
-                        transaction_type: None,
-                    };
-                    let result = web3.eth().call(req, Some(block_id)).boxed().await;
+                    let mut req = TransactionRequest::default()
+                        .input(TransactionInput::both(alloy::primitives::Bytes::from(
+                            call_data.encoded_call.to_vec(),
+                        )))
+                        .to(alloy::primitives::Address::from(
+                            call_data.address.as_fixed_bytes(),
+                        ));
+
+                    if let Some(gas) = gas {
+                        req = req.gas_limit(gas as u64);
+                    }
+
+                    let result = alloy.call(req).block(alloy_block_id).await;
 
                     match result {
                         Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
