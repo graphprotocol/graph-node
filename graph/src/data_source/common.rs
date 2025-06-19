@@ -1314,7 +1314,7 @@ impl DeclaredCall {
         (
             ContractCall {
                 contract_name: self.contract_name,
-                address: self.address,
+                address: alloy::primitives::Address::from(self.address.as_fixed_bytes()),
                 block_ptr,
                 function: self.function,
                 args: self.args,
@@ -1327,7 +1327,7 @@ impl DeclaredCall {
 #[derive(Clone, Debug)]
 pub struct ContractCall {
     pub contract_name: String,
-    pub address: Address,
+    pub address: alloy::primitives::Address,
     pub block_ptr: BlockPtr,
     pub function: abi::Function,
     pub args: Vec<abi::DynSolValue>,

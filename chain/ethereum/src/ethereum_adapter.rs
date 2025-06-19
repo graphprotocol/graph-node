@@ -615,9 +615,7 @@ impl EthereumAdapter {
                         .input(TransactionInput::both(alloy::primitives::Bytes::from(
                             call_data.encoded_call.to_vec(),
                         )))
-                        .to(alloy::primitives::Address::from(
-                            call_data.address.as_fixed_bytes(),
-                        ));
+                        .to(call_data.address);
 
                     if let Some(gas) = gas {
                         req = req.gas_limit(gas as u64);

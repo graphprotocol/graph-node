@@ -16,7 +16,6 @@ use graph::data::store::scalar::BigInt;
 use graph::data::subgraph::API_VERSION_0_0_9;
 use graph::data_source;
 use graph::data_source::common::{ContractCall, MappingABI};
-use graph::prelude::web3::types::Address;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::slog::debug;
@@ -390,7 +389,7 @@ fn eth_call(
 #[derive(Clone, Debug)]
 pub struct UnresolvedContractCall {
     pub contract_name: String,
-    pub contract_address: Address,
+    pub contract_address: alloy::primitives::Address,
     pub function_name: String,
     pub function_signature: Option<String>,
     pub function_args: Vec<abi::DynSolValue>,
