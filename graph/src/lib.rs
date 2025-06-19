@@ -37,8 +37,11 @@ pub mod env;
 
 pub mod ipfs;
 
+pub mod abi;
+
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
+
 pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
@@ -76,13 +79,13 @@ pub use url;
 /// ```
 pub mod prelude {
     pub use ::anyhow;
+    pub use alloy;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use async_trait::async_trait;
     pub use atty;
     pub use chrono;
     pub use diesel;
     pub use envconfig;
-    pub use ethabi;
     pub use hex;
     pub use lazy_static::lazy_static;
     pub use prost;

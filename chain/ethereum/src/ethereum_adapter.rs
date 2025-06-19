@@ -1,9 +1,11 @@
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
+use graph::abi;
+use graph::abi::DynSolValueExt;
+use graph::abi::FunctionExt;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::blockchain::ExtendedBlockPtr;
-
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
@@ -17,10 +19,9 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
-use graph::prelude::ethabi::ParamType;
-use graph::prelude::ethabi::Token;
+use graph::prelude::alloy;
+use graph::prelude::alloy::rpc::types::{TransactionInput, TransactionRequest};
 use graph::prelude::tokio::try_join;
-use graph::prelude::web3::types::U256;
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
@@ -28,14 +29,10 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak,
-        trace, warn,
+        async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn,
         web3::{
             self,
-            types::{
-                Address, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter,
-                FilterBuilder, Log, Transaction, TransactionReceipt, H256,
-            },
+            types::{BlockId, Filter, FilterBuilder, Log, Transaction, TransactionReceipt, H256},
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
         TimeoutError,
@@ -57,6 +54,7 @@ use std::time::Instant;
 
 use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
+use crate::call_helper::interpret_eth_call_error;
 use crate::chain::BlockFinality;
 use crate::trigger::LogRef;
 use crate::Chain;
@@ -73,15 +71,31 @@ use crate::{
     ENV_VARS,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
     web3: Arc<Web3<Transport>>,
+    alloy: Arc<dyn alloy::providers::Provider>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
     supports_block_receipts: Arc<RwLock<Option<bool>>>,
+}
+
+impl std::fmt::Debug for EthereumAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EthereumAdapter")
+            .field("logger", &self.logger)
+            .field("provider", &self.provider)
+            .field("web3", &self.web3)
+            .field("alloy", &"<Provider>")
+            .field("metrics", &self.metrics)
+            .field("supports_eip_1898", &self.supports_eip_1898)
+            .field("call_only", &self.call_only)
+            .field("supports_block_receipts", &self.supports_block_receipts)
+            .finish()
+    }
 }
 
 impl CheapClone for EthereumAdapter {
@@ -90,6 +104,7 @@ impl CheapClone for EthereumAdapter {
             logger: self.logger.clone(),
             provider: self.provider.clone(),
             web3: self.web3.cheap_clone(),
+            alloy: self.alloy.clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
@@ -111,12 +126,29 @@ impl EthereumAdapter {
         supports_eip_1898: bool,
         call_only: bool,
     ) -> Self {
+        let rpc_url = match &transport {
+            Transport::RPC {
+                client: _,
+                metrics: _,
+                provider: _,
+                url: rpc_url,
+            } => rpc_url.clone(),
+            Transport::IPC(_ipc) => todo!(),
+            Transport::WS(_web_socket) => todo!(),
+        };
         let web3 = Arc::new(Web3::new(transport));
+        let alloy = Arc::new(
+            alloy::providers::ProviderBuilder::new()
+                .connect(&rpc_url)
+                .await
+                .unwrap(),
+        );
 
         EthereumAdapter {
             logger,
             provider,
             web3,
+            alloy,
             metrics: provider_metrics,
             supports_eip_1898,
             call_only,
@@ -480,24 +512,23 @@ impl EthereumAdapter {
         .boxed()
     }
 
-    // Method to determine block_id based on support for EIP-1898
-    fn block_ptr_to_id(&self, block_ptr: &BlockPtr) -> BlockId {
-        // Ganache does not support calls by block hash.
-        // See https://github.com/trufflesuite/ganache-cli/issues/973
+    fn block_ptr_to_id(&self, block_ptr: &BlockPtr) -> alloy::rpc::types::BlockId {
         if !self.supports_eip_1898 {
-            BlockId::Number(block_ptr.number.into())
+            alloy::rpc::types::BlockId::number(block_ptr.number as u64)
         } else {
-            BlockId::Hash(block_ptr.hash_as_h256())
+            alloy::rpc::types::BlockId::hash(alloy::primitives::B256::new(
+                *block_ptr.hash_as_h256().as_fixed_bytes(),
+            ))
         }
     }
 
     async fn code(
         &self,
         logger: &Logger,
-        address: Address,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<Bytes, EthereumRpcError> {
-        let web3 = self.web3.clone();
+    ) -> Result<alloy::primitives::Bytes, EthereumRpcError> {
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
@@ -512,13 +543,12 @@ impl EthereumAdapter {
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    let result: Result<Bytes, web3::Error> =
-                        web3.eth().code(address, Some(block_id)).boxed().await;
+                    let result = alloy.get_code_at(address).block_id(block_id).await;
                     match result {
                         Ok(code) => Ok(code),
-                        Err(err) => Err(EthereumRpcError::Web3Error(err)),
+                        Err(err) => Err(EthereumRpcError::AlloyError(err)),
                     }
                 }
             })
@@ -529,10 +559,10 @@ impl EthereumAdapter {
     async fn balance(
         &self,
         logger: &Logger,
-        address: Address,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<U256, EthereumRpcError> {
-        let web3 = self.web3.clone();
+    ) -> Result<alloy::primitives::U256, EthereumRpcError> {
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
@@ -547,13 +577,12 @@ impl EthereumAdapter {
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    let result: Result<U256, web3::Error> =
-                        web3.eth().balance(address, Some(block_id)).boxed().await;
+                    let result = alloy.get_balance(address).block_id(block_id).await;
                     match result {
                         Ok(balance) => Ok(balance),
-                        Err(err) => Err(EthereumRpcError::Web3Error(err)),
+                        Err(err) => Err(EthereumRpcError::AlloyError(err)),
                     }
                 }
             })
@@ -568,15 +597,10 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
         gas: Option<u32>,
     ) -> Result<call::Retval, ContractCallError> {
-        fn reverted(logger: &Logger, reason: &str) -> Result<call::Retval, ContractCallError> {
-            info!(logger, "Contract call reverted"; "reason" => reason);
-            Ok(call::Retval::Null)
-        }
-
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
 
-        let block_id = self.block_ptr_to_id(&block_ptr);
+        let alloy_block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
@@ -584,138 +608,29 @@ impl EthereumAdapter {
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let call_data = call_data.clone();
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 let logger = logger.cheap_clone();
                 async move {
-                    let req = CallRequest {
-                        to: Some(call_data.address),
-                        gas: gas.map(|val| web3::types::U256::from(val)),
-                        data: Some(Bytes::from(call_data.encoded_call.to_vec())),
-                        from: None,
-                        gas_price: None,
-                        value: None,
-                        access_list: None,
-                        max_fee_per_gas: None,
-                        max_priority_fee_per_gas: None,
-                        transaction_type: None,
-                    };
-                    let result = web3.eth().call(req, Some(block_id)).boxed().await;
+                    let mut req = TransactionRequest::default()
+                        .input(TransactionInput::both(alloy::primitives::Bytes::from(
+                            call_data.encoded_call.to_vec(),
+                        )))
+                        .to(call_data.address);
 
-                    // Try to check if the call was reverted. The JSON-RPC response for reverts is
-                    // not standardized, so we have ad-hoc checks for each Ethereum client.
+                    if let Some(gas) = gas {
+                        req = req.gas_limit(gas as u64);
+                    }
 
-                    // 0xfe is the "designated bad instruction" of the EVM, and Solidity uses it for
-                    // asserts.
-                    const PARITY_BAD_INSTRUCTION_FE: &str = "Bad instruction fe";
-
-                    // 0xfd is REVERT, but on some contracts, and only on older blocks,
-                    // this happens. Makes sense to consider it a revert as well.
-                    const PARITY_BAD_INSTRUCTION_FD: &str = "Bad instruction fd";
-
-                    const PARITY_BAD_JUMP_PREFIX: &str = "Bad jump";
-                    const PARITY_STACK_LIMIT_PREFIX: &str = "Out of stack";
-
-                    // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
-                    const PARITY_OUT_OF_GAS: &str = "Out of gas";
-
-                    // Also covers Nethermind reverts
-                    const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
-                    const PARITY_REVERT_PREFIX: &str = "revert";
-
-                    const XDAI_REVERT: &str = "revert";
-
-                    // Deterministic Geth execution errors. We might need to expand this as
-                    // subgraphs come across other errors. See
-                    // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
-                    const GETH_EXECUTION_ERRORS: &[&str] = &[
-                        // The "revert" substring covers a few known error messages, including:
-                        // Hardhat: "error: transaction reverted",
-                        // Ganache and Moonbeam: "vm exception while processing transaction: revert",
-                        // Geth: "execution reverted"
-                        // And others.
-                        "revert",
-                        "invalid jump destination",
-                        "invalid opcode",
-                        // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
-                        "stack limit reached 1024",
-                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
-                        "out of gas",
-                        "stack underflow",
-                    ];
-
-                    let env_geth_call_errors = ENV_VARS.geth_eth_call_errors.iter();
-                    let mut geth_execution_errors = GETH_EXECUTION_ERRORS
-                        .iter()
-                        .copied()
-                        .chain(env_geth_call_errors.map(|s| s.as_str()));
-
-                    let as_solidity_revert_with_reason = |bytes: &[u8]| {
-                        let solidity_revert_function_selector =
-                            &tiny_keccak::keccak256(b"Error(string)")[..4];
-
-                        match bytes.len() >= 4 && &bytes[..4] == solidity_revert_function_selector {
-                            false => None,
-                            true => ethabi::decode(&[ParamType::String], &bytes[4..])
-                                .ok()
-                                .and_then(|tokens| tokens[0].clone().into_string()),
-                        }
-                    };
+                    let result = alloy.call(req).block(alloy_block_id).await;
 
                     match result {
-                        // A successful response.
                         Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
-
-                        // Check for Geth revert.
-                        Err(web3::Error::Rpc(rpc_error))
-                            if geth_execution_errors
-                                .any(|e| rpc_error.message.to_lowercase().contains(e)) =>
-                        {
-                            reverted(&logger, &rpc_error.message)
-                        }
-
-                        // Check for Parity revert.
-                        Err(web3::Error::Rpc(ref rpc_error))
-                            if rpc_error.code.code() == PARITY_VM_EXECUTION_ERROR =>
-                        {
-                            match rpc_error.data.as_ref().and_then(|d| d.as_str()) {
-                                Some(data)
-                                    if data.to_lowercase().starts_with(PARITY_REVERT_PREFIX)
-                                        || data.starts_with(PARITY_BAD_JUMP_PREFIX)
-                                        || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
-                                        || data == PARITY_BAD_INSTRUCTION_FE
-                                        || data == PARITY_BAD_INSTRUCTION_FD
-                                        || data == PARITY_OUT_OF_GAS
-                                        || data == XDAI_REVERT =>
-                                {
-                                    let reason = if data == PARITY_BAD_INSTRUCTION_FE {
-                                        PARITY_BAD_INSTRUCTION_FE.to_owned()
-                                    } else {
-                                        let payload = data.trim_start_matches(PARITY_REVERT_PREFIX);
-                                        hex::decode(payload)
-                                            .ok()
-                                            .and_then(|payload| {
-                                                as_solidity_revert_with_reason(&payload)
-                                            })
-                                            .unwrap_or("no reason".to_owned())
-                                    };
-                                    reverted(&logger, &reason)
-                                }
-
-                                // The VM execution error was not identified as a revert.
-                                _ => Err(ContractCallError::Web3Error(web3::Error::Rpc(
-                                    rpc_error.clone(),
-                                ))),
-                            }
-                        }
-
-                        // The error was not identified as a revert.
-                        Err(err) => Err(ContractCallError::Web3Error(err)),
+                        Err(err) => interpret_eth_call_error(&logger, err),
                     }
                 }
             })
-            .map_err(|e| e.into_inner().unwrap_or(ContractCallError::Timeout))
-            .boxed()
             .await
+            .map_err(|e| e.into_inner().unwrap_or(ContractCallError::Timeout))
     }
 
     async fn call_and_cache(
@@ -786,10 +701,10 @@ impl EthereumAdapter {
         logger: Logger,
         numbers: Vec<BlockNumber>,
     ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
 
         futures03::stream::iter(numbers.into_iter().map(move |number| {
-            let web3 = web3.clone();
+            let alloy = alloy.clone();
             let logger = logger.clone();
 
             async move {
@@ -798,21 +713,22 @@ impl EthereumAdapter {
                     .limit(ENV_VARS.request_retries)
                     .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                     .run(move || {
-                        let web3 = web3.clone();
+                        let alloy = alloy.cheap_clone();
 
                         async move {
-                            let block_result = web3
-                                .eth()
-                                .block(BlockId::Number(Web3BlockNumber::Number(number.into())))
+                            let block_result = alloy
+                                .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
+                                    number as u64,
+                                ))
                                 .await;
 
                             match block_result {
                                 Ok(Some(block)) => {
                                     let ptr = ExtendedBlockPtr::try_from((
-                                        block.hash,
-                                        block.number,
-                                        block.parent_hash,
-                                        block.timestamp,
+                                        block.header.hash,
+                                        block.header.number as i32,
+                                        block.header.parent_hash,
+                                        block.header.timestamp,
                                     ))
                                     .map_err(|e| {
                                         anyhow::anyhow!("Failed to convert block: {}", e)
@@ -847,22 +763,22 @@ impl EthereumAdapter {
         logger: Logger,
         block_nums: Vec<BlockNumber>,
     ) -> impl Stream<Item = BlockPtr, Error = Error> + Send {
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
 
         stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
-            let web3 = web3.clone();
+            let alloy = alloy.clone();
             retry(format!("load block ptr {}", block_num), &logger)
                 .redact_log_urls(true)
                 .when(|res| !res.is_ok() && !detect_null_block(res))
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
-                    let web3 = web3.clone();
+                    let alloy = alloy.cheap_clone();
                     async move {
-                        let block = web3
-                            .eth()
-                            .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
-                            .boxed()
+                        let block = alloy
+                            .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
+                                block_num as u64,
+                            ))
                             .await?;
 
                         block.ok_or_else(|| {
@@ -883,7 +799,7 @@ impl EthereumAdapter {
         }))
         .buffered(ENV_VARS.block_batch_size)
         .filter_map(|b| b)
-        .map(|b| b.into())
+        .map(|b| BlockPtr::from((b.header.hash, b.header.number as i32)))
     }
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
@@ -1134,19 +1050,17 @@ impl EthereumAdapter {
 
     pub async fn chain_id(&self) -> Result<u64, Error> {
         let logger = self.logger.clone();
-        let web3 = self.web3.clone();
-        u64::try_from(
-            retry("chain_id RPC call", &logger)
-                .redact_log_urls(true)
-                .no_limit()
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    let web3 = web3.cheap_clone();
-                    async move { web3.eth().chain_id().await }
-                })
-                .await?,
-        )
-        .map_err(Error::msg)
+        let alloy = self.alloy.clone();
+        retry("chain_id RPC call", &logger)
+            .redact_log_urls(true)
+            .no_limit()
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let alloy = alloy.cheap_clone();
+                async move { alloy.get_chain_id().await.map_err(Error::from) }
+            })
+            .await
+            .map_err(|e| e.into_inner().unwrap_or(EthereumRpcError::Timeout.into()))
     }
 }
 
@@ -1169,7 +1083,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error> {
         let logger = self.logger.clone();
 
-        let web3 = self.web3.clone();
+        let alloy = self.alloy.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
         let net_version_future = retry("net_version RPC call", &logger)
@@ -1177,11 +1091,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .no_limit()
             .timeout_secs(20)
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 let metrics = metrics.cheap_clone();
                 let provider = provider.clone();
                 async move {
-                    web3.net().version().await.map_err(|e| {
+                    alloy.get_net_version().await.map_err(|e| {
                         metrics.set_status(ProviderStatus::VersionFail, &provider);
                         e.into()
                     })
@@ -1194,7 +1108,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
             .boxed();
 
-        let web3 = self.web3.clone();
+        let alloy_provider = self.alloy.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
         let retry_log_message = format!(
@@ -1206,20 +1120,20 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .no_limit()
             .timeout_secs(30)
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy_genesis = alloy_provider.cheap_clone();
                 let metrics = metrics.cheap_clone();
                 let provider = provider.clone();
                 async move {
-                    web3.eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(
-                            ENV_VARS.genesis_block_number.into(),
-                        )))
+                    alloy_genesis
+                        .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
+                            ENV_VARS.genesis_block_number as u64,
+                        ))
                         .await
                         .map_err(|e| {
                             metrics.set_status(ProviderStatus::GenesisFail, &provider);
                             e
                         })?
-                        .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
+                        .map(|gen_block| BlockHash::from(gen_block.header.hash))
                         .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
                 }
             })
@@ -1238,7 +1152,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })?;
 
         let ident = ChainIdentifier {
-            net_version,
+            net_version: net_version.to_string(),
             genesis_block_hash,
         };
 
@@ -1247,52 +1161,27 @@ impl EthereumAdapterTrait for EthereumAdapter {
         Ok(ident)
     }
 
-    async fn latest_block_header(
-        &self,
-        logger: &Logger,
-    ) -> Result<web3::types::Block<H256>, IngestorError> {
-        let web3 = self.web3.clone();
+    async fn latest_block_ptr(&self, logger: &Logger) -> Result<BlockPtr, IngestorError> {
+        let alloy = self.alloy.clone();
         retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
             .redact_log_urls(true)
             .no_limit()
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    let block_opt = web3
-                        .eth()
-                        .block(Web3BlockNumber::Latest.into())
+                    let block_opt = alloy
+                        .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Latest)
                         .await
                         .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
 
-                    block_opt
-                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
-                }
-            })
-            .map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    anyhow!("Ethereum node took too long to return latest block").into()
-                })
-            })
-            .await
-    }
+                    let block = block_opt
+                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum"))?;
 
-    async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, IngestorError> {
-        let web3 = self.web3.clone();
-        retry("eth_getBlockByNumber(latest) with txs RPC call", logger)
-            .redact_log_urls(true)
-            .no_limit()
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-            .run(move || {
-                let web3 = web3.cheap_clone();
-                async move {
-                    let block_opt = web3
-                        .eth()
-                        .block_with_txs(Web3BlockNumber::Latest.into())
-                        .await
-                        .map_err(|e| anyhow!("could not get latest block from Ethereum: {}", e))?;
-                    block_opt
-                        .ok_or_else(|| anyhow!("no latest block returned from Ethereum").into())
+                    Ok(BlockPtr::from((
+                        block.header.hash,
+                        block.header.number as i32,
+                    )))
                 }
             })
             .map_err(move |e| {
@@ -1424,47 +1313,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
             })
     }
 
-    async fn block_hash_by_block_number(
-        &self,
-        logger: &Logger,
-        block_number: BlockNumber,
-    ) -> Result<Option<H256>, Error> {
-        let web3 = self.web3.clone();
-        let retry_log_message = format!(
-            "eth_getBlockByNumber RPC call for block number {}",
-            block_number
-        );
-        retry(retry_log_message, logger)
-            .redact_log_urls(true)
-            .no_limit()
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-            .run(move || {
-                let web3 = web3.cheap_clone();
-                async move {
-                    web3.eth()
-                        .block(BlockId::Number(block_number.into()))
-                        .await
-                        .map(|block_opt| block_opt.and_then(|block| block.hash))
-                        .map_err(Error::from)
-                }
-            })
-            .await
-            .map_err(move |e| {
-                e.into_inner().unwrap_or_else(move || {
-                    anyhow!(
-                        "Ethereum node took too long to return data for block #{}",
-                        block_number
-                    )
-                })
-            })
-    }
-
     async fn get_balance(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<U256, EthereumRpcError> {
+    ) -> Result<alloy::primitives::U256, EthereumRpcError> {
         debug!(
             logger, "eth_getBalance";
             "address" => format!("{}", address),
@@ -1476,9 +1330,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn get_code(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<Bytes, EthereumRpcError> {
+    ) -> Result<alloy::primitives::Bytes, EthereumRpcError> {
         debug!(
             logger, "eth_getCode";
             "address" => format!("{}", address),
@@ -1498,7 +1352,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 "eth_getBlockByNumber RPC call for block number {}",
                 next_number
             );
-            let web3 = self.web3.clone();
+            let alloy = self.alloy.clone();
             let logger = logger.clone();
             let res = retry(retry_log_message, &logger)
                 .redact_log_urls(true)
@@ -1506,12 +1360,16 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                 .run(move || {
-                    let web3 = web3.cheap_clone();
+                    let alloy = alloy.cheap_clone();
                     async move {
-                        web3.eth()
-                            .block(BlockId::Number(next_number.into()))
+                        alloy
+                            .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
+                                next_number as u64,
+                            ))
                             .await
-                            .map(|block_opt| block_opt.and_then(|block| block.hash))
+                            .map(|block_opt| {
+                                block_opt.map(|block| BlockHash::from(block.header.hash.0.to_vec()))
+                            })
                             .map_err(Error::from)
                     }
                 })
@@ -1529,7 +1387,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 continue;
             }
             return match res {
-                Ok(Some(hash)) => Ok(BlockPtr::new(hash.into(), next_number)),
+                Ok(Some(hash)) => Ok(BlockPtr::new(hash, next_number)),
                 Ok(None) => Err(anyhow!("Block {} does not contain hash", next_number)),
                 Err(e) => Err(e),
             };
@@ -1541,7 +1399,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         inp_call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError> {
+    ) -> Result<(Option<Vec<abi::DynSolValue>>, call::Source), ContractCallError> {
         let mut result = self.contract_calls(logger, &[inp_call], cache).await?;
         // unwrap: self.contract_calls returns as many results as there were calls
         Ok(result.pop().unwrap())
@@ -1552,20 +1410,26 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError> {
+    ) -> Result<Vec<(Option<Vec<abi::DynSolValue>>, call::Source)>, ContractCallError> {
         fn as_req(
             logger: &Logger,
             call: &ContractCall,
             index: u32,
         ) -> Result<call::Request, ContractCallError> {
             // Emit custom error for type mismatches.
-            for (token, kind) in call
+            for (val, kind) in call
                 .args
                 .iter()
-                .zip(call.function.inputs.iter().map(|p| &p.kind))
+                .zip(call.function.inputs.iter().map(|p| p.selector_type()))
             {
-                if !token.type_check(kind) {
-                    return Err(ContractCallError::TypeError(token.clone(), kind.clone()));
+                let kind: abi::DynSolType = kind.parse().map_err(|err| {
+                    ContractCallError::ABIError(anyhow!(
+                        "failed to parse function input type '{kind}': {err}"
+                    ))
+                })?;
+
+                if !val.type_check(&kind) {
+                    return Err(ContractCallError::TypeError(val.clone(), kind.clone()));
                 }
             }
 
@@ -1573,8 +1437,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             let req = {
                 let encoded_call = call
                     .function
-                    .encode_input(&call.args)
-                    .map_err(ContractCallError::EncodingError)?;
+                    .abi_encode_input(&call.args)
+                    .map_err(|err| ContractCallError::EncodingError(err.into()))?;
                 call::Request::new(call.address, encoded_call, index)
             };
 
@@ -1592,15 +1456,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
             logger: &Logger,
             resp: call::Response,
             call: &ContractCall,
-        ) -> (Option<Vec<Token>>, call::Source) {
+        ) -> (Option<Vec<abi::DynSolValue>>, call::Source) {
             let call::Response {
                 retval,
                 source,
                 req: _,
             } = resp;
-            use call::Retval::*;
             match retval {
-                Value(output) => match call.function.decode_output(&output) {
+                call::Retval::Value(output) => match call.function.abi_decode_output(&output) {
                     Ok(tokens) => (Some(tokens), source),
                     Err(e) => {
                         // Decode failures are reverts. The reasoning is that if Solidity fails to
@@ -1610,7 +1473,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         (None, call::Source::Rpc)
                     }
                 },
-                Null => {
+                call::Retval::Null => {
                     // We got a `0x` response. For old Geth, this can mean a revert. It can also be
                     // that the contract actually returned an empty response. A view call is meant
                     // to return something, so we treat empty responses the same as reverts.
@@ -2655,9 +2518,9 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
-    use graph::prelude::ethabi::ethereum_types::U64;
     use graph::prelude::tokio::{self};
     use graph::prelude::web3::transports::test::TestTransport;
+    use graph::prelude::web3::types::U64;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
     use graph::prelude::web3::Web3;
     use graph::prelude::EthereumCall;

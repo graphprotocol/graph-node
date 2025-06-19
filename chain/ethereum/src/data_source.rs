@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
+use graph::abi;
+use graph::abi::EventExt;
+use graph::abi::FunctionExt;
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
@@ -13,8 +16,8 @@ use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
-use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::StateMutability;
+use graph::prelude::web3::types::Address;
+use graph::prelude::web3::types::H160;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
 use itertools::Itertools;
@@ -30,9 +33,7 @@ use tiny_keccak::{keccak256, Keccak};
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait,
-        ethabi::{Address, Event, Function, LogParam, ParamType, RawLog},
-        serde_json, warn,
+        async_trait, serde_json, warn,
         web3::types::{Log, Transaction, H256},
         BlockNumber, CheapClone, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
         LinkResolver, Logger,
@@ -525,28 +526,28 @@ impl DataSource {
         }
     }
 
-    /// Returns the contract event with the given signature, if it exists. A an event from the ABI
+    /// Returns the contract event with the given signature, if it exists. An event from the ABI
     /// will be matched if:
     /// 1. An event signature is equal to `signature`.
     /// 2. There are no equal matches, but there is exactly one event that equals `signature` if all
     ///    `indexed` modifiers are removed from the parameters.
-    fn contract_event_with_signature(&self, signature: &str) -> Option<&Event> {
+    fn contract_event_with_signature(&self, signature: &str) -> Option<&abi::Event> {
         // Returns an `Event(uint256,address)` signature for an event, without `indexed` hints.
-        fn ambiguous_event_signature(event: &Event) -> String {
+        fn ambiguous_event_signature(event: &abi::Event) -> String {
             format!(
                 "{}({})",
                 event.name,
                 event
                     .inputs
                     .iter()
-                    .map(|input| event_param_type_signature(&input.kind))
+                    .map(|input| input.selector_type().into_owned())
                     .collect::<Vec<_>>()
                     .join(",")
             )
         }
 
         // Returns an `Event(indexed uint256,address)` type signature for an event.
-        fn event_signature(event: &Event) -> String {
+        fn event_signature(event: &abi::Event) -> String {
             format!(
                 "{}({})",
                 event.name,
@@ -556,38 +557,11 @@ impl DataSource {
                     .map(|input| format!(
                         "{}{}",
                         if input.indexed { "indexed " } else { "" },
-                        event_param_type_signature(&input.kind)
+                        input.selector_type()
                     ))
                     .collect::<Vec<_>>()
                     .join(",")
             )
-        }
-
-        // Returns the signature of an event parameter type (e.g. `uint256`).
-        fn event_param_type_signature(kind: &ParamType) -> String {
-            use ParamType::*;
-
-            match kind {
-                Address => "address".into(),
-                Bytes => "bytes".into(),
-                Int(size) => format!("int{}", size),
-                Uint(size) => format!("uint{}", size),
-                Bool => "bool".into(),
-                String => "string".into(),
-                Array(inner) => format!("{}[]", event_param_type_signature(inner)),
-                FixedBytes(size) => format!("bytes{}", size),
-                FixedArray(inner, size) => {
-                    format!("{}[{}]", event_param_type_signature(inner), size)
-                }
-                Tuple(components) => format!(
-                    "({})",
-                    components
-                        .iter()
-                        .map(event_param_type_signature)
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            }
         }
 
         self.contract_abi
@@ -628,7 +602,9 @@ impl DataSource {
             })
     }
 
-    fn contract_function_with_signature(&self, target_signature: &str) -> Option<&Function> {
+    fn contract_function_with_signature(&self, target_signature: &str) -> Option<&abi::Function> {
+        use abi::StateMutability;
+
         self.contract_abi
             .contract
             .functions()
@@ -642,7 +618,7 @@ impl DataSource {
                 let mut arguments = function
                     .inputs
                     .iter()
-                    .map(|input| format!("{}", input.kind))
+                    .map(|input| input.selector_type().into_owned())
                     .collect::<Vec<String>>()
                     .join(",");
                 // `address,uint256,bool)
@@ -732,11 +708,7 @@ impl DataSource {
                     .into_iter()
                     .filter_map(|(event_handler, event_abi)| {
                         event_abi
-                            .parse_log(RawLog {
-                                topics: log.topics.clone(),
-                                data: log.data.clone().0,
-                            })
-                            .map(|log| log.params)
+                            .decode_log(&log)
                             .map_err(|e| {
                                 trace!(
                                     logger,
@@ -841,20 +813,15 @@ impl DataSource {
                         )
                     })?;
 
-                // Parse the inputs
-                //
-                // Take the input for the call, chop off the first 4 bytes, then call
-                // `function.decode_input` to get a vector of `Token`s. Match the `Token`s
-                // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
-                let tokens = match function_abi.decode_input(&call.input.0[4..]).with_context(
-                    || {
+                let values = match function_abi
+                    .abi_decode_input(&call.input.0[4..])
+                    .with_context(|| {
                         format!(
                             "Generating function inputs for the call {:?} failed, raw input: {}",
                             &function_abi,
                             hex::encode(&call.input.0)
                         )
-                    },
-                ) {
+                    }) {
                     Ok(val) => val,
                     // See also 280b0108-a96e-4738-bb37-60ce11eeb5bf
                     Err(err) => {
@@ -864,27 +831,22 @@ impl DataSource {
                 };
 
                 ensure!(
-                    tokens.len() == function_abi.inputs.len(),
+                    values.len() == function_abi.inputs.len(),
                     "Number of arguments in call does not match \
                     number of inputs in function signature."
                 );
 
-                let inputs = tokens
+                let inputs = values
                     .into_iter()
                     .enumerate()
-                    .map(|(i, token)| LogParam {
+                    .map(|(i, value)| abi::DynSolParam {
                         name: function_abi.inputs[i].name.clone(),
-                        value: token,
+                        value,
                     })
                     .collect::<Vec<_>>();
 
-                // Parse the outputs
-                //
-                // Take the output for the call, then call `function.decode_output` to
-                // get a vector of `Token`s. Match the `Token`s with the `Param`s in
-                // `function.outputs` to create a `Vec<LogParam>`.
-                let tokens = function_abi
-                    .decode_output(&call.output.0)
+                let values = function_abi
+                    .abi_decode_output(&call.output.0)
                     .with_context(|| {
                         format!(
                             "Decoding function outputs for the call {:?} failed, raw output: {}",
@@ -894,17 +856,17 @@ impl DataSource {
                     })?;
 
                 ensure!(
-                    tokens.len() == function_abi.outputs.len(),
+                    values.len() == function_abi.outputs.len(),
                     "Number of parameters in the call output does not match \
                         number of outputs in the function signature."
                 );
 
-                let outputs = tokens
+                let outputs = values
                     .into_iter()
                     .enumerate()
-                    .map(|(i, token)| LogParam {
+                    .map(|(i, value)| abi::DynSolParam {
                         name: function_abi.outputs[i].name.clone(),
-                        value: token,
+                        value,
                     })
                     .collect::<Vec<_>>();
 

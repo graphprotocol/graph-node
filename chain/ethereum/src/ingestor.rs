@@ -9,8 +9,8 @@ use graph::{
     blockchain::{BlockHash, BlockIngestor, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
     prelude::{
-        async_trait, error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore,
-        Error, EthereumBlockWithCalls, LogCode, Logger,
+        async_trait, error, info, tokio, trace, warn, web3::types::H256, ChainStore, Error,
+        EthereumBlockWithCalls, LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};
@@ -206,10 +206,7 @@ impl PollingBlockIngestor {
         logger: &Logger,
         eth_adapter: &Arc<EthereumAdapter>,
     ) -> Result<BlockPtr, IngestorError> {
-        eth_adapter
-            .latest_block_header(&logger)
-            .await
-            .map(|block| block.into())
+        eth_adapter.latest_block_ptr(&logger).await
     }
 
     async fn eth_adapter(&self) -> anyhow::Result<Arc<EthereumAdapter>> {

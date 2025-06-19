@@ -1,5 +1,5 @@
 use anyhow::Error;
-use ethabi::{Error as ABIError, ParamType, Token};
+use graph::abi;
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
@@ -7,9 +7,8 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
-use graph::prelude::web3::types::Bytes;
+use graph::prelude::alloy::transports::{RpcError, TransportErrorKind};
 use graph::prelude::web3::types::H160;
-use graph::prelude::web3::types::U256;
 use itertools::Itertools;
 use prost::Message;
 use prost_types::Any;
@@ -26,6 +25,8 @@ use graph::{
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
     petgraph::{self, graphmap::GraphMap},
 };
+
+use graph::blockchain::BlockPtr;
 
 const COMBINED_FILTER_TYPE_URL: &str =
     "type.googleapis.com/sf.ethereum.transform.v1.CombinedFilter";
@@ -95,21 +96,24 @@ impl EventSignatureWithTopics {
 pub enum EthereumRpcError {
     #[error("call error: {0}")]
     Web3Error(web3::Error),
+    #[error("call error: {0}")]
+    AlloyError(RpcError<TransportErrorKind>),
     #[error("ethereum node took too long to perform call")]
     Timeout,
 }
 
 #[derive(Error, Debug)]
 pub enum ContractCallError {
-    #[error("ABI error: {0}")]
-    ABIError(#[from] ABIError),
-    /// `Token` is not of expected `ParamType`
-    #[error("type mismatch, token {0:?} is not of kind {1:?}")]
-    TypeError(Token, ParamType),
-    #[error("error encoding input call data: {0}")]
-    EncodingError(ethabi::Error),
+    #[error("ABI error: {0:#}")]
+    ABIError(anyhow::Error),
+    #[error("type mismatch, decoded value {0:?} is not of kind {1:?}")]
+    TypeError(abi::DynSolValue, abi::DynSolType),
+    #[error("error encoding input call data: {0:#}")]
+    EncodingError(anyhow::Error),
     #[error("call error: {0}")]
     Web3Error(web3::Error),
+    #[error("call error: {0}")]
+    AlloyError(RpcError<TransportErrorKind>),
     #[error("ethereum node took too long to perform call")]
     Timeout,
     #[error("internal error: {0}")]
@@ -1079,14 +1083,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// connected to.
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
-    /// Get the latest block, including full transactions.
-    async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, bc::IngestorError>;
-
     /// Get the latest block, with only the header and transaction hashes.
-    async fn latest_block_header(
-        &self,
-        logger: &Logger,
-    ) -> Result<web3::types::Block<H256>, bc::IngestorError>;
+    async fn latest_block_ptr(&self, logger: &Logger) -> Result<BlockPtr, bc::IngestorError>;
 
     async fn load_block(
         &self,
@@ -1123,21 +1121,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block: LightEthereumBlock,
     ) -> Result<EthereumBlock, bc::IngestorError>;
 
-    /// Find a block by its number, according to the Ethereum node.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    async fn block_hash_by_block_number(
-        &self,
-        logger: &Logger,
-        block_number: BlockNumber,
-    ) -> Result<Option<H256>, Error>;
-
     /// Finds the hash and number of the lowest non-null block with height greater than or equal to
     /// the given number.
     ///
@@ -1157,7 +1140,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         call: &ContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<(Option<Vec<Token>>, call::Source), ContractCallError>;
+    ) -> Result<(Option<Vec<abi::DynSolValue>>, call::Source), ContractCallError>;
 
     /// Make multiple contract calls in a single batch. The returned `Vec`
     /// has results in the same order as the calls in `calls` on input. The
@@ -1167,22 +1150,22 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: &Logger,
         calls: &[&ContractCall],
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Result<Vec<(Option<Vec<Token>>, call::Source)>, ContractCallError>;
+    ) -> Result<Vec<(Option<Vec<abi::DynSolValue>>, call::Source)>, ContractCallError>;
 
     async fn get_balance(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<U256, EthereumRpcError>;
+    ) -> Result<alloy::primitives::U256, EthereumRpcError>;
 
     // Returns the compiled bytecode of a smart contract
     async fn get_code(
         &self,
         logger: &Logger,
-        address: H160,
+        address: alloy::primitives::Address,
         block_ptr: BlockPtr,
-    ) -> Result<Bytes, EthereumRpcError>;
+    ) -> Result<alloy::primitives::Bytes, EthereumRpcError>;
 }
 
 #[cfg(test)]
@@ -1196,9 +1179,9 @@ mod tests {
     use graph::blockchain::TriggerFilter as _;
     use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
-    use graph::prelude::ethabi::ethereum_types::H256;
     use graph::prelude::web3::types::Address;
     use graph::prelude::web3::types::Bytes;
+    use graph::prelude::web3::types::H256;
     use graph::prelude::EthereumCall;
     use hex::ToHex;
     use itertools::Itertools;

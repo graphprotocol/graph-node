@@ -97,6 +97,12 @@ impl From<Vec<u8>> for BlockHash {
     }
 }
 
+impl From<alloy::primitives::B256> for BlockHash {
+    fn from(hash: alloy::primitives::B256) -> Self {
+        BlockHash(hash.0.to_vec().into())
+    }
+}
+
 impl TryFrom<&str> for BlockHash {
     type Error = anyhow::Error;
 
@@ -230,6 +236,15 @@ impl From<(Vec<u8>, i32)> for BlockPtr {
 
 impl From<(H256, i32)> for BlockPtr {
     fn from((hash, number): (H256, i32)) -> BlockPtr {
+        BlockPtr {
+            hash: hash.into(),
+            number,
+        }
+    }
+}
+
+impl From<(alloy::primitives::B256, i32)> for BlockPtr {
+    fn from((hash, number): (alloy::primitives::B256, i32)) -> BlockPtr {
         BlockPtr {
             hash: hash.into(),
             number,
@@ -503,6 +518,28 @@ impl TryFrom<(H256, i32, H256, U256)> for ExtendedBlockPtr {
             number: block_number,
             parent_hash: parent_hash.into(),
             timestamp,
+        })
+    }
+}
+
+impl TryFrom<(alloy::primitives::B256, i32, alloy::primitives::B256, u64)> for ExtendedBlockPtr {
+    type Error = anyhow::Error;
+
+    fn try_from(
+        tuple: (alloy::primitives::B256, i32, alloy::primitives::B256, u64),
+    ) -> Result<Self, Self::Error> {
+        let (hash, block_number, parent_hash, timestamp) = tuple;
+
+        // Convert timestamp to `BlockTime`
+        let secs =
+            i64::try_from(timestamp).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
+        let block_time = BlockTime::since_epoch(secs, 0);
+
+        Ok(ExtendedBlockPtr {
+            hash: hash.into(),
+            number: block_number,
+            parent_hash: parent_hash.into(),
+            timestamp: block_time,
         })
     }
 }
