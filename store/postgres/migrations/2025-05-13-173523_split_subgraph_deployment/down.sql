@@ -99,9 +99,9 @@ select ds.id AS schema_id,
        d.failed,
        d.synced_at
   from deployment_schemas ds,
-       subgraph_deployment d,
-       subgraph_version v,
-       subgraph s
+       subgraphs.subgraph_deployment d,
+       subgraphs.subgraph_version v,
+       subgraphs.subgraph s
   where d.id = ds.id
     and v.deployment = d.deployment
     and v.subgraph = s.id;
