@@ -1,6 +1,9 @@
 use crate::{
     blockchain::{block_stream::EntitySourceOperation, Block, Blockchain},
-    components::{link_resolver::LinkResolver, store::BlockNumber},
+    components::{
+        link_resolver::{LinkResolver, LinkResolverContext},
+        store::BlockNumber,
+    },
     data::{
         subgraph::{
             calls_host_fn, SubgraphManifest, UnresolvedSubgraphManifest, LATEST_VERSION,
@@ -256,11 +259,15 @@ impl UnresolvedDataSource {
 
     async fn resolve_source_manifest<C: Blockchain>(
         &self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<Arc<SubgraphManifest<C>>, Error> {
         let source_raw = resolver
-            .cat(logger, &self.source.address.to_ipfs_link())
+            .cat(
+                LinkResolverContext::new(deployment_hash, logger),
+                &self.source.address.to_ipfs_link(),
+            )
             .await
             .context(format!(
                 "Failed to resolve source subgraph [{}] manifest",
@@ -314,7 +321,10 @@ impl UnresolvedDataSource {
         // If there's a graft, recursively verify it
         if let Some(graft) = &manifest.graft {
             let graft_raw = resolver
-                .cat(logger, &graft.base.to_ipfs_link())
+                .cat(
+                    LinkResolverContext::new(&manifest.id, logger),
+                    &graft.base.to_ipfs_link(),
+                )
                 .await
                 .context("Failed to resolve graft base manifest")?;
 
@@ -343,6 +353,7 @@ impl UnresolvedDataSource {
     #[allow(dead_code)]
     pub(super) async fn resolve<C: Blockchain>(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -354,7 +365,9 @@ impl UnresolvedDataSource {
         );
 
         let kind = self.kind.clone();
-        let source_manifest = self.resolve_source_manifest::<C>(resolver, logger).await?;
+        let source_manifest = self
+            .resolve_source_manifest::<C>(deployment_hash, resolver, logger)
+            .await?;
         let source_spec_version = &source_manifest.spec_version;
         if source_spec_version < &SPEC_VERSION_1_3_0 {
             return Err(anyhow!(
@@ -406,7 +419,10 @@ impl UnresolvedDataSource {
             name: self.name,
             network: self.network,
             source,
-            mapping: self.mapping.resolve(resolver, logger).await?,
+            mapping: self
+                .mapping
+                .resolve(deployment_hash, resolver, logger)
+                .await?,
             context: Arc::new(self.context),
             creation_block: None,
         })
@@ -416,6 +432,7 @@ impl UnresolvedDataSource {
 impl UnresolvedMapping {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<Mapping, Error> {
@@ -429,7 +446,9 @@ impl UnresolvedMapping {
                         let resolver = Arc::clone(resolver);
                         let logger = logger.clone();
                         async move {
-                            let resolved_abi = unresolved_abi.resolve(&resolver, &logger).await?;
+                            let resolved_abi = unresolved_abi
+                                .resolve(deployment_hash, &resolver, &logger)
+                                .await?;
                             Ok::<_, Error>(Arc::new(resolved_abi))
                         }
                     })
@@ -446,7 +465,14 @@ impl UnresolvedMapping {
             entities: self.entities,
             handlers: self.handlers,
             abis,
-            runtime: Arc::new(resolver.cat(logger, &self.file).await?),
+            runtime: Arc::new(
+                resolver
+                    .cat(
+                        LinkResolverContext::new(deployment_hash, logger),
+                        &self.file,
+                    )
+                    .await?,
+            ),
             link: self.file,
         })
     }
@@ -492,6 +518,7 @@ impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
 impl UnresolvedDataSourceTemplate {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -500,7 +527,7 @@ impl UnresolvedDataSourceTemplate {
 
         let mapping = self
             .mapping
-            .resolve(resolver, logger)
+            .resolve(deployment_hash, resolver, logger)
             .await
             .with_context(|| format!("failed to resolve data source template {}", self.name))?;
 

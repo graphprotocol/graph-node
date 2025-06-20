@@ -35,7 +35,7 @@ use crate::{
     bail,
     blockchain::{BlockPtr, Blockchain},
     components::{
-        link_resolver::LinkResolver,
+        link_resolver::{LinkResolver, LinkResolverContext},
         store::{StoreError, SubgraphStore},
     },
     data::{
@@ -419,13 +419,17 @@ pub struct UnresolvedSchema {
 impl UnresolvedSchema {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         spec_version: &Version,
         id: DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<InputSchema, anyhow::Error> {
         let schema_bytes = resolver
-            .cat(logger, &self.file)
+            .cat(
+                LinkResolverContext::new(deployment_hash, logger),
+                &self.file,
+            )
             .await
             .with_context(|| format!("failed to resolve schema {}", &self.file.link))?;
         InputSchema::parse(spec_version, &String::from_utf8(schema_bytes)?, id)
@@ -1011,21 +1015,21 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         }
 
         let schema = schema
-            .resolve(&spec_version, id.clone(), resolver, logger)
+            .resolve(&id, &spec_version, id.clone(), resolver, logger)
             .await?;
 
         let (data_sources, templates) = try_join(
             data_sources
                 .into_iter()
                 .enumerate()
-                .map(|(idx, ds)| ds.resolve(resolver, logger, idx as u32))
+                .map(|(idx, ds)| ds.resolve(&id, resolver, logger, idx as u32))
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             templates
                 .into_iter()
                 .enumerate()
                 .map(|(idx, template)| {
-                    template.resolve(resolver, &schema, logger, ds_count as u32 + idx as u32)
+                    template.resolve(&id, resolver, &schema, logger, ds_count as u32 + idx as u32)
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
