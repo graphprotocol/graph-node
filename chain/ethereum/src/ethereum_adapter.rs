@@ -369,7 +369,7 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         addresses: Vec<H160>,
-    ) -> impl Stream<Item = Trace, Error = Error> + Send {
+    ) -> impl futures03::Stream<Item = Result<Trace, Error>> + Send {
         if from > to {
             panic!(
                 "Can not produce a call stream on a backwards block range: from = {}, to = {}",
@@ -385,34 +385,37 @@ impl EthereumAdapter {
 
         let eth = self;
         let logger = logger.clone();
-        stream::unfold(from, move |start| {
-            if start > to {
-                return None;
+
+        futures03::stream::try_unfold(from, move |start| {
+            let eth = eth.clone();
+            let logger = logger.clone();
+            let subgraph_metrics = subgraph_metrics.clone();
+            let addresses = addresses.clone();
+
+            async move {
+                if start > to {
+                    return Ok::<Option<_>, Error>(None);
+                }
+
+                let end = (start + step_size - 1).min(to);
+                let new_start = end + 1;
+
+                if start == end {
+                    debug!(logger, "Requesting traces for block {}", start);
+                } else {
+                    debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
+                }
+
+                let traces = eth
+                    .traces(logger, subgraph_metrics, start, end, addresses)
+                    .await?;
+                Ok(Some((
+                    futures03::stream::iter(traces.into_iter().map(|t| Ok::<_, Error>(t))),
+                    new_start,
+                )))
             }
-            let end = (start + step_size - 1).min(to);
-            let new_start = end + 1;
-            if start == end {
-                debug!(logger, "Requesting traces for block {}", start);
-            } else {
-                debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
-            }
-            Some(graph::futures01::future::ok((
-                eth.clone()
-                    .traces(
-                        logger.cheap_clone(),
-                        subgraph_metrics.clone(),
-                        start,
-                        end,
-                        addresses.clone(),
-                    )
-                    .boxed()
-                    .compat(),
-                new_start,
-            )))
         })
-        .buffered(ENV_VARS.block_batch_size)
-        .map(stream::iter_ok)
-        .flatten()
+        .try_flatten()
     }
 
     fn log_stream(
@@ -899,14 +902,13 @@ impl EthereumAdapter {
 
         Box::new(
             eth.trace_stream(logger, subgraph_metrics, from, to, addresses)
-                .filter_map(|trace| EthereumCall::try_from_trace(&trace))
-                .filter(move |call| {
-                    // `trace_filter` can only filter by calls `to` an address and
-                    // a block range. Since subgraphs are subscribing to calls
-                    // for a specific contract function an additional filter needs
-                    // to be applied
-                    call_filter.matches(call)
-                }),
+                .try_filter_map(move |trace| {
+                    let maybe_call = EthereumCall::try_from_trace(&trace)
+                        .filter(|call| call_filter.matches(call));
+                    futures03::future::ready(Ok(maybe_call))
+                })
+                .boxed()
+                .compat(),
         )
     }
 
@@ -989,7 +991,7 @@ impl EthereumAdapter {
     ) -> Result<Vec<EthereumCall>, Error> {
         let eth = self.clone();
         let addresses = Vec::new();
-        let traces = eth
+        let traces: Vec<Trace> = eth
             .trace_stream(
                 logger,
                 subgraph_metrics.clone(),
@@ -997,8 +999,7 @@ impl EthereumAdapter {
                 block_number,
                 addresses,
             )
-            .collect()
-            .compat()
+            .try_collect()
             .await?;
 
         // `trace_stream` returns all of the traces for the block, and this
