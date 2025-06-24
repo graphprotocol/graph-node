@@ -20,8 +20,12 @@ use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
 use graph::prelude::alloy;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::alloy::rpc::types::{TransactionInput, TransactionRequest};
 use graph::prelude::alloy::transports::RpcError;
+
+use graph::prelude::alloy_transaction_receipt_to_web3_transaction_receipt;
+use graph::prelude::h256_to_b256;
 use graph::prelude::tokio::try_join;
 use graph::prelude::{alloy_log_to_web3_log, b256_to_h256};
 use graph::slog::o;
@@ -32,10 +36,7 @@ use graph::{
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
         async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn,
-        web3::{
-            self,
-            types::{BlockId, Transaction, TransactionReceipt, H256},
-        },
+        web3::types::{BlockId, Transaction, H256},
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
         TimeoutError,
     },
@@ -43,7 +44,6 @@ use graph::{
 use graph::{
     components::ethereum::*,
     prelude::web3::api::Web3,
-    prelude::web3::transports::Batch,
     prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
 };
 use itertools::Itertools;
@@ -256,8 +256,8 @@ impl EthereumAdapter {
     // cached. The result is not used for anything critical, so it is fine to be lazy.
     async fn check_block_receipt_support_and_update_cache(
         &self,
-        web3: Arc<Web3<Transport>>,
-        block_hash: H256,
+        alloy: Arc<dyn alloy::providers::Provider>,
+        block_hash: B256,
         supports_eip_1898: bool,
         call_only: bool,
         logger: Logger,
@@ -274,7 +274,7 @@ impl EthereumAdapter {
         info!(logger, "Checking eth_getBlockReceipts support");
         let result = timeout(
             ENV_VARS.block_receipts_check_timeout,
-            check_block_receipt_support(web3, block_hash, supports_eip_1898, call_only),
+            check_block_receipt_support(alloy, block_hash, supports_eip_1898, call_only),
         )
         .await;
 
@@ -1277,7 +1277,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: &Logger,
         block: LightEthereumBlock,
     ) -> Result<EthereumBlock, IngestorError> {
-        let web3 = Arc::clone(&self.web3);
+        let alloy = self.alloy.clone();
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
 
@@ -1294,20 +1294,31 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let supports_block_receipts = self
             .check_block_receipt_support_and_update_cache(
-                web3.clone(),
-                block_hash,
+                alloy.clone(),
+                h256_to_b256(block_hash),
                 self.supports_eip_1898,
                 self.call_only,
                 logger.clone(),
             )
             .await;
 
-        fetch_receipts_with_retry(web3, hashes, block_hash, logger, supports_block_receipts)
-            .await
-            .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(block),
-                transaction_receipts,
-            })
+        let hashes_b256 = hashes.iter().map(|hash| h256_to_b256(*hash)).collect();
+        let block_hash_b256 = h256_to_b256(block_hash);
+        fetch_receipts_with_retry(
+            alloy,
+            hashes_b256,
+            block_hash_b256,
+            logger,
+            supports_block_receipts,
+        )
+        .await
+        .map(|transaction_receipts| EthereumBlock {
+            block: Arc::new(block),
+            transaction_receipts: transaction_receipts
+                .into_iter()
+                .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt))
+                .collect(),
+        })
     }
 
     async fn get_balance(
@@ -1951,9 +1962,9 @@ pub(crate) fn parse_block_triggers(
 
 async fn fetch_receipt_from_ethereum_client(
     eth: &EthereumAdapter,
-    transaction_hash: &H256,
-) -> anyhow::Result<TransactionReceipt> {
-    match eth.web3.eth().transaction_receipt(*transaction_hash).await {
+    transaction_hash: B256,
+) -> anyhow::Result<alloy::rpc::types::TransactionReceipt> {
+    match eth.alloy.get_transaction_receipt(transaction_hash).await {
         Ok(Some(receipt)) => Ok(receipt),
         Ok(None) => bail!("Could not find transaction receipt"),
         Err(error) => bail!("Failed to fetch transaction receipt: {}", error),
@@ -2041,7 +2052,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let futures = transactions_without_receipt
         .iter()
         .map(|transaction| async move {
-            fetch_receipt_from_ethereum_client(eth, &transaction.hash)
+            fetch_receipt_from_ethereum_client(eth, h256_to_b256(transaction.hash))
                 .await
                 .map(|receipt| (transaction, receipt))
         });
@@ -2103,11 +2114,11 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
 /// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry loop.
 async fn fetch_transaction_receipts_in_batch_with_retry(
-    web3: Arc<Web3<Transport>>,
-    hashes: Vec<H256>,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    hashes: Vec<B256>,
+    block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
         block_hash
@@ -2118,51 +2129,83 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
         .no_logging()
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
         .run(move || {
-            let web3 = web3.cheap_clone();
+            let alloy = alloy.cheap_clone();
             let hashes = hashes.clone();
             let logger = logger.cheap_clone();
-            fetch_transaction_receipts_in_batch(web3, hashes, block_hash, logger).boxed()
+            fetch_transaction_receipts_in_batch(alloy, hashes, block_hash, logger).boxed()
         })
         .await
         .map_err(|_timeout| anyhow!(block_hash).into())
 }
 
-/// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
+/// Deprecated. Attempts to fetch multiple transaction receipts in a batching context.
 async fn fetch_transaction_receipts_in_batch(
-    web3: Arc<Web3<Transport>>,
-    hashes: Vec<H256>,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    hashes: Vec<B256>,
+    block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
-    let batching_web3 = Web3::new(Batch::new(web3.transport().clone()));
-    let eth = batching_web3.eth();
-    let receipt_futures = hashes
-        .into_iter()
-        .map(move |hash| {
-            let logger = logger.cheap_clone();
-            eth.transaction_receipt(hash)
-                .map_err(IngestorError::from)
-                .and_then(move |some_receipt| async move {
-                    resolve_transaction_receipt(some_receipt, hash, block_hash, logger)
-                })
-        })
-        .collect::<Vec<_>>();
+) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+    // Use the batch method to get all receipts at once
+    let receipts = batch_get_transaction_receipts(alloy, hashes.clone())
+        .await
+        .map_err(|e| {
+            IngestorError::Unknown(anyhow::anyhow!("Batch receipt fetch failed: {}", e))
+        })?;
 
-    batching_web3.transport().submit_batch().await?;
-
-    let mut collected = vec![];
-    for receipt in receipt_futures.into_iter() {
-        collected.push(Arc::new(receipt.await?))
+    let mut result = Vec::new();
+    for receipt in receipts {
+        if let Some(receipt) = receipt {
+            // Validate the receipt before adding it
+            let validated_receipt = resolve_transaction_receipt(
+                Some(receipt),
+                hashes[0],
+                block_hash,
+                logger.cheap_clone(),
+            )?;
+            result.push(Arc::new(validated_receipt));
+        }
     }
-    Ok(collected)
+
+    Ok(result)
+}
+
+async fn batch_get_transaction_receipts(
+    provider: Arc<dyn alloy::providers::Provider>,
+    tx_hashes: Vec<B256>,
+) -> Result<Vec<Option<alloy::rpc::types::TransactionReceipt>>, Box<dyn std::error::Error>> {
+    let mut batch = alloy::rpc::client::BatchRequest::new(provider.client());
+    let mut receipt_futures = Vec::new();
+
+    // Add all receipt requests to batch
+    for tx_hash in &tx_hashes {
+        let receipt_future = batch
+            .add_call::<(B256,), Option<alloy::rpc::types::TransactionReceipt>>(
+                "eth_getTransactionReceipt",
+                &(*tx_hash,),
+            )?;
+        receipt_futures.push(receipt_future);
+    }
+
+    // Execute batch
+    batch.send().await?;
+
+    // Collect results in order
+    let mut results = Vec::new();
+    for receipt_future in receipt_futures {
+        let receipt = receipt_future.await.unwrap_or(None);
+        results.push(receipt);
+    }
+
+    Ok(results)
 }
 
 pub(crate) async fn check_block_receipt_support(
-    web3: Arc<Web3<impl web3::Transport>>,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    block_hash: B256,
     supports_eip_1898: bool,
     call_only: bool,
 ) -> Result<(), Error> {
+    use alloy::rpc::types::BlockId;
     if call_only {
         return Err(anyhow!("Provider is call-only"));
     }
@@ -2172,7 +2215,7 @@ pub(crate) async fn check_block_receipt_support(
     }
 
     // Fetch block receipts from the provider for the latest block.
-    let block_receipts_result = web3.eth().block_receipts(BlockId::Hash(block_hash)).await;
+    let block_receipts_result = alloy.get_block_receipts(BlockId::from(block_hash)).await;
 
     // Determine if the provider supports block receipts based on the fetched result.
     match block_receipts_result {
@@ -2186,27 +2229,27 @@ pub(crate) async fn check_block_receipt_support(
 // based on whether block receipts are supported or individual transaction receipts
 // need to be fetched.
 async fn fetch_receipts_with_retry(
-    web3: Arc<Web3<Transport>>,
-    hashes: Vec<H256>,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    hashes: Vec<B256>,
+    block_hash: B256,
     logger: Logger,
     supports_block_receipts: bool,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
     if supports_block_receipts {
-        return fetch_block_receipts_with_retry(web3, hashes, block_hash, logger).await;
+        return fetch_block_receipts_with_retry(alloy, hashes, block_hash, logger).await;
     }
-    fetch_individual_receipts_with_retry(web3, hashes, block_hash, logger).await
+    fetch_individual_receipts_with_retry(alloy, hashes, block_hash, logger).await
 }
 
 // Fetches receipts for each transaction in the block individually.
 async fn fetch_individual_receipts_with_retry(
-    web3: Arc<Web3<Transport>>,
-    hashes: Vec<H256>,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    hashes: Vec<B256>,
+    block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
     if ENV_VARS.fetch_receipts_in_batches {
-        return fetch_transaction_receipts_in_batch_with_retry(web3, hashes, block_hash, logger)
+        return fetch_transaction_receipts_in_batch_with_retry(alloy, hashes, block_hash, logger)
             .await;
     }
 
@@ -2215,7 +2258,7 @@ async fn fetch_individual_receipts_with_retry(
     let receipt_stream = hash_stream
         .map(move |tx_hash| {
             fetch_transaction_receipt_with_retry(
-                web3.cheap_clone(),
+                alloy.cheap_clone(),
                 tx_hash,
                 block_hash,
                 logger.cheap_clone(),
@@ -2223,19 +2266,20 @@ async fn fetch_individual_receipts_with_retry(
         })
         .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
 
-    graph::tokio_stream::StreamExt::collect::<Result<Vec<Arc<TransactionReceipt>>, IngestorError>>(
-        receipt_stream,
-    )
+    graph::tokio_stream::StreamExt::collect::<
+        Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError>,
+    >(receipt_stream)
     .await
 }
 
 /// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
 async fn fetch_block_receipts_with_retry(
-    web3: Arc<Web3<Transport>>,
-    hashes: Vec<H256>,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    hashes: Vec<B256>,
+    block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+    use graph::prelude::alloy::rpc::types::BlockId;
     let logger = logger.cheap_clone();
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
 
@@ -2244,7 +2288,7 @@ async fn fetch_block_receipts_with_retry(
         .redact_log_urls(true)
         .limit(ENV_VARS.request_retries)
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-        .run(move || web3.eth().block_receipts(BlockId::Hash(block_hash)).boxed())
+        .run(move || alloy.get_block_receipts(BlockId::from(block_hash)).boxed())
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
 
@@ -2273,23 +2317,27 @@ async fn fetch_block_receipts_with_retry(
     }
 }
 
-/// Retries fetching a single transaction receipt.
+/// Retries fetching a single transaction receipt using alloy, then converts to web3 format.
 async fn fetch_transaction_receipt_with_retry(
-    web3: Arc<Web3<Transport>>,
-    transaction_hash: H256,
-    block_hash: H256,
+    alloy: Arc<dyn alloy::providers::Provider>,
+    transaction_hash: B256,
+    block_hash: B256,
     logger: Logger,
-) -> Result<Arc<TransactionReceipt>, IngestorError> {
+) -> Result<Arc<alloy::rpc::types::TransactionReceipt>, IngestorError> {
     let logger = logger.cheap_clone();
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
         transaction_hash
     );
+
     retry(retry_log_message, &logger)
         .redact_log_urls(true)
         .limit(ENV_VARS.request_retries)
         .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-        .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
+        .run(move || {
+            let alloy_clone = alloy.clone();
+            async move { alloy_clone.get_transaction_receipt(transaction_hash).await }.boxed()
+        })
         .await
         .map_err(|_timeout| anyhow!(block_hash).into())
         .and_then(move |some_receipt| {
@@ -2299,11 +2347,11 @@ async fn fetch_transaction_receipt_with_retry(
 }
 
 fn resolve_transaction_receipt(
-    transaction_receipt: Option<TransactionReceipt>,
-    transaction_hash: H256,
-    block_hash: H256,
+    transaction_receipt: Option<alloy::rpc::types::TransactionReceipt>,
+    transaction_hash: B256,
+    block_hash: B256,
     logger: Logger,
-) -> Result<TransactionReceipt, IngestorError> {
+) -> Result<alloy::rpc::types::TransactionReceipt, IngestorError> {
     match transaction_receipt {
         // A receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
@@ -2331,7 +2379,7 @@ fn resolve_transaction_receipt(
                 // considers this block to be in the main chain. Nothing we can do from here except
                 // give up trying to ingest this block. There is no way to get the transaction
                 // receipt from this block.
-                Err(IngestorError::BlockUnavailable(block_hash))
+                Err(IngestorError::BlockUnavailable(b256_to_h256(block_hash)))
             } else {
                 Ok(receipt)
             }
@@ -2376,7 +2424,7 @@ async fn get_logs_and_transactions(
 
     // Not all logs have associated transaction hashes, nor do all triggers require them.
     // We also restrict receipts retrieval for some api versions.
-    let transaction_hashes_by_block: HashMap<H256, HashSet<H256>> = logs
+    let transaction_hashes_by_block: HashMap<B256, HashSet<B256>> = logs
         .iter()
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
         .filter(|log| {
@@ -2400,11 +2448,9 @@ async fn get_logs_and_transactions(
             }
         })
         .fold(
-            HashMap::<H256, HashSet<H256>>::new(),
+            HashMap::<B256, HashSet<B256>>::new(),
             |mut acc, (block_hash, txn_hash)| {
-                acc.entry(b256_to_h256(block_hash))
-                    .or_default()
-                    .insert(b256_to_h256(txn_hash));
+                acc.entry(block_hash).or_default().insert(txn_hash);
                 acc
             },
         );
@@ -2421,12 +2467,12 @@ async fn get_logs_and_transactions(
     // Associate each log with its receipt, when possible
     let mut log_triggers = Vec::new();
     for log in logs.into_iter() {
-        let optional_receipt = log.transaction_hash.and_then(|txn| {
-            transaction_receipts_by_hash
-                .get(&b256_to_h256(txn))
-                .cloned()
-        });
+        let optional_receipt = log
+            .transaction_hash
+            .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
         let web3_log = alloy_log_to_web3_log(log);
+        let optional_receipt = optional_receipt
+            .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt));
         let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(web3_log), optional_receipt));
         log_triggers.push(value);
     }
@@ -2437,13 +2483,14 @@ async fn get_logs_and_transactions(
 /// Tries to retrive all transaction receipts for a set of transaction hashes.
 async fn get_transaction_receipts_for_transaction_hashes(
     adapter: &EthereumAdapter,
-    transaction_hashes_by_block: &HashMap<H256, HashSet<H256>>,
+    transaction_hashes_by_block: &HashMap<B256, HashSet<B256>>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     logger: Logger,
-) -> Result<HashMap<H256, Arc<TransactionReceipt>>, anyhow::Error> {
+) -> Result<HashMap<B256, Arc<alloy::rpc::types::TransactionReceipt>>, anyhow::Error> {
     use std::collections::hash_map::Entry::Vacant;
 
-    let mut receipts_by_hash: HashMap<H256, Arc<TransactionReceipt>> = HashMap::new();
+    let mut receipts_by_hash: HashMap<B256, Arc<alloy::rpc::types::TransactionReceipt>> =
+        HashMap::new();
 
     // Return early if input set is empty
     if transaction_hashes_by_block.is_empty() {
@@ -2452,17 +2499,17 @@ async fn get_transaction_receipts_for_transaction_hashes(
 
     // Keep a record of all unique transaction hashes for which we'll request receipts. We will
     // later use this to check if we have collected the receipts from all required transactions.
-    let mut unique_transaction_hashes: HashSet<&H256> = HashSet::new();
+    let mut unique_transaction_hashes: HashSet<&B256> = HashSet::new();
 
     // Request transaction receipts concurrently
     let receipt_futures = FuturesUnordered::new();
 
-    let web3 = Arc::clone(&adapter.web3);
+    let alloy = Arc::clone(&adapter.alloy);
     for (block_hash, transaction_hashes) in transaction_hashes_by_block {
         for transaction_hash in transaction_hashes {
             unique_transaction_hashes.insert(transaction_hash);
             let receipt_future = fetch_transaction_receipt_with_retry(
-                web3.cheap_clone(),
+                alloy.cheap_clone(),
                 *transaction_hash,
                 *block_hash,
                 logger.cheap_clone(),
@@ -2524,11 +2571,12 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
+    use graph::prelude::alloy::primitives::B256;
+    use graph::prelude::alloy::providers::mock::Asserter;
+    use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::tokio::{self};
-    use graph::prelude::web3::transports::test::TestTransport;
     use graph::prelude::web3::types::U64;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
-    use graph::prelude::web3::Web3;
     use graph::prelude::EthereumCall;
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
@@ -2575,8 +2623,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_block_receipts_support() {
-        let mut transport = TestTransport::default();
-
         let json_receipts = r#"[{
             "blockHash": "0x23f785604642e91613881fc3c9d16740ee416e340fd36f3fa2239f203d68fd33",
             "blockNumber": "0x12f7f81",
@@ -2598,22 +2644,21 @@ mod tests {
 
         // Helper function to run a single test case
         async fn run_test_case(
-            transport: &mut TestTransport,
             json_response: &str,
             expected_err: Option<&str>,
             supports_eip_1898: bool,
             call_only: bool,
         ) -> Result<(), anyhow::Error> {
             let json_value: Value = serde_json::from_str(json_response).unwrap();
-            // let block_json: Value = serde_json::from_str(block).unwrap();
-            transport.set_response(json_value);
-            // transport.set_response(block_json);
-            // transport.add_response(json_value);
 
-            let web3 = Arc::new(Web3::new(transport.clone()));
+            let asserter = Asserter::new();
+            let provider = ProviderBuilder::new().connect_mocked_client(asserter.clone());
+
+            asserter.push_success(&json_value);
+
             let result = check_block_receipt_support(
-                web3.clone(),
-                H256::zero(),
+                Arc::new(provider),
+                B256::ZERO,
                 supports_eip_1898,
                 call_only,
             )
@@ -2638,38 +2683,25 @@ mod tests {
         }
 
         // Test case 1: Valid block receipts
-        run_test_case(&mut transport, json_receipts, None, true, false)
+        run_test_case(json_receipts, None, true, false)
             .await
             .unwrap();
 
         // Test case 2: Empty block receipts
-        run_test_case(
-            &mut transport,
-            json_empty,
-            Some("Block receipts are empty"),
-            true,
-            false,
-        )
-        .await
-        .unwrap();
+        run_test_case(json_empty, Some("Block receipts are empty"), true, false)
+            .await
+            .unwrap();
 
         // Test case 3: Null response
-        run_test_case(
-            &mut transport,
-            "null",
-            Some("Block receipts are empty"),
-            true,
-            false,
-        )
-        .await
-        .unwrap();
+        run_test_case("null", Some("Block receipts are empty"), true, false)
+            .await
+            .unwrap();
 
         // Test case 3: Simulating an RPC error
         // Note: In the context of this test, we cannot directly simulate an RPC error.
         // Instead, we simulate a response that would cause a decoding error, such as an unexpected key("error").
         // The function should handle this as an error case.
         run_test_case(
-            &mut transport,
             r#"{"error":"RPC Error"}"#,
             Some("Error fetching block receipts:"),
             true,
@@ -2680,7 +2712,6 @@ mod tests {
 
         // Test case 5: Does not support EIP-1898
         run_test_case(
-            &mut transport,
             json_receipts,
             Some("Provider does not support EIP 1898"),
             false,
@@ -2690,15 +2721,9 @@ mod tests {
         .unwrap();
 
         // Test case 5: Does not support Call only adapters
-        run_test_case(
-            &mut transport,
-            json_receipts,
-            Some("Provider is call-only"),
-            true,
-            true,
-        )
-        .await
-        .unwrap();
+        run_test_case(json_receipts, Some("Provider is call-only"), true, true)
+            .await
+            .unwrap();
     }
 
     #[test]
