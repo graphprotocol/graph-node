@@ -1,14 +1,21 @@
-use crate::prelude::alloy::primitives::{Address as AlloyAddress, B256};
-use crate::prelude::alloy::rpc::types::Log as AlloyLog;
-/// Type conversion utilities between web3 and alloy types
-use crate::prelude::web3::types::{Address as Web3Address, Log as Web3Log, H160, H256, U256, U64};
+use std::sync::Arc;
 
-/// Converts web3 H256 to alloy B256
+use crate::prelude::alloy::primitives::{Address as AlloyAddress, B256};
+use crate::prelude::alloy::rpc::types::{
+    Block as AlloyBlock, Log as AlloyLog, TransactionReceipt as AlloyTransactionReceipt,
+};
+/// Type conversion utilities between web3 and alloy types
+use crate::prelude::web3::types::{
+    Address as Web3Address, Block as Web3Block, Log as Web3Log, Transaction as Web3Transaction,
+    TransactionReceipt as Web3TransactionReceipt, H160, H256, U256, U64,
+};
+
+/// Converts H256 to alloy B256
 pub fn h256_to_b256(h: H256) -> B256 {
     B256::from_slice(h.as_bytes())
 }
 
-/// Converts alloy B256 to web3 H256
+/// Converts alloy B256 to H256
 pub fn b256_to_h256(b: B256) -> H256 {
     H256::from_slice(b.as_slice())
 }
@@ -48,6 +55,26 @@ pub fn alloy_log_to_web3_log(log: AlloyLog) -> Web3Log {
         log_type: None,              // alloy Log doesn't have log_type
         removed: Some(log.removed),
     }
+}
+
+pub fn alloy_transaction_receipt_to_web3_transaction_receipt(
+    _receipt: Arc<AlloyTransactionReceipt>,
+) -> Arc<Web3TransactionReceipt> {
+    unimplemented!("TransactionReceipt conversion not yet implemented - will be done when needed")
+}
+
+/// Converts alloy Block to web3 Block
+pub fn alloy_block_to_web3_block(_block: AlloyBlock) -> Web3Block<Web3Transaction> {
+    unimplemented!(
+        "Block conversion from alloy to web3 not yet implemented - will be done when needed"
+    )
+}
+
+/// Converts web3 Block to alloy Block
+pub fn web3_block_to_alloy_block(_block: Web3Block<Web3Transaction>) -> AlloyBlock {
+    unimplemented!(
+        "Block conversion from web3 to alloy not yet implemented - will be done when needed"
+    )
 }
 
 #[cfg(test)]
