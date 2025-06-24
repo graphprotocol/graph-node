@@ -20,6 +20,21 @@ pub fn b256_to_h256(b: B256) -> H256 {
     H256::from_slice(b.as_slice())
 }
 
+pub fn web3_u64_from_option(opt: Option<u64>) -> U64 {
+    U64::from(opt.unwrap_or(0))
+}
+
+pub fn u64_to_web3_u256(u: u64) -> U256 {
+    U256::from(u)
+}
+
+pub fn bool_to_web3_u64(b: bool) -> U64 {
+    U64::from(if b { 1 } else { 0 })
+}
+
+pub fn u64_to_web3_u64(u: u64) -> U64 {
+    U64::from(u)
+}
 /// Converts web3 H160 to alloy Address
 pub fn h160_to_alloy_address(h: H160) -> AlloyAddress {
     AlloyAddress::from_slice(h.as_bytes())
