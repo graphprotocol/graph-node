@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use graph::blockchain::Blockchain;
 use graph::blockchain::BlockchainKind;
 use graph::blockchain::BlockchainMap;
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::components::subgraph::Settings;
 use graph::data::subgraph::schema::DeploymentCreate;
@@ -289,7 +290,10 @@ where
         let raw: serde_yaml::Mapping = {
             let file_bytes = self
                 .resolver
-                .cat(&logger, &hash.to_ipfs_link())
+                .cat(
+                    LinkResolverContext::new(&hash, &logger),
+                    &hash.to_ipfs_link(),
+                )
                 .await
                 .map_err(|e| {
                     SubgraphRegistrarError::ResolveError(

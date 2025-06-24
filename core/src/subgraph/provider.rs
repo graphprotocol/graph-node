@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 
 use graph::{
+    components::link_resolver::LinkResolverContext,
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *},
 };
@@ -88,7 +89,10 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
 
         let file_bytes = self
             .link_resolver
-            .cat(&logger, &loc.hash.to_ipfs_link())
+            .cat(
+                LinkResolverContext::new(&loc.hash, &logger),
+                &loc.hash.to_ipfs_link(),
+            )
             .await
             .map_err(SubgraphAssignmentProviderError::ResolveError)?;
 

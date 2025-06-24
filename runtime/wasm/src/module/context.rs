@@ -609,14 +609,9 @@ impl WasmInstanceContext<'_> {
         // Pause the timeout while running ipfs_map, and resume it when done.
         self.suspend_timeout();
         let start_time = Instant::now();
-        let output_states = HostExports::ipfs_map(
-            &self.as_ref().ctx.host_exports.link_resolver.cheap_clone(),
-            self.as_ref(),
-            link.clone(),
-            &callback,
-            user_data,
-            flags,
-        )?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let output_states =
+            host_exports.ipfs_map(self.as_ref(), link.clone(), &callback, user_data, flags)?;
         self.start_timeout();
 
         debug!(

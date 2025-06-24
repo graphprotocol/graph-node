@@ -1,7 +1,7 @@
 mod instance;
 
 use crate::polling_monitor::{
-    spawn_monitor, ArweaveService, IpfsService, PollingMonitor, PollingMonitorMetrics,
+    spawn_monitor, ArweaveService, IpfsRequest, IpfsService, PollingMonitor, PollingMonitorMetrics,
 };
 use anyhow::{self, Error};
 use bytes::Bytes;
@@ -18,7 +18,7 @@ use graph::{
         CausalityRegion, DataSource, DataSourceTemplate,
     },
     derive::CheapClone,
-    ipfs::ContentPath,
+    ipfs::IpfsContext,
     prelude::{
         BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
         MetricsRegistry, RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics,
@@ -31,7 +31,6 @@ use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, time::Instant};
 
 use self::instance::SubgraphInstance;
-
 use super::Decoder;
 
 #[derive(Clone, CheapClone, Debug)]
@@ -224,10 +223,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 }
 
 pub struct OffchainMonitor {
-    ipfs_monitor: PollingMonitor<ContentPath>,
-    ipfs_monitor_rx: mpsc::UnboundedReceiver<(ContentPath, Bytes)>,
+    ipfs_monitor: PollingMonitor<IpfsRequest>,
+    ipfs_monitor_rx: mpsc::UnboundedReceiver<(IpfsRequest, Bytes)>,
     arweave_monitor: PollingMonitor<Base64>,
     arweave_monitor_rx: mpsc::UnboundedReceiver<(Base64, Bytes)>,
+    deployment_hash: DeploymentHash,
+    logger: Logger,
 }
 
 impl OffchainMonitor {
@@ -251,18 +252,29 @@ impl OffchainMonitor {
             metrics.cheap_clone(),
         );
 
-        let arweave_monitor = spawn_monitor(arweave_service, arweave_monitor_tx, logger, metrics);
+        let arweave_monitor = spawn_monitor(
+            arweave_service,
+            arweave_monitor_tx,
+            logger.cheap_clone(),
+            metrics,
+        );
+
         Self {
             ipfs_monitor,
             ipfs_monitor_rx,
             arweave_monitor,
             arweave_monitor_rx,
+            deployment_hash: subgraph_hash.to_owned(),
+            logger,
         }
     }
 
     fn add_source(&mut self, source: offchain::Source) -> Result<(), Error> {
         match source {
-            offchain::Source::Ipfs(cid_file) => self.ipfs_monitor.monitor(cid_file),
+            offchain::Source::Ipfs(path) => self.ipfs_monitor.monitor(IpfsRequest {
+                ctx: IpfsContext::new(&self.deployment_hash, &self.logger),
+                path,
+            }),
             offchain::Source::Arweave(base64) => self.arweave_monitor.monitor(base64),
         };
         Ok(())
@@ -274,8 +286,8 @@ impl OffchainMonitor {
         let mut triggers = vec![];
         loop {
             match self.ipfs_monitor_rx.try_recv() {
-                Ok((cid_file, data)) => triggers.push(offchain::TriggerData {
-                    source: offchain::Source::Ipfs(cid_file),
+                Ok((req, data)) => triggers.push(offchain::TriggerData {
+                    source: offchain::Source::Ipfs(req.path),
                     data: Arc::new(data),
                 }),
                 Err(TryRecvError::Disconnected) => {
