@@ -21,7 +21,9 @@ use graph::futures03::{
 };
 use graph::prelude::alloy;
 use graph::prelude::alloy::rpc::types::{TransactionInput, TransactionRequest};
+use graph::prelude::alloy::transports::RpcError;
 use graph::prelude::tokio::try_join;
+use graph::prelude::{alloy_log_to_web3_log, b256_to_h256};
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
@@ -32,7 +34,7 @@ use graph::{
         async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn,
         web3::{
             self,
-            types::{BlockId, Filter, FilterBuilder, Log, Transaction, TransactionReceipt, H256},
+            types::{BlockId, Transaction, TransactionReceipt, H256},
         },
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
         TimeoutError,
@@ -52,6 +54,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::adapter::EthGetLogsFilter;
 use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::call_helper::interpret_eth_call_error;
@@ -62,9 +65,8 @@ use crate::NodeCapabilities;
 use crate::TriggerFilter;
 use crate::{
     adapter::{
-        ContractCallError, EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait,
-        EthereumBlockFilter, EthereumCallFilter, EthereumLogFilter, ProviderEthRpcMetrics,
-        SubgraphEthRpcMetrics,
+        ContractCallError, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
+        EthereumCallFilter, EthereumLogFilter, ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
     },
     transport::Transport,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
@@ -305,6 +307,7 @@ impl EthereumAdapter {
         result
     }
 
+    /// Alloy-exclusive version of logs_with_sigs using alloy types and methods
     async fn logs_with_sigs(
         &self,
         logger: Logger,
@@ -313,19 +316,24 @@ impl EthereumAdapter {
         to: BlockNumber,
         filter: Arc<EthGetLogsFilter>,
         too_many_logs_fingerprints: &'static [&'static str],
-    ) -> Result<Vec<Log>, TimeoutError<web3::error::Error>> {
+    ) -> Result<
+        Vec<alloy::rpc::types::Log>,
+        TimeoutError<RpcError<alloy::transports::TransportErrorKind>>,
+    > {
         assert!(!self.call_only);
 
         let eth_adapter = self.clone();
         let retry_log_message = format!("eth_getLogs RPC call for block range: [{}..{}]", from, to);
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
-            .when(move |res: &Result<_, web3::error::Error>| match res {
-                Ok(_) => false,
-                Err(e) => !too_many_logs_fingerprints
-                    .iter()
-                    .any(|f| e.to_string().contains(f)),
-            })
+            .when(
+                move |res: &Result<_, RpcError<alloy::transports::TransportErrorKind>>| match res {
+                    Ok(_) => false,
+                    Err(e) => !too_many_logs_fingerprints
+                        .iter()
+                        .any(|f| e.to_string().contains(f)),
+                },
+            )
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
@@ -337,21 +345,10 @@ impl EthereumAdapter {
 
                 async move {
                     let start = Instant::now();
-                    // Create a log filter
-                    let log_filter: Filter = FilterBuilder::default()
-                        .from_block(from.into())
-                        .to_block(to.into())
-                        .address(filter.contracts.clone())
-                        .topics(
-                            Some(filter.event_signatures.clone()),
-                            filter.topic1.clone(),
-                            filter.topic2.clone(),
-                            filter.topic3.clone(),
-                        )
-                        .build();
 
-                    // Request logs from client
-                    let result = eth_adapter.web3.eth().logs(log_filter).boxed().await;
+                    let alloy_filter = filter.to_alloy_filter(from, to);
+
+                    let result = eth_adapter.alloy.get_logs(&alloy_filter).await;
                     let elapsed = start.elapsed().as_secs_f64();
                     provider_metrics.observe_request(elapsed, "eth_getLogs", &provider);
                     subgraph_metrics.observe_request(elapsed, "eth_getLogs", &provider);
@@ -425,7 +422,7 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         filter: EthGetLogsFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error> {
+    ) -> DynTryFuture<'static, Vec<alloy::rpc::types::Log>, Error> {
         // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
         const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
             "ServerError(-32005)",       // Infura
@@ -832,7 +829,7 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         log_filter: EthereumLogFilter,
-    ) -> DynTryFuture<'static, Vec<Log>, Error> {
+    ) -> DynTryFuture<'static, Vec<alloy::rpc::types::Log>, Error> {
         let eth: Self = self.cheap_clone();
         let logger = logger.clone();
 
@@ -2383,8 +2380,12 @@ async fn get_logs_and_transactions(
         .iter()
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
         .filter(|log| {
-            if let Some(signature) = log.topics.first() {
-                log_filter.requires_transaction_receipt(signature, Some(&log.address), &log.topics)
+            if let Some(signature) = log.topics().first() {
+                log_filter.requires_transaction_receipt_alloy(
+                    signature,
+                    Some(&log.address()),
+                    &log.topics(),
+                )
             } else {
                 false
             }
@@ -2401,7 +2402,9 @@ async fn get_logs_and_transactions(
         .fold(
             HashMap::<H256, HashSet<H256>>::new(),
             |mut acc, (block_hash, txn_hash)| {
-                acc.entry(block_hash).or_default().insert(txn_hash);
+                acc.entry(b256_to_h256(block_hash))
+                    .or_default()
+                    .insert(b256_to_h256(txn_hash));
                 acc
             },
         );
@@ -2418,10 +2421,13 @@ async fn get_logs_and_transactions(
     // Associate each log with its receipt, when possible
     let mut log_triggers = Vec::new();
     for log in logs.into_iter() {
-        let optional_receipt = log
-            .transaction_hash
-            .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
-        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(log), optional_receipt));
+        let optional_receipt = log.transaction_hash.and_then(|txn| {
+            transaction_receipts_by_hash
+                .get(&b256_to_h256(txn))
+                .cloned()
+        });
+        let web3_log = alloy_log_to_web3_log(log);
+        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(web3_log), optional_receipt));
         log_triggers.push(value);
     }
 
