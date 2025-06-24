@@ -665,29 +665,42 @@ impl EthereumAdapter {
         &self,
         logger: Logger,
         ids: Vec<H256>,
-    ) -> impl Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send {
+    ) -> impl futures03::Stream<Item = Result<Arc<LightEthereumBlock>, Error>> + Send {
         let web3 = self.web3.clone();
 
-        stream::iter_ok::<_, Error>(ids.into_iter().map(move |hash| {
+        futures03::stream::iter(ids.into_iter().map(move |hash| {
             let web3 = web3.clone();
-            retry(format!("load block {}", hash), &logger)
-                .redact_log_urls(true)
-                .limit(ENV_VARS.request_retries)
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || {
-                    Box::pin(web3.eth().block_with_txs(BlockId::Hash(hash)))
-                        .compat()
-                        .from_err::<Error>()
-                        .and_then(move |block| {
-                            block.map(Arc::new).ok_or_else(|| {
-                                anyhow::anyhow!("Ethereum node did not find block {:?}", hash)
-                            })
+            let logger = logger.clone();
+
+            async move {
+                retry(format!("load block {}", hash), &logger)
+                    .redact_log_urls(true)
+                    .limit(ENV_VARS.request_retries)
+                    .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                    .run(move || {
+                        let web3 = web3.cheap_clone();
+                        async move {
+                            web3.eth()
+                                .block_with_txs(BlockId::Hash(hash))
+                                .await
+                                .map_err(Error::from)
+                                .and_then(|block| {
+                                    block.map(Arc::new).ok_or_else(|| {
+                                        anyhow::anyhow!(
+                                            "Ethereum node did not find block {:?}",
+                                            hash
+                                        )
+                                    })
+                                })
+                        }
+                    })
+                    .await
+                    .map_err(|e| {
+                        e.into_inner().unwrap_or_else(|| {
+                            anyhow::anyhow!("Ethereum node took too long to return block {}", hash)
                         })
-                        .compat()
-                })
-                .boxed()
-                .compat()
-                .from_err()
+                    })
+            }
         }))
         .buffered(ENV_VARS.block_batch_size)
     }
@@ -1587,10 +1600,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         // Return a stream that lazily loads batches of blocks.
         debug!(logger, "Requesting {} block(s)", missing_blocks.len());
-        let new_blocks = self
+        let new_blocks: Vec<Arc<LightEthereumBlock>> = self
             .load_blocks_rpc(logger.clone(), missing_blocks)
-            .collect()
-            .compat()
+            .try_collect()
             .await?;
         let upsert_blocks: Vec<_> = new_blocks
             .iter()
