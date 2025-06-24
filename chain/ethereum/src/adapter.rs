@@ -20,6 +20,7 @@ use tiny_keccak::keccak256;
 use web3::types::{Address, Log, H256};
 
 use graph::prelude::*;
+use graph::prelude::{alloy_address_to_h160, b256_to_h256};
 use graph::{
     blockchain as bc,
     components::metrics::{CounterVec, GaugeVec, HistogramVec},
@@ -72,6 +73,67 @@ impl EventSignatureWithTopics {
     /// Otherwise, it must match the provided address.
     /// It must also match the topics if they are Some
     pub fn matches(&self, address: Option<&H160>, sig: H256, topics: &Vec<H256>) -> bool {
+        // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
+        let address_matches = match self.address {
+            Some(ref self_addr) => address == Some(self_addr),
+            None => true, // self.address is None, so it matches any address.
+        };
+
+        address_matches
+            && self.signature == sig
+            && self.topic1.as_ref().map_or(true, |t1| {
+                topics.get(1).map_or(false, |topic| t1.contains(topic))
+            })
+            && self.topic2.as_ref().map_or(true, |t2| {
+                topics.get(2).map_or(false, |topic| t2.contains(topic))
+            })
+            && self.topic3.as_ref().map_or(true, |t3| {
+                topics.get(3).map_or(false, |topic| t3.contains(topic))
+            })
+    }
+}
+
+/// `EventSignatureWithTopics` is used to match events with
+/// indexed arguments when they are defined in the subgraph
+/// manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EventSignatureWithTopicsForAlloy {
+    pub address: Option<alloy::primitives::Address>,
+    pub signature: alloy::primitives::B256,
+    pub topic1: Option<Vec<alloy::primitives::B256>>,
+    pub topic2: Option<Vec<alloy::primitives::B256>>,
+    pub topic3: Option<Vec<alloy::primitives::B256>>,
+}
+
+impl EventSignatureWithTopicsForAlloy {
+    #[allow(dead_code)]
+    pub fn new(
+        address: Option<alloy::primitives::Address>,
+        signature: alloy::primitives::B256,
+        topic1: Option<Vec<alloy::primitives::B256>>,
+        topic2: Option<Vec<alloy::primitives::B256>>,
+        topic3: Option<Vec<alloy::primitives::B256>>,
+    ) -> Self {
+        EventSignatureWithTopicsForAlloy {
+            address,
+            signature,
+            topic1,
+            topic2,
+            topic3,
+        }
+    }
+
+    /// Checks if an event matches the `EventSignatureWithTopics`
+    /// If self.address is None, it's considered a wildcard match.
+    /// Otherwise, it must match the provided address.
+    /// It must also match the topics if they are Some
+    #[allow(dead_code)]
+    pub fn matches(
+        &self,
+        address: Option<&alloy::primitives::Address>,
+        sig: alloy::primitives::B256,
+        topics: &Vec<alloy::primitives::B256>,
+    ) -> bool {
         // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
         let address_matches = match self.address {
             Some(ref self_addr) => address == Some(self_addr),
@@ -147,15 +209,36 @@ enum LogFilterNode {
 /// Corresponds to an `eth_getLogs` call.
 #[derive(Clone, Debug)]
 pub struct EthGetLogsFilter {
-    pub contracts: Vec<Address>,
-    pub event_signatures: Vec<EventSignature>,
-    pub topic1: Option<Vec<EventSignature>>,
-    pub topic2: Option<Vec<EventSignature>>,
-    pub topic3: Option<Vec<EventSignature>>,
+    pub contracts: Vec<alloy::primitives::Address>,
+    pub event_signatures: Vec<alloy::primitives::B256>,
+    pub topic1: Option<Vec<alloy::primitives::B256>>,
+    pub topic2: Option<Vec<alloy::primitives::B256>>,
+    pub topic3: Option<Vec<alloy::primitives::B256>>,
 }
 
 impl EthGetLogsFilter {
-    fn from_contract(address: Address) -> Self {
+    /// Convert to alloy Filter for the given block range
+    pub fn to_alloy_filter(&self, from: BlockNumber, to: BlockNumber) -> alloy::rpc::types::Filter {
+        let mut filter_builder = alloy::rpc::types::Filter::new()
+            .from_block(alloy::rpc::types::BlockNumberOrTag::Number(from as u64))
+            .to_block(alloy::rpc::types::BlockNumberOrTag::Number(to as u64))
+            .address(self.contracts.clone())
+            .event_signature(self.event_signatures.clone());
+
+        if let Some(ref topic1) = self.topic1 {
+            filter_builder = filter_builder.topic1(topic1.clone());
+        }
+        if let Some(ref topic2) = self.topic2 {
+            filter_builder = filter_builder.topic2(topic2.clone());
+        }
+        if let Some(ref topic3) = self.topic3 {
+            filter_builder = filter_builder.topic3(topic3.clone());
+        }
+
+        filter_builder
+    }
+
+    fn from_contract(address: alloy::primitives::Address) -> Self {
         EthGetLogsFilter {
             contracts: vec![address],
             event_signatures: vec![],
@@ -165,7 +248,7 @@ impl EthGetLogsFilter {
         }
     }
 
-    fn from_event(event: EventSignature) -> Self {
+    fn from_event(event: alloy::primitives::B256) -> Self {
         EthGetLogsFilter {
             contracts: vec![],
             event_signatures: vec![event],
@@ -175,7 +258,7 @@ impl EthGetLogsFilter {
         }
     }
 
-    fn from_event_with_topics(event: EventSignatureWithTopics) -> Self {
+    fn from_event_with_topics(event: EventSignatureWithTopicsForAlloy) -> Self {
         EthGetLogsFilter {
             contracts: event.address.map_or(vec![], |a| vec![a]),
             event_signatures: vec![event.signature],
@@ -205,7 +288,7 @@ impl fmt::Display for EthGetLogsFilter {
         };
 
         // Helper to format topics as strings
-        let format_topics = |topics: &Option<Vec<EventSignature>>| -> String {
+        let format_topics = |topics: &Option<Vec<alloy::primitives::B256>>| -> String {
             topics.as_ref().map_or_else(
                 || "None".to_string(),
                 |ts| {
@@ -351,11 +434,11 @@ impl From<EthereumLogFilter> for Vec<LogFilter> {
                  }| LogFilter {
                     addresses: contracts
                         .iter()
-                        .map(|addr| addr.to_fixed_bytes().to_vec())
+                        .map(|addr| addr.to_vec())
                         .collect_vec(),
                     event_signatures: event_signatures
                         .iter()
-                        .map(|sig| sig.to_fixed_bytes().to_vec())
+                        .map(|sig| sig.to_vec())
                         .collect_vec(),
                 },
             )
@@ -416,6 +499,55 @@ impl EthereumLogFilter {
         if let Some(address) = contract_address {
             let contract_node = LogFilterNode::Contract(*address);
             let event_node = LogFilterNode::Event(*event_signature);
+
+            // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
+            for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
+                if r && ((s == contract_node && t == event_node)
+                    || (t == contract_node && s == event_node))
+                {
+                    return true;
+                }
+            }
+        }
+
+        // If none of the conditions above match, return false.
+        false
+    }
+
+    /// Similar to [`matches`], checks if a transaction receipt is required for this log filter.
+    pub fn requires_transaction_receipt_alloy(
+        &self,
+        event_signature: &alloy::primitives::B256,
+        contract_address: Option<&alloy::primitives::Address>,
+        topics: &[alloy::primitives::B256],
+    ) -> bool {
+        // Check for wildcard events first.
+        if self.wildcard_events.get(&b256_to_h256(*event_signature)) == Some(&true) {
+            return true;
+        }
+
+        // Next, check events with topic filters.
+        if self
+            .events_with_topic_filters
+            .iter()
+            .any(|(event_with_topics, &requires_receipt)| {
+                requires_receipt
+                    && event_with_topics.matches(
+                        contract_address
+                            .map(|addr| alloy_address_to_h160(*addr))
+                            .as_ref(),
+                        b256_to_h256(*event_signature),
+                        &topics.iter().map(|t| b256_to_h256(*t)).collect(),
+                    )
+            })
+        {
+            return true;
+        }
+
+        // Finally, check the contracts_and_events_graph if a contract address is specified.
+        if let Some(address) = contract_address {
+            let contract_node = LogFilterNode::Contract(alloy_address_to_h160(*address));
+            let event_node = LogFilterNode::Event(b256_to_h256(*event_signature));
 
             // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
             for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
@@ -530,18 +662,33 @@ impl EthereumLogFilter {
         let mut filters = Vec::new();
 
         // Start with the wildcard event filters.
-        filters.extend(
-            self.wildcard_events
-                .into_keys()
-                .map(EthGetLogsFilter::from_event),
-        );
+        filters.extend(self.wildcard_events.into_keys().map(|h256_event| {
+            let alloy_event = alloy::primitives::B256::from_slice(h256_event.as_bytes());
+            EthGetLogsFilter::from_event(alloy_event)
+        }));
 
         // Handle events with topic filters.
         filters.extend(
             self.events_with_topic_filters
                 .into_iter()
                 .map(|(event_with_topics, _)| {
-                    EthGetLogsFilter::from_event_with_topics(event_with_topics)
+                    // Convert EventSignatureWithTopics to EventSignatureWithTopicsForAlloy
+                    let alloy_event = EventSignatureWithTopicsForAlloy {
+                        address: event_with_topics
+                            .address
+                            .map(|addr| h160_to_alloy_address(addr)),
+                        signature: h256_to_b256(event_with_topics.signature),
+                        topic1: event_with_topics
+                            .topic1
+                            .map(|topics| topics.into_iter().map(|t| h256_to_b256(t)).collect()),
+                        topic2: event_with_topics
+                            .topic2
+                            .map(|topics| topics.into_iter().map(|t| h256_to_b256(t)).collect()),
+                        topic3: event_with_topics
+                            .topic3
+                            .map(|topics| topics.into_iter().map(|t| h256_to_b256(t)).collect()),
+                    };
+                    EthGetLogsFilter::from_event_with_topics(alloy_event)
                 }),
         );
 
@@ -572,8 +719,14 @@ impl EthereumLogFilter {
             // If there are edges, there are vertexes.
             let max_vertex = g.nodes().max_by_key(|&n| g.neighbors(n).count()).unwrap();
             let mut filter = match max_vertex {
-                LogFilterNode::Contract(address) => EthGetLogsFilter::from_contract(address),
-                LogFilterNode::Event(event_sig) => EthGetLogsFilter::from_event(event_sig),
+                LogFilterNode::Contract(address) => {
+                    let alloy_address = alloy::primitives::Address::from_slice(address.as_bytes());
+                    EthGetLogsFilter::from_contract(alloy_address)
+                }
+                LogFilterNode::Event(event_sig) => {
+                    let alloy_event = alloy::primitives::B256::from_slice(event_sig.as_bytes());
+                    EthGetLogsFilter::from_event(alloy_event)
+                }
             };
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
@@ -584,9 +737,14 @@ impl EthereumLogFilter {
                             push_filter(filter);
                             filter = EthGetLogsFilter::from_event(event);
                         }
-                        filter.contracts.push(address);
+                        let alloy_address =
+                            alloy::primitives::Address::from_slice(address.as_bytes());
+                        filter.contracts.push(alloy_address);
                     }
-                    LogFilterNode::Event(event_sig) => filter.event_signatures.push(event_sig),
+                    LogFilterNode::Event(event_sig) => {
+                        let alloy_event = alloy::primitives::B256::from_slice(event_sig.as_bytes());
+                        filter.event_signatures.push(alloy_event);
+                    }
                 }
             }
 
@@ -1775,18 +1933,22 @@ fn complete_log_filter() {
 
     // Test a few combinations of complete graphs.
     for i in [1, 2] {
-        let events: BTreeSet<_> = (0..i).map(H256::from_low_u64_le).collect();
+        let events: BTreeSet<_> = (0..i)
+            .map(|n| alloy::primitives::B256::from([n as u8; 32]))
+            .collect();
 
         for j in [1, 1000, 2000, 3000] {
-            let contracts: BTreeSet<_> = (0..j).map(Address::from_low_u64_le).collect();
+            let contracts: BTreeSet<_> = (0..j)
+                .map(|n| alloy::primitives::Address::from([n as u8; 20]))
+                .collect();
 
             // Construct the complete bipartite graph with i events and j contracts.
             let mut contracts_and_events_graph = GraphMap::new();
             for &contract in &contracts {
                 for &event in &events {
                     contracts_and_events_graph.add_edge(
-                        LogFilterNode::Contract(contract),
-                        LogFilterNode::Event(event),
+                        LogFilterNode::Contract(alloy_address_to_h160(contract)),
+                        LogFilterNode::Event(b256_to_h256(event)),
                         false,
                     );
                 }
