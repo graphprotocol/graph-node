@@ -19,6 +19,7 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
+use graph::prelude::alloy::consensus::BlockHeader;
 use graph::prelude::{
     alloy::{
         self,
@@ -44,12 +45,13 @@ use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
 use graph::util::conversions::alloy_block_to_web3_block;
+use graph::util::conversions::alloy_block_to_web3_block_arc;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
         async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn,
-        web3::types::{BlockId, Transaction, H256},
+        web3::types::{Transaction, H256},
         BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
         TimeoutError,
     },
@@ -718,12 +720,12 @@ impl EthereumAdapter {
     fn load_blocks_rpc(
         &self,
         logger: Logger,
-        ids: Vec<H256>,
-    ) -> impl futures03::Stream<Item = Result<Arc<LightEthereumBlock>, Error>> + Send {
-        let web3 = self.web3.clone();
+        ids: Vec<B256>,
+    ) -> impl futures03::Stream<Item = Result<Arc<AlloyBlock>, Error>> + Send {
+        let alloy = self.alloy.clone();
 
         futures03::stream::iter(ids.into_iter().map(move |hash| {
-            let web3 = web3.clone();
+            let alloy = alloy.clone();
             let logger = logger.clone();
 
             async move {
@@ -732,10 +734,11 @@ impl EthereumAdapter {
                     .limit(ENV_VARS.request_retries)
                     .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
                     .run(move || {
-                        let web3 = web3.cheap_clone();
+                        let alloy = alloy.cheap_clone();
                         async move {
-                            web3.eth()
-                                .block_with_txs(BlockId::Hash(hash))
+                            alloy
+                                .get_block_by_hash(hash)
+                                .full()
                                 .await
                                 .map_err(Error::from)
                                 .and_then(|block| {
@@ -1615,11 +1618,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
-        block_hashes: HashSet<H256>,
-    ) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
+        block_hashes: HashSet<B256>,
+    ) -> Result<Vec<Arc<AlloyBlock>>, Error> {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
-        let mut blocks: Vec<Arc<LightEthereumBlock>> = chain_store
+        let mut blocks: Vec<Arc<AlloyBlock>> = chain_store
             .cheap_clone()
             .blocks(block_hashes.iter().map(|&b| b.into()).collect::<Vec<_>>())
             .await
@@ -1633,18 +1636,18 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let missing_blocks = Vec::from_iter(
             block_hashes
                 .into_iter()
-                .filter(|hash| !blocks.iter().any(|b| b.hash == Some(*hash))),
+                .filter(|hash| !blocks.iter().any(|b| b.header.hash == *hash)),
         );
 
         // Return a stream that lazily loads batches of blocks.
         debug!(logger, "Requesting {} block(s)", missing_blocks.len());
-        let new_blocks: Vec<Arc<LightEthereumBlock>> = self
+        let new_blocks: Vec<Arc<AlloyBlock>> = self
             .load_blocks_rpc(logger.clone(), missing_blocks)
             .try_collect()
             .await?;
         let upsert_blocks: Vec<_> = new_blocks
             .iter()
-            .map(|block| BlockFinality::Final(block.clone()))
+            .map(|block| BlockFinality::Final(alloy_block_to_web3_block_arc(block.clone())))
             .collect();
         let block_refs: Vec<_> = upsert_blocks
             .iter()
@@ -1654,7 +1657,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             error!(logger, "Error writing to block cache {}", e);
         }
         blocks.extend(new_blocks);
-        blocks.sort_by_key(|block| block.number);
+        blocks.sort_by_key(|block| block.header.number);
         Ok(blocks)
     }
 }
@@ -1697,7 +1700,7 @@ pub(crate) async fn blocks_with_triggers(
     debug!(logger, "Finding nearest valid `to` block to {}", to);
 
     let to_ptr = eth.next_existing_ptr_to_number(&logger, to).await?;
-    let to_hash = to_ptr.hash_as_h256();
+    let to_hash = to_ptr.hash_as_b256();
     let to = to_ptr.block_number();
 
     // This is for `start` triggers which can be initialization handlers which needs to be run
@@ -1774,8 +1777,10 @@ pub(crate) async fn blocks_with_triggers(
         .await
         .with_context(|| format!("Failed to obtain triggers for block {}", to))?;
 
-    let mut block_hashes: HashSet<H256> =
-        triggers.iter().map(EthereumTrigger::block_hash).collect();
+    let mut block_hashes: HashSet<B256> = triggers
+        .iter()
+        .map(|trigger| h256_to_b256(trigger.block_hash()))
+        .collect();
     let mut triggers_by_block: HashMap<BlockNumber, Vec<EthereumTrigger>> =
         triggers.into_iter().fold(HashMap::new(), |mut map, t| {
             map.entry(t.block_number()).or_default().push(t);
@@ -1795,15 +1800,15 @@ pub(crate) async fn blocks_with_triggers(
         .await?
         .into_iter()
         .map(
-            move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
+            move |block| match triggers_by_block.remove(&(block.header.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    BlockFinality::Final(block),
+                    BlockFinality::Final(alloy_block_to_web3_block_arc(block)),
                     triggers,
                     &logger2,
                 )),
                 None => Err(anyhow!(
                     "block {} not found in `triggers_by_block`",
-                    block.block_ptr()
+                    BlockPtr::new(block.header.hash.into(), block.header.number as i32)
                 )),
             },
         )

@@ -1252,8 +1252,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
-        block_hashes: HashSet<H256>,
-    ) -> Result<Vec<Arc<LightEthereumBlock>>, Error>;
+        block_hashes: HashSet<B256>,
+    ) -> Result<Vec<Arc<AlloyBlock>>, Error>;
 
     /// Find a block by its hash.
     async fn block_by_hash(

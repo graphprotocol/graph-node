@@ -4,12 +4,16 @@ use std::{convert::TryFrom, sync::Arc};
 use web3::types::{Address, Block, Bytes, Log, Transaction, TransactionReceipt, H256, U256, U64};
 
 use crate::{
+    alloy_todo,
     blockchain::{BlockPtr, BlockTime},
-    prelude::{alloy_address_to_h160, b256_to_h256, BlockNumber},
+    prelude::{
+        alloy::rpc::types::Block as AlloyBlock, alloy_address_to_h160, b256_to_h256, BlockNumber,
+    },
     util::conversions::{alloy_bytes_to_web3_bytes, alloy_u256_to_web3_u256, u64_to_web3_u256},
 };
 
 pub type LightEthereumBlock = Block<Transaction>;
+pub type LightEthereumBlockAlloy = AlloyBlock;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
@@ -19,6 +23,42 @@ pub trait LightEthereumBlockExt {
     fn format(&self) -> String;
     fn block_ptr(&self) -> BlockPtr;
     fn timestamp(&self) -> BlockTime;
+}
+
+impl LightEthereumBlockExt for LightEthereumBlockAlloy {
+    fn number(&self) -> BlockNumber {
+        alloy_todo!()
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        alloy_todo!()
+    }
+
+    fn transaction_for_log(&self, _log: &Log) -> Option<Transaction> {
+        alloy_todo!()
+    }
+
+    fn transaction_for_call(&self, _call: &EthereumCall) -> Option<Transaction> {
+        alloy_todo!()
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        match self.header.number {
+            0 => None,
+            n => Some(BlockPtr::new(
+                self.header.parent_hash.into(),
+                (n - 1) as i32,
+            )),
+        }
+    }
+
+    fn format(&self) -> String {
+        alloy_todo!()
+    }
+
+    fn block_ptr(&self) -> BlockPtr {
+        alloy_todo!()
+    }
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {

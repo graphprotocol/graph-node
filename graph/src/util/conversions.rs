@@ -88,6 +88,13 @@ pub fn alloy_log_to_web3_log(log: AlloyLog) -> Web3Log {
     }
 }
 
+#[macro_export]
+macro_rules! alloy_todo {
+    () => {
+        todo!()
+    };
+}
+
 pub fn alloy_transaction_receipt_to_web3_transaction_receipt(
     _receipt: Arc<AlloyTransactionReceipt>,
 ) -> Arc<Web3TransactionReceipt> {
