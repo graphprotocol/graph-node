@@ -155,7 +155,10 @@ mod steps {
 
     use graph::{
         anyhow::bail,
-        prelude::serde_json::{self, Value},
+        prelude::{
+            h256_to_b256,
+            serde_json::{self, Value},
+        },
     };
     use json_structural_diff::{colorize as diff_to_string, JsonDiff};
 
@@ -201,13 +204,14 @@ mod steps {
         ethereum_adapter: &EthereumAdapter,
         logger: &Logger,
     ) -> anyhow::Result<Value> {
+        let block_hash = h256_to_b256(*block_hash);
         let provider_block = ethereum_adapter
-            .block_by_hash(logger, *block_hash)
+            .block_by_hash(logger, block_hash)
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
             .ok_or_else(|| anyhow!("JRPC provider found no block with hash {block_hash:?}"))?;
         ensure!(
-            provider_block.hash == Some(*block_hash),
+            provider_block.header.hash == block_hash,
             "Provider responded with a different block hash"
         );
         serde_json::to_value(provider_block)

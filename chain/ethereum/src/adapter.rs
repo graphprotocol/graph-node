@@ -7,6 +7,8 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
+use graph::prelude::alloy::primitives::B256;
+use graph::prelude::alloy::rpc::types::Block as AlloyBlock;
 use graph::prelude::alloy::transports::{RpcError, TransportErrorKind};
 use graph::prelude::web3::types::H160;
 use itertools::Itertools;
@@ -1244,12 +1246,6 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// Get the latest block, with only the header and transaction hashes.
     async fn latest_block_ptr(&self, logger: &Logger) -> Result<BlockPtr, bc::IngestorError>;
 
-    async fn load_block(
-        &self,
-        logger: &Logger,
-        block_hash: H256,
-    ) -> Result<LightEthereumBlock, Error>;
-
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     /// May use the `chain_store` as a cache.
     async fn load_blocks(
@@ -1263,20 +1259,20 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn block_by_hash(
         &self,
         logger: &Logger,
-        block_hash: H256,
-    ) -> Result<Option<LightEthereumBlock>, Error>;
+        block_hash: B256,
+    ) -> Result<Option<AlloyBlock>, Error>;
 
     async fn block_by_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Result<Option<LightEthereumBlock>, Error>;
+    ) -> Result<Option<AlloyBlock>, Error>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
     async fn load_full_block(
         &self,
         logger: &Logger,
-        block: LightEthereumBlock,
+        block: AlloyBlock,
     ) -> Result<EthereumBlock, bc::IngestorError>;
 
     /// Finds the hash and number of the lowest non-null block with height greater than or equal to

@@ -97,7 +97,7 @@ impl From<Vec<u8>> for BlockHash {
 
 impl From<alloy::primitives::B256> for BlockHash {
     fn from(hash: alloy::primitives::B256) -> Self {
-        BlockHash(hash.0.to_vec().into())
+        BlockHash(hash.as_slice().into())
     }
 }
 

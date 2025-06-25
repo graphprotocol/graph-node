@@ -47,7 +47,6 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
@@ -225,7 +224,7 @@ pub enum IngestorError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
     #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
-    BlockUnavailable(H256),
+    BlockUnavailable(B256),
 
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
