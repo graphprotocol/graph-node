@@ -1,3 +1,4 @@
+use alloy::primitives::B256;
 use anyhow::anyhow;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
@@ -95,8 +96,8 @@ impl From<Vec<u8>> for BlockHash {
     }
 }
 
-impl From<alloy::primitives::B256> for BlockHash {
-    fn from(hash: alloy::primitives::B256) -> Self {
+impl From<B256> for BlockHash {
+    fn from(hash: B256) -> Self {
         BlockHash(hash.as_slice().into())
     }
 }
@@ -181,6 +182,10 @@ impl BlockPtr {
     // workaround for arweave
     pub fn hash_as_h256(&self) -> H256 {
         H256::from_slice(&self.hash_slice()[..32])
+    }
+
+    pub fn hash_as_b256(&self) -> B256 {
+        B256::from_slice(&self.hash_slice()[..32])
     }
 
     pub fn hash_slice(&self) -> &[u8] {
