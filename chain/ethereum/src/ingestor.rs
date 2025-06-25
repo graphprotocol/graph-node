@@ -3,14 +3,15 @@ use crate::{EthereumAdapter, EthereumAdapterTrait as _};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
 use graph::components::network_provider::ChainName;
+use graph::prelude::alloy::primitives::B256;
 use graph::slog::o;
 use graph::util::backoff::ExponentialBackoff;
 use graph::{
     blockchain::{BlockHash, BlockIngestor, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
     prelude::{
-        async_trait, error, info, tokio, trace, warn, web3::types::H256, ChainStore, Error,
-        EthereumBlockWithCalls, LogCode, Logger,
+        async_trait, error, info, tokio, trace, warn, ChainStore, Error, EthereumBlockWithCalls,
+        LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};
@@ -168,8 +169,8 @@ impl PollingBlockIngestor {
         eth_adapter: &Arc<EthereumAdapter>,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHash>, IngestorError> {
-        // TODO: H256::from_slice can panic
-        let block_hash = H256::from_slice(block_hash.as_slice());
+        // TODO: B256::from_slice can panic
+        let block_hash = B256::from_slice(block_hash.as_slice());
 
         // Get the fully populated block
         let block = eth_adapter

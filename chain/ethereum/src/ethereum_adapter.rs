@@ -32,17 +32,18 @@ use graph::prelude::{
         },
         rpc::types::{
             trace::{filter::TraceFilter as AlloyTraceFilter, parity::LocalizedTransactionTrace},
-            TransactionInput, TransactionRequest,
+            Block as AlloyBlock, TransactionInput, TransactionRequest,
         },
         transports::{RpcError, TransportErrorKind},
     },
-    alloy_log_to_web3_log, alloy_transaction_receipt_to_web3_transaction_receipt, b256_to_h256,
+    alloy_log_to_web3_log, alloy_transaction_receipt_to_web3_transaction_receipt,
     h160_to_alloy_address, h256_to_b256,
     tokio::try_join,
 };
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
+use graph::util::conversions::alloy_block_to_web3_block;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -1258,27 +1259,12 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .await
     }
 
-    async fn load_block(
-        &self,
-        logger: &Logger,
-        block_hash: H256,
-    ) -> Result<LightEthereumBlock, Error> {
-        self.block_by_hash(logger, block_hash)
-            .await?
-            .ok_or_else(move || {
-                anyhow!(
-                    "Ethereum node could not find block with hash {}",
-                    block_hash
-                )
-            })
-    }
-
     async fn block_by_hash(
         &self,
         logger: &Logger,
-        block_hash: H256,
-    ) -> Result<Option<LightEthereumBlock>, Error> {
-        let web3 = self.web3.clone();
+        block_hash: B256,
+    ) -> Result<Option<AlloyBlock>, Error> {
+        let alloy = self.alloy.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
             "eth_getBlockByHash RPC call for block hash {:?}",
@@ -1290,10 +1276,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.cheap_clone();
                 async move {
-                    web3.eth()
-                        .block_with_txs(BlockId::Hash(block_hash))
+                    alloy
+                        .get_block_by_hash(block_hash)
+                        .full()
                         .await
                         .map_err(Error::from)
                 }
@@ -1310,8 +1297,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Result<Option<LightEthereumBlock>, Error> {
-        let web3 = self.web3.clone();
+    ) -> Result<Option<AlloyBlock>, Error> {
+        let alloy = self.alloy.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
             "eth_getBlockByNumber RPC call for block number {}",
@@ -1322,10 +1309,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .no_limit()
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let web3 = web3.cheap_clone();
+                let alloy = alloy.clone();
                 async move {
-                    web3.eth()
-                        .block_with_txs(BlockId::Number(block_number.into()))
+                    alloy
+                        .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
+                            block_number as u64,
+                        ))
+                        .full()
                         .await
                         .map_err(Error::from)
                 }
@@ -1344,50 +1334,42 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn load_full_block(
         &self,
         logger: &Logger,
-        block: LightEthereumBlock,
+        block: AlloyBlock,
     ) -> Result<EthereumBlock, IngestorError> {
         let alloy = self.alloy.clone();
         let logger = logger.clone();
-        let block_hash = block.hash.expect("block is missing block hash");
+        let block_hash = block.header.hash;
 
         // The early return is necessary for correctness, otherwise we'll
         // request an empty batch which is not valid in JSON-RPC.
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
             return Ok(EthereumBlock {
-                block: Arc::new(block),
+                block: Arc::new(alloy_block_to_web3_block(block)),
                 transaction_receipts: Vec::new(),
             });
         }
-        let hashes: Vec<_> = block.transactions.iter().map(|txn| txn.hash).collect();
+        let hashes: Vec<_> = block.transactions.hashes().collect();
 
         let supports_block_receipts = self
             .check_block_receipt_support_and_update_cache(
                 alloy.clone(),
-                h256_to_b256(block_hash),
+                block_hash,
                 self.supports_eip_1898,
                 self.call_only,
                 logger.clone(),
             )
             .await;
 
-        let hashes_b256 = hashes.iter().map(|hash| h256_to_b256(*hash)).collect();
-        let block_hash_b256 = h256_to_b256(block_hash);
-        fetch_receipts_with_retry(
-            alloy,
-            hashes_b256,
-            block_hash_b256,
-            logger,
-            supports_block_receipts,
-        )
-        .await
-        .map(|transaction_receipts| EthereumBlock {
-            block: Arc::new(block),
-            transaction_receipts: transaction_receipts
-                .into_iter()
-                .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt))
-                .collect(),
-        })
+        fetch_receipts_with_retry(alloy, hashes, block_hash, logger, supports_block_receipts)
+            .await
+            .map(|transaction_receipts| EthereumBlock {
+                block: Arc::new(alloy_block_to_web3_block(block)),
+                transaction_receipts: transaction_receipts
+                    .into_iter()
+                    .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt))
+                    .collect(),
+            })
     }
 
     async fn get_balance(
@@ -2447,7 +2429,7 @@ fn resolve_transaction_receipt(
                 // considers this block to be in the main chain. Nothing we can do from here except
                 // give up trying to ingest this block. There is no way to get the transaction
                 // receipt from this block.
-                Err(IngestorError::BlockUnavailable(b256_to_h256(block_hash)))
+                Err(IngestorError::BlockUnavailable(block_hash))
             } else {
                 Ok(receipt)
             }
