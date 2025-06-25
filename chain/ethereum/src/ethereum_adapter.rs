@@ -19,15 +19,27 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
-use graph::prelude::alloy;
-use graph::prelude::alloy::primitives::B256;
-use graph::prelude::alloy::rpc::types::{TransactionInput, TransactionRequest};
-use graph::prelude::alloy::transports::RpcError;
-
-use graph::prelude::alloy_transaction_receipt_to_web3_transaction_receipt;
-use graph::prelude::h256_to_b256;
-use graph::prelude::tokio::try_join;
-use graph::prelude::{alloy_log_to_web3_log, b256_to_h256};
+use graph::prelude::{
+    alloy::{
+        self,
+        primitives::B256,
+        providers::{
+            ext::TraceApi,
+            fillers::{
+                BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller,
+            },
+            Identity, Provider, RootProvider,
+        },
+        rpc::types::{
+            trace::{filter::TraceFilter as AlloyTraceFilter, parity::LocalizedTransactionTrace},
+            TransactionInput, TransactionRequest,
+        },
+        transports::{RpcError, TransportErrorKind},
+    },
+    alloy_log_to_web3_log, alloy_transaction_receipt_to_web3_transaction_receipt, b256_to_h256,
+    h160_to_alloy_address, h256_to_b256,
+    tokio::try_join,
+};
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
@@ -41,11 +53,7 @@ use graph::{
         TimeoutError,
     },
 };
-use graph::{
-    components::ethereum::*,
-    prelude::web3::api::Web3,
-    prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
-};
+use graph::{components::ethereum::*, prelude::web3::api::Web3, prelude::web3::types::H160};
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -73,12 +81,20 @@ use crate::{
     ENV_VARS,
 };
 
+type AlloyProvider = FillProvider<
+    JoinFill<
+        Identity,
+        JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+    >,
+    RootProvider,
+>;
+
 #[derive(Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
     web3: Arc<Web3<Transport>>,
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<AlloyProvider>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
     call_only: bool,
@@ -164,79 +180,26 @@ impl EthereumAdapter {
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: BlockNumber,
         to: BlockNumber,
-        addresses: Vec<H160>,
-    ) -> Result<Vec<Trace>, Error> {
+        addresses: Vec<alloy::primitives::Address>,
+    ) -> Result<Vec<LocalizedTransactionTrace>, Error> {
         assert!(!self.call_only);
 
-        let eth = self.clone();
         let retry_log_message =
             format!("trace_filter RPC call for block range: [{}..{}]", from, to);
+        let eth = self.clone();
+
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
-                let trace_filter: TraceFilter = match addresses.len() {
-                    0 => TraceFilterBuilder::default()
-                        .from_block(from.into())
-                        .to_block(to.into())
-                        .build(),
-                    _ => TraceFilterBuilder::default()
-                        .from_block(from.into())
-                        .to_block(to.into())
-                        .to_address(addresses.clone())
-                        .build(),
-                };
-
-                let eth = eth.cheap_clone();
-                let logger_for_triggers = logger.clone();
-                let logger_for_error = logger.clone();
-                let start = Instant::now();
+                let eth = eth.clone();
+                let logger = logger.clone();
                 let subgraph_metrics = subgraph_metrics.clone();
-                let provider_metrics = eth.metrics.clone();
-                let provider = self.provider.clone();
-
+                let addresses = addresses.clone();
                 async move {
-                    let result = eth
-                        .web3
-                        .trace()
-                        .filter(trace_filter)
+                    eth.execute_trace_filter_request(logger, subgraph_metrics, from, to, addresses)
                         .await
-                        .map(move |traces| {
-                            if !traces.is_empty() {
-                                if to == from {
-                                    debug!(
-                                        logger_for_triggers,
-                                        "Received {} traces for block {}",
-                                        traces.len(),
-                                        to
-                                    );
-                                } else {
-                                    debug!(
-                                        logger_for_triggers,
-                                        "Received {} traces for blocks [{}, {}]",
-                                        traces.len(),
-                                        from,
-                                        to
-                                    );
-                                }
-                            }
-                            traces
-                        })
-                        .map_err(Error::from);
-
-                    let elapsed = start.elapsed().as_secs_f64();
-                    provider_metrics.observe_request(elapsed, "trace_filter", &provider);
-                    subgraph_metrics.observe_request(elapsed, "trace_filter", &provider);
-                    if let Err(e) = &result {
-                        provider_metrics.add_error("trace_filter", &provider);
-                        subgraph_metrics.add_error("trace_filter", &provider);
-                        debug!(
-                            logger_for_error,
-                            "Error querying traces error = {:#} from = {} to = {}", e, from, to
-                        );
-                    }
-                    result
                 }
             })
             .map_err(move |e| {
@@ -250,6 +213,93 @@ impl EthereumAdapter {
                 })
             })
             .await
+    }
+
+    async fn execute_trace_filter_request(
+        &self,
+        logger: Logger,
+        subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+        from: BlockNumber,
+        to: BlockNumber,
+        addresses: Vec<alloy::primitives::Address>,
+    ) -> Result<Vec<LocalizedTransactionTrace>, Error> {
+        let alloy_trace_filter = Self::build_trace_filter(from, to, &addresses);
+        let start = Instant::now();
+
+        let result = self.alloy.trace_filter(&alloy_trace_filter).await;
+
+        if let Ok(traces) = &result {
+            self.log_trace_results(&logger, from, to, traces.len());
+        }
+
+        self.record_trace_metrics(
+            &subgraph_metrics,
+            start.elapsed().as_secs_f64(),
+            &result,
+            from,
+            to,
+            &logger,
+        );
+
+        result.map_err(Error::from)
+    }
+
+    fn build_trace_filter(
+        from: BlockNumber,
+        to: BlockNumber,
+        addresses: &[alloy::primitives::Address],
+    ) -> AlloyTraceFilter {
+        let filter = AlloyTraceFilter::default()
+            .from_block(from as u64)
+            .to_block(to as u64);
+
+        if !addresses.is_empty() {
+            filter.to_address(addresses.to_vec())
+        } else {
+            filter
+        }
+    }
+
+    fn log_trace_results(
+        &self,
+        logger: &Logger,
+        from: BlockNumber,
+        to: BlockNumber,
+        trace_len: usize,
+    ) {
+        if trace_len > 0 {
+            if to == from {
+                debug!(logger, "Received {} traces for block {}", trace_len, to);
+            } else {
+                debug!(
+                    logger,
+                    "Received {} traces for blocks [{}, {}]", trace_len, from, to
+                );
+            }
+        }
+    }
+
+    fn record_trace_metrics(
+        &self,
+        subgraph_metrics: &Arc<SubgraphEthRpcMetrics>,
+        elapsed: f64,
+        result: &Result<Vec<LocalizedTransactionTrace>, RpcError<TransportErrorKind>>,
+        from: BlockNumber,
+        to: BlockNumber,
+        logger: &Logger,
+    ) {
+        self.metrics
+            .observe_request(elapsed, "trace_filter", &self.provider);
+        subgraph_metrics.observe_request(elapsed, "trace_filter", &self.provider);
+
+        if let Err(e) = result {
+            self.metrics.add_error("trace_filter", &self.provider);
+            subgraph_metrics.add_error("trace_filter", &self.provider);
+            debug!(
+                logger,
+                "Error querying traces error = {:#} from = {} to = {}", e, from, to
+            );
+        }
     }
 
     // This is a lazy check for block receipt support. It is only called once and then the result is
@@ -368,8 +418,8 @@ impl EthereumAdapter {
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: BlockNumber,
         to: BlockNumber,
-        addresses: Vec<H160>,
-    ) -> impl futures03::Stream<Item = Result<Trace, Error>> + Send {
+        addresses: Vec<alloy::primitives::Address>,
+    ) -> impl futures03::Stream<Item = Result<LocalizedTransactionTrace, Error>> + Send {
         if from > to {
             panic!(
                 "Can not produce a call stream on a backwards block range: from = {}, to = {}",
@@ -900,6 +950,11 @@ impl EthereumAdapter {
             addresses = vec![];
         }
 
+        let addresses = addresses
+            .iter()
+            .map(|addr| h160_to_alloy_address(*addr))
+            .collect();
+
         Box::new(
             eth.trace_stream(logger, subgraph_metrics, from, to, addresses)
                 .try_filter_map(move |trace| {
@@ -987,11 +1042,11 @@ impl EthereumAdapter {
         logger: &Logger,
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         block_number: BlockNumber,
-        block_hash: H256,
+        block_hash: alloy::primitives::B256,
     ) -> Result<Vec<EthereumCall>, Error> {
         let eth = self.clone();
         let addresses = Vec::new();
-        let traces: Vec<Trace> = eth
+        let traces: Vec<LocalizedTransactionTrace> = eth
             .trace_stream(
                 logger,
                 subgraph_metrics.clone(),
@@ -1017,7 +1072,7 @@ impl EthereumAdapter {
         // all the traces for the block, we need to ensure that the
         // block hash for the traces is equal to the desired block hash.
         // Assume all traces are for the same block.
-        if traces.iter().nth(0).unwrap().block_hash != block_hash {
+        if traces.iter().nth(0).unwrap().block_hash != Some(block_hash) {
             return Err(anyhow!(
                 "Trace stream returned traces for an unexpected block: \
                          number = `{}`, hash = `{}`",
@@ -1835,7 +1890,7 @@ pub(crate) async fn get_calls(
                         subgraph_metrics.clone(),
                         BlockNumber::try_from(ethereum_block.block.number.unwrap().as_u64())
                             .unwrap(),
-                        ethereum_block.block.hash.unwrap(),
+                        h256_to_b256(ethereum_block.block.hash.unwrap()),
                     )
                     .await?
             };
