@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use web3::types::Bytes;
+
 use crate::prelude::alloy::primitives::{Address as AlloyAddress, B256};
 use crate::prelude::alloy::rpc::types::{
     Block as AlloyBlock, Log as AlloyLog, TransactionReceipt as AlloyTransactionReceipt,
@@ -53,6 +55,20 @@ pub fn web3_address_to_alloy_address(addr: Web3Address) -> AlloyAddress {
 /// Converts alloy Address to web3 Address
 pub fn alloy_address_to_web3_address(addr: AlloyAddress) -> Web3Address {
     alloy_address_to_h160(addr)
+}
+
+// u256 to web3 U256
+pub fn alloy_u256_to_web3_u256(_u: alloy::primitives::U256) -> U256 {
+    unimplemented!();
+}
+
+pub fn alloy_bytes_to_web3_bytes(_b: alloy::primitives::Bytes) -> Bytes {
+    unimplemented!();
+}
+
+// u256 to alloy U256
+pub fn web3_u256_to_alloy_u256(u: U256) -> U256 {
+    U256::from(u)
 }
 
 /// Converts alloy Log to web3 Log
