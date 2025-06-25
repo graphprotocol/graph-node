@@ -1,13 +1,12 @@
+use alloy::rpc::types::trace::parity::{Action, LocalizedTransactionTrace, TraceOutput};
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
-use web3::types::{
-    Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256,
-    U64,
-};
+use web3::types::{Address, Block, Bytes, Log, Transaction, TransactionReceipt, H256, U256, U64};
 
 use crate::{
     blockchain::{BlockPtr, BlockTime},
-    prelude::BlockNumber,
+    prelude::{alloy_address_to_h160, b256_to_h256, BlockNumber},
+    util::conversions::{alloy_bytes_to_web3_bytes, alloy_u256_to_web3_u256, u64_to_web3_u256},
 };
 
 pub type LightEthereumBlock = Block<Transaction>;
@@ -125,21 +124,24 @@ pub struct EthereumCall {
 }
 
 impl EthereumCall {
-    pub fn try_from_trace(trace: &Trace) -> Option<Self> {
+    pub fn try_from_trace(trace: &LocalizedTransactionTrace) -> Option<Self> {
         // The parity-ethereum tracing api returns traces for operations which had execution errors.
         // Filter errorful traces out, since call handlers should only run on successful CALLs.
-        if trace.error.is_some() {
+
+        let tx_trace = &trace.trace;
+
+        if tx_trace.error.is_some() {
             return None;
         }
         // We are only interested in traces from CALLs
-        let call = match &trace.action {
+        let call = match &tx_trace.action {
             // Contract to contract value transfers compile to the CALL opcode
             // and have no input. Call handlers are for triggering on explicit method calls right now.
             Action::Call(call) if call.input.0.len() >= 4 => call,
             _ => return None,
         };
-        let (output, gas_used) = match &trace.result {
-            Some(Res::Call(result)) => (result.output.clone(), result.gas_used),
+        let (output, gas_used) = match &tx_trace.result {
+            Some(TraceOutput::Call(result)) => (result.output.clone(), result.gas_used),
             _ => return None,
         };
 
@@ -148,15 +150,15 @@ impl EthereumCall {
         let transaction_index = trace.transaction_position? as u64;
 
         Some(EthereumCall {
-            from: call.from,
-            to: call.to,
-            value: call.value,
-            gas_used,
-            input: call.input.clone(),
-            output,
-            block_number: trace.block_number as BlockNumber,
-            block_hash: trace.block_hash,
-            transaction_hash: trace.transaction_hash,
+            from: alloy_address_to_h160(call.from),
+            to: alloy_address_to_h160(call.to),
+            value: alloy_u256_to_web3_u256(call.value),
+            gas_used: u64_to_web3_u256(gas_used),
+            input: alloy_bytes_to_web3_bytes(call.input.clone()),
+            output: alloy_bytes_to_web3_bytes(output),
+            block_number: trace.block_number? as BlockNumber,
+            block_hash: trace.block_hash.map(|h| b256_to_h256(h))?,
+            transaction_hash: trace.transaction_hash.map(|h| b256_to_h256(h)),
             transaction_index,
         })
     }
