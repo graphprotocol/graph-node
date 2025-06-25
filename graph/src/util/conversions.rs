@@ -95,7 +95,7 @@ pub fn alloy_transaction_receipt_to_web3_transaction_receipt(
 }
 
 /// Converts alloy Block to web3 Block
-pub fn alloy_block_to_web3_block(_block: AlloyBlock) -> Web3Block<Web3Transaction> {
+pub fn alloy_block_to_web3_block(_block: Arc<AlloyBlock>) -> Arc<Web3Block<Web3Transaction>> {
     unimplemented!(
         "Block conversion from alloy to web3 not yet implemented - will be done when needed"
     )
