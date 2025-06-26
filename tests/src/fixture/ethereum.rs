@@ -6,19 +6,19 @@ use super::{
     test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
     NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
-use graph::abi;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
-use graph::components::ethereum::Block;
+use graph::components::ethereum::BlockWrapper;
 use graph::data_source::subgraph;
 use graph::prelude::web3::types::H256;
 use graph::prelude::web3::types::U64;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
 use graph::prelude::{tiny_keccak, web3, DeploymentHash, Entity, ENV_VARS};
 use graph::schema::EntityType;
+use graph::{abi, alloy_todo};
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
 use graph_chain_ethereum::Chain;
@@ -78,14 +78,20 @@ pub async fn chain(
 }
 
 pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
+    #[allow(unused_variables)]
     let ptr = test_ptr(0);
-    let block: web3::types::Block<Transaction> = web3::types::Block {
-        hash: Some(H256::from_slice(ptr.hash.as_slice())),
-        number: Some(U64::from(ptr.number)),
-        ..Default::default()
-    };
+    // let block: web3::types::Block<Transaction> = web3::types::Block {
+    //     hash: Some(H256::from_slice(ptr.hash.as_slice())),
+    //     number: Some(U64::from(ptr.number)),
+    //     ..Default::default()
+    // };
+
+    #[allow(unused_variables)]
+    let block = alloy_todo!();
+
+    #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(Block::new(block))),
+        block: BlockFinality::Final(Arc::new(BlockWrapper::new(block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -117,6 +123,7 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
     assert!(ptr != parent_ptr);
     assert!(ptr.number > parent_ptr.number);
 
+    #[allow(unused_variables)]
     // A 0x000.. transaction is used so `push_test_log` can use it
     let transactions = vec![Transaction {
         hash: H256::zero(),
@@ -128,14 +135,18 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
         ..Default::default()
     }];
 
+    // let web3_block = web3::types::Block {
+    //     hash: Some(H256::from_slice(ptr.hash.as_slice())),
+    //     number: Some(U64::from(ptr.number)),
+    //     parent_hash: H256::from_slice(parent_ptr.hash.as_slice()),
+    //     transactions: transactions.clone(),
+    //     ..Default::default()
+    // };
+    #[allow(unused_variables)]
+    let web3_block = alloy_todo!();
+    #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(Block::new(web3::types::Block {
-            hash: Some(H256::from_slice(ptr.hash.as_slice())),
-            number: Some(U64::from(ptr.number)),
-            parent_hash: H256::from_slice(parent_ptr.hash.as_slice()),
-            transactions: transactions.clone(),
-            ..Default::default()
-        }))),
+        block: BlockFinality::Final(Arc::new(BlockWrapper::new(web3_block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,

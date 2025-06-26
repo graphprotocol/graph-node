@@ -4,12 +4,15 @@ mod pbcodec;
 
 use anyhow::format_err;
 use graph::{
+    alloy_todo,
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
     prelude::{
-        web3,
-        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        web3::{
+            self,
+            types::{Bytes, H160, H2048, H256, U256, U64},
+        },
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
     },
@@ -225,64 +228,65 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
             format_err!("block header should always be present from gRPC Firehose")
         })?;
 
-        let web3_block = web3::types::Block {
-            hash: Some(self.hash.try_decode_proto("block hash")?),
-            number: Some(U64::from(self.number)),
-            author: header.coinbase.try_decode_proto("author / coinbase")?,
-            parent_hash: header.parent_hash.try_decode_proto("parent hash")?,
-            uncles_hash: header.uncle_hash.try_decode_proto("uncle hash")?,
-            state_root: header.state_root.try_decode_proto("state root")?,
-            transactions_root: header
-                .transactions_root
-                .try_decode_proto("transactions root")?,
-            receipts_root: header.receipt_root.try_decode_proto("receipt root")?,
-            gas_used: U256::from(header.gas_used),
-            gas_limit: U256::from(header.gas_limit),
-            base_fee_per_gas: Some(
-                header
-                    .base_fee_per_gas
-                    .as_ref()
-                    .map_or_else(U256::default, |v| v.into()),
-            ),
-            extra_data: Bytes::from(header.extra_data.clone()),
-            logs_bloom: match &header.logs_bloom.len() {
-                0 => None,
-                _ => Some(header.logs_bloom.try_decode_proto("logs bloom")?),
-            },
-            timestamp: header
-                .timestamp
-                .as_ref()
-                .map_or_else(U256::default, |v| U256::from(v.seconds)),
-            difficulty: header
-                .difficulty
-                .as_ref()
-                .map_or_else(U256::default, |v| v.into()),
-            total_difficulty: Some(
-                header
-                    .total_difficulty
-                    .as_ref()
-                    .map_or_else(U256::default, |v| v.into()),
-            ),
-            // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
-            seal_fields: vec![],
-            uncles: self
-                .uncles
-                .iter()
-                .map(|u| u.hash.try_decode_proto("uncle hash"))
-                .collect::<Result<Vec<H256>, _>>()?,
-            transactions: self
-                .transaction_traces
-                .iter()
-                .map(|t| TransactionTraceAt::new(t, self).try_into())
-                .collect::<Result<Vec<web3::types::Transaction>, Error>>()?,
-            size: Some(U256::from(self.size)),
-            mix_hash: Some(header.mix_hash.try_decode_proto("mix hash")?),
-            nonce: Some(H64::from_low_u64_be(header.nonce)),
-        };
+        // let web3_block = web3::types::Block {
+        //     hash: Some(self.hash.try_decode_proto("block hash")?),
+        //     number: Some(U64::from(self.number)),
+        //     author: header.coinbase.try_decode_proto("author / coinbase")?,
+        //     parent_hash: header.parent_hash.try_decode_proto("parent hash")?,
+        //     uncles_hash: header.uncle_hash.try_decode_proto("uncle hash")?,
+        //     state_root: header.state_root.try_decode_proto("state root")?,
+        //     transactions_root: header
+        //         .transactions_root
+        //         .try_decode_proto("transactions root")?,
+        //     receipts_root: header.receipt_root.try_decode_proto("receipt root")?,
+        //     gas_used: U256::from(header.gas_used),
+        //     gas_limit: U256::from(header.gas_limit),
+        //     base_fee_per_gas: Some(
+        //         header
+        //             .base_fee_per_gas
+        //             .as_ref()
+        //             .map_or_else(U256::default, |v| v.into()),
+        //     ),
+        //     extra_data: Bytes::from(header.extra_data.clone()),
+        //     logs_bloom: match &header.logs_bloom.len() {
+        //         0 => None,
+        //         _ => Some(header.logs_bloom.try_decode_proto("logs bloom")?),
+        //     },
+        //     timestamp: header
+        //         .timestamp
+        //         .as_ref()
+        //         .map_or_else(U256::default, |v| U256::from(v.seconds)),
+        //     difficulty: header
+        //         .difficulty
+        //         .as_ref()
+        //         .map_or_else(U256::default, |v| v.into()),
+        //     total_difficulty: Some(
+        //         header
+        //             .total_difficulty
+        //             .as_ref()
+        //             .map_or_else(U256::default, |v| v.into()),
+        //     ),
+        //     // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
+        //     seal_fields: vec![],
+        //     uncles: self
+        //         .uncles
+        //         .iter()
+        //         .map(|u| u.hash.try_decode_proto("uncle hash"))
+        //         .collect::<Result<Vec<H256>, _>>()?,
+        //     transactions: self
+        //         .transaction_traces
+        //         .iter()
+        //         .map(|t| TransactionTraceAt::new(t, self).try_into())
+        //         .collect::<Result<Vec<web3::types::Transaction>, Error>>()?,
+        //     size: Some(U256::from(self.size)),
+        //     mix_hash: Some(header.mix_hash.try_decode_proto("mix hash")?),
+        //     nonce: Some(H64::from_low_u64_be(header.nonce)),
+        // };
 
+        #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(web3_block)),
+                block: Arc::new(LightEthereumBlock::new(alloy_todo!())),
                 transaction_receipts: self
                     .transaction_traces
                     .iter()

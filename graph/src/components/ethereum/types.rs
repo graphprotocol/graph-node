@@ -14,39 +14,45 @@ use crate::{
 
 #[allow(dead_code)]
 #[derive(Debug, Default, Deserialize, Serialize)]
-pub struct Block(web3::types::Block<Transaction>);
+pub struct BlockWrapper(AlloyBlock);
 
-impl Block {
-    pub fn new(block: web3::types::Block<Transaction>) -> Self {
+impl BlockWrapper {
+    pub fn new(block: AlloyBlock) -> Self {
         Self(block)
     }
 
     pub fn hash_h256(&self) -> Option<H256> {
-        self.0.hash
+        alloy_todo!()
+        // self.0.hash
     }
 
     pub fn number_u64(&self) -> Option<u64> {
-        self.0.number.map(|n| n.as_u64())
+        alloy_todo!()
+        // self.0.number.map(|n| n.as_u64())
     }
 
     pub fn number_web3_u64(&self) -> Option<U64> {
-        self.0.number
+        alloy_todo!()
+        // Some(u64_to_web3_u64(self.0.header.number))
     }
 
     pub fn timestamp_u64(&self) -> u64 {
-        self.0.timestamp.as_u64()
+        alloy_todo!()
+        // self.0.timestamp.as_u64()
     }
 
     pub fn transactions(&self) -> &[Transaction] {
-        &self.0.transactions
+        alloy_todo!()
+        // &self.0.transactions
     }
 
     pub fn inner(&self) -> &web3::types::Block<Transaction> {
-        &self.0
+        alloy_todo!()
+        // &self.0
     }
 }
 
-pub type LightEthereumBlock = Block;
+pub type LightEthereumBlock = BlockWrapper;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;

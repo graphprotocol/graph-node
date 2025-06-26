@@ -12,7 +12,7 @@ use std::time::Duration;
 use std::{fmt, str::FromStr};
 use web3::types::{Block as Web3Block, H256, U256, U64};
 
-use crate::components::ethereum::Block;
+use crate::components::ethereum::BlockWrapper;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::BlockNumber;
@@ -218,14 +218,14 @@ impl slog::Value for BlockPtr {
     }
 }
 
-impl From<Block> for BlockPtr {
-    fn from(b: Block) -> BlockPtr {
+impl From<BlockWrapper> for BlockPtr {
+    fn from(b: BlockWrapper) -> BlockPtr {
         BlockPtr::from((b.hash_h256().unwrap(), b.number_u64().unwrap() as i32))
     }
 }
 
-impl From<&Block> for BlockPtr {
-    fn from(b: &Block) -> BlockPtr {
+impl From<&BlockWrapper> for BlockPtr {
+    fn from(b: &BlockWrapper) -> BlockPtr {
         BlockPtr::from((b.hash_h256().unwrap(), b.number_u64().unwrap() as i32))
     }
 }
