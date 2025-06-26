@@ -7,7 +7,8 @@ use crate::{
     alloy_todo,
     blockchain::{BlockPtr, BlockTime},
     prelude::{
-        alloy::rpc::types::Block as AlloyBlock, alloy_address_to_h160, b256_to_h256, BlockNumber,
+        alloy::rpc::types::Block as AlloyBlock, alloy_address_to_h160, b256_to_h256, h256_to_b256,
+        BlockNumber,
     },
     util::conversions::{alloy_bytes_to_web3_bytes, alloy_u256_to_web3_u256, u64_to_web3_u256},
 };
@@ -193,12 +194,12 @@ impl EthereumBlockWithCalls {
             .ethereum_block
             .transaction_receipts
             .iter()
-            .find(|txn| txn.transaction_hash == call_transaction_hash)
+            .find(|txn| txn.transaction_hash == h256_to_b256(call_transaction_hash))
             .ok_or(anyhow::anyhow!(
                 "failed to find the receipt for this transaction"
             ))?;
 
-        Ok(evaluate_transaction_status(receipt.status))
+        Ok(receipt.status())
     }
 }
 
@@ -215,7 +216,7 @@ pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Arc<LightEthereumBlock>,
-    pub transaction_receipts: Vec<Arc<TransactionReceipt>>,
+    pub transaction_receipts: Vec<Arc<alloy::rpc::types::TransactionReceipt>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
