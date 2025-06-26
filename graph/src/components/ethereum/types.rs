@@ -1,7 +1,10 @@
-use alloy::rpc::types::trace::parity::{Action, LocalizedTransactionTrace, TraceOutput};
+use alloy::{
+    primitives::B256,
+    rpc::types::trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
+};
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, sync::Arc};
-use web3::types::{Address, Bytes, Log, Transaction, TransactionReceipt, H256, U256, U64};
+use std::sync::Arc;
+use web3::types::{Address, Bytes, Log, Transaction, U256, U64};
 
 use crate::{
     alloy_todo,
@@ -22,9 +25,13 @@ impl BlockWrapper {
         Self(block)
     }
 
-    pub fn hash_h256(&self) -> Option<H256> {
+    pub fn hash_h256(&self) -> Option<B256> {
         alloy_todo!()
         // self.0.hash
+    }
+
+    pub fn hash(&self) -> B256 {
+        self.0.header.hash
     }
 
     pub fn number_u64(&self) -> Option<u64> {
@@ -57,7 +64,7 @@ pub type LightEthereumBlock = BlockWrapper;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
+    fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
@@ -106,7 +113,7 @@ impl LightEthereumBlockExt for LightEthereumBlock {
         self.0.number()
     }
 
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+    fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<Transaction> {
         self.0.transaction_for_log(log)
     }
 
@@ -128,50 +135,6 @@ impl LightEthereumBlockExt for LightEthereumBlock {
 
     fn timestamp(&self) -> BlockTime {
         self.0.timestamp()
-    }
-}
-
-impl LightEthereumBlockExt for web3::types::Block<Transaction> {
-    fn number(&self) -> BlockNumber {
-        BlockNumber::try_from(self.number.unwrap().as_u64()).unwrap()
-    }
-
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
-        log.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
-    }
-
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
-        call.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
-    }
-
-    fn parent_ptr(&self) -> Option<BlockPtr> {
-        match self.number() {
-            0 => None,
-            n => Some(BlockPtr::from((self.parent_hash, n - 1))),
-        }
-    }
-
-    fn format(&self) -> String {
-        format!(
-            "{} ({})",
-            self.number
-                .map_or(String::from("none"), |number| format!("#{}", number)),
-            self.hash
-                .map_or(String::from("-"), |hash| format!("{:x}", hash))
-        )
-    }
-
-    fn block_ptr(&self) -> BlockPtr {
-        BlockPtr::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
-    }
-
-    fn timestamp(&self) -> BlockTime {
-        let ts = i64::try_from(self.timestamp.as_u64()).unwrap();
-        BlockTime::since_epoch(ts, 0)
     }
 }
 
@@ -228,8 +191,8 @@ pub struct EthereumCall {
     pub input: Bytes,
     pub output: Bytes,
     pub block_number: BlockNumber,
-    pub block_hash: H256,
-    pub transaction_hash: Option<H256>,
+    pub block_hash: B256,
+    pub transaction_hash: Option<B256>,
     pub transaction_index: u64,
 }
 
