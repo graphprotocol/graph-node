@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use web3::types::Bytes;
 
-use crate::components::ethereum::Block;
+use crate::components::ethereum::BlockWrapper;
 use crate::prelude::alloy::primitives::{Address as AlloyAddress, B256};
 use crate::prelude::alloy::rpc::types::{
     Block as AlloyBlock, Log as AlloyLog, TransactionReceipt as AlloyTransactionReceipt,
@@ -103,13 +103,13 @@ pub fn alloy_transaction_receipt_to_web3_transaction_receipt(
 }
 
 /// Converts alloy Block to web3 Block
-pub fn alloy_block_to_block_arc(_block: Arc<AlloyBlock>) -> Arc<Block> {
+pub fn alloy_block_to_block_arc(_block: Arc<AlloyBlock>) -> Arc<BlockWrapper> {
     unimplemented!(
         "Block conversion from alloy to web3 not yet implemented - will be done when needed"
     )
 }
 
-pub fn alloy_block_to_block(_block: AlloyBlock) -> Block {
+pub fn alloy_block_to_block(_block: AlloyBlock) -> BlockWrapper {
     unimplemented!(
         "Block conversion from alloy to web3 not yet implemented - will be done when needed"
     )

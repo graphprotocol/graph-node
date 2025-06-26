@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use graph::{
+    alloy_todo,
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
-    components::ethereum::Block,
+    components::ethereum::BlockWrapper,
     prelude::{
         web3::{
             self,
@@ -96,14 +97,17 @@ fn test_trigger_ordering() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let mut b: web3::types::Block<Transaction> = Default::default();
+    // let mut b: web3::types::Block<Transaction> = Default::default();
 
-    // This is necessary because inside of BlockWithTriggers::new
-    // there's a log for both fields. So just using Default above
-    // gives None on them.
-    b.number = Some(Default::default());
-    b.hash = Some(Default::default());
-    let b = Block::new(b);
+    // // This is necessary because inside of BlockWithTriggers::new
+    // // there's a log for both fields. So just using Default above
+    // // gives None on them.
+    // b.number = Some(Default::default());
+    // b.hash = Some(Default::default());
+    let b = alloy_todo!();
+
+    #[allow(unreachable_code)]
+    let b = BlockWrapper::new(b);
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
@@ -202,7 +206,12 @@ fn test_trigger_dedup() {
     // gives None on them.
     b.number = Some(Default::default());
     b.hash = Some(Default::default());
-    let b = Block::new(b);
+
+    #[allow(unused_variables)]
+    let b = alloy_todo!();
+
+    #[allow(unreachable_code)]
+    let b = BlockWrapper::new(b);
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(

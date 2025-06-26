@@ -2624,14 +2624,13 @@ mod tests {
         check_block_receipt_support, parse_block_triggers, EthereumBlock, EthereumBlockFilter,
         EthereumBlockWithCalls,
     };
+    use graph::alloy_todo;
     use graph::blockchain::BlockPtr;
-    use graph::components::ethereum::Block;
+    use graph::components::ethereum::BlockWrapper;
     use graph::prelude::alloy::primitives::B256;
     use graph::prelude::alloy::providers::mock::Asserter;
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::tokio::{self};
-    use graph::prelude::web3::types::Block as Web3Block;
-    use graph::prelude::web3::types::U64;
     use graph::prelude::web3::types::{Address, Bytes, H256};
     use graph::prelude::EthereumCall;
     use jsonrpc_core::serde_json::{self, Value};
@@ -2641,15 +2640,17 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_every_block() {
-        let web3_block = Web3Block {
-            hash: Some(hash(2)),
-            number: Some(U64::from(2)),
-            ..Default::default()
-        };
+        // let web3_block = Web3Block {
+        //     hash: Some(hash(2)),
+        //     number: Some(U64::from(2)),
+        //     ..Default::default()
+        // };
+        let web3_block = alloy_todo!();
 
+        #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(Block::new(web3_block)),
+                block: Arc::new(BlockWrapper::new(web3_block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2786,14 +2787,17 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_specific_call_not_found() {
-        let web3_block = Web3Block {
-            hash: Some(hash(2)),
-            number: Some(U64::from(2)),
-            ..Default::default()
-        };
+        // let web3_block = Web3Block {
+        //     hash: Some(hash(2)),
+        //     number: Some(U64::from(2)),
+        //     ..Default::default()
+        // };
+        let web3_block = alloy_todo!();
+
+        #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(Block::new(web3_block)),
+                block: Arc::new(BlockWrapper::new(web3_block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2819,15 +2823,17 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_specific_call_found() {
-        let web3_block = Web3Block {
-            hash: Some(hash(2)),
-            number: Some(U64::from(2)),
-            ..Default::default()
-        };
+        // let web3_block = Web3Block {
+        //     hash: Some(hash(2)),
+        //     number: Some(U64::from(2)),
+        //     ..Default::default()
+        // };
+        let web3_block = alloy_todo!();
 
+        #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(Block::new(web3_block)),
+                block: Arc::new(BlockWrapper::new(web3_block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
