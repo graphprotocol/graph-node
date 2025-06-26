@@ -37,8 +37,7 @@ use graph::prelude::{
         },
         transports::{RpcError, TransportErrorKind},
     },
-    alloy_log_to_web3_log, alloy_transaction_receipt_to_web3_transaction_receipt,
-    h160_to_alloy_address, h256_to_b256,
+    alloy_log_to_web3_log, h160_to_alloy_address, h256_to_b256,
     tokio::try_join,
 };
 use graph::slog::o;
@@ -1370,7 +1369,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 block: Arc::new(alloy_block_to_block(block)),
                 transaction_receipts: transaction_receipts
                     .into_iter()
-                    .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt))
+                    .map(|receipt| receipt)
                     .collect(),
             })
     }
@@ -1903,7 +1902,7 @@ pub(crate) fn parse_log_triggers(
         .transaction_receipts
         .iter()
         .flat_map(move |receipt| {
-            receipt.logs.iter().enumerate().map(move |(index, _)| {
+            receipt.logs().iter().enumerate().map(move |(index, _)| {
                 EthereumTrigger::Log(LogRef::LogPosition(index, receipt.cheap_clone()))
             })
         })
@@ -2525,8 +2524,6 @@ async fn get_logs_and_transactions(
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
         let web3_log = alloy_log_to_web3_log(log);
-        let optional_receipt = optional_receipt
-            .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt));
         let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(web3_log), optional_receipt));
         log_triggers.push(value);
     }

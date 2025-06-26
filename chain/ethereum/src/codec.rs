@@ -292,66 +292,67 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     .iter()
                     .filter_map(|t| {
                         t.receipt.as_ref().map(|r| {
-                            Ok(web3::types::TransactionReceipt {
-                                transaction_hash: t.hash.try_decode_proto("transaction hash")?,
-                                transaction_index: U64::from(t.index),
-                                block_hash: Some(
-                                    self.hash.try_decode_proto("transaction block hash")?,
-                                ),
-                                block_number: Some(U64::from(self.number)),
-                                cumulative_gas_used: U256::from(r.cumulative_gas_used),
-                                // FIXME (SF): What is the rule here about gas_used being None, when it's 0?
-                                gas_used: Some(U256::from(t.gas_used)),
-                                contract_address: {
-                                    match t.calls.len() {
-                                        0 => None,
-                                        _ => {
-                                            match CallType::try_from(t.calls[0].call_type).map_err(
-                                                |_| {
-                                                    graph::anyhow::anyhow!(
-                                                        "invalid call type: {}",
-                                                        t.calls[0].call_type,
-                                                    )
-                                                },
-                                            )? {
-                                                CallType::Create => {
-                                                    Some(t.calls[0].address.try_decode_proto(
-                                                        "transaction contract address",
-                                                    )?)
-                                                }
-                                                _ => None,
-                                            }
-                                        }
-                                    }
-                                },
-                                logs: r
-                                    .logs
-                                    .iter()
-                                    .map(|l| LogAt::new(l, self, t).try_into())
-                                    .collect::<Result<Vec<_>, Error>>()?,
-                                status: TransactionTraceStatus::try_from(t.status)
-                                    .map_err(|_| {
-                                        graph::anyhow::anyhow!(
-                                            "invalid transaction trace status: {}",
-                                            t.status
-                                        )
-                                    })?
-                                    .try_into()?,
-                                root: match r.state_root.len() {
-                                    0 => None, // FIXME (SF): should this instead map to [0;32]?
-                                    // FIXME (SF): if len < 32, what do we do?
-                                    _ => Some(
-                                        r.state_root.try_decode_proto("transaction state root")?,
-                                    ),
-                                },
-                                logs_bloom: r
-                                    .logs_bloom
-                                    .try_decode_proto("transaction logs bloom")?,
-                                from: t.from.try_decode_proto("transaction from")?,
-                                to: get_to_address(t)?,
-                                transaction_type: None,
-                                effective_gas_price: None,
-                            })
+                            // Ok(web3::types::TransactionReceipt {
+                            //     transaction_hash: t.hash.try_decode_proto("transaction hash")?,
+                            //     transaction_index: U64::from(t.index),
+                            //     block_hash: Some(
+                            //         self.hash.try_decode_proto("transaction block hash")?,
+                            //     ),
+                            //     block_number: Some(U64::from(self.number)),
+                            //     cumulative_gas_used: U256::from(r.cumulative_gas_used),
+                            //     // FIXME (SF): What is the rule here about gas_used being None, when it's 0?
+                            //     gas_used: Some(U256::from(t.gas_used)),
+                            //     contract_address: {
+                            //         match t.calls.len() {
+                            //             0 => None,
+                            //             _ => {
+                            //                 match CallType::try_from(t.calls[0].call_type).map_err(
+                            //                     |_| {
+                            //                         graph::anyhow::anyhow!(
+                            //                             "invalid call type: {}",
+                            //                             t.calls[0].call_type,
+                            //                         )
+                            //                     },
+                            //                 )? {
+                            //                     CallType::Create => {
+                            //                         Some(t.calls[0].address.try_decode_proto(
+                            //                             "transaction contract address",
+                            //                         )?)
+                            //                     }
+                            //                     _ => None,
+                            //                 }
+                            //             }
+                            //         }
+                            //     },
+                            //     logs: r
+                            //         .logs
+                            //         .iter()
+                            //         .map(|l| LogAt::new(l, self, t).try_into())
+                            //         .collect::<Result<Vec<_>, Error>>()?,
+                            //     status: TransactionTraceStatus::try_from(t.status)
+                            //         .map_err(|_| {
+                            //             graph::anyhow::anyhow!(
+                            //                 "invalid transaction trace status: {}",
+                            //                 t.status
+                            //             )
+                            //         })?
+                            //         .try_into()?,
+                            //     root: match r.state_root.len() {
+                            //         0 => None, // FIXME (SF): should this instead map to [0;32]?
+                            //         // FIXME (SF): if len < 32, what do we do?
+                            //         _ => Some(
+                            //             r.state_root.try_decode_proto("transaction state root")?,
+                            //         ),
+                            //     },
+                            //     logs_bloom: r
+                            //         .logs_bloom
+                            //         .try_decode_proto("transaction logs bloom")?,
+                            //     from: t.from.try_decode_proto("transaction from")?,
+                            //     to: get_to_address(t)?,
+                            //     transaction_type: None,
+                            //     effective_gas_price: None,
+                            // })
+                            Ok(alloy_todo!())
                         })
                     })
                     .collect::<Result<Vec<_>, Error>>()?
