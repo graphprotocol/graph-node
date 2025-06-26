@@ -13,10 +13,40 @@ use crate::{
 };
 
 #[allow(dead_code)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Block(web3::types::Block<Transaction>);
 
-pub type LightEthereumBlock = web3::types::Block<Transaction>;
-pub type LightEthereumBlockAlloy = AlloyBlock;
+impl Block {
+    pub fn new(block: web3::types::Block<Transaction>) -> Self {
+        Self(block)
+    }
+
+    pub fn hash_h256(&self) -> Option<H256> {
+        self.0.hash
+    }
+
+    pub fn number_u64(&self) -> Option<u64> {
+        self.0.number.map(|n| n.as_u64())
+    }
+
+    pub fn number_web3_u64(&self) -> Option<U64> {
+        self.0.number
+    }
+
+    pub fn timestamp_u64(&self) -> u64 {
+        self.0.timestamp.as_u64()
+    }
+
+    pub fn transactions(&self) -> &[Transaction] {
+        &self.0.transactions
+    }
+
+    pub fn inner(&self) -> &web3::types::Block<Transaction> {
+        &self.0
+    }
+}
+
+pub type LightEthereumBlock = Block;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
@@ -28,7 +58,7 @@ pub trait LightEthereumBlockExt {
     fn timestamp(&self) -> BlockTime;
 }
 
-impl LightEthereumBlockExt for LightEthereumBlockAlloy {
+impl LightEthereumBlockExt for AlloyBlock {
     fn number(&self) -> BlockNumber {
         alloy_todo!()
     }
@@ -65,6 +95,36 @@ impl LightEthereumBlockExt for LightEthereumBlockAlloy {
 }
 
 impl LightEthereumBlockExt for LightEthereumBlock {
+    fn number(&self) -> BlockNumber {
+        self.0.number()
+    }
+
+    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+        self.0.transaction_for_log(log)
+    }
+
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+        self.0.transaction_for_call(call)
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.0.parent_ptr()
+    }
+
+    fn format(&self) -> String {
+        self.0.format()
+    }
+
+    fn block_ptr(&self) -> BlockPtr {
+        self.0.block_ptr()
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        self.0.timestamp()
+    }
+}
+
+impl LightEthereumBlockExt for web3::types::Block<Transaction> {
     fn number(&self) -> BlockNumber {
         BlockNumber::try_from(self.number.unwrap().as_u64()).unwrap()
     }
@@ -146,7 +206,7 @@ pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
         .unwrap_or(true)
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Arc<LightEthereumBlock>,
     pub transaction_receipts: Vec<Arc<TransactionReceipt>>,
@@ -209,13 +269,13 @@ impl EthereumCall {
 
 impl From<EthereumBlock> for BlockPtr {
     fn from(b: EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+        BlockPtr::from((b.block.hash_h256().unwrap(), b.block.number()))
     }
 }
 
 impl<'a> From<&'a EthereumBlock> for BlockPtr {
     fn from(b: &'a EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
+        BlockPtr::from((b.block.hash_h256().unwrap(), b.block.number()))
     }
 }
 

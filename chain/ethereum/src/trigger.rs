@@ -420,66 +420,67 @@ impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData<'a> {
 
 impl<'a> EthereumBlockData<'a> {
     pub fn hash(&self) -> &H256 {
-        self.block.hash.as_ref().unwrap()
+        self.block.inner().hash.as_ref().unwrap()
     }
 
     pub fn parent_hash(&self) -> &H256 {
-        &self.block.parent_hash
+        &self.block.inner().parent_hash
     }
 
     pub fn uncles_hash(&self) -> &H256 {
-        &self.block.uncles_hash
+        &self.block.inner().uncles_hash
     }
 
     pub fn author(&self) -> &H160 {
-        &self.block.author
+        &self.block.inner().author
     }
 
     pub fn state_root(&self) -> &H256 {
-        &self.block.state_root
+        &self.block.inner().state_root
     }
 
     pub fn transactions_root(&self) -> &H256 {
-        &self.block.transactions_root
+        &self.block.inner().transactions_root
     }
 
     pub fn receipts_root(&self) -> &H256 {
-        &self.block.receipts_root
+        &self.block.inner().receipts_root
     }
 
     pub fn number(&self) -> U64 {
-        self.block.number.unwrap()
+        self.block.inner().number.unwrap()
     }
 
     pub fn gas_used(&self) -> &U256 {
-        &self.block.gas_used
+        &self.block.inner().gas_used
     }
 
     pub fn gas_limit(&self) -> &U256 {
-        &self.block.gas_limit
+        &self.block.inner().gas_limit
     }
 
     pub fn timestamp(&self) -> &U256 {
-        &self.block.timestamp
+        &self.block.inner().timestamp
     }
 
     pub fn difficulty(&self) -> &U256 {
-        &self.block.difficulty
+        &self.block.inner().difficulty
     }
 
     pub fn total_difficulty(&self) -> &U256 {
         self.block
+            .inner()
             .total_difficulty
             .as_ref()
             .unwrap_or(&U256_DEFAULT)
     }
 
     pub fn size(&self) -> &Option<U256> {
-        &self.block.size
+        &self.block.inner().size
     }
 
     pub fn base_fee_per_gas(&self) -> &Option<U256> {
-        &self.block.base_fee_per_gas
+        &self.block.inner().base_fee_per_gas
     }
 }
 

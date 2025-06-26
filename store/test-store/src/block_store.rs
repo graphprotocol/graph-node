@@ -1,6 +1,8 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use graph::blockchain::{BlockTime, ChainIdentifier};
+use graph::components::ethereum::Block;
+use graph::prelude::web3;
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
@@ -8,10 +10,10 @@ use graph::{
     blockchain::Block as BlockchainBlock,
     prelude::{
         serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
-        EthereumBlock, LightEthereumBlock,
+        EthereumBlock,
     },
 };
-use graph_chain_ethereum::codec::{Block, BlockHeader};
+use graph_chain_ethereum::codec::{Block as FirehoseBlock, BlockHeader};
 use prost_types::Timestamp;
 
 use crate::{GENESIS_PTR, NETWORK_VERSION};
@@ -105,7 +107,7 @@ impl FakeBlock {
     pub fn as_ethereum_block(&self) -> EthereumBlock {
         let parent_hash = H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
 
-        let mut block = LightEthereumBlock::default();
+        let mut block = web3::types::Block::default();
         block.number = Some(self.number.into());
         block.parent_hash = parent_hash;
         block.hash = Some(H256(self.block_hash().as_slice().try_into().unwrap()));
@@ -114,13 +116,13 @@ impl FakeBlock {
         }
 
         EthereumBlock {
-            block: Arc::new(block),
+            block: Arc::new(Block::new(block)),
             transaction_receipts: Vec::new(),
         }
     }
 
-    pub fn as_firehose_block(&self) -> Block {
-        let mut block = Block::default();
+    pub fn as_firehose_block(&self) -> FirehoseBlock {
+        let mut block = FirehoseBlock::default();
         block.hash = self.hash.clone().into_bytes();
         block.number = self.number as u64;
 

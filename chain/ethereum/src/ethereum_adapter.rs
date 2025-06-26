@@ -44,8 +44,8 @@ use graph::prelude::{
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
-use graph::util::conversions::alloy_block_to_web3_block;
-use graph::util::conversions::alloy_block_to_web3_block_arc;
+use graph::util::conversions::alloy_block_to_block;
+use graph::util::conversions::alloy_block_to_block_arc;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -1348,7 +1348,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
             return Ok(EthereumBlock {
-                block: Arc::new(alloy_block_to_web3_block(block)),
+                block: Arc::new(alloy_block_to_block(block)),
                 transaction_receipts: Vec::new(),
             });
         }
@@ -1367,7 +1367,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         fetch_receipts_with_retry(alloy, hashes, block_hash, logger, supports_block_receipts)
             .await
             .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(alloy_block_to_web3_block(block)),
+                block: Arc::new(alloy_block_to_block(block)),
                 transaction_receipts: transaction_receipts
                     .into_iter()
                     .map(|receipt| alloy_transaction_receipt_to_web3_transaction_receipt(receipt))
@@ -1647,7 +1647,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .await?;
         let upsert_blocks: Vec<_> = new_blocks
             .iter()
-            .map(|block| BlockFinality::Final(alloy_block_to_web3_block_arc(block.clone())))
+            .map(|block| BlockFinality::Final(alloy_block_to_block_arc(block.clone())))
             .collect();
         let block_refs: Vec<_> = upsert_blocks
             .iter()
@@ -1802,7 +1802,7 @@ pub(crate) async fn blocks_with_triggers(
         .map(
             move |block| match triggers_by_block.remove(&(block.header.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    BlockFinality::Final(alloy_block_to_web3_block_arc(block)),
+                    BlockFinality::Final(alloy_block_to_block_arc(block)),
                     triggers,
                     &logger2,
                 )),
@@ -1875,9 +1875,8 @@ pub(crate) async fn get_calls(
                     .calls_in_block(
                         &logger,
                         subgraph_metrics.clone(),
-                        BlockNumber::try_from(ethereum_block.block.number.unwrap().as_u64())
-                            .unwrap(),
-                        h256_to_b256(ethereum_block.block.hash.unwrap()),
+                        ethereum_block.block.number(),
+                        h256_to_b256(ethereum_block.block.hash_h256().unwrap()),
                     )
                     .await?
             };
@@ -2061,7 +2060,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let transactions: Vec<&Transaction> = {
         match &block.block {
             BlockFinality::Final(ref block) => block
-                .transactions
+                .transactions()
                 .iter()
                 .filter(|transaction| transaction_hashes.contains(&transaction.hash))
                 .collect(),
@@ -2626,12 +2625,14 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
+    use graph::components::ethereum::Block;
     use graph::prelude::alloy::primitives::B256;
     use graph::prelude::alloy::providers::mock::Asserter;
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::tokio::{self};
+    use graph::prelude::web3::types::Block as Web3Block;
     use graph::prelude::web3::types::U64;
-    use graph::prelude::web3::types::{Address, Block, Bytes, H256};
+    use graph::prelude::web3::types::{Address, Bytes, H256};
     use graph::prelude::EthereumCall;
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
@@ -2640,13 +2641,15 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_every_block() {
+        let web3_block = Web3Block {
+            hash: Some(hash(2)),
+            number: Some(U64::from(2)),
+            ..Default::default()
+        };
+
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(Block {
-                    hash: Some(hash(2)),
-                    number: Some(U64::from(2)),
-                    ..Default::default()
-                }),
+                block: Arc::new(Block::new(web3_block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2783,13 +2786,14 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_specific_call_not_found() {
+        let web3_block = Web3Block {
+            hash: Some(hash(2)),
+            number: Some(U64::from(2)),
+            ..Default::default()
+        };
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(Block {
-                    hash: Some(hash(2)),
-                    number: Some(U64::from(2)),
-                    ..Default::default()
-                }),
+                block: Arc::new(Block::new(web3_block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2815,13 +2819,15 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_specific_call_found() {
+        let web3_block = Web3Block {
+            hash: Some(hash(2)),
+            number: Some(U64::from(2)),
+            ..Default::default()
+        };
+
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(Block {
-                    hash: Some(hash(2)),
-                    number: Some(U64::from(2)),
-                    ..Default::default()
-                }),
+                block: Arc::new(Block::new(web3_block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
