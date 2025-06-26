@@ -19,8 +19,6 @@ use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
-use graph::prelude::web3::types::Address;
-use graph::prelude::web3::types::H160;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
 use itertools::Itertools;
@@ -37,7 +35,7 @@ use graph::{
     blockchain::{self, Blockchain},
     prelude::{
         async_trait, serde_json, warn,
-        web3::types::{Log, Transaction, H256},
+        web3::types::{Address, Log, Transaction, H160, H256},
         BlockNumber, CheapClone, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
         LinkResolver, Logger,
     },
