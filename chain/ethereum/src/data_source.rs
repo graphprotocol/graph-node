@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
-use graph::abi;
 use graph::abi::EventExt;
 use graph::abi::FunctionExt;
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
@@ -19,8 +18,11 @@ use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
-use graph::prelude::{Link, SubgraphManifestValidationError};
+use graph::prelude::alloy::primitives::{Address, B256};
+use graph::prelude::alloy::rpc::types::Log;
+use graph::prelude::{alloy, b256_to_h256, Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
+use graph::{abi, alloy_todo};
 use itertools::Itertools;
 use serde::de::Error as ErrorD;
 use serde::{Deserialize, Deserializer};
@@ -35,7 +37,7 @@ use graph::{
     blockchain::{self, Blockchain},
     prelude::{
         async_trait, serde_json, warn,
-        web3::types::{Address, Log, Transaction, H160, H256},
+        web3::types::{H160, H256},
         BlockNumber, CheapClone, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
         LinkResolver, Logger,
     },
@@ -462,7 +464,7 @@ impl DataSource {
         })
     }
 
-    fn handlers_for_log(&self, log: &Log) -> Vec<MappingEventHandler> {
+    fn handlers_for_log(&self, log: &alloy::rpc::types::Log) -> Vec<MappingEventHandler> {
         self.mapping
             .event_handlers
             .iter()
@@ -640,7 +642,7 @@ impl DataSource {
             return true;
         };
 
-        ds_address == *trigger_address
+        ds_address == trigger_address
     }
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
@@ -748,17 +750,18 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 // There is another special case in zkSync-era, where the transaction hash in this case would be zero
                 // See https://docs.zksync.io/zk-stack/concepts/blocks.html#fictive-l2-block-finalizing-the-batch
-                let transaction = if log.transaction_hash == block.hash_h256()
-                    || log.transaction_hash == Some(H256::zero())
+                let transaction = if log.transaction_hash == Some(block.hash())
+                    || log.transaction_hash == Some(B256::ZERO)
                 {
-                    Transaction {
-                        hash: log.transaction_hash.unwrap(),
-                        block_hash: block.hash_h256(),
-                        block_number: block.number_web3_u64(),
-                        transaction_index: log.transaction_index,
-                        from: Some(H160::zero()),
-                        ..Transaction::default()
-                    }
+                    // Transaction {
+                    //     hash: log.transaction_hash.unwrap(),
+                    //     block_hash: block.hash_h256(),
+                    //     block_number: block.number_web3_u64(),
+                    //     transaction_index: log.transaction_index,
+                    //     from: Some(H160::zero()),
+                    //     ..Transaction::default()
+                    // }
+                    alloy_todo!()
                 } else {
                     // This is the general case where the log's transaction hash does not match the block's hash
                     // and is not a special zero hash, implying a real transaction associated with this log.
@@ -1438,12 +1441,12 @@ pub struct MappingCallHandler {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedMappingEventHandler {
     pub event: String,
-    pub topic0: Option<H256>,
-    #[serde(deserialize_with = "deserialize_h256_vec", default)]
-    pub topic1: Option<Vec<H256>>,
-    #[serde(deserialize_with = "deserialize_h256_vec", default)]
-    pub topic2: Option<Vec<H256>>,
-    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic0: Option<B256>,
+    #[serde(deserialize_with = "deserialize_b256_vec", default)]
+    pub topic1: Option<Vec<B256>>,
+    #[serde(deserialize_with = "deserialize_b256_vec", default)]
+    pub topic2: Option<Vec<B256>>,
+    #[serde(deserialize_with = "deserialize_b256_vec", default)]
     pub topic3: Option<Vec<H256>>,
     pub handler: String,
     #[serde(default)]
@@ -1488,7 +1491,7 @@ pub struct MappingEventHandler {
 }
 
 // Custom deserializer for H256 fields that removes the '0x' prefix before parsing
-fn deserialize_h256_vec<'de, D>(deserializer: D) -> Result<Option<Vec<H256>>, D::Error>
+fn deserialize_b256_vec<'de, D>(deserializer: D) -> Result<Option<Vec<H256>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -1496,19 +1499,19 @@ where
 
     match s {
         Some(vec) => {
-            let mut h256_vec = Vec::new();
+            let mut b256_vec = Vec::new();
             for hex_str in vec {
                 // Remove '0x' prefix if present
                 let clean_hex_str = hex_str.trim_start_matches("0x");
                 // Ensure the hex string is 64 characters long, after removing '0x'
                 let padded_hex_str = format!("{:0>64}", clean_hex_str);
                 // Parse the padded string into H256, handling potential errors
-                h256_vec.push(
-                    H256::from_str(&padded_hex_str)
-                        .map_err(|e| D::Error::custom(format!("Failed to parse H256: {}", e)))?,
+                b256_vec.push(
+                    B256::from_str(&padded_hex_str)
+                        .map_err(|e| D::Error::custom(format!("Failed to parse B256: {}", e)))?,
                 );
             }
-            Ok(Some(h256_vec))
+            Ok(Some(b256_vec))
         }
         None => Ok(None),
     }
@@ -1521,16 +1524,16 @@ impl MappingEventHandler {
     }
 
     pub fn matches(&self, log: &Log) -> bool {
-        let matches_topic = |index: usize, topic_opt: &Option<Vec<H256>>| -> bool {
+        let matches_topic = |index: usize, topic_opt: &Option<Vec<B256>>| -> bool {
             topic_opt.as_ref().map_or(true, |topic_vec| {
-                log.topics
+                log.topics()
                     .get(index)
                     .map_or(false, |log_topic| topic_vec.contains(log_topic))
             })
         };
 
-        if let Some(topic0) = log.topics.get(0) {
-            return self.topic0() == *topic0
+        if let Some(topic0) = log.topics().get(0) {
+            return self.topic0() == b256_to_h256(*topic0)
                 && matches_topic(1, &self.topic1)
                 && matches_topic(2, &self.topic2)
                 && matches_topic(3, &self.topic3);

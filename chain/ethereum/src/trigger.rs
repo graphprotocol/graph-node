@@ -5,9 +5,10 @@ use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
+use graph::prelude::alloy::primitives::Address;
+use graph::prelude::alloy::primitives::B256;
+use graph::prelude::alloy::rpc::types::Log;
 use graph::prelude::alloy::rpc::types::TransactionReceipt as AlloyTransactionReceipt;
-use graph::prelude::web3::types::Address;
-use graph::prelude::web3::types::Log;
 use graph::prelude::web3::types::Transaction;
 use graph::prelude::web3::types::H160;
 use graph::prelude::web3::types::H256;
@@ -24,7 +25,6 @@ use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
 use graph::semver::Version;
-use graph::util::conversions::alloy_log_ref_to_web3_log_ref;
 use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
@@ -230,9 +230,7 @@ impl LogRef {
     pub fn log(&self) -> &Log {
         match self {
             LogRef::FullLog(log, _) => log.as_ref(),
-            LogRef::LogPosition(index, receipt) => {
-                alloy_log_ref_to_web3_log_ref(receipt.logs().get(*index).unwrap())
-            }
+            LogRef::LogPosition(index, receipt) => receipt.logs().get(*index).unwrap(),
         }
     }
 
@@ -243,27 +241,27 @@ impl LogRef {
         }
     }
 
-    pub fn log_index(&self) -> Option<U256> {
+    pub fn log_index(&self) -> Option<u64> {
         self.log().log_index
     }
 
-    pub fn transaction_index(&self) -> Option<U64> {
+    pub fn transaction_index(&self) -> Option<u64> {
         self.log().transaction_index
     }
 
-    fn transaction_hash(&self) -> Option<H256> {
+    fn transaction_hash(&self) -> Option<B256> {
         self.log().transaction_hash
     }
 
-    pub fn block_hash(&self) -> Option<H256> {
+    pub fn block_hash(&self) -> Option<B256> {
         self.log().block_hash
     }
 
-    pub fn block_number(&self) -> Option<U64> {
+    pub fn block_number(&self) -> Option<u64> {
         self.log().block_number
     }
 
-    pub fn address(&self) -> &H160 {
+    pub fn address(&self) -> &Address {
         &self.log().address
     }
 }
