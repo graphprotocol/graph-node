@@ -1,7 +1,7 @@
 use alloy::rpc::types::trace::parity::{Action, LocalizedTransactionTrace, TraceOutput};
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, sync::Arc};
-use web3::types::{Address, Block, Bytes, Log, Transaction, TransactionReceipt, H256, U256, U64};
+use web3::types::{Address, Bytes, Log, Transaction, TransactionReceipt, H256, U256, U64};
 
 use crate::{
     alloy_todo,
@@ -12,7 +12,10 @@ use crate::{
     util::conversions::{alloy_bytes_to_web3_bytes, alloy_u256_to_web3_u256, u64_to_web3_u256},
 };
 
-pub type LightEthereumBlock = Block<Transaction>;
+#[allow(dead_code)]
+pub struct Block(web3::types::Block<Transaction>);
+
+pub type LightEthereumBlock = web3::types::Block<Transaction>;
 pub type LightEthereumBlockAlloy = AlloyBlock;
 
 pub trait LightEthereumBlockExt {

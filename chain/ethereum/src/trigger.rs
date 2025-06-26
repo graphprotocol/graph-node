@@ -6,7 +6,6 @@ use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
 use graph::prelude::web3::types::Address;
-use graph::prelude::web3::types::Block;
 use graph::prelude::web3::types::Log;
 use graph::prelude::web3::types::Transaction;
 use graph::prelude::web3::types::TransactionReceipt;
@@ -17,6 +16,7 @@ use graph::prelude::web3::types::U256;
 use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
+use graph::prelude::LightEthereumBlock;
 use graph::prelude::{CheapClone, EthereumCall};
 use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
@@ -36,9 +36,6 @@ use crate::runtime::abi::AscEthereumEvent_0_0_7;
 use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 use crate::runtime::abi::AscEthereumTransaction_0_0_6;
-
-// ETHDEP: This should be defined in only one place.
-type LightEthereumBlock = Block<Transaction>;
 
 static U256_DEFAULT: U256 = U256::zero();
 
@@ -412,11 +409,11 @@ impl TriggerData for EthereumTrigger {
 /// Ethereum block data.
 #[derive(Clone, Debug)]
 pub struct EthereumBlockData<'a> {
-    block: &'a Block<Transaction>,
+    block: &'a LightEthereumBlock,
 }
 
-impl<'a> From<&'a Block<Transaction>> for EthereumBlockData<'a> {
-    fn from(block: &'a Block<Transaction>) -> EthereumBlockData<'a> {
+impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData<'a> {
+    fn from(block: &'a LightEthereumBlock) -> EthereumBlockData<'a> {
         EthereumBlockData { block }
     }
 }
@@ -550,7 +547,7 @@ pub struct EthereumEventData<'a> {
 
 impl<'a> EthereumEventData<'a> {
     pub fn new(
-        block: &'a Block<Transaction>,
+        block: &'a LightEthereumBlock,
         tx: &'a Transaction,
         log: &'a Log,
         params: &'a [abi::DynSolParam],
@@ -598,7 +595,7 @@ pub struct EthereumCallData<'a> {
 
 impl<'a> EthereumCallData<'a> {
     fn new(
-        block: &'a Block<Transaction>,
+        block: &'a LightEthereumBlock,
         transaction: &'a Transaction,
         call: &'a EthereumCall,
         inputs: &'a [abi::DynSolParam],
