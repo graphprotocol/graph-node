@@ -12,11 +12,12 @@ use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
+use graph::components::ethereum::Block;
 use graph::data_source::subgraph;
 use graph::prelude::web3::types::H256;
 use graph::prelude::web3::types::U64;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{tiny_keccak, DeploymentHash, Entity, LightEthereumBlock, ENV_VARS};
+use graph::prelude::{tiny_keccak, web3, DeploymentHash, Entity, ENV_VARS};
 use graph::schema::EntityType;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
@@ -78,12 +79,13 @@ pub async fn chain(
 
 pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
     let ptr = test_ptr(0);
+    let block: web3::types::Block<Transaction> = web3::types::Block {
+        hash: Some(H256::from_slice(ptr.hash.as_slice())),
+        number: Some(U64::from(ptr.number)),
+        ..Default::default()
+    };
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock {
-            hash: Some(H256::from_slice(ptr.hash.as_slice())),
-            number: Some(U64::from(ptr.number)),
-            ..Default::default()
-        })),
+        block: BlockFinality::Final(Arc::new(Block::new(block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -127,13 +129,13 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
     }];
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock {
+        block: BlockFinality::Final(Arc::new(Block::new(web3::types::Block {
             hash: Some(H256::from_slice(ptr.hash.as_slice())),
             number: Some(U64::from(ptr.number)),
             parent_hash: H256::from_slice(parent_ptr.hash.as_slice()),
-            transactions,
+            transactions: transactions.clone(),
             ..Default::default()
-        })),
+        }))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,

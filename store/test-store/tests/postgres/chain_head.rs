@@ -318,7 +318,7 @@ fn check_ancestor(
     }
 
     let act_block = json::from_value::<EthereumBlock>(act.0)?;
-    let act_hash = format!("{:x}", act_block.block.hash.unwrap());
+    let act_hash = format!("{:x}", act_block.block.hash_h256().unwrap());
     let exp_hash = &exp.hash;
 
     if &act_hash != exp_hash {

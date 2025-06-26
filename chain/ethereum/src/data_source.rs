@@ -750,13 +750,13 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 // There is another special case in zkSync-era, where the transaction hash in this case would be zero
                 // See https://docs.zksync.io/zk-stack/concepts/blocks.html#fictive-l2-block-finalizing-the-batch
-                let transaction = if log.transaction_hash == block.hash
+                let transaction = if log.transaction_hash == block.hash_h256()
                     || log.transaction_hash == Some(H256::zero())
                 {
                     Transaction {
                         hash: log.transaction_hash.unwrap(),
-                        block_hash: block.hash,
-                        block_number: block.number,
+                        block_hash: block.hash_h256(),
+                        block_number: block.number_web3_u64(),
                         transaction_index: log.transaction_index,
                         from: Some(H160::zero()),
                         ..Transaction::default()

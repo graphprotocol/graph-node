@@ -10,7 +10,9 @@ use serde::{Deserialize, Deserializer};
 use std::convert::TryFrom;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
-use web3::types::{Block, H256, U256, U64};
+use web3::types::{Block as Web3Block, H256, U256, U64};
+
+use crate::components::ethereum::Block;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::BlockNumber;
@@ -216,14 +218,26 @@ impl slog::Value for BlockPtr {
     }
 }
 
-impl<T> From<Block<T>> for BlockPtr {
-    fn from(b: Block<T>) -> BlockPtr {
+impl From<Block> for BlockPtr {
+    fn from(b: Block) -> BlockPtr {
+        BlockPtr::from((b.hash_h256().unwrap(), b.number_u64().unwrap() as i32))
+    }
+}
+
+impl From<&Block> for BlockPtr {
+    fn from(b: &Block) -> BlockPtr {
+        BlockPtr::from((b.hash_h256().unwrap(), b.number_u64().unwrap() as i32))
+    }
+}
+
+impl<T> From<Web3Block<T>> for BlockPtr {
+    fn from(b: Web3Block<T>) -> BlockPtr {
         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
     }
 }
 
-impl<'a, T> From<&'a Block<T>> for BlockPtr {
-    fn from(b: &'a Block<T>) -> BlockPtr {
+impl<'a, T> From<&'a Web3Block<T>> for BlockPtr {
+    fn from(b: &'a Web3Block<T>) -> BlockPtr {
         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
     }
 }

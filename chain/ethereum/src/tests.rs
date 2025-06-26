@@ -2,9 +2,13 @@ use std::sync::Arc;
 
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
+    components::ethereum::Block,
     prelude::{
-        web3::types::{Address, Bytes, Log, H160, H256, U64},
-        EthereumCall, LightEthereumBlock,
+        web3::{
+            self,
+            types::{Address, Bytes, Log, Transaction, H160, H256, U64},
+        },
+        EthereumCall,
     },
     slog::{self, o, Logger},
 };
@@ -92,13 +96,14 @@ fn test_trigger_ordering() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let mut b: LightEthereumBlock = Default::default();
+    let mut b: web3::types::Block<Transaction> = Default::default();
 
     // This is necessary because inside of BlockWithTriggers::new
     // there's a log for both fields. So just using Default above
     // gives None on them.
     b.number = Some(Default::default());
     b.hash = Some(Default::default());
+    let b = Block::new(b);
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
@@ -190,13 +195,14 @@ fn test_trigger_dedup() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let mut b: LightEthereumBlock = Default::default();
+    let mut b: web3::types::Block<Transaction> = Default::default();
 
     // This is necessary because inside of BlockWithTriggers::new
     // there's a log for both fields. So just using Default above
     // gives None on them.
     b.number = Some(Default::default());
     b.hash = Some(Default::default());
+    let b = Block::new(b);
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
