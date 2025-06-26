@@ -6,7 +6,6 @@ use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
 use graph::prelude::alloy::rpc::types::TransactionReceipt as AlloyTransactionReceipt;
-use graph::prelude::alloy_log_to_web3_log;
 use graph::prelude::web3::types::Address;
 use graph::prelude::web3::types::Log;
 use graph::prelude::web3::types::Transaction;
