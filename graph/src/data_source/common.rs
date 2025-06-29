@@ -697,7 +697,8 @@ impl CallDecl {
                 Ok(DynSolValue::Int(x, x.bits() as usize))
             }
             (DynSolType::Int(_), Value::BigInt(i)) => {
-                let x = abi::I256::from_le_bytes(i.to_signed_u256().to_le_bytes::<{U256::BYTES}>());
+                let x =
+                    abi::I256::from_le_bytes(i.to_signed_u256().to_le_bytes::<{ U256::BYTES }>());
                 Ok(DynSolValue::Int(x, x.bits() as usize))
             }
             (DynSolType::Uint(_), Value::Int(i)) if *i >= 0 => {

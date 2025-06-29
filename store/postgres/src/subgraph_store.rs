@@ -11,7 +11,6 @@ use std::{
 };
 use std::{iter::FromIterator, time::Duration};
 
-use graph::{futures03::future::join_all, prelude::alloy::primitives::Address};
 use graph::{
     cheap_clone::CheapClone,
     components::{
@@ -35,6 +34,7 @@ use graph::{
     url::Url,
     util::timed_cache::TimedCache,
 };
+use graph::{futures03::future::join_all, prelude::alloy::primitives::Address};
 
 use crate::{
     deployment::{OnSync, SubgraphHealth},

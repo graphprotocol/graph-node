@@ -204,7 +204,7 @@ impl StoreResolver {
                 // locate_block indicates that we do not have a block hash
                 // by setting the hash to `zero`
                 // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                let hash_b256 = ptr.hash_as_b256();
+                let hash_b256 = ptr.hash.as_b256();
                 if hash_b256 == B256::ZERO {
                     None
                 } else {

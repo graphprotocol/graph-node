@@ -80,8 +80,8 @@ impl NearTrigger {
 
     pub fn block_hash(&self) -> B256 {
         match self {
-            NearTrigger::Block(block) => block.ptr().hash_as_b256(),
-            NearTrigger::Receipt(receipt) => receipt.block.ptr().hash_as_b256(),
+            NearTrigger::Block(block) => block.ptr().hash.as_b256(),
+            NearTrigger::Receipt(receipt) => receipt.block.ptr().hash.as_b256(),
         }
     }
 
