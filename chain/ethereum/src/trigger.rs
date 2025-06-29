@@ -1,20 +1,16 @@
 use graph::abi;
+use graph::alloy_todo;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
-use graph::prelude::alloy::primitives::Address;
-use graph::prelude::alloy::primitives::B256;
+use graph::prelude::alloy::consensus::Transaction as TransactioTrait;
+use graph::prelude::alloy::primitives::{Address, B256, U256};
 use graph::prelude::alloy::rpc::types::Log;
+use graph::prelude::alloy::rpc::types::Transaction;
 use graph::prelude::alloy::rpc::types::TransactionReceipt as AlloyTransactionReceipt;
-use graph::prelude::web3::types::Transaction;
-use graph::prelude::web3::types::H160;
-use graph::prelude::web3::types::H256;
-use graph::prelude::web3::types::U128;
-use graph::prelude::web3::types::U256;
-use graph::prelude::web3::types::U64;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
 use graph::prelude::LightEthereumBlock;
@@ -38,7 +34,7 @@ use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 use crate::runtime::abi::AscEthereumTransaction_0_0_6;
 
-static U256_DEFAULT: U256 = U256::zero();
+static U256_DEFAULT: U256 = U256::ZERO;
 
 pub enum MappingTrigger {
     Log {
@@ -262,7 +258,7 @@ impl LogRef {
     }
 
     pub fn address(&self) -> &Address {
-        &self.log().address
+        &self.log().inner.address
     }
 }
 
@@ -305,14 +301,14 @@ impl EthereumTrigger {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
             EthereumTrigger::Call(call) => call.block_number,
             EthereumTrigger::Log(log_ref) => {
-                i32::try_from(log_ref.block_number().unwrap().as_u64()).unwrap()
+                i32::try_from(log_ref.block_number().unwrap()).unwrap()
             }
         }
     }
 
-    pub fn block_hash(&self) -> H256 {
+    pub fn block_hash(&self) -> B256 {
         match self {
-            EthereumTrigger::Block(block_ptr, _) => block_ptr.hash_as_h256(),
+            EthereumTrigger::Block(block_ptr, _) => block_ptr.hash_as_b256(),
             EthereumTrigger::Call(call) => call.block_hash,
             EthereumTrigger::Log(log_ref) => log_ref.block_hash().unwrap(),
         }
@@ -325,7 +321,7 @@ impl EthereumTrigger {
                 Some(address)
             }
             EthereumTrigger::Call(call) => Some(&call.to),
-            EthereumTrigger::Log(log_ref) => Some(&log_ref.address()),
+            EthereumTrigger::Log(log_ref) => Some(log_ref.address()),
             // Unfiltered block triggers match any data source address.
             EthereumTrigger::Block(_, EthereumBlockTriggerType::End) => None,
             EthereumTrigger::Block(_, EthereumBlockTriggerType::Start) => None,
@@ -356,23 +352,21 @@ impl Ord for EthereumTrigger {
             // Calls vs. events are logged by their tx index;
             // if they are from the same transaction, events come first
             (Self::Call(a), Self::Log(b))
-                if a.transaction_index == b.transaction_index().unwrap().as_u64() =>
+                if a.transaction_index == b.transaction_index().unwrap() =>
             {
                 Ordering::Greater
             }
             (Self::Log(a), Self::Call(b))
-                if a.transaction_index().unwrap().as_u64() == b.transaction_index =>
+                if a.transaction_index().unwrap() == b.transaction_index =>
             {
                 Ordering::Less
             }
-            (Self::Call(a), Self::Log(b)) => a
-                .transaction_index
-                .cmp(&b.transaction_index().unwrap().as_u64()),
-            (Self::Log(a), Self::Call(b)) => a
-                .transaction_index()
-                .unwrap()
-                .as_u64()
-                .cmp(&b.transaction_index),
+            (Self::Call(a), Self::Log(b)) => {
+                a.transaction_index.cmp(&b.transaction_index().unwrap())
+            }
+            (Self::Log(a), Self::Call(b)) => {
+                a.transaction_index().unwrap().cmp(&b.transaction_index)
+            }
         }
     }
 }
@@ -403,7 +397,7 @@ impl TriggerData for EthereumTrigger {
     }
 
     fn address_match(&self) -> Option<&[u8]> {
-        self.address().map(|address| address.as_bytes())
+        self.address().map(|address| address.as_slice())
     }
 }
 
@@ -420,68 +414,70 @@ impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData<'a> {
 }
 
 impl<'a> EthereumBlockData<'a> {
-    pub fn hash(&self) -> &H256 {
-        self.block.inner().hash.as_ref().unwrap()
+    pub fn hash(&self) -> &B256 {
+        &self.block.inner().header.hash
     }
 
-    pub fn parent_hash(&self) -> &H256 {
-        &self.block.inner().parent_hash
+    pub fn parent_hash(&self) -> &B256 {
+        &self.block.inner().header.parent_hash
     }
 
-    pub fn uncles_hash(&self) -> &H256 {
-        &self.block.inner().uncles_hash
+    pub fn uncles_hash(&self) -> &B256 {
+        // &self.block.inner().header.uncles_hash
+        alloy_todo!()
     }
 
-    pub fn author(&self) -> &H160 {
-        &self.block.inner().author
+    pub fn author(&self) -> &Address {
+        &self.block.inner().header.beneficiary
     }
 
-    pub fn state_root(&self) -> &H256 {
-        &self.block.inner().state_root
+    pub fn state_root(&self) -> &B256 {
+        &self.block.inner().header.state_root
     }
 
-    pub fn transactions_root(&self) -> &H256 {
-        &self.block.inner().transactions_root
+    pub fn transactions_root(&self) -> &B256 {
+        &self.block.inner().header.transactions_root
     }
 
-    pub fn receipts_root(&self) -> &H256 {
-        &self.block.inner().receipts_root
+    pub fn receipts_root(&self) -> &B256 {
+        &self.block.inner().header.receipts_root
     }
 
-    pub fn number(&self) -> U64 {
-        self.block.inner().number.unwrap()
+    pub fn number(&self) -> u64 {
+        self.block.number_u64()
     }
 
-    pub fn gas_used(&self) -> &U256 {
-        &self.block.inner().gas_used
+    pub fn gas_used(&self) -> u64 {
+        self.block.inner().header.gas_used
     }
 
-    pub fn gas_limit(&self) -> &U256 {
-        &self.block.inner().gas_limit
+    pub fn gas_limit(&self) -> u64 {
+        self.block.inner().header.gas_limit
     }
 
-    pub fn timestamp(&self) -> &U256 {
-        &self.block.inner().timestamp
+    pub fn timestamp(&self) -> u64 {
+        self.block.inner().header.timestamp
     }
 
     pub fn difficulty(&self) -> &U256 {
-        &self.block.inner().difficulty
+        &self.block.inner().header.difficulty
     }
 
     pub fn total_difficulty(&self) -> &U256 {
         self.block
             .inner()
+            .header
             .total_difficulty
             .as_ref()
             .unwrap_or(&U256_DEFAULT)
     }
 
     pub fn size(&self) -> &Option<U256> {
-        &self.block.inner().size
+        &self.block.inner().header.size
     }
 
-    pub fn base_fee_per_gas(&self) -> &Option<U256> {
-        &self.block.inner().base_fee_per_gas
+    pub fn base_fee_per_gas(&self) -> &Option<u64> {
+        &self.block.inner().header.base_fee_per_gas
     }
 }
 
@@ -498,43 +494,43 @@ impl<'a> EthereumTransactionData<'a> {
         EthereumTransactionData { tx }
     }
 
-    pub fn hash(&self) -> &H256 {
-        &self.tx.hash
+    pub fn hash(&self) -> &B256 {
+        &self.tx.inner.tx_hash()
     }
 
-    pub fn index(&self) -> U128 {
-        self.tx.transaction_index.unwrap().as_u64().into()
+    pub fn index(&self) -> u64 {
+        self.tx.transaction_index.unwrap()
     }
 
-    pub fn from(&self) -> &H160 {
+    pub fn from(&self) -> &Address {
         // unwrap: this is always `Some` for txns that have been mined
         //         (see https://github.com/tomusdrw/rust-web3/pull/407)
-        self.tx.from.as_ref().unwrap()
+        self.tx.inner.signer_ref()
     }
 
-    pub fn to(&self) -> &Option<H160> {
-        &self.tx.to
+    pub fn to(&self) -> Option<Address> {
+        self.tx.to()
     }
 
-    pub fn value(&self) -> &U256 {
-        &self.tx.value
+    pub fn value(&self) -> U256 {
+        self.tx.value()
     }
 
-    pub fn gas_limit(&self) -> &U256 {
-        &self.tx.gas
+    pub fn gas_limit(&self) -> u64 {
+        self.tx.gas_limit()
     }
 
-    pub fn gas_price(&self) -> &U256 {
+    pub fn gas_price(&self) -> u128 {
         // EIP-1559 made this optional.
-        self.tx.gas_price.as_ref().unwrap_or(&U256_DEFAULT)
+        self.tx.inner.gas_price().unwrap_or(0)
     }
 
     pub fn input(&self) -> &[u8] {
-        &self.tx.input.0
+        self.tx.input()
     }
 
-    pub fn nonce(&self) -> &U256 {
-        &self.tx.nonce
+    pub fn nonce(&self) -> u64 {
+        self.tx.nonce()
     }
 }
 
@@ -563,25 +559,26 @@ impl<'a> EthereumEventData<'a> {
     }
 
     pub fn address(&self) -> &Address {
-        &self.log.address
+        &self.log.inner.address
     }
 
-    pub fn log_index(&self) -> &U256 {
-        self.log.log_index.as_ref().unwrap_or(&U256_DEFAULT)
+    pub fn log_index(&self) -> u64 {
+        self.log.log_index.unwrap_or(0)
     }
 
-    pub fn transaction_log_index(&self) -> &U256 {
+    pub fn transaction_log_index(&self) -> u64 {
         // We purposely use the `log_index` here. Geth does not support
         // `transaction_log_index`, and subgraphs that use it only care that
         // it identifies the log, the specific value is not important. Still
         // this will change the output of subgraphs that use this field.
         //
         // This was initially changed in commit b95c6953
-        self.log.log_index.as_ref().unwrap_or(&U256_DEFAULT)
+        self.log.log_index.unwrap_or(0)
     }
 
     pub fn log_type(&self) -> &Option<String> {
-        &self.log.log_type
+        // &self.log.log_type
+        alloy_todo!()
     }
 }
 

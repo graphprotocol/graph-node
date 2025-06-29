@@ -1,5 +1,5 @@
-use graph::abi;
 use graph::abi::DynSolValueExt;
+use graph::abi::{self};
 use graph::data::store::scalar::Timestamp;
 use graph::data::value::Word;
 use graph::prelude::{BigDecimal, BigInt};
@@ -10,7 +10,10 @@ use graph::runtime::{
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
 use graph::{
-    prelude::{alloy, serde_json},
+    prelude::{
+        alloy::{self, primitives::U256},
+        serde_json,
+    },
     runtime::FromAscObj,
 };
 use graph_runtime_derive::AscType;
@@ -93,27 +96,27 @@ impl FromAscObj<Uint8Array> for alloy::primitives::B256 {
     }
 }
 
-impl FromAscObj<Uint8Array> for web3::H256 {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        typed_array: Uint8Array,
-        heap: &H,
-        gas: &GasCounter,
-        depth: usize,
-    ) -> Result<Self, DeterministicHostError> {
-        let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
-        Ok(Self(data))
-    }
-}
+// impl FromAscObj<Uint8Array> for web3::H256 {
+//     fn from_asc_obj<H: AscHeap + ?Sized>(
+//         typed_array: Uint8Array,
+//         heap: &H,
+//         gas: &GasCounter,
+//         depth: usize,
+//     ) -> Result<Self, DeterministicHostError> {
+//         let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
+//         Ok(Self(data))
+//     }
+// }
 
-impl ToAscObj<Uint8Array> for web3::H256 {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas)
-    }
-}
+// impl ToAscObj<Uint8Array> for web3::H256 {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<Uint8Array, HostExportError> {
+//         self.0.to_asc_obj(heap, gas)
+//     }
+// }
 
 impl ToAscObj<AscBigInt> for web3::U128 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -287,14 +290,15 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for abi::DynSolValue {
             EthereumValueKind::Int => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let n: BigInt = asc_get(heap, ptr, gas, depth)?;
-                let x = abi::I256::from_limbs(n.to_signed_u256().0);
+                let x =
+                    abi::I256::from_le_bytes(n.to_signed_u256().to_le_bytes::<{ U256::BYTES }>());
 
                 Self::Int(x, x.bits() as usize)
             }
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let n: BigInt = asc_get(heap, ptr, gas, depth)?;
-                let x = abi::U256::from_limbs(n.to_unsigned_u256().0);
+                let x = U256::from_le_bytes(n.to_unsigned_u256().to_le_bytes::<{ U256::BYTES }>());
 
                 Self::Uint(x, x.bit_len())
             }

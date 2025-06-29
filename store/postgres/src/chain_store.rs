@@ -9,6 +9,7 @@ use graph::data::store::ethereum::call;
 use graph::derive::CheapClone;
 use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::MetricsRegistry;
 use graph::prometheus::{CounterVec, GaugeVec};
 use graph::slog::Logger;
@@ -25,7 +26,6 @@ use std::{
 
 use graph::blockchain::{Block, BlockHash, ChainIdentifier, ExtendedBlockPtr};
 use graph::cheap_clone::CheapClone;
-use graph::prelude::web3::types::{H256, U256};
 use graph::prelude::{
     async_trait, serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber,
     BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error,
@@ -55,12 +55,12 @@ impl JsonBlock {
         }
     }
 
-    fn timestamp(&self) -> Option<U256> {
+    fn timestamp(&self) -> Option<u64> {
         self.data
             .as_ref()
             .and_then(|data| data.get("timestamp"))
             .and_then(|ts| ts.as_str())
-            .and_then(|ts| U256::from_dec_str(ts).ok())
+            .and_then(|ts| ts.parse::<u64>().ok())
     }
 }
 
@@ -100,9 +100,8 @@ mod data {
     use graph::blockchain::{Block, BlockHash};
     use graph::data::store::scalar::Bytes;
     use graph::internal_error;
+    use graph::prelude::alloy::primitives::{Address, B256};
     use graph::prelude::transaction_receipt::LightTransactionReceipt;
-    use graph::prelude::web3::types::H160;
-    use graph::prelude::web3::types::H256;
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
@@ -172,15 +171,15 @@ mod data {
 
     // Like H256::from_slice, but returns an error instead of panicking
     // when `bytes` does not have the right length
-    fn h256_from_bytes(bytes: &[u8]) -> Result<H256, StoreError> {
-        if bytes.len() == H256::len_bytes() {
-            Ok(H256::from_slice(bytes))
+    fn b256_from_bytes(bytes: &[u8]) -> Result<B256, StoreError> {
+        if bytes.len() == B256::len_bytes() {
+            Ok(B256::from_slice(bytes))
         } else {
             Err(internal_error!(
                 "invalid H256 value `{}` has {} bytes instead of {}",
                 graph::prelude::hex::encode(bytes),
                 bytes.len(),
-                H256::len_bytes()
+                B256::len_bytes()
             ))
         }
     }
@@ -858,9 +857,9 @@ mod data {
             conn: &mut PgConnection,
             chain: &str,
             first_block: i64,
-            hash: H256,
-            genesis: H256,
-        ) -> Result<Option<H256>, Error> {
+            hash: B256,
+            genesis: B256,
+        ) -> Result<Option<B256>, Error> {
             match self {
                 Storage::Shared => {
                     // We recursively build a temp table 'chain' containing the hash and
@@ -943,14 +942,14 @@ mod data {
                     );
 
                     let missing = sql_query(query)
-                        .bind::<Bytea, _>(hash.as_bytes())
-                        .bind::<Bytea, _>(genesis.as_bytes())
+                        .bind::<Bytea, _>(hash.as_slice())
+                        .bind::<Bytea, _>(genesis.as_slice())
                         .bind::<BigInt, _>(first_block)
                         .load::<BlockHashBytea>(conn)?;
 
                     let missing = match missing.len() {
                         0 => None,
-                        1 => Some(h256_from_bytes(&missing[0].hash)?),
+                        1 => Some(b256_from_bytes(&missing[0].hash)?),
                         _ => {
                             unreachable!("the query can only return no or one row")
                         }
@@ -1181,7 +1180,7 @@ mod data {
             &self,
             conn: &mut PgConnection,
             chain: &str,
-            block_hashes: &[&H256],
+            block_hashes: &[&B256],
         ) -> Result<usize, Error> {
             match self {
                 Storage::Shared => {
@@ -1206,7 +1205,7 @@ mod data {
                     );
 
                     let hashes: Vec<&[u8]> =
-                        block_hashes.iter().map(|hash| hash.as_bytes()).collect();
+                        block_hashes.iter().map(|hash| hash.as_slice()).collect();
 
                     sql_query(query)
                         .bind::<Array<Bytea>, _>(hashes)
@@ -1349,7 +1348,7 @@ mod data {
                 .map(|row| CachedEthereumCall {
                     blake3_id: row.0,
                     block_ptr: block_ptr.clone(),
-                    contract_address: H160::from_slice(&row.2[..]),
+                    contract_address: Address::from_slice(&row.2[..]),
                     return_value: row.1,
                 })
                 .collect())
@@ -1561,7 +1560,7 @@ mod data {
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
             conn: &mut PgConnection,
-            block_hash: H256,
+            block_hash: B256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
             let query = sql_query(format!(
                 "
@@ -1591,7 +1590,7 @@ from (
                         .bind::<Text, _>(format!("{:x}", block_hash))
                         .get_results(conn),
                     Storage::Private(_) => query
-                        .bind::<Binary, _>(block_hash.as_bytes())
+                        .bind::<Binary, _>(block_hash.as_slice())
                         .get_results(conn),
                 }
             };
@@ -1906,7 +1905,7 @@ impl ChainStore {
         self.recent_blocks_cache.blocks()
     }
 
-    pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
+    pub fn delete_blocks(&self, block_hashes: &[&B256]) -> Result<usize, Error> {
         let mut conn = self.get_conn()?;
         self.storage
             .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
@@ -1988,7 +1987,7 @@ fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPt
         .ok_or_else(|| anyhow!("Timestamp is missing"))?;
 
     let ptr =
-        ExtendedBlockPtr::try_from((hash.as_h256(), number, parent_hash.as_h256(), timestamp))
+        ExtendedBlockPtr::try_from((hash.as_b256(), number, parent_hash.as_b256(), timestamp))
             .map_err(|e| anyhow!("Failed to convert to ExtendedBlockPtr: {}", e))?;
 
     Ok(ptr)
@@ -2015,7 +2014,7 @@ impl ChainHeadStore for ChainStore {
                                         // FIXME:
                                         //
                                         // workaround for arweave
-                                        H256::from_slice(&hex::decode(hash).unwrap()[..32]),
+                                        B256::from_slice(&hex::decode(hash).unwrap()[..32]),
                                         *number,
                                     )
                                         .into(),
@@ -2131,12 +2130,12 @@ impl ChainStoreTrait for ChainStore {
     async fn attempt_chain_head_update(
         self: Arc<Self>,
         ancestor_count: BlockNumber,
-    ) -> Result<Option<H256>, Error> {
+    ) -> Result<Option<B256>, Error> {
         use public::ethereum_networks as n;
 
         let (missing, ptr) = {
             let chain_store = self.clone();
-            let genesis_block_ptr = self.genesis_block_ptr()?.hash_as_h256();
+            let genesis_block_ptr = self.genesis_block_ptr()?.hash_as_b256();
             self.pool
                 .with_conn(move |conn, _| {
                     let candidate = chain_store
@@ -2154,7 +2153,7 @@ impl ChainStoreTrait for ChainStore {
                             conn,
                             &chain_store.chain,
                             first_block as i64,
-                            ptr.hash_as_h256(),
+                            ptr.hash_as_b256(),
                             genesis_block_ptr,
                         )
                         .map_err(CancelableError::from)?
@@ -2169,7 +2168,7 @@ impl ChainStoreTrait for ChainStore {
                     let number = ptr.number as i64;
 
                     conn.transaction(
-                        |conn| -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+                        |conn| -> Result<(Option<B256>, Option<(String, i64)>), StoreError> {
                             update(n::table.filter(n::name.eq(&chain_store.chain)))
                                 .set((
                                     n::head_block_hash.eq(&hash),
@@ -2510,7 +2509,7 @@ impl ChainStoreTrait for ChainStore {
 
     async fn transaction_receipts_in_block(
         &self,
-        block_hash: &H256,
+        block_hash: &B256,
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
         let pool = self.pool.clone();
         let storage = self.storage.clone();

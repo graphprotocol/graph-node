@@ -1,19 +1,17 @@
 use alloy::{
-    primitives::B256,
-    rpc::types::trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
+    primitives::{Address, Bytes, B256, U256, U64},
+    rpc::types::{
+        trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
+        Log, Transaction,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use web3::types::{Address, Bytes, Log, Transaction, U256, U64};
 
 use crate::{
     alloy_todo,
     blockchain::{BlockPtr, BlockTime},
-    prelude::{
-        alloy::rpc::types::Block as AlloyBlock, alloy_address_to_h160, b256_to_h256, h256_to_b256,
-        BlockNumber,
-    },
-    util::conversions::{alloy_bytes_to_web3_bytes, alloy_u256_to_web3_u256, u64_to_web3_u256},
+    prelude::{alloy::rpc::types::Block as AlloyBlock, BlockNumber},
 };
 
 #[allow(dead_code)]
@@ -25,7 +23,7 @@ impl BlockWrapper {
         Self(block)
     }
 
-    pub fn hash_h256(&self) -> Option<B256> {
+    pub fn hash_b256(&self) -> Option<B256> {
         alloy_todo!()
         // self.0.hash
     }
@@ -34,9 +32,8 @@ impl BlockWrapper {
         self.0.header.hash
     }
 
-    pub fn number_u64(&self) -> Option<u64> {
-        alloy_todo!()
-        // self.0.number.map(|n| n.as_u64())
+    pub fn number_u64(&self) -> u64 {
+        self.0.header.number
     }
 
     pub fn number_web3_u64(&self) -> Option<U64> {
@@ -50,13 +47,11 @@ impl BlockWrapper {
     }
 
     pub fn transactions(&self) -> &[Transaction] {
-        alloy_todo!()
-        // &self.0.transactions
+        &self.0.transactions.as_transactions().unwrap()
     }
 
-    pub fn inner(&self) -> &web3::types::Block<Transaction> {
-        alloy_todo!()
-        // &self.0
+    pub fn inner(&self) -> &AlloyBlock {
+        &self.0
     }
 }
 
@@ -64,7 +59,7 @@ pub type LightEthereumBlock = BlockWrapper;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
-    fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<Transaction>;
+    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
     fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
@@ -110,7 +105,7 @@ impl LightEthereumBlockExt for AlloyBlock {
 
 impl LightEthereumBlockExt for LightEthereumBlock {
     fn number(&self) -> BlockNumber {
-        self.0.number()
+        self.0.header.number.try_into().unwrap()
     }
 
     fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<Transaction> {
@@ -157,7 +152,7 @@ impl EthereumBlockWithCalls {
             .ethereum_block
             .transaction_receipts
             .iter()
-            .find(|txn| txn.transaction_hash == h256_to_b256(call_transaction_hash))
+            .find(|txn| txn.transaction_hash == call_transaction_hash)
             .ok_or(anyhow::anyhow!(
                 "failed to find the receipt for this transaction"
             ))?;
@@ -187,7 +182,7 @@ pub struct EthereumCall {
     pub from: Address,
     pub to: Address,
     pub value: U256,
-    pub gas_used: U256,
+    pub gas_used: u64,
     pub input: Bytes,
     pub output: Bytes,
     pub block_number: BlockNumber,
@@ -223,15 +218,15 @@ impl EthereumCall {
         let transaction_index = trace.transaction_position? as u64;
 
         Some(EthereumCall {
-            from: alloy_address_to_h160(call.from),
-            to: alloy_address_to_h160(call.to),
-            value: alloy_u256_to_web3_u256(call.value),
-            gas_used: u64_to_web3_u256(gas_used),
-            input: alloy_bytes_to_web3_bytes(call.input.clone()),
-            output: alloy_bytes_to_web3_bytes(output),
+            from: call.from,
+            to: call.to,
+            value: call.value,
+            gas_used: gas_used,
+            input: call.input.clone(),
+            output: output,
             block_number: trace.block_number? as BlockNumber,
-            block_hash: trace.block_hash.map(|h| b256_to_h256(h))?,
-            transaction_hash: trace.transaction_hash.map(|h| b256_to_h256(h)),
+            block_hash: trace.block_hash?,
+            transaction_hash: trace.transaction_hash,
             transaction_index,
         })
     }
@@ -239,13 +234,13 @@ impl EthereumCall {
 
 impl From<EthereumBlock> for BlockPtr {
     fn from(b: EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash_h256().unwrap(), b.block.number()))
+        BlockPtr::from((b.block.hash_b256().unwrap(), b.block.number()))
     }
 }
 
 impl<'a> From<&'a EthereumBlock> for BlockPtr {
     fn from(b: &'a EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash_h256().unwrap(), b.block.number()))
+        BlockPtr::from((b.block.hash_b256().unwrap(), b.block.number()))
     }
 }
 

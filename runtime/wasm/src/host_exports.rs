@@ -6,10 +6,10 @@ use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
 use graph::futures03::stream::StreamExt;
+use graph::prelude::alloy::primitives::Address;
 use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
-use web3::types::H160;
 
 use graph::abi;
 use graph::blockchain::BlockTime;
@@ -1155,19 +1155,19 @@ impl HostExports {
             .map_err(|e| DeterministicHostError::from(Error::from(e)))
     }
 
-    pub(crate) fn string_to_h160(
+    pub(crate) fn string_to_address(
         &self,
         string: &str,
         gas: &GasCounter,
         state: &mut BlockState,
-    ) -> Result<H160, DeterministicHostError> {
+    ) -> Result<Address, DeterministicHostError> {
         Self::track_gas_and_ops(
             gas,
             state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &string),
             "string_to_h160",
         )?;
-        string_to_h160(string)
+        string_to_address(string)
     }
 
     pub(crate) fn bytes_to_string(
@@ -1255,11 +1255,9 @@ impl HostExports {
     }
 }
 
-fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
-    // `H160::from_str` takes a hex string with no leading `0x`.
-    let s = string.trim_start_matches("0x");
-    H160::from_str(s)
-        .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+fn string_to_address(string: &str) -> Result<Address, DeterministicHostError> {
+    Address::from_str(string)
+        .with_context(|| format!("Failed to convert string to Address: '{}'", string))
         .map_err(DeterministicHostError::from)
 }
 
@@ -1355,8 +1353,8 @@ pub mod test_support {
 #[test]
 fn test_string_to_h160_with_0x() {
     assert_eq!(
-        H160::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
-        string_to_h160("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
+        Address::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
+        string_to_address("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
     )
 }
 

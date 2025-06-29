@@ -1,5 +1,4 @@
-use graph::abi;
-use graph::prelude::web3::types::U256;
+use graph::{abi, prelude::alloy::primitives::Address};
 use graph_runtime_wasm::asc_abi::class::{
     ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
 };
@@ -222,7 +221,7 @@ async fn test_abi_alloy_token_identity(api_version: Version) {
     assert_eq!(int_token, new_token);
 
     // Token::Uint
-    let uint = abi::U256::from_limbs([256, 453452345, 0, 42]);
+    let uint = U256::from_limbs([256, 453452345, 0, 42]);
     let uint_token = abi::DynSolValue::Uint(uint, uint.bit_len());
 
     let new_uint_obj: AscPtr<ArrayBuffer> = instance.invoke_export1("token_to_uint", &uint_token);
@@ -413,17 +412,17 @@ async fn test_abi_h160(api_version: Version) {
         api_version,
     )
     .await;
-    let address = H160::zero();
+    let address = Address::ZERO;
 
     // As an `Uint8Array`
     let new_address_obj: AscPtr<Uint8Array> = module.invoke_export1("test_address", &address);
 
     // This should have 1 added to the first and last byte.
-    let new_address: H160 = module.asc_get(new_address_obj).unwrap();
+    let new_address: Address = module.asc_get(new_address_obj).unwrap();
 
     assert_eq!(
         new_address,
-        H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
+        Address::from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
     )
 }
 
@@ -475,13 +474,13 @@ async fn test_abi_big_int(api_version: Version) {
     .await;
 
     // Test passing in 0 and increment it by 1
-    let old_uint = U256::zero();
+    let old_uint = U256::ZERO;
     let new_uint_obj: AscPtr<AscBigInt> =
         module.invoke_export1("test_uint", &BigInt::from_unsigned_u256(&old_uint));
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(1_i32));
     let new_uint = new_uint.to_unsigned_u256();
-    assert_eq!(new_uint, U256([1, 0, 0, 0]));
+    assert_eq!(new_uint, U256::from_limbs([1, 0, 0, 0]));
 
     // Test passing in -50 and increment it by 1
     let old_uint = BigInt::from(-50);

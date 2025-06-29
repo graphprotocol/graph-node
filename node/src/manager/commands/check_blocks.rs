@@ -4,8 +4,8 @@ use graph::{
     cheap_clone::CheapClone,
     components::store::ChainStore as ChainStoreTrait,
     prelude::{
+        alloy::primitives::B256,
         anyhow::{self, anyhow, Context},
-        web3::types::H256,
     },
     slog::Logger,
 };
@@ -103,7 +103,7 @@ pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow
 }
 
 async fn run(
-    block_hash: &H256,
+    block_hash: &B256,
     chain_store: Arc<ChainStore>,
     ethereum_adapter: &EthereumAdapter,
     logger: &Logger,
@@ -122,7 +122,7 @@ async fn run(
 
 async fn handle_multiple_block_hashes(
     block_number: i32,
-    block_hashes: &[H256],
+    block_hashes: &[B256],
     chain_store: &ChainStore,
     delete_duplicates: bool,
 ) -> anyhow::Result<()> {
@@ -156,7 +156,7 @@ mod steps {
     use graph::{
         anyhow::bail,
         prelude::{
-            h256_to_b256,
+            alloy::primitives::B256,
             serde_json::{self, Value},
         },
     };
@@ -170,11 +170,11 @@ mod steps {
     pub(super) fn resolve_block_hash_from_block_number(
         number: i32,
         chain_store: &ChainStore,
-    ) -> anyhow::Result<Vec<H256>> {
+    ) -> anyhow::Result<Vec<B256>> {
         let block_hashes = chain_store.block_hashes_by_block_number(number)?;
         Ok(block_hashes
             .into_iter()
-            .map(|x| H256::from_slice(&x.as_slice()[..32]))
+            .map(|x| B256::from_slice(&x.as_slice()[..32]))
             .collect())
     }
 
@@ -182,7 +182,7 @@ mod steps {
     ///
     /// Errors on a non-unary result.
     pub(super) async fn fetch_single_cached_block(
-        block_hash: H256,
+        block_hash: B256,
         chain_store: Arc<ChainStore>,
     ) -> anyhow::Result<Value> {
         let blocks = chain_store.blocks(vec![block_hash.into()]).await?;
@@ -200,18 +200,17 @@ mod steps {
     /// Errors on provider failure or if the returned block has a different hash than the one
     /// requested.
     pub(super) async fn fetch_single_provider_block(
-        block_hash: &H256,
+        block_hash: &B256,
         ethereum_adapter: &EthereumAdapter,
         logger: &Logger,
     ) -> anyhow::Result<Value> {
-        let block_hash = h256_to_b256(*block_hash);
         let provider_block = ethereum_adapter
-            .block_by_hash(logger, block_hash)
+            .block_by_hash(logger, *block_hash)
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
             .ok_or_else(|| anyhow!("JRPC provider found no block with hash {block_hash:?}"))?;
         ensure!(
-            provider_block.header.hash == block_hash,
+            provider_block.header.hash == *block_hash,
             "Provider responded with a different block hash"
         );
         serde_json::to_value(provider_block)
@@ -239,7 +238,7 @@ mod steps {
     }
 
     /// Prints the difference between two [`serde_json::Value`] values to the user.
-    pub(super) fn report_difference(difference: Option<&str>, hash: &H256) {
+    pub(super) fn report_difference(difference: Option<&str>, hash: &B256) {
         if let Some(diff) = difference {
             eprintln!("block {hash} diverges from cache:");
             eprintln!("{diff}");
@@ -249,7 +248,7 @@ mod steps {
     }
 
     /// Attempts to delete a block from the block cache.
-    pub(super) fn delete_block(hash: &H256, chain_store: &ChainStore) -> anyhow::Result<()> {
+    pub(super) fn delete_block(hash: &B256, chain_store: &ChainStore) -> anyhow::Result<()> {
         println!("Deleting block {hash} from cache.");
         chain_store.delete_blocks(&[hash])?;
         println!("Done.");
@@ -265,13 +264,13 @@ mod steps {
 
 mod helpers {
     use super::*;
-    use graph::prelude::hex;
+    use graph::prelude::{alloy::primitives::B256, hex};
 
-    /// Tries to parse a [`H256`] from a hex string.
-    pub(super) fn parse_block_hash(hash: &str) -> anyhow::Result<H256> {
+    /// Tries to parse a [`B256`] from a hex string.
+    pub(super) fn parse_block_hash(hash: &str) -> anyhow::Result<B256> {
         let hash = hash.trim_start_matches("0x");
         let hash = hex::decode(hash)?;
-        Ok(H256::from_slice(&hash))
+        Ok(B256::from_slice(&hash))
     }
 }
 

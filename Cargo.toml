@@ -39,7 +39,7 @@ repository = "https://github.com/graphprotocol/graph-node"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-alloy = { version = "1.0.33", features = ["dyn-abi", "json-abi", "full"] }
+alloy = { version = "1.0.33", features = ["dyn-abi", "json-abi", "full", "arbitrary"] }
 alloy-rpc-types = "1.0.33"
 anyhow = "1.0"
 async-graphql = { version = "7.0.17", features = ["chrono"] }

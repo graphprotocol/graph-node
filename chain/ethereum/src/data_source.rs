@@ -20,7 +20,7 @@ use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
 use graph::prelude::alloy::primitives::{Address, B256};
 use graph::prelude::alloy::rpc::types::Log;
-use graph::prelude::{alloy, b256_to_h256, Link, SubgraphManifestValidationError};
+use graph::prelude::{alloy, Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
 use graph::{abi, alloy_todo};
 use itertools::Itertools;
@@ -36,10 +36,8 @@ use tiny_keccak::{keccak256, Keccak};
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, serde_json, warn,
-        web3::types::{H160, H256},
-        BlockNumber, CheapClone, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
-        LinkResolver, Logger,
+        async_trait, serde_json, warn, BlockNumber, CheapClone, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt, LinkResolver, Logger,
     },
 };
 
@@ -135,7 +133,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn address(&self) -> Option<&[u8]> {
-        self.address.as_ref().map(|x| x.as_bytes())
+        self.address.as_ref().map(|x| x.as_slice())
     }
 
     fn has_declared_calls(&self) -> bool {
@@ -239,7 +237,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        let param = self.address.map(|addr| addr.0.into());
+        let param = self.address.map(|addr| addr.as_slice().into());
         StoredDynamicDataSource {
             manifest_idx: self.manifest_idx,
             param,
@@ -278,7 +276,7 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         let contract_abi = template.mapping.find_abi(&template.source.abi)?;
 
-        let address = param.map(|x| H160::from_slice(&x));
+        let address = param.map(|x| Address::from_slice(&x));
         Ok(DataSource {
             kind: template.kind.to_string(),
             network: template.network.as_ref().map(|s| s.to_string()),
@@ -642,7 +640,7 @@ impl DataSource {
             return true;
         };
 
-        ds_address == trigger_address
+        ds_address == *trigger_address
     }
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
@@ -772,8 +770,8 @@ impl DataSource {
 
                 let logging_extras = Arc::new(o! {
                     "signature" => event_handler.event.to_string(),
-                    "address" => format!("{}", &log.address),
-                    "transaction" => format!("{}", &transaction.hash),
+                    "address" => format!("{}", &log.address()),
+                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
                 });
                 let handler = event_handler.handler.clone();
                 let calls = DeclaredCall::from_log_trigger_with_event(
@@ -882,7 +880,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "function" => handler.function.to_string(),
                     "to" => format!("{}", &call.to),
-                    "transaction" => format!("{}", &transaction.hash),
+                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
                 });
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Call {
@@ -1447,7 +1445,7 @@ pub struct UnresolvedMappingEventHandler {
     #[serde(deserialize_with = "deserialize_b256_vec", default)]
     pub topic2: Option<Vec<B256>>,
     #[serde(deserialize_with = "deserialize_b256_vec", default)]
-    pub topic3: Option<Vec<H256>>,
+    pub topic3: Option<Vec<B256>>,
     pub handler: String,
     #[serde(default)]
     pub receipt: bool,
@@ -1481,17 +1479,17 @@ impl UnresolvedMappingEventHandler {
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct MappingEventHandler {
     pub event: String,
-    pub topic0: Option<H256>,
-    pub topic1: Option<Vec<H256>>,
-    pub topic2: Option<Vec<H256>>,
-    pub topic3: Option<Vec<H256>>,
+    pub topic0: Option<B256>,
+    pub topic1: Option<Vec<B256>>,
+    pub topic2: Option<Vec<B256>>,
+    pub topic3: Option<Vec<B256>>,
     pub handler: String,
     pub receipt: bool,
     pub calls: CallDecls,
 }
 
 // Custom deserializer for H256 fields that removes the '0x' prefix before parsing
-fn deserialize_b256_vec<'de, D>(deserializer: D) -> Result<Option<Vec<H256>>, D::Error>
+fn deserialize_b256_vec<'de, D>(deserializer: D) -> Result<Option<Vec<B256>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -1518,9 +1516,9 @@ where
 }
 
 impl MappingEventHandler {
-    pub fn topic0(&self) -> H256 {
+    pub fn topic0(&self) -> B256 {
         self.topic0
-            .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
+            .unwrap_or_else(|| string_to_b256(&self.event.replace("indexed ", "")))
     }
 
     pub fn matches(&self, log: &Log) -> bool {
@@ -1533,7 +1531,7 @@ impl MappingEventHandler {
         };
 
         if let Some(topic0) = log.topics().get(0) {
-            return self.topic0() == b256_to_h256(*topic0)
+            return self.topic0() == *topic0
                 && matches_topic(1, &self.topic1)
                 && matches_topic(2, &self.topic2)
                 && matches_topic(3, &self.topic3);
@@ -1550,8 +1548,8 @@ impl MappingEventHandler {
     }
 }
 
-/// Hashes a string to a H256 hash.
-fn string_to_h256(s: &str) -> H256 {
+/// Hashes a string to a B256 hash.
+fn string_to_b256(s: &str) -> B256 {
     let mut result = [0u8; 32];
     let data = s.replace(' ', "").into_bytes();
     let mut sponge = Keccak::new_keccak256();
@@ -1561,7 +1559,7 @@ fn string_to_h256(s: &str) -> H256 {
     // This was deprecated but the replacement seems to not be available in the
     // version web3 uses.
     #[allow(deprecated)]
-    H256::from_slice(&result)
+    B256::from_slice(&result)
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]

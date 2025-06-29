@@ -228,11 +228,10 @@ fn eth_get_balance(
 
     match result {
         Ok(v) => {
-            let bigint = BigInt::from_unsigned_alloy_u256(&v);
+            let bigint = BigInt::from_unsigned_u256(&v);
             Ok(asc_new(ctx.heap, &bigint, &ctx.gas)?)
         }
         // Retry on any kind of error
-        Err(EthereumRpcError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
         Err(EthereumRpcError::AlloyError(e)) => Err(HostExportError::PossibleReorg(e.into())),
         Err(EthereumRpcError::Timeout) => Err(HostExportError::PossibleReorg(
             EthereumRpcError::Timeout.into(),
@@ -265,7 +264,6 @@ fn eth_has_code(
     match result {
         Ok(v) => Ok(asc_new(ctx.heap, &AscWrapped { inner: v }, &ctx.gas)?),
         // Retry on any kind of error
-        Err(EthereumRpcError::Web3Error(e)) => Err(HostExportError::PossibleReorg(e.into())),
         Err(EthereumRpcError::AlloyError(e)) => Err(HostExportError::PossibleReorg(e.into())),
         Err(EthereumRpcError::Timeout) => Err(HostExportError::PossibleReorg(
             EthereumRpcError::Timeout.into(),
@@ -330,7 +328,7 @@ fn eth_call(
             // Any error reported by the Ethereum node could be due to the block no longer being on
             // the main chain. This is very unespecific but we don't want to risk failing a
             // subgraph due to a transient error such as a reorg.
-            Err(ContractCallError::Web3Error(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+            Err(ContractCallError::AlloyError(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,

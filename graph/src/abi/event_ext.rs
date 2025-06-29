@@ -1,12 +1,9 @@
 use std::collections::VecDeque;
 
 use alloy::json_abi::Event;
-use alloy::primitives::LogData;
+use alloy::rpc::types::Log;
 use anyhow::anyhow;
-use anyhow::Context;
 use anyhow::Result;
-use itertools::Itertools;
-use web3::types::Log;
 
 use crate::abi::{DynSolParam, DynSolValue};
 
@@ -16,7 +13,7 @@ pub trait EventExt {
 
 impl EventExt for Event {
     fn decode_log(&self, log: &Log) -> Result<Vec<DynSolParam>> {
-        let log_data = log_to_log_data(log)?;
+        let log_data = log.data();
         let decoded_event = alloy::dyn_abi::EventExt::decode_log(self, &log_data)?;
         let mut indexed: VecDeque<DynSolValue> = decoded_event.indexed.into();
         let mut body: VecDeque<DynSolValue> = decoded_event.body.into();
@@ -48,39 +45,31 @@ impl EventExt for Event {
     }
 }
 
-fn log_to_log_data(log: &Log) -> Result<LogData> {
-    let topics = log
-        .topics
-        .iter()
-        .map(|x| x.to_fixed_bytes().into())
-        .collect_vec();
-
-    let data = log.data.0.clone().into();
-
-    LogData::new(topics, data).context("log has an invalid number of topics")
-}
-
 #[cfg(test)]
 mod tests {
     use alloy::dyn_abi::DynSolValue;
     use alloy::primitives::U256;
 
+    use crate::alloy_todo;
+
     use super::*;
 
-    fn make_log(topics: &[[u8; 32]], data: Vec<u8>) -> Log {
-        Log {
-            address: [1; 20].into(),
-            topics: topics.iter().map(Into::into).collect(),
-            data: data.into(),
-            block_hash: None,
-            block_number: None,
-            transaction_hash: None,
-            transaction_index: None,
-            log_index: None,
-            transaction_log_index: None,
-            log_type: None,
-            removed: None,
-        }
+    fn make_log(_topics: &[[u8; 32]], _data: Vec<u8>) -> Log {
+        // Log {
+        //     address: [1; 20].into(),
+        //     topics: topics.iter().map(Into::into).collect(),
+        //     data: data.into(),
+        //     block_hash: None,
+        //     block_number: None,
+        //     transaction_hash: None,
+        //     transaction_index: None,
+        //     log_index: None,
+        //     transaction_log_index: None,
+        //     log_type: None,
+        //     removed: None,
+        // }
+
+        alloy_todo!()
     }
 
     #[test]

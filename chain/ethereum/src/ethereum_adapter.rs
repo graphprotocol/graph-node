@@ -20,6 +20,8 @@ use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
 use graph::prelude::alloy::consensus::BlockHeader;
+use graph::prelude::alloy::primitives::Address;
+use graph::prelude::alloy::rpc::types::Transaction;
 use graph::prelude::{
     alloy::{
         self,
@@ -37,7 +39,7 @@ use graph::prelude::{
         },
         transports::{RpcError, TransportErrorKind},
     },
-    alloy_log_to_web3_log, h160_to_alloy_address, h256_to_b256,
+    alloy_log_to_web3_log, h256_to_b256,
     tokio::try_join,
 };
 use graph::slog::o;
@@ -49,13 +51,11 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn,
-        web3::types::{Transaction, H256},
-        BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
-        TimeoutError,
+        async_trait, debug, error, hex, info, retry, serde_json as json, trace, warn, BlockNumber,
+        ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger, TimeoutError,
     },
 };
-use graph::{components::ethereum::*, prelude::web3::api::Web3, prelude::web3::types::H160};
+use graph::{components::ethereum::*, prelude::web3::api::Web3};
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -568,9 +568,7 @@ impl EthereumAdapter {
         if !self.supports_eip_1898 {
             alloy::rpc::types::BlockId::number(block_ptr.number as u64)
         } else {
-            alloy::rpc::types::BlockId::hash(alloy::primitives::B256::new(
-                *block_ptr.hash_as_h256().as_fixed_bytes(),
-            ))
+            alloy::rpc::types::BlockId::hash(block_ptr.hash_as_b256())
         }
     }
 
@@ -932,13 +930,13 @@ impl EthereumAdapter {
             wildcard_signatures,
         } = call_filter;
 
-        let mut addresses: Vec<H160> = contract_addresses_function_signatures
+        let mut addresses: Vec<Address> = contract_addresses_function_signatures
             .iter()
             .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
             .map(|(addr, (_start_block, _fsigs))| *addr)
-            .collect::<HashSet<H160>>()
+            .collect::<HashSet<Address>>()
             .into_iter()
-            .collect::<Vec<H160>>();
+            .collect::<Vec<Address>>();
 
         if addresses.is_empty() && wildcard_signatures.is_empty() {
             // The filter has no started data sources in the requested range, nothing to do.
@@ -952,11 +950,6 @@ impl EthereumAdapter {
             // requests and potentially getting 413 errors.
             addresses = vec![];
         }
-
-        let addresses = addresses
-            .iter()
-            .map(|addr| h160_to_alloy_address(*addr))
-            .collect();
 
         Box::new(
             eth.trace_stream(logger, subgraph_metrics, from, to, addresses)
@@ -1546,7 +1539,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         fn log_call_error(logger: &Logger, e: &ContractCallError, call: &ContractCall) {
             match e {
-                ContractCallError::Web3Error(e) => error!(logger,
+                ContractCallError::AlloyError(e) => error!(logger,
                     "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                     call.function.name, call.contract_name, e),
                 ContractCallError::Timeout => error!(logger,
@@ -1778,7 +1771,7 @@ pub(crate) async fn blocks_with_triggers(
 
     let mut block_hashes: HashSet<B256> = triggers
         .iter()
-        .map(|trigger| h256_to_b256(trigger.block_hash()))
+        .map(|trigger| trigger.block_hash())
         .collect();
     let mut triggers_by_block: HashMap<BlockNumber, Vec<EthereumTrigger>> =
         triggers.into_iter().fold(HashMap::new(), |mut map, t| {
@@ -1875,7 +1868,7 @@ pub(crate) async fn get_calls(
                         &logger,
                         subgraph_metrics.clone(),
                         ethereum_block.block.number(),
-                        h256_to_b256(ethereum_block.block.hash_h256().unwrap()),
+                        ethereum_block.block.hash(),
                     )
                     .await?
             };
@@ -2038,14 +2031,14 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let initial_number_of_triggers = block.trigger_data.len();
 
     // Get the transaction hash from each call trigger
-    let transaction_hashes: BTreeSet<H256> = block
+    let transaction_hashes: BTreeSet<B256> = block
         .trigger_data
         .iter()
         .filter_map(|trigger| match trigger.as_chain() {
             Some(EthereumTrigger::Call(call_trigger)) => Some(call_trigger.transaction_hash),
             _ => None,
         })
-        .collect::<Option<BTreeSet<H256>>>()
+        .collect::<Option<BTreeSet<B256>>>()
         .ok_or(anyhow!(
             "failed to obtain transaction hash from call triggers"
         ))?;
@@ -2061,7 +2054,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
             BlockFinality::Final(ref block) => block
                 .transactions()
                 .iter()
-                .filter(|transaction| transaction_hashes.contains(&transaction.hash))
+                .filter(|transaction| transaction_hashes.contains(transaction.inner.tx_hash()))
                 .collect(),
             BlockFinality::NonFinal(_block_with_calls) => {
                 unreachable!(
@@ -2083,18 +2076,18 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
     // We'll also need the receipts for those transactions. In this step we collect all receipts
     // we have in store for the current block.
-    let mut receipts = chain_store
-        .transaction_receipts_in_block(&block.ptr().hash_as_h256())
+    let mut receipts: BTreeMap<B256, LightTransactionReceipt> = chain_store
+        .transaction_receipts_in_block(&block.ptr().hash_as_b256())
         .await?
         .into_iter()
         .map(|receipt| (receipt.transaction_hash, receipt))
-        .collect::<BTreeMap<H256, LightTransactionReceipt>>();
+        .collect::<BTreeMap<B256, LightTransactionReceipt>>();
 
     // Do we have a receipt for each transaction under analysis?
     let mut receipts_and_transactions: Vec<(&Transaction, LightTransactionReceipt)> = Vec::new();
     let mut transactions_without_receipt: Vec<&Transaction> = Vec::new();
     for transaction in transactions.iter() {
-        if let Some(receipt) = receipts.remove(&transaction.hash) {
+        if let Some(receipt) = receipts.remove(transaction.inner.tx_hash()) {
             receipts_and_transactions.push((transaction, receipt));
         } else {
             transactions_without_receipt.push(transaction);
@@ -2105,7 +2098,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let futures = transactions_without_receipt
         .iter()
         .map(|transaction| async move {
-            fetch_receipt_from_ethereum_client(eth, h256_to_b256(transaction.hash))
+            fetch_receipt_from_ethereum_client(eth, *transaction.inner.tx_hash())
                 .await
                 .map(|receipt| (transaction, receipt))
         });
@@ -2120,12 +2113,9 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     // additional Ethereum API calls for future scans on this block.
 
     // With all transactions and receipts in hand, we can evaluate the success of each transaction
-    let mut transaction_success: BTreeMap<&H256, bool> = BTreeMap::new();
+    let mut transaction_success: BTreeMap<&B256, bool> = BTreeMap::new();
     for (transaction, receipt) in receipts_and_transactions.into_iter() {
-        transaction_success.insert(
-            &transaction.hash,
-            evaluate_transaction_status(receipt.status),
-        );
+        transaction_success.insert(&transaction.inner.tx_hash(), receipt.status);
     }
 
     // Confidence check: Did we inspect the status of all transactions?
@@ -2523,8 +2513,8 @@ async fn get_logs_and_transactions(
         let optional_receipt = log
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
-        let web3_log = alloy_log_to_web3_log(log);
-        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(web3_log), optional_receipt));
+
+        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(log), optional_receipt));
         log_triggers.push(value);
     }
 
@@ -2624,11 +2614,10 @@ mod tests {
     use graph::alloy_todo;
     use graph::blockchain::BlockPtr;
     use graph::components::ethereum::BlockWrapper;
-    use graph::prelude::alloy::primitives::B256;
+    use graph::prelude::alloy::primitives::{Address, Bytes, B256};
     use graph::prelude::alloy::providers::mock::Asserter;
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::tokio::{self};
-    use graph::prelude::web3::types::{Address, Bytes, H256};
     use graph::prelude::EthereumCall;
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
@@ -2858,11 +2847,11 @@ mod tests {
     }
 
     fn address(id: u64) -> Address {
-        Address::from_low_u64_be(id)
+        Address::from_slice(&id.to_le_bytes())
     }
 
-    fn hash(id: u8) -> H256 {
-        H256::from([id; 32])
+    fn hash(id: u8) -> B256 {
+        B256::from_slice(&[id; 32])
     }
 
     fn bytes(value: Vec<u8>) -> Bytes {
