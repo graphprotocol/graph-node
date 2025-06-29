@@ -7,6 +7,7 @@ use graph::data_source::common::MappingABI;
 use graph::env::EnvVars;
 use graph::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
 use graph::log;
+use graph::prelude::alloy::primitives::Address;
 use graph::prelude::*;
 use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate, Mapping, TemplateSource};
 use graph_runtime_wasm::host_exports::DataSourceDetails;
@@ -14,7 +15,6 @@ use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::env;
 use std::str::FromStr;
-use web3::types::Address;
 
 lazy_static! {
     pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {

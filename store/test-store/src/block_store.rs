@@ -3,16 +3,13 @@ use std::{convert::TryFrom, str::FromStr, sync::Arc};
 use graph::alloy_todo;
 use graph::blockchain::{BlockTime, ChainIdentifier};
 use graph::components::ethereum::BlockWrapper;
-use graph::prelude::web3;
+use graph::prelude::alloy::primitives::{B256, U256};
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
 use graph::{
     blockchain::Block as BlockchainBlock,
-    prelude::{
-        serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
-        EthereumBlock,
-    },
+    prelude::{serde_json, BlockHash, BlockNumber, BlockPtr, EthereumBlock},
 };
 use graph_chain_ethereum::codec::{Block as FirehoseBlock, BlockHeader};
 use prost_types::Timestamp;
@@ -106,7 +103,7 @@ impl FakeBlock {
     }
 
     pub fn as_ethereum_block(&self) -> EthereumBlock {
-        let parent_hash = H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
+        let parent_hash = B256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
 
         // let mut block = web3::types::Block::default();
         // block.number = Some(self.number.into());

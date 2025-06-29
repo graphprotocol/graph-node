@@ -5,10 +5,11 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
     components::ethereum::BlockWrapper,
     prelude::{
-        web3::{
-            self,
-            types::{Address, Bytes, Log, Transaction, H160, H256, U64},
+        alloy::{
+            primitives::{Address, Bytes, B256},
+            rpc::types::Log,
         },
+        rand::{self, Rng},
         EthereumCall,
     },
     slog::{self, o, Logger},
@@ -19,15 +20,37 @@ use crate::{
     trigger::{EthereumBlockTriggerType, EthereumTrigger, LogRef},
 };
 
+pub trait Random {
+    fn random() -> Self;
+}
+
+impl Random for B256 {
+    fn random() -> Self {
+        let mut rng = rand::rng();
+        let mut bytes = [0u8; 32];
+        rng.fill(&mut bytes);
+        Self::from(bytes)
+    }
+}
+
+impl Random for Address {
+    fn random() -> Self {
+        let mut rng = rand::rng();
+        let mut bytes = [0u8; 20];
+        rng.fill(&mut bytes);
+        Self::from(bytes)
+    }
+}
+
 #[test]
 fn test_trigger_ordering() {
     let block1 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 1u64)),
+        BlockPtr::from((B256::random(), 1u64)),
         EthereumBlockTriggerType::End,
     );
 
     let block2 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 0u64)),
+        BlockPtr::from((B256::random(), 0u64)),
         EthereumBlockTriggerType::WithCallTo(Address::random()),
     );
 
@@ -37,7 +60,7 @@ fn test_trigger_ordering() {
 
     let mut call2 = EthereumCall::default();
     call2.transaction_index = 2;
-    call2.input = Bytes(vec![0]);
+    call2.input = Bytes::from(vec![0]);
     let call2 = EthereumTrigger::Call(Arc::new(call2));
 
     let mut call3 = EthereumCall::default();
@@ -48,23 +71,24 @@ fn test_trigger_ordering() {
     let mut call4 = EthereumCall::default();
     call4.transaction_index = 2;
     // different than call2 so they don't get mistaken as the same
-    call4.input = Bytes(vec![1]);
+    call4.input = Bytes::from(vec![1]);
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
     fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
-        Arc::new(Log {
-            address: H160::default(),
-            topics: vec![],
-            data: Bytes::default(),
-            block_hash: Some(H256::zero()),
-            block_number: Some(U64::zero()),
-            transaction_hash: Some(H256::zero()),
-            transaction_index: Some(tx_index.into()),
-            log_index: Some(log_index.into()),
-            transaction_log_index: Some(log_index.into()),
-            log_type: Some("".into()),
-            removed: Some(false),
-        })
+        // Arc::new(Log {
+        //     address: H160::default(),
+        //     topics: vec![],
+        //     data: Bytes::default(),
+        //     block_hash: Some(H256::zero()),
+        //     block_number: Some(U64::zero()),
+        //     transaction_hash: Some(H256::zero()),
+        //     transaction_index: Some(tx_index.into()),
+        //     log_index: Some(log_index.into()),
+        //     transaction_log_index: Some(log_index.into()),
+        //     log_type: Some("".into()),
+        //     removed: Some(false),
+        // })
+        alloy_todo!()
     }
 
     // Event with transaction_index 1 and log_index 0;
@@ -127,12 +151,12 @@ fn test_trigger_ordering() {
 #[test]
 fn test_trigger_dedup() {
     let block1 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 1u64)),
+        BlockPtr::from((B256::random(), 1u64)),
         EthereumBlockTriggerType::End,
     );
 
     let block2 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 0u64)),
+        BlockPtr::from((B256::random(), 0u64)),
         EthereumBlockTriggerType::WithCallTo(Address::random()),
     );
 
@@ -157,19 +181,20 @@ fn test_trigger_dedup() {
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
     fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
-        Arc::new(Log {
-            address: H160::default(),
-            topics: vec![],
-            data: Bytes::default(),
-            block_hash: Some(H256::zero()),
-            block_number: Some(U64::zero()),
-            transaction_hash: Some(H256::zero()),
-            transaction_index: Some(tx_index.into()),
-            log_index: Some(log_index.into()),
-            transaction_log_index: Some(log_index.into()),
-            log_type: Some("".into()),
-            removed: Some(false),
-        })
+        // Arc::new(Log {
+        //     address: H160::default(),
+        //     topics: vec![],
+        //     data: Bytes::default(),
+        //     block_hash: Some(H256::zero()),
+        //     block_number: Some(U64::zero()),
+        //     transaction_hash: Some(H256::zero()),
+        //     transaction_index: Some(tx_index.into()),
+        //     log_index: Some(log_index.into()),
+        //     transaction_log_index: Some(log_index.into()),
+        //     log_type: Some("".into()),
+        //     removed: Some(false),
+        // })
+        alloy_todo!()
     }
 
     let log1 = EthereumTrigger::Log(LogRef::FullLog(create_log(1, 0), None));
@@ -199,13 +224,13 @@ fn test_trigger_dedup() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let mut b: web3::types::Block<Transaction> = Default::default();
+    // let mut b: web3::types::Block<Transaction> = Default::default();
 
-    // This is necessary because inside of BlockWithTriggers::new
-    // there's a log for both fields. So just using Default above
-    // gives None on them.
-    b.number = Some(Default::default());
-    b.hash = Some(Default::default());
+    // // This is necessary because inside of BlockWithTriggers::new
+    // // there's a log for both fields. So just using Default above
+    // // gives None on them.
+    // b.number = Some(Default::default());
+    // b.hash = Some(Default::default());
 
     #[allow(unused_variables)]
     let b = alloy_todo!();

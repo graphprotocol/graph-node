@@ -89,7 +89,7 @@ pub fn alloy_log_to_web3_log(log: AlloyLog) -> Web3Log {
     }
 }
 
-pub fn alloy_log_ref_to_web3_log_ref(log: &AlloyLog) -> &Web3Log {
+pub fn alloy_log_ref_to_web3_log_ref(_log: &AlloyLog) -> &Web3Log {
     unimplemented!()
 }
 

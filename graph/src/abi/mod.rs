@@ -12,7 +12,7 @@ pub use alloy::json_abi::JsonAbi;
 pub use alloy::json_abi::StateMutability;
 
 pub use alloy::primitives::I256;
-pub use alloy::primitives::U256;
+pub use alloy::primitives::U256 as AlloyU256;
 
 pub use self::event_ext::EventExt;
 pub use self::function_ext::FunctionExt;
