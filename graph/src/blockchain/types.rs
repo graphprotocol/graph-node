@@ -1,3 +1,4 @@
+use alloy::primitives::{B256, U256};
 use anyhow::anyhow;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
@@ -9,7 +10,8 @@ use serde::{Deserialize, Deserializer};
 use std::convert::TryFrom;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
-use web3::types::{Block, H256, U256, U64};
+
+use crate::components::ethereum::BlockWrapper;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::BlockNumber;
@@ -32,8 +34,8 @@ impl BlockHash {
         &self.0
     }
 
-    pub fn as_h256(&self) -> H256 {
-        H256::from_slice(self.as_slice())
+    pub fn as_b256(&self) -> B256 {
+        B256::from_slice(self.as_slice())
     }
 
     /// Encodes the block hash into a hexadecimal string **without** a "0x"
@@ -45,7 +47,7 @@ impl BlockHash {
     }
 
     pub fn zero() -> Self {
-        Self::from(H256::zero())
+        Self::from(B256::ZERO)
     }
 }
 
@@ -83,15 +85,21 @@ impl fmt::LowerHex for BlockHash {
     }
 }
 
-impl From<H256> for BlockHash {
-    fn from(hash: H256) -> Self {
-        BlockHash(hash.as_bytes().into())
-    }
-}
+// impl From<H256> for BlockHash {
+//     fn from(hash: H256) -> Self {
+//         BlockHash(hash.as_bytes().into())
+//     }
+// }
 
 impl From<Vec<u8>> for BlockHash {
     fn from(bytes: Vec<u8>) -> Self {
         BlockHash(bytes.as_slice().into())
+    }
+}
+
+impl From<B256> for BlockHash {
+    fn from(hash: B256) -> Self {
+        BlockHash(hash.as_slice().into())
     }
 }
 
@@ -170,11 +178,15 @@ impl BlockPtr {
         self.number
     }
 
-    // FIXME:
-    //
-    // workaround for arweave
-    pub fn hash_as_h256(&self) -> H256 {
-        H256::from_slice(&self.hash_slice()[..32])
+    // // FIXME:
+    // //
+    // // workaround for arweave
+    // pub fn hash_as_h256(&self) -> H256 {
+    //     H256::from_slice(&self.hash_slice()[..32])
+    // }
+
+    pub fn hash_as_b256(&self) -> B256 {
+        B256::from_slice(&self.hash_slice()[..32])
     }
 
     pub fn hash_slice(&self) -> &[u8] {
@@ -205,17 +217,29 @@ impl slog::Value for BlockPtr {
     }
 }
 
-impl<T> From<Block<T>> for BlockPtr {
-    fn from(b: Block<T>) -> BlockPtr {
-        BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+impl From<BlockWrapper> for BlockPtr {
+    fn from(b: BlockWrapper) -> BlockPtr {
+        BlockPtr::from((b.hash_b256().unwrap(), b.number_u64() as i32))
     }
 }
 
-impl<'a, T> From<&'a Block<T>> for BlockPtr {
-    fn from(b: &'a Block<T>) -> BlockPtr {
-        BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+impl From<&BlockWrapper> for BlockPtr {
+    fn from(b: &BlockWrapper) -> BlockPtr {
+        BlockPtr::from((b.hash_b256().unwrap(), b.number_u64() as i32))
     }
 }
+
+// impl<T> From<Web3Block<T>> for BlockPtr {
+//     fn from(b: Web3Block<T>) -> BlockPtr {
+//         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+//     }
+// }
+
+// impl<'a, T> From<&'a Web3Block<T>> for BlockPtr {
+//     fn from(b: &'a Web3Block<T>) -> BlockPtr {
+//         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
+//     }
+// }
 
 impl From<(Vec<u8>, i32)> for BlockPtr {
     fn from((bytes, number): (Vec<u8>, i32)) -> Self {
@@ -226,8 +250,29 @@ impl From<(Vec<u8>, i32)> for BlockPtr {
     }
 }
 
-impl From<(H256, i32)> for BlockPtr {
-    fn from((hash, number): (H256, i32)) -> BlockPtr {
+impl From<(B256, i32)> for BlockPtr {
+    fn from((hash, number): (alloy::primitives::B256, i32)) -> BlockPtr {
+        BlockPtr {
+            hash: hash.into(),
+            number,
+        }
+    }
+}
+impl From<(B256, u64)> for BlockPtr {
+    fn from((hash, number): (alloy::primitives::B256, u64)) -> BlockPtr {
+        let number = i32::try_from(number).unwrap();
+        BlockPtr {
+            hash: hash.into(),
+            number,
+        }
+    }
+}
+
+
+
+impl From<(alloy::primitives::B256, i64)> for BlockPtr {
+    fn from((hash, number): (alloy::primitives::B256, i64)) -> BlockPtr {
+        let number = i32::try_from(number).unwrap();
         BlockPtr {
             hash: hash.into(),
             number,
@@ -255,24 +300,6 @@ impl From<(Vec<u8>, i64)> for BlockPtr {
     }
 }
 
-impl From<(H256, u64)> for BlockPtr {
-    fn from((hash, number): (H256, u64)) -> BlockPtr {
-        let number = i32::try_from(number).unwrap();
-
-        BlockPtr::from((hash, number))
-    }
-}
-
-impl From<(H256, i64)> for BlockPtr {
-    fn from((hash, number): (H256, i64)) -> BlockPtr {
-        if number < 0 {
-            panic!("block number out of range: {}", number);
-        }
-
-        BlockPtr::from((hash, number as u64))
-    }
-}
-
 impl TryFrom<(&str, i64)> for BlockPtr {
     type Error = anyhow::Error;
 
@@ -288,14 +315,14 @@ impl TryFrom<(&[u8], i64)> for BlockPtr {
     type Error = anyhow::Error;
 
     fn try_from((bytes, number): (&[u8], i64)) -> Result<Self, Self::Error> {
-        let hash = if bytes.len() == H256::len_bytes() {
-            H256::from_slice(bytes)
+        let hash = if bytes.len() == B256::len_bytes() {
+            B256::from_slice(bytes)
         } else {
             return Err(anyhow!(
-                "invalid H256 value `{}` has {} bytes instead of {}",
+                "invalid B256 value `{}` has {} bytes instead of {}",
                 hex::encode(bytes),
                 bytes.len(),
-                H256::len_bytes()
+                B256::len_bytes()
             ));
         };
         Ok(BlockPtr::from((hash, number)))
@@ -312,9 +339,9 @@ impl IntoValue for BlockPtr {
     }
 }
 
-impl From<BlockPtr> for H256 {
+impl From<BlockPtr> for B256 {
     fn from(ptr: BlockPtr) -> Self {
-        ptr.hash_as_h256()
+        ptr.hash_as_b256()
     }
 }
 
@@ -399,12 +426,12 @@ impl ExtendedBlockPtr {
         self.number
     }
 
-    pub fn hash_as_h256(&self) -> H256 {
-        H256::from_slice(&self.hash_slice()[..32])
+    pub fn hash_as_b256(&self) -> B256 {
+        B256::from_slice(&self.hash_slice()[..32])
     }
 
-    pub fn parent_hash_as_h256(&self) -> H256 {
-        H256::from_slice(&self.parent_hash_slice()[..32])
+    pub fn parent_hash_as_b256(&self) -> B256 {
+        B256::from_slice(&self.parent_hash_slice()[..32])
     }
 
     pub fn hash_slice(&self) -> &[u8] {
@@ -463,24 +490,17 @@ impl IntoValue for ExtendedBlockPtr {
     }
 }
 
-impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
+impl TryFrom<(B256, i32, B256, u64)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
-    fn try_from(tuple: (Option<H256>, Option<U64>, H256, U256)) -> Result<Self, Self::Error> {
-        let (hash_opt, number_opt, parent_hash, timestamp_u256) = tuple;
+    fn try_from(
+        tuple: (alloy::primitives::B256, i32, alloy::primitives::B256, u64),
+    ) -> Result<Self, Self::Error> {
+        let (hash, block_number, parent_hash, timestamp) = tuple;
 
-        let hash = hash_opt.ok_or_else(|| anyhow!("Block hash is missing"))?;
-        let number = number_opt
-            .ok_or_else(|| anyhow!("Block number is missing"))?
-            .as_u64();
-
-        let block_number =
-            i32::try_from(number).map_err(|_| anyhow!("Block number out of range"))?;
-
-        // Convert `U256` to `BlockTime`
-        let secs =
-            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
-        let block_time = BlockTime::since_epoch(secs, 0);
+        // Convert timestamp to `BlockTime`
+        let secs = timestamp;
+        let block_time = BlockTime::since_epoch(secs as i64, 0);
 
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
@@ -488,31 +508,6 @@ impl TryFrom<(Option<H256>, Option<U64>, H256, U256)> for ExtendedBlockPtr {
             parent_hash: parent_hash.into(),
             timestamp: block_time,
         })
-    }
-}
-
-impl TryFrom<(H256, i32, H256, U256)> for ExtendedBlockPtr {
-    type Error = anyhow::Error;
-
-    fn try_from(tuple: (H256, i32, H256, U256)) -> Result<Self, Self::Error> {
-        let (hash, block_number, parent_hash, timestamp_u256) = tuple;
-
-        // Convert `U256` to `BlockTime`
-        let secs =
-            i64::try_from(timestamp_u256).map_err(|_| anyhow!("Timestamp out of range for i64"))?;
-        let block_time = BlockTime::since_epoch(secs, 0);
-
-        Ok(ExtendedBlockPtr {
-            hash: hash.into(),
-            number: block_number,
-            parent_hash: parent_hash.into(),
-            timestamp: block_time,
-        })
-    }
-}
-impl From<ExtendedBlockPtr> for H256 {
-    fn from(ptr: ExtendedBlockPtr) -> Self {
-        ptr.hash_as_h256()
     }
 }
 
@@ -539,7 +534,7 @@ impl Default for ChainIdentifier {
     fn default() -> Self {
         Self {
             net_version: String::default(),
-            genesis_block_hash: BlockHash::from(H256::zero()),
+            genesis_block_hash: BlockHash::from(B256::ZERO),
         }
     }
 }

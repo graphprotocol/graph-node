@@ -33,6 +33,7 @@ use crate::{
     components::store::BlockNumber,
     prelude::{thiserror::Error, LinkResolver},
 };
+use alloy::primitives::B256;
 use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
 use graph_derive::CheapClone;
@@ -46,7 +47,6 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
@@ -224,20 +224,20 @@ pub enum IngestorError {
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
     #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
-    BlockUnavailable(H256),
+    BlockUnavailable(B256),
 
     /// The Ethereum node does not know about this block for some reason, probably because it
     /// disappeared in a chain reorg.
     #[error("Receipt for tx {1:?} unavailable, block was likely uncled (block hash = {0:?})")]
-    ReceiptUnavailable(H256, H256),
+    ReceiptUnavailable(B256, B256),
 
     /// The Ethereum node does not know about this block for some reason
     #[error("Transaction receipts for block (block hash = {0:?}) is unavailable")]
-    BlockReceiptsUnavailable(H256),
+    BlockReceiptsUnavailable(B256),
 
     /// The Ethereum node does not know about this block for some reason
     #[error("Received confliciting block receipts for block (block hash = {0:?})")]
-    BlockReceiptsMismatched(H256),
+    BlockReceiptsMismatched(B256),
 
     /// An unexpected error occurred.
     #[error("Ingestor error: {0:#}")]

@@ -6,14 +6,14 @@ use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
 use graph::env::ENV_VARS;
 use graph::futures03::executor;
+use graph::prelude::alloy::primitives::B256;
 use std::future::Future;
 use std::sync::Arc;
 
-use graph::prelude::web3::types::H256;
+use graph::cheap_clone::CheapClone;
+use graph::prelude::{alloy, serde_json as json, EthereumBlock};
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
-use graph::prelude::{serde_json as json, EthereumBlock};
 use graph::prelude::{BlockNumber, QueryStoreManager, QueryTarget};
-use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};
 use graph::{
     components::store::ChainHeadStore as _, components::store::ChainStore as _,
@@ -318,7 +318,7 @@ fn check_ancestor(
     }
 
     let act_block = json::from_value::<EthereumBlock>(act.0)?;
-    let act_hash = format!("{:x}", act_block.block.hash.unwrap());
+    let act_hash = format!("{:x}", act_block.block.hash_b256().unwrap());
     let exp_hash = &exp.hash;
 
     if &act_hash != exp_hash {
@@ -430,7 +430,9 @@ fn eth_call_cache() {
             call::Retval::Value(Bytes::from(value))
         }
 
-        let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        let address = alloy::primitives::Address::from_slice(&[
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        ]);
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
@@ -496,7 +498,7 @@ fn test_transaction_receipts_in_block_function() {
     let chain = vec![];
     run_test_async(chain, move |store, _, _| async move {
         let receipts = store
-            .transaction_receipts_in_block(&H256::zero())
+            .transaction_receipts_in_block(&B256::ZERO)
             .await
             .unwrap();
         assert!(receipts.is_empty())

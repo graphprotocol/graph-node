@@ -11,7 +11,7 @@ use std::{
 };
 use std::{iter::FromIterator, time::Duration};
 
-use graph::futures03::future::join_all;
+use graph::{futures03::future::join_all, prelude::alloy::primitives::Address};
 use graph::{
     cheap_clone::CheapClone,
     components::{
@@ -25,10 +25,10 @@ use graph::{
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
     internal_error,
     prelude::{
-        anyhow, lazy_static, o, web3::types::Address, ApiVersion, BlockNumber, BlockPtr,
-        ChainStore, DeploymentHash, EntityOperation, Logger, MetricsRegistry, NodeId,
-        PartialBlockPtr, StoreError, SubgraphDeploymentEntity, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        anyhow, lazy_static, o, ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash,
+        EntityOperation, Logger, MetricsRegistry, NodeId, PartialBlockPtr, StoreError,
+        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
     prelude::{CancelableError, StoreEvent},
     schema::{ApiSchema, InputSchema},
@@ -1097,7 +1097,7 @@ impl SubgraphStoreInner {
         };
 
         let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
-        let indexer = Some(Address::zero());
+        let indexer = Some(Address::ZERO);
         let poi = store
             .get_proof_of_indexing(site, &indexer, block_for_poi_query)
             .await?;

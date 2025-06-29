@@ -722,11 +722,11 @@ impl Block for BlockFinality {
     fn timestamp(&self) -> BlockTime {
         match self {
             BlockFinality::Final(block) => {
-                let ts = i64::try_from(block.timestamp.as_u64()).unwrap();
+                let ts = i64::try_from(block.timestamp_u64()).unwrap();
                 BlockTime::since_epoch(ts, 0)
             }
             BlockFinality::NonFinal(block) => {
-                let ts = i64::try_from(block.ethereum_block.block.timestamp.as_u64()).unwrap();
+                let ts = i64::try_from(block.ethereum_block.block.timestamp_u64()).unwrap();
                 BlockTime::since_epoch(ts, 0)
             }
             BlockFinality::Ptr(block) => block.timestamp,
@@ -1108,7 +1108,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     .load_blocks(
                         self.logger.cheap_clone(),
                         self.chain_store.cheap_clone(),
-                        HashSet::from_iter(Some(block.hash_as_h256())),
+                        HashSet::from_iter(Some(block.hash_as_b256())),
                     )
                     .await?;
                 assert_eq!(blocks.len(), 1);

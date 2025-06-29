@@ -37,8 +37,11 @@ pub mod env;
 
 pub mod ipfs;
 
+pub mod abi;
+
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
+
 pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
@@ -76,13 +79,13 @@ pub use url;
 /// ```
 pub mod prelude {
     pub use ::anyhow;
+    pub use alloy;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use async_trait::async_trait;
     pub use atty;
     pub use chrono;
     pub use diesel;
     pub use envconfig;
-    pub use ethabi;
     pub use hex;
     pub use lazy_static::lazy_static;
     pub use prost;
@@ -173,6 +176,11 @@ pub mod prelude {
     };
     pub use crate::log::split::split_logger;
     pub use crate::util::cache_weight::CacheWeight;
+    pub use crate::util::conversions::{
+        alloy_address_to_h160, alloy_address_to_web3_address, alloy_log_to_web3_log,
+        alloy_transaction_receipt_to_web3_transaction_receipt, h160_to_alloy_address, h256_to_b256,
+        web3_address_to_alloy_address,
+    };
     pub use crate::util::futures::{retry, TimeoutError};
     pub use crate::util::stats::MovingStats;
 
