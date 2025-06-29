@@ -2135,7 +2135,7 @@ impl ChainStoreTrait for ChainStore {
 
         let (missing, ptr) = {
             let chain_store = self.clone();
-            let genesis_block_ptr = self.genesis_block_ptr()?.hash_as_b256();
+            let genesis_block_ptr = self.genesis_block_ptr()?.hash.as_b256();
             self.pool
                 .with_conn(move |conn, _| {
                     let candidate = chain_store
@@ -2153,7 +2153,7 @@ impl ChainStoreTrait for ChainStore {
                             conn,
                             &chain_store.chain,
                             first_block as i64,
-                            ptr.hash_as_b256(),
+                            ptr.hash.as_b256(),
                             genesis_block_ptr,
                         )
                         .map_err(CancelableError::from)?

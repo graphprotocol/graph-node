@@ -39,7 +39,6 @@ use graph::prelude::{
         },
         transports::{RpcError, TransportErrorKind},
     },
-    alloy_log_to_web3_log, h256_to_b256,
     tokio::try_join,
 };
 use graph::slog::o;
@@ -568,7 +567,7 @@ impl EthereumAdapter {
         if !self.supports_eip_1898 {
             alloy::rpc::types::BlockId::number(block_ptr.number as u64)
         } else {
-            alloy::rpc::types::BlockId::hash(block_ptr.hash_as_b256())
+            alloy::rpc::types::BlockId::hash(block_ptr.hash.as_b256())
         }
     }
 
@@ -1692,7 +1691,7 @@ pub(crate) async fn blocks_with_triggers(
     debug!(logger, "Finding nearest valid `to` block to {}", to);
 
     let to_ptr = eth.next_existing_ptr_to_number(&logger, to).await?;
-    let to_hash = to_ptr.hash_as_b256();
+    let to_hash = to_ptr.hash.as_b256();
     let to = to_ptr.block_number();
 
     // This is for `start` triggers which can be initialization handlers which needs to be run
@@ -2077,7 +2076,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     // We'll also need the receipts for those transactions. In this step we collect all receipts
     // we have in store for the current block.
     let mut receipts: BTreeMap<B256, LightTransactionReceipt> = chain_store
-        .transaction_receipts_in_block(&block.ptr().hash_as_b256())
+        .transaction_receipts_in_block(&block.ptr().hash.as_b256())
         .await?
         .into_iter()
         .map(|receipt| (receipt.transaction_hash, receipt))

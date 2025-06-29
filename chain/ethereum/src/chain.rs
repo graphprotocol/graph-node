@@ -1108,7 +1108,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     .load_blocks(
                         self.logger.cheap_clone(),
                         self.chain_store.cheap_clone(),
-                        HashSet::from_iter(Some(block.hash_as_b256())),
+                        HashSet::from_iter(Some(block.hash.as_b256())),
                     )
                     .await?;
                 assert_eq!(blocks.len(), 1);

@@ -42,8 +42,7 @@ impl BlockWrapper {
     }
 
     pub fn timestamp_u64(&self) -> u64 {
-        alloy_todo!()
-        // self.0.timestamp.as_u64()
+        self.0.header.timestamp
     }
 
     pub fn transactions(&self) -> &[Transaction] {

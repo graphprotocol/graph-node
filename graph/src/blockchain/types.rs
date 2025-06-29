@@ -178,17 +178,6 @@ impl BlockPtr {
         self.number
     }
 
-    // // FIXME:
-    // //
-    // // workaround for arweave
-    // pub fn hash_as_h256(&self) -> H256 {
-    //     H256::from_slice(&self.hash_slice()[..32])
-    // }
-
-    pub fn hash_as_b256(&self) -> B256 {
-        B256::from_slice(&self.hash_slice()[..32])
-    }
-
     pub fn hash_slice(&self) -> &[u8] {
         self.hash.0.as_ref()
     }
@@ -268,8 +257,6 @@ impl From<(B256, u64)> for BlockPtr {
     }
 }
 
-
-
 impl From<(alloy::primitives::B256, i64)> for BlockPtr {
     fn from((hash, number): (alloy::primitives::B256, i64)) -> BlockPtr {
         let number = i32::try_from(number).unwrap();
@@ -341,7 +328,7 @@ impl IntoValue for BlockPtr {
 
 impl From<BlockPtr> for B256 {
     fn from(ptr: BlockPtr) -> Self {
-        ptr.hash_as_b256()
+        ptr.hash.as_b256()
     }
 }
 
@@ -424,22 +411,6 @@ impl ExtendedBlockPtr {
     /// Block number to be passed into the store. Panics if it does not fit in an i32.
     pub fn block_number(&self) -> BlockNumber {
         self.number
-    }
-
-    pub fn hash_as_b256(&self) -> B256 {
-        B256::from_slice(&self.hash_slice()[..32])
-    }
-
-    pub fn parent_hash_as_b256(&self) -> B256 {
-        B256::from_slice(&self.parent_hash_slice()[..32])
-    }
-
-    pub fn hash_slice(&self) -> &[u8] {
-        self.hash.0.as_ref()
-    }
-
-    pub fn parent_hash_slice(&self) -> &[u8] {
-        self.parent_hash.0.as_ref()
     }
 }
 
