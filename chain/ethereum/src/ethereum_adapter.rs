@@ -20,7 +20,6 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
-use graph::prelude::alloy::consensus::BlockHeader;
 use graph::prelude::alloy::primitives::Address;
 use graph::prelude::alloy::rpc::types::Transaction;
 use graph::prelude::{
@@ -45,8 +44,6 @@ use graph::prelude::{
 use graph::slog::o;
 use graph::tokio::sync::RwLock;
 use graph::tokio::time::timeout;
-use graph::util::conversions::alloy_block_to_block;
-use graph::util::conversions::alloy_block_to_block_arc;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -718,7 +715,7 @@ impl EthereumAdapter {
         &self,
         logger: Logger,
         ids: Vec<B256>,
-    ) -> impl futures03::Stream<Item = Result<Arc<AlloyBlock>, Error>> + Send {
+    ) -> impl futures03::Stream<Item = Result<Arc<LightEthereumBlock>, Error>> + Send {
         let alloy = self.alloy.clone();
 
         futures03::stream::iter(ids.into_iter().map(move |hash| {
@@ -739,12 +736,14 @@ impl EthereumAdapter {
                                 .await
                                 .map_err(Error::from)
                                 .and_then(|block| {
-                                    block.map(Arc::new).ok_or_else(|| {
-                                        anyhow::anyhow!(
-                                            "Ethereum node did not find block {:?}",
-                                            hash
-                                        )
-                                    })
+                                    block
+                                        .map(|b| Arc::new(LightEthereumBlock::new(b)))
+                                        .ok_or_else(|| {
+                                            anyhow::anyhow!(
+                                                "Ethereum node did not find block {:?}",
+                                                hash
+                                            )
+                                        })
                                 })
                         }
                     })
@@ -1340,7 +1339,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
             return Ok(EthereumBlock {
-                block: Arc::new(alloy_block_to_block(block)),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 transaction_receipts: Vec::new(),
             });
         }
@@ -1359,7 +1358,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         fetch_receipts_with_retry(alloy, hashes, block_hash, logger, supports_block_receipts)
             .await
             .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(alloy_block_to_block(block)),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 transaction_receipts: transaction_receipts
                     .into_iter()
                     .map(|receipt| receipt)
@@ -1611,10 +1610,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<B256>,
-    ) -> Result<Vec<Arc<AlloyBlock>>, Error> {
+    ) -> Result<Vec<Arc<LightEthereumBlock>>, Error> {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
-        let mut blocks: Vec<Arc<AlloyBlock>> = chain_store
+        let mut blocks: Vec<_> = chain_store
             .cheap_clone()
             .blocks(block_hashes.iter().map(|&b| b.into()).collect::<Vec<_>>())
             .await
@@ -1622,24 +1621,24 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .unwrap_or_default()
             .into_iter()
             .filter_map(|value| json::from_value(value).ok())
-            .map(Arc::new)
+            .map(|b| Arc::new(LightEthereumBlock::new(b)))
             .collect();
 
         let missing_blocks = Vec::from_iter(
             block_hashes
                 .into_iter()
-                .filter(|hash| !blocks.iter().any(|b| b.header.hash == *hash)),
+                .filter(|hash| !blocks.iter().any(|b| b.hash() == *hash)),
         );
 
         // Return a stream that lazily loads batches of blocks.
         debug!(logger, "Requesting {} block(s)", missing_blocks.len());
-        let new_blocks: Vec<Arc<AlloyBlock>> = self
+        let new_blocks: Vec<_> = self
             .load_blocks_rpc(logger.clone(), missing_blocks)
             .try_collect()
             .await?;
         let upsert_blocks: Vec<_> = new_blocks
             .iter()
-            .map(|block| BlockFinality::Final(alloy_block_to_block_arc(block.clone())))
+            .map(|block| BlockFinality::Final(block.clone()))
             .collect();
         let block_refs: Vec<_> = upsert_blocks
             .iter()
@@ -1649,7 +1648,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             error!(logger, "Error writing to block cache {}", e);
         }
         blocks.extend(new_blocks);
-        blocks.sort_by_key(|block| block.header.number);
+        blocks.sort_by_key(|block| block.number());
         Ok(blocks)
     }
 }
@@ -1792,15 +1791,15 @@ pub(crate) async fn blocks_with_triggers(
         .await?
         .into_iter()
         .map(
-            move |block| match triggers_by_block.remove(&(block.header.number() as BlockNumber)) {
+            move |block| match triggers_by_block.remove(&(block.number())) {
                 Some(triggers) => Ok(BlockWithTriggers::new(
-                    BlockFinality::Final(alloy_block_to_block_arc(block)),
+                    BlockFinality::Final(block),
                     triggers,
                     &logger2,
                 )),
                 None => Err(anyhow!(
                     "block {} not found in `triggers_by_block`",
-                    BlockPtr::new(block.header.hash.into(), block.header.number as i32)
+                    block.block_ptr()
                 )),
             },
         )
@@ -2612,12 +2611,11 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
-    use graph::components::ethereum::BlockWrapper;
     use graph::prelude::alloy::primitives::{Address, Bytes, B256};
     use graph::prelude::alloy::providers::mock::Asserter;
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::tokio::{self};
-    use graph::prelude::{create_minimal_block_for_test, EthereumCall};
+    use graph::prelude::{create_minimal_block_for_test, EthereumCall, LightEthereumBlock};
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
     use std::iter::FromIterator;
@@ -2627,10 +2625,9 @@ mod tests {
     fn parse_block_triggers_every_block() {
         let block = create_minimal_block_for_test(2, hash(2));
 
-        #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(BlockWrapper::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2772,7 +2769,7 @@ mod tests {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(BlockWrapper::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2803,7 +2800,7 @@ mod tests {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(BlockWrapper::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
