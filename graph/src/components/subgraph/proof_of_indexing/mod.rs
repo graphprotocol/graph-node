@@ -86,6 +86,7 @@ mod tests {
         prelude::{BlockPtr, DeploymentHash, Value},
         schema::InputSchema,
     };
+    use alloy::primitives::{Address, B256};
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
@@ -95,7 +96,6 @@ mod tests {
     use stable_hash_legacy::utils::stable_hash as stable_hash_legacy;
     use std::collections::HashMap;
     use std::convert::TryInto;
-    use web3::types::{Address, H256};
 
     /// Verify that the stable hash of a reference and online implementation match
     fn check(case: Case, cache: &mut HashMap<String, &str>) {
@@ -219,7 +219,7 @@ mod tests {
                 fast: "dced49c45eac68e8b3d8f857928e7be6c270f2db8b56b0d7f27ce725100bae01",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
-                    block_hash: H256::repeat_byte(1),
+                    block_hash: B256::repeat_byte(1),
                     causality_regions: HashMap::new(),
                     indexer: None,
                 },
@@ -231,7 +231,7 @@ mod tests {
                 fast: "8bb3373fb55e02bde3202bac0eeecf1bd9a676856a4dd6667bd809aceda41885",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
-                    block_hash: H256::repeat_byte(1),
+                    block_hash: B256::repeat_byte(1),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
@@ -258,7 +258,7 @@ mod tests {
                 fast: "8b0097ad96b21f7e4bd8dcc41985e6e5506b808f1185016ab1073dd8745238ce",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
-                    block_hash: H256::repeat_byte(3),
+                    block_hash: B256::repeat_byte(3),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
@@ -296,7 +296,7 @@ mod tests {
                 fast: "2041af28678e68406247a5cfb5fe336947da75256c79b35c2f61fc7985091c0e",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
-                    block_hash: H256::repeat_byte(3),
+                    block_hash: B256::repeat_byte(3),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
@@ -358,7 +358,7 @@ mod tests {
                 fast: "421ef30a03be64014b9eef2b999795dcabfc601368040df855635e7886eb3822",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
-                    block_hash: H256::repeat_byte(1),
+                    block_hash: B256::repeat_byte(1),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
