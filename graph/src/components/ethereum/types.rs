@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{
-    alloy_todo,
     blockchain::{BlockPtr, BlockTime},
     prelude::{alloy::rpc::types::Block as AlloyBlock, BlockNumber},
 };
@@ -23,22 +22,12 @@ impl BlockWrapper {
         Self(block)
     }
 
-    pub fn hash_b256(&self) -> Option<B256> {
-        alloy_todo!()
-        // self.0.hash
-    }
-
     pub fn hash(&self) -> B256 {
         self.0.header.hash
     }
 
     pub fn number_u64(&self) -> u64 {
         self.0.header.number
-    }
-
-    pub fn number_web3_u64(&self) -> Option<U64> {
-        alloy_todo!()
-        // Some(u64_to_web3_u64(self.0.header.number))
     }
 
     pub fn timestamp_u64(&self) -> u64 {
@@ -68,19 +57,31 @@ pub trait LightEthereumBlockExt {
 
 impl LightEthereumBlockExt for AlloyBlock {
     fn number(&self) -> BlockNumber {
-        alloy_todo!()
+        self.header.number as BlockNumber
     }
 
     fn timestamp(&self) -> BlockTime {
-        alloy_todo!()
+        let time = self.header.timestamp;
+        let time = i64::try_from(time).unwrap();
+        BlockTime::since_epoch(time, 0)
     }
 
-    fn transaction_for_log(&self, _log: &Log) -> Option<Transaction> {
-        alloy_todo!()
+    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+        log.transaction_hash.and_then(|hash| {
+            self.transactions
+                .txns()
+                .find(|tx| tx.inner.hash() == &hash)
+                .cloned()
+        })
     }
 
-    fn transaction_for_call(&self, _call: &EthereumCall) -> Option<Transaction> {
-        alloy_todo!()
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+        call.transaction_hash.and_then(|hash| {
+            self.transactions
+                .txns()
+                .find(|tx| tx.inner.hash() == &hash)
+                .cloned()
+        })
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
@@ -94,11 +95,11 @@ impl LightEthereumBlockExt for AlloyBlock {
     }
 
     fn format(&self) -> String {
-        alloy_todo!()
+        format!("{} ({})", self.header.number, self.header.hash)
     }
 
     fn block_ptr(&self) -> BlockPtr {
-        alloy_todo!()
+        BlockPtr::new(self.header.hash.into(), self.header.number as i32)
     }
 }
 
@@ -228,18 +229,6 @@ impl EthereumCall {
             transaction_hash: trace.transaction_hash,
             transaction_index,
         })
-    }
-}
-
-impl From<EthereumBlock> for BlockPtr {
-    fn from(b: EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash_b256().unwrap(), b.block.number()))
-    }
-}
-
-impl<'a> From<&'a EthereumBlock> for BlockPtr {
-    fn from(b: &'a EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash_b256().unwrap(), b.block.number()))
     }
 }
 

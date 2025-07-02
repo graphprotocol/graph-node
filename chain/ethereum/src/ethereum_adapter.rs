@@ -2,6 +2,7 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
 use graph::abi::FunctionExt;
+use graph::alloy_todo;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
@@ -152,8 +153,8 @@ impl EthereumAdapter {
                 provider: _,
                 url: rpc_url,
             } => rpc_url.clone(),
-            Transport::IPC(_ipc) => todo!(),
-            Transport::WS(_web_socket) => todo!(),
+            Transport::IPC(_ipc) => alloy_todo!(),
+            Transport::WS(_web_socket) => alloy_todo!(),
         };
         let web3 = Arc::new(Web3::new(transport));
         let alloy = Arc::new(
@@ -1937,7 +1938,7 @@ pub(crate) fn parse_block_triggers(
         return vec![];
     }
 
-    let block_ptr = BlockPtr::from(&block.ethereum_block);
+    let block_ptr = block.ethereum_block.block.block_ptr();
     let trigger_every_block = block_filter.trigger_every_block;
     let call_filter = EthereumCallFilter::from(block_filter);
     let block_ptr2 = block_ptr.cheap_clone();
@@ -2610,14 +2611,13 @@ mod tests {
         check_block_receipt_support, parse_block_triggers, EthereumBlock, EthereumBlockFilter,
         EthereumBlockWithCalls,
     };
-    use graph::alloy_todo;
     use graph::blockchain::BlockPtr;
     use graph::components::ethereum::BlockWrapper;
     use graph::prelude::alloy::primitives::{Address, Bytes, B256};
     use graph::prelude::alloy::providers::mock::Asserter;
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::tokio::{self};
-    use graph::prelude::EthereumCall;
+    use graph::prelude::{create_minimal_block_for_test, EthereumCall};
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
     use std::iter::FromIterator;
@@ -2625,17 +2625,12 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_every_block() {
-        // let web3_block = Web3Block {
-        //     hash: Some(hash(2)),
-        //     number: Some(U64::from(2)),
-        //     ..Default::default()
-        // };
-        let web3_block = alloy_todo!();
+        let block = create_minimal_block_for_test(2, hash(2));
 
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(BlockWrapper::new(web3_block)),
+                block: Arc::new(BlockWrapper::new(block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2772,17 +2767,12 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_specific_call_not_found() {
-        // let web3_block = Web3Block {
-        //     hash: Some(hash(2)),
-        //     number: Some(U64::from(2)),
-        //     ..Default::default()
-        // };
-        let web3_block = alloy_todo!();
+        let block = create_minimal_block_for_test(2, hash(2));
 
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(BlockWrapper::new(web3_block)),
+                block: Arc::new(BlockWrapper::new(block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2808,17 +2798,12 @@ mod tests {
 
     #[test]
     fn parse_block_triggers_specific_call_found() {
-        // let web3_block = Web3Block {
-        //     hash: Some(hash(2)),
-        //     number: Some(U64::from(2)),
-        //     ..Default::default()
-        // };
-        let web3_block = alloy_todo!();
+        let block = create_minimal_block_for_test(2, hash(2));
 
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(BlockWrapper::new(web3_block)),
+                block: Arc::new(BlockWrapper::new(block)),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2846,7 +2831,7 @@ mod tests {
     }
 
     fn address(id: u64) -> Address {
-        Address::from_slice(&id.to_le_bytes())
+        Address::left_padding_from(&id.to_be_bytes())
     }
 
     fn hash(id: u8) -> B256 {

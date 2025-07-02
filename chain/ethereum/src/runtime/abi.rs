@@ -6,7 +6,6 @@ use anyhow::anyhow;
 use graph::abi;
 use graph::prelude::alloy;
 use graph::prelude::alloy::network::ReceiptResponse;
-use graph::prelude::alloy::primitives::B256;
 use graph::prelude::alloy::rpc::types::{Log, TransactionReceipt};
 use graph::{
     prelude::BigInt,
@@ -553,8 +552,6 @@ impl<'a> ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData<'a> 
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEthereumTransaction_0_0_6, HostExportError> {
-        let value = self.value();
-
         Ok(AscEthereumTransaction_0_0_6 {
             hash: asc_new(heap, self.hash(), gas)?,
             index: asc_new(heap, &BigInt::from(self.index()), gas)?,

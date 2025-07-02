@@ -657,16 +657,6 @@ impl BlockFinality {
     }
 }
 
-impl<'a> From<&'a BlockFinality> for BlockPtr {
-    fn from(block: &'a BlockFinality) -> BlockPtr {
-        match block {
-            BlockFinality::Final(b) => BlockPtr::from(&**b),
-            BlockFinality::NonFinal(b) => BlockPtr::from(&b.ethereum_block),
-            BlockFinality::Ptr(b) => BlockPtr::new(b.hash.clone(), b.number),
-        }
-    }
-}
-
 impl Block for BlockFinality {
     fn ptr(&self) -> BlockPtr {
         match self {

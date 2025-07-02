@@ -176,13 +176,9 @@ pub mod prelude {
     };
     pub use crate::log::split::split_logger;
     pub use crate::util::cache_weight::CacheWeight;
-    pub use crate::util::conversions::{
-        alloy_address_to_h160, alloy_address_to_web3_address, alloy_log_to_web3_log,
-        alloy_transaction_receipt_to_web3_transaction_receipt, h160_to_alloy_address, h256_to_b256,
-        web3_address_to_alloy_address,
-    };
     pub use crate::util::futures::{retry, TimeoutError};
     pub use crate::util::stats::MovingStats;
+    pub use crate::util::test_utils::*;
 
     macro_rules! static_graphql {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {

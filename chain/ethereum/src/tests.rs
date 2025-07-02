@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use graph::{
-    alloy_todo,
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
     components::ethereum::BlockWrapper,
     prelude::{
         alloy::{
-            primitives::{Address, Bytes, B256},
-            rpc::types::Log,
+            self,
+            primitives::{Address, Bytes, LogData, B256},
+            rpc::types::{Block, Log},
         },
         rand::{self, Rng},
         EthereumCall,
@@ -42,6 +42,24 @@ impl Random for Address {
     }
 }
 
+fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
+    let log = Log {
+        inner: alloy::primitives::Log {
+            address: Address::default(),
+            data: LogData::new_unchecked(vec![], Bytes::from(vec![])),
+        },
+        block_hash: Some(B256::ZERO),
+        block_number: Some(0),
+        block_timestamp: Some(0),
+        transaction_hash: Some(B256::ZERO),
+        transaction_index: Some(tx_index),
+        log_index: Some(log_index),
+        removed: false,
+    };
+
+    Arc::new(log)
+}
+
 #[test]
 fn test_trigger_ordering() {
     let block1 = EthereumTrigger::Block(
@@ -74,23 +92,6 @@ fn test_trigger_ordering() {
     call4.input = Bytes::from(vec![1]);
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
-    fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
-        // Arc::new(Log {
-        //     address: H160::default(),
-        //     topics: vec![],
-        //     data: Bytes::default(),
-        //     block_hash: Some(H256::zero()),
-        //     block_number: Some(U64::zero()),
-        //     transaction_hash: Some(H256::zero()),
-        //     transaction_index: Some(tx_index.into()),
-        //     log_index: Some(log_index.into()),
-        //     transaction_log_index: Some(log_index.into()),
-        //     log_type: Some("".into()),
-        //     removed: Some(false),
-        // })
-        alloy_todo!()
-    }
-
     // Event with transaction_index 1 and log_index 0;
     // should be the first element after sorting
     let log1 = EthereumTrigger::Log(LogRef::FullLog(create_log(1, 0), None));
@@ -121,16 +122,8 @@ fn test_trigger_ordering() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    // let mut b: web3::types::Block<Transaction> = Default::default();
+    let b = Block::default();
 
-    // // This is necessary because inside of BlockWithTriggers::new
-    // // there's a log for both fields. So just using Default above
-    // // gives None on them.
-    // b.number = Some(Default::default());
-    // b.hash = Some(Default::default());
-    let b = alloy_todo!();
-
-    #[allow(unreachable_code)]
     let b = BlockWrapper::new(b);
 
     // Test that `BlockWithTriggers` sorts the triggers.
@@ -180,23 +173,6 @@ fn test_trigger_dedup() {
     call4.transaction_index = 2;
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
-    fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
-        // Arc::new(Log {
-        //     address: H160::default(),
-        //     topics: vec![],
-        //     data: Bytes::default(),
-        //     block_hash: Some(H256::zero()),
-        //     block_number: Some(U64::zero()),
-        //     transaction_hash: Some(H256::zero()),
-        //     transaction_index: Some(tx_index.into()),
-        //     log_index: Some(log_index.into()),
-        //     transaction_log_index: Some(log_index.into()),
-        //     log_type: Some("".into()),
-        //     removed: Some(false),
-        // })
-        alloy_todo!()
-    }
-
     let log1 = EthereumTrigger::Log(LogRef::FullLog(create_log(1, 0), None));
     let log2 = EthereumTrigger::Log(LogRef::FullLog(create_log(1, 1), None));
     let log3 = EthereumTrigger::Log(LogRef::FullLog(create_log(2, 5), None));
@@ -224,16 +200,8 @@ fn test_trigger_dedup() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    // let mut b: web3::types::Block<Transaction> = Default::default();
-
-    // // This is necessary because inside of BlockWithTriggers::new
-    // // there's a log for both fields. So just using Default above
-    // // gives None on them.
-    // b.number = Some(Default::default());
-    // b.hash = Some(Default::default());
-
     #[allow(unused_variables)]
-    let b = alloy_todo!();
+    let b = Block::default();
 
     #[allow(unreachable_code)]
     let b = BlockWrapper::new(b);

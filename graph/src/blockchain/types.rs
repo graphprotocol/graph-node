@@ -208,27 +208,15 @@ impl slog::Value for BlockPtr {
 
 impl From<BlockWrapper> for BlockPtr {
     fn from(b: BlockWrapper) -> BlockPtr {
-        BlockPtr::from((b.hash_b256().unwrap(), b.number_u64() as i32))
+        BlockPtr::from((b.hash(), b.number_u64() as i32))
     }
 }
 
 impl From<&BlockWrapper> for BlockPtr {
     fn from(b: &BlockWrapper) -> BlockPtr {
-        BlockPtr::from((b.hash_b256().unwrap(), b.number_u64() as i32))
+        BlockPtr::from((b.hash(), b.number_u64() as i32))
     }
 }
-
-// impl<T> From<Web3Block<T>> for BlockPtr {
-//     fn from(b: Web3Block<T>) -> BlockPtr {
-//         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
-//     }
-// }
-
-// impl<'a, T> From<&'a Web3Block<T>> for BlockPtr {
-//     fn from(b: &'a Web3Block<T>) -> BlockPtr {
-//         BlockPtr::from((b.hash.unwrap(), b.number.unwrap().as_u64()))
-//     }
-// }
 
 impl From<(Vec<u8>, i32)> for BlockPtr {
     fn from((bytes, number): (Vec<u8>, i32)) -> Self {

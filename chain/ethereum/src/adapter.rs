@@ -1324,7 +1324,6 @@ mod tests {
 
     #[test]
     fn ethereum_trigger_filter_to_firehose() {
-        let address = |value: u64| Address::from_slice(&value.to_le_bytes());
         let sig = |value: u64| B256::from_slice(&value.to_le_bytes());
         let mut filter = TriggerFilter {
             log: EthereumLogFilter {

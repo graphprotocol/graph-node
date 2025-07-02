@@ -6,7 +6,7 @@ use super::{
     test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
     NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
-use graph::alloy_todo;
+use graph::abi;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::client::ChainClient;
@@ -15,7 +15,11 @@ use graph::cheap_clone::CheapClone;
 use graph::components::ethereum::BlockWrapper;
 use graph::data_source::subgraph;
 use graph::prelude::alloy::primitives::{Address, B256, U256};
-use graph::prelude::{tiny_keccak, DeploymentHash, Entity, ENV_VARS};
+use graph::prelude::alloy::rpc::types::BlockTransactions;
+use graph::prelude::{
+    create_dummy_transaction, create_minimal_block_for_test, tiny_keccak, DeploymentHash, Entity,
+    ENV_VARS,
+};
 use graph::schema::EntityType;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
@@ -78,14 +82,8 @@ pub async fn chain(
 pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
     #[allow(unused_variables)]
     let ptr = test_ptr(0);
-    // let block: web3::types::Block<Transaction> = web3::types::Block {
-    //     hash: Some(H256::from_slice(ptr.hash.as_slice())),
-    //     number: Some(U64::from(ptr.number)),
-    //     ..Default::default()
-    // };
 
-    #[allow(unused_variables)]
-    let block = alloy_todo!();
+    let block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256());
 
     #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
@@ -121,30 +119,14 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
     assert!(ptr != parent_ptr);
     assert!(ptr.number > parent_ptr.number);
 
-    #[allow(unused_variables)]
-    // A 0x000.. transaction is used so `push_test_log` can use it
-    // let transactions = vec![Transaction {
-    //     hash: H256::zero(),
-    //     block_hash: Some(H256::from_slice(ptr.hash.as_slice())),
-    //     block_number: Some(ptr.number.into()),
-    //     transaction_index: Some(0.into()),
-    //     from: Some(H160::zero()),
-    //     to: Some(H160::zero()),
-    //     ..Default::default()
-    // }];
+    let dummy_txn =
+        create_dummy_transaction(ptr.number as u64, ptr.hash.as_b256(), Some(0), B256::ZERO);
+    let transactions = BlockTransactions::Full(vec![dummy_txn]);
+    let alloy_block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256())
+        .with_transactions(transactions);
 
-    // let web3_block = web3::types::Block {
-    //     hash: Some(H256::from_slice(ptr.hash.as_slice())),
-    //     number: Some(U64::from(ptr.number)),
-    //     parent_hash: H256::from_slice(parent_ptr.hash.as_slice()),
-    //     transactions: transactions.clone(),
-    //     ..Default::default()
-    // };
-    #[allow(unused_variables)]
-    let web3_block = alloy_todo!();
-    #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(BlockWrapper::new(web3_block))),
+        block: BlockFinality::Final(Arc::new(BlockWrapper::new(alloy_block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -153,26 +135,30 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
 }
 
 pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<String>) {
-    // let log = Arc::new(Log {
-    //     address: Address::ZERO,
-    //     topics: vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
-    //     data: abi::DynSolValue::String(payload.into()).abi_encode().into(),
-    //     block_hash: Some(B256::from_slice(block.ptr().hash.as_slice())),
-    //     block_number: Some(block.ptr().number.into()),
-    //     transaction_hash: Some(B256::from(U256::from(0))),
-    //     transaction_index: Some(0.into()),
-    //     log_index: Some(0.into()),
-    //     transaction_log_index: Some(0.into()),
-    //     log_type: None,
-    //     removed: None,
-    // });
-    // block
-    //     .trigger_data
-    //     .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
-    //         log, None,
-    //     ))))
+    use graph::prelude::alloy::{self, primitives::LogData, rpc::types::Log};
 
-    alloy_todo!()
+    let log = Arc::new(Log {
+        inner: alloy::primitives::Log {
+            address: Address::ZERO,
+            data: LogData::new_unchecked(
+                vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
+                abi::DynSolValue::String(payload.into()).abi_encode().into(),
+            ),
+        },
+        block_hash: Some(B256::from_slice(block.ptr().hash.as_slice())),
+        block_number: Some(block.ptr().number as u64),
+        transaction_hash: Some(B256::from(U256::from(0))),
+        transaction_index: Some(0),
+        log_index: Some(0),
+        block_timestamp: None,
+        removed: false,
+    });
+
+    block
+        .trigger_data
+        .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
+            log, None,
+        ))))
 }
 
 pub fn push_test_subgraph_trigger(
@@ -205,31 +191,35 @@ pub fn push_test_command(
     test_command: impl Into<String>,
     data: impl Into<String>,
 ) {
-    // let log = Arc::new(Log {
-    //     address: Address::zero(),
-    //     topics: vec![tiny_keccak::keccak256(b"TestEvent(string,string)").into()],
-    //     data: abi::DynSolValue::Tuple(vec![
-    //         abi::DynSolValue::String(test_command.into()),
-    //         abi::DynSolValue::String(data.into()),
-    //     ])
-    //     .abi_encode_params()
-    //     .into(),
-    //     block_hash: Some(B256::from_slice(block.ptr().hash.as_slice())),
-    //     block_number: Some(block.ptr().number.into()),
-    //     transaction_hash: Some(B256::from(U256::from(0))),
-    //     transaction_index: Some(0.into()),
-    //     log_index: Some(0.into()),
-    //     transaction_log_index: Some(0.into()),
-    //     log_type: None,
-    //     removed: None,
-    // });
-    // block
-    //     .trigger_data
-    //     .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
-    //         log, None,
-    //     ))))
+    use graph::prelude::alloy::{self, primitives::LogData, rpc::types::Log};
 
-    alloy_todo!()
+    let log = Arc::new(Log {
+        inner: alloy::primitives::Log {
+            address: Address::ZERO,
+            data: LogData::new_unchecked(
+                vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
+                abi::DynSolValue::Tuple(vec![
+                    abi::DynSolValue::String(test_command.into()),
+                    abi::DynSolValue::String(data.into()),
+                ])
+                .abi_encode_params()
+                .into(),
+            ),
+        },
+        block_hash: Some(block.ptr().hash.as_b256()),
+        block_number: Some(block.ptr().number as u64),
+        transaction_hash: Some(B256::from(U256::from(0))),
+        transaction_index: Some(0),
+        log_index: Some(0),
+        block_timestamp: None,
+        removed: false,
+    });
+
+    block
+        .trigger_data
+        .push(Trigger::Chain(EthereumTrigger::Log(LogRef::FullLog(
+            log, None,
+        ))))
 }
 
 pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>) {

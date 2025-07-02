@@ -1,9 +1,10 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
-use graph::alloy_todo;
 use graph::blockchain::{BlockTime, ChainIdentifier};
 use graph::components::ethereum::BlockWrapper;
-use graph::prelude::alloy::primitives::{B256, U256};
+use graph::prelude::alloy::consensus::Header as ConsensusHeader;
+use graph::prelude::alloy::primitives::{Bloom, B256, U256};
+use graph::prelude::alloy::rpc::types::{Block, Header};
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
@@ -104,18 +105,25 @@ impl FakeBlock {
 
     pub fn as_ethereum_block(&self) -> EthereumBlock {
         let parent_hash = B256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
+        let block_hash = B256::from_str(self.hash.as_str()).expect("invalid block hash");
 
-        // let mut block = web3::types::Block::default();
-        // block.number = Some(self.number.into());
-        // block.parent_hash = parent_hash;
-        // block.hash = Some(H256(self.block_hash().as_slice().try_into().unwrap()));
-        // if let Some(ts) = self.timestamp {
-        //     block.timestamp = ts;
-        // }
+        let mut consensus_header = ConsensusHeader::default();
+        consensus_header.number = self.number as u64;
+        consensus_header.parent_hash = parent_hash;
+        consensus_header.logs_bloom = Bloom::default(); // Empty bloom filter for test blocks
+        if let Some(ts) = self.timestamp {
+            consensus_header.timestamp = ts.to::<u64>();
+        }
 
-        let block = alloy_todo!();
+        let rpc_header = Header {
+            hash: block_hash,
+            inner: consensus_header,
+            total_difficulty: None,
+            size: None,
+        };
 
-        #[allow(unreachable_code)]
+        let block = Block::empty(rpc_header);
+
         EthereumBlock {
             block: Arc::new(BlockWrapper::new(block)),
             transaction_receipts: Vec::new(),
