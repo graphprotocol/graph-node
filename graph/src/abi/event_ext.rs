@@ -48,28 +48,24 @@ impl EventExt for Event {
 #[cfg(test)]
 mod tests {
     use alloy::dyn_abi::DynSolValue;
-    use alloy::primitives::U256;
-
-    use crate::alloy_todo;
+    use alloy::primitives::{LogData, U256};
 
     use super::*;
 
-    fn make_log(_topics: &[[u8; 32]], _data: Vec<u8>) -> Log {
-        // Log {
-        //     address: [1; 20].into(),
-        //     topics: topics.iter().map(Into::into).collect(),
-        //     data: data.into(),
-        //     block_hash: None,
-        //     block_number: None,
-        //     transaction_hash: None,
-        //     transaction_index: None,
-        //     log_index: None,
-        //     transaction_log_index: None,
-        //     log_type: None,
-        //     removed: None,
-        // }
-
-        alloy_todo!()
+    fn make_log(topics: &[[u8; 32]], data: Vec<u8>) -> Log {
+        Log {
+            inner: alloy::primitives::Log {
+                address: [1; 20].into(),
+                data: LogData::new_unchecked(topics.iter().map(Into::into).collect(), data.into()),
+            },
+            block_hash: None,
+            block_number: None,
+            block_timestamp: None,
+            transaction_hash: None,
+            transaction_index: None,
+            log_index: None,
+            removed: false,
+        }
     }
 
     #[test]

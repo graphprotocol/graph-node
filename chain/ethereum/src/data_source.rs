@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
+use graph::abi;
 use graph::abi::EventExt;
 use graph::abi::FunctionExt;
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
@@ -18,11 +19,13 @@ use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
-use graph::prelude::alloy::primitives::{Address, B256};
-use graph::prelude::alloy::rpc::types::Log;
+use graph::prelude::alloy::{
+    consensus::{TxEnvelope, TxLegacy},
+    primitives::{Address, B256},
+    rpc::types::{Log, Transaction},
+};
 use graph::prelude::{alloy, Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
-use graph::{abi, alloy_todo};
 use itertools::Itertools;
 use serde::de::Error as ErrorD;
 use serde::{Deserialize, Deserializer};
@@ -431,6 +434,39 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 }
 
+/// Generic function that creates a mock legacy Transaction from ANY log
+fn create_dummy_transaction(
+    block_number: u64,
+    block_hash: B256,
+    transaction_index: Option<u64>,
+    transaction_hash: Option<B256>,
+) -> Result<Transaction<TxEnvelope>, anyhow::Error> {
+    use graph::prelude::alloy::{
+        consensus::transaction::Recovered,
+        consensus::Signed,
+        primitives::{Signature, U256},
+    };
+
+    let tx = TxLegacy::default();
+
+    // Create a dummy signature
+    let signature = Signature::new(U256::ZERO, U256::ZERO, false);
+
+    let tx_hash = transaction_hash.ok_or(anyhow!("Log has no transaction hash"))?;
+    let signed_tx = Signed::new_unchecked(tx, signature, tx_hash);
+    let envelope = TxEnvelope::Legacy(signed_tx);
+
+    let recovered = Recovered::new_unchecked(envelope, Address::ZERO);
+
+    Ok(Transaction {
+        inner: recovered,
+        block_hash: Some(block_hash),
+        block_number: Some(block_number),
+        transaction_index: transaction_index,
+        effective_gas_price: None,
+    })
+}
+
 impl DataSource {
     fn from_manifest(
         kind: String,
@@ -751,15 +787,12 @@ impl DataSource {
                 let transaction = if log.transaction_hash == Some(block.hash())
                     || log.transaction_hash == Some(B256::ZERO)
                 {
-                    // Transaction {
-                    //     hash: log.transaction_hash.unwrap(),
-                    //     block_hash: block.hash_h256(),
-                    //     block_number: block.number_web3_u64(),
-                    //     transaction_index: log.transaction_index,
-                    //     from: Some(H160::zero()),
-                    //     ..Transaction::default()
-                    // }
-                    alloy_todo!()
+                    create_dummy_transaction(
+                        block.number_u64(),
+                        block.hash(),
+                        log.transaction_index,
+                        log.transaction_hash,
+                    )?
                 } else {
                     // This is the general case where the log's transaction hash does not match the block's hash
                     // and is not a special zero hash, implying a real transaction associated with this log.

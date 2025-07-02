@@ -1,5 +1,4 @@
 use graph::abi;
-use graph::alloy_todo;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::data::subgraph::API_VERSION_0_0_2;
@@ -423,8 +422,7 @@ impl<'a> EthereumBlockData<'a> {
     }
 
     pub fn uncles_hash(&self) -> &B256 {
-        // &self.block.inner().header.uncles_hash
-        alloy_todo!()
+        &self.block.inner().header.ommers_hash
     }
 
     pub fn author(&self) -> &Address {
@@ -576,9 +574,9 @@ impl<'a> EthereumEventData<'a> {
         self.log.log_index.unwrap_or(0)
     }
 
-    pub fn log_type(&self) -> &Option<String> {
-        // &self.log.log_type
-        alloy_todo!()
+    pub fn log_type(&self) -> Option<String> {
+        // This field was present in old rust-web3 Block, but alloy doesn't have it.
+        None
     }
 }
 
