@@ -130,7 +130,10 @@ mod tests {
         let log = make_log(&[topic_0, a, a, a, a], b);
         let err = event.decode_log(&log).unwrap_err();
 
-        assert_eq!(err.to_string(), "log has an invalid number of topics");
+        assert_eq!(
+            err.to_string(),
+            "invalid log topic list length: expected 2 topics, got 5"
+        );
     }
 
     #[test]

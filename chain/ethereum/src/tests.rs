@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
-    components::ethereum::BlockWrapper,
     prelude::{
         alloy::{
             self,
@@ -10,7 +9,7 @@ use graph::{
             rpc::types::{Block, Log},
         },
         rand::{self, Rng},
-        EthereumCall,
+        EthereumCall, LightEthereumBlock,
     },
     slog::{self, o, Logger},
 };
