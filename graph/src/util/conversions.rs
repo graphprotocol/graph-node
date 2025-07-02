@@ -1,96 +1,9 @@
-use std::sync::Arc;
-
-use web3::types::Bytes;
-
-use crate::components::ethereum::BlockWrapper;
-use crate::prelude::alloy::primitives::{Address as AlloyAddress, B256};
-use crate::prelude::alloy::rpc::types::{
-    Block as AlloyBlock, Log as AlloyLog, TransactionReceipt as AlloyTransactionReceipt,
-};
 /// Type conversion utilities between web3 and alloy types
-use crate::prelude::web3::types::{
-    Address as Web3Address, Block as Web3Block, Log as Web3Log, Transaction as Web3Transaction,
-    TransactionReceipt as Web3TransactionReceipt, H160, H256, U256, U64,
-};
-
-/// Converts H256 to alloy B256
-pub fn h256_to_b256(h: H256) -> B256 {
-    B256::from_slice(h.as_bytes())
-}
-
-/// Converts alloy B256 to H256
-pub fn b256_to_h256(b: B256) -> H256 {
-    H256::from_slice(b.as_slice())
-}
-
-pub fn web3_u64_from_option(opt: Option<u64>) -> U64 {
-    U64::from(opt.unwrap_or(0))
-}
-
-pub fn u64_to_web3_u256(u: u64) -> U256 {
-    U256::from(u)
-}
-
-pub fn bool_to_web3_u64(b: bool) -> U64 {
-    U64::from(if b { 1 } else { 0 })
-}
-
-pub fn u64_to_web3_u64(u: u64) -> U64 {
-    U64::from(u)
-}
-/// Converts web3 H160 to alloy Address
-pub fn h160_to_alloy_address(h: H160) -> AlloyAddress {
-    AlloyAddress::from_slice(h.as_bytes())
-}
-
-/// Converts alloy Address to web3 H160
-pub fn alloy_address_to_h160(addr: AlloyAddress) -> H160 {
-    H160::from_slice(addr.as_slice())
-}
-
-/// Converts web3 Address to alloy Address
-pub fn web3_address_to_alloy_address(addr: Web3Address) -> AlloyAddress {
-    h160_to_alloy_address(addr)
-}
-
-/// Converts alloy Address to web3 Address
-pub fn alloy_address_to_web3_address(addr: AlloyAddress) -> Web3Address {
-    alloy_address_to_h160(addr)
-}
+use crate::prelude::web3::types::U256;
 
 // u256 to web3 U256
 pub fn alloy_u256_to_web3_u256(_u: alloy::primitives::U256) -> U256 {
     unimplemented!();
-}
-
-pub fn alloy_bytes_to_web3_bytes(_b: alloy::primitives::Bytes) -> Bytes {
-    unimplemented!();
-}
-
-// u256 to alloy U256
-pub fn web3_u256_to_alloy_u256(u: U256) -> U256 {
-    U256::from(u)
-}
-
-/// Converts alloy Log to web3 Log
-pub fn alloy_log_to_web3_log(log: AlloyLog) -> Web3Log {
-    Web3Log {
-        address: alloy_address_to_h160(log.address()),
-        topics: log.topics().iter().map(|t| b256_to_h256(*t)).collect(),
-        data: log.data().data.clone().into(),
-        block_hash: log.block_hash.map(b256_to_h256),
-        block_number: log.block_number.map(|n| U64::from(n)),
-        transaction_hash: log.transaction_hash.map(b256_to_h256),
-        transaction_index: log.transaction_index.map(|i| U64::from(i)),
-        log_index: log.log_index.map(|i| U256::from(i)),
-        transaction_log_index: None, // alloy Log doesn't have transaction_log_index
-        log_type: None,              // alloy Log doesn't have log_type
-        removed: Some(log.removed),
-    }
-}
-
-pub fn alloy_log_ref_to_web3_log_ref(_log: &AlloyLog) -> &Web3Log {
-    unimplemented!()
 }
 
 #[macro_export]
@@ -98,30 +11,4 @@ macro_rules! alloy_todo {
     () => {
         todo!()
     };
-}
-
-pub fn alloy_transaction_receipt_to_web3_transaction_receipt(
-    _receipt: Arc<AlloyTransactionReceipt>,
-) -> Arc<Web3TransactionReceipt> {
-    unimplemented!("TransactionReceipt conversion not yet implemented - will be done when needed")
-}
-
-/// Converts alloy Block to web3 Block
-pub fn alloy_block_to_block_arc(_block: Arc<AlloyBlock>) -> Arc<BlockWrapper> {
-    unimplemented!(
-        "Block conversion from alloy to web3 not yet implemented - will be done when needed"
-    )
-}
-
-pub fn alloy_block_to_block(_block: AlloyBlock) -> BlockWrapper {
-    unimplemented!(
-        "Block conversion from alloy to web3 not yet implemented - will be done when needed"
-    )
-}
-
-/// Converts web3 Block to alloy Block
-pub fn web3_block_to_alloy_block(_block: Web3Block<Web3Transaction>) -> AlloyBlock {
-    unimplemented!(
-        "Block conversion from web3 to alloy not yet implemented - will be done when needed"
-    )
 }

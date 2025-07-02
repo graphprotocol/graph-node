@@ -18,7 +18,7 @@ use graph::futures03::StreamExt;
 use graph::itertools::Itertools;
 use graph::prelude::alloy::primitives::U256;
 use graph::prelude::serde_json::{json, Value};
-use graph::util::conversions::alloy_u256_to_web3_u256;
+use graph::prelude::web3;
 use graph_tests::contract::Contract;
 use graph_tests::subgraph::Subgraph;
 use graph_tests::{error, status, CONFIG};
@@ -633,6 +633,10 @@ pub async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     .await?;
 
     Ok(())
+}
+
+fn alloy_u256_to_web3_u256(u: U256) -> web3::types::U256 {
+    web3::types::U256::from_little_endian(u.as_le_slice())
 }
 
 async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {

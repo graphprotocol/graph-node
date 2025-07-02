@@ -1,10 +1,10 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use graph::blockchain::{BlockTime, ChainIdentifier};
-use graph::components::ethereum::BlockWrapper;
 use graph::prelude::alloy::consensus::Header as ConsensusHeader;
 use graph::prelude::alloy::primitives::{Bloom, B256, U256};
 use graph::prelude::alloy::rpc::types::{Block, Header};
+use graph::prelude::LightEthereumBlock;
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
@@ -125,7 +125,7 @@ impl FakeBlock {
         let block = Block::empty(rpc_header);
 
         EthereumBlock {
-            block: Arc::new(BlockWrapper::new(block)),
+            block: Arc::new(LightEthereumBlock::new(block)),
             transaction_receipts: Vec::new(),
         }
     }

@@ -12,13 +12,12 @@ use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
-use graph::components::ethereum::BlockWrapper;
 use graph::data_source::subgraph;
 use graph::prelude::alloy::primitives::{Address, B256, U256};
 use graph::prelude::alloy::rpc::types::BlockTransactions;
 use graph::prelude::{
     create_dummy_transaction, create_minimal_block_for_test, tiny_keccak, DeploymentHash, Entity,
-    ENV_VARS,
+    LightEthereumBlock, ENV_VARS,
 };
 use graph::schema::EntityType;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
@@ -87,7 +86,7 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
 
     #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(BlockWrapper::new(block))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -126,7 +125,7 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
         .with_transactions(transactions);
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(BlockWrapper::new(alloy_block))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,

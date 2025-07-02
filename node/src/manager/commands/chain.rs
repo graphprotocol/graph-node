@@ -12,9 +12,9 @@ use graph::components::store::ChainIdStore;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
+use graph::prelude::LightEthereumBlock;
 use graph::prelude::{anyhow, anyhow::bail};
 use graph::slog::Logger;
-use graph::util::conversions::alloy_block_to_block;
 use graph::{
     components::store::BlockStore as _, components::store::ChainHeadStore as _,
     prelude::anyhow::Error,
@@ -279,7 +279,9 @@ pub async fn ingest(
     let hash = block.header.hash;
     let number = block.header.number;
     // For inserting the block, it doesn't matter whether the block is final or not.
-    let block = Arc::new(BlockFinality::Final(Arc::new(alloy_block_to_block(block))));
+    let block = Arc::new(BlockFinality::Final(Arc::new(LightEthereumBlock::new(
+        block,
+    ))));
     chain_store.upsert_block(block).await?;
 
     let hash = hash.into();
