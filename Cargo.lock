@@ -3810,7 +3810,7 @@ dependencies = [
 [[package]]
 name = "pgtemp"
 version = "0.6.0"
-source = "git+https://github.com/incrypto32/pgtemp?branch=initdb-args#929a9f96eab841d880c2ebf280e00054ca55ec0e"
+source = "git+https://github.com/graphprotocol/pgtemp?branch=initdb-args#08a95d441d74ce0a50b6e0a55dbf96d8362d8fb7"
 dependencies = [
  "libc",
  "tempfile",

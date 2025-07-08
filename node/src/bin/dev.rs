@@ -201,8 +201,8 @@ fn get_database_url(
             let db = PgTempDBBuilder::new()
                 .with_data_dir_prefix(database_dir)
                 .persist_data(false)
-                .with_initdb_param("-E", "UTF8")
-                .with_initdb_param("--locale", "C")
+                .with_initdb_arg("-E", "UTF8")
+                .with_initdb_arg("--locale", "C")
                 .start();
             let url = db.connection_uri().to_string();
             // Return the handle so it lives for the lifetime of the program; dropping it will
