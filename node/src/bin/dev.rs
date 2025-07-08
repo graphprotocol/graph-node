@@ -1,4 +1,4 @@
-use std::{mem, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -21,7 +21,7 @@ use graph_node::{
 use lazy_static::lazy_static;
 
 #[cfg(unix)]
-use pgtemp::PgTempDBBuilder;
+use pgtemp::{PgTempDB, PgTempDBBuilder};
 
 git_testament!(TESTAMENT);
 lazy_static! {
@@ -181,9 +181,12 @@ async fn run_graph_node(
 }
 
 /// Get the database URL, either from the provided option or by creating a temporary database
-fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Result<String> {
+fn get_database_url(
+    postgres_url: Option<&String>,
+    database_dir: &Path,
+) -> Result<(String, Option<PgTempDB>)> {
     if let Some(url) = postgres_url {
-        Ok(url.clone())
+        Ok((url.clone(), None))
     } else {
         #[cfg(unix)]
         {
@@ -197,13 +200,14 @@ fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Resul
 
             let db = PgTempDBBuilder::new()
                 .with_data_dir_prefix(database_dir)
+                .persist_data(false)
                 .with_initdb_param("-E", "UTF8")
                 .with_initdb_param("--locale", "C")
                 .start();
             let url = db.connection_uri().to_string();
-            // Prevent the database from being dropped by forgetting it
-            mem::forget(db);
-            Ok(url)
+            // Return the handle so it lives for the lifetime of the program; dropping it will
+            // shut down Postgres and remove the temporary directory automatically.
+            Ok((url, Some(db)))
         }
 
         #[cfg(not(unix))]
@@ -217,6 +221,8 @@ fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Resul
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    std::env::set_var("ETHEREUM_REORG_THRESHOLD", "10");
+    std::env::set_var("GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION", "true");
     env_logger::init();
     let dev_opt = DevOpt::parse();
 
@@ -224,11 +230,12 @@ async fn main() -> Result<()> {
 
     let logger = logger(true);
 
-    info!(logger, "Starting Graph Node Dev");
+    info!(logger, "Starting Graph Node Dev 1");
     info!(logger, "Database directory: {}", database_dir.display());
 
-    // Get the database URL
-    let db_url = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
+    // Get the database URL and keep the temporary database handle alive for the life of the
+    // program so that it is dropped (and cleaned up) on graceful shutdown.
+    let (db_url, mut temp_db_opt) = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
 
     let opt = build_args(&dev_opt, &db_url)?;
 
@@ -252,9 +259,10 @@ async fn main() -> Result<()> {
     }
 
     if dev_opt.watch {
+        let logger_clone_watch = logger.clone();
         graph::spawn_blocking(async move {
             if let Err(e) = watch_subgraphs(
-                &logger,
+                &logger_clone_watch,
                 manifests_paths,
                 source_subgraph_aliases,
                 vec!["pgtemp-*".to_string()],
@@ -262,12 +270,26 @@ async fn main() -> Result<()> {
             )
             .await
             {
-                error!(logger, "Error watching subgraphs"; "error" => e.to_string());
+                error!(logger_clone_watch, "Error watching subgraphs"; "error" => e.to_string());
                 std::process::exit(1);
             }
         });
     }
 
-    graph::futures03::future::pending::<()>().await;
+    // Wait for Ctrl+C so we can shut down cleanly and drop the temporary database, which removes
+    // the data directory.
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for Ctrl+C signal");
+    info!(logger, "Received Ctrl+C, shutting down.");
+
+    // Explicitly shut down and clean up the temporary database directory if we started one.
+    if let Some(db) = temp_db_opt.take() {
+        db.shutdown();
+    }
+
+    std::process::exit(0);
+
+    #[allow(unreachable_code)]
     Ok(())
 }
