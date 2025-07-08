@@ -122,6 +122,11 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
         create_dummy_transaction(ptr.number as u64, ptr.hash.as_b256(), Some(0), B256::ZERO);
     let transactions = BlockTransactions::Full(vec![dummy_txn]);
     let alloy_block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256())
+        .map_header(|mut header| {
+            // Ensure the parent hash matches the given parent_ptr so that parent_ptr() lookups succeed
+            header.inner.parent_hash = parent_ptr.hash.as_b256();
+            header
+        })
         .with_transactions(transactions);
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
@@ -196,7 +201,7 @@ pub fn push_test_command(
         inner: alloy::primitives::Log {
             address: Address::ZERO,
             data: LogData::new_unchecked(
-                vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
+                vec![tiny_keccak::keccak256(b"TestEvent(string,string)").into()],
                 abi::DynSolValue::Tuple(vec![
                     abi::DynSolValue::String(test_command.into()),
                     abi::DynSolValue::String(data.into()),

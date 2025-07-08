@@ -87,10 +87,10 @@ impl LightEthereumBlockExt for AlloyBlock {
     fn parent_ptr(&self) -> Option<BlockPtr> {
         match self.header.number {
             0 => None,
-            n => Some(BlockPtr::new(
-                self.header.parent_hash.into(),
-                (n - 1) as i32,
-            )),
+            n => {
+                let number = i32::try_from(n - 1).unwrap();
+                Some(BlockPtr::new(self.header.parent_hash.into(), number))
+            }
         }
     }
 

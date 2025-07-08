@@ -7,8 +7,7 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
-use graph::prelude::alloy::primitives::Address;
-use graph::prelude::alloy::primitives::B256;
+use graph::prelude::alloy::primitives::{Address, B256};
 use graph::prelude::alloy::rpc::types::Block as AlloyBlock;
 use graph::prelude::alloy::rpc::types::Log;
 use graph::prelude::alloy::transports::{RpcError, TransportErrorKind};
@@ -1239,7 +1238,7 @@ mod tests {
     use graph::blockchain::TriggerFilter as _;
     use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
-    use graph::prelude::alloy::primitives::{Address, Bytes, B256};
+    use graph::prelude::alloy::primitives::{Address, Bytes, B256, U256};
     use graph::prelude::EthereumCall;
     use hex::ToHex;
     use itertools::Itertools;
@@ -1324,7 +1323,7 @@ mod tests {
 
     #[test]
     fn ethereum_trigger_filter_to_firehose() {
-        let sig = |value: u64| B256::from_slice(&value.to_le_bytes());
+        let sig = |value: u64| B256::from(U256::from(value));
         let mut filter = TriggerFilter {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
@@ -1446,8 +1445,8 @@ mod tests {
 
     #[test]
     fn ethereum_trigger_filter_to_firehose_every_block_plus_logfilter() {
-        let address = |value: u64| Address::from_slice(&value.to_le_bytes());
-        let sig = |value: u64| B256::from_slice(&value.to_le_bytes());
+        let address = |value: u64| Address::left_padding_from(&value.to_le_bytes());
+        let sig = |value: u64| B256::left_padding_from(&value.to_le_bytes());
         let mut filter = TriggerFilter {
             log: EthereumLogFilter {
                 contracts_and_events_graph: GraphMap::new(),
@@ -1792,7 +1791,7 @@ mod tests {
     }
 
     fn address(value: u64) -> Address {
-        Address::from_slice(&value.to_le_bytes())
+        Address::left_padding_from(&value.to_be_bytes())
     }
 
     fn bytes(value: Vec<u8>) -> Bytes {
@@ -1866,8 +1865,8 @@ fn complete_log_filter() {
 
 #[test]
 fn log_filter_require_transacion_receipt_method() {
-    let address = |value: u64| Address::from_slice(&value.to_le_bytes());
-    let b256 = |value: u64| B256::from_slice(&value.to_le_bytes());
+    let address = |value: u64| Address::left_padding_from(&value.to_be_bytes());
+    let b256 = |value: u64| B256::left_padding_from(&value.to_be_bytes());
 
     // test data
     let event_signature_a = b256(0);
