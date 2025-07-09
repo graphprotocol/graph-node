@@ -1,3 +1,4 @@
+use alloy::primitives::Address;
 use anyhow::{anyhow, Error};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -6,7 +7,6 @@ use std::str::FromStr;
 use crate::blockchain::BlockHash;
 use crate::data::value::Object;
 use crate::prelude::{r, BigInt};
-use web3::types::H160;
 
 pub trait TryFromValue: Sized {
     fn try_from_value(value: &r::Value) -> Result<Self, Error>;
@@ -74,16 +74,11 @@ impl TryFromValue for i32 {
     }
 }
 
-impl TryFromValue for H160 {
+impl TryFromValue for Address {
     fn try_from_value(value: &r::Value) -> Result<Self, Error> {
         match value {
-            r::Value::String(s) => {
-                // `H160::from_str` takes a hex string with no leading `0x`.
-                let string = s.trim_start_matches("0x");
-                H160::from_str(string).map_err(|e| {
-                    anyhow!("Cannot parse Address/H160 value from string `{}`: {}", s, e)
-                })
-            }
+            r::Value::String(s) => Address::from_str(s)
+                .map_err(|e| anyhow!("Cannot parse Address/H160 value from string `{}`: {}", s, e)),
             _ => Err(anyhow!(
                 "Cannot parse value into an Address/H160: {:?}",
                 value

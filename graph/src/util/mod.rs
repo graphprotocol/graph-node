@@ -35,3 +35,9 @@ pub mod monitored;
 pub mod intern;
 
 pub mod herd_cache;
+
+/// Type conversion utilities between web3 and alloy types
+pub mod conversions;
+
+/// Test utilities for creating mock blockchain data structures
+pub mod test_utils;
