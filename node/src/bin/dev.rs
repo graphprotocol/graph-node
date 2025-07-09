@@ -23,6 +23,14 @@ use lazy_static::lazy_static;
 #[cfg(unix)]
 use pgtemp::{PgTempDB, PgTempDBBuilder};
 
+// Add an alias for the temporary Postgres DB handle. On non unix
+// targets we don’t have pgtemp, but we still need the type to satisfy the
+// function signatures.
+#[cfg(unix)]
+type TempPgDB = PgTempDB;
+#[cfg(not(unix))]
+type TempPgDB = ();
+
 git_testament!(TESTAMENT);
 lazy_static! {
     static ref RENDERED_TESTAMENT: String = render_testament!(TESTAMENT);
@@ -184,7 +192,7 @@ async fn run_graph_node(
 fn get_database_url(
     postgres_url: Option<&String>,
     database_dir: &Path,
-) -> Result<(String, Option<PgTempDB>)> {
+) -> Result<(String, Option<TempPgDB>)> {
     if let Some(url) = postgres_url {
         Ok((url.clone(), None))
     } else {
@@ -284,6 +292,7 @@ async fn main() -> Result<()> {
     info!(logger, "Received Ctrl+C, shutting down.");
 
     // Explicitly shut down and clean up the temporary database directory if we started one.
+    #[cfg(unix)]
     if let Some(db) = temp_db_opt.take() {
         db.shutdown();
     }
