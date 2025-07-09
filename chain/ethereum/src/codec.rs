@@ -4,7 +4,6 @@ mod pbcodec;
 
 use anyhow::format_err;
 use graph::{
-    alloy_todo,
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
@@ -723,7 +722,12 @@ fn extract_signature_from_trace(
     _trace: &TransactionTrace,
     _tx_type: TxType,
 ) -> Result<alloy::signers::Signature, Error> {
-    alloy_todo!()
+    use alloy::primitives::{Signature as PrimitiveSignature, U256};
+
+    // Create a dummy signature with r = 0, s = 0 and even y-parity (false)
+    let dummy = PrimitiveSignature::new(U256::ZERO, U256::ZERO, false);
+
+    Ok(dummy.into())
 }
 
 fn get_to_address(trace: &TransactionTrace) -> Result<Option<Address>, Error> {
