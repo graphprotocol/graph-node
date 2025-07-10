@@ -33,3 +33,6 @@ lcov.info
 # Docker volumes and debug logs
 .postgres
 logfile
+
+# Node modules
+node_modules
