@@ -1,5 +1,13 @@
 version: '3'
 services:
+  # Emulator for simulating eth_getBlockReceipts method on EVM-compatible chains that do not support it
+  # Uncomment and replace <YOUR_CHAIN_RPC_URL>
+  # emulator:
+  #   build: ./emulator
+  #   ports:
+  #     - '8545:8545'
+  #   environment:
+  #     UPSTREAM_RPC: <YOUR_CHAIN_RPC_URL>
   graph-node:
     image: graphprotocol/graph-node
     ports:
@@ -9,6 +17,7 @@ services:
       - '8030:8030'
       - '8040:8040'
     depends_on:
+      # - emulator # Uncomment if using emulator
       - ipfs
       - postgres
     extra_hosts:
@@ -19,7 +28,10 @@ services:
       postgres_pass: let-me-in
       postgres_db: graph-node
       ipfs: 'ipfs:5001'
-      ethereum: 'mainnet:http://host.docker.internal:8545'
+      # Without emulator
+      ethereum: 'mainnet:http://host.docker.internal:8545' # Comment if using emulator
+      # With emulator
+      # ethereum: 'oasis:http://emulator:8545'
       GRAPH_LOG: info
   ipfs:
     image: ipfs/kubo:v0.17.0
@@ -33,9 +45,9 @@ services:
       - '5432:5432'
     command:
       [
-        "postgres",
-        "-cshared_preload_libraries=pg_stat_statements",
-        "-cmax_connections=200"
+        'postgres',
+        '-cshared_preload_libraries=pg_stat_statements',
+        '-cmax_connections=200',
       ]
     environment:
       POSTGRES_USER: graph-node
@@ -44,7 +56,7 @@ services:
       # FIXME: remove this env. var. which we shouldn't need. Introduced by
       # <https://github.com/graphprotocol/graph-node/pull/3511>, maybe as a
       # workaround for https://github.com/docker/for-mac/issues/6270?
-      PGDATA: "/var/lib/postgresql/data"
-      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      PGDATA: '/var/lib/postgresql/data'
+      POSTGRES_INITDB_ARGS: '-E UTF8 --locale=C'
     volumes:
       - ./data/postgres:/var/lib/postgresql/data:Z
