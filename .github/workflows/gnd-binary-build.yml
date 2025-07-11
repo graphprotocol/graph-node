@@ -109,7 +109,7 @@ jobs:
           certificate-data: ${{ secrets.APPLE_CERT_DATA }}
           certificate-password: ${{ secrets.APPLE_CERT_PASSWORD }}
           certificate-id: ${{ secrets.APPLE_TEAM_ID }}
-          options: --options runtime --deep
+          options: --options runtime --entitlements entitlements.plist
 
       - name: Notarize macOS binary
         if: startsWith(matrix.runner, 'macos')
