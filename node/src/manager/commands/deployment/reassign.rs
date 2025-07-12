@@ -36,7 +36,7 @@ pub fn run(
     )?;
 
     match reassign_result {
-        ReassignResult::EmptyResponse => {
+        ReassignResult::Ok => {
             println!(
                 "Deployment {} assigned to node {}",
                 deployment.locator(),
