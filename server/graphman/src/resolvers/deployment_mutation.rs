@@ -27,7 +27,7 @@ pub struct DeploymentMutation;
 
 #[derive(Clone, Debug, Union)]
 pub enum ReassignResponse {
-    EmptyResponse(EmptyResponse),
+    Ok(EmptyResponse),
     CompletedWithWarnings(CompletedWithWarnings),
 }
 
@@ -124,9 +124,7 @@ impl DeploymentMutation {
             ReassignResult::CompletedWithWarnings(warnings) => Ok(
                 ReassignResponse::CompletedWithWarnings(CompletedWithWarnings::new(warnings)),
             ),
-            ReassignResult::EmptyResponse => {
-                Ok(ReassignResponse::EmptyResponse(EmptyResponse::new()))
-            }
+            ReassignResult::Ok => Ok(ReassignResponse::Ok(EmptyResponse::new())),
         }
     }
 }
