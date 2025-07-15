@@ -241,8 +241,7 @@ fn build_filter_from_object<'a>(
     schema: &InputSchema,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     // Check if we have both column filters and 'or' operator at the same level
-    let has_or = object.get("or").is_some();
-    if has_or {
+    if let Some(_) = object.get("or") {
         let column_filters: Vec<String> = object
             .iter()
             .filter_map(|(key, _)| {
