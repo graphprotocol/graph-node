@@ -240,6 +240,34 @@ fn build_filter_from_object<'a>(
     object: &Object,
     schema: &InputSchema,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
+    // Check if we have both column filters and 'or' operator at the same level
+    let has_or = object.get("or").is_some();
+    if has_or {
+        let column_filters: Vec<String> = object
+            .iter()
+            .filter_map(|(key, _)| {
+                if key != "or" && key != "and" && key != "_change_block" {
+                    Some(format!("'{}'", key))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        if !column_filters.is_empty() {
+            let example = format!(
+                "Instead of:\nwhere: {{ {}, or: [...] }}\n\nUse:\nwhere: {{ or: [{{ {}, ... }}, {{ {}, ... }}] }}",
+                column_filters.join(", "),
+                column_filters.join(", "),
+                column_filters.join(", ")
+            );
+            return Err(QueryExecutionError::InvalidOrFilterStructure(
+                column_filters,
+                example,
+            ));
+        }
+    }
+
     object
         .iter()
         .map(|(key, value)| {
@@ -956,5 +984,229 @@ mod tests {
             query(&query_field).filter,
             Some(EntityFilter::And(vec![EntityFilter::ChangeBlockGte(10)]))
         )
+    }
+
+    #[test]
+    fn build_query_detects_invalid_or_filter_structure() {
+        // Test that mixing column filters with 'or' operator produces a helpful error
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![
+                ("name".into(), r::Value::String("John".to_string())),
+                ("or".into(), r::Value::List(vec![
+                    r::Value::Object(Object::from_iter(vec![(
+                        "email".into(),
+                        r::Value::String("john@example.com".to_string()),
+                    )])),
+                ])),
+            ])),
+        );
+
+        // We only allow one entity type in these tests
+        assert_eq!(query_field.selection_set.fields().count(), 1);
+        let obj_type = query_field
+            .selection_set
+            .fields()
+            .map(|(obj, _)| &obj.name)
+            .next()
+            .expect("there is one object type");
+        let Some(object) = INPUT_SCHEMA.object_or_interface(obj_type, None) else {
+            panic!("object type {} not found", obj_type);
+        };
+
+        let result = build_query(
+            &object,
+            BLOCK_NUMBER_MAX,
+            &query_field,
+            std::u32::MAX,
+            std::u32::MAX,
+            &*INPUT_SCHEMA,
+        );
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        
+        // Check that we get the specific error we expect
+        match error {
+            graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example) => {
+                assert_eq!(fields, vec!["'name'"]);
+                assert!(example.contains("Instead of:"));
+                assert!(example.contains("where: { 'name', or: [...] }"));
+                assert!(example.contains("Use:"));
+                assert!(example.contains("where: { or: [{ 'name', ... }, { 'name', ... }] }"));
+            }
+            _ => panic!("Expected InvalidOrFilterStructure error, got: {}", error),
+        }
+    }
+
+    #[test]
+    fn build_query_detects_invalid_or_filter_structure_multiple_fields() {
+        // Test that multiple column filters with 'or' operator are all reported
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![
+                ("name".into(), r::Value::String("John".to_string())),
+                ("email".into(), r::Value::String("john@example.com".to_string())),
+                ("or".into(), r::Value::List(vec![
+                    r::Value::Object(Object::from_iter(vec![(
+                        "name".into(),
+                        r::Value::String("Jane".to_string()),
+                    )])),
+                ])),
+            ])),
+        );
+
+        // We only allow one entity type in these tests
+        assert_eq!(query_field.selection_set.fields().count(), 1);
+        let obj_type = query_field
+            .selection_set
+            .fields()
+            .map(|(obj, _)| &obj.name)
+            .next()
+            .expect("there is one object type");
+        let Some(object) = INPUT_SCHEMA.object_or_interface(obj_type, None) else {
+            panic!("object type {} not found", obj_type);
+        };
+
+        let result = build_query(
+            &object,
+            BLOCK_NUMBER_MAX,
+            &query_field,
+            std::u32::MAX,
+            std::u32::MAX,
+            &*INPUT_SCHEMA,
+        );
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        
+        // Check that we get the specific error we expect
+        match error {
+            graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example) => {
+                // Should detect both column filters
+                assert_eq!(fields.len(), 2);
+                assert!(fields.contains(&"'name'".to_string()));
+                assert!(fields.contains(&"'email'".to_string()));
+                assert!(example.contains("Instead of:"));
+                assert!(example.contains("Use:"));
+            }
+            _ => panic!("Expected InvalidOrFilterStructure error, got: {}", error),
+        }
+    }
+
+    #[test]
+    fn build_query_allows_valid_or_filter_structure() {
+        // Test that valid 'or' filters without column filters at the same level work correctly
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![
+                ("or".into(), r::Value::List(vec![
+                    r::Value::Object(Object::from_iter(vec![(
+                        "name".into(),
+                        r::Value::String("John".to_string()),
+                    )])),
+                    r::Value::Object(Object::from_iter(vec![(
+                        "email".into(),
+                        r::Value::String("john@example.com".to_string()),
+                    )])),
+                ])),
+            ])),
+        );
+
+        // This should not produce an error
+        let result = query(&query_field);
+        assert!(result.filter.is_some());
+        
+        // Verify that the filter is correctly structured
+        match result.filter.unwrap() {
+            EntityFilter::And(filters) => {
+                assert_eq!(filters.len(), 1);
+                match &filters[0] {
+                    EntityFilter::Or(_) => {
+                        // This is expected - OR filter should be wrapped in AND
+                    }
+                    _ => panic!("Expected OR filter, got: {:?}", filters[0]),
+                }
+            }
+            _ => panic!("Expected AND filter with OR inside"),
+        }
+    }
+
+    #[test]
+    fn build_query_detects_invalid_or_filter_structure_with_operators() {
+        // Test that column filters with operators (like name_gt) are also detected
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![
+                ("name_gt".into(), r::Value::String("A".to_string())),
+                ("or".into(), r::Value::List(vec![
+                    r::Value::Object(Object::from_iter(vec![(
+                        "email".into(),
+                        r::Value::String("test@example.com".to_string()),
+                    )])),
+                ])),
+            ])),
+        );
+
+        // We only allow one entity type in these tests
+        assert_eq!(query_field.selection_set.fields().count(), 1);
+        let obj_type = query_field
+            .selection_set
+            .fields()
+            .map(|(obj, _)| &obj.name)
+            .next()
+            .expect("there is one object type");
+        let Some(object) = INPUT_SCHEMA.object_or_interface(obj_type, None) else {
+            panic!("object type {} not found", obj_type);
+        };
+
+        let result = build_query(
+            &object,
+            BLOCK_NUMBER_MAX,
+            &query_field,
+            std::u32::MAX,
+            std::u32::MAX,
+            &*INPUT_SCHEMA,
+        );
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        
+        // Check that we get the specific error we expect
+        match error {
+            graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example) => {
+                assert_eq!(fields, vec!["'name_gt'"]);
+                assert!(example.contains("Instead of:"));
+                assert!(example.contains("where: { 'name_gt', or: [...] }"));
+                assert!(example.contains("Use:"));
+                assert!(example.contains("where: { or: [{ 'name_gt', ... }, { 'name_gt', ... }] }"));
+            }
+            _ => panic!("Expected InvalidOrFilterStructure error, got: {}", error),
+        }
+    }
+
+    #[test]
+    fn test_error_message_formatting() {
+        // Test that the error message is properly formatted
+        let fields = vec!["'age_gt'".to_string(), "'name'".to_string()];
+        let example = format!(
+            "Instead of:\nwhere: {{ {}, or: [...] }}\n\nUse:\nwhere: {{ or: [{{ {}, ... }}, {{ {}, ... }}] }}",
+            fields.join(", "),
+            fields.join(", "),
+            fields.join(", ")
+        );
+        
+        let error = graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example);
+        let error_msg = format!("{}", error);
+        
+        println!("Error message:\n{}", error_msg);
+        
+        // Verify the error message contains the key elements
+        assert!(error_msg.contains("Cannot mix column filters with 'or' operator"));
+        assert!(error_msg.contains("'age_gt', 'name'"));
+        assert!(error_msg.contains("Instead of:"));
+        assert!(error_msg.contains("Use:"));
+        assert!(error_msg.contains("where: { 'age_gt', 'name', or: [...] }"));
+        assert!(error_msg.contains("where: { or: [{ 'age_gt', 'name', ... }, { 'age_gt', 'name', ... }] }"));
     }
 }
