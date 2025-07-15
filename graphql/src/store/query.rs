@@ -253,7 +253,7 @@ fn build_filter_from_object<'a>(
                 }
             })
             .collect();
-        
+
         if !column_filters.is_empty() {
             let example = format!(
                 "Instead of:\nwhere: {{ {}, or: [...] }}\n\nUse:\nwhere: {{ or: [{{ {}, ... }}, {{ {}, ... }}] }}",
@@ -993,12 +993,13 @@ mod tests {
             "where",
             r::Value::Object(Object::from_iter(vec![
                 ("name".into(), r::Value::String("John".to_string())),
-                ("or".into(), r::Value::List(vec![
-                    r::Value::Object(Object::from_iter(vec![(
+                (
+                    "or".into(),
+                    r::Value::List(vec![r::Value::Object(Object::from_iter(vec![(
                         "email".into(),
                         r::Value::String("john@example.com".to_string()),
-                    )])),
-                ])),
+                    )]))]),
+                ),
             ])),
         );
 
@@ -1025,7 +1026,7 @@ mod tests {
 
         assert!(result.is_err());
         let error = result.unwrap_err();
-        
+
         // Check that we get the specific error we expect
         match error {
             graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example) => {
@@ -1046,13 +1047,17 @@ mod tests {
             "where",
             r::Value::Object(Object::from_iter(vec![
                 ("name".into(), r::Value::String("John".to_string())),
-                ("email".into(), r::Value::String("john@example.com".to_string())),
-                ("or".into(), r::Value::List(vec![
-                    r::Value::Object(Object::from_iter(vec![(
+                (
+                    "email".into(),
+                    r::Value::String("john@example.com".to_string()),
+                ),
+                (
+                    "or".into(),
+                    r::Value::List(vec![r::Value::Object(Object::from_iter(vec![(
                         "name".into(),
                         r::Value::String("Jane".to_string()),
-                    )])),
-                ])),
+                    )]))]),
+                ),
             ])),
         );
 
@@ -1079,7 +1084,7 @@ mod tests {
 
         assert!(result.is_err());
         let error = result.unwrap_err();
-        
+
         // Check that we get the specific error we expect
         match error {
             graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example) => {
@@ -1099,8 +1104,9 @@ mod tests {
         // Test that valid 'or' filters without column filters at the same level work correctly
         let query_field = default_field_with(
             "where",
-            r::Value::Object(Object::from_iter(vec![
-                ("or".into(), r::Value::List(vec![
+            r::Value::Object(Object::from_iter(vec![(
+                "or".into(),
+                r::Value::List(vec![
                     r::Value::Object(Object::from_iter(vec![(
                         "name".into(),
                         r::Value::String("John".to_string()),
@@ -1109,14 +1115,14 @@ mod tests {
                         "email".into(),
                         r::Value::String("john@example.com".to_string()),
                     )])),
-                ])),
-            ])),
+                ]),
+            )])),
         );
 
         // This should not produce an error
         let result = query(&query_field);
         assert!(result.filter.is_some());
-        
+
         // Verify that the filter is correctly structured
         match result.filter.unwrap() {
             EntityFilter::And(filters) => {
@@ -1139,12 +1145,13 @@ mod tests {
             "where",
             r::Value::Object(Object::from_iter(vec![
                 ("name_gt".into(), r::Value::String("A".to_string())),
-                ("or".into(), r::Value::List(vec![
-                    r::Value::Object(Object::from_iter(vec![(
+                (
+                    "or".into(),
+                    r::Value::List(vec![r::Value::Object(Object::from_iter(vec![(
                         "email".into(),
                         r::Value::String("test@example.com".to_string()),
-                    )])),
-                ])),
+                    )]))]),
+                ),
             ])),
         );
 
@@ -1171,7 +1178,7 @@ mod tests {
 
         assert!(result.is_err());
         let error = result.unwrap_err();
-        
+
         // Check that we get the specific error we expect
         match error {
             graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example) => {
@@ -1195,18 +1202,20 @@ mod tests {
             fields.join(", "),
             fields.join(", ")
         );
-        
-        let error = graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example);
+
+        let error =
+            graph::data::query::QueryExecutionError::InvalidOrFilterStructure(fields, example);
         let error_msg = format!("{}", error);
-        
+
         println!("Error message:\n{}", error_msg);
-        
+
         // Verify the error message contains the key elements
         assert!(error_msg.contains("Cannot mix column filters with 'or' operator"));
         assert!(error_msg.contains("'age_gt', 'name'"));
         assert!(error_msg.contains("Instead of:"));
         assert!(error_msg.contains("Use:"));
         assert!(error_msg.contains("where: { 'age_gt', 'name', or: [...] }"));
-        assert!(error_msg.contains("where: { or: [{ 'age_gt', 'name', ... }, { 'age_gt', 'name', ... }] }"));
+        assert!(error_msg
+            .contains("where: { or: [{ 'age_gt', 'name', ... }, { 'age_gt', 'name', ... }] }"));
     }
 }
