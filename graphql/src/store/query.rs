@@ -254,11 +254,12 @@ fn build_filter_from_object<'a>(
             .collect();
 
         if !column_filters.is_empty() {
+            let filter_list = column_filters.join(", ");
             let example = format!(
                 "Instead of:\nwhere: {{ {}, or: [...] }}\n\nUse:\nwhere: {{ or: [{{ {}, ... }}, {{ {}, ... }}] }}",
-                column_filters.join(", "),
-                column_filters.join(", "),
-                column_filters.join(", ")
+                filter_list,
+                filter_list,
+                filter_list
             );
             return Err(QueryExecutionError::InvalidOrFilterStructure(
                 column_filters,
