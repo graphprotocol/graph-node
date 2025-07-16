@@ -47,4 +47,4 @@ globset = "0.4.16"
 notify = "8.0.0"
 
 [target.'cfg(unix)'.dependencies]
-pgtemp = { git = "https://github.com/incrypto32/pgtemp", branch = "initdb-args" }
+pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }

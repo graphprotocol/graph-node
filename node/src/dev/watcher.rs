@@ -255,7 +255,7 @@ fn is_relevant_event(event: &Event, watched_dirs: Vec<PathBuf>, exclusion_set: &
 }
 
 /// Redeploys all subgraphs in the order it appears in the manifests_paths
-async fn deploy_all_subgraphs(
+pub async fn deploy_all_subgraphs(
     logger: &Logger,
     manifests_paths: &Vec<PathBuf>,
     source_subgraph_aliases: &HashMap<String, PathBuf>,

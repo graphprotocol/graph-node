@@ -9,6 +9,7 @@ blake3 = "1.8"
 chrono = { workspace = true }
 derive_more = { version = "2.0.1", features = ["full"] }
 diesel = { workspace = true }
+pq-sys = { workspace = true}
 diesel-dynamic-schema = { workspace = true }
 diesel-derive-enum = { workspace = true }
 diesel_derives = { workspace = true }

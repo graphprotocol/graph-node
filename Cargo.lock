@@ -2258,6 +2258,7 @@ dependencies = [
  "openssl",
  "postgres",
  "postgres-openssl",
+ "pq-sys",
  "pretty_assertions",
  "rand 0.9.1",
  "serde",
@@ -3814,7 +3815,7 @@ dependencies = [
 [[package]]
 name = "pgtemp"
 version = "0.6.0"
-source = "git+https://github.com/incrypto32/pgtemp?branch=initdb-args#929a9f96eab841d880c2ebf280e00054ca55ec0e"
+source = "git+https://github.com/graphprotocol/pgtemp?branch=initdb-args#08a95d441d74ce0a50b6e0a55dbf96d8362d8fb7"
 dependencies = [
  "libc",
  "tempfile",
@@ -3958,11 +3959,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
+name = "pq-src"
+version = "0.3.8+libpq-17.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ee4b24aec6c54ba0995bcc9ba17aa369db8764122980c5dbd3c70d26206dc73"
+dependencies = [
+ "cc",
+ "openssl-sys",
+]
+
+[[package]]
 name = "pq-sys"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a24ff9e4cf6945c988f0db7005d87747bf72864965c3529d259ad155ac41d584"
 dependencies = [
+ "pq-src",
  "vcpkg",
 ]
 

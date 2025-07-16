@@ -1,4 +1,4 @@
-use std::{mem, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -13,6 +13,7 @@ use graph::{
 };
 use graph_core::polling_monitor::ipfs_service;
 use graph_node::{
+    dev::watcher,
     dev::watcher::{parse_manifest_args, watch_subgraphs},
     launcher,
     opt::Opt,
@@ -20,7 +21,15 @@ use graph_node::{
 use lazy_static::lazy_static;
 
 #[cfg(unix)]
-use pgtemp::PgTempDBBuilder;
+use pgtemp::{PgTempDB, PgTempDBBuilder};
+
+// Add an alias for the temporary Postgres DB handle. On non unix
+// targets we don’t have pgtemp, but we still need the type to satisfy the
+// function signatures.
+#[cfg(unix)]
+type TempPgDB = PgTempDB;
+#[cfg(not(unix))]
+type TempPgDB = ();
 
 git_testament!(TESTAMENT);
 lazy_static! {
@@ -90,6 +99,35 @@ pub struct DevOpt {
         default_value = "https://api.thegraph.com/ipfs"
     )]
     pub ipfs: Vec<String>,
+    #[clap(
+        long,
+        default_value = "8000",
+        value_name = "PORT",
+        help = "Port for the GraphQL HTTP server",
+        env = "GRAPH_GRAPHQL_HTTP_PORT"
+    )]
+    pub http_port: u16,
+    #[clap(
+        long,
+        default_value = "8030",
+        value_name = "PORT",
+        help = "Port for the index node server"
+    )]
+    pub index_node_port: u16,
+    #[clap(
+        long,
+        default_value = "8020",
+        value_name = "PORT",
+        help = "Port for the JSON-RPC admin server"
+    )]
+    pub admin_port: u16,
+    #[clap(
+        long,
+        default_value = "8040",
+        value_name = "PORT",
+        help = "Port for the Prometheus metrics server"
+    )]
+    pub metrics_port: u16,
 }
 
 /// Builds the Graph Node options from DevOpt
@@ -109,7 +147,12 @@ fn build_args(dev_opt: &DevOpt, db_url: &str) -> Result<Opt> {
     args.push("--postgres-url".to_string());
     args.push(db_url.to_string());
 
-    let opt = Opt::parse_from(args);
+    let mut opt = Opt::parse_from(args);
+
+    opt.http_port = dev_opt.http_port;
+    opt.admin_port = dev_opt.admin_port;
+    opt.metrics_port = dev_opt.metrics_port;
+    opt.index_node_port = dev_opt.index_node_port;
 
     Ok(opt)
 }
@@ -118,7 +161,7 @@ async fn run_graph_node(
     logger: &Logger,
     opt: Opt,
     link_resolver: Arc<dyn LinkResolver>,
-    subgraph_updates_channel: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
+    subgraph_updates_channel: mpsc::Receiver<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
@@ -139,16 +182,19 @@ async fn run_graph_node(
         env_vars,
         ipfs_service,
         link_resolver,
-        subgraph_updates_channel,
+        Some(subgraph_updates_channel),
     )
     .await;
     Ok(())
 }
 
 /// Get the database URL, either from the provided option or by creating a temporary database
-fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Result<String> {
+fn get_database_url(
+    postgres_url: Option<&String>,
+    database_dir: &Path,
+) -> Result<(String, Option<TempPgDB>)> {
     if let Some(url) = postgres_url {
-        Ok(url.clone())
+        Ok((url.clone(), None))
     } else {
         #[cfg(unix)]
         {
@@ -162,13 +208,14 @@ fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Resul
 
             let db = PgTempDBBuilder::new()
                 .with_data_dir_prefix(database_dir)
-                .with_initdb_param("-E", "UTF8")
-                .with_initdb_param("--locale", "C")
+                .persist_data(false)
+                .with_initdb_arg("-E", "UTF8")
+                .with_initdb_arg("--locale", "C")
                 .start();
             let url = db.connection_uri().to_string();
-            // Prevent the database from being dropped by forgetting it
-            mem::forget(db);
-            Ok(url)
+            // Return the handle so it lives for the lifetime of the program; dropping it will
+            // shut down Postgres and remove the temporary directory automatically.
+            Ok((url, Some(db)))
         }
 
         #[cfg(not(unix))]
@@ -182,6 +229,8 @@ fn get_database_url(postgres_url: Option<&String>, database_dir: &Path) -> Resul
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    std::env::set_var("ETHEREUM_REORG_THRESHOLD", "10");
+    std::env::set_var("GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION", "true");
     env_logger::init();
     let dev_opt = DevOpt::parse();
 
@@ -189,11 +238,12 @@ async fn main() -> Result<()> {
 
     let logger = logger(true);
 
-    info!(logger, "Starting Graph Node Dev");
+    info!(logger, "Starting Graph Node Dev 1");
     info!(logger, "Database directory: {}", database_dir.display());
 
-    // Get the database URL
-    let db_url = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
+    // Get the database URL and keep the temporary database handle alive for the life of the
+    // program so that it is dropped (and cleaned up) on graceful shutdown.
+    let (db_url, mut temp_db_opt) = get_database_url(dev_opt.postgres_url.as_ref(), database_dir)?;
 
     let opt = build_args(&dev_opt, &db_url)?;
 
@@ -201,17 +251,26 @@ async fn main() -> Result<()> {
         parse_manifest_args(dev_opt.manifests, dev_opt.sources, &logger)?;
     let file_link_resolver = Arc::new(FileLinkResolver::new(None, source_subgraph_aliases.clone()));
 
-    let (tx, rx) = dev_opt.watch.then(|| mpsc::channel(1)).unzip();
+    let (tx, rx) = mpsc::channel(1);
 
     let logger_clone = logger.clone();
     graph::spawn(async move {
         let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx).await;
     });
 
-    if let Some(tx) = tx {
+    if let Err(e) =
+        watcher::deploy_all_subgraphs(&logger, &manifests_paths, &source_subgraph_aliases, &tx)
+            .await
+    {
+        error!(logger, "Error deploying subgraphs"; "error" => e.to_string());
+        std::process::exit(1);
+    }
+
+    if dev_opt.watch {
+        let logger_clone_watch = logger.clone();
         graph::spawn_blocking(async move {
             if let Err(e) = watch_subgraphs(
-                &logger,
+                &logger_clone_watch,
                 manifests_paths,
                 source_subgraph_aliases,
                 vec!["pgtemp-*".to_string()],
@@ -219,12 +278,27 @@ async fn main() -> Result<()> {
             )
             .await
             {
-                error!(logger, "Error watching subgraphs"; "error" => e.to_string());
+                error!(logger_clone_watch, "Error watching subgraphs"; "error" => e.to_string());
                 std::process::exit(1);
             }
         });
     }
 
-    graph::futures03::future::pending::<()>().await;
+    // Wait for Ctrl+C so we can shut down cleanly and drop the temporary database, which removes
+    // the data directory.
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to listen for Ctrl+C signal");
+    info!(logger, "Received Ctrl+C, shutting down.");
+
+    // Explicitly shut down and clean up the temporary database directory if we started one.
+    #[cfg(unix)]
+    if let Some(db) = temp_db_opt.take() {
+        db.shutdown();
+    }
+
+    std::process::exit(0);
+
+    #[allow(unreachable_code)]
     Ok(())
 }
