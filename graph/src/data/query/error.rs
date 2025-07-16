@@ -41,6 +41,7 @@ pub enum QueryExecutionError {
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
     EmptyQuery,
+    InvalidOrFilterStructure(Vec<String>, String),
     SubgraphDeploymentIdError(String),
     RangeArgumentsError(&'static str, u32, i64),
     InvalidFilterError,
@@ -97,6 +98,7 @@ impl QueryExecutionError {
             | ChildFilterNestingNotSupportedError(_, _)
             | UnknownField(_, _, _)
             | EmptyQuery
+            | InvalidOrFilterStructure(_, _)
             | SubgraphDeploymentIdError(_)
             | InvalidFilterError
             | EntityFieldError(_, _)
@@ -210,6 +212,10 @@ impl fmt::Display for QueryExecutionError {
                 write!(f, "The `{}` argument must be between 0 and {}, but is {}", arg, max, actual)
             }
             InvalidFilterError => write!(f, "Filter must by an object"),
+            InvalidOrFilterStructure(fields, example) => {
+                write!(f, "Cannot mix column filters with 'or' operator at the same level. Found column filter(s) {} alongside 'or' operator.\n\n{}", 
+                    fields.join(", "), example)
+            }
             EntityFieldError(e, a) => {
                 write!(f, "Entity `{}` has no attribute `{}`", e, a)
             }
