@@ -123,3 +123,9 @@ impl FromSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
         <Vec<u8> as FromSql<diesel::sql_types::Binary, _>>::from_sql(value).map(Bytes::from)
     }
 }
+
+impl From<alloy::primitives::Bytes> for Bytes {
+    fn from(bytes: alloy::primitives::Bytes) -> Bytes {
+        Bytes::from(bytes.as_ref())
+    }
+}

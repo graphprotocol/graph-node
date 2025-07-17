@@ -13,6 +13,7 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
+use graph::prelude::alloy::primitives::B256;
 use graph::{
     blockchain::block_stream::FirehoseCursor,
     data::subgraph::schema::SubgraphError,
@@ -23,10 +24,7 @@ use graph::{
 use graph::{components::store::StoreResult, semver::Version};
 use graph::{
     data::store::scalar::ToPrimitive,
-    prelude::{
-        anyhow, hex, web3::types::H256, BlockNumber, BlockPtr, DeploymentHash, DeploymentState,
-        StoreError,
-    },
+    prelude::{anyhow, hex, BlockNumber, BlockPtr, DeploymentHash, DeploymentState, StoreError},
     schema::InputSchema,
 };
 use graph::{
@@ -265,7 +263,7 @@ fn graft(
             // FIXME:
             //
             // workaround for arweave
-            let hash = H256::from_slice(&hash.as_slice()[..32]);
+            let hash = B256::from_slice(&hash.as_slice()[..32]);
             let block = block.to_u64().expect("block numbers fit into a u64");
             let subgraph = DeploymentHash::new(subgraph.clone()).map_err(|_| {
                 StoreError::Unknown(anyhow!(
@@ -273,7 +271,7 @@ fn graft(
                     subgraph
                 ))
             })?;
-            Ok(Some((subgraph, BlockPtr::from((hash, block)))))
+            Ok(Some((subgraph, BlockPtr::from((hash, block as i32)))))
         }
         _ => unreachable!(
             "graftBlockHash and graftBlockNumber are either both set or neither is set"

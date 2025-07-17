@@ -18,6 +18,7 @@ use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
 use graph::futures03::FutureExt;
+use graph::prelude::alloy::primitives::Address;
 use graph::prelude::{
     ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
@@ -40,12 +41,11 @@ use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersio
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::internal_error;
 use graph::prelude::{
-    anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
+    anyhow, debug, info, o, warn, AttributeNames, BlockNumber, BlockPtr, CheapClone,
     DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
     StopwatchMetrics, StoreError, UnfailOutcome, Value, ENV_VARS,
 };
 use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
-use web3::types::Address;
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::deployment::{self, OnSync};

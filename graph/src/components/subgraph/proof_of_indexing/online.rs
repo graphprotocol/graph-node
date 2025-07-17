@@ -9,6 +9,7 @@ use crate::{
     prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
     util::stable_hash_glue::AsBytes,
 };
+use alloy::primitives::Address;
 use sha2::{Digest, Sha256};
 use stable_hash::{fast::FastStableHasher, FieldAddress, StableHash, StableHasher};
 use stable_hash_legacy::crypto::{Blake3SeqNo, SetHasher};
@@ -18,7 +19,6 @@ use stable_hash_legacy::prelude::{
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt;
-use web3::types::Address;
 
 pub struct BlockEventStream {
     vec_length: u64,
@@ -278,7 +278,7 @@ impl ProofOfIndexingFinisher {
         state.write(&AsBytes(block.hash_slice()), &[2]);
 
         // Add PoI.indexer
-        state.write(&indexer.as_ref().map(|i| AsBytes(i.as_bytes())), &[3]);
+        state.write(&indexer.as_ref().map(|i| AsBytes(i.as_slice())), &[3]);
 
         ProofOfIndexingFinisher {
             block_number: block.number,
