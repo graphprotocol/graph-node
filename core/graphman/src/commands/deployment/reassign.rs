@@ -49,7 +49,7 @@ pub enum ReassignDeploymentError {
 
 #[derive(Clone, Debug)]
 pub enum ReassignResult {
-    EmptyResponse,
+    Ok,
     CompletedWithWarnings(Vec<String>),
 }
 
@@ -121,6 +121,6 @@ pub fn reassign_deployment(
         let warning_msg = format!("This is the only deployment assigned to '{}'. Please make sure that the node ID is spelled correctly.",node.as_str());
         Ok(ReassignResult::CompletedWithWarnings(vec![warning_msg]))
     } else {
-        Ok(ReassignResult::EmptyResponse)
+        Ok(ReassignResult::Ok)
     }
 }
