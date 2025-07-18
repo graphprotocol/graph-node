@@ -48,12 +48,8 @@ impl WasmInstanceContext<'_> {
         self.inner.data_mut()
     }
 
-    pub fn asc_heap_ref(&self) -> &AscHeapCtx {
-        self.as_ref().asc_heap_ref()
-    }
-
-    pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
-        self.as_mut().asc_heap_mut()
+    pub fn asc_heap(&self) -> &Arc<AscHeapCtx> {
+        self.as_ref().asc_heap()
     }
 
     pub fn suspend_timeout(&mut self) {
@@ -96,7 +92,7 @@ pub struct WasmInstanceData {
 
     // This option is needed to break the cyclic dependency between, instance, store, and context.
     // during execution it should always be populated.
-    asc_heap: Option<AscHeapCtx>,
+    asc_heap: Option<Arc<AscHeapCtx>>,
 }
 
 impl WasmInstanceData {
@@ -117,15 +113,12 @@ impl WasmInstanceData {
         }
     }
 
-    pub fn set_asc_heap(&mut self, asc_heap: AscHeapCtx) {
+    pub fn set_asc_heap(&mut self, asc_heap: Arc<AscHeapCtx>) {
         self.asc_heap = Some(asc_heap);
     }
 
-    pub fn asc_heap_ref(&self) -> &AscHeapCtx {
-        self.asc_heap.as_ref().unwrap()
-    }
-    pub fn asc_heap_mut(&mut self) -> &mut AscHeapCtx {
-        self.asc_heap.as_mut().unwrap()
+    pub fn asc_heap(&self) -> &Arc<AscHeapCtx> {
+        self.asc_heap.as_ref().expect("asc_heap not set")
     }
 
     pub fn take_state(mut self) -> BlockState {
