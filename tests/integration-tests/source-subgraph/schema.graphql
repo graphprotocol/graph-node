@@ -10,3 +10,9 @@ type Block2 @entity(immutable: true) {
   hash: Bytes!
   testMessage: String
 }
+
+type Block3 @entity(immutable: true) {
+  id: Bytes!
+  number: BigInt!
+  testMessage: String
+}

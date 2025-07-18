@@ -1,6 +1,6 @@
 import { log, store } from '@graphprotocol/graph-ts';
-import { Block, Block2 } from '../generated/subgraph-QmWi3H11QFE2PiWx6WcQkZYZdA5UasaBptUJqGn54MFux5';
-import { MirrorBlock } from '../generated/schema';
+import { Block, Block2, Block3 } from '../generated/subgraph-QmRWTEejPDDwALaquFGm6X2GBbbh5osYDXwCRRkoZ6KQhb';
+import { MirrorBlock, MirrorBlockBytes } from '../generated/schema';
 
 export function handleEntity(block: Block): void {
   let id = block.id;
@@ -18,6 +18,16 @@ export function handleEntity2(block: Block2): void {
   let blockEntity = loadOrCreateMirrorBlock(id);
   blockEntity.number = block.number;
   blockEntity.hash = block.hash;
+  blockEntity.testMessage = block.testMessage;
+
+  blockEntity.save();
+}
+
+export function handleEntity3(block: Block3): void {
+  let id = block.id;
+
+  let blockEntity = new MirrorBlockBytes(id);
+  blockEntity.number = block.number;
   blockEntity.testMessage = block.testMessage;
 
   blockEntity.save();
