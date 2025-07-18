@@ -1884,7 +1884,19 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
                 } else {
                     self.mut_range.compare_column(&mut out)
                 }
-                out.push_sql("as block_number, id, vid\n");
+                // Cast id to bytea to ensure consistent types across UNION
+                // The actual id type can be text, bytea, or numeric depending on the entity
+                out.push_sql("as block_number, ");
+                let pk_column = table.primary_key();
+
+                // We only support entity id types of string, bytes, and int8.
+                match pk_column.column_type {
+                    ColumnType::String => out.push_sql("id::bytea"),
+                    ColumnType::Bytes => out.push_sql("id"),
+                    ColumnType::Int8 => out.push_sql("id::text::bytea"),
+                    _ => out.push_sql("id::bytea"),
+                }
+                out.push_sql(" as id, vid\n");
                 out.push_sql("  from ");
                 out.push_sql(table.qualified_name.as_str());
                 out.push_sql(" e\n  where");
@@ -1906,7 +1918,7 @@ impl<'a> QueryFragment<Pg> for FindRangeQuery<'a> {
             // In case we have only immutable entities, the upper range will not create any
             // select statement. So here we have to generate an SQL statement thet returns
             // empty result.
-            out.push_sql("select 'dummy_entity' as entity, to_jsonb(1) as data, 1 as block_number, 1 as id, 1 as vid where false");
+            out.push_sql("select 'dummy_entity' as entity, to_jsonb(1) as data, 1 as block_number, '\\x'::bytea as id, 1 as vid where false");
         } else {
             out.push_sql("\norder by block_number, entity, id");
         }
