@@ -64,6 +64,10 @@ impl LinkResolverTrait for IpfsResolver {
         Box::new(s)
     }
 
+    fn for_manifest(&self, _manifest_path: &str) -> Result<Box<dyn LinkResolverTrait>, Error> {
+        Ok(Box::new(self.cheap_clone()))
+    }
+
     async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         let path = ContentPath::new(&link.link)?;
         let timeout = self.timeout;

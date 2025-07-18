@@ -705,6 +705,10 @@ mod test {
             unimplemented!()
         }
 
+        fn for_manifest(&self, _manifest_path: &str) -> Result<Box<dyn LinkResolver>, Error> {
+            unimplemented!()
+        }
+
         async fn cat(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
             Ok(gen_package().encode_to_vec())
         }

@@ -1416,6 +1416,16 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
+    fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
+            let changes = pconn.unassign_subgraph(site.as_ref())?;
+            pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+        })
+    }
+
     fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
