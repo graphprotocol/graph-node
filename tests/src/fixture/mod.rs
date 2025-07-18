@@ -17,7 +17,9 @@ use graph::blockchain::{
     TriggerFilterWrapper, TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit};
+use graph::components::link_resolver::{
+    ArweaveClient, ArweaveResolver, FileSizeLimit, LinkResolverContext,
+};
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
 use graph::components::store::{DeploymentLocator, EthereumCallCache, SourceableStore};
@@ -33,7 +35,7 @@ use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
-use graph::ipfs::IpfsClient;
+use graph::ipfs::{IpfsClient, IpfsMetrics};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
@@ -265,7 +267,10 @@ impl TestContext {
         // Stolen from the IPFS provider, there's prolly a nicer way to re-use it
         let file_bytes = self
             .link_resolver
-            .cat(&logger, &deployment.hash.to_ipfs_link())
+            .cat(
+                LinkResolverContext::new(&deployment.hash, &logger),
+                &deployment.hash.to_ipfs_link(),
+            )
             .await
             .unwrap();
 
@@ -475,6 +480,7 @@ pub async fn setup<C: Blockchain>(
     let ipfs_client: Arc<dyn IpfsClient> = Arc::new(
         graph::ipfs::IpfsRpcClient::new_unchecked(
             graph::ipfs::ServerAddress::local_rpc_api(),
+            IpfsMetrics::new(&mock_registry),
             &logger,
         )
         .unwrap(),

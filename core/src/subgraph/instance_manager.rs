@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::metrics::subgraph::DeploymentStatusMetric;
 use graph::components::store::SourceableStore;
@@ -282,7 +283,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             if self.subgraph_store.is_deployed(&graft.base)? {
                 let file_bytes = self
                     .link_resolver
-                    .cat(&logger, &graft.base.to_ipfs_link())
+                    .cat(
+                        LinkResolverContext::new(&deployment.hash, &logger),
+                        &graft.base.to_ipfs_link(),
+                    )
                     .await?;
                 let yaml = String::from_utf8(file_bytes)?;
 

@@ -1295,9 +1295,13 @@ async fn build_subgraph_with_yarn_cmd_and_arg(
     arg: Option<&str>,
 ) -> DeploymentHash {
     // Test that IPFS is up.
-    ipfs::IpfsRpcClient::new(ipfs::ServerAddress::local_rpc_api(), &graph::log::discard())
-        .await
-        .expect("Could not connect to IPFS, make sure it's running at port 5001");
+    ipfs::IpfsRpcClient::new(
+        ipfs::ServerAddress::local_rpc_api(),
+        Default::default(),
+        &graph::log::discard(),
+    )
+    .await
+    .expect("Could not connect to IPFS, make sure it's running at port 5001");
 
     // Make sure dependencies are present.
 
