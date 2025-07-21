@@ -3,7 +3,6 @@ use diesel::pg::PgValue;
 use diesel::serialize::ToSql;
 use hex;
 use serde::{self, Deserialize, Serialize};
-use web3::types::*;
 
 use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
@@ -58,15 +57,9 @@ impl<'a> From<&'a [u8]> for Bytes {
     }
 }
 
-impl From<Address> for Bytes {
-    fn from(address: Address) -> Bytes {
+impl From<alloy::primitives::Address> for Bytes {
+    fn from(address: alloy::primitives::Address) -> Bytes {
         Bytes::from(address.as_ref())
-    }
-}
-
-impl From<web3::types::Bytes> for Bytes {
-    fn from(bytes: web3::types::Bytes) -> Bytes {
-        Bytes::from(bytes.0.as_slice())
     }
 }
 
