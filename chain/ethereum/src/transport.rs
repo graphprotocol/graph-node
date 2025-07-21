@@ -1,18 +1,21 @@
 use graph::components::network_provider::ProviderName;
-use graph::endpoint::EndpointMetrics;
-
+use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
+use graph::prelude::alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};
 use graph::prelude::*;
 use graph::url::Url;
 use std::sync::Arc;
+use std::task::{Context, Poll};
+use tower::Service;
 
-// Alloy imports for transport types
+use alloy::transports::{TransportError, TransportFut};
+
 use graph::prelude::alloy::transports::{http::Http, ipc::IpcConnect, ws::WsConnect};
 
 /// Abstraction over different transport types for Alloy providers.
 #[derive(Clone, Debug)]
 pub enum Transport {
     RPC {
-        client: Http<reqwest::Client>,
+        client: alloy::rpc::client::RpcClient,
         metrics: Arc<EndpointMetrics>,
         provider: ProviderName,
         url: String,
@@ -43,9 +46,6 @@ impl Transport {
     }
 
     /// Creates a JSON-RPC over HTTP transport.
-    ///
-    /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
-    /// blocks (one such example is Infura's HTTP endpoint).
     pub fn new_rpc(
         rpc: Url,
         headers: graph::http::HeaderMap,
@@ -60,8 +60,14 @@ impl Transport {
 
         let rpc_url = rpc.to_string();
 
+        // Create HTTP transport with metrics collection
+        let http_transport = Http::with_client(client, rpc);
+        let metrics_transport =
+            MetricsHttp::new(http_transport, metrics.clone(), provider.as_ref().into());
+        let rpc_client = alloy::rpc::client::RpcClient::new(metrics_transport, false);
+
         Transport::RPC {
-            client: Http::with_client(client, rpc),
+            client: rpc_client,
             metrics,
             provider: provider.as_ref().into(),
             url: rpc_url,
@@ -69,84 +75,68 @@ impl Transport {
     }
 }
 
-/*
-impl web3::Transport for Transport {
-    type Out = Pin<Box<dyn Future<Output = Result<Value, web3::error::Error>> + Send + 'static>>;
+/// Custom HTTP transport wrapper that collects metrics
+#[derive(Clone)]
+pub struct MetricsHttp {
+    inner: Http<reqwest::Client>,
+    metrics: Arc<EndpointMetrics>,
+    provider: ProviderName,
+}
 
-    fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
-        match self {
-            Transport::RPC {
-                client,
-                metrics: _,
-                provider: _,
-                url: _,
-            } => client.prepare(method, params),
-            Transport::IPC { transport, path: _ } => transport.prepare(method, params),
-            Transport::WS { transport, url: _ } => transport.prepare(method, params),
+impl MetricsHttp {
+    pub fn new(
+        inner: Http<reqwest::Client>,
+        metrics: Arc<EndpointMetrics>,
+        provider: ProviderName,
+    ) -> Self {
+        Self {
+            inner,
+            metrics,
+            provider,
         }
     }
+}
 
-    fn send(&self, id: RequestId, request: Call) -> Self::Out {
-        match self {
-            Transport::RPC {
-                client,
-                metrics,
+// Implement tower::Service trait for MetricsHttp to intercept RPC calls
+impl Service<RequestPacket> for MetricsHttp {
+    type Response = ResponsePacket;
+    type Error = TransportError;
+    type Future = TransportFut<'static>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, request: RequestPacket) -> Self::Future {
+        let metrics = self.metrics.clone();
+        let provider = self.provider.clone();
+        let mut inner = self.inner.clone();
+
+        Box::pin(async move {
+            // Extract method name from request
+            let method = match &request {
+                RequestPacket::Single(req) => req.method().to_string(),
+                RequestPacket::Batch(reqs) => reqs
+                    .first()
+                    .map(|r| r.method().to_string())
+                    .unwrap_or_else(|| "batch".to_string()),
+            };
+
+            let labels = RequestLabels {
                 provider,
-                url: _,
-            } => {
-                let metrics = metrics.cheap_clone();
-                let client = client.clone();
-                let method = match request {
-                    Call::MethodCall(ref m) => m.method.as_str(),
-                    _ => "unknown",
-                };
+                req_type: method.into(),
+                conn_type: ConnectionType::Rpc,
+            };
 
-                let labels = RequestLabels {
-                    provider: provider.clone(),
-                    req_type: method.into(),
-                    conn_type: graph::endpoint::ConnectionType::Rpc,
-                };
-                let out = async move {
-                    let out = client.send(id, request).await;
-                    match out {
-                        Ok(_) => metrics.success(&labels),
-                        Err(_) => metrics.failure(&labels),
-                    }
+            // Call inner transport and track metrics
+            let result = inner.call(request).await;
 
-                    out
-                };
-
-                Box::pin(out)
+            match &result {
+                Ok(_) => metrics.success(&labels),
+                Err(_) => metrics.failure(&labels),
             }
-            Transport::IPC { transport, path: _ } => Box::pin(transport.send(id, request)),
-            Transport::WS { transport, url: _ } => Box::pin(transport.send(id, request)),
-        }
+
+            result
+        })
     }
 }
-*/
-
-/*
-impl web3::BatchTransport for Transport {
-    type Batch = Box<
-        dyn Future<Output = Result<Vec<Result<Value, web3::error::Error>>, web3::error::Error>>
-            + Send
-            + Unpin,
-    >;
-
-    fn send_batch<T>(&self, requests: T) -> Self::Batch
-    where
-        T: IntoIterator<Item = (RequestId, Call)>,
-    {
-        match self {
-            Transport::RPC {
-                client,
-                metrics: _,
-                provider: _,
-                url: _,
-            } => Box::new(client.send_batch(requests)),
-            Transport::IPC { transport, path: _ } => Box::new(transport.send_batch(requests)),
-            Transport::WS { transport, url: _ } => Box::new(transport.send_batch(requests)),
-        }
-    }
-}
-*/

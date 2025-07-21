@@ -140,10 +140,9 @@ impl EthereumAdapter {
         call_only: bool,
     ) -> Self {
         let alloy = match &transport {
-            Transport::RPC { client, .. } => Arc::new(
-                alloy::providers::ProviderBuilder::new()
-                    .connect_client(alloy::rpc::client::RpcClient::new(client.clone(), false)),
-            ),
+            Transport::RPC { client, .. } => {
+                Arc::new(alloy::providers::ProviderBuilder::new().connect_client(client.clone()))
+            }
             Transport::IPC(ipc_connect) => Arc::new(
                 alloy::providers::ProviderBuilder::new()
                     .connect_ipc(ipc_connect.clone())
