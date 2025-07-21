@@ -2,11 +2,11 @@ use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::abi;
 use graph::abi::DynSolValueExt;
 use graph::abi::FunctionExt;
-use graph::alloy_todo;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::blockchain::ExtendedBlockPtr;
+use graph::components::ethereum::*;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar;
@@ -52,7 +52,6 @@ use graph::{
         ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger, TimeoutError,
     },
 };
-use graph::{components::ethereum::*, prelude::web3::api::Web3};
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -92,7 +91,6 @@ type AlloyProvider = FillProvider<
 pub struct EthereumAdapter {
     logger: Logger,
     provider: String,
-    web3: Arc<Web3<Transport>>,
     alloy: Arc<AlloyProvider>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
@@ -105,7 +103,6 @@ impl std::fmt::Debug for EthereumAdapter {
         f.debug_struct("EthereumAdapter")
             .field("logger", &self.logger)
             .field("provider", &self.provider)
-            .field("web3", &self.web3)
             .field("alloy", &"<Provider>")
             .field("metrics", &self.metrics)
             .field("supports_eip_1898", &self.supports_eip_1898)
@@ -120,7 +117,6 @@ impl CheapClone for EthereumAdapter {
         Self {
             logger: self.logger.clone(),
             provider: self.provider.clone(),
-            web3: self.web3.cheap_clone(),
             alloy: self.alloy.clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
@@ -143,28 +139,28 @@ impl EthereumAdapter {
         supports_eip_1898: bool,
         call_only: bool,
     ) -> Self {
-        let rpc_url = match &transport {
-            Transport::RPC {
-                client: _,
-                metrics: _,
-                provider: _,
-                url: rpc_url,
-            } => rpc_url.clone(),
-            Transport::IPC(_ipc) => alloy_todo!(),
-            Transport::WS(_web_socket) => alloy_todo!(),
+        let alloy = match &transport {
+            Transport::RPC { client, .. } => Arc::new(
+                alloy::providers::ProviderBuilder::new()
+                    .connect_client(alloy::rpc::client::RpcClient::new(client.clone(), false)),
+            ),
+            Transport::IPC(ipc_connect) => Arc::new(
+                alloy::providers::ProviderBuilder::new()
+                    .connect_ipc(ipc_connect.clone())
+                    .await
+                    .unwrap(),
+            ),
+            Transport::WS(ws_connect) => Arc::new(
+                alloy::providers::ProviderBuilder::new()
+                    .connect_ws(ws_connect.clone())
+                    .await
+                    .unwrap(),
+            ),
         };
-        let web3 = Arc::new(Web3::new(transport));
-        let alloy = Arc::new(
-            alloy::providers::ProviderBuilder::new()
-                .connect(&rpc_url)
-                .await
-                .unwrap(),
-        );
 
         EthereumAdapter {
             logger,
             provider,
-            web3,
             alloy,
             metrics: provider_metrics,
             supports_eip_1898,
@@ -305,7 +301,7 @@ impl EthereumAdapter {
     // cached. The result is not used for anything critical, so it is fine to be lazy.
     async fn check_block_receipt_support_and_update_cache(
         &self,
-        alloy: Arc<dyn alloy::providers::Provider>,
+        alloy: Arc<dyn Provider>,
         block_hash: B256,
         supports_eip_1898: bool,
         call_only: bool,
@@ -2156,7 +2152,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
 /// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry loop.
 async fn fetch_transaction_receipts_in_batch_with_retry(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
@@ -2182,7 +2178,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
 
 /// Deprecated. Attempts to fetch multiple transaction receipts in a batching context.
 async fn fetch_transaction_receipts_in_batch(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
@@ -2212,7 +2208,7 @@ async fn fetch_transaction_receipts_in_batch(
 }
 
 async fn batch_get_transaction_receipts(
-    provider: Arc<dyn alloy::providers::Provider>,
+    provider: Arc<dyn Provider>,
     tx_hashes: Vec<B256>,
 ) -> Result<Vec<Option<alloy::rpc::types::TransactionReceipt>>, Box<dyn std::error::Error>> {
     let mut batch = alloy::rpc::client::BatchRequest::new(provider.client());
@@ -2242,7 +2238,7 @@ async fn batch_get_transaction_receipts(
 }
 
 pub(crate) async fn check_block_receipt_support(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     block_hash: B256,
     supports_eip_1898: bool,
     call_only: bool,
@@ -2271,7 +2267,7 @@ pub(crate) async fn check_block_receipt_support(
 // based on whether block receipts are supported or individual transaction receipts
 // need to be fetched.
 async fn fetch_receipts_with_retry(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
@@ -2285,7 +2281,7 @@ async fn fetch_receipts_with_retry(
 
 // Fetches receipts for each transaction in the block individually.
 async fn fetch_individual_receipts_with_retry(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
@@ -2316,7 +2312,7 @@ async fn fetch_individual_receipts_with_retry(
 
 /// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
 async fn fetch_block_receipts_with_retry(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
@@ -2361,7 +2357,7 @@ async fn fetch_block_receipts_with_retry(
 
 /// Retries fetching a single transaction receipt using alloy, then converts to web3 format.
 async fn fetch_transaction_receipt_with_retry(
-    alloy: Arc<dyn alloy::providers::Provider>,
+    alloy: Arc<dyn Provider>,
     transaction_hash: B256,
     block_hash: B256,
     logger: Logger,
