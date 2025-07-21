@@ -121,7 +121,7 @@ fn is_parity_revert(data: &str) -> bool {
         || data == XDAI_REVERT
 }
 
-/// Checks if the given `web3::Error` corresponds to a Parity / Nethermind style EVM
+/// Checks if the given data corresponds to a Parity / Nethermind style EVM
 /// revert and, if so, tries to extract a human-readable revert reason. Returns `Some`
 /// with the reason when the error is identified as a revert, otherwise `None`.
 fn parity_revert_reason(data: &str) -> String {

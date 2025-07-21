@@ -501,8 +501,6 @@ impl<'a> EthereumTransactionData<'a> {
     }
 
     pub fn from(&self) -> &Address {
-        // unwrap: this is always `Some` for txns that have been mined
-        //         (see https://github.com/tomusdrw/rust-web3/pull/407)
         self.tx.inner.signer_ref()
     }
 

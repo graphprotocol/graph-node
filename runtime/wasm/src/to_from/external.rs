@@ -4,11 +4,11 @@ use graph::data::store::scalar::Timestamp;
 use graph::data::value::Word;
 use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
+use graph::runtime::AscHeap;
 use graph::runtime::{
     asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
 };
 use graph::{data::store, runtime::DeterministicHostError};
-use graph::{prelude::web3::types as web3, runtime::AscHeap};
 use graph::{
     prelude::{
         alloy::{self, primitives::U256},
@@ -19,38 +19,6 @@ use graph::{
 use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class::*;
-
-impl ToAscObj<Uint8Array> for web3::H160 {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas)
-    }
-}
-
-impl ToAscObj<Uint8Array> for web3::Bytes {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas)
-    }
-}
-
-impl FromAscObj<Uint8Array> for web3::H160 {
-    fn from_asc_obj<H: AscHeap + ?Sized>(
-        typed_array: Uint8Array,
-        heap: &H,
-        gas: &GasCounter,
-        depth: usize,
-    ) -> Result<Self, DeterministicHostError> {
-        let data = <[u8; 20]>::from_asc_obj(typed_array, heap, gas, depth)?;
-        Ok(Self(data))
-    }
-}
 
 impl FromAscObj<Uint8Array> for alloy::primitives::Address {
     fn from_asc_obj<H: AscHeap + ?Sized>(
@@ -93,40 +61,6 @@ impl FromAscObj<Uint8Array> for alloy::primitives::B256 {
     ) -> Result<Self, DeterministicHostError> {
         let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
         Ok(Self(data))
-    }
-}
-
-// impl FromAscObj<Uint8Array> for web3::H256 {
-//     fn from_asc_obj<H: AscHeap + ?Sized>(
-//         typed_array: Uint8Array,
-//         heap: &H,
-//         gas: &GasCounter,
-//         depth: usize,
-//     ) -> Result<Self, DeterministicHostError> {
-//         let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
-//         Ok(Self(data))
-//     }
-// }
-
-// impl ToAscObj<Uint8Array> for web3::H256 {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<Uint8Array, HostExportError> {
-//         self.0.to_asc_obj(heap, gas)
-//     }
-// }
-
-impl ToAscObj<AscBigInt> for web3::U128 {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscBigInt, HostExportError> {
-        let mut bytes: [u8; 16] = [0; 16];
-        self.to_little_endian(&mut bytes);
-        bytes.to_asc_obj(heap, gas)
     }
 }
 

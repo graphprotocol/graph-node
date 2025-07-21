@@ -118,5 +118,4 @@ cheap_clone_is_copy!(
     &'static str,
     std::time::Duration
 );
-cheap_clone_is_copy!(web3::types::Address);
 cheap_clone_is_copy!(alloy::primitives::Address);

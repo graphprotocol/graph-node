@@ -3254,7 +3254,6 @@ dependencies = [
  "tonic-build",
  "url",
  "wasmparser 0.118.2",
- "web3",
  "wiremock",
 ]
 
@@ -3534,6 +3533,7 @@ dependencies = [
  "slog",
  "tokio",
  "tokio-stream",
+ "web3",
 ]
 
 [[package]]

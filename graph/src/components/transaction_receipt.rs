@@ -6,7 +6,6 @@
 use alloy::primitives::B256;
 use alloy::rpc::types::TransactionReceipt;
 
-/// Like web3::types::Receipt, but with fewer fields.
 #[derive(Debug, PartialEq, Eq)]
 pub struct LightTransactionReceipt {
     pub transaction_hash: B256,
