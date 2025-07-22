@@ -446,7 +446,7 @@ impl RowGroup {
         if self.immutable {
             match row {
                 EntityModification::Insert { .. } => {
-                    self.rows.push(row);
+                    self.push_row(row);
                 }
                 EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => {
                     return Err(internal_error!(
