@@ -2,6 +2,7 @@ use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
     components::network_provider::ChainName,
+    endpoint::Compression,
     env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
@@ -516,6 +517,7 @@ impl ChainSection {
                         features,
                         headers: Default::default(),
                         rules: vec![],
+                        compression: Compression::None,
                     }),
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
@@ -694,6 +696,10 @@ pub struct Web3Provider {
 
     #[serde(default, rename = "match")]
     rules: Vec<Web3Rule>,
+
+    /// Compression method for RPC requests and responses
+    #[serde(default)]
+    pub compression: Compression,
 }
 
 impl Web3Provider {
@@ -891,6 +897,7 @@ impl<'de> Deserialize<'de> for Provider {
                             .ok_or_else(|| serde::de::Error::missing_field("features"))?,
                         headers: headers.unwrap_or_else(HeaderMap::new),
                         rules: nodes,
+                        compression: Compression::None,
                     }),
                 };
 
@@ -1203,6 +1210,7 @@ mod tests {
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
+    use graph::endpoint::Compression;
     use graph::firehose::SubgraphLimit;
     use graph::http::{HeaderMap, HeaderValue};
     use graph::prelude::regex::Regex;
@@ -1291,6 +1299,7 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
+                    compression: Compression::None,
                 }),
             },
             actual
@@ -1317,6 +1326,7 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
+                    compression: Compression::None,
                 }),
             },
             actual
@@ -1378,6 +1388,7 @@ mod tests {
                     features,
                     headers,
                     rules: Vec::new(),
+                    compression: Compression::None,
                 }),
             },
             actual
@@ -1403,6 +1414,7 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
+                    compression: Compression::None,
                 }),
             },
             actual
@@ -1613,6 +1625,7 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
+                    compression: Compression::None,
                 }),
             },
             actual
@@ -1623,6 +1636,66 @@ mod tests {
     fn web3rules_have_the_right_order() {
         assert!(SubgraphLimit::Unlimited > SubgraphLimit::Limit(10));
         assert!(SubgraphLimit::Limit(10) > SubgraphLimit::Disabled);
+    }
+
+    #[test]
+    fn it_parses_web3_provider_with_compression() {
+        let actual = toml::from_str(
+            r#"
+            label = "compressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive"], compression = "gzip" }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "compressed".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features: {
+                        let mut features = BTreeSet::new();
+                        features.insert("archive".to_string());
+                        features
+                    },
+                    headers: HeaderMap::new(),
+                    rules: Vec::new(),
+                    compression: Compression::Gzip,
+                }),
+            },
+            actual
+        );
+    }
+
+    #[test]
+    fn it_parses_web3_provider_with_no_compression() {
+        let actual = toml::from_str(
+            r#"
+            label = "uncompressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive"], compression = "none" }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "uncompressed".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features: {
+                        let mut features = BTreeSet::new();
+                        features.insert("archive".to_string());
+                        features
+                    },
+                    headers: HeaderMap::new(),
+                    rules: Vec::new(),
+                    compression: Compression::None,
+                }),
+            },
+            actual
+        );
     }
 
     #[test]

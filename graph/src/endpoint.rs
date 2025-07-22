@@ -7,6 +7,7 @@ use std::{
 };
 
 use prometheus::IntCounterVec;
+use serde::{Deserialize, Serialize};
 use slog::{warn, Logger};
 
 use crate::components::network_provider::ProviderName;
@@ -16,6 +17,16 @@ use crate::{components::metrics::MetricsRegistry, data::value::Word};
 /// we require that all the hosts are known ahead of time, this way we can
 /// avoid locking since we don't need to modify the entire struture.
 type ProviderCount = Arc<HashMap<ProviderName, AtomicU64>>;
+
+/// Compression methods for RPC transports
+#[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub enum Compression {
+    #[default]
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "gzip")]
+    Gzip,
+}
 
 /// This struct represents all the current labels except for the result
 /// which is added separately. If any new labels are necessary they should

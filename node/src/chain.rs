@@ -210,7 +210,8 @@ pub async fn create_ethereum_networks_for_chain(
             logger,
             "Creating transport";
             "url" => &web3.url,
-            "capabilities" => capabilities
+            "capabilities" => capabilities,
+            "compression" => ?web3.compression
         );
 
         use crate::config::Transport::*;
@@ -223,6 +224,7 @@ pub async fn create_ethereum_networks_for_chain(
                 endpoint_metrics.cheap_clone(),
                 &provider.label,
                 no_eip2718,
+                web3.compression,
             ),
             Ipc => Transport::new_ipc(&web3.url).await,
             Ws => Transport::new_ws(&web3.url).await,

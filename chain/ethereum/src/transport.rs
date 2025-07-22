@@ -1,6 +1,6 @@
 use alloy::transports::{TransportError, TransportErrorKind, TransportFut};
 use graph::components::network_provider::ProviderName;
-use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
+use graph::endpoint::{Compression, ConnectionType, EndpointMetrics, RequestLabels};
 use graph::prelude::alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};
 use graph::prelude::alloy::transports::{ipc::IpcConnect, ws::WsConnect};
 use graph::prelude::*;
@@ -49,11 +49,15 @@ impl Transport {
         metrics: Arc<EndpointMetrics>,
         provider: impl AsRef<str>,
         no_eip2718: bool,
+        compression: Compression,
     ) -> Self {
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("Failed to build HTTP client");
+        let mut client_builder = reqwest::Client::builder().default_headers(headers);
+
+        if matches!(compression, Compression::Gzip) {
+            client_builder = client_builder.gzip(true);
+        }
+
+        let client = client_builder.build().expect("Failed to build HTTP client");
 
         let patching_transport = PatchingHttp::new(client, rpc, no_eip2718);
         let metrics_transport =

@@ -314,6 +314,7 @@ mod tests {
     use graph::components::network_provider::ProviderManager;
     use graph::components::network_provider::ProviderName;
     use graph::data::value::Word;
+    use graph::endpoint::Compression;
     use graph::http::HeaderMap;
     use graph::{
         endpoint::EndpointMetrics,
@@ -395,6 +396,7 @@ mod tests {
             metrics.clone(),
             "",
             false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -499,6 +501,7 @@ mod tests {
             metrics.clone(),
             "",
             false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -571,6 +574,7 @@ mod tests {
             metrics.clone(),
             "",
             false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -636,6 +640,7 @@ mod tests {
             metrics.clone(),
             "",
             false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -924,6 +929,7 @@ mod tests {
             endpoint_metrics.clone(),
             "",
             false,
+            Compression::None,
         );
 
         Arc::new(
