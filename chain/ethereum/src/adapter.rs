@@ -52,7 +52,6 @@ pub struct EventSignatureWithTopics {
 }
 
 impl EventSignatureWithTopics {
-    #[allow(dead_code)]
     pub fn new(
         address: Option<Address>,
         signature: B256,
@@ -73,7 +72,6 @@ impl EventSignatureWithTopics {
     /// If self.address is None, it's considered a wildcard match.
     /// Otherwise, it must match the provided address.
     /// It must also match the topics if they are Some
-    #[allow(dead_code)]
     pub fn matches(&self, address: Option<&Address>, sig: B256, topics: &[B256]) -> bool {
         // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
         let address_matches = match self.address {
@@ -146,11 +144,11 @@ enum LogFilterNode {
 /// Corresponds to an `eth_getLogs` call.
 #[derive(Clone, Debug)]
 pub struct EthGetLogsFilter {
-    pub contracts: Vec<alloy::primitives::Address>,
-    pub event_signatures: Vec<alloy::primitives::B256>,
-    pub topic1: Option<Vec<alloy::primitives::B256>>,
-    pub topic2: Option<Vec<alloy::primitives::B256>>,
-    pub topic3: Option<Vec<alloy::primitives::B256>>,
+    pub contracts: Vec<Address>,
+    pub event_signatures: Vec<B256>,
+    pub topic1: Option<Vec<B256>>,
+    pub topic2: Option<Vec<B256>>,
+    pub topic3: Option<Vec<B256>>,
 }
 
 impl EthGetLogsFilter {
@@ -175,7 +173,7 @@ impl EthGetLogsFilter {
         filter_builder
     }
 
-    fn from_contract(address: alloy::primitives::Address) -> Self {
+    fn from_contract(address: Address) -> Self {
         EthGetLogsFilter {
             contracts: vec![address],
             event_signatures: vec![],
@@ -185,7 +183,7 @@ impl EthGetLogsFilter {
         }
     }
 
-    fn from_event(event: alloy::primitives::B256) -> Self {
+    fn from_event(event: B256) -> Self {
         EthGetLogsFilter {
             contracts: vec![],
             event_signatures: vec![event],
@@ -225,7 +223,7 @@ impl fmt::Display for EthGetLogsFilter {
         };
 
         // Helper to format topics as strings
-        let format_topics = |topics: &Option<Vec<alloy::primitives::B256>>| -> String {
+        let format_topics = |topics: &Option<Vec<B256>>| -> String {
             topics.as_ref().map_or_else(
                 || "None".to_string(),
                 |ts| {
@@ -451,49 +449,6 @@ impl EthereumLogFilter {
         false
     }
 
-    /// Similar to [`matches`], checks if a transaction receipt is required for this log filter.
-    pub fn requires_transaction_receipt_alloy(
-        &self,
-        event_signature: &alloy::primitives::B256,
-        contract_address: Option<&alloy::primitives::Address>,
-        topics: &[alloy::primitives::B256],
-    ) -> bool {
-        // Check for wildcard events first.
-        if self.wildcard_events.get(event_signature) == Some(&true) {
-            return true;
-        }
-
-        // Next, check events with topic filters.
-        if self
-            .events_with_topic_filters
-            .iter()
-            .any(|(event_with_topics, &requires_receipt)| {
-                requires_receipt
-                    && event_with_topics.matches(contract_address, *event_signature, topics)
-            })
-        {
-            return true;
-        }
-
-        // Finally, check the contracts_and_events_graph if a contract address is specified.
-        if let Some(address) = contract_address {
-            let contract_node = LogFilterNode::Contract(*address);
-            let event_node = LogFilterNode::Event(*event_signature);
-
-            // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
-            for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
-                if r && ((s == contract_node && t == event_node)
-                    || (t == contract_node && s == event_node))
-                {
-                    return true;
-                }
-            }
-        }
-
-        // If none of the conditions above match, return false.
-        false
-    }
-
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         let mut this = EthereumLogFilter::default();
         for ds in iter {
@@ -596,7 +551,7 @@ impl EthereumLogFilter {
         filters.extend(
             self.wildcard_events
                 .into_keys()
-                .map(|event| EthGetLogsFilter::from_event(event)),
+                .map(EthGetLogsFilter::from_event),
         );
 
         // Handle events with topic filters.
@@ -649,9 +604,7 @@ impl EthereumLogFilter {
                         }
                         filter.contracts.push(address);
                     }
-                    LogFilterNode::Event(event_sig) => {
-                        filter.event_signatures.push(event_sig);
-                    }
+                    LogFilterNode::Event(event_sig) => filter.event_signatures.push(event_sig),
                 }
             }
 
@@ -1214,7 +1167,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn get_balance(
         &self,
         logger: &Logger,
-        address: alloy::primitives::Address,
+        address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::U256, EthereumRpcError>;
 
@@ -1222,7 +1175,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn get_code(
         &self,
         logger: &Logger,
-        address: alloy::primitives::Address,
+        address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::Bytes, EthereumRpcError>;
 }
@@ -1807,14 +1760,10 @@ fn complete_log_filter() {
 
     // Test a few combinations of complete graphs.
     for i in [1, 2] {
-        let events: BTreeSet<_> = (0..i)
-            .map(|n| alloy::primitives::B256::from([n as u8; 32]))
-            .collect();
+        let events: BTreeSet<_> = (0..i).map(|n| B256::from([n as u8; 32])).collect();
 
         for j in [1, 1000, 2000, 3000] {
-            let contracts: BTreeSet<_> = (0..j)
-                .map(|n| alloy::primitives::Address::from([n as u8; 20]))
-                .collect();
+            let contracts: BTreeSet<_> = (0..j).map(|n| Address::from([n as u8; 20])).collect();
 
             // Construct the complete bipartite graph with i events and j contracts.
             let mut contracts_and_events_graph = GraphMap::new();
