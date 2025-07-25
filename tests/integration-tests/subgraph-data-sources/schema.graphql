@@ -4,3 +4,9 @@ type MirrorBlock @entity {
   hash: Bytes!
   testMessage: String
 }
+
+type MirrorBlockBytes @entity {
+  id: Bytes!
+  number: BigInt!
+  testMessage: String
+}

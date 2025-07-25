@@ -1,5 +1,5 @@
 import { ethereum, log, store } from '@graphprotocol/graph-ts';
-import { Block, Block2 } from '../generated/schema';
+import { Block, Block2, Block3 } from '../generated/schema';
 
 export function handleBlock(block: ethereum.Block): void {
   log.info('handleBlock {}', [block.number.toString()]);
@@ -22,4 +22,10 @@ export function handleBlock(block: ethereum.Block): void {
   blockEntity3.hash = block.hash;
   blockEntity3.testMessage = block.number.toString().concat('-message');
   blockEntity3.save();
+
+  let id4 = block.hash;
+  let blockEntity4 = new Block3(id4);
+  blockEntity4.number = block.number;
+  blockEntity4.testMessage = block.number.toString().concat('-message');
+  blockEntity4.save();
 }
