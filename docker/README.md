@@ -36,12 +36,13 @@ can access these via:
 Once this is up and running, you can use
 [`graph-cli`](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli) to create and
 deploy your subgraph to the running Graph Node.
-  
+
 ### Running Graph Node on an Macbook M1
-  
+
 We do not currently build native images for Macbook M1, which can lead to processes being killed due to out-of-memory errors (code 137). Based on the example `docker-compose.yml` is possible to rebuild the image for your M1 by running the following, then running `docker-compose up` as normal:
- 
+
 > **Important** Increase memory limits for the docker engine running on your machine. Otherwise docker build command will fail due to out of memory error. To do that, open docker-desktop and go to Resources/advanced/memory.
+
 ```
 # Remove the original image
 docker rmi graphprotocol/graph-node:latest
@@ -65,4 +66,41 @@ docker run -it \
   -e ipfs=<HOST>:<PORT> \
   -e ethereum=<NETWORK_NAME>:<ETHEREUM_RPC_URL> \
   graphprotocol/graph-node:latest
+```
+
+## Running with emulator
+
+There are certain chains that do not support the `eth_getBlockReceipts` method which is required for indexing (e.g. Oasis Sapphire). We can run a graph node with an emulator to support this method.
+
+Cd into the `emulator` directory and install dependencies:
+
+```sh
+npm install
+```
+
+In docker-compose.yml, do the following:
+
+- Uncomment the entire `emulator` service block.
+- Replace `<YOUR_CHAIN_RPC_URL>` with your actual RPC URL (e.g. from Chainstack).
+- Uncomment the `depends_on` line for emulator.
+- Comment out the default Ethereum RPC under `graph-node` and instead uncomment the emulator RPC line.
+
+Example:
+
+```yaml
+# emulator:
+#   build: ./emulator
+#   ports:
+#     - '8545:8545'
+#   environment:
+#     UPSTREAM_RPC: https://oasis-sapphire-mainnet.core.chainstack.com/<your-key>
+
+# ...
+# ethereum: 'oasis:http://emulator:8545'  # Use this
+```
+
+Once done, save and run:
+
+```sh
+docker-compose up
 ```
