@@ -45,7 +45,7 @@ num-traits = "=0.2.19"
 rand.workspace = true
 redis = { workspace = true }
 regex = "1.5.4"
-semver = { version = "1.0.23", features = ["serde"] }
+semver = { version = "1.0.26", features = ["serde"] }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
