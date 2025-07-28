@@ -39,7 +39,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
-async-graphql = { version = "7.0.15", features = ["chrono"] }
+async-graphql = { version = "7.0.17", features = ["chrono"] }
 async-graphql-axum = "7.0.15"
 axum = "0.8.3"
 chrono = "0.4.41"
