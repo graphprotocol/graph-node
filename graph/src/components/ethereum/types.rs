@@ -34,8 +34,8 @@ impl BlockWrapper {
         self.0.header.timestamp
     }
 
-    pub fn transactions(&self) -> &[Transaction] {
-        &self.0.transactions.as_transactions().unwrap()
+    pub fn transactions(&self) -> Option<&[Transaction]> {
+        self.0.transactions.as_transactions()
     }
 
     pub fn inner(&self) -> &AlloyBlock {

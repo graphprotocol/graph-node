@@ -41,17 +41,13 @@ where
     }
 }
 
-// impl TryDecodeProto<[u8; 256], H2048> for &[u8] {}
-// impl TryDecodeProto<[u8; 32], H256> for &[u8] {}
-// impl TryDecodeProto<[u8; 20], H160> for &[u8] {}
-
 impl TryDecodeProto<[u8; 32], B256> for &[u8] {}
 impl TryDecodeProto<[u8; 256], B2048> for &[u8] {}
 impl TryDecodeProto<[u8; 20], Address> for &[u8] {}
 
-impl From<&BigInt> for alloy::primitives::U256 {
+impl From<&BigInt> for U256 {
     fn from(val: &BigInt) -> Self {
-        alloy::primitives::U256::from_be_slice(&val.bytes)
+        U256::from_be_slice(&val.bytes)
     }
 }
 
@@ -78,7 +74,7 @@ impl<'a> TryInto<EthereumCall> for CallAt<'a> {
                 .call
                 .value
                 .as_ref()
-                .map_or_else(|| alloy::primitives::U256::from(0), |v| v.into()),
+                .map_or_else(|| U256::from(0), |v| v.into()),
             gas_used: self.call.gas_consumed,
             input: Bytes::from(self.call.input.clone()),
             output: Bytes::from(self.call.return_data.clone()),

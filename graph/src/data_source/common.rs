@@ -415,7 +415,11 @@ impl CallDecl {
         self.expr.validate_args()
     }
 
-    pub fn address_for_log(&self, log: &Log, params: &[abi::DynSolParam]) -> Result<Address, Error> {
+    pub fn address_for_log(
+        &self,
+        log: &Log,
+        params: &[abi::DynSolParam],
+    ) -> Result<Address, Error> {
         self.address_for_log_with_abi(log, params)
     }
 
@@ -1643,9 +1647,9 @@ mod tests {
         let parser = ExprParser::new();
 
         let tuple_fields = vec![
-            DynSolValue::Uint(U256::from(8u8), 8),           // index 0: uint8
-            DynSolValue::Address(Address::from([1u8; 20])),  // index 1: address
-            DynSolValue::Uint(U256::from(1000u64), 256),     // index 2: uint256
+            DynSolValue::Uint(U256::from(8u8), 8), // index 0: uint8
+            DynSolValue::Address(Address::from([1u8; 20])), // index 1: address
+            DynSolValue::Uint(U256::from(1000u64), 256), // index 2: uint256
         ];
 
         // Test extract_struct_field with numeric indices
@@ -1687,9 +1691,9 @@ mod tests {
 
     #[test]
     fn test_declarative_call_error_context() {
-        use alloy::rpc::types::Log;
-        use crate::abi::{DynSolValue, DynSolParam};
+        use crate::abi::{DynSolParam, DynSolValue};
         use alloy::primitives::U256;
+        use alloy::rpc::types::Log;
 
         let parser = ExprParser::new();
 
@@ -1769,14 +1773,14 @@ mod tests {
         // The parser thinks there should be 3 fields based on ABI, but at runtime we provide only 2
         let base_struct = DynSolValue::Tuple(vec![
             DynSolValue::Address(alloy::primitives::Address::from([1u8; 20])), // addr at index 0
-            DynSolValue::Uint(U256::from(100u64), 256), // amount at index 1
-                                              // Missing the active field at index 2!
+            DynSolValue::Uint(U256::from(100u64), 256),                        // amount at index 1
+                                                                               // Missing the active field at index 2!
         ]);
 
         let params = vec![DynSolParam {
             name: "complexAsset".to_string(),
             value: DynSolValue::Tuple(vec![
-                base_struct,                           // base with only 2 fields
+                base_struct,                                 // base with only 2 fields
                 DynSolValue::String("metadata".to_string()), // metadata at index 1
                 DynSolValue::Array(vec![]),                  // values at index 2
             ]),
@@ -1806,13 +1810,13 @@ mod tests {
         //   string name;         // index 1
         // }
         let inner_struct = DynSolValue::Tuple(vec![
-            DynSolValue::Address(Address::from([0x42; 20])),      // token.addr
-            DynSolValue::String("TokenName".to_string()), // token.name
+            DynSolValue::Address(Address::from([0x42; 20])), // token.addr
+            DynSolValue::String("TokenName".to_string()),    // token.name
         ]);
 
         let outer_struct = DynSolValue::Tuple(vec![
-            DynSolValue::Uint(U256::from(1u8), 8),     // asset.kind
-            inner_struct,                             // asset.token
+            DynSolValue::Uint(U256::from(1u8), 8),       // asset.kind
+            inner_struct,                                // asset.token
             DynSolValue::Uint(U256::from(1000u64), 256), // asset.amount
         ]);
 

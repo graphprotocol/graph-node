@@ -16,7 +16,6 @@ use graph::{
     },
     runtime::FromAscObj,
 };
-use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class::*;
 
