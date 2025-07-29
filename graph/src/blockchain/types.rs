@@ -85,12 +85,6 @@ impl fmt::LowerHex for BlockHash {
     }
 }
 
-// impl From<H256> for BlockHash {
-//     fn from(hash: H256) -> Self {
-//         BlockHash(hash.as_bytes().into())
-//     }
-// }
-
 impl From<Vec<u8>> for BlockHash {
     fn from(bytes: Vec<u8>) -> Self {
         BlockHash(bytes.as_slice().into())

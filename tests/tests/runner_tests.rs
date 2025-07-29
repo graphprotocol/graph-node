@@ -15,9 +15,7 @@ use graph::env::{EnvVars, TEST_WITH_NO_REORG};
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
 use graph::prelude::alloy::primitives::{Address, B256, U256};
-use graph::prelude::{
-    hex, CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
-};
+use graph::prelude::{hex, CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
     push_test_polling_trigger,

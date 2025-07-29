@@ -1589,9 +1589,6 @@ fn string_to_b256(s: &str) -> B256 {
     sponge.update(&data);
     sponge.finalize(&mut result);
 
-    // This was deprecated but the replacement seems to not be available in the
-    // version web3 uses.
-    #[allow(deprecated)]
     B256::from_slice(&result)
 }
 

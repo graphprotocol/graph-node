@@ -2047,6 +2047,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
         match &block.block {
             BlockFinality::Final(ref block) => block
                 .transactions()
+                .ok_or_else(|| anyhow!("Block transactions not available"))?
                 .iter()
                 .filter(|transaction| transaction_hashes.contains(transaction.inner.tx_hash()))
                 .collect(),
