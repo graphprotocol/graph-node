@@ -41,6 +41,10 @@ impl BlockWrapper {
     pub fn inner(&self) -> &AlloyBlock {
         &self.0
     }
+
+    pub fn base_fee_per_gas(&self) -> Option<u64> {
+        self.0.header.base_fee_per_gas
+    }
 }
 
 pub type LightEthereumBlock = BlockWrapper;
