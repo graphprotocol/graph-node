@@ -15,8 +15,8 @@ use std::time::{self, Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use graph::futures03::StreamExt;
+use graph::prelude::alloy::primitives::U256;
 use graph::prelude::serde_json::{json, Value};
-use graph::prelude::web3::types::U256;
 use graph_tests::contract::Contract;
 use graph_tests::helpers::{run_checked, TestFile};
 use graph_tests::subgraph::Subgraph;
@@ -24,6 +24,7 @@ use graph_tests::{error, status, CONFIG};
 use tokio::process::{Child, Command};
 use tokio::task::JoinError;
 use tokio::time::sleep;
+use web3;
 
 const SUBGRAPH_LAST_GRAFTING_BLOCK: i32 = 3;
 
@@ -634,6 +635,10 @@ pub async fn subgraph_data_sources(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn alloy_u256_to_web3_u256(u: U256) -> web3::types::U256 {
+    web3::types::U256::from_little_endian(u.as_le_slice())
+}
+
 async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
@@ -648,9 +653,9 @@ async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
         .call(
             "emitAnotherTrigger",
             (
-                U256::from(1),
-                U256::from(2),
-                U256::from(3),
+                alloy_u256_to_web3_u256(U256::from(1)),
+                alloy_u256_to_web3_u256(U256::from(2)),
+                alloy_u256_to_web3_u256(U256::from(3)),
                 "abc".to_string(),
             ),
         )
@@ -661,9 +666,9 @@ async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
         .call(
             "emitAnotherTrigger",
             (
-                U256::from(1),
-                U256::from(1),
-                U256::from(1),
+                alloy_u256_to_web3_u256(U256::from(1)),
+                alloy_u256_to_web3_u256(U256::from(1)),
+                alloy_u256_to_web3_u256(U256::from(1)),
                 "abc".to_string(),
             ),
         )
@@ -674,9 +679,9 @@ async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
         .call(
             "emitAnotherTrigger",
             (
-                U256::from(4),
-                U256::from(2),
-                U256::from(3),
+                alloy_u256_to_web3_u256(U256::from(4)),
+                alloy_u256_to_web3_u256(U256::from(2)),
+                alloy_u256_to_web3_u256(U256::from(3)),
                 "abc".to_string(),
             ),
         )
@@ -687,9 +692,9 @@ async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
         .call(
             "emitAnotherTrigger",
             (
-                U256::from(4),
-                U256::from(4),
-                U256::from(3),
+                alloy_u256_to_web3_u256(U256::from(4)),
+                alloy_u256_to_web3_u256(U256::from(4)),
+                alloy_u256_to_web3_u256(U256::from(3)),
                 "abc".to_string(),
             ),
         )

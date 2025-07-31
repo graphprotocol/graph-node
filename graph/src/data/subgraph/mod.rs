@@ -3,6 +3,7 @@ pub mod schema;
 
 /// API version and spec version.
 pub mod api_version;
+use alloy::primitives::Address;
 pub use api_version::*;
 
 pub mod features;
@@ -29,7 +30,6 @@ use std::{
 };
 use thiserror::Error;
 use wasmparser;
-use web3::types::Address;
 
 use crate::{
     bail,

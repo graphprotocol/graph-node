@@ -3,12 +3,13 @@ use std::str::FromStr;
 use graph::prelude::{
     lazy_static,
     serde_json::{self, Value},
-    web3::{
-        api::{Eth, Namespace},
-        contract::{tokens::Tokenize, Contract as Web3Contract, Options},
-        transports::Http,
-        types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256},
-    },
+};
+
+use web3::{
+    api::{Eth, Namespace},
+    contract::{tokens::Tokenize, Contract as Web3Contract, Options},
+    transports::Http,
+    types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256},
 };
 // web3 version 0.18 does not expose this; once the graph crate updates to
 // version 0.19, we can use web3::signing::SecretKey from the graph crate
