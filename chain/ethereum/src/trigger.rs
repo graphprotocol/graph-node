@@ -5,7 +5,7 @@ use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
-use graph::prelude::alloy::consensus::Transaction as TransactioTrait;
+use graph::prelude::alloy::consensus::Transaction as TransactionTrait;
 use graph::prelude::alloy::primitives::{Address, B256, U256};
 use graph::prelude::alloy::rpc::types::Log;
 use graph::prelude::alloy::rpc::types::Transaction;
@@ -483,13 +483,17 @@ impl<'a> EthereumBlockData<'a> {
 #[derive(Clone, Debug)]
 pub struct EthereumTransactionData<'a> {
     tx: &'a Transaction,
+    base_fee_per_gas: Option<u64>,
 }
 
 impl<'a> EthereumTransactionData<'a> {
     // We don't implement `From` because it causes confusion with the `from`
     // accessor method
-    fn new(tx: &'a Transaction) -> EthereumTransactionData<'a> {
-        EthereumTransactionData { tx }
+    fn new(tx: &'a Transaction, base_fee_per_gas: Option<u64>) -> EthereumTransactionData<'a> {
+        EthereumTransactionData {
+            tx,
+            base_fee_per_gas,
+        }
     }
 
     pub fn hash(&self) -> &B256 {
@@ -517,8 +521,7 @@ impl<'a> EthereumTransactionData<'a> {
     }
 
     pub fn gas_price(&self) -> u128 {
-        // EIP-1559 made this optional.
-        self.tx.inner.gas_price().unwrap_or(0)
+        self.tx.effective_gas_price(self.base_fee_per_gas)
     }
 
     pub fn input(&self) -> &[u8] {
@@ -548,7 +551,7 @@ impl<'a> EthereumEventData<'a> {
     ) -> Self {
         EthereumEventData {
             block: EthereumBlockData::from(block),
-            transaction: EthereumTransactionData::new(tx),
+            transaction: EthereumTransactionData::new(tx, block.base_fee_per_gas()),
             log,
             params,
         }
@@ -598,7 +601,7 @@ impl<'a> EthereumCallData<'a> {
     ) -> EthereumCallData<'a> {
         EthereumCallData {
             block: EthereumBlockData::from(block),
-            transaction: EthereumTransactionData::new(transaction),
+            transaction: EthereumTransactionData::new(transaction, block.base_fee_per_gas()),
             inputs,
             outputs,
             call,
