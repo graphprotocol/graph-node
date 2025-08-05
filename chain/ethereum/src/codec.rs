@@ -242,12 +242,16 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     value,
                     input: input.clone(),
                 };
-                let signed_tx = Signed::new_unchecked(tx, signature, B256::ZERO); // TODO(alloy_migration): extract actual transaction hash from trace
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
                 TxEnvelope::Legacy(signed_tx)
             }
             TxType::Eip2930 => {
                 let tx = TxEip2930 {
-                    chain_id: 1, // TODO(alloy_migration): extract actual chain_id from trace
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
                     nonce,
                     gas_price,
                     gas_limit,
@@ -256,12 +260,16 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     access_list: access_list.clone(), // Use actual access list from trace
                     input: input.clone(),
                 };
-                let signed_tx = Signed::new_unchecked(tx, signature, B256::ZERO); // TODO(alloy_migration): extract actual transaction hash from trace
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
                 TxEnvelope::Eip2930(signed_tx)
             }
             TxType::Eip1559 => {
                 let tx = TxEip1559 {
-                    chain_id: 1, // TODO(alloy_migration): extract actual chain_id from trace
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
                     nonce,
                     gas_limit,
                     max_fee_per_gas: max_fee_per_gas_u128,
@@ -271,7 +279,11 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     access_list: access_list.clone(), // Use actual access list from trace
                     input: input.clone(),
                 };
-                let signed_tx = Signed::new_unchecked(tx, signature, B256::ZERO); // TODO(alloy_migration): extract actual transaction hash from trace
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
                 TxEnvelope::Eip1559(signed_tx)
             }
             TxType::Eip4844 => {
@@ -280,7 +292,7 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                 })?;
 
                 let tx_eip4844 = TxEip4844 {
-                    chain_id: 1, // TODO(alloy_migration): extract actual chain_id from trace
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
                     nonce,
                     gas_limit,
                     max_fee_per_gas: max_fee_per_gas_u128,
@@ -288,12 +300,16 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     to: to_address,
                     value,
                     access_list: access_list.clone(), // Use actual access list from trace
-                    blob_versioned_hashes: Vec::new(), // TODO(alloy_migration): extract actual blob hashes from trace
-                    max_fee_per_blob_gas: 0u128, // TODO(alloy_migration): extract actual blob gas fee from trace
+                    blob_versioned_hashes: Vec::new(), // TODO(alloy_migration): blob hashes not available in current protobuf definition
+                    max_fee_per_blob_gas: 0u128, // TODO(alloy_migration): blob gas fee not available in current protobuf definition
                     input: input.clone(),
                 };
                 let tx = TxEip4844Variant::TxEip4844(tx_eip4844);
-                let signed_tx = Signed::new_unchecked(tx, signature, B256::ZERO); // TODO(alloy_migration): extract actual transaction hash from trace
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
                 TxEnvelope::Eip4844(signed_tx)
             }
             TxType::Eip7702 => {
@@ -302,7 +318,7 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                 })?;
 
                 let tx = TxEip7702 {
-                    chain_id: 1, // TODO(alloy_migration): extract actual chain_id from trace
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
                     nonce,
                     gas_limit,
                     max_fee_per_gas: max_fee_per_gas_u128,
@@ -310,10 +326,14 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     to: to_address,
                     value,
                     access_list: access_list.clone(), // Use actual access list from trace
-                    authorization_list: Vec::new(), // TODO(alloy_migration): extract actual authorization list from trace
+                    authorization_list: Vec::new(), // TODO(alloy_migration): authorization list not available in current protobuf definition
                     input: input.clone(),
                 };
-                let signed_tx = Signed::new_unchecked(tx, signature, B256::ZERO); // TODO(alloy_migration): extract actual transaction hash from trace
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
                 TxEnvelope::Eip7702(signed_tx)
             }
         };
@@ -325,7 +345,7 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
             block_hash: Some(block_hash),
             block_number: Some(block_number),
             transaction_index,
-            effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None }, // TODO(alloy_migration): calculate actual effective gas price from trace
+            effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None }, // gas_price already contains effective gas price per protobuf spec
         })
     }
 }
@@ -376,11 +396,11 @@ impl TryInto<AlloyBlock> for &Block {
             mix_hash: header.mix_hash.try_decode_proto("mix hash")?,
             nonce: header.nonce.into(),
 
-            withdrawals_root: None, // TODO(alloy_migration): extract from header if available
-            blob_gas_used: None,    // TODO(alloy_migration): extract from header if available
-            excess_blob_gas: None,  // TODO(alloy_migration): extract from header if available
-            parent_beacon_block_root: None, // TODO(alloy_migration): extract from header if available
-            requests_hash: None, // TODO(alloy_migration): extract from header if available
+            withdrawals_root: None, // TODO(alloy_migration): not available in current protobuf definition
+            blob_gas_used: None, // TODO(alloy_migration): not available in current protobuf definition
+            excess_blob_gas: None, // TODO(alloy_migration): not available in current protobuf definition
+            parent_beacon_block_root: None, // TODO(alloy_migration): not available in current protobuf definition
+            requests_hash: None, // TODO(alloy_migration): not available in current protobuf definition
         };
 
         let rpc_header = alloy::rpc::types::Header {
@@ -553,9 +573,12 @@ fn transaction_trace_to_alloy_txn_reciept(
         contract_address,
         from: t.from.try_decode_proto("transaction from")?,
         to: get_to_address(t)?,
-        effective_gas_price: 0, // TODO(alloy_migration): calculate actual effective gas price from trace
-        blob_gas_used: None, // TODO(alloy_migration): extract blob gas used from trace if applicable
-        blob_gas_price: None, // TODO(alloy_migration): extract blob gas price from trace if applicable
+        effective_gas_price: t.gas_price.as_ref().map_or(0u128, |x| {
+            let val: U256 = x.into();
+            val.to::<u128>()
+        }), // gas_price already contains effective gas price per protobuf spec
+        blob_gas_used: None, // TODO(alloy_migration): blob gas used not available in current protobuf definition
+        blob_gas_price: None, // TODO(alloy_migration): blob gas price not available in current protobuf definition
         inner: envelope,
     }))
 }
