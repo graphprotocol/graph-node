@@ -95,7 +95,7 @@ tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.12.3", features = ["prost"] }
 tower-http = { version = "0.5.2", features = ["cors"] }
 wasmparser = "0.118.1"
-wasmtime = "33.0.0"
+wasmtime = "33.0.2"
 substreams = "=0.6.0"
 substreams-entity-change = "2"
 substreams-near-core = "=0.10.2"
