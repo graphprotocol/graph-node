@@ -48,26 +48,26 @@ ingestor = "index_0"
 [chains.mainnet]
 shard = "primary"
 provider = [
-  { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"], weight = 1 },
-  { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }, weight = 2 },
-  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }, weight = 3 },
-  { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [] }, weight = 4 },
+  { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"], weight = 0.1 },
+  { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }, weight = 0.2 },
+  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }, weight = 0.3 },
+  { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [] }, weight = 0.4 },
 ]
 
 [chains.ropsten]
 shard = "primary"
 provider = [
-  { label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"], weight = 1 }
+  { label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"], weight = 1.0 }
 ]
 
 [chains.goerli]
 shard = "primary"
 provider = [
-  { label = "goerli-0", url = "http://rpc.goerli.io", transport = "ipc", features = ["archive"], weight = 1 }
+  { label = "goerli-0", url = "http://rpc.goerli.io", transport = "ipc", features = ["archive"], weight = 1.0 }
 ]
 
 [chains.kovan]
 shard = "primary"
 provider = [
-  { label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [], weight = 1 }
+  { label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [], weight = 1.0 }
 ]
