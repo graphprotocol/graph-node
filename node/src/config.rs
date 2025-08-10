@@ -508,7 +508,7 @@ impl ChainSection {
                         headers: Default::default(),
                         rules: vec![],
                     }),
-                    weight: 1,
+                    weight: 1.0,
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
@@ -608,8 +608,8 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
 pub struct Provider {
     pub label: String,
     pub details: ProviderDetails,
-    #[serde(default = "one")]
-    pub weight: usize,
+    #[serde(default = "one_f64")]
+    pub weight: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -734,8 +734,8 @@ const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 impl Provider {
     fn validate(&mut self) -> Result<()> {
         validate_name(&self.label).context("illegal provider name")?;
-        if self.weight == 0 {
-            bail!("provider {} must have a weight greater than 0", self.label);
+        if self.weight < 0.0 || self.weight > 1.0 {
+            bail!("provider {} must have a weight between 0 and 1", self.label);
         }
 
         match self.details {
@@ -925,7 +925,7 @@ impl<'de> Deserialize<'de> for Provider {
                 Ok(Provider {
                     label,
                     details,
-                    weight: weight.unwrap_or(1),
+                    weight: weight.unwrap_or(1.0),
                 })
             }
         }
@@ -1186,6 +1186,10 @@ fn one() -> usize {
     1
 }
 
+fn one_f64() -> f64 {
+    1.0
+}
+
 fn default_node_id() -> NodeId {
     NodeId::new("default").unwrap()
 }
@@ -1332,7 +1336,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1359,7 +1363,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1467,7 +1471,7 @@ mod tests {
                     headers,
                     rules: Vec::new(),
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1493,7 +1497,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1535,7 +1539,7 @@ mod tests {
                     conn_pool_size: 20,
                     rules: vec![],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1562,7 +1566,7 @@ mod tests {
                     conn_pool_size: 20,
                     rules: vec![],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1589,7 +1593,7 @@ mod tests {
                     conn_pool_size: 20,
                     rules: vec![],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1616,7 +1620,7 @@ mod tests {
                     conn_pool_size: 20,
                     rules: vec![],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1656,7 +1660,7 @@ mod tests {
                         }
                     ],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1696,7 +1700,7 @@ mod tests {
                         }
                     ],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1736,7 +1740,7 @@ mod tests {
                         }
                     ],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1776,7 +1780,7 @@ mod tests {
                         }
                     ],
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );
@@ -1871,7 +1875,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
-                weight: 1,
+                weight: 1.0,
             },
             actual
         );

@@ -31,7 +31,7 @@ pub struct EthereumNetworkAdapter {
     /// that limit. That's a somewhat imprecise but convenient way to
     /// determine the number of connections
     limit: SubgraphLimit,
-    weight: usize,
+    weight: f64,
 }
 
 #[async_trait]
@@ -55,7 +55,7 @@ impl EthereumNetworkAdapter {
         capabilities: NodeCapabilities,
         adapter: Arc<EthereumAdapter>,
         limit: SubgraphLimit,
-        weight: usize,
+        weight: f64,
     ) -> Self {
         Self {
             endpoint_metrics,
