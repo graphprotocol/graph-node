@@ -442,7 +442,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
-                1,
+                1.0,
             )],
             vec![EthereumNetworkAdapter::new(
                 metrics.cheap_clone(),
@@ -452,7 +452,7 @@ mod tests {
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Limit(3),
-                1,
+                1.0,
             )],
         )
         .await;
@@ -550,7 +550,7 @@ mod tests {
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Unlimited,
-                1,
+                1.0,
             )],
             vec![EthereumNetworkAdapter::new(
                 metrics.cheap_clone(),
@@ -560,7 +560,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(2),
-                1,
+                1.0,
             )],
         )
         .await;
@@ -623,7 +623,7 @@ mod tests {
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Disabled,
-                1,
+                1.0,
             )],
             vec![EthereumNetworkAdapter::new(
                 metrics.cheap_clone(),
@@ -633,7 +633,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
-                1,
+                1.0,
             )],
         )
         .await;
@@ -680,7 +680,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
-                1,
+                1.0,
             )],
             vec![],
         )
