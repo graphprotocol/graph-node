@@ -107,13 +107,32 @@ impl FromAscObj<AscString> for String {
         _gas: &GasCounter,
         _depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let mut string = String::from_utf16(asc_string.content())
+        let utf16_content = asc_string.content();
+        let mut string = String::from_utf16(utf16_content)
             .map_err(|e| DeterministicHostError::from(anyhow::Error::from(e)))?;
 
         // Strip null characters since they are not accepted by Postgres.
+        // But be more careful with address-like strings to avoid corruption
         if string.contains('\u{0000}') {
-            string = string.replace('\u{0000}', "");
+            // For address-like strings, be more conservative about null removal
+            if string.starts_with("0x") && string.len() >= 42 {
+                // This looks like an Ethereum address - check if nulls are just padding
+                let without_nulls = string.replace('\u{0000}', "");
+
+                // If removing nulls significantly shortens the string, something is wrong
+                if without_nulls.len() < 10 || (string.len() - without_nulls.len()) > 10 {
+                    return Err(DeterministicHostError::from(anyhow::anyhow!(
+                        "String contains suspicious null characters that would corrupt address: original length {}, after removal: {}",
+                        string.len(), without_nulls.len()
+                    )));
+                }
+                string = without_nulls;
+            } else {
+                // For non-address strings, proceed with normal null removal
+                string = string.replace('\u{0000}', "");
+            }
         }
+
         Ok(string)
     }
 }

@@ -26,6 +26,7 @@ use web3::types::H160;
 use crate::common::{mock_context, mock_data_source};
 
 mod abi;
+mod address_from_string;
 
 pub const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
 pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
