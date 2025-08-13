@@ -31,6 +31,8 @@ cargo fmt --all
 cargo check
 ```
 
+Always run `cargo fmt --all` from the project root after editing any .rs files.
+
 ## High-Level Architecture
 
 ### Core Components
