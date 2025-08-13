@@ -132,18 +132,43 @@ impl CallDecl {
                     let value = params
                         .iter()
                         .find(|param| &param.name == name.as_str())
-                        .ok_or_else(|| anyhow!("unknown param {name}"))?
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "In declarative call '{}': unknown param {}",
+                                self.label,
+                                name
+                            )
+                        })?
                         .value
                         .clone();
-                    value
-                        .into_address()
-                        .ok_or_else(|| anyhow!("param {name} is not an address"))?
+                    value.into_address().ok_or_else(|| {
+                        anyhow!(
+                            "In declarative call '{}': param {} is not an address",
+                            self.label,
+                            name
+                        )
+                    })?
+                }
+                EthereumArg::ParamField(param_name, field_name) => {
+                    let param = params
+                        .iter()
+                        .find(|param| &param.name == param_name.as_str())
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "In declarative call '{}': unknown param {}",
+                                self.label,
+                                param_name
+                            )
+                        })?;
+
+                    Self::extract_struct_field_as_address(&param.value, field_name, &self.label)?
                 }
             },
             CallArg::Subgraph(_) => {
                 return Err(anyhow!(
-                    "Subgraph params are not supported for when declaring calls for event handlers"
-                ))
+                "In declarative call '{}': Subgraph params are not supported for event handlers",
+                self.label
+            ))
             }
         };
         Ok(address)
@@ -161,14 +186,23 @@ impl CallDecl {
                         let value = params
                             .iter()
                             .find(|param| &param.name == name.as_str())
-                            .ok_or_else(|| anyhow!("unknown param {name}"))?
+                            .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, name))?
                             .value
                             .clone();
                         Ok(value)
                     }
+                    EthereumArg::ParamField(param_name, field_name) => {
+                        let param = params
+                            .iter()
+                            .find(|param| &param.name == param_name.as_str())
+                            .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, param_name))?;
+
+                        Self::extract_struct_field(&param.value, field_name, &self.label)
+                    }
                 },
                 CallArg::Subgraph(_) => Err(anyhow!(
-                    "Subgraph params are not supported for when declaring calls for event handlers"
+                    "In declarative call '{}': Subgraph params are not supported for event handlers",
+                    self.label
                 )),
             })
             .collect()
@@ -357,6 +391,56 @@ impl CallDecl {
             .collect();
         Ok(Token::Array(tokens?))
     }
+
+    /// Extracts a field value from a struct parameter and converts it to an address
+    fn extract_struct_field_as_address(
+        struct_token: &Token,
+        field_name: &str,
+        call_label: &str,
+    ) -> Result<H160, Error> {
+        let field_token = Self::extract_struct_field(struct_token, field_name, call_label)?;
+        field_token.into_address().ok_or_else(|| {
+            anyhow!(
+                "In declarative call '{}': struct field {} is not an address",
+                call_label,
+                field_name
+            )
+        })
+    }
+
+    /// Extracts a field value from a struct parameter using numeric index
+    fn extract_struct_field(
+        struct_token: &Token,
+        field_index_str: &str,
+        call_label: &str,
+    ) -> Result<Token, Error> {
+        match struct_token {
+            Token::Tuple(fields) => {
+                // Parse field name as numeric index (like "0", "1", "2")
+                let field_index = field_index_str.parse::<usize>().map_err(|_| {
+                    anyhow!(
+                        "In declarative call '{}': struct field '{}' must be a numeric index (0, 1, 2, ...)",
+                        call_label, field_index_str
+                    )
+                })?;
+
+                fields
+                    .get(field_index)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "In declarative call '{}': struct field index {} out of bounds (struct has {} fields)",
+                            call_label, field_index, fields.len()
+                        )
+                    })
+                    .map(|token| token.clone())
+            }
+            _ => Err(anyhow!(
+                "In declarative call '{}': parameter is not a struct/tuple, cannot access field {}",
+                call_label,
+                field_index_str
+            )),
+        }
+    }
 }
 
 impl<'de> de::Deserialize<'de> for CallDecls {
@@ -485,6 +569,7 @@ pub enum CallArg {
 pub enum EthereumArg {
     Address,
     Param(Word),
+    ParamField(Word, Word),
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
@@ -508,14 +593,22 @@ impl FromStr for CallArg {
         }
 
         let mut parts = s.split('.');
-        match (parts.next(), parts.next(), parts.next()) {
-            (Some("event"), Some("address"), None) => Ok(CallArg::Ethereum(EthereumArg::Address)),
-            (Some("event"), Some("params"), Some(param)) => {
+        match (parts.next(), parts.next(), parts.next(), parts.next()) {
+            (Some("event"), Some("address"), None, None) => {
+                Ok(CallArg::Ethereum(EthereumArg::Address))
+            }
+            (Some("event"), Some("params"), Some(param), None) => {
                 Ok(CallArg::Ethereum(EthereumArg::Param(Word::from(param))))
             }
-            (Some("entity"), Some(param), None) => Ok(CallArg::Subgraph(SubgraphArg::EntityParam(
-                Word::from(param),
-            ))),
+            (Some("event"), Some("params"), Some(param), Some(field)) if parts.next().is_none() => {
+                Ok(CallArg::Ethereum(EthereumArg::ParamField(
+                    Word::from(param),
+                    Word::from(field),
+                )))
+            }
+            (Some("entity"), Some(param), None, None) => Ok(CallArg::Subgraph(
+                SubgraphArg::EntityParam(Word::from(param)),
+            )),
             _ => Err(anyhow!("invalid call argument `{}`", s)),
         }
     }
@@ -747,5 +840,284 @@ mod tests {
             arg,
             CallArg::Subgraph(SubgraphArg::EntityParam(_))
         ));
+    }
+
+    #[test]
+    fn test_struct_field_access_parsing() {
+        // Test struct field access with numeric indices
+        let arg = CallArg::from_str("event.params.myStruct.1").unwrap();
+        assert!(matches!(
+            arg,
+            CallArg::Ethereum(EthereumArg::ParamField(_, _))
+        ));
+        if let CallArg::Ethereum(EthereumArg::ParamField(param, field)) = arg {
+            assert_eq!(param.as_str(), "myStruct");
+            assert_eq!(field.as_str(), "1");
+        }
+
+        // Test struct field access with index 0
+        let arg = CallArg::from_str("event.params.asset.0").unwrap();
+        assert!(matches!(
+            arg,
+            CallArg::Ethereum(EthereumArg::ParamField(_, _))
+        ));
+        if let CallArg::Ethereum(EthereumArg::ParamField(param, field)) = arg {
+            assert_eq!(param.as_str(), "asset");
+            assert_eq!(field.as_str(), "0");
+        }
+    }
+
+    #[test]
+    fn test_struct_field_call_expr_parsing() {
+        // Test struct field access with numeric indices: ERC20[event.params.asset.1].name()
+        let expr: CallExpr = "ERC20[event.params.asset.1].name()".parse().unwrap();
+        assert_eq!(expr.abi, "ERC20");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::ParamField("asset".into(), "1".into()))
+        );
+        assert_eq!(expr.func, "name");
+        assert_eq!(expr.args, vec![]);
+
+        // Test struct field access in arguments with numeric indices
+        let expr: CallExpr =
+            "Contract[event.address].transfer(event.params.data.0, event.params.data.1)"
+                .parse()
+                .unwrap();
+        assert_eq!(expr.abi, "Contract");
+        assert_eq!(expr.address, CallArg::Ethereum(EthereumArg::Address));
+        assert_eq!(expr.func, "transfer");
+        assert_eq!(
+            expr.args,
+            vec![
+                CallArg::Ethereum(EthereumArg::ParamField("data".into(), "0".into())),
+                CallArg::Ethereum(EthereumArg::ParamField("data".into(), "1".into()))
+            ]
+        );
+    }
+
+    #[test]
+    fn test_struct_field_access_functions() {
+        use ethabi::Token;
+
+        let tuple_fields = vec![
+            Token::Uint(ethabi::Uint::from(8u8)),     // index 0: uint8
+            Token::Address([1u8; 20].into()),         // index 1: address
+            Token::Uint(ethabi::Uint::from(1000u64)), // index 2: uint256
+        ];
+
+        // Test extract_struct_field with numeric indices
+        let struct_token = Token::Tuple(tuple_fields.clone());
+
+        // Test accessing index 0 (uint8)
+        let result = CallDecl::extract_struct_field(&struct_token, "0", "testCall").unwrap();
+        assert!(matches!(result, Token::Uint(_)));
+
+        // Test accessing index 1 (address)
+        let result = CallDecl::extract_struct_field(&struct_token, "1", "testCall").unwrap();
+        assert!(matches!(result, Token::Address(_)));
+
+        // Test accessing index 2 (uint256)
+        let result = CallDecl::extract_struct_field(&struct_token, "2", "testCall").unwrap();
+        assert!(matches!(result, Token::Uint(_)));
+    }
+
+    #[test]
+    fn test_struct_field_access_errors() {
+        use ethabi::Token;
+
+        // Test accessing non-tuple as struct
+        let non_tuple = Token::Address([1u8; 20].into());
+        let result = CallDecl::extract_struct_field(&non_tuple, "0", "testCall");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("parameter is not a struct/tuple"));
+
+        // Test out of bounds numeric index
+        let tuple_fields = vec![Token::Uint(ethabi::Uint::from(123u64))];
+        let struct_token = Token::Tuple(tuple_fields);
+        let result = CallDecl::extract_struct_field(&struct_token, "1", "testCall");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("out of bounds"));
+
+        // Test invalid field name (non-numeric)
+        let tuple_fields = vec![Token::Address([1u8; 20].into())];
+        let struct_token = Token::Tuple(tuple_fields);
+        let result = CallDecl::extract_struct_field(&struct_token, "addr", "testCall");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must be a numeric index"));
+
+        // Test invalid field name (non-numeric)
+        let tuple_fields = vec![Token::Address([1u8; 20].into())];
+        let struct_token = Token::Tuple(tuple_fields);
+        let result = CallDecl::extract_struct_field(&struct_token, "unknown", "testCall");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must be a numeric index"));
+    }
+
+    #[test]
+    fn test_invalid_struct_field_parsing() {
+        // Test too many parts (more than 4)
+        let result = CallArg::from_str("event.params.asset.addr.extra");
+        assert!(result.is_err());
+
+        // Test invalid patterns
+        let result = CallArg::from_str("event.params");
+        assert!(result.is_err());
+
+        let result = CallArg::from_str("event.invalid.param.field");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_helpful_error_messages() {
+        // Test that users get helpful error messages when they use the old syntax
+        let result = CallArg::from_str("event.params.asset.addr");
+        assert!(result.is_ok(), "Should parse successfully");
+
+        // Test error message when using invalid field names
+        use ethabi::Token;
+        let struct_token = Token::Tuple(vec![Token::Address([1u8; 20].into())]);
+        let result = CallDecl::extract_struct_field(&struct_token, "addr", "testCall");
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'testCall'"));
+        assert!(error_msg.contains("must be a numeric index"));
+        assert!(error_msg.contains("0, 1, 2"));
+
+        // Test helpful error for out of bounds
+        let result = CallDecl::extract_struct_field(&struct_token, "5", "testCall");
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'testCall'"));
+        assert!(error_msg.contains("out of bounds"));
+        assert!(error_msg.contains("struct has 1 fields"));
+    }
+
+    #[test]
+    fn test_struct_field_extraction_with_mixed_types() {
+        // Test extracting fields from a struct with mixed types: (uint8, address, uint256)
+        use ethabi::Token;
+
+        // Create a mock struct that represents (uint8, address, uint256)
+        let mixed_struct = Token::Tuple(vec![
+            Token::Uint(ethabi::Uint::from(1u8)), // uint8 field at index 0
+            Token::Address([0x42; 20].into()),    // address field at index 1
+            Token::Uint(ethabi::Uint::from(1000000u64)), // uint256 field at index 2
+        ]);
+
+        // Test extracting each field by its numeric index
+        let extracted = CallDecl::extract_struct_field(&mixed_struct, "0", "testCall").unwrap();
+        assert!(matches!(extracted, Token::Uint(_)));
+
+        let extracted = CallDecl::extract_struct_field(&mixed_struct, "1", "testCall").unwrap();
+        assert!(matches!(extracted, Token::Address(_)));
+        if let Token::Address(addr) = extracted {
+            assert_eq!(addr, [0x42; 20].into());
+        }
+
+        let extracted = CallDecl::extract_struct_field(&mixed_struct, "2", "testCall").unwrap();
+        assert!(matches!(extracted, Token::Uint(_)));
+
+        // Test that it works in a declarative call context
+        let expr: CallExpr = "ERC20[event.params.asset.1].name()".parse().unwrap();
+        assert_eq!(expr.abi, "ERC20");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::ParamField("asset".into(), "1".into()))
+        );
+        assert_eq!(expr.func, "name");
+        assert_eq!(expr.args, vec![]);
+    }
+
+    #[test]
+    fn test_declarative_call_error_context() {
+        use crate::prelude::web3::types::{Log, H160, H256};
+        use ethabi::{LogParam, Token};
+
+        // Create a test call declaration
+        let call_decl = CallDecl {
+            label: "myTokenCall".to_string(),
+            expr: "ERC20[event.params.asset.1].name()".parse().unwrap(),
+            readonly: (),
+        };
+
+        // Test scenario 1: Unknown parameter
+        let log = Log {
+            address: H160::zero(),
+            topics: vec![],
+            data: vec![].into(),
+            block_hash: Some(H256::zero()),
+            block_number: Some(1.into()),
+            transaction_hash: Some(H256::zero()),
+            transaction_index: Some(0.into()),
+            log_index: Some(0.into()),
+            transaction_log_index: Some(0.into()),
+            log_type: None,
+            removed: Some(false),
+        };
+        let params = vec![]; // Empty params - 'asset' param is missing
+
+        let result = call_decl.address_for_log(&log, &params);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'myTokenCall'"));
+        assert!(error_msg.contains("unknown param asset"));
+
+        // Test scenario 2: Struct field access error
+        let params = vec![LogParam {
+            name: "asset".to_string(),
+            value: Token::Tuple(vec![Token::Uint(ethabi::Uint::from(1u8))]), // Only 1 field, but trying to access index 1
+        }];
+
+        let result = call_decl.address_for_log(&log, &params);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'myTokenCall'"));
+        assert!(error_msg.contains("out of bounds"));
+        assert!(error_msg.contains("struct has 1 fields"));
+
+        // Test scenario 3: Non-address field access
+        let params = vec![LogParam {
+            name: "asset".to_string(),
+            value: Token::Tuple(vec![
+                Token::Uint(ethabi::Uint::from(1u8)),
+                Token::Uint(ethabi::Uint::from(2u8)), // Index 1 is uint, not address
+            ]),
+        }];
+
+        let result = call_decl.address_for_log(&log, &params);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'myTokenCall'"));
+        assert!(error_msg.contains("struct field 1 is not an address"));
+
+        // Test scenario 4: Invalid field name in args_for_log
+        let call_decl_with_args = CallDecl {
+            label: "transferCall".to_string(),
+            expr: "ERC20[event.address].transfer(event.params.data.invalid)"
+                .parse()
+                .unwrap(),
+            readonly: (),
+        };
+
+        let params = vec![LogParam {
+            name: "data".to_string(),
+            value: Token::Tuple(vec![Token::Address([1u8; 20].into())]),
+        }];
+
+        let result = call_decl_with_args.args_for_log(&log, &params);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'transferCall'"));
+        assert!(error_msg.contains("must be a numeric index"));
     }
 }
