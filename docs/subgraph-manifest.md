@@ -195,20 +195,6 @@ calls:
   nestedField: Contract[event.params.data.0.inner.fieldName].process()
 ```
 
-#### Error Handling
-
-When using invalid field names, Graph Node provides helpful error messages:
-
-```
-In declarative call 'myCall': unknown field 'invalid' in struct parameter 'asset'. 
-Available field names: [active, addr, amount]. Available numeric indices: [0, 1, 2]
-```
-
-**Best Practices:**
-- Use named field access (`asset.addr`) for better readability and maintainability
-- Named access requires the struct field names to be present in the ABI
-- Numeric indices (`asset.0`) work as a fallback and for backward compatibility
-- Both access methods can be mixed in the same expression for complex nested structures
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).

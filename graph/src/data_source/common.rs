@@ -1221,7 +1221,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(matches!(result, Token::Uint(_)));
+        assert_eq!(result, tuple_fields[0]);
 
         // Test accessing index 1 (address)
         let result = CallDecl::extract_nested_struct_field(
@@ -1232,10 +1232,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(matches!(result, Token::Address(_)));
-        if let Token::Address(addr) = result {
-            assert_eq!(addr, [1u8; 20].into());
-        }
+        assert_eq!(result, tuple_fields[1]);
 
         // Test accessing index 2 (uint256)
         let result = CallDecl::extract_nested_struct_field(
@@ -1246,7 +1243,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(matches!(result, Token::Uint(_)));
+        assert_eq!(result, tuple_fields[2]);
 
         // Test that it works in a declarative call context
         let expr: CallExpr = "ERC20[event.params.asset.1].name()".parse().unwrap();
@@ -1537,6 +1534,7 @@ mod tests {
         ]);
 
         // Test extracting nested field using numeric path [1, 0] (asset.token.addr)
+        let expected_result = Token::Address([0x42; 20].into());
         let result = CallDecl::extract_nested_struct_field(
             &outer_struct,
             &[FieldAccess::Index(1), FieldAccess::Index(0)],
@@ -1545,10 +1543,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(matches!(result, Token::Address(_)));
-        if let Token::Address(addr) = result {
-            assert_eq!(addr, [0x42; 20].into());
-        }
+        assert_eq!(result, expected_result);
     }
 
     #[test]
