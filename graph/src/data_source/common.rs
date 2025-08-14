@@ -149,7 +149,7 @@ impl CallDecl {
                         )
                     })?
                 }
-                EthereumArg::ParamField(param_name, field_name) => {
+                EthereumArg::StructField(param_name, field_accesses) => {
                     let param = params
                         .iter()
                         .find(|param| &param.name == param_name.as_str())
@@ -161,7 +161,11 @@ impl CallDecl {
                             )
                         })?;
 
-                    Self::extract_struct_field_as_address(&param.value, field_name, &self.label)?
+                    Self::extract_nested_struct_field_as_address(
+                        &param.value,
+                        field_accesses,
+                        &self.label,
+                    )?
                 }
             },
             CallArg::Subgraph(_) => {
@@ -191,13 +195,13 @@ impl CallDecl {
                             .clone();
                         Ok(value)
                     }
-                    EthereumArg::ParamField(param_name, field_name) => {
+                    EthereumArg::StructField(param_name, field_accesses) => {
                         let param = params
                             .iter()
                             .find(|param| &param.name == param_name.as_str())
                             .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, param_name))?;
 
-                        Self::extract_struct_field(&param.value, field_name, &self.label)
+                        Self::extract_nested_struct_field(&param.value, field_accesses, &self.label)
                     }
                 },
                 CallArg::Subgraph(_) => Err(anyhow!(
@@ -441,6 +445,83 @@ impl CallDecl {
             )),
         }
     }
+
+    /// Extracts a nested field value from a struct parameter with mixed numeric/named access
+    fn extract_nested_struct_field_as_address(
+        struct_token: &Token,
+        field_accesses: &[FieldAccess],
+        call_label: &str,
+    ) -> Result<H160, Error> {
+        let field_token =
+            Self::extract_nested_struct_field(struct_token, field_accesses, call_label)?;
+        field_token.into_address().ok_or_else(|| {
+            anyhow!(
+                "In declarative call '{}': nested struct field is not an address",
+                call_label
+            )
+        })
+    }
+
+    /// Extracts a nested field value from a struct parameter using arbitrary access path
+    fn extract_nested_struct_field(
+        struct_token: &Token,
+        field_accesses: &[FieldAccess],
+        call_label: &str,
+    ) -> Result<Token, Error> {
+        if field_accesses.is_empty() {
+            return Err(anyhow!(
+                "In declarative call '{}': empty field access path",
+                call_label
+            ));
+        }
+
+        let mut current_token = struct_token;
+
+        for (index, field_access) in field_accesses.iter().enumerate() {
+            match current_token {
+                Token::Tuple(fields) => {
+                    let field_index = match field_access {
+                        FieldAccess::Index(idx) => *idx,
+                        FieldAccess::Name(name) => {
+                            // For named access, we need to resolve the name to an index
+                            // In practice, this would require ABI information to map names to indices
+                            // For now, we'll return an error indicating this isn't yet supported
+                            return Err(anyhow!(
+                                "In declarative call '{}': named field access '{}' not yet supported - use numeric indices for now",
+                                call_label, name
+                            ));
+                        }
+                    };
+
+                    let field_token = fields
+                        .get(field_index)
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "In declarative call '{}': struct field index {} out of bounds (struct has {} fields) at access step {}",
+                                call_label, field_index, fields.len(), index
+                            )
+                        })?;
+
+                    // If this is the last field access, return the token
+                    if index == field_accesses.len() - 1 {
+                        return Ok(field_token.clone());
+                    }
+
+                    // Otherwise, continue with the next level
+                    current_token = field_token;
+                }
+                _ => {
+                    return Err(anyhow!(
+                        "In declarative call '{}': cannot access field on non-struct/tuple at access step {} (field path: {:?})",
+                        call_label, index, field_accesses
+                    ));
+                }
+            }
+        }
+
+        // This should never be reached due to empty check at the beginning
+        unreachable!()
+    }
 }
 
 impl<'de> de::Deserialize<'de> for CallDecls {
@@ -566,10 +647,19 @@ pub enum CallArg {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum FieldAccess {
+    /// Access by numeric index (e.g., "0", "1", "2")
+    Index(usize),
+    /// Access by property name (e.g., "addr", "amount")
+    Name(Word),
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum EthereumArg {
     Address,
     Param(Word),
-    ParamField(Word, Word),
+    /// Struct field access with arbitrary nesting and mixed numeric/named access
+    StructField(Word, Vec<FieldAccess>),
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
@@ -593,22 +683,37 @@ impl FromStr for CallArg {
         }
 
         let mut parts = s.split('.');
-        match (parts.next(), parts.next(), parts.next(), parts.next()) {
-            (Some("event"), Some("address"), None, None) => {
-                Ok(CallArg::Ethereum(EthereumArg::Address))
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some("event"), Some("address"), None) => Ok(CallArg::Ethereum(EthereumArg::Address)),
+            (Some("event"), Some("params"), Some(param)) => {
+                // Check if there are any additional parts for struct field access
+                let remaining_parts: Vec<&str> = parts.collect();
+                if remaining_parts.is_empty() {
+                    // Simple parameter access: event.params.foo
+                    Ok(CallArg::Ethereum(EthereumArg::Param(Word::from(param))))
+                } else {
+                    // Struct field access: event.params.foo.bar.0.baz...
+                    let field_accesses = remaining_parts
+                        .into_iter()
+                        .map(|part| {
+                            // Try to parse as numeric index first
+                            if let Ok(index) = part.parse::<usize>() {
+                                FieldAccess::Index(index)
+                            } else {
+                                // Otherwise treat as named field
+                                FieldAccess::Name(Word::from(part))
+                            }
+                        })
+                        .collect();
+                    Ok(CallArg::Ethereum(EthereumArg::StructField(
+                        Word::from(param),
+                        field_accesses,
+                    )))
+                }
             }
-            (Some("event"), Some("params"), Some(param), None) => {
-                Ok(CallArg::Ethereum(EthereumArg::Param(Word::from(param))))
-            }
-            (Some("event"), Some("params"), Some(param), Some(field)) if parts.next().is_none() => {
-                Ok(CallArg::Ethereum(EthereumArg::ParamField(
-                    Word::from(param),
-                    Word::from(field),
-                )))
-            }
-            (Some("entity"), Some(param), None, None) => Ok(CallArg::Subgraph(
-                SubgraphArg::EntityParam(Word::from(param)),
-            )),
+            (Some("entity"), Some(param), None) => Ok(CallArg::Subgraph(SubgraphArg::EntityParam(
+                Word::from(param),
+            ))),
             _ => Err(anyhow!("invalid call argument `{}`", s)),
         }
     }
@@ -848,22 +953,22 @@ mod tests {
         let arg = CallArg::from_str("event.params.myStruct.1").unwrap();
         assert!(matches!(
             arg,
-            CallArg::Ethereum(EthereumArg::ParamField(_, _))
+            CallArg::Ethereum(EthereumArg::StructField(_, _))
         ));
-        if let CallArg::Ethereum(EthereumArg::ParamField(param, field)) = arg {
+        if let CallArg::Ethereum(EthereumArg::StructField(param, field_accesses)) = arg {
             assert_eq!(param.as_str(), "myStruct");
-            assert_eq!(field.as_str(), "1");
+            assert_eq!(field_accesses, vec![FieldAccess::Index(1)]);
         }
 
         // Test struct field access with index 0
         let arg = CallArg::from_str("event.params.asset.0").unwrap();
         assert!(matches!(
             arg,
-            CallArg::Ethereum(EthereumArg::ParamField(_, _))
+            CallArg::Ethereum(EthereumArg::StructField(_, _))
         ));
-        if let CallArg::Ethereum(EthereumArg::ParamField(param, field)) = arg {
+        if let CallArg::Ethereum(EthereumArg::StructField(param, field_accesses)) = arg {
             assert_eq!(param.as_str(), "asset");
-            assert_eq!(field.as_str(), "0");
+            assert_eq!(field_accesses, vec![FieldAccess::Index(0)]);
         }
     }
 
@@ -874,7 +979,10 @@ mod tests {
         assert_eq!(expr.abi, "ERC20");
         assert_eq!(
             expr.address,
-            CallArg::Ethereum(EthereumArg::ParamField("asset".into(), "1".into()))
+            CallArg::Ethereum(EthereumArg::StructField(
+                "asset".into(),
+                vec![FieldAccess::Index(1)]
+            ))
         );
         assert_eq!(expr.func, "name");
         assert_eq!(expr.args, vec![]);
@@ -890,8 +998,14 @@ mod tests {
         assert_eq!(
             expr.args,
             vec![
-                CallArg::Ethereum(EthereumArg::ParamField("data".into(), "0".into())),
-                CallArg::Ethereum(EthereumArg::ParamField("data".into(), "1".into()))
+                CallArg::Ethereum(EthereumArg::StructField(
+                    "data".into(),
+                    vec![FieldAccess::Index(0)]
+                )),
+                CallArg::Ethereum(EthereumArg::StructField(
+                    "data".into(),
+                    vec![FieldAccess::Index(1)]
+                ))
             ]
         );
     }
@@ -965,9 +1079,15 @@ mod tests {
 
     #[test]
     fn test_invalid_struct_field_parsing() {
-        // Test too many parts (more than 4)
+        // Test arbitrary nesting is now supported (previously was error)
         let result = CallArg::from_str("event.params.asset.addr.extra");
-        assert!(result.is_err());
+        assert!(result.is_ok(), "Arbitrary nesting should now be supported");
+        if let Ok(CallArg::Ethereum(EthereumArg::StructField(param, field_accesses))) = result {
+            assert_eq!(param.as_str(), "asset");
+            assert_eq!(field_accesses.len(), 2);
+            assert_eq!(field_accesses[0], FieldAccess::Name("addr".into()));
+            assert_eq!(field_accesses[1], FieldAccess::Name("extra".into()));
+        }
 
         // Test invalid patterns
         let result = CallArg::from_str("event.params");
@@ -1032,7 +1152,10 @@ mod tests {
         assert_eq!(expr.abi, "ERC20");
         assert_eq!(
             expr.address,
-            CallArg::Ethereum(EthereumArg::ParamField("asset".into(), "1".into()))
+            CallArg::Ethereum(EthereumArg::StructField(
+                "asset".into(),
+                vec![FieldAccess::Index(1)]
+            ))
         );
         assert_eq!(expr.func, "name");
         assert_eq!(expr.args, vec![]);
@@ -1098,7 +1221,7 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("In declarative call 'myTokenCall'"));
-        assert!(error_msg.contains("struct field 1 is not an address"));
+        assert!(error_msg.contains("nested struct field is not an address"));
 
         // Test scenario 4: Invalid field name in args_for_log
         let call_decl_with_args = CallDecl {
@@ -1118,6 +1241,195 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("In declarative call 'transferCall'"));
-        assert!(error_msg.contains("must be a numeric index"));
+        assert!(error_msg.contains("not yet supported"));
+    }
+
+    #[test]
+    fn test_nested_struct_access() {
+        // Test accessing deeply nested structs using numeric indices
+        // Scenario: event param is a struct containing another struct at index 1, and we want field 0 of that inner struct
+        let arg = CallArg::from_str("event.params.outer.1.0").unwrap();
+        assert!(matches!(
+            arg,
+            CallArg::Ethereum(EthereumArg::StructField(_, _))
+        ));
+        if let CallArg::Ethereum(EthereumArg::StructField(param, path)) = arg {
+            assert_eq!(param.as_str(), "outer");
+            assert_eq!(path, vec![FieldAccess::Index(1), FieldAccess::Index(0)]);
+        }
+
+        // Test parsing deeply nested struct access
+        let expr: CallExpr = "ERC20[event.params.data.2.1].symbol()".parse().unwrap();
+        assert_eq!(expr.abi, "ERC20");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::StructField(
+                "data".into(),
+                vec![FieldAccess::Index(2), FieldAccess::Index(1)]
+            ))
+        );
+        assert_eq!(expr.func, "symbol");
+    }
+
+    #[test]
+    fn test_named_struct_field_access() {
+        // Test accessing struct fields by property name instead of index
+        let arg = CallArg::from_str("event.params.asset.addr").unwrap();
+        assert!(matches!(
+            arg,
+            CallArg::Ethereum(EthereumArg::StructField(_, _))
+        ));
+        if let CallArg::Ethereum(EthereumArg::StructField(param, path)) = arg {
+            assert_eq!(param.as_str(), "asset");
+            assert_eq!(path, vec![FieldAccess::Name("addr".into())]);
+        }
+
+        // Test declarative call with named field access
+        let expr: CallExpr = "ERC20[event.params.token.address].name()".parse().unwrap();
+        assert_eq!(expr.abi, "ERC20");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::StructField(
+                "token".into(),
+                vec![FieldAccess::Name("address".into())]
+            ))
+        );
+        assert_eq!(expr.func, "name");
+    }
+
+    #[test]
+    fn test_mixed_nested_and_named_access() {
+        // Test accessing nested structs with mix of numeric indices and property names
+        // Scenario: event.params.data.1.user.id (data[1].user.id)
+        let arg = CallArg::from_str("event.params.data.1.user.id").unwrap();
+        assert!(matches!(
+            arg,
+            CallArg::Ethereum(EthereumArg::StructField(_, _))
+        ));
+        if let CallArg::Ethereum(EthereumArg::StructField(param, path)) = arg {
+            assert_eq!(param.as_str(), "data");
+            assert_eq!(
+                path,
+                vec![
+                    FieldAccess::Index(1),
+                    FieldAccess::Name("user".into()),
+                    FieldAccess::Name("id".into())
+                ]
+            );
+        }
+
+        // Test declarative call with mixed access
+        let expr: CallExpr = "Contract[event.address].transfer(event.params.transfers.0.recipient, event.params.transfers.0.amount)".parse().unwrap();
+        assert_eq!(expr.abi, "Contract");
+        assert_eq!(
+            expr.args,
+            vec![
+                CallArg::Ethereum(EthereumArg::StructField(
+                    "transfers".into(),
+                    vec![FieldAccess::Index(0), FieldAccess::Name("recipient".into())]
+                )),
+                CallArg::Ethereum(EthereumArg::StructField(
+                    "transfers".into(),
+                    vec![FieldAccess::Index(0), FieldAccess::Name("amount".into())]
+                ))
+            ]
+        );
+    }
+
+    #[test]
+    fn test_struct_field_extraction_with_nested_data() {
+        use ethabi::Token;
+
+        // Create a complex nested structure:
+        // struct Asset {
+        //   uint8 kind;          // index 0
+        //   Token token;         // index 1 (nested struct)
+        //   uint256 amount;      // index 2
+        // }
+        // struct Token {
+        //   address addr;        // index 0
+        //   string name;         // index 1
+        // }
+        let inner_struct = Token::Tuple(vec![
+            Token::Address([0x42; 20].into()),      // token.addr
+            Token::String("TokenName".to_string()), // token.name
+        ]);
+
+        let outer_struct = Token::Tuple(vec![
+            Token::Uint(ethabi::Uint::from(1u8)),     // asset.kind
+            inner_struct,                             // asset.token
+            Token::Uint(ethabi::Uint::from(1000u64)), // asset.amount
+        ]);
+
+        // Test extracting nested field using numeric path [1, 0] (asset.token.addr)
+        let result = CallDecl::extract_nested_struct_field(
+            &outer_struct,
+            &[FieldAccess::Index(1), FieldAccess::Index(0)],
+            "testCall",
+        )
+        .unwrap();
+        assert!(matches!(result, Token::Address(_)));
+        if let Token::Address(addr) = result {
+            assert_eq!(addr, [0x42; 20].into());
+        }
+
+        // Test extracting nested field using mixed path: index 1, then property "name"
+        // TODO: This will work once named field access is implemented
+        let result = CallDecl::extract_nested_struct_field(
+            &outer_struct,
+            &[FieldAccess::Index(1), FieldAccess::Name("name".into())],
+            "testCall",
+        );
+        assert!(result.is_err(), "Named field access not yet implemented");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not yet supported"));
+    }
+
+    #[test]
+    fn test_struct_field_extraction_with_property_names() {
+        use ethabi::Token;
+
+        // Create a struct with known property layout
+        // struct Asset {
+        //   addr: address,
+        //   amount: uint256,
+        //   active: bool
+        // }
+        let asset_struct = Token::Tuple(vec![
+            Token::Address([0x42; 20].into()),        // addr
+            Token::Uint(ethabi::Uint::from(1000u64)), // amount
+            Token::Bool(true),                        // active
+        ]);
+
+        // Test extracting by property name "addr" - not yet implemented
+        // TODO: This will work once named field access is implemented
+        let result = CallDecl::extract_nested_struct_field(
+            &asset_struct,
+            &[FieldAccess::Name("addr".into())],
+            "testCall",
+        );
+        assert!(result.is_err(), "Named field access not yet implemented");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not yet supported"));
+
+        // Test extracting by property name "amount" - not yet implemented  
+        let result = CallDecl::extract_nested_struct_field(
+            &asset_struct,
+            &[FieldAccess::Name("amount".into())],
+            "testCall",
+        );
+        assert!(result.is_err(), "Named field access not yet implemented");
+
+        // Test extracting by property name "active" - not yet implemented
+        let result = CallDecl::extract_nested_struct_field(
+            &asset_struct,
+            &[FieldAccess::Name("active".into())],
+            "testCall",
+        );
+        assert!(result.is_err(), "Named field access not yet implemented");
     }
 }
