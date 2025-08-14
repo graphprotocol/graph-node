@@ -49,7 +49,7 @@ use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
 struct WritableSubgraphStore(SubgraphStore);
 
 impl WritableSubgraphStore {
-    fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
+    fn primary_conn(&self) -> Result<primary::Connection<'_>, StoreError> {
         self.0.primary_conn()
     }
 
