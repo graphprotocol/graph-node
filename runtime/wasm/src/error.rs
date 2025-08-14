@@ -9,7 +9,6 @@ pub enum DeterminismLevel {
     Deterministic,
 
     /// This error is known to be non-deterministic. For example, an intermittent http failure.
-    #[allow(dead_code)]
     NonDeterministic,
 
     /// The runtime is processing a given block, but there is an indication that the blockchain client

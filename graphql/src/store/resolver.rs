@@ -24,7 +24,6 @@ use crate::query::ext::BlockConstraint;
 /// A resolver that fetches entities from a `Store`.
 #[derive(Clone, CheapClone)]
 pub struct StoreResolver {
-    #[allow(dead_code)]
     logger: Logger,
     pub(crate) store: Arc<dyn QueryStore>,
     pub(crate) block_ptr: Option<BlockPtr>,

@@ -10,7 +10,6 @@ use graph::runtime::{
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
-use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class::*;
 
@@ -463,14 +462,6 @@ where
             },
         })
     }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, AscType)]
-#[allow(dead_code)]
-pub enum AscSubgraphEntityOp {
-    Create,
-    Modify,
-    Delete,
 }
 
 impl ToAscObj<AscEnum<YamlValueKind>> for serde_yaml::Value {

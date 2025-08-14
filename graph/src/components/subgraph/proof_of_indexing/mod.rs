@@ -81,6 +81,7 @@ impl SharedProofOfIndexing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
     use crate::{
         data::store::Id,
         prelude::{BlockPtr, DeploymentHash, Value},
@@ -96,6 +97,33 @@ mod tests {
     use std::collections::HashMap;
     use std::convert::TryInto;
     use web3::types::{Address, H256};
+
+    /// The PoI is the StableHash of this struct. This reference implementation is
+    /// mostly here just to make sure that the online implementation is
+    /// well-implemented (without conflicting sequence numbers, or other oddities).
+    /// It's just way easier to check that this works, and serves as a kind of
+    /// documentation as a side-benefit.
+    pub struct PoI<'a> {
+        pub causality_regions: HashMap<String, PoICausalityRegion<'a>>,
+        pub subgraph_id: DeploymentHash,
+        pub block_hash: H256,
+        pub indexer: Option<Address>,
+    }
+
+    fn h256_as_bytes(val: &H256) -> AsBytes<&[u8]> {
+        AsBytes(val.as_bytes())
+    }
+
+    fn indexer_opt_as_bytes(val: &Option<Address>) -> Option<AsBytes<&[u8]>> {
+        val.as_ref().map(|v| AsBytes(v.as_bytes()))
+    }
+
+    impl_stable_hash!(PoI<'_> {
+        causality_regions,
+        subgraph_id,
+        block_hash: h256_as_bytes,
+        indexer: indexer_opt_as_bytes
+    });
 
     /// Verify that the stable hash of a reference and online implementation match
     fn check(case: Case, cache: &mut HashMap<String, &str>) {

@@ -40,7 +40,6 @@ impl Watcher {
         }
     }
 
-    #[allow(dead_code)]
     fn send(&self) {
         // Unwrap: `self` holds a receiver.
         self.sender.send(()).unwrap()
