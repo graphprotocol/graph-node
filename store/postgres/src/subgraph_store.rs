@@ -789,7 +789,7 @@ impl SubgraphStoreInner {
     /// connections can deadlock the entire process if the pool runs out
     /// of connections in between getting the first one and trying to get the
     /// second one.
-    pub(crate) fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
+    pub(crate) fn primary_conn(&self) -> Result<primary::Connection<'_>, StoreError> {
         let conn = self.mirror.primary().get()?;
         Ok(primary::Connection::new(conn))
     }

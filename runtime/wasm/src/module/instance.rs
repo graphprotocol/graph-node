@@ -141,7 +141,7 @@ impl WasmInstance {
         self.store.into_data()
     }
 
-    pub(crate) fn instance_ctx(&mut self) -> WasmInstanceContext {
+    pub(crate) fn instance_ctx(&mut self) -> WasmInstanceContext<'_> {
         WasmInstanceContext::new(&mut self.store)
     }
 

@@ -4964,6 +4964,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for CountCurrentVersionsQuery<'a> {}
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
+#[allow(dead_code)]
 pub struct CopyVid {
     #[diesel(sql_type = BigInt)]
     pub vid: i64,

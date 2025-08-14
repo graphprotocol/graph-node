@@ -145,7 +145,7 @@ impl EntityModification {
 
     /// Return the details of the write if `self` is a write operation for a
     /// new or an existing entity
-    fn as_write(&self) -> Option<EntityWrite> {
+    fn as_write(&self) -> Option<EntityWrite<'_>> {
         EntityWrite::try_from(self).ok()
     }
 
@@ -823,7 +823,7 @@ impl Batch {
         &self,
         entity_type: &EntityType,
         at: BlockNumber,
-    ) -> impl Iterator<Item = EntityOp> {
+    ) -> impl Iterator<Item = EntityOp<'_>> {
         self.mods
             .group(entity_type)
             .map(|group| group.effective_ops(at))
