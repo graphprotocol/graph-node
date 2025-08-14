@@ -389,6 +389,9 @@ fn build_child_filter_from_object(
 fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecutionError> {
     match value {
         Value::List(values) => {
+            if values.is_empty() {
+                return Ok(values);
+            }
             // Check that all values in list are of the same type
             let root_discriminant = discriminant(&values[0]);
             for value in &values {
@@ -938,6 +941,26 @@ mod tests {
                 Value::String("ello".to_string()),
             )]))
         )
+    }
+
+    #[test]
+    fn build_query_handles_empty_in_list() {
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![(
+                "id_in".into(),
+                r::Value::List(vec![]),
+            )])),
+        );
+
+        let result = query(&query_field);
+        assert_eq!(
+            result.filter,
+            Some(EntityFilter::And(vec![EntityFilter::In(
+                "id".to_string(),
+                Vec::<Value>::new(),
+            )]))
+        );
     }
 
     #[test]
