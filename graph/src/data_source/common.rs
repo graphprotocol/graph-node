@@ -1416,7 +1416,7 @@ mod tests {
             .to_string()
             .contains("not yet supported"));
 
-        // Test extracting by property name "amount" - not yet implemented  
+        // Test extracting by property name "amount" - not yet implemented
         let result = CallDecl::extract_nested_struct_field(
             &asset_struct,
             &[FieldAccess::Name("amount".into())],

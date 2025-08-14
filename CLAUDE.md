@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL MANDATORY STEP ⚠️
+**ALWAYS run `cargo fmt --all` after editing ANY .rs file - NO EXCEPTIONS!**
+- This is REQUIRED after every single Rust code change
+- Must be run from the project root directory
+- Must be done BEFORE committing any changes
+- If you forget this, you have failed to follow instructions
+
 This document assumes that your human has already set up all database configuration required for the test suite to run.
 
 ## Project Overview
@@ -24,14 +31,15 @@ THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/grap
 
 ### Code Quality
 ```bash
-# Format all code
+# 🚨 MANDATORY: Format all code IMMEDIATELY after any .rs file edit
 cargo fmt --all
 
 # Check code without building
 cargo check
 ```
 
-Always run `cargo fmt --all` from the project root after editing any .rs files.
+🚨 **CRITICAL REMINDER**: `cargo fmt --all` is MANDATORY after editing ANY .rs file - NO EXCEPTIONS!
+This must be done from the project root BEFORE any commit. Forgetting this means you failed to follow instructions.
 
 ## High-Level Architecture
 
@@ -88,6 +96,7 @@ Use format: `{crate-name}: {description}`
 - Integration tests require Docker Compose setup and additional environment dependencies
 - Claude cannot run integration tests due to missing environment dependencies
 - Claude must set `THEGRAPH_STORE_POSTGRES_DIESEL_URL` before running any tests
+- **🚨 MANDATORY**: Always run `cargo fmt --all` after editing .rs files, BEFORE committing
 
 ### Environment Variables
 - `GRAPH_LOG=debug`: Enable debug logging
