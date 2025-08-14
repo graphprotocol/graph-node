@@ -87,7 +87,7 @@ slog = { version = "2.7.0", features = [
 ] }
 sqlparser = "0.46.0"
 strum = { version = "0.26", features = ["derive"] }
-syn = { version = "2.0.101", features = ["full"] }
+syn = { version = "2.0.105", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["full"] }
