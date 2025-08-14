@@ -20,7 +20,7 @@ impl<T> TimedRwLock<T> {
         }
     }
 
-    pub fn write(&self, logger: &Logger) -> parking_lot::RwLockWriteGuard<T> {
+    pub fn write(&self, logger: &Logger) -> parking_lot::RwLockWriteGuard<'_, T> {
         loop {
             let mut elapsed = Duration::from_secs(0);
             match self.lock.try_write_for(self.log_threshold) {
@@ -36,11 +36,11 @@ impl<T> TimedRwLock<T> {
         }
     }
 
-    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<T>> {
+    pub fn try_read(&self) -> Option<parking_lot::RwLockReadGuard<'_, T>> {
         self.lock.try_read()
     }
 
-    pub fn read(&self, logger: &Logger) -> parking_lot::RwLockReadGuard<T> {
+    pub fn read(&self, logger: &Logger) -> parking_lot::RwLockReadGuard<'_, T> {
         loop {
             let mut elapsed = Duration::from_secs(0);
             match self.lock.try_read_for(self.log_threshold) {
@@ -73,7 +73,7 @@ impl<T> TimedMutex<T> {
         }
     }
 
-    pub fn lock(&self, logger: &Logger) -> parking_lot::MutexGuard<T> {
+    pub fn lock(&self, logger: &Logger) -> parking_lot::MutexGuard<'_, T> {
         let start = Instant::now();
         let guard = self.lock.lock();
         let elapsed = start.elapsed();

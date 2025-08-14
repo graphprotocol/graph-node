@@ -176,7 +176,7 @@ impl<'a> Table<'a> {
     }
 
     /// Reference a column in this table and use the correct SQL type `ST`
-    fn bind<ST>(&self, name: &str) -> Option<BoundColumn<ST>> {
+    fn bind<ST>(&self, name: &str) -> Option<BoundColumn<'_, ST>> {
         self.column(name).map(|c| c.bind())
     }
 
