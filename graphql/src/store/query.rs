@@ -972,6 +972,26 @@ mod tests {
     }
 
     #[test]
+    fn build_query_handles_empty_in_list() {
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![(
+                "id_in".into(),
+                r::Value::List(vec![]),
+            )])),
+        );
+
+        let result = query(&query_field);
+        assert_eq!(
+            result.filter,
+            Some(EntityFilter::And(vec![EntityFilter::In(
+                "id".to_string(),
+                Vec::<Value>::new(),
+            )]))
+        );
+    }
+
+    #[test]
     fn build_query_yields_block_change_gte_filter() {
         let query_field = default_field_with(
             "where",
