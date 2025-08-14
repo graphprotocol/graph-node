@@ -9,6 +9,7 @@ use web3::types::{Address, H256};
 /// well-implemented (without conflicting sequence numbers, or other oddities).
 /// It's just way easier to check that this works, and serves as a kind of
 /// documentation as a side-benefit.
+#[allow(dead_code)]
 pub struct PoI<'a> {
     pub causality_regions: HashMap<String, PoICausalityRegion<'a>>,
     pub subgraph_id: DeploymentHash,
@@ -16,10 +17,12 @@ pub struct PoI<'a> {
     pub indexer: Option<Address>,
 }
 
+#[allow(dead_code)]
 fn h256_as_bytes(val: &H256) -> AsBytes<&[u8]> {
     AsBytes(val.as_bytes())
 }
 
+#[allow(dead_code)]
 fn indexer_opt_as_bytes(val: &Option<Address>) -> Option<AsBytes<&[u8]>> {
     val.as_ref().map(|v| AsBytes(v.as_bytes()))
 }

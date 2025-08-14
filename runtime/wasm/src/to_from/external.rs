@@ -466,6 +466,7 @@ where
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, AscType)]
+#[allow(dead_code)]
 pub enum AscSubgraphEntityOp {
     Create,
     Modify,

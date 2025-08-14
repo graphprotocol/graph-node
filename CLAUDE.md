@@ -34,12 +34,16 @@ THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/grap
 # 🚨 MANDATORY: Format all code IMMEDIATELY after any .rs file edit
 cargo fmt --all
 
-# Check code without building
+# 🚨 MANDATORY: Check code for warnings and errors - MUST have zero warnings
 cargo check
 ```
 
-🚨 **CRITICAL REMINDER**: `cargo fmt --all` is MANDATORY after editing ANY .rs file - NO EXCEPTIONS!
-This must be done from the project root BEFORE any commit. Forgetting this means you failed to follow instructions.
+🚨 **CRITICAL REQUIREMENTS for ANY implementation**:
+1. **`cargo fmt --all`** is MANDATORY after editing ANY .rs file - NO EXCEPTIONS!
+2. **`cargo check`** MUST show zero warnings before any commit - NO EXCEPTIONS!
+3. **All tests** MUST pass before any commit
+4. All requirements must be met from the project root BEFORE any commit
+5. Forgetting any of these means you failed to follow instructions
 
 ## High-Level Architecture
 
@@ -91,12 +95,18 @@ Use format: `{crate-name}: {description}`
 - Keep commits logical and atomic
 - Use `git rebase -i` to clean up history before merging
 
-### Testing Requirements
+### Implementation Success Criteria
+Before any commit or PR, ALL of the following MUST be satisfied:
+
+1. **🚨 MANDATORY**: All tests MUST pass
+2. **🚨 MANDATORY**: `cargo check` MUST show zero warnings
+3. **🚨 MANDATORY**: `cargo fmt --all` MUST be run after editing ANY .rs file
+
+**Testing Notes**:
 - Unit tests inline with source code
-- Integration tests require Docker Compose setup and additional environment dependencies
+- Integration tests require Docker Compose setup and additional environment dependencies  
 - Claude cannot run integration tests due to missing environment dependencies
 - Claude must set `THEGRAPH_STORE_POSTGRES_DIESEL_URL` before running any tests
-- **🚨 MANDATORY**: Always run `cargo fmt --all` after editing .rs files, BEFORE committing
 
 ### Environment Variables
 - `GRAPH_LOG=debug`: Enable debug logging
