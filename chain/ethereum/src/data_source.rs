@@ -800,11 +800,12 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
-                let calls = DeclaredCall::from_log_trigger(
+                let calls = DeclaredCall::from_log_trigger_with_event(
                     &self.mapping,
                     &event_handler.calls,
                     &log,
                     &params,
+                    Some(&event_handler.event),
                 )?;
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Log {

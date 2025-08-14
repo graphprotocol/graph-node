@@ -9,7 +9,9 @@ use num_bigint::Sign;
 use regex::Regex;
 use serde::de;
 use serde::Deserialize;
+use serde_json;
 use slog::Logger;
+use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc};
 use web3::types::{Log, H160};
 
@@ -17,6 +19,8 @@ use web3::types::{Log, H160};
 pub struct MappingABI {
     pub name: String,
     pub contract: Contract,
+    /// Struct field mappings extracted from ABI JSON
+    pub struct_field_mappings: HashMap<String, HashMap<String, StructFieldInfo>>,
 }
 
 impl MappingABI {
@@ -61,6 +65,85 @@ impl MappingABI {
         };
         Ok(function)
     }
+
+    /// Parse struct field mappings from ABI JSON
+    fn parse_struct_field_mappings(
+        abi_json: &str,
+    ) -> Result<HashMap<String, HashMap<String, StructFieldInfo>>, Error> {
+        let abi: serde_json::Value =
+            serde_json::from_str(abi_json).with_context(|| "Failed to parse ABI JSON")?;
+
+        let mut event_mappings = HashMap::new();
+
+        if let Some(abi_array) = abi.as_array() {
+            for item in abi_array {
+                // Only process events
+                if item.get("type").and_then(|t| t.as_str()) == Some("event") {
+                    if let (Some(event_name), Some(inputs)) = (
+                        item.get("name").and_then(|n| n.as_str()),
+                        item.get("inputs").and_then(|i| i.as_array()),
+                    ) {
+                        let mut param_mappings = HashMap::new();
+
+                        for input in inputs {
+                            if let (Some(param_name), Some(param_type)) = (
+                                input.get("name").and_then(|n| n.as_str()),
+                                input.get("type").and_then(|t| t.as_str()),
+                            ) {
+                                // Check if this is a tuple type (struct)
+                                if param_type == "tuple" {
+                                    if let Some(components) = input.get("components") {
+                                        // Parse the ParamType from the JSON (we'll use a placeholder for now)
+                                        let param_type = ParamType::Tuple(vec![]); // Simplified for now
+
+                                        match StructFieldInfo::from_components(
+                                            param_name.to_string(),
+                                            param_type,
+                                            components,
+                                        ) {
+                                            Ok(field_info) => {
+                                                param_mappings
+                                                    .insert(param_name.to_string(), field_info);
+                                            }
+                                            Err(e) => {
+                                                // Log error but continue processing other parameters
+                                                eprintln!("Warning: Failed to parse struct field info for {}.{}: {}", event_name, param_name, e);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if !param_mappings.is_empty() {
+                            event_mappings.insert(event_name.to_string(), param_mappings);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(event_mappings)
+    }
+
+    /// Get struct field info for a specific event parameter
+    pub fn get_struct_field_info(
+        &self,
+        event_name: &str,
+        param_name: &str,
+    ) -> Option<&StructFieldInfo> {
+        self.struct_field_mappings
+            .get(event_name)
+            .and_then(|event_params| event_params.get(param_name))
+    }
+
+    /// Get all struct parameters for an event
+    pub fn get_event_struct_params(
+        &self,
+        event_name: &str,
+    ) -> Option<&HashMap<String, StructFieldInfo>> {
+        self.struct_field_mappings.get(event_name)
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -83,9 +166,23 @@ impl UnresolvedMappingABI {
         })?;
         let contract = Contract::load(&*contract_bytes)
             .with_context(|| format!("failed to load ABI {}", self.name))?;
+
+        // Parse struct field mappings from the original ABI JSON
+        let abi_json = std::str::from_utf8(&contract_bytes)
+            .with_context(|| format!("ABI {} contains invalid UTF-8", self.name))?;
+        let struct_field_mappings = MappingABI::parse_struct_field_mappings(abi_json)
+            .unwrap_or_else(|e| {
+                eprintln!(
+                    "Warning: Failed to parse struct field mappings for {}: {}",
+                    self.name, e
+                );
+                HashMap::new()
+            });
+
         Ok(MappingABI {
             name: self.name,
             contract,
+            struct_field_mappings,
         })
     }
 }
@@ -124,6 +221,16 @@ impl CallDecl {
     }
 
     pub fn address_for_log(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
+        self.address_for_log_with_abi(log, params, None, None)
+    }
+
+    pub fn address_for_log_with_abi(
+        &self,
+        log: &Log,
+        params: &[LogParam],
+        mapping_abi: Option<&MappingABI>,
+        event_name: Option<&str>,
+    ) -> Result<H160, Error> {
         let address = match &self.expr.address {
             CallArg::HexAddress(address) => *address,
             CallArg::Ethereum(arg) => match arg {
@@ -161,10 +268,18 @@ impl CallDecl {
                             )
                         })?;
 
+                    // Get struct field info from ABI if available
+                    let struct_field_info = mapping_abi
+                        .and_then(|_abi| event_name)
+                        .and_then(|event| mapping_abi?.struct_field_mappings.get(event))
+                        .and_then(|event_mappings| event_mappings.get(param_name.as_str()));
+
                     Self::extract_nested_struct_field_as_address(
                         &param.value,
                         field_accesses,
                         &self.label,
+                        Some(&param.name), // Pass parameter name for better error messages
+                        struct_field_info, // Pass struct field info from ABI
                     )?
                 }
             },
@@ -179,6 +294,16 @@ impl CallDecl {
     }
 
     pub fn args_for_log(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
+        self.args_for_log_with_abi(log, params, None, None)
+    }
+
+    pub fn args_for_log_with_abi(
+        &self,
+        log: &Log,
+        params: &[LogParam],
+        mapping_abi: Option<&MappingABI>,
+        event_name: Option<&str>,
+    ) -> Result<Vec<Token>, Error> {
         self.expr
             .args
             .iter()
@@ -201,7 +326,19 @@ impl CallDecl {
                             .find(|param| &param.name == param_name.as_str())
                             .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, param_name))?;
 
-                        Self::extract_nested_struct_field(&param.value, field_accesses, &self.label)
+                        // Get struct field info from ABI if available
+                        let struct_field_info = mapping_abi
+                            .and_then(|_abi| event_name)
+                            .and_then(|event| mapping_abi?.struct_field_mappings.get(event))
+                            .and_then(|event_mappings| event_mappings.get(param_name.as_str()));
+
+                        Self::extract_nested_struct_field(
+                            &param.value,
+                            field_accesses,
+                            &self.label,
+                            Some(&param.name),
+                            struct_field_info,
+                        )
                     }
                 },
                 CallArg::Subgraph(_) => Err(anyhow!(
@@ -396,64 +533,21 @@ impl CallDecl {
         Ok(Token::Array(tokens?))
     }
 
-    /// Extracts a field value from a struct parameter and converts it to an address
-    fn extract_struct_field_as_address(
-        struct_token: &Token,
-        field_name: &str,
-        call_label: &str,
-    ) -> Result<H160, Error> {
-        let field_token = Self::extract_struct_field(struct_token, field_name, call_label)?;
-        field_token.into_address().ok_or_else(|| {
-            anyhow!(
-                "In declarative call '{}': struct field {} is not an address",
-                call_label,
-                field_name
-            )
-        })
-    }
-
-    /// Extracts a field value from a struct parameter using numeric index
-    fn extract_struct_field(
-        struct_token: &Token,
-        field_index_str: &str,
-        call_label: &str,
-    ) -> Result<Token, Error> {
-        match struct_token {
-            Token::Tuple(fields) => {
-                // Parse field name as numeric index (like "0", "1", "2")
-                let field_index = field_index_str.parse::<usize>().map_err(|_| {
-                    anyhow!(
-                        "In declarative call '{}': struct field '{}' must be a numeric index (0, 1, 2, ...)",
-                        call_label, field_index_str
-                    )
-                })?;
-
-                fields
-                    .get(field_index)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "In declarative call '{}': struct field index {} out of bounds (struct has {} fields)",
-                            call_label, field_index, fields.len()
-                        )
-                    })
-                    .map(|token| token.clone())
-            }
-            _ => Err(anyhow!(
-                "In declarative call '{}': parameter is not a struct/tuple, cannot access field {}",
-                call_label,
-                field_index_str
-            )),
-        }
-    }
-
     /// Extracts a nested field value from a struct parameter with mixed numeric/named access
     fn extract_nested_struct_field_as_address(
         struct_token: &Token,
         field_accesses: &[FieldAccess],
         call_label: &str,
+        param_name: Option<&str>,
+        struct_field_info: Option<&StructFieldInfo>,
     ) -> Result<H160, Error> {
-        let field_token =
-            Self::extract_nested_struct_field(struct_token, field_accesses, call_label)?;
+        let field_token = Self::extract_nested_struct_field(
+            struct_token,
+            field_accesses,
+            call_label,
+            param_name,
+            struct_field_info,
+        )?;
         field_token.into_address().ok_or_else(|| {
             anyhow!(
                 "In declarative call '{}': nested struct field is not an address",
@@ -467,6 +561,8 @@ impl CallDecl {
         struct_token: &Token,
         field_accesses: &[FieldAccess],
         call_label: &str,
+        param_name: Option<&str>,
+        struct_field_info: Option<&StructFieldInfo>,
     ) -> Result<Token, Error> {
         if field_accesses.is_empty() {
             return Err(anyhow!(
@@ -483,13 +579,44 @@ impl CallDecl {
                     let field_index = match field_access {
                         FieldAccess::Index(idx) => *idx,
                         FieldAccess::Name(name) => {
-                            // For named access, we need to resolve the name to an index
-                            // In practice, this would require ABI information to map names to indices
-                            // For now, we'll return an error indicating this isn't yet supported
-                            return Err(anyhow!(
-                                "In declarative call '{}': named field access '{}' not yet supported - use numeric indices for now",
-                                call_label, name
-                            ));
+                            // Try to resolve field name using struct field info
+                            if let Some(field_info) = struct_field_info {
+                                if let Some(field_index) =
+                                    field_info.resolve_field_name(name.as_str())
+                                {
+                                    field_index
+                                } else {
+                                    // Field name not found - provide helpful error with available field names
+                                    let available_names = field_info.get_field_names();
+                                    let available_indices: Vec<String> =
+                                        (0..fields.len()).map(|i| i.to_string()).collect();
+
+                                    return Err(anyhow!(
+                                        "In declarative call '{}': unknown field '{}' in struct parameter '{}'. Available field names: [{}]. Available numeric indices: [{}]",
+                                        call_label,
+                                        name,
+                                        field_info.param_name,
+                                        available_names.join(", "),
+                                        available_indices.join(", ")
+                                    ));
+                                }
+                            } else {
+                                // No struct field info available - show numeric indices
+                                let available_indices: Vec<String> =
+                                    (0..fields.len()).map(|i| i.to_string()).collect();
+                                let indices_list = available_indices.join(", ");
+                                let param_name_str = param_name.unwrap_or("PARAM");
+
+                                return Err(anyhow!(
+                                    "In declarative call '{}': named field access '{}' requires ABI struct information. Available numeric indices: [{}]. Try using 'event.params.{}.0' instead of 'event.params.{}.{}'",
+                                    call_label,
+                                    name,
+                                    indices_list,
+                                    param_name_str,
+                                    param_name_str,
+                                    name
+                                ));
+                            }
                         }
                     };
 
@@ -646,6 +773,54 @@ pub enum CallArg {
     Subgraph(SubgraphArg),
 }
 
+/// Information about struct field mappings extracted from ABI JSON components
+#[derive(Clone, Debug, PartialEq)]
+pub struct StructFieldInfo {
+    /// Original parameter name from the event
+    pub param_name: String,
+    /// Mapping from field names to their indices in the tuple
+    pub field_mappings: HashMap<String, usize>,
+    /// The ethabi ParamType for type validation
+    pub param_type: ParamType,
+}
+
+impl StructFieldInfo {
+    /// Create a new StructFieldInfo from ABI JSON components
+    pub fn from_components(
+        param_name: String,
+        param_type: ParamType,
+        components: &serde_json::Value,
+    ) -> Result<Self, Error> {
+        let mut field_mappings = HashMap::new();
+
+        if let Some(components_array) = components.as_array() {
+            for (index, component) in components_array.iter().enumerate() {
+                if let Some(field_name) = component.get("name").and_then(|n| n.as_str()) {
+                    field_mappings.insert(field_name.to_string(), index);
+                }
+            }
+        }
+
+        Ok(StructFieldInfo {
+            param_name,
+            field_mappings,
+            param_type,
+        })
+    }
+
+    /// Resolve a field name to its tuple index
+    pub fn resolve_field_name(&self, field_name: &str) -> Option<usize> {
+        self.field_mappings.get(field_name).copied()
+    }
+
+    /// Get all available field names
+    pub fn get_field_names(&self) -> Vec<String> {
+        let mut names: Vec<_> = self.field_mappings.keys().cloned().collect();
+        names.sort();
+        names
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum FieldAccess {
     /// Access by numeric index (e.g., "0", "1", "2")
@@ -740,10 +915,24 @@ impl DeclaredCall {
         log: &Log,
         params: &[LogParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
+        Self::from_log_trigger_with_event(mapping, call_decls, log, params, None)
+    }
+
+    pub fn from_log_trigger_with_event(
+        mapping: &dyn FindMappingABI,
+        call_decls: &CallDecls,
+        log: &Log,
+        params: &[LogParam],
+        event_name: Option<&str>,
+    ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         Self::create_calls(mapping, call_decls, |decl, _| {
+            // Get the MappingABI for this declaration's contract
+            let abi_name = &decl.expr.abi;
+            let mapping_abi = mapping.find_abi(abi_name.as_str()).ok();
+
             Ok((
-                decl.address_for_log(log, params)?,
-                decl.args_for_log(log, params)?,
+                decl.address_for_log_with_abi(log, params, mapping_abi.as_deref(), event_name)?,
+                decl.args_for_log_with_abi(log, params, mapping_abi.as_deref(), event_name)?,
             ))
         })
     }
@@ -1024,57 +1213,107 @@ mod tests {
         let struct_token = Token::Tuple(tuple_fields.clone());
 
         // Test accessing index 0 (uint8)
-        let result = CallDecl::extract_struct_field(&struct_token, "0", "testCall").unwrap();
+        let result = CallDecl::extract_nested_struct_field(
+            &struct_token,
+            &[FieldAccess::Index(0)],
+            "testCall",
+            None,
+            None,
+        )
+        .unwrap();
         assert!(matches!(result, Token::Uint(_)));
 
         // Test accessing index 1 (address)
-        let result = CallDecl::extract_struct_field(&struct_token, "1", "testCall").unwrap();
+        let result = CallDecl::extract_nested_struct_field(
+            &struct_token,
+            &[FieldAccess::Index(1)],
+            "testCall",
+            None,
+            None,
+        )
+        .unwrap();
         assert!(matches!(result, Token::Address(_)));
+        if let Token::Address(addr) = result {
+            assert_eq!(addr, [1u8; 20].into());
+        }
 
         // Test accessing index 2 (uint256)
-        let result = CallDecl::extract_struct_field(&struct_token, "2", "testCall").unwrap();
+        let result = CallDecl::extract_nested_struct_field(
+            &struct_token,
+            &[FieldAccess::Index(2)],
+            "testCall",
+            None,
+            None,
+        )
+        .unwrap();
         assert!(matches!(result, Token::Uint(_)));
+
+        // Test that it works in a declarative call context
+        let expr: CallExpr = "ERC20[event.params.asset.1].name()".parse().unwrap();
+        assert_eq!(expr.abi, "ERC20");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::StructField(
+                "asset".into(),
+                vec![FieldAccess::Index(1)]
+            ))
+        );
+        assert_eq!(expr.func, "name");
+        assert_eq!(expr.args, vec![]);
     }
 
     #[test]
     fn test_struct_field_access_errors() {
         use ethabi::Token;
 
+        // Test that named field syntax parses successfully
+        let result = CallArg::from_str("event.params.asset.addr");
+        assert!(result.is_ok(), "Should parse successfully");
+
         // Test accessing non-tuple as struct
         let non_tuple = Token::Address([1u8; 20].into());
-        let result = CallDecl::extract_struct_field(&non_tuple, "0", "testCall");
+        let result = CallDecl::extract_nested_struct_field(
+            &non_tuple,
+            &[FieldAccess::Index(0)],
+            "testCall",
+            None,
+            None,
+        );
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("parameter is not a struct/tuple"));
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("cannot access field on non-struct/tuple"));
 
         // Test out of bounds numeric index
         let tuple_fields = vec![Token::Uint(ethabi::Uint::from(123u64))];
         let struct_token = Token::Tuple(tuple_fields);
-        let result = CallDecl::extract_struct_field(&struct_token, "1", "testCall");
+        let result = CallDecl::extract_nested_struct_field(
+            &struct_token,
+            &[FieldAccess::Index(1)],
+            "testCall",
+            None,
+            None,
+        );
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("out of bounds"));
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'testCall'"));
+        assert!(error_msg.contains("out of bounds"));
+        assert!(error_msg.contains("struct has 1 fields"));
 
-        // Test invalid field name (non-numeric)
+        // Test invalid field name (requires ABI info)
         let tuple_fields = vec![Token::Address([1u8; 20].into())];
         let struct_token = Token::Tuple(tuple_fields);
-        let result = CallDecl::extract_struct_field(&struct_token, "addr", "testCall");
+        let result = CallDecl::extract_nested_struct_field(
+            &struct_token,
+            &[FieldAccess::Name("addr".into())],
+            "testCall",
+            None,
+            None,
+        );
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("must be a numeric index"));
-
-        // Test invalid field name (non-numeric)
-        let tuple_fields = vec![Token::Address([1u8; 20].into())];
-        let struct_token = Token::Tuple(tuple_fields);
-        let result = CallDecl::extract_struct_field(&struct_token, "unknown", "testCall");
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("must be a numeric index"));
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("In declarative call 'testCall'"));
+        assert!(error_msg.contains("requires ABI struct information"));
+        assert!(error_msg.contains("0"));
     }
 
     #[test]
@@ -1095,70 +1334,6 @@ mod tests {
 
         let result = CallArg::from_str("event.invalid.param.field");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_helpful_error_messages() {
-        // Test that users get helpful error messages when they use the old syntax
-        let result = CallArg::from_str("event.params.asset.addr");
-        assert!(result.is_ok(), "Should parse successfully");
-
-        // Test error message when using invalid field names
-        use ethabi::Token;
-        let struct_token = Token::Tuple(vec![Token::Address([1u8; 20].into())]);
-        let result = CallDecl::extract_struct_field(&struct_token, "addr", "testCall");
-        assert!(result.is_err());
-        let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("In declarative call 'testCall'"));
-        assert!(error_msg.contains("must be a numeric index"));
-        assert!(error_msg.contains("0, 1, 2"));
-
-        // Test helpful error for out of bounds
-        let result = CallDecl::extract_struct_field(&struct_token, "5", "testCall");
-        assert!(result.is_err());
-        let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("In declarative call 'testCall'"));
-        assert!(error_msg.contains("out of bounds"));
-        assert!(error_msg.contains("struct has 1 fields"));
-    }
-
-    #[test]
-    fn test_struct_field_extraction_with_mixed_types() {
-        // Test extracting fields from a struct with mixed types: (uint8, address, uint256)
-        use ethabi::Token;
-
-        // Create a mock struct that represents (uint8, address, uint256)
-        let mixed_struct = Token::Tuple(vec![
-            Token::Uint(ethabi::Uint::from(1u8)), // uint8 field at index 0
-            Token::Address([0x42; 20].into()),    // address field at index 1
-            Token::Uint(ethabi::Uint::from(1000000u64)), // uint256 field at index 2
-        ]);
-
-        // Test extracting each field by its numeric index
-        let extracted = CallDecl::extract_struct_field(&mixed_struct, "0", "testCall").unwrap();
-        assert!(matches!(extracted, Token::Uint(_)));
-
-        let extracted = CallDecl::extract_struct_field(&mixed_struct, "1", "testCall").unwrap();
-        assert!(matches!(extracted, Token::Address(_)));
-        if let Token::Address(addr) = extracted {
-            assert_eq!(addr, [0x42; 20].into());
-        }
-
-        let extracted = CallDecl::extract_struct_field(&mixed_struct, "2", "testCall").unwrap();
-        assert!(matches!(extracted, Token::Uint(_)));
-
-        // Test that it works in a declarative call context
-        let expr: CallExpr = "ERC20[event.params.asset.1].name()".parse().unwrap();
-        assert_eq!(expr.abi, "ERC20");
-        assert_eq!(
-            expr.address,
-            CallArg::Ethereum(EthereumArg::StructField(
-                "asset".into(),
-                vec![FieldAccess::Index(1)]
-            ))
-        );
-        assert_eq!(expr.func, "name");
-        assert_eq!(expr.args, vec![]);
     }
 
     #[test]
@@ -1241,7 +1416,7 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("In declarative call 'transferCall'"));
-        assert!(error_msg.contains("not yet supported"));
+        assert!(error_msg.contains("requires ABI struct information"));
     }
 
     #[test]
@@ -1366,70 +1541,171 @@ mod tests {
             &outer_struct,
             &[FieldAccess::Index(1), FieldAccess::Index(0)],
             "testCall",
+            Some("asset"),
+            None,
         )
         .unwrap();
         assert!(matches!(result, Token::Address(_)));
         if let Token::Address(addr) = result {
             assert_eq!(addr, [0x42; 20].into());
         }
-
-        // Test extracting nested field using mixed path: index 1, then property "name"
-        // TODO: This will work once named field access is implemented
-        let result = CallDecl::extract_nested_struct_field(
-            &outer_struct,
-            &[FieldAccess::Index(1), FieldAccess::Name("name".into())],
-            "testCall",
-        );
-        assert!(result.is_err(), "Named field access not yet implemented");
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("not yet supported"));
     }
 
     #[test]
-    fn test_struct_field_extraction_with_property_names() {
-        use ethabi::Token;
+    fn test_named_struct_field_access_end_to_end() {
+        use crate::prelude::web3::types::{Log, H160};
+        use ethabi::{Contract, LogParam, ParamType, Token};
+        use std::collections::HashMap;
 
-        // Create a struct with known property layout
-        // struct Asset {
-        //   addr: address,
-        //   amount: uint256,
-        //   active: bool
-        // }
-        let asset_struct = Token::Tuple(vec![
-            Token::Address([0x42; 20].into()),        // addr
-            Token::Uint(ethabi::Uint::from(1000u64)), // amount
-            Token::Bool(true),                        // active
+        // Create a real ABI with struct components like a Transfer event with asset struct
+        let abi_json = r#"[
+            {
+                "anonymous": false,
+                "inputs": [
+                    {
+                        "indexed": false,
+                        "name": "from",
+                        "type": "address"
+                    },
+                    {
+                        "indexed": false,
+                        "name": "asset",
+                        "type": "tuple",
+                        "components": [
+                            {
+                                "name": "addr",
+                                "type": "address"
+                            },
+                            {
+                                "name": "amount",
+                                "type": "uint256"
+                            },
+                            {
+                                "name": "active",
+                                "type": "bool"
+                            }
+                        ]
+                    }
+                ],
+                "name": "Transfer",
+                "type": "event"
+            }
+        ]"#;
+
+        // Parse the ABI and create struct field mappings
+        let contract = Contract::load(abi_json.as_bytes()).unwrap();
+        let mut struct_field_mappings = HashMap::new();
+        let mut event_mappings = HashMap::new();
+
+        // Simulate the ABI parsing that would happen in parse_struct_field_mappings
+        let mut asset_mapping = HashMap::new();
+        asset_mapping.insert("addr".to_string(), 0);
+        asset_mapping.insert("amount".to_string(), 1);
+        asset_mapping.insert("active".to_string(), 2);
+
+        let asset_struct_info = StructFieldInfo {
+            param_name: "asset".to_string(),
+            field_mappings: asset_mapping,
+            param_type: ParamType::Tuple(vec![
+                ParamType::Address,
+                ParamType::Uint(256),
+                ParamType::Bool,
+            ]),
+        };
+
+        event_mappings.insert("asset".to_string(), asset_struct_info);
+        struct_field_mappings.insert("Transfer".to_string(), event_mappings);
+
+        let mapping_abi = MappingABI {
+            name: "TestContract".to_string(),
+            contract,
+            struct_field_mappings,
+        };
+
+        // Create a CallDecl that uses named field access
+        let call_decl = CallDecl {
+            label: "testCall".to_string(),
+            expr: "TestContract[event.params.asset.addr].someFunction()"
+                .parse()
+                .unwrap(),
+            readonly: (),
+        };
+
+        // Create test data - a struct with (address, uint256, bool)
+        let test_address = H160::from([1u8; 20]);
+        let asset_tuple = Token::Tuple(vec![
+            Token::Address(test_address),
+            Token::Uint(ethabi::Uint::from(1000u64)),
+            Token::Bool(true),
         ]);
 
-        // Test extracting by property name "addr" - not yet implemented
-        // TODO: This will work once named field access is implemented
-        let result = CallDecl::extract_nested_struct_field(
-            &asset_struct,
-            &[FieldAccess::Name("addr".into())],
-            "testCall",
-        );
-        assert!(result.is_err(), "Named field access not yet implemented");
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("not yet supported"));
+        let params = vec![
+            LogParam {
+                name: "from".to_string(),
+                value: Token::Address(H160::from([2u8; 20])),
+            },
+            LogParam {
+                name: "asset".to_string(),
+                value: asset_tuple,
+            },
+        ];
 
-        // Test extracting by property name "amount" - not yet implemented
-        let result = CallDecl::extract_nested_struct_field(
-            &asset_struct,
-            &[FieldAccess::Name("amount".into())],
-            "testCall",
-        );
-        assert!(result.is_err(), "Named field access not yet implemented");
+        let log = Log {
+            address: H160::zero(),
+            topics: vec![],
+            data: vec![].into(),
+            block_hash: None,
+            block_number: None,
+            transaction_hash: None,
+            transaction_index: None,
+            log_index: None,
+            transaction_log_index: None,
+            log_type: None,
+            removed: None,
+        };
 
-        // Test extracting by property name "active" - not yet implemented
-        let result = CallDecl::extract_nested_struct_field(
-            &asset_struct,
-            &[FieldAccess::Name("active".into())],
-            "testCall",
+        // Test named field access with ABI context
+        let result =
+            call_decl.address_for_log_with_abi(&log, &params, Some(&mapping_abi), Some("Transfer"));
+
+        assert!(
+            result.is_ok(),
+            "Named field access should work with ABI context"
         );
-        assert!(result.is_err(), "Named field access not yet implemented");
+        assert_eq!(result.unwrap(), test_address);
+
+        // Test with invalid field name - should get helpful error
+        let invalid_call_decl = CallDecl {
+            label: "invalidCall".to_string(),
+            expr: "TestContract[event.params.asset.invalid].someFunction()"
+                .parse()
+                .unwrap(),
+            readonly: (),
+        };
+
+        let result = invalid_call_decl.address_for_log_with_abi(
+            &log,
+            &params,
+            Some(&mapping_abi),
+            Some("Transfer"),
+        );
+
+        assert!(result.is_err(), "Invalid field name should cause error");
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("Available field names: [active, addr, amount]"),
+            "Error should show available field names: {}",
+            error_msg
+        );
+
+        // Test without ABI context - should fall back to old behavior
+        let result = call_decl.address_for_log_with_abi(&log, &params, None, None);
+        assert!(result.is_err(), "Should fail without ABI context");
+        let error_msg = result.unwrap_err().to_string();
+        assert!(
+            error_msg.contains("requires ABI struct information"),
+            "Should get ABI requirement error without ABI context: {}",
+            error_msg
+        );
     }
 }

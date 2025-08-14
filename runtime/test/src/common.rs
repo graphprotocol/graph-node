@@ -97,6 +97,7 @@ fn mock_abi() -> MappingABI {
             .as_bytes(),
         )
         .unwrap(),
+        struct_field_mappings: std::collections::HashMap::new(),
     }
 }
 
