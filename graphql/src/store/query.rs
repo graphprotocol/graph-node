@@ -417,6 +417,9 @@ fn build_child_filter_from_object(
 fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecutionError> {
     match value {
         Value::List(values) => {
+            if values.is_empty() {
+                return Ok(values);
+            }
             // Check that all values in list are of the same type
             let root_discriminant = discriminant(&values[0]);
             for value in &values {
