@@ -132,8 +132,6 @@ The `Expr` can be one of the following:
 
 #### Struct Field Access
 
-_Available from spec version 1.2.0_
-
 When event parameters contain struct types (tuples in ABI), you can access individual fields using either numeric indices or field names:
 
 **Numeric Access (Traditional):**
