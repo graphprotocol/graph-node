@@ -118,7 +118,97 @@ Each call is of the form `<ABI>[<address>].<function>(<args>)`:
 | **function** | *String* | The name of a view function in the contract |
 | **args** | *[Expr]* | The arguments to pass to the function |
 
-The `Expr` can be either `event.address` or `event.params.<name>`.
+#### Expression Types
+
+The `Expr` can be one of the following:
+
+| Expression | Description | Example |
+| --- | --- | --- |
+| **event.address** | The address of the contract that emitted the event | `event.address` |
+| **event.params.&lt;name&gt;** | A simple parameter from the event | `event.params.token` |
+| **event.params.&lt;name&gt;.&lt;index&gt;** | A field from a struct parameter by numeric index | `event.params.asset.0` |
+| **event.params.&lt;name&gt;.&lt;fieldName&gt;** | A field from a struct parameter by field name | `event.params.asset.addr` |
+| **Nested struct access** | Arbitrary nesting depth with mixed access patterns | `event.params.data.1.user.id` |
+
+#### Struct Field Access
+
+_Available from spec version 1.2.0_
+
+When event parameters contain struct types (tuples in ABI), you can access individual fields using either numeric indices or field names:
+
+**Numeric Access (Traditional):**
+```yaml
+calls:
+  tokenAddress: ERC20[event.params.asset.0].name()  # First field
+  tokenAmount: ERC20[event.params.asset.1].decimals()  # Second field
+```
+
+**Named Access (Recommended):**
+```yaml
+calls:
+  tokenAddress: ERC20[event.params.asset.addr].name()     # By field name
+  tokenAmount: ERC20[event.params.asset.amount].decimals() # By field name
+```
+
+**Mixed Access Patterns:**
+```yaml
+calls:
+  # Access first transfer, then recipient field by name
+  recipient: Token[event.params.transfers.0.recipient].balanceOf()
+  
+  # Deep nesting with mixed numeric and named access
+  innerValue: Contract[event.params.data.1.user.addr].someFunction()
+```
+
+#### Struct Field Access Examples
+
+Given an event with this ABI structure:
+```json
+{
+  "name": "AssetTransfer",
+  "type": "event", 
+  "inputs": [
+    {
+      "name": "asset",
+      "type": "tuple",
+      "components": [
+        {"name": "addr", "type": "address"},
+        {"name": "amount", "type": "uint256"},
+        {"name": "active", "type": "bool"}
+      ]
+    }
+  ]
+}
+```
+
+You can access fields in multiple ways:
+```yaml
+calls:
+  # Named field access (clearest and recommended)
+  tokenContract: ERC20[event.params.asset.addr].name()
+  tokenDecimals: ERC20[event.params.asset.addr].decimals()
+  
+  # Numeric field access (backward compatible)  
+  tokenContract: ERC20[event.params.asset.0].name()
+  
+  # Mixed access for complex nested structures
+  nestedField: Contract[event.params.data.0.inner.fieldName].process()
+```
+
+#### Error Handling
+
+When using invalid field names, Graph Node provides helpful error messages:
+
+```
+In declarative call 'myCall': unknown field 'invalid' in struct parameter 'asset'. 
+Available field names: [active, addr, amount]. Available numeric indices: [0, 1, 2]
+```
+
+**Best Practices:**
+- Use named field access (`asset.addr`) for better readability and maintainability
+- Named access requires the struct field names to be present in the ABI
+- Numeric indices (`asset.0`) work as a fallback and for backward compatibility
+- Both access methods can be mixed in the same expression for complex nested structures
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).
