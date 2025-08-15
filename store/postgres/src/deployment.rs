@@ -581,22 +581,45 @@ pub fn revert_block_ptr(
 ) -> Result<(), StoreError> {
     use deployment as d;
     use head as h;
+    use subgraph_manifest as m;
 
-    // Intention is to revert to a block lower than the reorg threshold, on the other
-    // hand the earliest we can possibly go is genesys block, so go to genesys even
-    // if it's within the reorg threshold.
-    let earliest_block = i32::max(ptr.number - ENV_VARS.reorg_threshold(), 0);
-    let affected_rows = update(
-        d::table
-            .filter(d::id.eq(site.id))
-            .filter(d::earliest_block_number.le(earliest_block)),
-    )
-    .set((
-        d::reorg_count.eq(d::reorg_count + 1),
-        d::current_reorg_depth.eq(d::current_reorg_depth + 1),
-        d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
-    ))
-    .execute(conn)?;
+    // Check if ptr is equal to the start block of the deployment
+    let (start_block_hash, start_block_number): (Option<Vec<u8>>, Option<BlockNumber>) = m::table
+        .filter(m::id.eq(site.id))
+        .select((m::start_block_hash, m::start_block_number))
+        .first(conn)?;
+
+    let is_start_block = match (start_block_hash, start_block_number) {
+        (Some(hash), Some(number)) => ptr.number == number && ptr.hash_slice() == hash.as_slice(),
+        _ => false,
+    };
+
+    let affected_rows = if is_start_block {
+        update(d::table.filter(d::id.eq(site.id)))
+            .set((
+                d::reorg_count.eq(d::reorg_count + 1),
+                d::current_reorg_depth.eq(d::current_reorg_depth + 1),
+                d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
+                d::earliest_block_number.eq(ptr.number),
+            ))
+            .execute(conn)?
+    } else {
+        // Intention is to revert to a block lower than the reorg threshold, on the other
+        // hand the earliest we can possibly go is genesis block, so go to genesis even
+        // if it's within the reorg threshold.
+        let earliest_block = i32::max(ptr.number - ENV_VARS.reorg_threshold(), 0);
+        update(
+            d::table
+                .filter(d::id.eq(site.id))
+                .filter(d::earliest_block_number.le(earliest_block)),
+        )
+        .set((
+            d::reorg_count.eq(d::reorg_count + 1),
+            d::current_reorg_depth.eq(d::current_reorg_depth + 1),
+            d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
+        ))
+        .execute(conn)?
+    };
 
     update(h::table.filter(h::id.eq(site.id)))
         .set((

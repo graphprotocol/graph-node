@@ -9,7 +9,6 @@ use graph::anyhow::bail;
 use graph::components::store::{BlockStore as _, ChainStore as _, DeploymentLocator};
 use graph::env::ENV_VARS;
 use graph::prelude::{anyhow, BlockNumber, BlockPtr};
-use graph_store_postgres::command_support::catalog::{self as store_catalog};
 use graph_store_postgres::{BlockStore, NotificationSender};
 use graph_store_postgres::{ConnectionPool, Store};
 
@@ -78,8 +77,6 @@ pub async fn run(
     if !start_block && (block_hash.is_none() || block_number.is_none()) {
         bail!("--block-hash and --block-number must be specified when --start-block is not set");
     }
-    let pconn = primary.get()?;
-    let mut conn = store_catalog::Connection::new(pconn);
 
     let subgraph_store = store.subgraph_store();
     let block_store = store.block_store();
@@ -126,14 +123,19 @@ pub async fn run(
 
     println!("Checking if its safe to rewind deployments");
     for (_, locator) in &locators {
-        let site = conn
-            .locate_site(locator.clone())?
-            .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
-        let deployment_store = subgraph_store.for_site(&site)?;
-        let deployment_details = deployment_store.deployment_details_for_id(locator)?;
-        let block_number_to = block_ptr_to.as_ref().map(|b| b.number).unwrap_or(0);
+        let deployment_details = subgraph_store.load_deployment_by_id(locator.clone().into())?;
+        let mut block_number_to = block_ptr_to.as_ref().map(|b| b.number).unwrap_or(0);
 
-        if block_number_to < deployment_details.earliest_block_number + ENV_VARS.reorg_threshold() {
+        if start_block {
+            block_number_to = match deployment_details.start_block {
+                Some(block) => block.number,
+                None => 0,
+            };
+        }
+
+        if block_number_to < deployment_details.earliest_block_number + ENV_VARS.reorg_threshold()
+            && !start_block
+        {
             bail!(
                 "The block number {} is not safe to rewind to for deployment {}. The earliest block number of this deployment is {}. You can only safely rewind to block number {}",
                 block_ptr_to.as_ref().map(|b| b.number).unwrap_or(0),
