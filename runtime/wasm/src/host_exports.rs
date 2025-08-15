@@ -1253,11 +1253,60 @@ impl HostExports {
     }
 }
 
-fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
+pub fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
+    // Enhanced validation and error reporting for issue #6067
+    if string.is_empty() {
+        return Err(DeterministicHostError::from(anyhow::anyhow!(
+            "Address string is empty - this indicates a string corruption bug. Please report this issue."
+        )));
+    }
+
+    if string == "0x" {
+        return Err(DeterministicHostError::from(anyhow::anyhow!(
+            "Address string is just '0x' - this indicates a string corruption bug. Please report this issue."
+        )));
+    }
+
+    if string.len() < 3 {
+        return Err(DeterministicHostError::from(anyhow::anyhow!(
+            "Address string too short: '{}' (length: {}, bytes: {:?}) - this may indicate a string corruption bug.", 
+            string, string.len(), string.as_bytes()
+        )));
+    }
+
     // `H160::from_str` takes a hex string with no leading `0x`.
     let s = string.trim_start_matches("0x");
+
+    // Additional validation
+    if s.is_empty() {
+        return Err(DeterministicHostError::from(anyhow::anyhow!(
+            "Empty address string after trimming 0x: original='{}' (length: {}) - this indicates a string corruption bug.", 
+            string, string.len()
+        )));
+    }
+
+    if s.len() != 40 {
+        return Err(DeterministicHostError::from(anyhow::anyhow!(
+            "Invalid address length: expected 40 hex chars, got {} chars: '{}' (original: '{}' length: {}). Valid Ethereum addresses must be exactly 40 hex characters after the 0x prefix.", 
+            s.len(), s, string, string.len()
+        )));
+    }
+
+    // Validate hex characters
+    if !s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(DeterministicHostError::from(anyhow::anyhow!(
+            "Address contains invalid hex characters: '{}' (original: '{}'). Only 0-9 and a-f (case insensitive) are allowed.", 
+            s, string
+        )));
+    }
+
     H160::from_str(s)
-        .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+        .with_context(|| {
+            format!(
+                "Failed to convert string to Address/H160: '{}' (original: '{}')",
+                s, string
+            )
+        })
         .map_err(DeterministicHostError::from)
 }
 
@@ -1356,6 +1405,118 @@ fn test_string_to_h160_with_0x() {
         H160::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
         string_to_h160("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
     )
+}
+
+#[test]
+fn test_problematic_address_from_issue_6067() {
+    // This is the address reported in issue #6067 that causes string corruption
+    let address_str = "0x3b44b2a187a7b3824131f8db5a74194d0a42fc15";
+
+    // Test the string_to_h160 function directly
+    let result = string_to_h160(address_str);
+
+    // Should successfully parse
+    assert!(result.is_ok(), "Failed to parse address: {:?}", result);
+
+    let h160 = result.unwrap();
+
+    // The expected address
+    let expected = H160::from_str("3b44b2a187a7b3824131f8db5a74194d0a42fc15").unwrap();
+    assert_eq!(h160, expected, "Address mismatch");
+}
+
+#[test]
+fn test_address_with_nulls() {
+    // Test what happens if we have null characters in the address string
+    let address_with_nulls = "0x3b44b2a187a7b3824131f8db5a\0\0194d0a42fc15";
+
+    // First simulate what the FromAscObj does - remove nulls
+    let processed = address_with_nulls.replace('\u{0000}', "");
+    println!(
+        "After null removal: '{}' (length: {})",
+        processed,
+        processed.len()
+    );
+
+    let result = string_to_h160(&processed);
+
+    // This should work if nulls are just removed cleanly
+    if result.is_ok() {
+        println!("Unexpectedly succeeded after null removal");
+    } else {
+        println!("Failed after null removal: {}", result.unwrap_err());
+    }
+}
+
+#[test]
+fn test_empty_after_null_removal() {
+    // Test what happens if string becomes empty after null removal
+    // This simulates what might happen in the FromAscObj conversion
+    let empty_str = "";
+    let result = string_to_h160(empty_str);
+
+    assert!(result.is_err(), "Should fail with empty string");
+    let error = result.unwrap_err();
+    assert!(
+        error.to_string().contains("string corruption bug"),
+        "Error should mention string corruption"
+    );
+
+    // Test with just "0x"
+    let just_0x = "0x";
+    let result2 = string_to_h160(just_0x);
+    assert!(result2.is_err(), "Should fail with just 0x");
+    assert!(
+        result2
+            .unwrap_err()
+            .to_string()
+            .contains("string corruption bug"),
+        "Error should mention string corruption"
+    );
+}
+
+#[test]
+fn test_comprehensive_address_scenarios() {
+    // Test all the scenarios that could lead to the reported bug
+
+    // 1. Valid address - should work
+    let valid = "0x3b44b2a187a7b3824131f8db5a74194d0a42fc15";
+    assert!(string_to_h160(valid).is_ok(), "Valid address should work");
+
+    // 2. Valid address without 0x - should work
+    let no_prefix = "3b44b2a187a7b3824131f8db5a74194d0a42fc15";
+    assert!(
+        string_to_h160(no_prefix).is_ok(),
+        "Address without 0x should work"
+    );
+
+    // 3. Address with wrong length - should fail with helpful message
+    let too_short = "0x3b44b2a187a7b3824131f8db5a";
+    let result = string_to_h160(too_short);
+    assert!(result.is_err(), "Too short address should fail");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("expected 40 hex chars"),
+        "Should mention expected length"
+    );
+
+    // 4. Address with invalid characters - should fail
+    let invalid_chars = "0x3b44b2a187a7b3824131f8db5a74194d0a42fZZZ";
+    let result2 = string_to_h160(invalid_chars);
+    assert!(result2.is_err(), "Invalid hex chars should fail");
+    assert!(
+        result2
+            .unwrap_err()
+            .to_string()
+            .contains("invalid hex characters"),
+        "Should mention invalid hex"
+    );
+
+    // 5. Mixed case - should work
+    let mixed_case = "0x3B44B2A187a7b3824131f8db5a74194d0a42fc15";
+    assert!(string_to_h160(mixed_case).is_ok(), "Mixed case should work");
 }
 
 #[test]
