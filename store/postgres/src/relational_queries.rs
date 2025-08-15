@@ -1618,17 +1618,31 @@ impl<'a> Filter<'a> {
                     out.push_sql(") > 0");
                 }
             }
-            SqlValue::List(_) | SqlValue::Numerics(_) => {
-                if op.negated() {
-                    out.push_sql(" not ");
+            SqlValue::List(_) | SqlValue::Numerics(_) => match op {
+                // For case-insensitive operations
+                ContainsOp::ILike | ContainsOp::NotILike => {
+                    if op.negated() {
+                        out.push_sql(" not ");
+                    }
+                    out.push_sql("exists (select 1 from unnest(");
                     column.walk_ast(out.reborrow())?;
-                    out.push_sql(" && ");
-                } else {
-                    column.walk_ast(out.reborrow())?;
-                    out.push_sql(" @> ");
+                    out.push_sql(") as elem where elem ilike any(");
+                    qv.walk_ast(out.reborrow())?;
+                    out.push_sql("))");
                 }
-                qv.walk_ast(out)?;
-            }
+                _ => {
+                    // For case-sensitive operations
+                    if op.negated() {
+                        out.push_sql(" not ");
+                        column.walk_ast(out.reborrow())?;
+                        out.push_sql(" && ");
+                    } else {
+                        column.walk_ast(out.reborrow())?;
+                        out.push_sql(" @> ");
+                    }
+                    qv.walk_ast(out)?;
+                }
+            },
             SqlValue::Null
             | SqlValue::Bool(_)
             | SqlValue::Numeric(_)
