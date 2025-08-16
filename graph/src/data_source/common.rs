@@ -221,16 +221,10 @@ impl CallDecl {
     }
 
     pub fn address_for_log(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
-        self.address_for_log_with_abi(log, params, None, None)
+        self.address_for_log_with_abi(log, params)
     }
 
-    pub fn address_for_log_with_abi(
-        &self,
-        log: &Log,
-        params: &[LogParam],
-        mapping_abi: Option<&MappingABI>,
-        event_name: Option<&str>,
-    ) -> Result<H160, Error> {
+    pub fn address_for_log_with_abi(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
         let address = match &self.expr.address {
             CallArg::HexAddress(address) => *address,
             CallArg::Ethereum(arg) => match arg {
@@ -268,18 +262,10 @@ impl CallDecl {
                             )
                         })?;
 
-                    // Get struct field info from ABI if available
-                    let struct_field_info = mapping_abi
-                        .and_then(|_abi| event_name)
-                        .and_then(|event| mapping_abi?.struct_field_mappings.get(event))
-                        .and_then(|event_mappings| event_mappings.get(param_name.as_str()));
-
                     Self::extract_nested_struct_field_as_address(
                         &param.value,
                         field_accesses,
                         &self.label,
-                        Some(&param.name), // Pass parameter name for better error messages
-                        struct_field_info, // Pass struct field info from ABI
                     )?
                 }
             },
@@ -294,15 +280,13 @@ impl CallDecl {
     }
 
     pub fn args_for_log(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
-        self.args_for_log_with_abi(log, params, None, None)
+        self.args_for_log_with_abi(log, params)
     }
 
     pub fn args_for_log_with_abi(
         &self,
         log: &Log,
         params: &[LogParam],
-        mapping_abi: Option<&MappingABI>,
-        event_name: Option<&str>,
     ) -> Result<Vec<Token>, Error> {
         self.expr
             .args
@@ -326,18 +310,10 @@ impl CallDecl {
                             .find(|param| &param.name == param_name.as_str())
                             .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, param_name))?;
 
-                        // Get struct field info from ABI if available
-                        let struct_field_info = mapping_abi
-                            .and_then(|_abi| event_name)
-                            .and_then(|event| mapping_abi?.struct_field_mappings.get(event))
-                            .and_then(|event_mappings| event_mappings.get(param_name.as_str()));
-
                         Self::extract_nested_struct_field(
                             &param.value,
                             field_accesses,
                             &self.label,
-                            Some(&param.name),
-                            struct_field_info,
                         )
                     }
                 },
@@ -536,18 +512,11 @@ impl CallDecl {
     /// Extracts a nested field value from a struct parameter with mixed numeric/named access
     fn extract_nested_struct_field_as_address(
         struct_token: &Token,
-        field_accesses: &[FieldAccess],
+        field_accesses: &[usize],
         call_label: &str,
-        param_name: Option<&str>,
-        struct_field_info: Option<&StructFieldInfo>,
     ) -> Result<H160, Error> {
-        let field_token = Self::extract_nested_struct_field(
-            struct_token,
-            field_accesses,
-            call_label,
-            param_name,
-            struct_field_info,
-        )?;
+        let field_token =
+            Self::extract_nested_struct_field(struct_token, field_accesses, call_label)?;
         field_token.into_address().ok_or_else(|| {
             anyhow!(
                 "In declarative call '{}': nested struct field is not an address",
@@ -556,70 +525,22 @@ impl CallDecl {
         })
     }
 
-    /// Extracts a nested field value from a struct parameter using arbitrary access path
+    /// Extracts a nested field value from a struct parameter using numeric indices
     fn extract_nested_struct_field(
         struct_token: &Token,
-        field_accesses: &[FieldAccess],
+        field_accesses: &[usize],
         call_label: &str,
-        param_name: Option<&str>,
-        struct_field_info: Option<&StructFieldInfo>,
     ) -> Result<Token, Error> {
-        if field_accesses.is_empty() {
-            return Err(anyhow!(
-                "In declarative call '{}': empty field access path",
-                call_label
-            ));
-        }
+        assert!(
+            !field_accesses.is_empty(),
+            "Internal error: empty field access path should be caught at parse time"
+        );
 
         let mut current_token = struct_token;
 
-        for (index, field_access) in field_accesses.iter().enumerate() {
+        for (index, &field_index) in field_accesses.iter().enumerate() {
             match current_token {
                 Token::Tuple(fields) => {
-                    let field_index = match field_access {
-                        FieldAccess::Index(idx) => *idx,
-                        FieldAccess::Name(name) => {
-                            // Try to resolve field name using struct field info
-                            if let Some(field_info) = struct_field_info {
-                                if let Some(field_index) =
-                                    field_info.resolve_field_name(name.as_str())
-                                {
-                                    field_index
-                                } else {
-                                    // Field name not found - provide helpful error with available field names
-                                    let available_names = field_info.get_field_names();
-                                    let available_indices: Vec<String> =
-                                        (0..fields.len()).map(|i| i.to_string()).collect();
-
-                                    return Err(anyhow!(
-                                        "In declarative call '{}': unknown field '{}' in struct parameter '{}'. Available field names: [{}]. Available numeric indices: [{}]",
-                                        call_label,
-                                        name,
-                                        field_info.param_name,
-                                        available_names.join(", "),
-                                        available_indices.join(", ")
-                                    ));
-                                }
-                            } else {
-                                // No struct field info available - show numeric indices
-                                let available_indices: Vec<String> =
-                                    (0..fields.len()).map(|i| i.to_string()).collect();
-                                let indices_list = available_indices.join(", ");
-                                let param_name_str = param_name.unwrap_or("PARAM");
-
-                                return Err(anyhow!(
-                                    "In declarative call '{}': named field access '{}' requires ABI struct information. Available numeric indices: [{}]. Try using 'event.params.{}.0' instead of 'event.params.{}.{}'",
-                                    call_label,
-                                    name,
-                                    indices_list,
-                                    param_name_str,
-                                    param_name_str,
-                                    name
-                                ));
-                            }
-                        }
-                    };
-
                     let field_token = fields
                         .get(field_index)
                         .ok_or_else(|| {
@@ -708,6 +629,130 @@ impl CallExpr {
         }
 
         Ok(())
+    }
+
+    /// Parse a call expression with ABI context to resolve field names at parse time
+    pub fn parse(
+        s: &str,
+        mapping: &MappingABI,
+        event_name: Option<&str>,
+    ) -> Result<Self, anyhow::Error> {
+        // Parse the expression manually to inject ABI context for field name resolution
+        // Format: Contract[address].function(arg1, arg2, ...)
+
+        // Find the contract name and opening bracket
+        let bracket_pos = s.find('[').ok_or_else(|| {
+            anyhow!(
+                "Invalid call expression '{}': missing '[' after contract name",
+                s
+            )
+        })?;
+        let abi = s[..bracket_pos].trim();
+
+        if abi.is_empty() {
+            return Err(anyhow!(
+                "Invalid call expression '{}': missing contract name before '['",
+                s
+            ));
+        }
+
+        // Find the closing bracket and extract the address part
+        let bracket_end = s.find(']').ok_or_else(|| {
+            anyhow!(
+                "Invalid call expression '{}': missing ']' to close address",
+                s
+            )
+        })?;
+        let address_str = &s[bracket_pos + 1..bracket_end];
+
+        if address_str.is_empty() {
+            return Err(anyhow!(
+                "Invalid call expression '{}': empty address in '{}[{}]'",
+                s,
+                abi,
+                address_str
+            ));
+        }
+
+        // Parse the address with ABI context
+        let address =
+            CallArg::parse_with_abi(address_str, mapping, event_name).with_context(|| {
+                format!(
+                    "Failed to parse address '{}' in call expression '{}'",
+                    address_str, s
+                )
+            })?;
+
+        // Find the function name and arguments
+        let dot_pos = s[bracket_end..].find('.').ok_or_else(|| {
+            anyhow!(
+                "Invalid call expression '{}': missing '.' after address '{}[{}]'",
+                s,
+                abi,
+                address_str
+            )
+        })?;
+        let func_start = bracket_end + dot_pos + 1;
+
+        let paren_pos = s[func_start..].find('(').ok_or_else(|| {
+            anyhow!(
+                "Invalid call expression '{}': missing '(' to start function arguments",
+                s
+            )
+        })?;
+        let func = &s[func_start..func_start + paren_pos];
+
+        if func.is_empty() {
+            return Err(anyhow!(
+                "Invalid call expression '{}': missing function name after '{}[{}].'",
+                s,
+                abi,
+                address_str
+            ));
+        }
+
+        // Find the closing parenthesis and extract arguments
+        let paren_end = s.rfind(')').ok_or_else(|| {
+            anyhow!(
+                "Invalid call expression '{}': missing ')' to close function arguments",
+                s
+            )
+        })?;
+        let args_str = &s[func_start + paren_pos + 1..paren_end];
+
+        // Parse arguments with ABI context
+        let mut args = Vec::new();
+        if !args_str.trim().is_empty() {
+            for (i, arg_str) in args_str.split(',').enumerate() {
+                let arg_str = arg_str.trim();
+                let arg =
+                    CallArg::parse_with_abi(arg_str, mapping, event_name).with_context(|| {
+                        format!(
+                            "Failed to parse argument {} '{}' in call expression '{}'",
+                            i + 1,
+                            arg_str,
+                            s
+                        )
+                    })?;
+                args.push(arg);
+            }
+        }
+
+        let expr = CallExpr {
+            abi: Word::from(abi),
+            address,
+            func: Word::from(func),
+            args,
+            readonly: (),
+        };
+
+        expr.validate_args().with_context(|| {
+            format!(
+                "Invalid call expression '{}': argument validation failed",
+                s
+            )
+        })?;
+        Ok(expr)
     }
 }
 /// Parse expressions of the form `Contract[address].function(arg1, arg2,
@@ -822,19 +867,11 @@ impl StructFieldInfo {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub enum FieldAccess {
-    /// Access by numeric index (e.g., "0", "1", "2")
-    Index(usize),
-    /// Access by property name (e.g., "addr", "amount")
-    Name(Word),
-}
-
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum EthereumArg {
     Address,
     Param(Word),
-    /// Struct field access with arbitrary nesting and mixed numeric/named access
-    StructField(Word, Vec<FieldAccess>),
+    /// Struct field access with numeric indices (field names resolved at parse time)
+    StructField(Word, Vec<usize>),
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
@@ -845,6 +882,83 @@ pub enum SubgraphArg {
 lazy_static! {
     // Matches a 40-character hexadecimal string prefixed with '0x', typical for Ethereum addresses
     static ref ADDR_RE: Regex = Regex::new(r"^0x[0-9a-fA-F]{40}$").unwrap();
+}
+
+impl CallArg {
+    /// Parse a call argument with ABI context to resolve field names at parse time
+    pub fn parse_with_abi(
+        s: &str,
+        mapping_abi: &MappingABI,
+        event_name: Option<&str>,
+    ) -> Result<Self, anyhow::Error> {
+        // Handle hex addresses first
+        if ADDR_RE.is_match(s) {
+            if let Ok(parsed_address) = Address::from_str(s) {
+                return Ok(CallArg::HexAddress(parsed_address));
+            }
+        }
+
+        let mut parts = s.split('.');
+        match (parts.next(), parts.next(), parts.next()) {
+            (Some("event"), Some("address"), None) => Ok(CallArg::Ethereum(EthereumArg::Address)),
+            (Some("event"), Some("params"), Some(param)) => {
+                // Check if there are any additional parts for struct field access
+                let remaining_parts: Vec<&str> = parts.collect();
+                if remaining_parts.is_empty() {
+                    // Simple parameter access: event.params.foo
+                    Ok(CallArg::Ethereum(EthereumArg::Param(Word::from(param))))
+                } else {
+                    // Struct field access: event.params.foo.bar.0.baz...
+                    // Resolve field names to indices using ABI context
+                    let mut field_indices = Vec::new();
+
+                    // Get struct field info for this event and parameter
+                    let struct_field_info = event_name
+                        .and_then(|event| mapping_abi.struct_field_mappings.get(event))
+                        .and_then(|event_mappings| event_mappings.get(param));
+
+                    for part in remaining_parts {
+                        if let Ok(index) = part.parse::<usize>() {
+                            // Numeric index - use directly
+                            field_indices.push(index);
+                        } else {
+                            // Named field - resolve to index using ABI context
+                            if let Some(field_info) = struct_field_info {
+                                if let Some(field_index) = field_info.resolve_field_name(part) {
+                                    field_indices.push(field_index);
+                                } else {
+                                    // Field name not found - provide helpful error
+                                    let available_names = field_info.get_field_names();
+                                    return Err(anyhow!(
+                                        "Unknown field '{}' in struct parameter '{}' for event '{}'. Available field names: [{}]",
+                                        part,
+                                        param,
+                                        event_name.unwrap_or("unknown"),
+                                        available_names.join(", ")
+                                    ));
+                                }
+                            } else {
+                                return Err(anyhow!(
+                                    "Cannot access field '{}' requires ABI struct information for parameter '{}' in event '{}'",
+                                    part,
+                                    param,
+                                    event_name.unwrap_or("unknown")
+                                ));
+                            }
+                        }
+                    }
+                    Ok(CallArg::Ethereum(EthereumArg::StructField(
+                        Word::from(param),
+                        field_indices,
+                    )))
+                }
+            }
+            (Some("entity"), Some(param), None) => Ok(CallArg::Subgraph(SubgraphArg::EntityParam(
+                Word::from(param),
+            ))),
+            _ => Err(anyhow!("invalid call argument `{}`", s)),
+        }
+    }
 }
 
 impl FromStr for CallArg {
@@ -868,18 +982,17 @@ impl FromStr for CallArg {
                     Ok(CallArg::Ethereum(EthereumArg::Param(Word::from(param))))
                 } else {
                     // Struct field access: event.params.foo.bar.0.baz...
-                    let field_accesses = remaining_parts
-                        .into_iter()
-                        .map(|part| {
-                            // Try to parse as numeric index first
-                            if let Ok(index) = part.parse::<usize>() {
-                                FieldAccess::Index(index)
-                            } else {
-                                // Otherwise treat as named field
-                                FieldAccess::Name(Word::from(part))
-                            }
-                        })
-                        .collect();
+                    let mut field_accesses = Vec::new();
+                    for part in remaining_parts {
+                        if let Ok(index) = part.parse::<usize>() {
+                            field_accesses.push(index);
+                        } else {
+                            return Err(anyhow!(
+                                "Cannot access field '{}' by name in event.params.{}. Use numeric index instead (e.g., event.params.{}.0, event.params.{}.1, etc.)",
+                                part, param, param, param
+                            ));
+                        }
+                    }
                     Ok(CallArg::Ethereum(EthereumArg::StructField(
                         Word::from(param),
                         field_accesses,
@@ -915,7 +1028,7 @@ impl DeclaredCall {
         log: &Log,
         params: &[LogParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
-        Self::from_log_trigger_with_event(mapping, call_decls, log, params, None)
+        Self::from_log_trigger_with_event(mapping, call_decls, log, params)
     }
 
     pub fn from_log_trigger_with_event(
@@ -923,16 +1036,11 @@ impl DeclaredCall {
         call_decls: &CallDecls,
         log: &Log,
         params: &[LogParam],
-        event_name: Option<&str>,
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         Self::create_calls(mapping, call_decls, |decl, _| {
-            // Get the MappingABI for this declaration's contract
-            let abi_name = &decl.expr.abi;
-            let mapping_abi = mapping.find_abi(abi_name.as_str()).ok();
-
             Ok((
-                decl.address_for_log_with_abi(log, params, mapping_abi.as_deref(), event_name)?,
-                decl.args_for_log_with_abi(log, params, mapping_abi.as_deref(), event_name)?,
+                decl.address_for_log_with_abi(log, params)?,
+                decl.args_for_log_with_abi(log, params)?,
             ))
         })
     }
@@ -1146,7 +1254,7 @@ mod tests {
         ));
         if let CallArg::Ethereum(EthereumArg::StructField(param, field_accesses)) = arg {
             assert_eq!(param.as_str(), "myStruct");
-            assert_eq!(field_accesses, vec![FieldAccess::Index(1)]);
+            assert_eq!(field_accesses, vec![1]);
         }
 
         // Test struct field access with index 0
@@ -1157,7 +1265,7 @@ mod tests {
         ));
         if let CallArg::Ethereum(EthereumArg::StructField(param, field_accesses)) = arg {
             assert_eq!(param.as_str(), "asset");
-            assert_eq!(field_accesses, vec![FieldAccess::Index(0)]);
+            assert_eq!(field_accesses, vec![0]);
         }
     }
 
@@ -1168,10 +1276,7 @@ mod tests {
         assert_eq!(expr.abi, "ERC20");
         assert_eq!(
             expr.address,
-            CallArg::Ethereum(EthereumArg::StructField(
-                "asset".into(),
-                vec![FieldAccess::Index(1)]
-            ))
+            CallArg::Ethereum(EthereumArg::StructField("asset".into(), vec![1]))
         );
         assert_eq!(expr.func, "name");
         assert_eq!(expr.args, vec![]);
@@ -1187,14 +1292,8 @@ mod tests {
         assert_eq!(
             expr.args,
             vec![
-                CallArg::Ethereum(EthereumArg::StructField(
-                    "data".into(),
-                    vec![FieldAccess::Index(0)]
-                )),
-                CallArg::Ethereum(EthereumArg::StructField(
-                    "data".into(),
-                    vec![FieldAccess::Index(1)]
-                ))
+                CallArg::Ethereum(EthereumArg::StructField("data".into(), vec![0])),
+                CallArg::Ethereum(EthereumArg::StructField("data".into(), vec![1]))
             ]
         );
     }
@@ -1213,36 +1312,18 @@ mod tests {
         let struct_token = Token::Tuple(tuple_fields.clone());
 
         // Test accessing index 0 (uint8)
-        let result = CallDecl::extract_nested_struct_field(
-            &struct_token,
-            &[FieldAccess::Index(0)],
-            "testCall",
-            None,
-            None,
-        )
-        .unwrap();
+        let result =
+            CallDecl::extract_nested_struct_field(&struct_token, &[0], "testCall").unwrap();
         assert_eq!(result, tuple_fields[0]);
 
         // Test accessing index 1 (address)
-        let result = CallDecl::extract_nested_struct_field(
-            &struct_token,
-            &[FieldAccess::Index(1)],
-            "testCall",
-            None,
-            None,
-        )
-        .unwrap();
+        let result =
+            CallDecl::extract_nested_struct_field(&struct_token, &[1], "testCall").unwrap();
         assert_eq!(result, tuple_fields[1]);
 
         // Test accessing index 2 (uint256)
-        let result = CallDecl::extract_nested_struct_field(
-            &struct_token,
-            &[FieldAccess::Index(2)],
-            "testCall",
-            None,
-            None,
-        )
-        .unwrap();
+        let result =
+            CallDecl::extract_nested_struct_field(&struct_token, &[2], "testCall").unwrap();
         assert_eq!(result, tuple_fields[2]);
 
         // Test that it works in a declarative call context
@@ -1250,10 +1331,7 @@ mod tests {
         assert_eq!(expr.abi, "ERC20");
         assert_eq!(
             expr.address,
-            CallArg::Ethereum(EthereumArg::StructField(
-                "asset".into(),
-                vec![FieldAccess::Index(1)]
-            ))
+            CallArg::Ethereum(EthereumArg::StructField("asset".into(), vec![1]))
         );
         assert_eq!(expr.func, "name");
         assert_eq!(expr.args, vec![]);
@@ -1263,19 +1341,13 @@ mod tests {
     fn test_struct_field_access_errors() {
         use ethabi::Token;
 
-        // Test that named field syntax parses successfully
-        let result = CallArg::from_str("event.params.asset.addr");
+        // Test that numeric field syntax parses successfully
+        let result = CallArg::from_str("event.params.asset.0");
         assert!(result.is_ok(), "Should parse successfully");
 
         // Test accessing non-tuple as struct
         let non_tuple = Token::Address([1u8; 20].into());
-        let result = CallDecl::extract_nested_struct_field(
-            &non_tuple,
-            &[FieldAccess::Index(0)],
-            "testCall",
-            None,
-            None,
-        );
+        let result = CallDecl::extract_nested_struct_field(&non_tuple, &[0], "testCall");
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("cannot access field on non-struct/tuple"));
@@ -1283,46 +1355,38 @@ mod tests {
         // Test out of bounds numeric index
         let tuple_fields = vec![Token::Uint(ethabi::Uint::from(123u64))];
         let struct_token = Token::Tuple(tuple_fields);
-        let result = CallDecl::extract_nested_struct_field(
-            &struct_token,
-            &[FieldAccess::Index(1)],
-            "testCall",
-            None,
-            None,
-        );
+        let result = CallDecl::extract_nested_struct_field(&struct_token, &[1], "testCall");
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("In declarative call 'testCall'"));
         assert!(error_msg.contains("out of bounds"));
         assert!(error_msg.contains("struct has 1 fields"));
 
-        // Test invalid field name (requires ABI info)
+        // Test out of bounds field access
         let tuple_fields = vec![Token::Address([1u8; 20].into())];
         let struct_token = Token::Tuple(tuple_fields);
         let result = CallDecl::extract_nested_struct_field(
             &struct_token,
-            &[FieldAccess::Name("addr".into())],
+            &[1], // Index 1 is out of bounds (only has index 0)
             "testCall",
-            None,
-            None,
         );
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("In declarative call 'testCall'"));
-        assert!(error_msg.contains("requires ABI struct information"));
-        assert!(error_msg.contains("0"));
+        assert!(error_msg.contains("out of bounds"));
+        assert!(error_msg.contains("struct has 1 fields"));
     }
 
     #[test]
     fn test_invalid_struct_field_parsing() {
-        // Test arbitrary nesting is now supported (previously was error)
-        let result = CallArg::from_str("event.params.asset.addr.extra");
+        // Test arbitrary nesting with numeric indices is supported
+        let result = CallArg::from_str("event.params.asset.0.1");
         assert!(result.is_ok(), "Arbitrary nesting should now be supported");
         if let Ok(CallArg::Ethereum(EthereumArg::StructField(param, field_accesses))) = result {
             assert_eq!(param.as_str(), "asset");
             assert_eq!(field_accesses.len(), 2);
-            assert_eq!(field_accesses[0], FieldAccess::Name("addr".into()));
-            assert_eq!(field_accesses[1], FieldAccess::Name("extra".into()));
+            assert_eq!(field_accesses[0], 0);
+            assert_eq!(field_accesses[1], 1);
         }
 
         // Test invalid patterns
@@ -1395,10 +1459,10 @@ mod tests {
         assert!(error_msg.contains("In declarative call 'myTokenCall'"));
         assert!(error_msg.contains("nested struct field is not an address"));
 
-        // Test scenario 4: Invalid field name in args_for_log
+        // Test scenario 4: Out of bounds field index in args_for_log
         let call_decl_with_args = CallDecl {
             label: "transferCall".to_string(),
-            expr: "ERC20[event.address].transfer(event.params.data.invalid)"
+            expr: "ERC20[event.address].transfer(event.params.data.5)"
                 .parse()
                 .unwrap(),
             readonly: (),
@@ -1413,7 +1477,7 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("In declarative call 'transferCall'"));
-        assert!(error_msg.contains("requires ABI struct information"));
+        assert!(error_msg.contains("out of bounds"));
     }
 
     #[test]
@@ -1427,7 +1491,7 @@ mod tests {
         ));
         if let CallArg::Ethereum(EthereumArg::StructField(param, path)) = arg {
             assert_eq!(param.as_str(), "outer");
-            assert_eq!(path, vec![FieldAccess::Index(1), FieldAccess::Index(0)]);
+            assert_eq!(path, vec![1, 0]);
         }
 
         // Test parsing deeply nested struct access
@@ -1435,84 +1499,65 @@ mod tests {
         assert_eq!(expr.abi, "ERC20");
         assert_eq!(
             expr.address,
-            CallArg::Ethereum(EthereumArg::StructField(
-                "data".into(),
-                vec![FieldAccess::Index(2), FieldAccess::Index(1)]
-            ))
+            CallArg::Ethereum(EthereumArg::StructField("data".into(), vec![2, 1]))
         );
         assert_eq!(expr.func, "symbol");
     }
 
     #[test]
-    fn test_named_struct_field_access() {
-        // Test accessing struct fields by property name instead of index
-        let arg = CallArg::from_str("event.params.asset.addr").unwrap();
-        assert!(matches!(
-            arg,
-            CallArg::Ethereum(EthereumArg::StructField(_, _))
-        ));
-        if let CallArg::Ethereum(EthereumArg::StructField(param, path)) = arg {
-            assert_eq!(param.as_str(), "asset");
-            assert_eq!(path, vec![FieldAccess::Name("addr".into())]);
-        }
+    fn test_named_field_access_without_abi() {
+        // Test various forms of named field access rejection when no ABI context is available
+        let test_cases = vec![
+            ("event.params.asset.addr", "addr"),
+            ("event.params.data.1.user.id", "user"), // Mixed numeric and named
+            ("event.params.transfers.0.recipient", "recipient"), // After numeric index
+        ];
 
-        // Test declarative call with named field access
-        let expr: CallExpr = "ERC20[event.params.token.address].name()".parse().unwrap();
-        assert_eq!(expr.abi, "ERC20");
-        assert_eq!(
-            expr.address,
-            CallArg::Ethereum(EthereumArg::StructField(
-                "token".into(),
-                vec![FieldAccess::Name("address".into())]
-            ))
-        );
-        assert_eq!(expr.func, "name");
-    }
-
-    #[test]
-    fn test_mixed_nested_and_named_access() {
-        // Test accessing nested structs with mix of numeric indices and property names
-        // Scenario: event.params.data.1.user.id (data[1].user.id)
-        let arg = CallArg::from_str("event.params.data.1.user.id").unwrap();
-        assert!(matches!(
-            arg,
-            CallArg::Ethereum(EthereumArg::StructField(_, _))
-        ));
-        if let CallArg::Ethereum(EthereumArg::StructField(param, path)) = arg {
-            assert_eq!(param.as_str(), "data");
-            assert_eq!(
-                path,
-                vec![
-                    FieldAccess::Index(1),
-                    FieldAccess::Name("user".into()),
-                    FieldAccess::Name("id".into())
-                ]
+        for (input, expected_field) in test_cases {
+            let result = CallArg::from_str(input);
+            assert!(result.is_err(), "Expected error for input: {}", input);
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains(&format!("Cannot access field '{}' by name", expected_field)),
+                "Error message for '{}' should mention field '{}'. Got: {}",
+                input,
+                expected_field,
+                error_msg
             );
         }
 
-        // Test declarative call with mixed access
-        let expr: CallExpr = "Contract[event.address].transfer(event.params.transfers.0.recipient, event.params.transfers.0.amount)".parse().unwrap();
-        assert_eq!(expr.abi, "Contract");
-        assert_eq!(
-            expr.args,
-            vec![
-                CallArg::Ethereum(EthereumArg::StructField(
-                    "transfers".into(),
-                    vec![FieldAccess::Index(0), FieldAccess::Name("recipient".into())]
-                )),
-                CallArg::Ethereum(EthereumArg::StructField(
-                    "transfers".into(),
-                    vec![FieldAccess::Index(0), FieldAccess::Name("amount".into())]
-                ))
-            ]
-        );
+        // Test declarative call expressions also reject named access
+        let call_test_cases = vec![
+            ("ERC20[event.params.token.address].name()", "address"),
+            (
+                "Contract[event.address].transfer(event.params.transfers.0.recipient)",
+                "recipient",
+            ),
+        ];
+
+        for (input, expected_field) in call_test_cases {
+            let result: Result<CallExpr, _> = input.parse();
+            assert!(
+                result.is_err(),
+                "Expected error for call expression: {}",
+                input
+            );
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains(&format!("Cannot access field '{}' by name", expected_field)),
+                "Call expression error for '{}' should mention field '{}'. Got: {}",
+                input,
+                expected_field,
+                error_msg
+            );
+        }
     }
 
     #[test]
-    fn test_struct_field_extraction_with_nested_data() {
+    fn test_struct_field_extraction_comprehensive() {
         use ethabi::Token;
 
-        // Create a complex nested structure:
+        // Create a complex nested structure for comprehensive testing:
         // struct Asset {
         //   uint8 kind;          // index 0
         //   Token token;         // index 1 (nested struct)
@@ -1533,26 +1578,129 @@ mod tests {
             Token::Uint(ethabi::Uint::from(1000u64)), // asset.amount
         ]);
 
-        // Test extracting nested field using numeric path [1, 0] (asset.token.addr)
-        let expected_result = Token::Address([0x42; 20].into());
-        let result = CallDecl::extract_nested_struct_field(
-            &outer_struct,
-            &[FieldAccess::Index(1), FieldAccess::Index(0)],
-            "testCall",
-            Some("asset"),
-            None,
-        )
-        .unwrap();
-        assert_eq!(result, expected_result);
+        // Test cases: (path, expected_value, description)
+        let test_cases = vec![
+            (
+                vec![0],
+                Token::Uint(ethabi::Uint::from(1u8)),
+                "Simple field access",
+            ),
+            (
+                vec![1, 0],
+                Token::Address([0x42; 20].into()),
+                "Nested field access",
+            ),
+            (
+                vec![1, 1],
+                Token::String("TokenName".to_string()),
+                "Nested string field",
+            ),
+            (
+                vec![2],
+                Token::Uint(ethabi::Uint::from(1000u64)),
+                "Last field access",
+            ),
+        ];
+
+        for (path, expected, description) in test_cases {
+            let result = CallDecl::extract_nested_struct_field(&outer_struct, &path, "testCall")
+                .unwrap_or_else(|e| panic!("Failed {}: {}", description, e));
+            assert_eq!(result, expected, "Failed: {}", description);
+        }
+
+        // Test error cases
+        let error_cases = vec![
+            (vec![3], "out of bounds (struct has 3 fields)"),
+            (vec![1, 2], "struct has 2 fields"),
+            (vec![0, 0], "cannot access field on non-struct/tuple"),
+        ];
+
+        for (path, expected_error) in error_cases {
+            let result = CallDecl::extract_nested_struct_field(&outer_struct, &path, "testCall");
+            assert!(result.is_err(), "Expected error for path: {:?}", path);
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains(expected_error),
+                "Error message should contain '{}'. Got: {}",
+                expected_error,
+                error_msg
+            );
+        }
     }
 
     #[test]
-    fn test_named_struct_field_access_end_to_end() {
-        use crate::prelude::web3::types::{Log, H160};
-        use ethabi::{Contract, LogParam, ParamType, Token};
+    fn test_abi_aware_named_field_resolution() {
+        let mapping_abi = create_test_mapping_abi();
+
+        // Test 1: Named field resolution with ABI context
+        let expr = CallExpr::parse(
+            "TestContract[event.params.asset.addr].name()",
+            &mapping_abi,
+            Some("Transfer"),
+        )
+        .unwrap();
+
+        assert_eq!(expr.abi, "TestContract");
+        assert_eq!(
+            expr.address,
+            CallArg::Ethereum(EthereumArg::StructField("asset".into(), vec![0])) // addr -> 0
+        );
+        assert_eq!(expr.func, "name");
+        assert_eq!(expr.args, vec![]);
+
+        // Test 2: Mixed named and numeric access in arguments
+        let expr = CallExpr::parse(
+            "TestContract[event.address].transfer(event.params.asset.amount, event.params.asset.1)",
+            &mapping_abi,
+            Some("Transfer"),
+        )
+        .unwrap();
+
+        assert_eq!(expr.abi, "TestContract");
+        assert_eq!(expr.address, CallArg::Ethereum(EthereumArg::Address));
+        assert_eq!(expr.func, "transfer");
+        assert_eq!(
+            expr.args,
+            vec![
+                CallArg::Ethereum(EthereumArg::StructField("asset".into(), vec![1])), // amount -> 1
+                CallArg::Ethereum(EthereumArg::StructField("asset".into(), vec![1])), // numeric 1
+            ]
+        );
+    }
+
+    #[test]
+    fn test_abi_aware_error_handling() {
+        let mapping_abi = create_test_mapping_abi();
+
+        // Test 1: Invalid field name provides helpful suggestions
+        let result = CallExpr::parse(
+            "TestContract[event.params.asset.invalid].name()",
+            &mapping_abi,
+            Some("Transfer"),
+        );
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        let error_msg = format!("{:#}", error);
+        assert!(error_msg.contains("Unknown field 'invalid'"));
+        assert!(error_msg.contains("Available field names: [active, addr, amount]"));
+
+        // Test 2: Named field access without event context
+        let result = CallExpr::parse(
+            "TestContract[event.params.asset.addr].name()",
+            &mapping_abi,
+            None, // No event name
+        );
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        let error_msg = format!("{:#}", error);
+        assert!(error_msg.contains("Cannot access field 'addr' requires ABI struct information"));
+    }
+
+    // Helper function to create consistent test ABI
+    fn create_test_mapping_abi() -> MappingABI {
+        use ethabi::{Contract, ParamType};
         use std::collections::HashMap;
 
-        // Create a real ABI with struct components like a Transfer event with asset struct
         let abi_json = r#"[
             {
                 "anonymous": false,
@@ -1587,20 +1735,19 @@ mod tests {
             }
         ]"#;
 
-        // Parse the ABI and create struct field mappings
         let contract = Contract::load(abi_json.as_bytes()).unwrap();
         let mut struct_field_mappings = HashMap::new();
         let mut event_mappings = HashMap::new();
 
-        // Simulate the ABI parsing that would happen in parse_struct_field_mappings
-        let mut asset_mapping = HashMap::new();
-        asset_mapping.insert("addr".to_string(), 0);
-        asset_mapping.insert("amount".to_string(), 1);
-        asset_mapping.insert("active".to_string(), 2);
-
         let asset_struct_info = StructFieldInfo {
             param_name: "asset".to_string(),
-            field_mappings: asset_mapping,
+            field_mappings: {
+                let mut mappings = HashMap::new();
+                mappings.insert("addr".to_string(), 0);
+                mappings.insert("amount".to_string(), 1);
+                mappings.insert("active".to_string(), 2);
+                mappings
+            },
             param_type: ParamType::Tuple(vec![
                 ParamType::Address,
                 ParamType::Uint(256),
@@ -1611,96 +1758,79 @@ mod tests {
         event_mappings.insert("asset".to_string(), asset_struct_info);
         struct_field_mappings.insert("Transfer".to_string(), event_mappings);
 
-        let mapping_abi = MappingABI {
+        MappingABI {
             name: "TestContract".to_string(),
             contract,
             struct_field_mappings,
+        }
+    }
+
+    #[test]
+    fn test_parse_function_error_messages() {
+        use ethabi::Contract;
+        use std::collections::HashMap;
+
+        // Create a minimal ABI for testing
+        let abi_json = r#"[{"anonymous": false, "inputs": [], "name": "Test", "type": "event"}]"#;
+        let contract = Contract::load(abi_json.as_bytes()).unwrap();
+        let mapping_abi = MappingABI {
+            name: "TestContract".to_string(),
+            contract,
+            struct_field_mappings: HashMap::new(),
         };
 
-        // Create a CallDecl that uses named field access
-        let call_decl = CallDecl {
-            label: "testCall".to_string(),
-            expr: "TestContract[event.params.asset.addr].someFunction()"
-                .parse()
-                .unwrap(),
-            readonly: (),
-        };
-
-        // Create test data - a struct with (address, uint256, bool)
-        let test_address = H160::from([1u8; 20]);
-        let asset_tuple = Token::Tuple(vec![
-            Token::Address(test_address),
-            Token::Uint(ethabi::Uint::from(1000u64)),
-            Token::Bool(true),
-        ]);
-
-        let params = vec![
-            LogParam {
-                name: "from".to_string(),
-                value: Token::Address(H160::from([2u8; 20])),
-            },
-            LogParam {
-                name: "asset".to_string(),
-                value: asset_tuple,
-            },
-        ];
-
-        let log = Log {
-            address: H160::zero(),
-            topics: vec![],
-            data: vec![].into(),
-            block_hash: None,
-            block_number: None,
-            transaction_hash: None,
-            transaction_index: None,
-            log_index: None,
-            transaction_log_index: None,
-            log_type: None,
-            removed: None,
-        };
-
-        // Test named field access with ABI context
-        let result =
-            call_decl.address_for_log_with_abi(&log, &params, Some(&mapping_abi), Some("Transfer"));
-
-        assert!(
-            result.is_ok(),
-            "Named field access should work with ABI context"
-        );
-        assert_eq!(result.unwrap(), test_address);
-
-        // Test with invalid field name - should get helpful error
-        let invalid_call_decl = CallDecl {
-            label: "invalidCall".to_string(),
-            expr: "TestContract[event.params.asset.invalid].someFunction()"
-                .parse()
-                .unwrap(),
-            readonly: (),
-        };
-
-        let result = invalid_call_decl.address_for_log_with_abi(
-            &log,
-            &params,
-            Some(&mapping_abi),
-            Some("Transfer"),
-        );
-
-        assert!(result.is_err(), "Invalid field name should cause error");
+        // Test 1: Missing opening bracket
+        let result = CallExpr::parse("TestContract event.address].test()", &mapping_abi, None);
+        assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
-        assert!(
-            error_msg.contains("Available field names: [active, addr, amount]"),
-            "Error should show available field names: {}",
-            error_msg
-        );
+        assert!(error_msg.contains("Invalid call expression"));
+        assert!(error_msg.contains("missing '[' after contract name"));
 
-        // Test without ABI context - should fall back to old behavior
-        let result = call_decl.address_for_log_with_abi(&log, &params, None, None);
-        assert!(result.is_err(), "Should fail without ABI context");
+        // Test 2: Missing closing bracket
+        let result = CallExpr::parse("TestContract[event.address.test()", &mapping_abi, None);
+        assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
-        assert!(
-            error_msg.contains("requires ABI struct information"),
-            "Should get ABI requirement error without ABI context: {}",
-            error_msg
+        assert!(error_msg.contains("missing ']' to close address"));
+
+        // Test 3: Empty contract name
+        let result = CallExpr::parse("[event.address].test()", &mapping_abi, None);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("missing contract name before '['"));
+
+        // Test 4: Empty address
+        let result = CallExpr::parse("TestContract[].test()", &mapping_abi, None);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("empty address"));
+
+        // Test 5: Missing function name
+        let result = CallExpr::parse("TestContract[event.address].()", &mapping_abi, None);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("missing function name"));
+
+        // Test 6: Missing opening parenthesis
+        let result = CallExpr::parse("TestContract[event.address].test", &mapping_abi, None);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("missing '(' to start function arguments"));
+
+        // Test 7: Missing closing parenthesis
+        let result = CallExpr::parse("TestContract[event.address].test(", &mapping_abi, None);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("missing ')' to close function arguments"));
+
+        // Test 8: Invalid argument should show argument position
+        let result = CallExpr::parse(
+            "TestContract[event.address].test(invalid.arg)",
+            &mapping_abi,
+            None,
         );
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Failed to parse argument 1"));
+        assert!(error_msg.contains("'invalid.arg'"));
     }
 }

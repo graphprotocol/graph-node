@@ -98,7 +98,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 
 ### 1.5.3 Declaring calls
 
-_Available from spec version 1.2.0_
+_Available from spec version 1.2.0. Struct field access available from spec version 1.4.0_
 
 Declared calls are performed in parallel before the handler is run and can
 greatly speed up syncing. Mappings access the call results simply by using
@@ -122,76 +122,12 @@ Each call is of the form `<ABI>[<address>].<function>(<args>)`:
 
 The `Expr` can be one of the following:
 
-| Expression | Description | Example |
-| --- | --- | --- |
-| **event.address** | The address of the contract that emitted the event | `event.address` |
-| **event.params.&lt;name&gt;** | A simple parameter from the event | `event.params.token` |
-| **event.params.&lt;name&gt;.&lt;index&gt;** | A field from a struct parameter by numeric index | `event.params.asset.0` |
-| **event.params.&lt;name&gt;.&lt;fieldName&gt;** | A field from a struct parameter by field name | `event.params.asset.addr` |
-| **Nested struct access** | Arbitrary nesting depth with mixed access patterns | `event.params.data.1.user.id` |
-
-#### Struct Field Access
-
-When event parameters contain struct types (tuples in ABI), you can access individual fields using either numeric indices or field names:
-
-**Numeric Access (Traditional):**
-```yaml
-calls:
-  tokenAddress: ERC20[event.params.asset.0].name()  # First field
-  tokenAmount: ERC20[event.params.asset.1].decimals()  # Second field
-```
-
-**Named Access (Recommended):**
-```yaml
-calls:
-  tokenAddress: ERC20[event.params.asset.addr].name()     # By field name
-  tokenAmount: ERC20[event.params.asset.amount].decimals() # By field name
-```
-
-**Mixed Access Patterns:**
-```yaml
-calls:
-  # Access first transfer, then recipient field by name
-  recipient: Token[event.params.transfers.0.recipient].balanceOf()
-  
-  # Deep nesting with mixed numeric and named access
-  innerValue: Contract[event.params.data.1.user.addr].someFunction()
-```
-
-#### Struct Field Access Examples
-
-Given an event with this ABI structure:
-```json
-{
-  "name": "AssetTransfer",
-  "type": "event", 
-  "inputs": [
-    {
-      "name": "asset",
-      "type": "tuple",
-      "components": [
-        {"name": "addr", "type": "address"},
-        {"name": "amount", "type": "uint256"},
-        {"name": "active", "type": "bool"}
-      ]
-    }
-  ]
-}
-```
-
-You can access fields in multiple ways:
-```yaml
-calls:
-  # Named field access (clearest and recommended)
-  tokenContract: ERC20[event.params.asset.addr].name()
-  tokenDecimals: ERC20[event.params.asset.addr].decimals()
-  
-  # Numeric field access (backward compatible)  
-  tokenContract: ERC20[event.params.asset.0].name()
-  
-  # Mixed access for complex nested structures
-  nestedField: Contract[event.params.data.0.inner.fieldName].process()
-```
+| Expression | Description |
+| --- | --- |
+| **event.address** | The address of the contract that emitted the event |
+| **event.params.&lt;name&gt;** | A simple parameter from the event |
+| **event.params.&lt;name&gt;.&lt;index&gt;** | A field from a struct parameter by numeric index |
+| **event.params.&lt;name&gt;.&lt;fieldName&gt;** | A field from a struct parameter by field name (spec version 1.4.0+) |
 
 
 ## 1.6 Path
