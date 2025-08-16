@@ -160,6 +160,8 @@ jobs:
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly-5b7e4cb3c882b28f3c32ba580de27ce7381f415a
       - name: Start anvil
         run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --port 3021 &
 
