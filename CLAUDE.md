@@ -50,6 +50,45 @@ cargo check
 4. All requirements must be met from the project root BEFORE any commit
 5. Forgetting any of these means you failed to follow instructions
 
+### Integration Tests
+
+⚠️ **Only run integration tests when explicitly requested or when changes require full system testing**
+
+Integration tests require external services and are more complex to run than unit tests. They test the full system end-to-end and should not be run by default during development. Use unit tests (`cargo test`) for regular development and only run integration tests when:
+
+- Explicitly asked to do so
+- Making changes to integration/end-to-end functionality
+- Debugging issues that require full system testing
+- Preparing releases or major changes
+
+**Prerequisites:**
+1. Docker and Docker Compose installed
+2. Yarn (v1) installed and on PATH
+3. Foundry (for smart contract compilation)
+
+**Running Integration Tests:**
+```bash
+# Start required services (Postgres, IPFS, Anvil)
+(cd tests && docker-compose up -d)
+
+# Install yarn dependencies for graph CLI
+(cd tests/integration-tests && yarn install)
+
+# Build graph-node and test binaries
+cargo build --bin graph-node --test integration_tests
+
+# Run all integration tests
+cargo test -p graph-tests --test integration_tests -- --nocapture
+
+# Run a specific test (replace "grafted" with test name)
+# Note: Tests are organized as sub-tests within a single integration_tests function
+```
+
+**Important Notes:**
+- Integration tests take significant time (several minutes)
+- Tests automatically reset the database between runs
+- Logs are written to `tests/integration-tests/graph-node.log`
+
 ## High-Level Architecture
 
 ### Core Components
