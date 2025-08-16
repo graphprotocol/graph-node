@@ -19,14 +19,19 @@ Graph Node is a Rust-based decentralized blockchain indexing protocol that enabl
 
 ### Testing
 
+⚠️ **IMPORTANT**: Always export the database URL at the start of each session:
+```bash
+export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
+```
+
+Then run tests normally:
 ```bash
 # Run unit tests (integration tests are excluded due to missing environment dependencies)
-# Claude should set the database URL before running tests:
-export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
 cargo test --workspace --exclude graph-tests
 
-# Or run inline:
-THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test" cargo test <test_name>
+# Run specific tests
+cargo test --package graph data_source::common::tests
+cargo test <specific_test_name>
 ```
 
 ### Code Quality
