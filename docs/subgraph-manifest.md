@@ -98,7 +98,7 @@ The `mapping` field may be one of the following supported mapping manifests:
 
 ### 1.5.3 Declaring calls
 
-_Available from spec version 1.2.0_
+_Available from spec version 1.2.0. Struct field access available from spec version 1.4.0_
 
 Declared calls are performed in parallel before the handler is run and can
 greatly speed up syncing. Mappings access the call results simply by using
@@ -118,7 +118,17 @@ Each call is of the form `<ABI>[<address>].<function>(<args>)`:
 | **function** | *String* | The name of a view function in the contract |
 | **args** | *[Expr]* | The arguments to pass to the function |
 
-The `Expr` can be either `event.address` or `event.params.<name>`.
+#### Expression Types
+
+The `Expr` can be one of the following:
+
+| Expression | Description |
+| --- | --- |
+| **event.address** | The address of the contract that emitted the event |
+| **event.params.&lt;name&gt;** | A simple parameter from the event |
+| **event.params.&lt;name&gt;.&lt;index&gt;** | A field from a struct parameter by numeric index |
+| **event.params.&lt;name&gt;.&lt;fieldName&gt;** | A field from a struct parameter by field name (spec version 1.4.0+) |
+
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).

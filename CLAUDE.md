@@ -1,0 +1,189 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## ⚠️ CRITICAL MANDATORY STEP ⚠️
+**ALWAYS run `cargo fmt --all` after editing ANY .rs file - NO EXCEPTIONS!**
+- This is REQUIRED after every single Rust code change
+- Must be run from the project root directory
+- Must be done BEFORE committing any changes
+- If you forget this, you have failed to follow instructions
+
+This document assumes that your human has already set up all database configuration required for the test suite to run.
+
+## Project Overview
+
+Graph Node is a Rust-based decentralized blockchain indexing protocol that enables efficient querying of blockchain data through GraphQL. It's the core component of The Graph protocol, written as a Cargo workspace with multiple crates organized by functionality.
+
+## Essential Development Commands
+
+### Testing
+
+⚠️ **IMPORTANT**: Always export the database URL at the start of each session:
+```bash
+export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
+```
+
+Then run tests normally:
+```bash
+# Run unit tests (integration tests are excluded due to missing environment dependencies)
+cargo test --workspace --exclude graph-tests
+
+# Run specific tests
+cargo test --package graph data_source::common::tests
+cargo test <specific_test_name>
+```
+
+### Code Quality
+```bash
+# 🚨 MANDATORY: Format all code IMMEDIATELY after any .rs file edit
+cargo fmt --all
+
+# 🚨 MANDATORY: Check code for warnings and errors - MUST have zero warnings
+cargo check
+```
+
+🚨 **CRITICAL REQUIREMENTS for ANY implementation**:
+1. **`cargo fmt --all`** is MANDATORY after editing ANY .rs file - NO EXCEPTIONS!
+2. **`cargo check`** MUST show zero warnings before any commit - NO EXCEPTIONS!
+3. **All tests** MUST pass before any commit
+4. All requirements must be met from the project root BEFORE any commit
+5. Forgetting any of these means you failed to follow instructions
+
+### Integration Tests
+
+⚠️ **Only run integration tests when explicitly requested or when changes require full system testing**
+
+Integration tests require external services and are more complex to run than unit tests. They test the full system end-to-end and should not be run by default during development. Use unit tests (`cargo test`) for regular development and only run integration tests when:
+
+- Explicitly asked to do so
+- Making changes to integration/end-to-end functionality
+- Debugging issues that require full system testing
+- Preparing releases or major changes
+
+**Prerequisites:**
+1. Docker and Docker Compose installed
+2. Yarn (v1) installed and on PATH
+3. Foundry (for smart contract compilation)
+
+**Running Integration Tests:**
+```bash
+# Start required services (Postgres, IPFS, Anvil)
+(cd tests && docker-compose up -d)
+
+# Install yarn dependencies for graph CLI
+(cd tests/integration-tests && yarn install)
+
+# Build graph-node and test binaries
+cargo build --bin graph-node --test integration_tests
+
+# Run all integration tests
+cargo test -p graph-tests --test integration_tests -- --nocapture
+
+# Run a specific test (replace "grafted" with test name)
+# Note: Tests are organized as sub-tests within a single integration_tests function
+```
+
+**Important Notes:**
+- Integration tests take significant time (several minutes)
+- Tests automatically reset the database between runs
+- Logs are written to `tests/integration-tests/graph-node.log`
+
+## High-Level Architecture
+
+### Core Components
+- **`graph/`**: Core abstractions, traits, and shared types
+- **`node/`**: Main executable and CLI (graphman)
+- **`chain/`**: Blockchain-specific adapters (ethereum, near, substreams)
+- **`runtime/`**: WebAssembly runtime for subgraph execution
+- **`store/`**: PostgreSQL-based storage layer
+- **`graphql/`**: GraphQL query execution engine
+- **`server/`**: HTTP/WebSocket APIs
+
+### Data Flow
+```
+Blockchain → Chain Adapter → Block Stream → Trigger Processing → Runtime → Store → GraphQL API
+```
+
+1. **Chain Adapters** connect to blockchain nodes and convert data to standardized formats
+2. **Block Streams** provide event-driven streaming of blockchain blocks
+3. **Trigger Processing** matches blockchain events to subgraph handlers
+4. **Runtime** executes subgraph code in WebAssembly sandbox
+5. **Store** persists entities with block-level granularity
+6. **GraphQL** processes queries and returns results
+
+### Key Abstractions
+- **`Blockchain`** trait: Core blockchain interface
+- **`Store`** trait: Storage abstraction with read/write variants
+- **`RuntimeHost`**: WASM execution environment
+- **`TriggerData`**: Standardized blockchain events
+- **`EventConsumer`/`EventProducer`**: Component communication
+
+### Architecture Patterns
+- **Event-driven**: Components communicate through async streams and channels
+- **Trait-based**: Extensive use of traits for abstraction and modularity
+- **Async/await**: Tokio-based async runtime throughout
+- **Multi-shard**: Database sharding for scalability
+- **Sandboxed execution**: WASM runtime with gas metering
+
+## Development Guidelines
+
+### Commit Convention
+Use format: `{crate-name}: {description}`
+- Single crate: `store: Support 'Or' filters`
+- Multiple crates: `core, graphql: Add event source to store`
+- All crates: `all: {description}`
+
+### Git Workflow
+- Rebase on master (don't merge master into feature branch)
+- Keep commits logical and atomic
+- Use `git rebase -i` to clean up history before merging
+
+### Implementation Success Criteria
+Before any commit or PR, ALL of the following MUST be satisfied:
+
+1. **🚨 MANDATORY**: All tests MUST pass
+2. **🚨 MANDATORY**: `cargo check` MUST show zero warnings
+3. **🚨 MANDATORY**: `cargo fmt --all` MUST be run after editing ANY .rs file
+
+**Testing Notes**:
+- Unit tests inline with source code
+- Integration tests require Docker Compose setup and additional environment dependencies  
+- Claude cannot run integration tests due to missing environment dependencies
+- Claude must set `THEGRAPH_STORE_POSTGRES_DIESEL_URL` before running any tests
+
+### Environment Variables
+- `GRAPH_LOG=debug`: Enable debug logging
+- `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: Required for most tests - Claude must set this to `postgresql://graph:graph@127.0.0.1:5432/graph-test`
+- `GRAPH_NODE_TEST_CONFIG`: Points to test configuration file
+
+## Crate Structure
+
+### Core Crates
+- **`graph`**: Shared types, traits, and utilities
+- **`node`**: Main binary and component wiring
+- **`core`**: Business logic and subgraph management
+
+### Blockchain Integration
+- **`chain/ethereum`**: Ethereum chain support
+- **`chain/near`**: NEAR protocol support
+- **`chain/substreams`**: Substreams data source support
+
+### Infrastructure
+- **`store/postgres`**: PostgreSQL storage implementation
+- **`runtime/wasm`**: WebAssembly runtime and host functions
+- **`graphql`**: Query processing and execution
+- **`server/`**: HTTP/WebSocket servers
+
+### Key Dependencies
+- **`diesel`**: PostgreSQL ORM
+- **`tokio`**: Async runtime
+- **`tonic`**: gRPC framework
+- **`wasmtime`**: WebAssembly runtime
+- **`web3`**: Ethereum interaction
+
+## Test Environment Requirements
+Most tests require external services to be running:
+- **IPFS**: Required for distributed storage functionality
+- **PostgreSQL**: Required for database operations and storage tests
+- Your human should ensure these services are running before test execution
