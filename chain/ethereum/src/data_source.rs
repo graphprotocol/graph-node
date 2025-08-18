@@ -41,7 +41,7 @@ use graph::{
 
 use graph::data::subgraph::{
     calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
-    SPEC_VERSION_1_2_0,
+    SPEC_VERSION_1_2_0, SPEC_VERSION_1_4_0,
 };
 
 use crate::adapter::EthereumAdapter as _;
@@ -72,6 +72,38 @@ pub struct DataSource {
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
     pub contract_abi: Arc<MappingABI>,
+}
+
+/// Checks if a declarative call uses struct field access that would require spec version 1.4.0+
+/// This detects if the call was parsed with ABI context to resolve named fields
+fn call_uses_named_field_access(call_expr: &graph::data_source::common::CallExpr) -> bool {
+    // Check address for struct field access
+    if has_struct_field_access(&call_expr.address) {
+        return true;
+    }
+
+    // Check all arguments for struct field access
+    for arg in &call_expr.args {
+        if has_struct_field_access(arg) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Helper function to check if a CallArg uses struct field access
+fn has_struct_field_access(arg: &graph::data_source::common::CallArg) -> bool {
+    use graph::data_source::common::{CallArg, EthereumArg};
+
+    match arg {
+        CallArg::Ethereum(EthereumArg::StructField(_, indices)) => {
+            // If we have struct field access with indices, it means named fields were resolved
+            // This feature requires spec version 1.4.0+
+            !indices.is_empty()
+        }
+        _ => false,
+    }
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
@@ -376,6 +408,19 @@ impl blockchain::DataSource<Chain> for DataSource {
                         "handler {}: declaring eth calls on handlers is only supported for specVersion >= 1.2.0", handler.event
                     ));
                     break;
+                }
+            }
+        }
+
+        if spec_version < &SPEC_VERSION_1_4_0 {
+            for handler in &self.mapping.event_handlers {
+                for call in handler.calls.decls.as_ref() {
+                    if call_uses_named_field_access(&call.expr) {
+                        errors.push(anyhow!(
+                            "handler {}: struct field access by name in declarative calls is only supported for specVersion >= 1.4.0", handler.event
+                        ));
+                        break;
+                    }
                 }
             }
         }
@@ -800,7 +845,7 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
-                let calls = DeclaredCall::from_log_trigger(
+                let calls = DeclaredCall::from_log_trigger_with_event(
                     &self.mapping,
                     &event_handler.calls,
                     &log,
