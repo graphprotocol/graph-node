@@ -374,39 +374,6 @@ pub struct UnresolvedMapping {
     pub entities: Vec<String>,
 }
 
-impl UnresolvedDataSource {
-    #[allow(dead_code)]
-    pub(super) async fn resolve(
-        self,
-        resolver: &Arc<dyn LinkResolver>,
-        logger: &Logger,
-        manifest_idx: u32,
-        causality_region: CausalityRegion,
-        schema: &InputSchema,
-    ) -> Result<DataSource, Error> {
-        info!(logger, "Resolve offchain data source";
-            "name" => &self.name,
-            "kind" => &self.kind,
-            "source" => format_args!("{:?}", &self.source),
-        );
-
-        let kind = OffchainDataSourceKind::from_str(self.kind.as_str())?;
-        let source = kind.try_parse_source(Bytes::from(self.source.file.link.as_bytes()))?;
-
-        Ok(DataSource {
-            manifest_idx,
-            kind,
-            name: self.name,
-            source,
-            mapping: self.mapping.resolve(resolver, schema, logger).await?,
-            context: Arc::new(None),
-            creation_block: None,
-            done_at: Arc::new(AtomicI32::new(NOT_DONE_VALUE)),
-            causality_region,
-        })
-    }
-}
-
 impl UnresolvedMapping {
     pub async fn resolve(
         self,

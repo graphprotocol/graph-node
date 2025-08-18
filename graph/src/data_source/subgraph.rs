@@ -344,7 +344,6 @@ impl UnresolvedDataSource {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub(super) async fn resolve<C: Blockchain>(
         self,
         resolver: &Arc<dyn LinkResolver>,

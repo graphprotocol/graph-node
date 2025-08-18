@@ -1702,7 +1702,6 @@ mod validations {
 
     /// Helper struct for validations
     struct Schema<'a> {
-        #[allow(dead_code)]
         spec_version: &'a Version,
         schema: &'a BaseSchema,
         subgraph_schema_type: Option<&'a s::ObjectType>,
