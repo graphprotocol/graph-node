@@ -15,6 +15,7 @@ use std::time::{self, Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use graph::futures03::StreamExt;
+use graph::itertools::Itertools;
 use graph::prelude::serde_json::{json, Value};
 use graph::prelude::web3::types::U256;
 use graph_tests::contract::Contract;
@@ -1067,6 +1068,225 @@ pub async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Res
     Ok(())
 }
 
+/// Test the declared calls functionality as of spec version 1.2.0.
+/// Note that we don't have a way to test that the actual call is made as
+/// a declared call since graph-node does not expose that information
+/// to mappings. This test assures though that the declared call machinery
+/// does not have any errors.
+async fn test_declared_calls_basic(ctx: TestContext) -> anyhow::Result<()> {
+    #[track_caller]
+    fn assert_call_result(call_results: &[Value], label: &str, exp_success: bool, exp_value: &str) {
+        let Some(call_result) = call_results.iter().find(|c| c["label"] == json!(label)) else {
+            panic!(
+                "Expected call result with label '{}', but none found",
+                label
+            );
+        };
+        let Some(act_success) = call_result["success"].as_bool() else {
+            panic!(
+                "Expected call result with label '{}' to have a boolean 'success' field, but got: {:?}",
+                label, call_result["success"]
+            );
+        };
+
+        if exp_success {
+            assert!(
+                act_success,
+                "Expected call result with label '{}' to be successful",
+                label
+            );
+            let Some(act_value) = call_result["value"].as_str() else {
+                panic!(
+                "Expected call result with label '{}' to have a string 'value' field, but got: {:?}",
+                label, call_result["value"]
+            );
+            };
+            assert_eq!(
+                exp_value, act_value,
+                "Expected call result with label '{}' to have value '{}', but got '{}'",
+                label, exp_value, act_value
+            );
+        } else {
+            assert!(
+                !act_success,
+                "Expected call result with label '{}' to have failed",
+                label
+            );
+        }
+    }
+
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+
+    // Query the results
+    const QUERY: &'static str = "{
+        transferCalls(first: 1, orderBy: blockNumber) {
+            id
+            from
+            to
+            value
+            balanceFromBefore
+            balanceToBefore
+            totalSupply
+            constantValue
+            sumResult
+            metadataFrom
+            revertCallSucceeded
+        }
+        callResults(orderBy: label) {
+            label
+            success
+            value
+            error
+        }
+    }";
+
+    let Some((transfer_calls, call_results)) = subgraph
+        .polling_query(QUERY, &["transferCalls", "callResults"])
+        .await?
+        .into_iter()
+        .collect_tuple()
+    else {
+        panic!("Expected exactly two arrays from polling_query")
+    };
+
+    // Validate basic functionality
+    assert!(
+        !transfer_calls.is_empty(),
+        "Should have at least one transfer call"
+    );
+    assert!(!call_results.is_empty(), "Should have call results");
+
+    let transfer_call = &transfer_calls[0];
+
+    // Validate declared calls worked
+    assert_eq!(
+        transfer_call["constantValue"],
+        json!("42"),
+        "Constant value should be 42"
+    );
+    assert_eq!(
+        transfer_call["sumResult"],
+        json!("200"),
+        "Sum result should be 200 (100 + 100)"
+    );
+    assert_eq!(
+        transfer_call["revertCallSucceeded"],
+        json!(false),
+        "Revert call should have failed"
+    );
+    assert_eq!(
+        transfer_call["totalSupply"],
+        json!("3000"),
+        "Total supply should be 3000"
+    );
+
+    assert_call_result(&call_results, "balance_from", true, "900");
+    assert_call_result(&call_results, "balance_to", true, "1100");
+    assert_call_result(&call_results, "constant_value", true, "42");
+    assert_call_result(&call_results, "metadata_from", true, "Test Asset 1");
+    assert_call_result(&call_results, "sum_values", true, "200");
+    assert_call_result(&call_results, "total_supply", true, "3000");
+    assert_call_result(&call_results, "will_revert", false, "*ignored*");
+
+    Ok(())
+}
+
+async fn test_declared_calls_struct_fields(ctx: TestContext) -> anyhow::Result<()> {
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+
+    // Wait a moment for indexing
+    sleep(Duration::from_secs(2)).await;
+
+    // Query the results
+    const QUERY: &'static str = "{
+        assetTransferCalls(first: 1, orderBy: blockNumber) {
+            id
+            assetAddr
+            assetAmount
+            assetActive
+            owner
+            metadata
+            amountCalc
+        }
+        complexAssetCalls(first: 1, orderBy: blockNumber) {
+            id
+            baseAssetAddr
+            baseAssetAmount
+            baseAssetOwner
+            baseAssetMetadata
+            baseAssetAmountCalc
+        }
+        structFieldTests(orderBy: testType) {
+            testType
+            fieldName
+            success
+            result
+            error
+        }
+    }";
+
+    let Some((asset_transfers, complex_assets, struct_tests)) = subgraph
+        .polling_query(
+            QUERY,
+            &[
+                "assetTransferCalls",
+                "complexAssetCalls",
+                "structFieldTests",
+            ],
+        )
+        .await?
+        .into_iter()
+        .collect_tuple()
+    else {
+        panic!("Expected exactly three arrays from polling_query")
+    };
+
+    // Validate struct field access
+    assert!(
+        !asset_transfers.is_empty(),
+        "Should have asset transfer calls"
+    );
+    assert!(
+        !complex_assets.is_empty(),
+        "Should have complex asset calls"
+    );
+    assert!(!struct_tests.is_empty(), "Should have struct field tests");
+
+    let asset_transfer = &asset_transfers[0];
+
+    // Validate struct field values
+    assert_eq!(
+        asset_transfer["assetAddr"],
+        json!("0x1111111111111111111111111111111111111111")
+    );
+    assert_eq!(asset_transfer["assetAmount"], json!("150"));
+    assert_eq!(asset_transfer["assetActive"], json!(true));
+    assert_eq!(asset_transfer["amountCalc"], json!("300")); // 150 + 150
+
+    // Validate complex asset (nested struct access)
+    let complex_asset = &complex_assets[0];
+    assert_eq!(
+        complex_asset["baseAssetAddr"],
+        json!("0x4444444444444444444444444444444444444444")
+    );
+    assert_eq!(complex_asset["baseAssetAmount"], json!("250"));
+    assert_eq!(complex_asset["baseAssetAmountCalc"], json!("349")); // 250 + 99
+
+    // Validate that struct field tests include both successful calls
+    let successful_tests: Vec<_> = struct_tests
+        .iter()
+        .filter(|t| t["success"] == json!(true))
+        .collect();
+    assert!(
+        !successful_tests.is_empty(),
+        "Should have successful struct field tests"
+    );
+
+    Ok(())
+}
+
 async fn wait_for_blockchain_block(block_number: i32) -> bool {
     // Wait up to 5 minutes for the expected block to appear
     const STATUS_WAIT: Duration = Duration::from_secs(300);
@@ -1114,6 +1334,11 @@ async fn integration_tests() -> anyhow::Result<()> {
             "multiple-subgraph-datasources",
             test_multiple_subgraph_datasources,
             vec!["source-subgraph-a", "source-subgraph-b"],
+        ),
+        TestCase::new("declared-calls-basic", test_declared_calls_basic),
+        TestCase::new(
+            "declared-calls-struct-fields",
+            test_declared_calls_struct_fields,
         ),
     ];
 

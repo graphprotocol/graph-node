@@ -1074,14 +1074,20 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources
                 .into_iter()
                 .enumerate()
-                .map(|(idx, ds)| ds.resolve(resolver, logger, idx as u32))
+                .map(|(idx, ds)| ds.resolve(resolver, logger, idx as u32, &spec_version))
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             templates
                 .into_iter()
                 .enumerate()
                 .map(|(idx, template)| {
-                    template.resolve(resolver, &schema, logger, ds_count as u32 + idx as u32)
+                    template.resolve(
+                        resolver,
+                        &schema,
+                        logger,
+                        ds_count as u32 + idx as u32,
+                        &spec_version,
+                    )
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),

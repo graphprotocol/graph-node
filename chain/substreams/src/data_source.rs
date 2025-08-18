@@ -187,6 +187,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         _manifest_idx: u32,
+        _spec_version: &semver::Version,
     ) -> Result<DataSource, Error> {
         let content = resolver.cat(logger, &self.source.package.file).await?;
 
@@ -317,6 +318,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for NoopDataSourceTemplate 
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &Logger,
         _manifest_idx: u32,
+        _spec_version: &semver::Version,
     ) -> Result<NoopDataSourceTemplate, anyhow::Error> {
         unimplemented!("{}", TEMPLATE_ERROR)
     }
@@ -330,7 +332,7 @@ mod test {
     use graph::{
         blockchain::{DataSource as _, UnresolvedDataSource as _},
         components::link_resolver::LinkResolver,
-        data::subgraph::LATEST_VERSION,
+        data::subgraph::{LATEST_VERSION, SPEC_VERSION_1_2_0},
         prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
         substreams::{
@@ -433,7 +435,10 @@ mod test {
         let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
         let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
         let logger = Logger::root(Discard, o!());
-        let ds: DataSource = ds.resolve(&link_resolver, &logger, 0).await.unwrap();
+        let ds: DataSource = ds
+            .resolve(&link_resolver, &logger, 0, &SPEC_VERSION_1_2_0)
+            .await
+            .unwrap();
         let expected = DataSource {
             kind: SUBSTREAMS_KIND.into(),
             network: Some("mainnet".into()),
@@ -470,7 +475,10 @@ mod test {
             serde_yaml::from_str(TEMPLATE_DATA_SOURCE_WITH_PARAMS).unwrap();
         let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
         let logger = Logger::root(Discard, o!());
-        let ds: DataSource = ds.resolve(&link_resolver, &logger, 0).await.unwrap();
+        let ds: DataSource = ds
+            .resolve(&link_resolver, &logger, 0, &SPEC_VERSION_1_2_0)
+            .await
+            .unwrap();
         let expected = DataSource {
             kind: SUBSTREAMS_KIND.into(),
             network: Some("mainnet".into()),

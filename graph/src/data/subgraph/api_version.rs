@@ -60,8 +60,11 @@ pub const SPEC_VERSION_1_2_0: Version = Version::new(1, 2, 0);
 // represents the write order across all entity types in the subgraph.
 pub const SPEC_VERSION_1_3_0: Version = Version::new(1, 3, 0);
 
+// Enables struct field access in declarative calls
+pub const SPEC_VERSION_1_4_0: Version = Version::new(1, 4, 0);
+
 // The latest spec version available
-pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_3_0;
+pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_4_0;
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 

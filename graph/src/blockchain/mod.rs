@@ -378,6 +378,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        spec_version: &semver::Version,
     ) -> Result<C::DataSourceTemplate, anyhow::Error>;
 }
 
@@ -407,6 +408,7 @@ pub trait UnresolvedDataSource<C: Blockchain>:
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        spec_version: &semver::Version,
     ) -> Result<C::DataSource, anyhow::Error>;
 }
 

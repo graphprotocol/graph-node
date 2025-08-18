@@ -1,3 +1,4 @@
 contracts/cache/
+contracts/out/build-info/
 integration-tests/graph-node.log
 integration-tests/*/subgraph.yaml.patched

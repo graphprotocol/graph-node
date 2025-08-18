@@ -193,6 +193,7 @@ impl<C: Blockchain> UnresolvedDataSource<C> for MockUnresolvedDataSource {
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &slog::Logger,
         _manifest_idx: u32,
+        _spec_version: &semver::Version,
     ) -> Result<C::DataSource, anyhow::Error> {
         todo!()
     }
@@ -243,6 +244,7 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> for MockUnresolvedDataSource
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &slog::Logger,
         _manifest_idx: u32,
+        _spec_version: &semver::Version,
     ) -> Result<C::DataSourceTemplate, anyhow::Error> {
         todo!()
     }

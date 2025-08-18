@@ -1,0 +1,45 @@
+type AssetTransferCall @entity(immutable: true) {
+  id: ID!
+  assetAddr: Bytes!
+  assetAmount: BigInt!
+  assetActive: Boolean!
+  to: Bytes!
+  blockNumber: BigInt!
+
+  # Results from named field access
+  owner: Bytes!
+  metadata: String!
+  amountCalc: BigInt!
+
+  # Regular call result
+  recipientBalance: BigInt!
+
+  transactionHash: Bytes!
+}
+
+type ComplexAssetCall @entity(immutable: true) {
+  id: ID!
+  complexAssetId: BigInt!
+  baseAssetAddr: Bytes!
+  baseAssetAmount: BigInt!
+  baseAssetActive: Boolean!
+  metadata: String!
+
+  # Results from nested struct field access
+  baseAssetOwner: Bytes!
+  baseAssetMetadata: String!
+  baseAssetAmountCalc: BigInt!
+
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type StructFieldTest @entity(immutable: true) {
+  id: ID!
+  testType: String!
+  fieldName: String!
+  success: Boolean!
+  result: String
+  error: String
+  blockNumber: BigInt!
+}

@@ -1,0 +1,23 @@
+type TransferCall @entity(immutable: true) {
+  id: ID!
+  from: Bytes!
+  to: Bytes!
+  value: BigInt!
+  balanceFromBefore: BigInt!
+  balanceToBefore: BigInt!
+  totalSupply: BigInt!
+  constantValue: BigInt!
+  sumResult: BigInt!
+  metadataFrom: String!
+  revertCallSucceeded: Boolean!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type CallResult @entity(immutable: true) {
+  id: ID!
+  label: String!
+  success: Boolean!
+  value: String
+  error: String
+}

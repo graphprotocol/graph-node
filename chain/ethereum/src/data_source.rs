@@ -6,7 +6,8 @@ use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
 use graph::data_source::common::{
-    CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedMappingABI,
+    AbiJson, CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedCallDecls,
+    UnresolvedMappingABI,
 };
 use graph::data_source::{CausalityRegion, MappingTrigger as MappingTriggerType};
 use graph::env::ENV_VARS;
@@ -800,7 +801,7 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
-                let calls = DeclaredCall::from_log_trigger(
+                let calls = DeclaredCall::from_log_trigger_with_event(
                     &self.mapping,
                     &event_handler.calls,
                     &log,
@@ -1200,6 +1201,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        spec_version: &semver::Version,
     ) -> Result<DataSource, anyhow::Error> {
         let UnresolvedDataSource {
             kind,
@@ -1210,7 +1212,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        let mapping = mapping.resolve(resolver, logger).await.with_context(|| {
+        let mapping = mapping.resolve(resolver, logger, spec_version).await.with_context(|| {
             format!(
                 "failed to resolve data source {} with source_address {:?} and source_start_block {}",
                 name, source.address, source.start_block
@@ -1221,7 +1223,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedDataSourceTemplate {
     pub kind: String,
     pub network: Option<String>,
@@ -1247,6 +1249,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        spec_version: &semver::Version,
     ) -> Result<DataSourceTemplate, anyhow::Error> {
         let UnresolvedDataSourceTemplate {
             kind,
@@ -1257,7 +1260,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         } = self;
 
         let mapping = mapping
-            .resolve(resolver, logger)
+            .resolve(resolver, logger, spec_version)
             .await
             .with_context(|| format!("failed to resolve data source template {}", name))?;
 
@@ -1294,7 +1297,7 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     pub kind: String,
@@ -1307,7 +1310,7 @@ pub struct UnresolvedMapping {
     #[serde(default)]
     pub call_handlers: Vec<MappingCallHandler>,
     #[serde(default)]
-    pub event_handlers: Vec<MappingEventHandler>,
+    pub event_handlers: Vec<UnresolvedMappingEventHandler>,
     pub file: Link,
 }
 
@@ -1357,6 +1360,7 @@ impl UnresolvedMapping {
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        spec_version: &semver::Version,
     ) -> Result<Mapping, anyhow::Error> {
         let UnresolvedMapping {
             kind,
@@ -1376,9 +1380,7 @@ impl UnresolvedMapping {
             // resolve each abi
             abis.into_iter()
                 .map(|unresolved_abi| async {
-                    Result::<_, Error>::Ok(Arc::new(
-                        unresolved_abi.resolve(resolver, logger).await?,
-                    ))
+                    Result::<_, Error>::Ok(unresolved_abi.resolve(resolver, logger).await?)
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
@@ -1390,15 +1392,35 @@ impl UnresolvedMapping {
         .await
         .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 
+        // Resolve event handlers with ABI context
+        let resolved_event_handlers = event_handlers
+            .into_iter()
+            .map(|unresolved_handler| {
+                // Find the ABI for this event handler
+                let (_, abi_json) = abis.first().ok_or_else(|| {
+                    anyhow!(
+                        "No ABI found for event '{}' in event handler '{}'",
+                        unresolved_handler.event,
+                        unresolved_handler.handler
+                    )
+                })?;
+
+                unresolved_handler.resolve(abi_json, &spec_version)
+            })
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
+
+        // Extract just the MappingABIs for the final Mapping struct
+        let mapping_abis = abis.into_iter().map(|(abi, _)| Arc::new(abi)).collect();
+
         Ok(Mapping {
             kind,
             api_version,
             language,
             entities,
-            abis,
+            abis: mapping_abis,
             block_handlers: block_handlers.clone(),
             call_handlers: call_handlers.clone(),
-            event_handlers: event_handlers.clone(),
+            event_handlers: resolved_event_handlers,
             runtime,
             link,
         })
@@ -1442,8 +1464,8 @@ pub struct MappingCallHandler {
     pub handler: String,
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct MappingEventHandler {
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct UnresolvedMappingEventHandler {
     pub event: String,
     pub topic0: Option<H256>,
     #[serde(deserialize_with = "deserialize_h256_vec", default)]
@@ -1456,6 +1478,41 @@ pub struct MappingEventHandler {
     #[serde(default)]
     pub receipt: bool,
     #[serde(default)]
+    pub calls: UnresolvedCallDecls,
+}
+
+impl UnresolvedMappingEventHandler {
+    pub fn resolve(
+        self,
+        abi_json: &AbiJson,
+        spec_version: &semver::Version,
+    ) -> Result<MappingEventHandler, anyhow::Error> {
+        let resolved_calls = self
+            .calls
+            .resolve(abi_json, Some(&self.event), spec_version)?;
+
+        Ok(MappingEventHandler {
+            event: self.event,
+            topic0: self.topic0,
+            topic1: self.topic1,
+            topic2: self.topic2,
+            topic3: self.topic3,
+            handler: self.handler,
+            receipt: self.receipt,
+            calls: resolved_calls,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub struct MappingEventHandler {
+    pub event: String,
+    pub topic0: Option<H256>,
+    pub topic1: Option<Vec<H256>>,
+    pub topic2: Option<Vec<H256>>,
+    pub topic3: Option<Vec<H256>>,
+    pub handler: String,
+    pub receipt: bool,
     pub calls: CallDecls,
 }
 

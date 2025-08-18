@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 
 use graph::prelude::serde_json::{self, Value};
 use serde::Deserialize;
@@ -177,5 +177,40 @@ impl Subgraph {
     pub async fn query_with_vars(text: &str, vars: Value) -> anyhow::Result<Value> {
         let endpoint = CONFIG.graph_node.index_node_uri();
         graphql_query_with_vars(&endpoint, text, vars).await
+    }
+
+    /// Poll the subgraph's data API until the `query` returns non-empty
+    /// results for any of the specified `keys`. The `keys` must be the
+    /// toplevel entries in the GraphQL `query`. The return value is a
+    /// vector of vectors, where each inner vector contains the results for
+    /// one of the specified `keys`, in the order in which they appear in
+    /// `keys`.
+    pub async fn polling_query(
+        &self,
+        query: &str,
+        keys: &[&str],
+    ) -> anyhow::Result<Vec<Vec<Value>>> {
+        let start = Instant::now();
+        loop {
+            let resp = self.query(query).await?;
+
+            if let Some(errors) = resp.get("errors") {
+                bail!("GraphQL errors: {:?}", errors);
+            }
+            let data = resp["data"].as_object().unwrap();
+            let values = keys
+                .into_iter()
+                .map(|key| data[*key].as_array().unwrap().clone())
+                .collect::<Vec<_>>();
+
+            if !values.iter().all(|item| item.is_empty()) {
+                break Ok(values);
+            }
+
+            if start.elapsed() > Duration::from_secs(30) {
+                bail!("Timed out waiting for declared calls to be indexed");
+            }
+            sleep(Duration::from_millis(100)).await;
+        }
     }
 }

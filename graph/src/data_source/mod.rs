@@ -332,14 +332,15 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        spec_version: &semver::Version,
     ) -> Result<DataSource<C>, anyhow::Error> {
         match self {
             Self::Onchain(unresolved) => unresolved
-                .resolve(resolver, logger, manifest_idx)
+                .resolve(resolver, logger, manifest_idx, spec_version)
                 .await
                 .map(DataSource::Onchain),
             Self::Subgraph(unresolved) => unresolved
-                .resolve::<C>(resolver, logger, manifest_idx)
+                .resolve::<C>(resolver, logger, manifest_idx, spec_version)
                 .await
                 .map(DataSource::Subgraph),
             Self::Offchain(_unresolved) => {
@@ -462,10 +463,11 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
         schema: &InputSchema,
         logger: &Logger,
         manifest_idx: u32,
+        spec_version: &semver::Version,
     ) -> Result<DataSourceTemplate<C>, Error> {
         match self {
             Self::Onchain(ds) => ds
-                .resolve(resolver, logger, manifest_idx)
+                .resolve(resolver, logger, manifest_idx, spec_version)
                 .await
                 .map(|ti| DataSourceTemplate::Onchain(ti)),
             Self::Offchain(ds) => ds
@@ -473,7 +475,7 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
                 .await
                 .map(DataSourceTemplate::Offchain),
             Self::Subgraph(ds) => ds
-                .resolve(resolver, logger, manifest_idx)
+                .resolve(resolver, logger, manifest_idx, spec_version)
                 .await
                 .map(DataSourceTemplate::Subgraph),
         }

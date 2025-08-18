@@ -1,0 +1,37 @@
+specVersion: 1.4.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "@DeclaredCallsContract@"
+      abi: Contract
+      startBlock: 1
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      entities:
+        - AssetTransferCall
+        - ComplexAssetCall
+        - StructFieldTest
+      eventHandlers:
+        - event: AssetTransfer((address,uint256,bool),address,uint256)
+          handler: handleAssetTransfer
+          calls:
+            asset_owner: "Contract[event.address].getOwner(event.params.asset.0)" # addr
+            asset_metadata: "Contract[event.address].getMetadata(event.params.asset.0)" # addr
+            balance_of_recipient: "Contract[event.address].balanceOf(event.params.to)"
+            asset_amount: "Contract[event.address].sum(event.params.asset.1, event.params.asset.1)" # amount
+        - event: ComplexAssetCreated(((address,uint256,bool),string,uint256[]),uint256)
+          handler: handleComplexAssetCreated
+          calls:
+            base_asset_owner: "Contract[event.address].getOwner(event.params.complexAsset.base.addr)"
+            base_asset_metadata: "Contract[event.address].getMetadata(event.params.complexAsset.base.addr)"
+            base_asset_amount: "Contract[event.address].sum(event.params.complexAsset.base.amount, event.params.id)"
+      file: ./src/mapping.ts

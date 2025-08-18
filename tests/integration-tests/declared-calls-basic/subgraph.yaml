@@ -1,0 +1,33 @@
+specVersion: 1.2.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "@DeclaredCallsContract@"
+      abi: Contract
+      startBlock: 1
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      entities:
+        - TransferCall
+        - CallResult
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+          calls:
+            balance_from: "Contract[event.address].balanceOf(event.params.from)"
+            balance_to: "Contract[event.address].balanceOf(event.params.to)"
+            total_supply: "Contract[event.address].totalSupply()"
+            constant_value: "Contract[event.address].getConstant()"
+            sum_values: "Contract[event.address].sum(event.params.value, event.params.value)"
+            will_revert: "Contract[event.address].alwaysReverts()"
+            metadata_from: "Contract[event.address].getMetadata(event.params.from)"
+      file: ./src/mapping.ts

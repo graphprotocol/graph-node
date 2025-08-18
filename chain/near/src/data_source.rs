@@ -333,6 +333,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         _manifest_idx: u32,
+        _spec_version: &semver::Version,
     ) -> Result<DataSource, Error> {
         let UnresolvedDataSource {
             kind,
@@ -372,6 +373,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         _manifest_idx: u32,
+        _spec_version: &semver::Version,
     ) -> Result<DataSourceTemplate, Error> {
         let UnresolvedDataSourceTemplate {
             kind,

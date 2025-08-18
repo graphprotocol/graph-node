@@ -83,3 +83,24 @@ test-integration *EXTRA_FLAGS:
 # Clean workspace (cargo clean)
 clean:
     cargo clean
+
+compile-contracts:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    if ! command -v "forge" &> /dev/null; then
+        echo "Error: forge must be on your path"
+        exit 1
+    fi
+
+    cd tests/contracts
+
+    forge build
+
+    mkdir -p abis
+    for c in src/*.sol
+    do
+        contract=$(basename $c .sol)
+        echo $contract
+        forge inspect --json "$contract" abi > "abis/$contract.json"
+    done

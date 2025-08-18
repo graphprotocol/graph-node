@@ -1,0 +1,13 @@
+{
+  "name": "declared-calls-struct-fields",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "graph build --ipfs false",
+    "codegen": "graph codegen"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "0.97.1",
+    "@graphprotocol/graph-ts": "0.33.0"
+  }
+}
