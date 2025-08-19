@@ -1,0 +1,3 @@
+packages:
+  - tests/integration-tests/*
+  - tests/runner-tests/*

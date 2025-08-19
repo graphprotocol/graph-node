@@ -2,7 +2,7 @@
 
 # Builds Solidity contracts for graph-node integration tests.
 #
-# This script is meant to be callde as a yarn "script", defined in each "package.json"
+# This script is meant to be called as a pnpm "script", defined in each "package.json"
 # file, found on every test subdirectory.
 #
 # It ensures that all integration tests subdirectories have no pre-built artifacts
@@ -15,7 +15,7 @@ set -euo pipefail
 rm -rf abis build generated
 
 # Compile contracts into a temporary directory
-yarn truffle compile
+pnpm truffle compile
 
 # Move abi to a directory expected by graph-node
 mkdir -p abis bin

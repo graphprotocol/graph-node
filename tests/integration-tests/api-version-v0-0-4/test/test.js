@@ -67,9 +67,9 @@ contract("Contract", (accounts) => {
     );
 
     // Create and deploy the subgraph
-    exec(`yarn codegen`);
-    exec(`yarn create:test`);
-    exec(`yarn deploy:test`);
+    exec(`pnpm codegen`);
+    exec(`pnpm create:test`);
+    exec(`pnpm deploy:test`);
   });
 
   it("subgraph does not fail", async () => {

@@ -1,10 +1,11 @@
 {
   "name": "reverted-calls",
-  "version": "0.1.1",
+  "version": "0.0.0",
+  "private": true,
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen --skip-migrations",
-    "test": "yarn build-contracts && truffle test --compile-none --network test",
+    "test": "pnpm build-contracts && truffle test --compile-none --network test",
     "create:test": "graph create test/ganache-reverts --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/ganache-reverts --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },

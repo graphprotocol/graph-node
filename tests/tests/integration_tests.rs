@@ -18,10 +18,9 @@ use graph::futures03::StreamExt;
 use graph::prelude::serde_json::{json, Value};
 use graph::prelude::web3::types::U256;
 use graph_tests::contract::Contract;
-use graph_tests::helpers::{run_checked, TestFile};
 use graph_tests::subgraph::Subgraph;
 use graph_tests::{error, status, CONFIG};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 use tokio::task::JoinError;
 use tokio::time::sleep;
 
@@ -1141,9 +1140,6 @@ async fn integration_tests() -> anyhow::Result<()> {
     status!("setup", "Resetting database");
     CONFIG.reset_database();
 
-    status!("setup", "Initializing yarn workspace");
-    yarn_workspace().await?;
-
     // Spawn graph-node.
     status!("graph-node", "Starting graph-node");
     let mut graph_node_child_command = CONFIG.spawn_graph_node().await?;
@@ -1191,14 +1187,5 @@ async fn integration_tests() -> anyhow::Result<()> {
 pub async fn stop_graph_node(child: &mut Child) -> anyhow::Result<()> {
     child.kill().await.context("Failed to kill graph-node")?;
 
-    Ok(())
-}
-
-pub async fn yarn_workspace() -> anyhow::Result<()> {
-    // We shouldn't really have to do this since we use the bundled version
-    // of graph-cli, but that gets very unhappy if the workspace isn't
-    // initialized
-    let wsp = TestFile::new("integration-tests");
-    run_checked(Command::new("yarn").arg("install").current_dir(&wsp.path)).await?;
     Ok(())
 }

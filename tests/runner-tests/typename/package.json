@@ -1,6 +1,7 @@
 {
   "name": "typename",
-  "version": "0.1.0",
+  "version": "0.0.0",
+  "private": true,
   "scripts": {
     "codegen": "graph codegen --skip-migrations",
     "create:test": "graph create test/typename --node $GRAPH_NODE_ADMIN_URI",

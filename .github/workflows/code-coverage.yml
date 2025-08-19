@@ -41,12 +41,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: Install Node 14
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "14"
-          cache: yarn
-          cache-dependency-path: "tests/integration-tests/yarn.lock"
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Node.js dependencies
+        run: pnpm install
+
       - name: Install lld
         run: sudo apt-get install -y lld jq protobuf-compiler
       - uses: actions-rs/cargo@v1

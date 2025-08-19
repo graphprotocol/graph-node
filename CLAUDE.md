@@ -26,7 +26,7 @@ Unit tests are inlined with source code.
 **Prerequisites:**
 1. PostgreSQL running on localhost:5432 (with initialised `graph-test` database)
 2. IPFS running on localhost:5001
-3. Yarn (v1)
+3. PNPM
 4. Foundry (for smart contract compilation)
 5. Environment variable `THEGRAPH_STORE_POSTGRES_DIESEL_URL` set
 
@@ -56,7 +56,7 @@ cargo test <specific_test_name>
 **Prerequisites:**
 1. PostgreSQL running on localhost:5432 (with initialised `graph-test` database)
 2. IPFS running on localhost:5001
-3. Yarn (v1)
+3. PNPM
 4. Foundry (for smart contract compilation)
 5. Environment variable `THEGRAPH_STORE_POSTGRES_DIESEL_URL` set
 
@@ -88,7 +88,7 @@ cargo test -p graph-tests --test runner_tests test_name -- --nocapture
 1. PostgreSQL running on localhost:3011 (with initialised `graph-node` database)
 2. IPFS running on localhost:3001
 3. Anvil running on localhost:3021
-4. Yarn (v1)
+4. PNPM
 5. Foundry (for smart contract compilation)
 6. **Built graph-node binary** (integration tests require the compiled binary)
 

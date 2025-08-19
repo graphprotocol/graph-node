@@ -27,7 +27,7 @@ use graph_tests::fixture::{
     self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, TestChainTrait,
     TestContext, TestInfo,
 };
-use graph_tests::recipe::{build_subgraph_with_yarn_cmd_and_arg, RunnerTestRecipe};
+use graph_tests::recipe::{build_subgraph_with_pnpm_cmd_and_arg, RunnerTestRecipe};
 use slog::{o, Discard, Logger};
 
 fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
@@ -94,7 +94,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
-    let hash = build_subgraph_with_yarn_cmd_and_arg(
+    let hash = build_subgraph_with_pnpm_cmd_and_arg(
         "./runner-tests/data-source-revert",
         "deploy:test-grafted",
         Some(&test_info.hash),

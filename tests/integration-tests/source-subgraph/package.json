@@ -1,10 +1,11 @@
 {
   "name": "source-subgraph",
-  "version": "0.1.0",
+  "version": "0.0.0",
+  "private": true,
   "scripts": {
     "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen --skip-migrations",
-    "test": "yarn build-contracts && truffle test --compile-none --network test",
+    "test": "pnpm build-contracts && truffle test --compile-none --network test",
     "create:test": "graph create test/source-subgraph --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/source-subgraph --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
