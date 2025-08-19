@@ -33,3 +33,11 @@ lcov.info
 # Docker volumes and debug logs
 .postgres
 logfile
+
+# Nix related files
+.direnv
+.envrc
+.data
+
+# Local claude settings
+.claude/settings.local.json
