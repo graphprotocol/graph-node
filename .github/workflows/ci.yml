@@ -160,6 +160,10 @@ jobs:
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          # Pinned to specific version since newer versions do not produce
+          # deterministic block hashes. Unpin once that's fixed upstream
+          version: v1.2.3
       - name: Start anvil
         run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --port 3021 &
 
