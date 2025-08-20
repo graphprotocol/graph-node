@@ -45,6 +45,12 @@ cargo test -p graph data_source::common::tests
 cargo test <specific_test_name>
 ```
 
+**⚠️ Test Verification Requirements:**
+- **ALWAYS verify tests actually ran** - Check the output for "test result: ok. X passed" where X > 0
+- **If output shows "0 passed" or "0 tests run"**, the test filter/path was wrong - fix and re-run
+- **Never trust exit code 0 alone** - Cargo can exit successfully even when no tests matched your filter
+- **For specific test names**, ensure the test name appears in the output as "test {name} ... ok"
+
 ### Runner Tests (Integration Tests)
 
 **Prerequisites:**
@@ -65,6 +71,11 @@ cargo test -p graph-tests --test runner_tests -- --nocapture
 # Run specific runner tests
 cargo test -p graph-tests --test runner_tests test_name -- --nocapture
 ```
+
+**⚠️ Test Verification Requirements:**
+- **ALWAYS verify tests actually ran** - Check the output for "test result: ok. X passed" where X > 0
+- **If output shows "0 passed" or "0 tests run"**, the test filter/path was wrong - fix and re-run
+- **Never trust exit code 0 alone** - Cargo can exit successfully even when no tests matched your filter
 
 **Important Notes:**
 - Runner tests take moderate time (10-20 seconds)
@@ -91,6 +102,11 @@ cargo test -p graph-tests --test integration_tests -- --nocapture
 TEST_CASE=grafted cargo test -p graph-tests --test integration_tests -- --nocapture
 ```
 
+**⚠️ Test Verification Requirements:**
+- **ALWAYS verify tests actually ran** - Check the output for "test result: ok. X passed" where X > 0
+- **If output shows "0 passed" or "0 tests run"**, the TEST_CASE variable or filter was wrong - fix and re-run
+- **Never trust exit code 0 alone** - Cargo can exit successfully even when no tests matched your filter
+
 **Important Notes:**
 - Integration tests take significant time (several minutes)
 - Tests automatically reset the database between runs
@@ -103,11 +119,15 @@ cargo fmt --all
 
 # 🚨 MANDATORY: Check code for warnings and errors - MUST have zero warnings
 cargo check
+
+# 🚨 MANDATORY: Build in release mode to catch linking/optimization issues that cargo check misses
+cargo check --release
 ```
 
 🚨 **CRITICAL REQUIREMENTS for ANY implementation**:
 - **🚨 MANDATORY**: `cargo fmt --all` MUST be run before any commit
 - **🚨 MANDATORY**: `cargo check` MUST show zero warnings before any commit
+- **🚨 MANDATORY**: `cargo build --release` MUST complete successfully before any commit
 - **🚨 MANDATORY**: The unit test suite MUST pass before any commit
 
 Forgetting any of these means you failed to follow instructions. Before any commit or PR, ALL of the above MUST be satisfied! No exceptions!
@@ -247,5 +267,5 @@ The setup combines built-in services-flake services with custom multiService mod
 - **PostgreSQL**: Uses services-flake's postgres service with a helper function (`mkPostgresConfig`) that provides graph-specific defaults including required extensions.
 
 **Custom Services** (located in `./nix`):
-- `ipfs.nix`: IPFS (kubo) with automatic initialization and configurable ports  
+- `ipfs.nix`: IPFS (kubo) with automatic initialization and configurable ports
 - `anvil.nix`: Ethereum test chain with deterministic configuration
