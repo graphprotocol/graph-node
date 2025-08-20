@@ -1,4 +1,5 @@
 use crate::blockchain::block_stream::EntitySourceOperation;
+use crate::data::subgraph::SPEC_VERSION_1_4_0;
 use crate::prelude::{BlockPtr, Value};
 use crate::{components::link_resolver::LinkResolver, data::value::Word, prelude::Link};
 use anyhow::{anyhow, Context, Error};
@@ -10,7 +11,7 @@ use regex::Regex;
 use serde::de;
 use serde::Deserialize;
 use serde_json;
-use slog::Logger;
+use slog::{warn, Logger};
 use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc};
 use web3::types::{Log, H160};
@@ -69,6 +70,7 @@ impl MappingABI {
     /// Parse struct field mappings from ABI JSON
     fn parse_struct_field_mappings(
         abi_json: &str,
+        logger: &Logger,
     ) -> Result<HashMap<String, HashMap<String, StructFieldInfo>>, Error> {
         let abi: serde_json::Value =
             serde_json::from_str(abi_json).with_context(|| "Failed to parse ABI JSON")?;
@@ -107,7 +109,7 @@ impl MappingABI {
                                             }
                                             Err(e) => {
                                                 // Log error but continue processing other parameters
-                                                eprintln!("Warning: Failed to parse struct field info for {}.{}: {}", event_name, param_name, e);
+                                                warn!(logger, "Failed to parse struct field info for {}.{}: {}", event_name, param_name, e);
                                             }
                                         }
                                     }
@@ -170,11 +172,11 @@ impl UnresolvedMappingABI {
         // Parse struct field mappings from the original ABI JSON
         let abi_json = std::str::from_utf8(&contract_bytes)
             .with_context(|| format!("ABI {} contains invalid UTF-8", self.name))?;
-        let struct_field_mappings = MappingABI::parse_struct_field_mappings(abi_json)
+        let struct_field_mappings = MappingABI::parse_struct_field_mappings(abi_json, logger)
             .unwrap_or_else(|e| {
-                eprintln!(
-                    "Warning: Failed to parse struct field mappings for {}: {}",
-                    self.name, e
+                warn!(
+                    logger,
+                    "Failed to parse struct field mappings for {}: {}", self.name, e
                 );
                 HashMap::new()
             });
@@ -598,6 +600,60 @@ impl<'de> de::Deserialize<'de> for CallDecls {
     }
 }
 
+/// Unresolved representation of declared calls stored as raw strings
+/// Used during initial manifest parsing before ABI context is available
+#[derive(Clone, CheapClone, Debug, Default, Eq, PartialEq)]
+pub struct UnresolvedCallDecls {
+    pub raw_decls: Arc<std::collections::HashMap<String, String>>,
+    readonly: (),
+}
+
+impl UnresolvedCallDecls {
+    /// Parse the raw call declarations into CallDecls using ABI context
+    pub fn resolve(
+        &self,
+        mapping: &MappingABI,
+        event_name: Option<&str>,
+        spec_version: Option<&semver::Version>,
+    ) -> Result<CallDecls, anyhow::Error> {
+        let decls: Result<Vec<CallDecl>, anyhow::Error> = self
+            .raw_decls
+            .iter()
+            .map(|(label, expr)| {
+                CallExpr::parse(expr, mapping, event_name, spec_version).map(|expr| CallDecl {
+                    label: label.clone(),
+                    expr,
+                    readonly: (),
+                })
+            })
+            .collect();
+
+        Ok(CallDecls {
+            decls: Arc::new(decls?),
+            readonly: (),
+        })
+    }
+
+    /// Check if the unresolved calls are empty
+    pub fn is_empty(&self) -> bool {
+        self.raw_decls.is_empty()
+    }
+}
+
+impl<'de> de::Deserialize<'de> for UnresolvedCallDecls {
+    fn deserialize<D>(deserializer: D) -> Result<UnresolvedCallDecls, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        let raw_decls: std::collections::HashMap<String, String> =
+            de::Deserialize::deserialize(deserializer)?;
+        Ok(UnresolvedCallDecls {
+            raw_decls: Arc::new(raw_decls),
+            readonly: (),
+        })
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct CallExpr {
     pub abi: Word,
@@ -636,6 +692,7 @@ impl CallExpr {
         s: &str,
         mapping: &MappingABI,
         event_name: Option<&str>,
+        spec_version: Option<&semver::Version>,
     ) -> Result<Self, anyhow::Error> {
         // Parse the expression manually to inject ABI context for field name resolution
         // Format: Contract[address].function(arg1, arg2, ...)
@@ -675,8 +732,8 @@ impl CallExpr {
         }
 
         // Parse the address with ABI context
-        let address =
-            CallArg::parse_with_abi(address_str, mapping, event_name).with_context(|| {
+        let address = CallArg::parse_with_abi(address_str, mapping, event_name, spec_version)
+            .with_context(|| {
                 format!(
                     "Failed to parse address '{}' in call expression '{}'",
                     address_str, s
@@ -725,8 +782,8 @@ impl CallExpr {
         if !args_str.trim().is_empty() {
             for (i, arg_str) in args_str.split(',').enumerate() {
                 let arg_str = arg_str.trim();
-                let arg =
-                    CallArg::parse_with_abi(arg_str, mapping, event_name).with_context(|| {
+                let arg = CallArg::parse_with_abi(arg_str, mapping, event_name, spec_version)
+                    .with_context(|| {
                         format!(
                             "Failed to parse argument {} '{}' in call expression '{}'",
                             i + 1,
@@ -890,6 +947,7 @@ impl CallArg {
         s: &str,
         mapping_abi: &MappingABI,
         event_name: Option<&str>,
+        spec_version: Option<&semver::Version>,
     ) -> Result<Self, anyhow::Error> {
         // Handle hex addresses first
         if ADDR_RE.is_match(s) {
@@ -922,6 +980,17 @@ impl CallArg {
                             // Numeric index - use directly
                             field_indices.push(index);
                         } else {
+                            // Named field - validate spec version before resolving
+                            if let Some(spec_ver) = spec_version {
+                                if spec_ver < &SPEC_VERSION_1_4_0 {
+                                    return Err(anyhow!(
+                                        "Struct field access by name '{}' in declarative calls is only supported for specVersion >= 1.4.0, current version is {}",
+                                        part,
+                                        spec_ver
+                                    ));
+                                }
+                            }
+
                             // Named field - resolve to index using ABI context
                             if let Some(field_info) = struct_field_info {
                                 if let Some(field_index) = field_info.resolve_field_name(part) {
@@ -1637,6 +1706,7 @@ mod tests {
             "TestContract[event.params.asset.addr].name()",
             &mapping_abi,
             Some("Transfer"),
+            None,
         )
         .unwrap();
 
@@ -1653,6 +1723,7 @@ mod tests {
             "TestContract[event.address].transfer(event.params.asset.amount, event.params.asset.1)",
             &mapping_abi,
             Some("Transfer"),
+            None,
         )
         .unwrap();
 
@@ -1677,6 +1748,7 @@ mod tests {
             "TestContract[event.params.asset.invalid].name()",
             &mapping_abi,
             Some("Transfer"),
+            None,
         );
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -1689,6 +1761,7 @@ mod tests {
             "TestContract[event.params.asset.addr].name()",
             &mapping_abi,
             None, // No event name
+            None,
         );
         assert!(result.is_err());
         let error = result.unwrap_err();
@@ -1780,44 +1853,59 @@ mod tests {
         };
 
         // Test 1: Missing opening bracket
-        let result = CallExpr::parse("TestContract event.address].test()", &mapping_abi, None);
+        let result = CallExpr::parse(
+            "TestContract event.address].test()",
+            &mapping_abi,
+            None,
+            None,
+        );
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("Invalid call expression"));
         assert!(error_msg.contains("missing '[' after contract name"));
 
         // Test 2: Missing closing bracket
-        let result = CallExpr::parse("TestContract[event.address.test()", &mapping_abi, None);
+        let result = CallExpr::parse(
+            "TestContract[event.address.test()",
+            &mapping_abi,
+            None,
+            None,
+        );
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("missing ']' to close address"));
 
         // Test 3: Empty contract name
-        let result = CallExpr::parse("[event.address].test()", &mapping_abi, None);
+        let result = CallExpr::parse("[event.address].test()", &mapping_abi, None, None);
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("missing contract name before '['"));
 
         // Test 4: Empty address
-        let result = CallExpr::parse("TestContract[].test()", &mapping_abi, None);
+        let result = CallExpr::parse("TestContract[].test()", &mapping_abi, None, None);
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("empty address"));
 
         // Test 5: Missing function name
-        let result = CallExpr::parse("TestContract[event.address].()", &mapping_abi, None);
+        let result = CallExpr::parse("TestContract[event.address].()", &mapping_abi, None, None);
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("missing function name"));
 
         // Test 6: Missing opening parenthesis
-        let result = CallExpr::parse("TestContract[event.address].test", &mapping_abi, None);
+        let result = CallExpr::parse("TestContract[event.address].test", &mapping_abi, None, None);
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("missing '(' to start function arguments"));
 
         // Test 7: Missing closing parenthesis
-        let result = CallExpr::parse("TestContract[event.address].test(", &mapping_abi, None);
+        let result = CallExpr::parse(
+            "TestContract[event.address].test(",
+            &mapping_abi,
+            None,
+            None,
+        );
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("missing ')' to close function arguments"));
@@ -1826,6 +1914,7 @@ mod tests {
         let result = CallExpr::parse(
             "TestContract[event.address].test(invalid.arg)",
             &mapping_abi,
+            None,
             None,
         );
         assert!(result.is_err());

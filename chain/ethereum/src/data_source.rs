@@ -6,7 +6,7 @@ use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
 use graph::data_source::common::{
-    CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedMappingABI,
+    CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedCallDecls, UnresolvedMappingABI,
 };
 use graph::data_source::{CausalityRegion, MappingTrigger as MappingTriggerType};
 use graph::env::ENV_VARS;
@@ -41,7 +41,7 @@ use graph::{
 
 use graph::data::subgraph::{
     calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
-    SPEC_VERSION_1_2_0, SPEC_VERSION_1_4_0,
+    SPEC_VERSION_1_2_0,
 };
 
 use crate::adapter::EthereumAdapter as _;
@@ -72,38 +72,6 @@ pub struct DataSource {
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
     pub contract_abi: Arc<MappingABI>,
-}
-
-/// Checks if a declarative call uses struct field access that would require spec version 1.4.0+
-/// This detects if the call was parsed with ABI context to resolve named fields
-fn call_uses_named_field_access(call_expr: &graph::data_source::common::CallExpr) -> bool {
-    // Check address for struct field access
-    if has_struct_field_access(&call_expr.address) {
-        return true;
-    }
-
-    // Check all arguments for struct field access
-    for arg in &call_expr.args {
-        if has_struct_field_access(arg) {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Helper function to check if a CallArg uses struct field access
-fn has_struct_field_access(arg: &graph::data_source::common::CallArg) -> bool {
-    use graph::data_source::common::{CallArg, EthereumArg};
-
-    match arg {
-        CallArg::Ethereum(EthereumArg::StructField(_, indices)) => {
-            // If we have struct field access with indices, it means named fields were resolved
-            // This feature requires spec version 1.4.0+
-            !indices.is_empty()
-        }
-        _ => false,
-    }
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
@@ -408,19 +376,6 @@ impl blockchain::DataSource<Chain> for DataSource {
                         "handler {}: declaring eth calls on handlers is only supported for specVersion >= 1.2.0", handler.event
                     ));
                     break;
-                }
-            }
-        }
-
-        if spec_version < &SPEC_VERSION_1_4_0 {
-            for handler in &self.mapping.event_handlers {
-                for call in handler.calls.decls.as_ref() {
-                    if call_uses_named_field_access(&call.expr) {
-                        errors.push(anyhow!(
-                            "handler {}: struct field access by name in declarative calls is only supported for specVersion >= 1.4.0", handler.event
-                        ));
-                        break;
-                    }
                 }
             }
         }
@@ -1266,7 +1221,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedDataSourceTemplate {
     pub kind: String,
     pub network: Option<String>,
@@ -1339,7 +1294,7 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     pub kind: String,
@@ -1352,7 +1307,7 @@ pub struct UnresolvedMapping {
     #[serde(default)]
     pub call_handlers: Vec<MappingCallHandler>,
     #[serde(default)]
-    pub event_handlers: Vec<MappingEventHandler>,
+    pub event_handlers: Vec<UnresolvedMappingEventHandler>,
     pub file: Link,
 }
 
@@ -1435,6 +1390,23 @@ impl UnresolvedMapping {
         .await
         .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 
+        // Resolve event handlers with ABI context
+        let resolved_event_handlers = event_handlers
+            .into_iter()
+            .map(|unresolved_handler| {
+                // Find the ABI for this event handler
+                let event_abi = abis.first().ok_or_else(|| {
+                    anyhow!(
+                        "No ABI found for event '{}' in event handler '{}'",
+                        unresolved_handler.event,
+                        unresolved_handler.handler
+                    )
+                })?;
+
+                unresolved_handler.resolve(event_abi, Some(&api_version))
+            })
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
+
         Ok(Mapping {
             kind,
             api_version,
@@ -1443,7 +1415,7 @@ impl UnresolvedMapping {
             abis,
             block_handlers: block_handlers.clone(),
             call_handlers: call_handlers.clone(),
-            event_handlers: event_handlers.clone(),
+            event_handlers: resolved_event_handlers,
             runtime,
             link,
         })
@@ -1485,6 +1457,46 @@ pub enum BlockHandlerFilter {
 pub struct MappingCallHandler {
     pub function: String,
     pub handler: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct UnresolvedMappingEventHandler {
+    pub event: String,
+    pub topic0: Option<H256>,
+    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic1: Option<Vec<H256>>,
+    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic2: Option<Vec<H256>>,
+    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic3: Option<Vec<H256>>,
+    pub handler: String,
+    #[serde(default)]
+    pub receipt: bool,
+    #[serde(default)]
+    pub calls: UnresolvedCallDecls,
+}
+
+impl UnresolvedMappingEventHandler {
+    pub fn resolve(
+        &self,
+        mapping: &MappingABI,
+        spec_version: Option<&semver::Version>,
+    ) -> Result<MappingEventHandler, anyhow::Error> {
+        let resolved_calls = self
+            .calls
+            .resolve(mapping, Some(&self.event), spec_version)?;
+
+        Ok(MappingEventHandler {
+            event: self.event.clone(),
+            topic0: self.topic0,
+            topic1: self.topic1.clone(),
+            topic2: self.topic2.clone(),
+            topic3: self.topic3.clone(),
+            handler: self.handler.clone(),
+            receipt: self.receipt,
+            calls: resolved_calls,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]

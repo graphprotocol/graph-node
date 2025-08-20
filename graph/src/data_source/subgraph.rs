@@ -20,7 +20,7 @@ use slog::{info, Logger};
 use std::{fmt, sync::Arc};
 
 use super::{
-    common::{CallDecls, FindMappingABI, MappingABI, UnresolvedMappingABI},
+    common::{CallDecls, FindMappingABI, MappingABI, UnresolvedCallDecls, UnresolvedMappingABI},
     DataSourceTemplateInfo, TriggerWithHandler,
 };
 
@@ -178,6 +178,30 @@ impl FindMappingABI for Mapping {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct UnresolvedEntityHandler {
+    pub handler: String,
+    pub entity: String,
+    #[serde(default)]
+    pub calls: UnresolvedCallDecls,
+}
+
+impl UnresolvedEntityHandler {
+    pub fn resolve(
+        &self,
+        mapping: &MappingABI,
+        spec_version: Option<&semver::Version>,
+    ) -> Result<EntityHandler, anyhow::Error> {
+        let resolved_calls = self.calls.resolve(mapping, None, spec_version)?;
+
+        Ok(EntityHandler {
+            handler: self.handler.clone(),
+            entity: self.entity.clone(),
+            calls: resolved_calls,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct EntityHandler {
     pub handler: String,
@@ -204,13 +228,13 @@ pub struct UnresolvedSource {
     start_block: BlockNumber,
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     pub api_version: String,
     pub language: String,
     pub file: Link,
-    pub handlers: Vec<EntityHandler>,
+    pub handlers: Vec<UnresolvedEntityHandler>,
     pub abis: Option<Vec<UnresolvedMappingABI>>,
     pub entities: Vec<String>,
 }
@@ -443,11 +467,42 @@ impl UnresolvedMapping {
             None => Vec::new(),
         };
 
+        // Parse API version for spec version validation
+        let api_version = semver::Version::parse(&self.api_version)?;
+
+        // Resolve handlers with ABI context
+        let resolved_handlers = if abis.is_empty() {
+            // If no ABIs are available, just pass through (for backward compatibility)
+            self.handlers
+                .into_iter()
+                .map(|handler| {
+                    if handler.calls.is_empty() {
+                        Ok(EntityHandler {
+                            handler: handler.handler,
+                            entity: handler.entity,
+                            calls: CallDecls::default(),
+                        })
+                    } else {
+                        Err(anyhow::Error::msg(
+                            "Cannot resolve declarative calls without ABI",
+                        ))
+                    }
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            // Resolve using the first available ABI (subgraph data sources typically have one ABI)
+            let abi = &abis[0];
+            self.handlers
+                .into_iter()
+                .map(|handler| handler.resolve(abi, Some(&api_version)))
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
         Ok(Mapping {
             language: self.language,
-            api_version: semver::Version::parse(&self.api_version)?,
+            api_version,
             entities: self.entities,
-            handlers: self.handlers,
+            handlers: resolved_handlers,
             abis,
             runtime: Arc::new(resolver.cat(logger, &self.file).await?),
             link: self.file,
