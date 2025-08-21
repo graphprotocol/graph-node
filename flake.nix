@@ -2,7 +2,7 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     rust.url = "github:oxalica/rust-overlay";
-    foundry.url = "github:shazow/foundry.nix/stable";
+    foundry.url = "github:shazow/foundry.nix/5af12b6f2b708858ef3120041546ed6b038474a5";
     process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
     services-flake.url = "github:juspay/services-flake";
     flake-parts.url = "github:hercules-ci/flake-parts";
