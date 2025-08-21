@@ -90,11 +90,15 @@ cargo test -p graph-tests --test runner_tests test_name -- --nocapture
 3. Anvil running on localhost:3021
 4. Yarn (v1)
 5. Foundry (for smart contract compilation)
+6. **Built graph-node binary** (integration tests require the compiled binary)
 
 The environment dependencies and environment setup are operated by the human.
 
 **Running Integration Tests:**
 ```bash
+# REQUIRED: Build graph-node binary before running integration tests
+cargo build --bin graph-node
+
 # Run all integration tests
 cargo test -p graph-tests --test integration_tests -- --nocapture
 
@@ -246,6 +250,9 @@ cargo test -p graph-tests --test runner_tests -- --nocapture
 # Human: Start all services for integration tests in a separate terminal
 # PostgreSQL: localhost:3011, IPFS: localhost:3001, Anvil: localhost:3021
 nix run .#integration
+
+# Claude: Build graph-node binary before running integration tests
+cargo build --bin graph-node
 
 # Claude: Run integration tests
 cargo test -p graph-tests --test integration_tests
