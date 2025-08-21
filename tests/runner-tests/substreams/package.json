@@ -5,7 +5,6 @@
   "scripts": {
     "codegen": "graph codegen",
     "deploy": "graph deploy",
-    "create:test": "graph create test/substreams --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/substreams --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI",
     "subgraph:build": "graph build",
     "substreams:build": "cargo build --target wasm32-unknown-unknown --release",

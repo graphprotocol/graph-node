@@ -180,10 +180,6 @@ importers:
         version: 0.34.0
 
   tests/runner-tests/api-version:
-    dependencies:
-      mustache:
-        specifier: ^4.2.0
-        version: 4.2.0
     devDependencies:
       '@graphprotocol/graph-cli':
         specifier: 0.60.0
@@ -191,6 +187,9 @@ importers:
       '@graphprotocol/graph-ts':
         specifier: 0.31.0
         version: 0.31.0
+      mustache:
+        specifier: ^4.2.0
+        version: 4.2.0
 
   tests/runner-tests/arweave-file-data-sources:
     devDependencies:

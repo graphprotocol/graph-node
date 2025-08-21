@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "codegen": "graph codegen --skip-migrations",
-    "create:test": "graph create test/int8 --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/int8 --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
