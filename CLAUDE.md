@@ -127,7 +127,7 @@ cargo check --release
 🚨 **CRITICAL REQUIREMENTS for ANY implementation**:
 - **🚨 MANDATORY**: `cargo fmt --all` MUST be run before any commit
 - **🚨 MANDATORY**: `cargo check` MUST show zero warnings before any commit
-- **🚨 MANDATORY**: `cargo build --release` MUST complete successfully before any commit
+- **🚨 MANDATORY**: `cargo check --release` MUST complete successfully before any commit
 - **🚨 MANDATORY**: The unit test suite MUST pass before any commit
 
 Forgetting any of these means you failed to follow instructions. Before any commit or PR, ALL of the above MUST be satisfied! No exceptions!
