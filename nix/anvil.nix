@@ -17,11 +17,29 @@
       default = 1743944919;
       description = "Timestamp for the genesis block";
     };
+
+    gasLimit = lib.mkOption {
+      type = lib.types.int;
+      default = 100000000000;
+      description = "Gas limit for the genesis block";
+    };
+
+    baseFee = lib.mkOption {
+      type = lib.types.int;
+      default = 1;
+      description = "Base fee for the genesis block";
+    };
+
+    blockTime = lib.mkOption {
+      type = lib.types.int;
+      default = 2;
+      description = "Block time for the genesis block";
+    };
   };
 
   config = {
     outputs.settings.processes.${name} = {
-      command = "${lib.getExe' config.package "anvil"} --disable-block-gas-limit --disable-code-size-limit --base-fee 1 --block-time 2 --timestamp ${toString config.timestamp} --port ${toString config.port}";
+      command = "${lib.getExe' config.package "anvil"} --gas-limit ${toString config.gasLimit} --base-fee ${toString config.baseFee} --block-time ${toString config.blockTime} --timestamp ${toString config.timestamp} --port ${toString config.port}";
 
       availability = {
         restart = "always";
