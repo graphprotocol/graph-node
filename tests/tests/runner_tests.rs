@@ -27,7 +27,7 @@ use graph_tests::fixture::{
     self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, TestChainTrait,
     TestContext, TestInfo,
 };
-use graph_tests::recipe::{build_subgraph_with_yarn_cmd_and_arg, RunnerTestRecipe};
+use graph_tests::recipe::{build_subgraph_with_pnpm_cmd_and_arg, RunnerTestRecipe};
 use slog::{o, Discard, Logger};
 
 fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
@@ -94,7 +94,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
-    let hash = build_subgraph_with_yarn_cmd_and_arg(
+    let hash = build_subgraph_with_pnpm_cmd_and_arg(
         "./runner-tests/data-source-revert",
         "deploy:test-grafted",
         Some(&test_info.hash),
@@ -1011,7 +1011,7 @@ async fn template_static_filters_false_positives() {
     // a change in the POI infrastructure. Or the subgraph id changed.
     assert_eq!(
         hex::encode(poi.unwrap()),
-        "c72af01a19a4e35a35778821a354b7a781062a9320ac8796ea65b115cb9844bf"
+        "8e5cfe3f014586cf0f02277c306ac66f11da52b632b937bd74229cce1374d9d5"
     );
 }
 

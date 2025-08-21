@@ -9,7 +9,7 @@ mod integration_tests;
 
 use integration_tests::{
     stop_graph_node, subgraph_data_sources, test_block_handlers,
-    test_multiple_subgraph_datasources, yarn_workspace, TestCase, TestResult,
+    test_multiple_subgraph_datasources, TestCase, TestResult,
 };
 
 /// The main test entrypoint.
@@ -50,9 +50,6 @@ async fn gnd_tests() -> anyhow::Result<()> {
 
     status!("setup", "Resetting database");
     CONFIG.reset_database();
-
-    status!("setup", "Initializing yarn workspace");
-    yarn_workspace().await?;
 
     for i in cases_to_run.iter() {
         i.prepare(&contracts).await?;

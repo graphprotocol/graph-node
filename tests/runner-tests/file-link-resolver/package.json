@@ -1,9 +1,9 @@
 {
   "name": "file-link-resolver",
-  "version": "0.1.0",
+  "version": "0.0.0",
+  "private": true,
   "scripts": {
     "codegen": "graph codegen --skip-migrations",
-    "create:test": "graph create test/file-link-resolver --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/file-link-resolver --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {

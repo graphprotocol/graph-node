@@ -1,6 +1,7 @@
 {
   "name": "data-source-revert",
-  "version": "0.1.0",
+  "version": "0.0.0",
+  "private": true,
   "scripts": {
     "codegen": "graph codegen --skip-migrations",
     "deploy:test": "graph deploy test/data-source-revert --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI",

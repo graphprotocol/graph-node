@@ -1,7 +1,7 @@
 import { dataSource, EntityTrigger, log } from '@graphprotocol/graph-ts'
 import { AggregatedData } from '../generated/schema'
-import { SourceAData } from '../generated/subgraph-QmYHp1bPEf7EoYBpEtJUpZv1uQHYQfWE4AhvR6frjB1Huj'
-import { SourceBData } from '../generated/subgraph-QmYBEzastJi7bsa722ac78tnZa6xNnV9vvweerY4kVyJtq'
+import { SourceAData } from '../generated/subgraph-QmZBecjQfrQG5BfpapLywSAzVb5FSFty4j9hVSAhkxbBas'
+import { SourceBData } from '../generated/subgraph-QmaqX7yefmvgVTbc2ZukVYasSgXtE7Xg5b79Z7afVx4y6u'
 
 
 // We know this handler will run first since its defined first in the manifest
