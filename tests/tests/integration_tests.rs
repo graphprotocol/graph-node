@@ -1089,9 +1089,6 @@ async fn wait_for_blockchain_block(block_number: i32) -> bool {
 /// The main test entrypoint.
 #[tokio::test]
 async fn integration_tests() -> anyhow::Result<()> {
-    // Test "api-version-v0-0-4" was commented out in the original; what's
-    // up with that?
-
     let test_name_to_run = std::env::var("TEST_CASE").ok();
 
     let cases = vec![

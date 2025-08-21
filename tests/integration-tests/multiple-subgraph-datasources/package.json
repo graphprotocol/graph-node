@@ -3,24 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen subgraph.yaml --skip-migrations",
-    "test": "pnpm build-contracts && truffle test --compile-none --network test",
     "create:test": "graph create test/multiple-subgraph-datasources --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/multiple-subgraph-datasources --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "0.93.4-alpha-20250105163501-f401d0c57c4ba1f1af95a928d447efd63a56ecdc",
-    "@graphprotocol/graph-ts": "0.36.0-alpha-20241129215038-b75cda9",
-    "solc": "^0.8.2"
-  },
-  "dependencies": {
-    "@truffle/contract": "^4.3",
-    "@truffle/hdwallet-provider": "^1.2",
-    "apollo-fetch": "^0.7.0",
-    "babel-polyfill": "^6.26.0",
-    "babel-register": "^6.26.0",
-    "gluegun": "^4.6.1",
-    "truffle": "^5.2"
+    "@graphprotocol/graph-ts": "0.36.0-alpha-20241129215038-b75cda9"
   }
 } 

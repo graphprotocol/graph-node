@@ -2,18 +2,4 @@ packages:
   - tests/integration-tests/*
   - tests/runner-tests/*
 
-ignoredBuiltDependencies:
-  - '@apollo/protobufjs'
-  - bufferutil
-  - core-js
-  - ejs
-  - es5-ext
-  - keccak
-  - leveldown
-  - protobufjs
-  - secp256k1
-  - truffle
-  - utf-8-validate
-  - web3
-  - web3-bzz
-  - web3-shh
+onlyBuiltDependencies:
