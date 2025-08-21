@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
   THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
-  RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  RUSTFLAGS: "-D warnings"
   N_CONCURRENT_TESTS: "4"
   TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
 
@@ -54,8 +54,9 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm install
 
-      - name: Install lld
-        run: sudo apt-get install -y lld
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
+
       - uses: actions-rs/cargo@v1
         with:
           command: install

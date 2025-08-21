@@ -36,7 +36,7 @@ jobs:
         ports:
           - 5432:5432
     env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+      RUSTFLAGS: "-D warnings"
     steps:
       - name: Tune GitHub hosted runner to reduce flakiness
         # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
@@ -44,8 +44,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
+
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
 
       - name: Run unit tests
         uses: actions-rs/cargo@v1
@@ -79,7 +80,7 @@ jobs:
           - 5432:5432
     env:
       GRAPH_IPFS_REQUEST_TIMEOUT: "60"
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings --cfg test_with_ipfs"
+      RUSTFLAGS: "-D warnings --cfg test_with_ipfs"
       RUNNER_TESTS_WAIT_FOR_SYNC_SECS: "600"
     steps:
       - name: Tune GitHub hosted runner to reduce flakiness
@@ -87,6 +88,10 @@ jobs:
         run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -99,11 +104,6 @@ jobs:
 
       - name: Install Node.js dependencies
         run: pnpm install
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
 
       - name: Run runner tests
         id: runner-tests-1
@@ -143,7 +143,7 @@ jobs:
         ports:
           - 3011:5432
     env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+      RUSTFLAGS: "-D warnings"
     steps:
       - name: Tune GitHub hosted runner to reduce flakiness
         # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
@@ -151,6 +151,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+
+      - name: Install protoc
+        run: sudo apt-get install -y protobuf-compiler
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -163,9 +166,6 @@ jobs:
 
       - name: Install Node.js dependencies
         run: pnpm install
-
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
