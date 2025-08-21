@@ -901,9 +901,9 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
     ];
 
     let pois: Vec<&str> = vec![
-        "0xde9e5650e22e61def6990d3fc4bd5915a4e8e0dd54af0b6830bf064aab16cc03",
-        "0x5d790dca3e37bd9976345d32d437b84ba5ea720a0b6ea26231a866e9f078bd52",
-        "0x719c04b78e01804c86f2bd809d20f481e146327af07227960e2242da365754ef",
+        "0x4078e4eb67b9f57c05c9264c5db50418a3a5b06870b70ba69e16458572df3eee",
+        "0x4805a07cd4709b05e25a4d34f9b72bf4a565ffa7e14871eded0321e5626dbe0d",
+        "0xd2b60b17e3683a2129f82d4ffa473d0f4c3dc8029308d8458d6d41c5edfe5e91",
     ];
 
     for i in 1..4 {
