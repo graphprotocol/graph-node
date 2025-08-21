@@ -1,14 +1,17 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    rust.url = "github:oxalica/rust-overlay";
     foundry.url = "github:shazow/foundry.nix/5af12b6f2b708858ef3120041546ed6b038474a5";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
     services-flake.url = "github:juspay/services-flake";
     flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
-  outputs = inputs@{ flake-parts, process-compose-flake, services-flake, nixpkgs, rust, foundry, ... }:
+  outputs = inputs@{ flake-parts, process-compose-flake, services-flake, nixpkgs, fenix, foundry, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [ process-compose-flake.flakeModule ];
       systems = [
@@ -21,20 +24,25 @@
       perSystem = { config, self', inputs', pkgs, system, ... }:
         let
           overlays = [
-            (import rust)
-            (self: super: {
-              rust-toolchain = super.rust-bin.stable.latest.default;
-            })
+            fenix.overlays.default
             foundry.overlay
           ];
 
-          pkgsWithOverlays = import nixpkgs { 
+          pkgs = import nixpkgs {
             inherit overlays system; 
           };
+
+          toolchain = with fenix.packages.${system}; combine [
+            (fromToolchainFile {
+              file = ./rust-toolchain.toml;
+              sha256 = "sha256-+9FmLhAOezBZCOziO0Qct1NOrfpjNsXxc/8I0c7BdKE=";
+            })
+            stable.rust-src # This is needed for rust-analyzer to find stdlib symbols. Should use the same channel as the toolchain.
+          ];
         in {
-          devShells.default = pkgsWithOverlays.mkShell {
-            packages = (with pkgsWithOverlays; [
-              rust-toolchain
+          devShells.default = pkgs.mkShell {
+            packages = (with pkgs; [
+              toolchain
               foundry-bin
               solc
               protobuf
@@ -63,7 +71,7 @@
               initialDatabases = [
                 {
                   inherit name;
-                  schemas = [ (pkgsWithOverlays.writeText "init-${name}.sql" ''
+                  schemas = [ (pkgs.writeText "init-${name}.sql" ''
                     CREATE EXTENSION IF NOT EXISTS pg_trgm;
                     CREATE EXTENSION IF NOT EXISTS btree_gist; 
                     CREATE EXTENSION IF NOT EXISTS postgres_fdw;
@@ -146,7 +154,7 @@
 
               services.anvil."anvil-integration" = {
                 enable = true;
-                package = pkgsWithOverlays.foundry-bin;
+                package = pkgs.foundry-bin;
                 port = 3021;
                 timestamp = 1743944919;
                 gasLimit = 100000000000;
