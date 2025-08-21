@@ -1011,7 +1011,7 @@ async fn template_static_filters_false_positives() {
     // a change in the POI infrastructure. Or the subgraph id changed.
     assert_eq!(
         hex::encode(poi.unwrap()),
-        "c72af01a19a4e35a35778821a354b7a781062a9320ac8796ea65b115cb9844bf"
+        "8e5cfe3f014586cf0f02277c306ac66f11da52b632b937bd74229cce1374d9d5"
     );
 }
 
