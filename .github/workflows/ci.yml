@@ -43,8 +43,7 @@ jobs:
         run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v4
-      # Don't use the rust-cache as it leads to 'no space left on device' errors
-      # - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
       - name: Install lld
         run: sudo apt-get install -y lld protobuf-compiler
 
@@ -165,8 +164,8 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm install
 
-      - name: Install lld and jq
-        run: sudo apt-get install -y lld jq protobuf-compiler
+      - name: Install lld
+        run: sudo apt-get install -y lld protobuf-compiler
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
