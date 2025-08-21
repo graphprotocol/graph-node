@@ -149,6 +149,9 @@
                 package = pkgsWithOverlays.foundry-bin;
                 port = 3021;
                 timestamp = 1743944919;
+                gasLimit = 100000000000;
+                baseFee = 1;
+                blockTime = 2;
               };
             };
           };
