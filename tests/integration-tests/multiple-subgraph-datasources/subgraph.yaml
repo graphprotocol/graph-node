@@ -6,7 +6,7 @@ dataSources:
     name: SourceA
     network: test
     source:
-      address: 'QmYHp1bPEf7EoYBpEtJUpZv1uQHYQfWE4AhvR6frjB1Huj'
+      address: 'QmZBecjQfrQG5BfpapLywSAzVb5FSFty4j9hVSAhkxbBas'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
@@ -22,7 +22,7 @@ dataSources:
     name: SourceB
     network: test
     source:
-      address: 'QmYBEzastJi7bsa722ac78tnZa6xNnV9vvweerY4kVyJtq'
+      address: 'QmaqX7yefmvgVTbc2ZukVYasSgXtE7Xg5b79Z7afVx4y6u'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
