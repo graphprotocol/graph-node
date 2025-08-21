@@ -38,21 +38,27 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
-      - name: Tune GitHub hosted runner to reduce flakiness
-        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
-        run: sudo ethtool -K eth0 tx off rx off
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      # Don't use the rust-cache as it leads to 'no space left on device' errors
-      # - uses: Swatinem/rust-cache@v2
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld protobuf-compiler
+
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+        with:
+          cache: false
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
+        with:
+          crate: cargo-nextest
+          version: ^0.9
 
       - name: Run unit tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --exclude graph-tests -- --nocapture
+        run: just test-unit --verbose
 
   runner-tests:
     name: Subgraph Runner integration tests
@@ -83,17 +89,30 @@ jobs:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings --cfg test_with_ipfs"
       RUNNER_TESTS_WAIT_FOR_SYNC_SECS: "600"
     steps:
-      - name: Tune GitHub hosted runner to reduce flakiness
-        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
-        run: sudo ethtool -K eth0 tx off rx off
-      - name: Checkout sources
-        uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld protobuf-compiler
+
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+        with:
+          cache: false
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
+        with:
+          crate: cargo-nextest
+          version: ^0.9
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: pnpm
@@ -101,24 +120,8 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm install
 
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
-
       - name: Run runner tests
-        id: runner-tests-1
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package graph-tests --test runner_tests
-
-      - name: Run file link resolver test
-        id: file-link-resolver-test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package graph-tests --test file_link_resolver
+        run: just test-runner --verbose
 
   integration-tests:
     name: Run integration tests
@@ -146,18 +149,30 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
-      - name: Tune GitHub hosted runner to reduce flakiness
-        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
-        run: sudo ethtool -K eth0 tx off rx off
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld protobuf-compiler
+
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+        with:
+          cache: false
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
+        with:
+          crate: cargo-nextest
+          version: ^0.9
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: pnpm
@@ -165,39 +180,19 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm install
 
-      - name: Install lld and jq
-        run: sudo apt-get install -y lld jq protobuf-compiler
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          # Pinned to specific version since newer versions do not produce
-          # deterministic block hashes. Unpin once that's fixed upstream
-          version: v1.2.3
       - name: Start anvil
         run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --port 3021 &
 
-      - name: Install graph CLI
-        run: curl -sSL http://cli.thegraph.com/install.sh | sudo bash
-
       - name: Build graph-node
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin graph-node --test integration_tests
+        run: just build --test integration_tests
 
       - name: Run integration tests
-        id: integration-tests-1
-        uses: actions-rs/cargo@v1
-        env:
-          # Basically, unlimted concurrency
-          N_CONCURRENT_TESTS: "1000"
-        with:
-          command: test
-          args: --test integration_tests -- --nocapture
+        run: just test-integration --verbose
+
       - name: Cat graph-node.log
         if: always()
         run: cat tests/integration-tests/graph-node.log || echo "No graph-node.log"
+
   rustfmt:
     name: Check rustfmt style
     runs-on: ubuntu-latest
@@ -205,29 +200,16 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+        with:
+          cache: false
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
 
       - name: Check formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-  clippy:
-    name: Clippy linting
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
-      # caching.
-      - uses: Swatinem/rust-cache@v2
-      - name: Install deps
-        run: sudo apt-get install -y protobuf-compiler
-      - name: Run Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: check-clippy
+        run: just format --check
 
   release-check:
     name: Build in release mode
@@ -236,14 +218,18 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-      - name: Install dependencies
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Setup dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libpq-dev protobuf-compiler
-      - name: Cargo check (release)
-        uses: actions-rs/cargo@v1
+          sudo apt-get install -y protobuf-compiler
+
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
         with:
-          command: check
-          args: --release
+          cache: false
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Cargo check (release)
+        run: just check --release

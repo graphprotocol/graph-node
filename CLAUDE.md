@@ -28,28 +28,21 @@ Unit tests are inlined with source code.
 2. IPFS running on localhost:5001
 3. PNPM
 4. Foundry (for smart contract compilation)
-5. Environment variable `THEGRAPH_STORE_POSTGRES_DIESEL_URL` set
+5. Environment variable `THEGRAPH_STORE_POSTGRES_DIESEL_URL` set to `postgresql://graph:graph@127.0.0.1:5432/graph-test`
 
 The environment dependencies and environment setup are operated by the human.
 
 **Running Unit Tests:**
 ```bash
-# REQUIRED: Export database connection string before running unit tests (do this **once** at the beginning of a testing session)
-export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
+# Run unit tests
+just test-unit
 
-# Run unit tests (excluding integration tests)
-cargo test --workspace --exclude graph-tests
-
-# Run specific tests
-cargo test -p graph data_source::common::tests
-cargo test <specific_test_name>
+# Run specific tests (e.g. `data_source::common::tests`)
+just test-unit data_source::common::tests
 ```
 
 **⚠️ Test Verification Requirements:**
-- **ALWAYS verify tests actually ran** - Check the output for "test result: ok. X passed" where X > 0
-- **If output shows "0 passed" or "0 tests run"**, the test filter/path was wrong - fix and re-run
-- **Never trust exit code 0 alone** - Cargo can exit successfully even when no tests matched your filter
-- **For specific test names**, ensure the test name appears in the output as "test {name} ... ok"
+When filtering for specific tests, ensure the intended test name(s) appear in the output.
 
 ### Runner Tests (Integration Tests)
 
@@ -58,24 +51,19 @@ cargo test <specific_test_name>
 2. IPFS running on localhost:5001
 3. PNPM
 4. Foundry (for smart contract compilation)
-5. Environment variable `THEGRAPH_STORE_POSTGRES_DIESEL_URL` set
+5. Environment variable `THEGRAPH_STORE_POSTGRES_DIESEL_URL` set to `postgresql://graph:graph@127.0.0.1:5432/graph-test`
 
 **Running Runner Tests:**
 ```bash
-# REQUIRED: Export database connection string before running unit tests (do this **once** at the beginning of a testing session)
-export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
+# Run runner tests.
+just test-runner
 
-# Run all runner tests
-cargo test -p graph-tests --test runner_tests -- --nocapture
-
-# Run specific runner tests
-cargo test -p graph-tests --test runner_tests test_name -- --nocapture
+# Run specific tests (e.g. `block_handlers`)
+just test-runner block_handlers
 ```
 
 **⚠️ Test Verification Requirements:**
-- **ALWAYS verify tests actually ran** - Check the output for "test result: ok. X passed" where X > 0
-- **If output shows "0 passed" or "0 tests run"**, the test filter/path was wrong - fix and re-run
-- **Never trust exit code 0 alone** - Cargo can exit successfully even when no tests matched your filter
+When filtering for specific tests, ensure the intended test name(s) appear in the output.
 
 **Important Notes:**
 - Runner tests take moderate time (10-20 seconds)
@@ -97,13 +85,13 @@ The environment dependencies and environment setup are operated by the human.
 **Running Integration Tests:**
 ```bash
 # REQUIRED: Build graph-node binary before running integration tests
-cargo build --bin graph-node
+just build
 
 # Run all integration tests
-cargo test -p graph-tests --test integration_tests -- --nocapture
+just test-integration
 
 # Run a specific integration test case (e.g., "grafted" test case)
-TEST_CASE=grafted cargo test -p graph-tests --test integration_tests -- --nocapture
+TEST_CASE=grafted just test-integration
 ```
 
 **⚠️ Test Verification Requirements:**
@@ -119,13 +107,13 @@ TEST_CASE=grafted cargo test -p graph-tests --test integration_tests -- --nocapt
 ### Code Quality
 ```bash
 # 🚨 MANDATORY: Format all code IMMEDIATELY after any .rs file edit
-cargo fmt --all
+just format
 
 # 🚨 MANDATORY: Check code for warnings and errors - MUST have zero warnings
-cargo check
+just check
 
-# 🚨 MANDATORY: Build in release mode to catch linking/optimization issues that cargo check misses
-cargo check --release
+# 🚨 MANDATORY: Check in release mode to catch linking/optimization issues that cargo check misses
+just check --release
 ```
 
 🚨 **CRITICAL REQUIREMENTS for ANY implementation**:
@@ -225,11 +213,8 @@ Currently, the human is required to operate the service dependencies as illustra
 # PostgreSQL: localhost:5432, IPFS: localhost:5001
 nix run .#unit
 
-# Claude: Export the database connection string before running unit tests
-export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
-
 # Claude: Run unit tests
-cargo test --workspace --exclude graph-tests
+just test-unit
 ```
 
 **Runner Tests:**
@@ -238,11 +223,8 @@ cargo test --workspace --exclude graph-tests
 # PostgreSQL: localhost:5432, IPFS: localhost:5001
 nix run .#unit # NOTE: Runner tests are using the same nix services stack as the unit test
 
-# Claude: Export the database connection string before running runner tests
-export THEGRAPH_STORE_POSTGRES_DIESEL_URL="postgresql://graph:graph@127.0.0.1:5432/graph-test"
-
 # Claude: Run runner tests
-cargo test -p graph-tests --test runner_tests -- --nocapture
+just test-runner
 ```
 
 **Integration Tests:**
@@ -252,10 +234,10 @@ cargo test -p graph-tests --test runner_tests -- --nocapture
 nix run .#integration
 
 # Claude: Build graph-node binary before running integration tests
-cargo build --bin graph-node
+just build
 
 # Claude: Run integration tests
-cargo test -p graph-tests --test integration_tests
+just test-integration
 ```
 
 **Services Configuration:**

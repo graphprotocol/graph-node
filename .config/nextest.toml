@@ -1,0 +1,14 @@
+[[profile.default.overrides]]
+filter = 'package(graphman-server)'
+priority = -1
+threads-required = 'num-test-threads' # Global mutex
+
+[[profile.default.overrides]]
+filter = 'package(test-store)'
+priority = -1
+threads-required = 'num-test-threads' # Global mutex
+
+[[profile.default.overrides]]
+filter = 'package(graph-tests)'
+priority = -1
+threads-required = 'num-test-threads' # Global mutex
