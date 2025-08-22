@@ -6,6 +6,10 @@ default:
 format *EXTRA_FLAGS:
     cargo fmt --all {{EXTRA_FLAGS}}
 
+# Run Clippy linting (cargo clippy)
+lint:
+    cargo clippy --no-deps -- --allow warnings
+
 # Check Rust code (cargo check)
 check *EXTRA_FLAGS:
     cargo check {{EXTRA_FLAGS}}

@@ -238,10 +238,31 @@ jobs:
       - name: Check formatting
         run: just format --check
 
+  clippy:
+    name: Clippy linting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Run linting
+        run: just lint
+  
   release-check:
     name: Build in release mode
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     env:
       RUSTFLAGS: "-D warnings"
     steps:
