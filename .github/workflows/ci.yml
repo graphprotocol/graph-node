@@ -34,7 +34,7 @@ jobs:
           POSTGRES_USER: graph
           POSTGRES_PASSWORD: graph
           POSTGRES_DB: graph-test
-          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C -c max_connections=1000 -c shared_buffers=2GB"
         options: >-
           --health-cmd "pg_isready -U graph"
           --health-interval 10s
@@ -44,22 +44,15 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
-      - name: Alter postgres max connections
-        run: |
-          docker exec -i postgres bash << EOF
-            sed -i -e 's/max_connections = 100/max_connections = 1000/' /var/lib/postgresql/data/postgresql.conf
-            sed -i -e 's/shared_buffers = 128MB/shared_buffers = 2GB/' /var/lib/postgresql/data/postgresql.conf
-          EOF
-          docker restart --timeout 0 postgres
-          sleep 5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Setup dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y lld protobuf-compiler
 
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
@@ -88,7 +81,7 @@ jobs:
           POSTGRES_USER: graph
           POSTGRES_PASSWORD: graph
           POSTGRES_DB: graph-test
-          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C -c max_connections=1000 -c shared_buffers=2GB"
         options: >-
           --health-cmd "pg_isready -U graph"
           --health-interval 10s
@@ -98,22 +91,15 @@ jobs:
         ports:
           - 5432:5432
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
-      - name: Alter postgres max connections
-        run: |
-          docker exec -i postgres bash << EOF
-            sed -i -e 's/max_connections = 100/max_connections = 1000/' /var/lib/postgresql/data/postgresql.conf
-            sed -i -e 's/shared_buffers = 128MB/shared_buffers = 2GB/' /var/lib/postgresql/data/postgresql.conf
-          EOF
-          docker restart --timeout 0 postgres
-          sleep 5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Setup dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y lld protobuf-compiler
 
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
@@ -154,7 +140,7 @@ jobs:
           POSTGRES_USER: graph-node
           POSTGRES_PASSWORD: let-me-in
           POSTGRES_DB: graph-node
-          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C -c max_connections=1000 -c shared_buffers=2GB"
         options: >-
           --health-cmd "pg_isready -U graph-node"
           --health-interval 10s
@@ -164,22 +150,15 @@ jobs:
         ports:
           - 3011:5432
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
-      - name: Alter postgres max connections
-        run: |
-          docker exec -i postgres bash << EOF
-            sed -i -e 's/max_connections = 100/max_connections = 1000/' /var/lib/postgresql/data/postgresql.conf
-            sed -i -e 's/shared_buffers = 128MB/shared_buffers = 2GB/' /var/lib/postgresql/data/postgresql.conf
-          EOF
-          docker restart --timeout 0 postgres
-          sleep 5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Setup dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y lld protobuf-compiler
 
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
@@ -229,7 +208,7 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
       - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
 
       - name: Setup just
@@ -245,13 +224,14 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
       - name: Setup dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
@@ -266,13 +246,14 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
       - name: Setup dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
 
-      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
