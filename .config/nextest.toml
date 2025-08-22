@@ -12,3 +12,4 @@ threads-required = 'num-test-threads' # Global mutex
 filter = 'package(graph-tests)'
 priority = -1
 threads-required = 'num-test-threads' # Global mutex
+slow-timeout = { period = "300s", terminate-after = 4 }
