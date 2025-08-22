@@ -1,22 +1,28 @@
 name: Continuous Integration
-
 on:
   push:
     branches: [master]
   pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
-  THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
+  RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://graph:graph@localhost:5432/graph-test"
 
 jobs:
   unit-tests:
     name: Run unit tests
-    runs-on: ubuntu-latest-m
-    timeout-minutes: 60
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 20
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -25,75 +31,90 @@ jobs:
       postgres:
         image: postgres
         env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: graph_node_test
-          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRES_USER: graph
+          POSTGRES_PASSWORD: graph
+          POSTGRES_DB: graph-test
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C -c max_connections=1000 -c shared_buffers=2GB"
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U graph"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --name postgres
         ports:
           - 5432:5432
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
-      - name: Tune GitHub hosted runner to reduce flakiness
-        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
-        run: sudo ethtool -K eth0 tx off rx off
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      # Don't use the rust-cache as it leads to 'no space left on device' errors
-      # - uses: Swatinem/rust-cache@v2
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld protobuf-compiler
+
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
+        with:
+          crate: cargo-nextest
+          version: ^0.9
 
       - name: Run unit tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --exclude graph-tests -- --nocapture
+        run: just test-unit --verbose
 
   runner-tests:
     name: Subgraph Runner integration tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 20
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
         ports:
           - 5001:5001
       postgres:
-        image: bitnami/postgresql
+        image: postgres
         env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: graph_node_test
-          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
-          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
-          POSTGRESQL_REPLICATION_USE_PASSFILE: no
+          POSTGRES_USER: graph
+          POSTGRES_PASSWORD: graph
+          POSTGRES_DB: graph-test
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C -c max_connections=1000 -c shared_buffers=2GB"
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U graph"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 5
+          --name postgres
         ports:
           - 5432:5432
-    env:
-      GRAPH_IPFS_REQUEST_TIMEOUT: "60"
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings --cfg test_with_ipfs"
-      RUNNER_TESTS_WAIT_FOR_SYNC_SECS: "600"
     steps:
-      - name: Tune GitHub hosted runner to reduce flakiness
-        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
-        run: sudo ethtool -K eth0 tx off rx off
-      - name: Checkout sources
-        uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld protobuf-compiler
+
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
+        with:
+          crate: cargo-nextest
+          version: ^0.9
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: pnpm
@@ -101,29 +122,13 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm install
 
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install lld
-        run: sudo apt-get install -y lld protobuf-compiler
-
       - name: Run runner tests
-        id: runner-tests-1
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package graph-tests --test runner_tests
-
-      - name: Run file link resolver test
-        id: file-link-resolver-test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package graph-tests --test file_link_resolver
+        run: just test-runner --verbose
 
   integration-tests:
     name: Run integration tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 20
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -135,29 +140,47 @@ jobs:
           POSTGRES_USER: graph-node
           POSTGRES_PASSWORD: let-me-in
           POSTGRES_DB: graph-node
-          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C -c max_connections=1000 -c shared_buffers=2GB"
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U graph-node"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --name postgres
         ports:
           - 3011:5432
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
-      - name: Tune GitHub hosted runner to reduce flakiness
-        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
-        run: sudo ethtool -K eth0 tx off rx off
-      - name: Checkout sources
-        uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld protobuf-compiler
+
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
+        with:
+          crate: cargo-nextest
+          version: ^0.9
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@82dee4ba654bd2146511f85f0d013af94670c4de # v1
+        with:
+          # Pinned to specific version since newer versions do not produce
+          # deterministic block hashes. Unpin once that's fixed upstream
+          version: v1.2.3
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: pnpm
@@ -165,39 +188,19 @@ jobs:
       - name: Install Node.js dependencies
         run: pnpm install
 
-      - name: Install lld and jq
-        run: sudo apt-get install -y lld jq protobuf-compiler
-
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          # Pinned to specific version since newer versions do not produce
-          # deterministic block hashes. Unpin once that's fixed upstream
-          version: v1.2.3
       - name: Start anvil
         run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --port 3021 &
 
-      - name: Install graph CLI
-        run: curl -sSL http://cli.thegraph.com/install.sh | sudo bash
-
       - name: Build graph-node
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin graph-node --test integration_tests
+        run: just build --test integration_tests
 
       - name: Run integration tests
-        id: integration-tests-1
-        uses: actions-rs/cargo@v1
-        env:
-          # Basically, unlimted concurrency
-          N_CONCURRENT_TESTS: "1000"
-        with:
-          command: test
-          args: --test integration_tests -- --nocapture
+        run: just test-integration --verbose
+
       - name: Cat graph-node.log
         if: always()
         run: cat tests/integration-tests/graph-node.log || echo "No graph-node.log"
+
   rustfmt:
     name: Check rustfmt style
     runs-on: ubuntu-latest
@@ -205,45 +208,55 @@ jobs:
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
 
       - name: Check formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: just format --check
 
   clippy:
     name: Clippy linting
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-      # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
-      # caching.
-      - uses: Swatinem/rust-cache@v2
-      - name: Install deps
-        run: sudo apt-get install -y protobuf-compiler
-      - name: Run Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: check-clippy
-
-  release-check:
-    name: Build in release mode
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     env:
       RUSTFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
-      - name: Install dependencies
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - name: Setup dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libpq-dev protobuf-compiler
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
+      - name: Run linting
+        run: just lint
+  
+  release-check:
+    name: Build in release mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+
+      - name: Setup just
+        uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
+
       - name: Cargo check (release)
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release
+        run: just check --release

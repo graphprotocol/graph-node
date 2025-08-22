@@ -51,6 +51,8 @@
               corepack
               nodejs
               postgresql
+              just
+              cargo-nextest
             ]);
           };
 
@@ -85,7 +87,7 @@
                 shared_preload_libraries = "pg_stat_statements";
                 log_statement = "all";
                 default_text_search_config = "pg_catalog.english";
-                max_connections = 200;
+                max_connections = 500;
               };
             };
           in {
