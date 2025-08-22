@@ -15,7 +15,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: full
-  THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
+  RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://graph:graph@localhost:5432/graph-test"
 
 jobs:
   unit-tests:
@@ -30,21 +31,29 @@ jobs:
       postgres:
         image: postgres
         env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: graph_node_test
+          POSTGRES_USER: graph
+          POSTGRES_PASSWORD: graph
+          POSTGRES_DB: graph-test
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
-          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U graph"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --name postgres
         ports:
           - 5432:5432
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Alter postgres max connections
+        run: |
+          docker exec -i postgres bash << EOF
+            sed -i -e 's/max_connections = 100/max_connections = 1000/' /var/lib/postgresql/data/postgresql.conf
+            sed -i -e 's/shared_buffers = 128MB/shared_buffers = 2GB/' /var/lib/postgresql/data/postgresql.conf
+          EOF
+          docker restart --timeout 0 postgres
+          sleep 5
+
       - name: Setup dependencies
         run: |
           sudo apt-get update
@@ -74,26 +83,31 @@ jobs:
         ports:
           - 5001:5001
       postgres:
-        image: bitnami/postgresql
+        image: postgres
         env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: graph_node_test
+          POSTGRES_USER: graph
+          POSTGRES_PASSWORD: graph
+          POSTGRES_DB: graph-test
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
-          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
-          POSTGRESQL_REPLICATION_USE_PASSFILE: no
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U graph"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 5
+          --name postgres
         ports:
           - 5432:5432
-    env:
-      GRAPH_IPFS_REQUEST_TIMEOUT: "60"
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings --cfg test_with_ipfs"
-      RUNNER_TESTS_WAIT_FOR_SYNC_SECS: "600"
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Alter postgres max connections
+        run: |
+          docker exec -i postgres bash << EOF
+            sed -i -e 's/max_connections = 100/max_connections = 1000/' /var/lib/postgresql/data/postgresql.conf
+            sed -i -e 's/shared_buffers = 128MB/shared_buffers = 2GB/' /var/lib/postgresql/data/postgresql.conf
+          EOF
+          docker restart --timeout 0 postgres
+          sleep 5
+
       - name: Setup dependencies
         run: |
           sudo apt-get update
@@ -141,18 +155,25 @@ jobs:
           POSTGRES_PASSWORD: let-me-in
           POSTGRES_DB: graph-node
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
-          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U graph-node"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --name postgres
         ports:
           - 3011:5432
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4
+      - name: Alter postgres max connections
+        run: |
+          docker exec -i postgres bash << EOF
+            sed -i -e 's/max_connections = 100/max_connections = 1000/' /var/lib/postgresql/data/postgresql.conf
+            sed -i -e 's/shared_buffers = 128MB/shared_buffers = 2GB/' /var/lib/postgresql/data/postgresql.conf
+          EOF
+          docker restart --timeout 0 postgres
+          sleep 5
+
       - name: Setup dependencies
         run: |
           sudo apt-get update
