@@ -1,11 +1,16 @@
 name: Continuous Integration
-
 on:
   push:
     branches: [master]
   pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,8 +20,8 @@ env:
 jobs:
   unit-tests:
     name: Run unit tests
-    runs-on: ubuntu-latest-m
-    timeout-minutes: 60
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 20
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -28,6 +33,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: graph_node_test
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -60,8 +66,8 @@ jobs:
 
   runner-tests:
     name: Subgraph Runner integration tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 20
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -121,8 +127,8 @@ jobs:
 
   integration-tests:
     name: Run integration tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 20
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -135,6 +141,7 @@ jobs:
           POSTGRES_PASSWORD: let-me-in
           POSTGRES_DB: graph-node
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
