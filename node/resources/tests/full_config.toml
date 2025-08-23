@@ -1,3 +1,5 @@
+weighted_rpc_steering = true
+
 [general]
 query = "query_node_.*"
 
@@ -43,29 +45,36 @@ indexers = [ "index_node_1_a",
 [chains]
 ingestor = "index_0"
 
+# Provider weights configuration:
+# - Weights must be between 0.0 and 1.0 (inclusive)
+# - Weights are relative - they don't need to sum to 1.0
+# - Traffic is distributed proportionally based on weights
+# - Example: weights [0.2, 0.8] = 20% and 80% traffic distribution
+# - Example: weights [1.0, 2.0, 1.0] = 25%, 50%, 25% distribution
+# - At least one provider must have weight > 0.0
 [chains.mainnet]
 shard = "primary"
 provider = [
-  { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"] },
-  { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }},
-  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }},
-  { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [] }},
+  { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"], weight = 0.1 },
+  { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }, weight = 0.2 },
+  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }, weight = 0.3 },
+  { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [] }, weight = 0.4 },
 ]
 
 [chains.ropsten]
 shard = "primary"
 provider = [
-  { label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"] }
+  { label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"], weight = 1.0 }
 ]
 
 [chains.goerli]
 shard = "primary"
 provider = [
-  { label = "goerli-0", url = "http://rpc.goerli.io", transport = "ipc", features = ["archive"] }
+  { label = "goerli-0", url = "http://rpc.goerli.io", transport = "ipc", features = ["archive"], weight = 1.0 }
 ]
 
 [chains.kovan]
 shard = "primary"
 provider = [
-  { label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [] }
+  { label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [], weight = 1.0 }
 ]
