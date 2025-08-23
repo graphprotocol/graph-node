@@ -39,7 +39,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
-async-graphql = { version = "7.0.15", features = ["chrono"] }
+async-graphql = { version = "7.0.17", features = ["chrono"] }
 async-graphql-axum = "7.0.15"
 axum = "0.8.3"
 chrono = "0.4.41"
@@ -54,7 +54,6 @@ diesel = { version = "2.2.7", features = [
     "chrono",
     "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
 ] }
-pq-sys = { version = "0.6", features = ["bundled"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.2.5"
@@ -87,7 +86,7 @@ slog = { version = "2.7.0", features = [
 ] }
 sqlparser = "0.46.0"
 strum = { version = "0.26", features = ["derive"] }
-syn = { version = "2.0.101", features = ["full"] }
+syn = { version = "2.0.106", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.12"
 tokio = { version = "1.45.1", features = ["full"] }
@@ -99,7 +98,7 @@ wasmtime = "33.0.2"
 substreams = "=0.6.0"
 substreams-entity-change = "2"
 substreams-near-core = "=0.10.2"
-rand = { version = "0.9.1", features = ["os_rng"] }
+rand = { version = "0.9.2", features = ["os_rng"] }
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]

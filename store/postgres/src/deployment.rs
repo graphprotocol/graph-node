@@ -30,15 +30,12 @@ use graph::{
     schema::InputSchema,
 };
 use graph::{
-    data::subgraph::{
-        schema::{DeploymentCreate, SubgraphManifestEntity},
-        SubgraphFeature,
-    },
+    data::subgraph::schema::{DeploymentCreate, SubgraphManifestEntity},
     util::backoff::ExponentialBackoff,
 };
 use stable_hash_legacy::crypto::SetHasher;
-use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
+use std::{convert::TryFrom, ops::Bound, time::Duration};
 
 use crate::ForeignServer;
 use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
@@ -401,24 +398,6 @@ pub fn set_history_blocks(
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)
-}
-
-#[allow(dead_code)]
-pub fn features(
-    conn: &mut PgConnection,
-    site: &Site,
-) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
-    use subgraph_manifest as sm;
-
-    let features: Vec<String> = sm::table
-        .select(sm::features)
-        .filter(sm::id.eq(site.id))
-        .first(conn)
-        .unwrap();
-    features
-        .iter()
-        .map(|f| SubgraphFeature::from_str(f).map_err(StoreError::from))
-        .collect()
 }
 
 /// This migrates subgraphs that existed before the raw_yaml column was added.

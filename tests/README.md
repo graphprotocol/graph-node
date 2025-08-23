@@ -15,7 +15,7 @@ In addition, the tests require the following:
 
 - `graph-node` must have already been built using `cargo build` and must be
   present at `../target/debug/graph-node`
-- `yarn` (v1) must be installed and on the `PATH`
+- `pnpm` must be installed and on the `PATH`
 
 Once these prerequisites are in place, the tests can be run using:
 
@@ -60,7 +60,7 @@ must be declared as `contract FooContract` in the Solidity source.
 
 ### Testing different version of Graph CLI
 
-The integration tests project is built as Yarn (v1) Workspace, so all dependencies are installed at once for all tests.
+The integration tests project is built as a PNPM Workspace, so all dependencies are installed at once for all tests.
 
 We can still control the version of the Graph CLI installed for each test, by changing the versions of `@graphprotocol/graph-cli` / `@graphprotocol/graph-ts` in `package.json`.
 

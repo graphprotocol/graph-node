@@ -1055,13 +1055,13 @@ impl SubgraphEthRpcMetrics {
 
     pub fn observe_request(&self, duration: f64, method: &str, provider: &str) {
         self.request_duration
-            .with_label_values(&[&self.deployment, method, provider])
+            .with_label_values(&[self.deployment.as_str(), method, provider])
             .set(duration);
     }
 
     pub fn add_error(&self, method: &str, provider: &str) {
         self.errors
-            .with_label_values(&[&self.deployment, method, provider])
+            .with_label_values(&[self.deployment.as_str(), method, provider])
             .inc();
     }
 }

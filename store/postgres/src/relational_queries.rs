@@ -4973,14 +4973,6 @@ impl<'a> Query for CountCurrentVersionsQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for CountCurrentVersionsQuery<'a> {}
 
-/// Helper struct for returning the id's touched by the RevertRemove and
-/// RevertExtend queries
-#[derive(QueryableByName, PartialEq, Eq, Hash)]
-pub struct CopyVid {
-    #[diesel(sql_type = BigInt)]
-    pub vid: i64,
-}
-
 fn write_column_names(
     column_names: &AttributeNames,
     table: dsl::Table<'_>,

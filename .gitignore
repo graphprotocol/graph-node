@@ -22,14 +22,18 @@ lcov.info
 
 /tests/**/build
 /tests/**/generated
-/tests/**/node_modules
-/tests/**/yarn-error.log
-/tests/**/pnpm-lock.yaml
 
-# Built solidity contracts.
-/tests/**/bin
-/tests/**/truffle_output
+# Node dependencies
+node_modules/
 
 # Docker volumes and debug logs
 .postgres
 logfile
+
+# Nix related files
+.direnv
+.envrc
+.data
+
+# Local claude settings
+.claude/settings.local.json

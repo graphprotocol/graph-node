@@ -14,7 +14,7 @@ proc-macro = true
 [dependencies]
 syn = { workspace = true }
 quote = "1.0"
-proc-macro2 = "1.0.95"
+proc-macro2 = "1.0.101"
 heck = "0.5"
 
 [dev-dependencies]
