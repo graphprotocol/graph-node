@@ -94,6 +94,7 @@ pub struct Networks {
     pub adapters: Vec<AdapterConfiguration>,
     pub rpc_provider_manager: ProviderManager<EthereumNetworkAdapter>,
     pub firehose_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
+    pub weighted_rpc_steering: bool,
 }
 
 impl Networks {
@@ -111,6 +112,7 @@ impl Networks {
                 vec![],
                 ProviderCheckStrategy::MarkAsValid,
             ),
+            weighted_rpc_steering: false,
         }
     }
 
@@ -184,7 +186,12 @@ impl Networks {
         );
         let adapters: Vec<_> = eth.into_iter().chain(firehose.into_iter()).collect();
 
-        Ok(Networks::new(&logger, adapters, provider_checks))
+        Ok(Networks::new(
+            &logger,
+            adapters,
+            provider_checks,
+            config.weighted_rpc_steering,
+        ))
     }
 
     pub async fn from_config_for_chain(
@@ -229,6 +236,7 @@ impl Networks {
         logger: &Logger,
         adapters: Vec<AdapterConfiguration>,
         provider_checks: &[Arc<dyn ProviderCheck>],
+        weighted_rpc_steering: bool,
     ) -> Self {
         let adapters2 = adapters.clone();
         let eth_adapters = adapters.iter().flat_map(|a| a.as_rpc()).cloned().map(
@@ -273,6 +281,7 @@ impl Networks {
                 firehose_adapters,
                 ProviderCheckStrategy::RequireAll(provider_checks),
             ),
+            weighted_rpc_steering,
         };
 
         s
@@ -370,6 +379,7 @@ impl Networks {
             self.rpc_provider_manager.clone(),
             eth_adapters,
             None,
+            self.weighted_rpc_steering,
         )
     }
 }
