@@ -314,6 +314,7 @@ pub async fn create_ethereum_networks_for_chain(
                 .await,
             ),
             web3.limit_for(&config.node),
+            provider.weight,
         );
 
         if call_only {
