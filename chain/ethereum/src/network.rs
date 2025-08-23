@@ -7,7 +7,10 @@ use graph::components::network_provider::ProviderName;
 use graph::endpoint::EndpointMetrics;
 use graph::firehose::{AvailableCapacity, SubgraphLimit};
 use graph::prelude::rand::{
-    self, distr::{weighted::WeightedIndex, Distribution}, seq::IteratorRandom, Rng
+    self,
+    distr::{weighted::WeightedIndex, Distribution},
+    seq::IteratorRandom,
+    Rng,
 };
 use itertools::Itertools;
 use std::sync::Arc;
@@ -199,11 +202,11 @@ impl EthereumNetworkAdapters {
 
     /// Main adapter selection entry point that handles both weight-based distribution
     /// and error retesting logic.
-    /// 
+    ///
     /// The selection process:
     /// 1. First selects an adapter based on weights (if enabled) or random selection
     /// 2. Occasionally overrides the selection to retest adapters with errors
-    /// 
+    ///
     /// The error retesting happens AFTER weight-based selection to minimize
     /// distribution skew while still allowing periodic health checks of errored endpoints.
     fn cheapest_from(
@@ -213,7 +216,7 @@ impl EthereumNetworkAdapters {
     ) -> Result<Arc<EthereumAdapter>, Error> {
         // Select adapter based on weights or random strategy
         let selected_adapter = self.select_best_adapter(input.clone(), required_capabilities)?;
-        
+
         // Occasionally override selection to retest errored adapters
         // This happens AFTER weight-based selection to minimize distribution skew
         let retest_rng: f64 = rand::rng().random();
@@ -227,10 +230,9 @@ impl EthereumNetworkAdapters {
                 return Ok(most_errored.adapter.clone());
             }
         }
-        
+
         Ok(selected_adapter)
     }
-
 
     /// Selects the best adapter based on the configured strategy (weighted or random).
     /// If weighted mode is enabled, uses weight-based probabilistic selection.
@@ -248,11 +250,11 @@ impl EthereumNetworkAdapters {
     }
 
     /// Performs weighted random selection of adapters based on their configured weights.
-    /// 
+    ///
     /// Weights are relative values between 0.0 and 1.0 that determine the probability
     /// of selecting each adapter. They don't need to sum to 1.0 as they're normalized
     /// internally by the WeightedIndex distribution.
-    /// 
+    ///
     /// Falls back to random selection if weights are invalid (e.g., all zeros).
     fn select_weighted_adapter(
         &self,
@@ -276,7 +278,7 @@ impl EthereumNetworkAdapters {
     }
 
     /// Performs random selection of adapters with preference for those with fewer errors.
-    /// 
+    ///
     /// Randomly selects up to 3 adapters from the available pool, then chooses the one
     /// with the lowest error count. This provides a balance between load distribution
     /// and avoiding problematic endpoints.
@@ -285,9 +287,7 @@ impl EthereumNetworkAdapters {
         input: Vec<&EthereumNetworkAdapter>,
         required_capabilities: &NodeCapabilities,
     ) -> Result<Arc<EthereumAdapter>, Error> {
-        let choices = input
-            .into_iter()
-            .choose_multiple(&mut rand::rng(), 3);
+        let choices = input.into_iter().choose_multiple(&mut rand::rng(), 3);
         if let Some(adapter) = choices.iter().min_by_key(|a| a.current_error_count()) {
             Ok(adapter.adapter.clone())
         } else {
@@ -390,10 +390,7 @@ mod tests {
     use graph::http::HeaderMap;
     use graph::slog::{o, Discard, Logger};
     use graph::{
-        endpoint::EndpointMetrics,
-        firehose::SubgraphLimit,
-        prelude::MetricsRegistry,
-        tokio,
+        endpoint::EndpointMetrics, firehose::SubgraphLimit, prelude::MetricsRegistry, tokio,
         url::Url,
     };
     use std::sync::Arc;
