@@ -7,8 +7,12 @@ use graph::components::network_provider::ProviderManager;
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::EndpointMetrics;
 use graph::firehose::{AvailableCapacity, SubgraphLimit};
-use graph::prelude::rand::seq::IteratorRandom;
-use graph::prelude::rand::{self, Rng};
+use graph::prelude::rand::{
+    self,
+    distr::{weighted::WeightedIndex, Distribution},
+    seq::IteratorRandom,
+    Rng,
+};
 use itertools::Itertools;
 use std::sync::Arc;
 
@@ -31,6 +35,7 @@ pub struct EthereumNetworkAdapter {
     /// that limit. That's a somewhat imprecise but convenient way to
     /// determine the number of connections
     limit: SubgraphLimit,
+    weight: f64,
 }
 
 #[async_trait]
@@ -54,12 +59,14 @@ impl EthereumNetworkAdapter {
         capabilities: NodeCapabilities,
         adapter: Arc<EthereumAdapter>,
         limit: SubgraphLimit,
+        weight: f64,
     ) -> Self {
         Self {
             endpoint_metrics,
             capabilities,
             adapter,
             limit,
+            weight,
         }
     }
 
@@ -87,6 +94,7 @@ pub struct EthereumNetworkAdapters {
     call_only_adapters: Vec<EthereumNetworkAdapter>,
     // Percentage of request that should be used to retest errored adapters.
     retest_percent: f64,
+    weighted: bool,
 }
 
 impl EthereumNetworkAdapters {
@@ -96,6 +104,7 @@ impl EthereumNetworkAdapters {
             manager: ProviderManager::default(),
             call_only_adapters: vec![],
             retest_percent: DEFAULT_ADAPTER_ERROR_RETEST_PERCENT,
+            weighted: false,
         }
     }
 
@@ -122,7 +131,7 @@ impl EthereumNetworkAdapters {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        Self::new(chain_id, provider, call_only, None)
+        Self::new(chain_id, provider, call_only, None, false)
     }
 
     pub fn new(
@@ -130,6 +139,7 @@ impl EthereumNetworkAdapters {
         manager: ProviderManager<EthereumNetworkAdapter>,
         call_only_adapters: Vec<EthereumNetworkAdapter>,
         retest_percent: Option<f64>,
+        weighted: bool,
     ) -> Self {
         #[cfg(debug_assertions)]
         call_only_adapters.iter().for_each(|a| {
@@ -141,6 +151,7 @@ impl EthereumNetworkAdapters {
             manager,
             call_only_adapters,
             retest_percent: retest_percent.unwrap_or(DEFAULT_ADAPTER_ERROR_RETEST_PERCENT),
+            weighted,
         }
     }
 
@@ -190,50 +201,115 @@ impl EthereumNetworkAdapters {
         Self::available_with_capabilities(all, required_capabilities)
     }
 
-    // handle adapter selection from a list, implements the availability checking with an abstracted
-    // source of the adapter list.
+    /// Main adapter selection entry point that handles both weight-based distribution
+    /// and error retesting logic.
+    ///
+    /// The selection process:
+    /// 1. First selects an adapter based on weights (if enabled) or random selection
+    /// 2. Occasionally overrides the selection to retest adapters with errors
+    ///
+    /// The error retesting happens AFTER weight-based selection to minimize
+    /// distribution skew while still allowing periodic health checks of errored endpoints.
     fn cheapest_from(
+        &self,
         input: Vec<&EthereumNetworkAdapter>,
         required_capabilities: &NodeCapabilities,
-        retest_percent: f64,
     ) -> Result<Arc<EthereumAdapter>, Error> {
+        // Select adapter based on weights or random strategy
+        let selected_adapter = self.select_best_adapter(&input, required_capabilities)?;
+
+        // Occasionally override selection to retest errored adapters
+        // This happens AFTER weight-based selection to minimize distribution skew
         let retest_rng: f64 = rand::rng().random();
-
-        let cheapest = input.into_iter().choose_multiple(&mut rand::rng(), 3);
-        let cheapest = cheapest.iter();
-
-        // If request falls below the retest threshold, use this request to try and
-        // reset the failed adapter. If a request succeeds the adapter will be more
-        // likely to be selected afterwards.
-        if retest_rng < retest_percent {
-            cheapest.max_by_key(|adapter| adapter.current_error_count())
-        } else {
-            // The assumption here is that most RPC endpoints will not have limits
-            // which makes the check for low/high available capacity less relevant.
-            // So we essentially assume if it had available capacity when calling
-            // `all_cheapest_with` then it prolly maintains that state and so we
-            // just select whichever adapter is working better according to
-            // the number of errors.
-            cheapest.min_by_key(|adapter| adapter.current_error_count())
+        if retest_rng < self.retest_percent {
+            if let Some(most_errored) = input
+                .iter()
+                .max_by_key(|a| a.current_error_count())
+                .filter(|a| a.current_error_count() > 0)
+            {
+                return Ok(most_errored.adapter.clone());
+            }
         }
-        .map(|adapter| adapter.adapter.clone())
-        .ok_or(anyhow!(
-            "A matching Ethereum network with {:?} was not found.",
-            required_capabilities
-        ))
+
+        Ok(selected_adapter)
+    }
+
+    /// Selects the best adapter based on the configured strategy (weighted or random).
+    /// If weighted mode is enabled, uses weight-based probabilistic selection.
+    /// Otherwise, falls back to random selection with error count consideration.
+    fn select_best_adapter(
+        &self,
+        input: &[&EthereumNetworkAdapter],
+        required_capabilities: &NodeCapabilities,
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        if self.weighted {
+            self.select_weighted_adapter(input, required_capabilities)
+        } else {
+            Self::select_random_adapter(input, required_capabilities)
+        }
+    }
+
+    /// Performs weighted random selection of adapters based on their configured weights.
+    ///
+    /// Weights are relative values between 0.0 and 1.0 that determine the probability
+    /// of selecting each adapter. They don't need to sum to 1.0 as they're normalized
+    /// internally by the WeightedIndex distribution.
+    ///
+    /// Falls back to random selection if weights are invalid (e.g., all zeros).
+    fn select_weighted_adapter(
+        &self,
+        input: &[&EthereumNetworkAdapter],
+        required_capabilities: &NodeCapabilities,
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        if input.is_empty() {
+            return Err(anyhow!(
+                "A matching Ethereum network with {:?} was not found.",
+                required_capabilities
+            ));
+        }
+
+        let weights: Vec<_> = input.iter().map(|a| a.weight).collect();
+        if let Ok(dist) = WeightedIndex::new(&weights) {
+            let idx = dist.sample(&mut rand::rng());
+            Ok(input[idx].adapter.clone())
+        } else {
+            // Fallback to random selection if weights are invalid
+            Self::select_random_adapter(input, required_capabilities)
+        }
+    }
+
+    /// Performs random selection of adapters with preference for those with fewer errors.
+    ///
+    /// Randomly selects up to 3 adapters from the available pool, then chooses the one
+    /// with the lowest error count. This provides a balance between load distribution
+    /// and avoiding problematic endpoints.
+    fn select_random_adapter(
+        input: &[&EthereumNetworkAdapter],
+        required_capabilities: &NodeCapabilities,
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        let choices = input
+            .iter()
+            .copied()
+            .choose_multiple(&mut rand::rng(), 3);
+        if let Some(adapter) = choices.iter().min_by_key(|a| a.current_error_count()) {
+            Ok(adapter.adapter.clone())
+        } else {
+            Err(anyhow!(
+                "A matching Ethereum network with {:?} was not found.",
+                required_capabilities
+            ))
+        }
     }
 
     pub(crate) fn unverified_cheapest_with(
         &self,
         required_capabilities: &NodeCapabilities,
     ) -> Result<Arc<EthereumAdapter>, Error> {
-        let cheapest = self.all_unverified_cheapest_with(required_capabilities);
+        let cheapest = self
+            .all_unverified_cheapest_with(required_capabilities)
+            .collect_vec();
 
-        Self::cheapest_from(
-            cheapest.choose_multiple(&mut rand::rng(), 3),
-            required_capabilities,
-            self.retest_percent,
-        )
+        self.cheapest_from(cheapest, required_capabilities)
     }
 
     /// This is the public entry point and should always use verified adapters
@@ -244,9 +320,9 @@ impl EthereumNetworkAdapters {
         let cheapest = self
             .all_cheapest_with(required_capabilities)
             .await
-            .choose_multiple(&mut rand::rng(), 3);
+            .collect_vec();
 
-        Self::cheapest_from(cheapest, required_capabilities, self.retest_percent)
+        self.cheapest_from(cheapest, required_capabilities)
     }
 
     pub async fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
@@ -316,12 +392,9 @@ mod tests {
     use graph::data::value::Word;
 
     use graph::http::HeaderMap;
+    use graph::slog::{o, Discard, Logger};
     use graph::{
-        endpoint::EndpointMetrics,
-        firehose::SubgraphLimit,
-        prelude::MetricsRegistry,
-        slog::{o, Discard, Logger},
-        url::Url,
+        endpoint::EndpointMetrics, firehose::SubgraphLimit, prelude::MetricsRegistry, url::Url,
     };
     use std::sync::Arc;
 
@@ -435,6 +508,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
+                1.0,
             )],
             vec![EthereumNetworkAdapter::new(
                 metrics.cheap_clone(),
@@ -444,6 +518,7 @@ mod tests {
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Limit(3),
+                1.0,
             )],
         )
         .await;
@@ -540,6 +615,7 @@ mod tests {
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Unlimited,
+                1.0,
             )],
             vec![EthereumNetworkAdapter::new(
                 metrics.cheap_clone(),
@@ -549,6 +625,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(2),
+                1.0,
             )],
         )
         .await;
@@ -613,6 +690,7 @@ mod tests {
                 },
                 eth_call_adapter.clone(),
                 SubgraphLimit::Disabled,
+                1.0,
             )],
             vec![EthereumNetworkAdapter::new(
                 metrics.cheap_clone(),
@@ -622,6 +700,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
+                1.0,
             )],
         )
         .await;
@@ -667,6 +746,7 @@ mod tests {
                 },
                 eth_adapter.clone(),
                 SubgraphLimit::Limit(3),
+                1.0,
             )],
             vec![],
         )
@@ -734,6 +814,7 @@ mod tests {
                 },
                 adapter: adapter.clone(),
                 limit: limit.clone(),
+                weight: 1.0,
             });
             always_retest_adapters.push(EthereumNetworkAdapter {
                 endpoint_metrics: metrics.clone(),
@@ -743,6 +824,7 @@ mod tests {
                 },
                 adapter,
                 limit,
+                weight: 1.0,
             });
         });
         let manager = ProviderManager::<EthereumNetworkAdapter>::new(
@@ -759,11 +841,16 @@ mod tests {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        let no_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id.clone(), manager.clone(), vec![], Some(0f64));
+        let no_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id.clone(),
+            manager.clone(),
+            vec![],
+            Some(0f64),
+            false,
+        );
 
         let always_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id, manager.clone(), vec![], Some(1f64));
+            EthereumNetworkAdapters::new(chain_id, manager.clone(), vec![], Some(1f64), false);
 
         assert_eq!(
             no_retest_adapters
@@ -819,6 +906,7 @@ mod tests {
             adapter: fake_adapter(&logger, error_provider, &provider_metrics, &metrics, false)
                 .await,
             limit: SubgraphLimit::Unlimited,
+            weight: 1.0,
         });
 
         let mut always_retest_adapters = vec![];
@@ -837,6 +925,7 @@ mod tests {
             )
             .await,
             limit: SubgraphLimit::Unlimited,
+            weight: 1.0,
         });
         let manager = ProviderManager::<EthereumNetworkAdapter>::new(
             logger.clone(),
@@ -847,8 +936,13 @@ mod tests {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        let always_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id.clone(), manager.clone(), vec![], Some(1f64));
+        let always_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id.clone(),
+            manager.clone(),
+            vec![],
+            Some(1f64),
+            false,
+        );
 
         assert_eq!(
             always_retest_adapters
@@ -871,8 +965,13 @@ mod tests {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        let no_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id.clone(), manager, vec![], Some(0f64));
+        let no_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id.clone(),
+            manager,
+            vec![],
+            Some(0f64),
+            false,
+        );
         assert_eq!(
             no_retest_adapters
                 .cheapest_with(&NodeCapabilities {
@@ -901,6 +1000,7 @@ mod tests {
             )
             .await,
             limit: SubgraphLimit::Disabled,
+            weight: 1.0,
         });
         let manager = ProviderManager::new(
             logger,
@@ -908,7 +1008,8 @@ mod tests {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        let no_available_adapter = EthereumNetworkAdapters::new(chain_id, manager, vec![], None);
+        let no_available_adapter =
+            EthereumNetworkAdapters::new(chain_id, manager, vec![], None, false);
         let res = no_available_adapter
             .cheapest_with(&NodeCapabilities {
                 archive: true,
@@ -945,5 +1046,96 @@ mod tests {
             )
             .await,
         )
+    }
+
+    #[graph::test]
+    async fn test_weighted_adapter_selection() {
+        let metrics = Arc::new(EndpointMetrics::mock());
+        let logger = graph::log::logger(true);
+        let mock_registry = Arc::new(MetricsRegistry::mock());
+        let transport = Transport::new_rpc(
+            Url::parse("http://127.0.0.1").unwrap(),
+            HeaderMap::new(),
+            metrics.clone(),
+            "",
+        );
+        let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
+
+        let adapter1 = Arc::new(
+            EthereumAdapter::new(
+                logger.clone(),
+                "adapter1".to_string(),
+                transport.clone(),
+                provider_metrics.clone(),
+                true,
+                false,
+            )
+            .await,
+        );
+
+        let adapter2 = Arc::new(
+            EthereumAdapter::new(
+                logger.clone(),
+                "adapter2".to_string(),
+                transport.clone(),
+                provider_metrics.clone(),
+                true,
+                false,
+            )
+            .await,
+        );
+
+        let mut adapters = EthereumNetworkAdapters::for_testing(
+            vec![
+                EthereumNetworkAdapter::new(
+                    metrics.cheap_clone(),
+                    NodeCapabilities {
+                        archive: true,
+                        traces: false,
+                    },
+                    adapter1.clone(),
+                    SubgraphLimit::Unlimited,
+                    0.2,
+                ),
+                EthereumNetworkAdapter::new(
+                    metrics.cheap_clone(),
+                    NodeCapabilities {
+                        archive: true,
+                        traces: false,
+                    },
+                    adapter2.clone(),
+                    SubgraphLimit::Unlimited,
+                    0.8,
+                ),
+            ],
+            vec![],
+        )
+        .await;
+
+        adapters.weighted = true;
+
+        let mut adapter1_count = 0;
+        let mut adapter2_count = 0;
+
+        for _ in 0..1000 {
+            let selected_adapter = adapters
+                .cheapest_with(&NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                })
+                .await
+                .unwrap();
+
+            if selected_adapter.provider() == "adapter1" {
+                adapter1_count += 1;
+            } else {
+                adapter2_count += 1;
+            }
+        }
+
+        // Check that the selection is roughly proportional to the weights.
+        // Allow for a 10% tolerance.
+        assert!(adapter1_count > 100 && adapter1_count < 300);
+        assert!(adapter2_count > 700 && adapter2_count < 900);
     }
 }
