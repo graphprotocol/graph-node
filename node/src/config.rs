@@ -620,7 +620,7 @@ impl Chain {
         if labels.len() != self.providers.len() {
             return Err(anyhow!("Provider labels must be unique"));
         }
-        
+
         // Check that not all provider weights are zero
         if !self.providers.is_empty() {
             let all_zero_weights = self.providers.iter().all(|p| p.weight == 0.0);
@@ -665,7 +665,6 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
 pub struct Provider {
     pub label: String,
     pub details: ProviderDetails,
-    #[serde(default = "one_f64")]
     pub weight: f64,
 }
 
@@ -1267,10 +1266,6 @@ fn primary_store() -> Vec<String> {
 
 fn one() -> usize {
     1
-}
-
-fn one_f64() -> f64 {
-    1.0
 }
 
 fn default_node_id() -> NodeId {
