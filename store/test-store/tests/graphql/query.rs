@@ -2881,6 +2881,31 @@ fn can_query_with_or_explicit_and_filter() {
 }
 
 #[test]
+fn can_query_array_contains_nocase() {
+    const QUERY: &str = "
+    query {
+        musicians(where: { bands_contains_nocase: [\"B1\", \"B2\"] }) {
+            name
+            bands { id }
+        }
+    }
+    ";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John", bands: vec![object! { id: "b1" }, object! { id: "b2" }] },
+                object! { name: "Lisa", bands: vec![object! { id: "b1" }] },
+                object! { name: "Tom", bands: vec![object! { id: "b1" }, object! { id: "b2" }] },
+                object! { name: "Paul", bands: vec![ object! { id: "b2" }] },
+            ],
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
 fn can_query_with_or_implicit_and_filter() {
     const QUERY: &str = "
     query {
