@@ -45,6 +45,7 @@ prometheus = { version = "0.14.0", features = ["push"] }
 json-structural-diff = { version = "0.2", features = ["colorize"] }
 globset = "0.4.16"
 notify = "8.0.0"
+tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
