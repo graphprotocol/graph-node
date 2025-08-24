@@ -54,7 +54,7 @@ impl ArrayBuffer {
         &self,
         byte_offset: u32,
         length: u32,
-        api_version: Version,
+        api_version: &Version,
     ) -> Result<Vec<T>, DeterministicHostError> {
         let length = length as usize;
         let byte_offset = byte_offset as usize;
