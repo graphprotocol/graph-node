@@ -277,7 +277,10 @@ impl EthereumNetworkAdapters {
         let weights: Vec<_> = input
             .iter()
             .map(|a| {
-                let health_checker = self.health_checkers.iter().find(|h| h.provider() == a.provider());
+                let health_checker = self
+                    .health_checkers
+                    .iter()
+                    .find(|h| h.provider() == a.provider());
                 let score = health_checker.map_or(1.0, |h| h.score());
                 a.weight * score
             })
@@ -861,8 +864,14 @@ mod tests {
             vec![],
         );
 
-        let always_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id, manager.clone(), vec![], Some(1f64), false, vec![]);
+        let always_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id,
+            manager.clone(),
+            vec![],
+            Some(1f64),
+            false,
+            vec![],
+        );
 
         assert_eq!(
             no_retest_adapters
@@ -978,8 +987,14 @@ mod tests {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        let no_retest_adapters =
-            EthereumNetworkAdapters::new(chain_id.clone(), manager, vec![], Some(0f64), false, vec![]);
+        let no_retest_adapters = EthereumNetworkAdapters::new(
+            chain_id.clone(),
+            manager,
+            vec![],
+            Some(0f64),
+            false,
+            vec![],
+        );
         assert_eq!(
             no_retest_adapters
                 .cheapest_with(&NodeCapabilities {

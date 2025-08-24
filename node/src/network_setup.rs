@@ -103,7 +103,7 @@ impl AdapterConfiguration {
     }
 }
 
-use graph_chain_ethereum::health::{Health, health_check_task};
+use graph_chain_ethereum::health::{health_check_task, Health};
 
 pub struct Networks {
     pub adapters: Vec<AdapterConfiguration>,
@@ -297,7 +297,11 @@ impl Networks {
             },
         );
 
-        let health_checkers: Vec<_> = eth_adapters.clone().flat_map(|(_, adapters)| adapters).map(|adapter| Arc::new(Health::new(adapter.adapter.clone()))).collect();
+        let health_checkers: Vec<_> = eth_adapters
+            .clone()
+            .flat_map(|(_, adapters)| adapters)
+            .map(|adapter| Arc::new(Health::new(adapter.adapter.clone())))
+            .collect();
         if weighted_rpc_steering {
             tokio::spawn(health_check_task(health_checkers.clone()));
         }
