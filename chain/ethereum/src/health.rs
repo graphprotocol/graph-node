@@ -1,10 +1,8 @@
-
+use crate::adapter::EthereumAdapter as EthereumAdapterTrait;
+use crate::EthereumAdapter;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
-use crate::adapter::EthereumAdapter as EthereumAdapterTrait;
-use crate::EthereumAdapter;
-
 #[derive(Debug)]
 pub struct Health {
     pub provider: Arc<EthereumAdapter>,
