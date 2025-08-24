@@ -6,7 +6,7 @@ use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
 use graph::data_source::common::{
-    CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedMappingABI,
+    CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedCallDecls, UnresolvedMappingABI,
 };
 use graph::data_source::{CausalityRegion, MappingTrigger as MappingTriggerType};
 use graph::env::ENV_VARS;
@@ -800,7 +800,7 @@ impl DataSource {
                     "transaction" => format!("{}", &transaction.hash),
                 });
                 let handler = event_handler.handler.clone();
-                let calls = DeclaredCall::from_log_trigger(
+                let calls = DeclaredCall::from_log_trigger_with_event(
                     &self.mapping,
                     &event_handler.calls,
                     &log,
@@ -1221,7 +1221,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedDataSourceTemplate {
     pub kind: String,
     pub network: Option<String>,
@@ -1294,7 +1294,7 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     }
 }
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     pub kind: String,
@@ -1307,7 +1307,7 @@ pub struct UnresolvedMapping {
     #[serde(default)]
     pub call_handlers: Vec<MappingCallHandler>,
     #[serde(default)]
-    pub event_handlers: Vec<MappingEventHandler>,
+    pub event_handlers: Vec<UnresolvedMappingEventHandler>,
     pub file: Link,
 }
 
@@ -1390,6 +1390,23 @@ impl UnresolvedMapping {
         .await
         .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 
+        // Resolve event handlers with ABI context
+        let resolved_event_handlers = event_handlers
+            .into_iter()
+            .map(|unresolved_handler| {
+                // Find the ABI for this event handler
+                let event_abi = abis.first().ok_or_else(|| {
+                    anyhow!(
+                        "No ABI found for event '{}' in event handler '{}'",
+                        unresolved_handler.event,
+                        unresolved_handler.handler
+                    )
+                })?;
+
+                unresolved_handler.resolve(event_abi, Some(&api_version))
+            })
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
+
         Ok(Mapping {
             kind,
             api_version,
@@ -1398,7 +1415,7 @@ impl UnresolvedMapping {
             abis,
             block_handlers: block_handlers.clone(),
             call_handlers: call_handlers.clone(),
-            event_handlers: event_handlers.clone(),
+            event_handlers: resolved_event_handlers,
             runtime,
             link,
         })
@@ -1440,6 +1457,46 @@ pub enum BlockHandlerFilter {
 pub struct MappingCallHandler {
     pub function: String,
     pub handler: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct UnresolvedMappingEventHandler {
+    pub event: String,
+    pub topic0: Option<H256>,
+    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic1: Option<Vec<H256>>,
+    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic2: Option<Vec<H256>>,
+    #[serde(deserialize_with = "deserialize_h256_vec", default)]
+    pub topic3: Option<Vec<H256>>,
+    pub handler: String,
+    #[serde(default)]
+    pub receipt: bool,
+    #[serde(default)]
+    pub calls: UnresolvedCallDecls,
+}
+
+impl UnresolvedMappingEventHandler {
+    pub fn resolve(
+        &self,
+        mapping: &MappingABI,
+        spec_version: Option<&semver::Version>,
+    ) -> Result<MappingEventHandler, anyhow::Error> {
+        let resolved_calls = self
+            .calls
+            .resolve(mapping, Some(&self.event), spec_version)?;
+
+        Ok(MappingEventHandler {
+            event: self.event.clone(),
+            topic0: self.topic0,
+            topic1: self.topic1.clone(),
+            topic2: self.topic2.clone(),
+            topic3: self.topic3.clone(),
+            handler: self.handler.clone(),
+            receipt: self.receipt,
+            calls: resolved_calls,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
