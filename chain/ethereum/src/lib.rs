@@ -1,3 +1,4 @@
+pub mod health;
 mod adapter;
 mod buffered_call_cache;
 mod capabilities;

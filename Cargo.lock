@@ -2039,6 +2039,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "tiny-keccak 1.5.0",
+ "tokio",
  "tonic-build",
 ]
 
@@ -2144,6 +2145,7 @@ dependencies = [
  "serde",
  "shellexpand",
  "termcolor",
+ "tokio",
  "url",
 ]
 
