@@ -1086,6 +1086,44 @@ async fn wait_for_blockchain_block(block_number: i32) -> bool {
     false
 }
 
+async fn test_address_corruption(ctx: TestContext) -> anyhow::Result<()> {
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+
+    // Read the graph-node.log file to analyze the actual log output
+    let file = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("integration-tests")
+        .join("graph-node.log");
+    let log = std::fs::read_to_string(&file)
+        .with_context(|| format!("Failed to read log file: {}", file.display()))?;
+
+    const ADDRESS: &str = "0x3b44b2a187a7b3824131f8db5a74194d0a42fc15";
+
+    // Ensure our test actually ran with the specific problematic address
+    assert!(
+        log.contains(&format!("ADDRESS CORRUPTION TEST - ADDRESS: {}", ADDRESS)),
+        "Missing expected test log output"
+    );
+    assert!(
+        log.contains("ADDRESS CORRUPTION TEST - LENGTH: 42"),
+        "Missing expected test log output"
+    );
+
+    // Assert that the test completed successfully with the parsed address (bug is not reproduced)
+    assert!(
+        log.contains(&format!("ADDRESS CORRUPTION TEST - ALL GOOD: {}", ADDRESS)),
+        "Missing expected test log output"
+    );
+
+    // Assert that the bug error is not present
+    assert!(
+        !log.contains("Failed to convert string to Address/H160: ''"),
+        "Detected string corruption bug in test log output"
+    );
+
+    Ok(())
+}
+
 /// The main test entrypoint.
 #[tokio::test]
 async fn integration_tests() -> anyhow::Result<()> {
@@ -1094,6 +1132,7 @@ async fn integration_tests() -> anyhow::Result<()> {
     let cases = vec![
         TestCase::new("reverted-calls", test_reverted_calls_are_indexed),
         TestCase::new("host-exports", test_host_exports),
+        TestCase::new("address-corruption", test_address_corruption),
         TestCase::new("non-fatal-errors", test_non_fatal_errors),
         TestCase::new("overloaded-functions", test_overloaded_functions),
         TestCase::new("poi-for-failed-subgraph", test_poi_for_failed_subgraph),

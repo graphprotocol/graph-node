@@ -1,0 +1,13 @@
+{
+  "name": "address-corruption",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "codegen": "graph codegen --skip-migrations",
+    "deploy:test": "graph deploy test/address-corruption --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "0.97.1",
+    "@graphprotocol/graph-ts": "0.37.0"
+  }
+}
