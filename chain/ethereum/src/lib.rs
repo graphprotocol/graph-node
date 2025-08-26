@@ -5,6 +5,7 @@ pub mod codec;
 mod data_source;
 mod env;
 mod ethereum_adapter;
+pub mod health;
 mod ingestor;
 mod polling_block_stream;
 pub mod runtime;
