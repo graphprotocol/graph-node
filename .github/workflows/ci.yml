@@ -172,9 +172,7 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@82dee4ba654bd2146511f85f0d013af94670c4de # v1
         with:
-          # Pinned to specific version since newer versions do not produce
-          # deterministic block hashes. Unpin once that's fixed upstream
-          version: v1.2.3
+          version: nightly
 
       - name: Install pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4

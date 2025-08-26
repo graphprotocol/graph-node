@@ -60,17 +60,16 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1749460237,
-        "narHash": "sha256-q0rIZeivgIxHDFRcTEtkRxhprnVYcI9i5YcfBHE8ZHU=",
+        "lastModified": 1756199436,
+        "narHash": "sha256-tkLoAk2BkFIwxp9YrtcUeWugGQjiubbiZx/YGGnVrz4=",
         "owner": "shazow",
         "repo": "foundry.nix",
-        "rev": "5af12b6f2b708858ef3120041546ed6b038474a5",
+        "rev": "2d28ea426c27166c8169e114eff4a5adcc00548d",
         "type": "github"
       },
       "original": {
         "owner": "shazow",
         "repo": "foundry.nix",
-        "rev": "5af12b6f2b708858ef3120041546ed6b038474a5",
         "type": "github"
       }
     },
@@ -105,11 +104,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1755706679,
-        "narHash": "sha256-WJ6eaSiN6xtz3vyH2bTYLQ3+ct0W8ai/BkYaq1n1jP8=",
+        "lastModified": 1756128520,
+        "narHash": "sha256-R94HxJBi+RK1iCm8Y4Q9pdrHZl0GZoDPIaYwjxRNPh4=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "c3fc1fe6d8765d99c8614c6f82d611dc56b9ae37",
+        "rev": "c53baa6685261e5253a1c355a1b322f82674a824",
         "type": "github"
       },
       "original": {
@@ -163,11 +162,11 @@
     },
     "services-flake": {
       "locked": {
-        "lastModified": 1755091348,
-        "narHash": "sha256-aJI3n1CO3ib6CtK1/xuUyfIZM0Lp2zdCFMsFYjjfgQo=",
+        "lastModified": 1755996515,
+        "narHash": "sha256-1RQQIDhshp1g4PP5teqibcFLfk/ckTDOJRckecAHiU0=",
         "owner": "juspay",
         "repo": "services-flake",
-        "rev": "0a3805ceced9f02254d472cc71839811fae85357",
+        "rev": "e316d6b994fd153f0c35d54bd07d60e53f0ad9a9",
         "type": "github"
       },
       "original": {
