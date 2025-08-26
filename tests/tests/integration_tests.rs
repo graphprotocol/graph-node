@@ -895,15 +895,15 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     let block_hashes: Vec<&str> = vec![
-        "384c705d4d1933ae8ba89026f016f09854057a267e1143e47bb7511d772a35d4",
-        "b90423eead33404dae0684169d35edd494b36802b721fb8de0bb8bc036c10480",
-        "2a6c4b65d659e0485371a93bc1ac0f0d7bc0f25a454b5f23a842335fea0638d5",
+        "e26fccbd24dcc76074b432becf29cad3bcba11a8467a7b770fad109c2b5d14c2",
+        "249dbcbee975c22f8c9cc937536945ca463568c42d8933a3f54129dec352e46b",
+        "408675f81c409dede08d0eeb2b3420a73b067c4fa8c5f0fc49ce369289467c33",
     ];
 
     let pois: Vec<&str> = vec![
-        "0x4078e4eb67b9f57c05c9264c5db50418a3a5b06870b70ba69e16458572df3eee",
-        "0x4805a07cd4709b05e25a4d34f9b72bf4a565ffa7e14871eded0321e5626dbe0d",
-        "0xd2b60b17e3683a2129f82d4ffa473d0f4c3dc8029308d8458d6d41c5edfe5e91",
+        "0x606c1ed77564ef9ab077e0438da9f3c6af79a991603aecf74650971a88d05b65",
+        "0xbb21d5cf5fd62892159f95211da4a02f0dfa1b43d68aeb64baa52cc67fbb6c8e",
+        "0x5a01b371017c924e8cedd62a76cf8dcf05987f80d2b91aaf3fb57872ab75887f",
     ];
 
     for i in 1..4 {

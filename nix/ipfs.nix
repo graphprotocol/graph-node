@@ -1,7 +1,12 @@
-{ pkgs, lib, name, config, ... }:
 {
+  pkgs,
+  lib,
+  name,
+  config,
+  ...
+}: {
   options = {
-    package = lib.mkPackageOption pkgs "kubo" { };
+    package = lib.mkPackageOption pkgs "kubo" {};
 
     port = lib.mkOption {
       type = lib.types.port;
@@ -28,7 +33,7 @@
         fi
         ${lib.getExe config.package} daemon --offline
       '';
-      
+
       environment = {
         IPFS_PATH = config.dataDir;
       };

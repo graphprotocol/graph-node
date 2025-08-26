@@ -1,5 +1,10 @@
-{ pkgs, lib, name, config, ... }:
 {
+  pkgs,
+  lib,
+  name,
+  config,
+  ...
+}: {
   options = {
     package = lib.mkOption {
       type = lib.types.package;
