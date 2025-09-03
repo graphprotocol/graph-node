@@ -534,7 +534,8 @@ pub async fn test_block_handlers(ctx: TestContext) -> anyhow::Result<()> {
     // test subgraphFeatures endpoint returns handlers correctly
     let subgraph_features = Subgraph::query_with_vars(
         "query GetSubgraphFeatures($deployment: String!) {
-          subgraphFeatures(subgraphId: $deployment) {
+          subgraphFeatures(subgraphs: [$deployment]) {
+            subgraph
             specVersion
             apiVersion
             features
@@ -546,7 +547,23 @@ pub async fn test_block_handlers(ctx: TestContext) -> anyhow::Result<()> {
         json!({ "deployment": subgraph.deployment }),
     )
     .await?;
-    let handlers = &subgraph_features["data"]["subgraphFeatures"]["handlers"];
+    // The response is now an array, get the first element
+    let features_array = &subgraph_features["data"]["subgraphFeatures"];
+    assert!(
+        features_array.is_array(),
+        "subgraphFeatures must return an array"
+    );
+    assert_eq!(
+        features_array.as_array().unwrap().len(),
+        1,
+        "Expected exactly one subgraph feature set"
+    );
+    let subgraph_feature = &features_array[0];
+    assert_eq!(
+        subgraph_feature["subgraph"], subgraph.deployment,
+        "Subgraph ID should match the deployment"
+    );
+    let handlers = &subgraph_feature["handlers"];
     assert!(
         handlers.is_array(),
         "subgraphFeatures.handlers must be an array"
@@ -762,7 +779,8 @@ async fn test_non_fatal_errors(ctx: TestContext) -> anyhow::Result<()> {
     assert!(!subgraph.healthy);
 
     let query = "query GetSubgraphFeatures($deployment: String!) {
-        subgraphFeatures(subgraphId: $deployment) {
+        subgraphFeatures(subgraphs: [$deployment]) {
+          subgraph
           specVersion
           apiVersion
           features
@@ -774,8 +792,27 @@ async fn test_non_fatal_errors(ctx: TestContext) -> anyhow::Result<()> {
 
     let resp =
         Subgraph::query_with_vars(query, json!({ "deployment" : subgraph.deployment })).await?;
-    let subgraph_features = &resp["data"]["subgraphFeatures"];
+
+    // The response is now an array, get the first element
+    let features_array = &resp["data"]["subgraphFeatures"];
+    assert!(
+        features_array.is_array(),
+        "subgraphFeatures must return an array"
+    );
+    assert_eq!(
+        features_array.as_array().unwrap().len(),
+        1,
+        "Expected exactly one subgraph feature set"
+    );
+
+    let subgraph_feature = &features_array[0];
+    assert_eq!(
+        subgraph_feature["subgraph"], subgraph.deployment,
+        "Subgraph ID should match the deployment"
+    );
+
     let exp = json!({
+      "subgraph": subgraph.deployment,
       "specVersion": "0.0.4",
       "apiVersion": "0.0.6",
       "features": ["nonFatalErrors"],
@@ -783,7 +820,7 @@ async fn test_non_fatal_errors(ctx: TestContext) -> anyhow::Result<()> {
       "handlers": ["block"],
       "network": "test",
     });
-    assert_eq!(&exp, subgraph_features);
+    assert_eq!(&exp, subgraph_feature);
 
     let resp = subgraph
         .query("{ foos(orderBy: id, subgraphError: allow) { id } }")

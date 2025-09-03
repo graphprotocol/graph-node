@@ -36,7 +36,7 @@ type Query {
   publicProofsOfIndexing(
     requests: [PublicProofOfIndexingRequest!]!
   ): [PublicProofOfIndexingResult!]!
-  subgraphFeatures(subgraphId: String!): SubgraphFeatures!
+  subgraphFeatures(subgraphs: [String!]!): [SubgraphFeatures!]!
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
   blockData(network: String!, blockHash: Bytes!): JSONObject
   blockHashFromNumber(network: String!, blockNumber: Int!): Bytes
@@ -148,6 +148,7 @@ type CachedEthereumCall {
 }
 
 type SubgraphFeatures {
+  subgraph: String!
   apiVersion: String
   specVersion: String!
   features: [Feature!]!

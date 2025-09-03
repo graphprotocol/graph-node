@@ -597,6 +597,7 @@ impl IntoValue for DeploymentFeatures {
     fn into_value(self) -> r::Value {
         object! {
             __typename: "SubgraphFeatures",
+            subgraph: self.id,
             specVersion: self.spec_version,
             apiVersion: self.api_version,
             features: self.features,
