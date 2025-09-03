@@ -393,6 +393,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            graph::endpoint::Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -499,6 +500,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            graph::endpoint::Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -570,6 +572,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            graph::endpoint::Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -637,6 +640,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            graph::endpoint::Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -931,6 +935,7 @@ mod tests {
             HeaderMap::new(),
             endpoint_metrics.clone(),
             "",
+            graph::endpoint::Compression::None,
         );
 
         Arc::new(
