@@ -136,6 +136,10 @@ impl<S: Store> IndexNodeResolver<S> {
             })
             .unwrap_or_else(Vec::new);
 
+        if deployments.is_empty() {
+            return Ok(r::Value::List(vec![]));
+        }
+
         let infos = self
             .store
             .status(status::Filter::Deployments(deployments))?;
