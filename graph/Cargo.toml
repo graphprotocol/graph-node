@@ -88,7 +88,7 @@ prost-types = { workspace = true }
 
 futures03 = { version = "0.3.31", package = "futures", features = ["compat"] }
 wasmparser = "0.118.1"
-thiserror = "2.0.12"
+thiserror = "2.0.16"
 parking_lot = "0.12.4"
 itertools = "0.14.0"
 defer = "0.2"

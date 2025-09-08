@@ -88,7 +88,7 @@ sqlparser = "0.46.0"
 strum = { version = "0.26", features = ["derive"] }
 syn = { version = "2.0.106", features = ["full"] }
 test-store = { path = "./store/test-store" }
-thiserror = "2.0.12"
+thiserror = "2.0.16"
 tokio = { version = "1.45.1", features = ["full"] }
 tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.12.3", features = ["prost"] }
