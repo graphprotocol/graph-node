@@ -37,7 +37,7 @@ pub trait IpfsClient: Send + Sync + 'static {
         retry_policy: RetryPolicy,
     ) -> IpfsResult<BoxStream<'static, IpfsResult<Bytes>>> {
         let fut = retry_policy
-            .create("IPFS.cat_stream", self.logger())
+            .create(format!("IPFS.cat_stream[{}]", path), self.logger())
             .no_timeout()
             .run({
                 let path = path.to_owned();
@@ -67,7 +67,7 @@ pub trait IpfsClient: Send + Sync + 'static {
         retry_policy: RetryPolicy,
     ) -> IpfsResult<Bytes> {
         let fut = retry_policy
-            .create("IPFS.cat", self.logger())
+            .create(format!("IPFS.cat[{}]", path), self.logger())
             .no_timeout()
             .run({
                 let path = path.to_owned();
@@ -100,7 +100,7 @@ pub trait IpfsClient: Send + Sync + 'static {
         retry_policy: RetryPolicy,
     ) -> IpfsResult<Bytes> {
         let fut = retry_policy
-            .create("IPFS.get_block", self.logger())
+            .create(format!("IPFS.get_block[{}]", path), self.logger())
             .no_timeout()
             .run({
                 let path = path.to_owned();
