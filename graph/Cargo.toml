@@ -100,7 +100,7 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-pat
     "test",
 ] }
 serde_plain = "1.0.2"
-csv = "1.3.0"
+csv = "1.3.1"
 object_store = { version = "0.12.3", features = ["gcp"] }
 
 [dev-dependencies]
