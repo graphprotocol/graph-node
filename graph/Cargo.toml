@@ -22,7 +22,7 @@ derivative = { workspace = true }
 graph_derive = { path = "./derive" }
 diesel = { workspace = true }
 diesel_derives = { workspace = true }
-chrono = "0.4.41"
+chrono = "0.4.42"
 envconfig = "0.11.0"
 Inflector = "0.11.3"
 atty = "0.2"
