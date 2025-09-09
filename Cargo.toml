@@ -29,7 +29,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.40.0"
+version = "0.40.1"
 edition = "2021"
 authors = ["The Graph core developers & contributors"]
 readme = "README.md"
