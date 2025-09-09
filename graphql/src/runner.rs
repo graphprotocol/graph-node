@@ -258,6 +258,14 @@ where
         self: Arc<Self>,
         req: SqlQueryReq,
     ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
+        // Check if SQL queries are enabled
+        if !ENV_VARS.sql_queries_enabled() {
+            return Err(QueryExecutionError::SqlError(
+                "SQL queries are disabled. Set GRAPH_ENABLE_SQL_QUERIES=true to enable."
+                    .to_string(),
+            ));
+        }
+
         let store = self
             .store
             .query_store(QueryTarget::Deployment(

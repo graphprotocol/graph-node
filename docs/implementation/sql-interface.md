@@ -4,6 +4,8 @@
 interface will ever be brought to production use. It's solely here to help
 evaluate the utility of such an interface**
 
+**The interface is only available if the environment variable `GRAPH_ENABLE_SQL_QUERIES` is set to `true`**
+
 SQL queries can be issued by posting a JSON document to
 `/subgraphs/sql`. The server will respond with a JSON response that
 contains the records matching the query in JSON form.

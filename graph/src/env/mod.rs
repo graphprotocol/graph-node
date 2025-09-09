@@ -24,6 +24,7 @@ lazy_static! {
 #[cfg(debug_assertions)]
 lazy_static! {
     pub static ref TEST_WITH_NO_REORG: Mutex<bool> = Mutex::new(false);
+    pub static ref TEST_SQL_QUERIES_ENABLED: Mutex<bool> = Mutex::new(false);
 }
 
 /// Panics if:
@@ -189,6 +190,10 @@ pub struct EnvVars {
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
     reorg_threshold: BlockNumber,
+    /// Enable SQL query interface. SQL queries are disabled by default
+    /// because they are still experimental. Set by the environment variable
+    /// `GRAPH_ENABLE_SQL_QUERIES`. Off by default.
+    enable_sql_queries: bool,
     /// The time to wait between polls when using polling block ingestor.
     /// The value is set by `ETHERUM_POLLING_INTERVAL` in millis and the
     /// default is 1000.
@@ -341,6 +346,7 @@ impl EnvVars {
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
             reorg_threshold: inner.reorg_threshold,
+            enable_sql_queries: inner.enable_sql_queries.0,
             ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
@@ -413,6 +419,27 @@ impl EnvVars {
     #[cfg(not(debug_assertions))]
     pub fn reorg_threshold(&self) -> i32 {
         self.reorg_threshold
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn sql_queries_enabled(&self) -> bool {
+        // SQL queries are disabled by default for security.
+        // For testing purposes, we allow tests to enable SQL queries via TEST_SQL_QUERIES_ENABLED.
+        if *TEST_SQL_QUERIES_ENABLED.lock().unwrap() {
+            true
+        } else {
+            self.enable_sql_queries
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    pub fn sql_queries_enabled(&self) -> bool {
+        self.enable_sql_queries
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn enable_sql_queries_for_tests(&self, enable: bool) {
+        let mut lock = TEST_SQL_QUERIES_ENABLED.lock().unwrap();
+        *lock = enable;
     }
 }
 
@@ -514,6 +541,8 @@ struct Inner {
     // JSON-RPC specific.
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     reorg_threshold: BlockNumber,
+    #[envconfig(from = "GRAPH_ENABLE_SQL_QUERIES", default = "false")]
+    enable_sql_queries: EnvVarBoolean,
     #[envconfig(from = "ETHEREUM_POLLING_INTERVAL", default = "1000")]
     ingestor_polling_interval: u64,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS")]

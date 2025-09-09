@@ -284,3 +284,6 @@ those.
   graph-node bugs, but since it is hard to work around them, setting this
   variable to something like 10 makes it possible to work around such a bug
   while it is being fixed (default: 0)
+- `GRAPH_ENABLE_SQL_QUERIES`: Enable the experimental [SQL query
+  interface](implementation/sql-interface.md).
+  (default: false)

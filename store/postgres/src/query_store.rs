@@ -67,6 +67,14 @@ impl QueryStoreTrait for QueryStore {
         &self,
         sql: &str,
     ) -> Result<Vec<SqlQueryObject>, graph::prelude::QueryExecutionError> {
+        // Check if SQL queries are enabled
+        if !ENV_VARS.sql_queries_enabled() {
+            return Err(QueryExecutionError::SqlError(
+                "SQL queries are disabled. Set GRAPH_ENABLE_SQL_QUERIES=true to enable."
+                    .to_string(),
+            ));
+        }
+
         let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
