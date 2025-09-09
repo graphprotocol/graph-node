@@ -8,6 +8,9 @@ use graph::prelude::{r, QueryExecutionError};
 use std::collections::BTreeSet;
 use test_store::{run_test_sequentially, STORE};
 
+#[cfg(debug_assertions)]
+use graph::env::ENV_VARS;
+
 // Import test setup from query.rs module
 use super::query::{setup, IdType};
 
@@ -18,6 +21,8 @@ where
 {
     let sql = sql.to_string(); // Convert to owned String
     run_test_sequentially(move |store| async move {
+        ENV_VARS.enable_sql_queries_for_tests(true);
+
         for id_type in [IdType::String, IdType::Bytes, IdType::Int8] {
             let name = id_type.deployment_id();
             let deployment = setup(store.as_ref(), name, BTreeSet::new(), id_type).await;
@@ -33,7 +38,9 @@ where
             let result = query_store.execute_sql(&sql);
             test(result, id_type);
         }
-    })
+
+        ENV_VARS.enable_sql_queries_for_tests(false);
+    });
 }
 
 #[test]
