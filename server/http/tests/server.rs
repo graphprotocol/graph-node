@@ -227,9 +227,7 @@ mod test {
 
         assert_eq!(
             message,
-            "Unexpected `unexpected character \
-                         \'<\'`\nExpected `{`, `query`, `mutation`, \
-                         `subscription` or `fragment`"
+            "Unexpected unexpected character '<'\nUnexpected end of input\nExpected {, query, mutation, subscription or fragment"
         );
 
         let locations = errors[0]

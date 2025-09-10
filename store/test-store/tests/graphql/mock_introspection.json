@@ -158,7 +158,7 @@
       {
         "kind": "SCALAR",
         "name": "Int",
-        "description": "4 bytes signed integer\n",
+        "description": "4 bytes signed integer",
         "fields": null,
         "inputFields": null,
         "interfaces": null,
@@ -168,7 +168,7 @@
       {
         "kind": "SCALAR",
         "name": "Int8",
-        "description": "8 bytes signed integer\n",
+        "description": "8 bytes signed integer",
         "fields": null,
         "inputFields": null,
         "interfaces": null,
@@ -763,7 +763,7 @@
       {
         "kind": "SCALAR",
         "name": "Timestamp",
-        "description": "A string representation of microseconds UNIX timestamp (16 digits)\n",
+        "description": "A string representation of microseconds UNIX timestamp (16 digits)",
         "fields": null,
         "inputFields": null,
         "interfaces": null,
@@ -1351,7 +1351,7 @@
         "fields": [
           {
             "name": "block",
-            "description": "Information about a specific subgraph block. The hash of the block\nwill be null if the _meta field has a block constraint that asks for\na block number. It will be filled if the _meta field has no block constraint\nand therefore asks for the latest  block\n",
+            "description": "Information about a specific subgraph block. The hash of the block\nwill be null if the _meta field has a block constraint that asks for\na block number. It will be filled if the _meta field has no block constraint\nand therefore asks for the latest  block",
             "args": [],
             "type": {
               "kind": "NON_NULL",
