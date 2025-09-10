@@ -8,7 +8,7 @@
 - sql: select symbol, address from token where decimals > 10
   ok: >
       select symbol, address from (
-        select id, address, symbol, name, decimals from "sgd0815"."token" where block_range @> 2147483647) as token
+        select "id", "address", "symbol", "name", "decimals" from "sgd0815"."token" where block_range @> 2147483647) as token
       where decimals > 10
 - sql: >
       with tokens as (
@@ -40,12 +40,12 @@
           as t (address, symbol, name, decimals))
       select date, t.symbol, sum(amount) / pow(10, t.decimals) as amount
         from (select date(to_timestamp(block_timestamp) at time zone 'utc') as date, token, amount
-                from (select id, timestamp, pool, token_0, token_1, sender, recipient, origin, amount_0, amount_1, amount_usd, sqrt_price_x96, tick, log_index
+                from (select "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
                         from "sgd0815"."swap" where block$ <= 2147483647) as sm,
                      unnest(sm.amounts_in, sm.tokens_in) as smi (amount, token)
               union all
               select date(to_timestamp(block_timestamp) at time zone 'utc') as date, token, amount
-                from (select id, timestamp, pool, token_0, token_1, sender, recipient, origin, amount_0, amount_1, amount_usd, sqrt_price_x96, tick, log_index
+                from (select "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
                         from "sgd0815"."swap" where block$ <= 2147483647) as sm,
                      unnest(sm.amounts_out, sm.tokens_out) as smo (amount, token)) as tp
                   join tokens as t on t.address = tp.token
@@ -71,7 +71,7 @@
     having sum(amount0) > 1000
   ok: >
     SELECT token0, sum(amount0) AS total_amount
-      FROM (SELECT id, timestamp, pool, token_0, token_1, sender, recipient, origin, amount_0, amount_1, amount_usd, sqrt_price_x96, tick, log_index
+      FROM (SELECT "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
               FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS swap
      GROUP BY token0
     HAVING sum(amount0) > 1000
