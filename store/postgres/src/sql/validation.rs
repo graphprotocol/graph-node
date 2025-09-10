@@ -176,7 +176,7 @@ impl VisitorMut for Validator<'_> {
             let columns = table
                 .columns
                 .iter()
-                .map(|column| column.name.as_str())
+                .map(|column| column.name.quoted())
                 .collect::<Vec<_>>()
                 .join(", ");
             let query = if table.immutable {
