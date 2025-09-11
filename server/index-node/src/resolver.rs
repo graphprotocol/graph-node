@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::convert::TryInto;
 
 use graph::data::query::Trace;
@@ -565,37 +565,54 @@ impl<S: Store> IndexNodeResolver<S> {
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
-        let subgraph_id = field.get_required::<String>("subgraphId").unwrap();
+        let subgraph_ids: HashSet<String> = field
+            .get_required::<Vec<String>>("subgraphs")
+            .unwrap()
+            .into_iter()
+            .collect();
 
-        // Try to build a deployment hash with the input string
-        let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
-            QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
-        })?;
+        if subgraph_ids.is_empty() {
+            return Ok(r::Value::List(Vec::new()));
+        }
 
         let subgraph_store = self.store.subgraph_store();
-        let features = match subgraph_store.subgraph_features(&deployment_hash).await? {
-            Some(features) => {
-                let mut deployment_features = features.clone();
-                let features = &mut deployment_features.features;
+        let mut all_features = vec![];
 
-                if deployment_features.has_declared_calls {
-                    features.push("declaredEthCalls".to_string());
+        for subgraph_id in subgraph_ids {
+            let deployment_hash = match DeploymentHash::new(subgraph_id) {
+                Ok(hash) => hash,
+                Err(_) => {
+                    continue;
                 }
-                if deployment_features.has_aggregations {
-                    features.push("aggregations".to_string());
-                }
-                if !deployment_features.immutable_entities.is_empty() {
-                    features.push("immutableEntities".to_string());
-                }
-                if deployment_features.has_bytes_as_ids {
-                    features.push("bytesAsIds".to_string());
-                }
-                deployment_features
-            }
-            None => self.get_features_from_ipfs(&deployment_hash).await?,
-        };
+            };
 
-        Ok(features.into_value())
+            // Fetch features from store or IPFS
+            let features = match subgraph_store.subgraph_features(&deployment_hash).await? {
+                Some(features) => {
+                    let mut deployment_features = features.clone();
+                    let features = &mut deployment_features.features;
+
+                    if deployment_features.has_declared_calls {
+                        features.push("declaredEthCalls".to_string());
+                    }
+                    if deployment_features.has_aggregations {
+                        features.push("aggregations".to_string());
+                    }
+                    if !deployment_features.immutable_entities.is_empty() {
+                        features.push("immutableEntities".to_string());
+                    }
+                    if deployment_features.has_bytes_as_ids {
+                        features.push("bytesAsIds".to_string());
+                    }
+                    deployment_features
+                }
+                None => self.get_features_from_ipfs(&deployment_hash).await?,
+            };
+
+            all_features.push(features.into_value());
+        }
+
+        Ok(r::Value::List(all_features))
     }
 
     fn resolve_api_versions(&self, _field: &a::Field) -> Result<r::Value, QueryExecutionError> {
@@ -817,6 +834,11 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
                 self.resolve_public_proofs_of_indexing(field).await
             }
 
+            // The top-level `subgraphFeatures` field
+            (None, "SubgraphFeatures", "subgraphFeatures") => {
+                self.resolve_subgraph_features(field).await
+            }
+
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
             (value, _, _) => Ok(value.unwrap_or(r::Value::Null)),
         }
@@ -837,7 +859,6 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
             (None, "indexingStatusForPendingVersion") => {
                 self.resolve_indexing_status_for_version(field, false)
             }
-            (None, "subgraphFeatures") => self.resolve_subgraph_features(field).await,
             (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
             // The top-level `subgraphVersions` field
             (None, "apiVersions") => self.resolve_api_versions(field),
