@@ -43,7 +43,7 @@ mod test {
 
     use super::Parser;
 
-    const TEST_GQL: &str = "
+    const TEST_GQL: &str = r#"
         type Swap @entity(immutable: true) {
             id: Bytes!
             timestamp: BigInt!
@@ -68,7 +68,19 @@ mod test {
             name: String!
             decimals: Int!
         }
-    ";
+
+        type Data @entity(timeseries: true) {
+            id: Int8!
+            timestamp: Timestamp!
+            price: Int!
+        }
+
+        type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+            id: Int8!
+            timestamp: Timestamp!
+            sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
+        }
+    "#;
 
     fn parse_and_validate(sql: &str) -> Result<String, anyhow::Error> {
         let parser = Parser::new(Arc::new(make_layout(TEST_GQL)), BLOCK_NUMBER_MAX);

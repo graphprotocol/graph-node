@@ -98,3 +98,30 @@
 - name: unknown tables forbidden
   sql: select * from unknown_table
   err: Unknown table unknown_table
+- name: qualified tables are forbidden
+  sql: select * from pg_catalog.pg_class
+  err: "Qualified table names are not supported: pg_catalog.pg_class"
+- name: aggregation tables are hidden
+  sql: select * from stats_hour
+  err: Unknown table stats_hour
+- name: CTEs take precedence
+  sql: with stats_hour as (select 1) select * from stats_hour
+  ok: WITH stats_hour AS (SELECT 1) SELECT * FROM stats_hour
+- name: aggregation tables use function syntax
+  sql: select * from stats('hour')
+  ok: SELECT * FROM (SELECT "id", "timestamp", "sum" FROM "sgd0815"."stats_hour" WHERE block$ <= 2147483647) AS stats_hour
+- name: unknown aggregation interval
+  sql: select * from stats('fortnight')
+  err: Unknown aggregation interval `fortnight` for table stats
+- name: aggregation tables with empty arg
+  sql: select * from stats('')
+  err: Unknown aggregation interval `` for table stats
+- name: aggregation tables with no args
+  sql: select * from stats()
+  err: Invalid syntax for aggregation stats
+- name: aggregation tables with multiple args
+  sql: select * from stats('hour', 'day')
+  err: Invalid syntax for aggregation stats
+- name: aggregation tables with alias
+  sql: select * from stats('hour') as sh
+  ok: SELECT * FROM (SELECT "id", "timestamp", "sum" FROM "sgd0815"."stats_hour" WHERE block$ <= 2147483647) AS sh

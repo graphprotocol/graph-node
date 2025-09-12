@@ -20,8 +20,11 @@ The body of the request must contain the following keys:
   result is sent in the response
 
 The SQL query can use all the tables of the given subgraph. Table and
-attribute names are snake-cased from their form in the GraphQL schema, so
-that data for `SomeDailyStuff` is stored in a table `some_daily_stuff`.
+attribute names for normal `@entity` types are snake-cased from their form
+in the GraphQL schema, so that data for `SomeDailyStuff` is stored in a
+table `some_daily_stuff`. For `@aggregation` types, the table can be
+accessed as `<aggregation>(<interval>)`, for example, `my_stats('hour')` for
+`type MyStats @aggregation(..) { .. }`
 
 The query can use fairly arbitrary SQL, including aggregations and most
 functions built into PostgreSQL.

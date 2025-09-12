@@ -1,7 +1,8 @@
 use graph::prelude::BlockNumber;
+use graph::schema::AggregationInterval;
 use sqlparser::ast::{
-    Expr, Ident, ObjectName, Offset, Query, SetExpr, Statement, TableAlias, TableFactor, Value,
-    VisitMut, VisitorMut,
+    Expr, FunctionArg, FunctionArgExpr, Ident, ObjectName, Offset, Query, SetExpr, Statement,
+    TableAlias, TableFactor, Value, VisitMut, VisitorMut,
 };
 use sqlparser::parser::Parser;
 use std::result::Result;
@@ -22,12 +23,18 @@ pub enum Error {
     NotSelectQuery,
     #[error("Unknown table {0}")]
     UnknownTable(String),
+    #[error("Unknown aggregation interval `{1}` for table {0}")]
+    UnknownAggregationInterval(String, String),
+    #[error("Invalid syntax for aggregation {0}")]
+    InvalidAggregationSyntax(String),
     #[error("Only constant numbers are supported for LIMIT and OFFSET.")]
     UnsupportedLimitOffset,
     #[error("The limit of {0} is greater than the maximum allowed limit of {1}.")]
     UnsupportedLimit(u32, u32),
     #[error("The offset of {0} is greater than the maximum allowed offset of {1}.")]
     UnsupportedOffset(u32, u32),
+    #[error("Qualified table names are not supported: {0}")]
+    NoQualifiedTables(String),
 }
 
 pub struct Validator<'a> {
@@ -151,25 +158,79 @@ impl VisitorMut for Validator<'_> {
         &mut self,
         table_factor: &mut TableFactor,
     ) -> ControlFlow<Self::Break> {
+        /// Check whether `args` is a single string argument and return that
+        /// string
+        fn extract_string_arg(args: &Vec<FunctionArg>) -> Option<String> {
+            if args.len() != 1 {
+                return None;
+            }
+            match &args[0] {
+                FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::Value(
+                    Value::SingleQuotedString(s),
+                ))) => Some(s.clone()),
+                _ => None,
+            }
+        }
+
         if let TableFactor::Table {
             name, args, alias, ..
         } = table_factor
         {
-            if args.is_some() {
-                return self.validate_function_name(name);
+            if name.0.len() != 1 {
+                // We do not support schema qualified table names
+                return ControlFlow::Break(Error::NoQualifiedTables(name.to_string()));
             }
-            let table = if let Some(table_name) = name.0.last() {
-                let name = &table_name.value;
-                let Some(table) = self.layout.table(name) else {
-                    if self.ctes.contains(name) {
-                        return ControlFlow::Continue(());
-                    } else {
-                        return ControlFlow::Break(Error::UnknownTable(name.to_string()));
-                    }
-                };
-                table
-            } else {
+            let table_name = &name.0[0].value;
+
+            // CTES override subgraph tables
+            if self.ctes.contains(&table_name.to_lowercase()) && args.is_none() {
                 return ControlFlow::Continue(());
+            }
+
+            let table = match (self.layout.table(table_name), args) {
+                (None, None) => {
+                    return ControlFlow::Break(Error::UnknownTable(table_name.clone()));
+                }
+                (Some(_), Some(_)) => {
+                    // Table exists but has args, must be a function
+                    return self.validate_function_name(&name);
+                }
+                (None, Some(args)) => {
+                    // Table does not exist but has args, is either an
+                    // aggregation table in the form <name>(<interval>) or
+                    // must be a function
+
+                    if !self.layout.has_aggregation(table_name) {
+                        // Not an aggregation, must be a function
+                        return self.validate_function_name(&name);
+                    }
+
+                    let Some(intv) = extract_string_arg(args) else {
+                        // Looks like an aggregation, but argument is not a single string
+                        return ControlFlow::Break(Error::InvalidAggregationSyntax(
+                            table_name.clone(),
+                        ));
+                    };
+                    let Some(intv) = intv.parse::<AggregationInterval>().ok() else {
+                        return ControlFlow::Break(Error::UnknownAggregationInterval(
+                            table_name.clone(),
+                            intv,
+                        ));
+                    };
+
+                    let Some(table) = self.layout.aggregation_table(table_name, intv) else {
+                        return self.validate_function_name(&name);
+                    };
+                    table
+                }
+                (Some(table), None) => {
+                    if !table.object.is_object_type() {
+                        // Interfaces and aggregations can not be queried
+                        // with the table name directly
+                        return ControlFlow::Break(Error::UnknownTable(table_name.clone()));
+                    }
+                    table
+                }
             };
 
             // Change 'from table [as alias]' to 'from (select {columns} from table) as alias'
