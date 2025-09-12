@@ -9,15 +9,17 @@ use graph_node::{launcher, opt};
 
 git_testament!(TESTAMENT);
 
-fn main() {
-    let max_blocking: usize = std::env::var("GRAPH_MAX_BLOCKING_THREADS")
+lazy_static! {
+    pub static ref MAX_BLOCKING_THREADS: usize = std::env::var("GRAPH_MAX_BLOCKING_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(512);
+}
 
+fn main() {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .max_blocking_threads(max_blocking)
+        .max_blocking_threads(*MAX_BLOCKING_THREADS)
         .build()
         .unwrap()
         .block_on(async { main_inner().await })
@@ -30,7 +32,10 @@ async fn main_inner() {
 
     // Set up logger
     let logger = logger(opt.debug);
-
+    debug!(
+        logger,
+        "Runtime configured with {} max blocking threads", *MAX_BLOCKING_THREADS
+    );
     let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
         .await
         .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
