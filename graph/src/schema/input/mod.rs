@@ -1383,6 +1383,14 @@ impl InputSchema {
             .any(|ti| matches!(ti, TypeInfo::Aggregation(_)))
     }
 
+    pub fn aggregation_names(&self) -> impl Iterator<Item = &str> {
+        self.inner
+            .type_infos
+            .iter()
+            .filter_map(TypeInfo::aggregation)
+            .map(|agg_type| self.inner.pool.get(agg_type.name).unwrap())
+    }
+
     pub fn entity_fulltext_definitions(
         &self,
         entity: &str,

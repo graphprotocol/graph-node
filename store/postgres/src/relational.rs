@@ -39,7 +39,8 @@ use graph::data_source::CausalityRegion;
 use graph::internal_error;
 use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
-    EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
+    AggregationInterval, EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition,
+    InputSchema,
 };
 use graph::slog::warn;
 use index::IndexList;
@@ -1154,6 +1155,27 @@ impl Layout {
             rollups.push(rollup);
         }
         Ok(rollups)
+    }
+
+    /// Given an aggregation name that is already snake-cased like `stats`
+    /// (for an an aggregation `type Stats @aggregation(..)`) and an
+    /// interval, return the table that holds the aggregated data, like
+    /// `stats_hour`.
+    pub fn aggregation_table(
+        &self,
+        aggregation: &str,
+        interval: AggregationInterval,
+    ) -> Option<&Table> {
+        let sql_name = format!("{}_{interval}", aggregation);
+        self.table(&sql_name)
+    }
+
+    /// Return true if the layout has an aggregation with the given name
+    /// like `stats` (already snake_cased)
+    pub fn has_aggregation(&self, aggregation: &str) -> bool {
+        self.input_schema
+            .aggregation_names()
+            .any(|agg_name| SqlName::from(agg_name).as_str() == aggregation)
     }
 
     /// Roll up all timeseries for each entry in `block_times`. The overall
