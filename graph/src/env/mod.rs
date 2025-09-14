@@ -14,6 +14,7 @@ use crate::{
     components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
+use num_cpus;
 
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
@@ -268,6 +269,9 @@ pub struct EnvVars {
     /// builds and one second for debug builds to speed up tests. The value
     /// is in seconds.
     pub ipfs_request_timeout: Duration,
+    /// The number of parallel tasks to use for subgraph runtime processing.
+    /// The default value is the number of CPUs.
+    pub subgraph_runtime_processing_parallelism: usize,
 }
 
 impl EnvVars {
@@ -365,6 +369,9 @@ impl EnvVars {
             firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
             firehose_block_batch_size: inner.firehose_block_fetch_batch_size,
             ipfs_request_timeout,
+            subgraph_runtime_processing_parallelism: inner
+                .subgraph_runtime_processing_parallelism
+                .unwrap_or_else(num_cpus::get),
         })
     }
 
@@ -553,6 +560,8 @@ struct Inner {
     firehose_block_fetch_batch_size: usize,
     #[envconfig(from = "GRAPH_IPFS_REQUEST_TIMEOUT")]
     ipfs_request_timeout: Option<u64>,
+    #[envconfig(from = "GRAPH_SUBGRAPH_RUNTIME_PROCESSING_PARALLELISM")]
+    subgraph_runtime_processing_parallelism: Option<usize>,
     #[envconfig(
         from = "GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION",
         default = "false"

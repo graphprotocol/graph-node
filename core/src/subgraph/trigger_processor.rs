@@ -5,6 +5,7 @@ use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::trigger_processor::{HostedTrigger, RunnableTriggers};
 use graph::data_source::TriggerData;
+use graph::prelude::tokio::sync::Semaphore;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
     BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
@@ -13,7 +14,15 @@ use graph::slog::Logger;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-pub struct SubgraphTriggerProcessor {}
+pub struct SubgraphTriggerProcessor {
+    limiter: Arc<Semaphore>,
+}
+
+impl SubgraphTriggerProcessor {
+    pub fn new(limiter: Arc<Semaphore>) -> Self {
+        SubgraphTriggerProcessor { limiter }
+    }
+}
 
 #[async_trait]
 impl<C, T> TriggerProcessor<C, T> for SubgraphTriggerProcessor
@@ -46,6 +55,8 @@ where
             mapping_trigger,
         } in triggers
         {
+            let _mapping_permit = self.limiter.acquire().await;
+
             let start = Instant::now();
             state = host
                 .process_mapping_trigger(

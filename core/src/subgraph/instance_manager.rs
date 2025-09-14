@@ -41,6 +41,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     arweave_service: ArweaveService,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
+    trigger_processor_semaphore: Arc<tokio::sync::Semaphore>,
 
     /// By design, there should be only one subgraph runner process per subgraph, but the current
     /// implementation does not completely prevent multiple runners from being active at the same
@@ -87,7 +88,9 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 loc.clone(),
                                 manifest,
                                 stop_block,
-                                Box::new(SubgraphTriggerProcessor {}),
+                                Box::new(SubgraphTriggerProcessor::new(
+                                    self.trigger_processor_semaphore.clone(),
+                                )),
                                 deployment_status_metric,
                             )
                             .await?;
@@ -102,7 +105,9 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 loc.clone(),
                                 manifest,
                                 stop_block,
-                                Box::new(SubgraphTriggerProcessor {}),
+                                Box::new(SubgraphTriggerProcessor::new(
+                                    self.trigger_processor_semaphore.clone(),
+                                )),
                                 deployment_status_metric,
                             )
                             .await?;
@@ -184,6 +189,9 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
+        let semaphore_permits = env_vars.subgraph_runtime_processing_parallelism;
+        let trigger_processor_semaphore = Arc::new(tokio::sync::Semaphore::new(semaphore_permits));
+
         SubgraphInstanceManager {
             logger_factory,
             subgraph_store,
@@ -195,6 +203,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             static_filters,
             env_vars,
             arweave_service,
+            trigger_processor_semaphore,
             subgraph_start_counter: Arc::new(AtomicU64::new(0)),
         }
     }

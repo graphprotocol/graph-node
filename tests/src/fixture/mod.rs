@@ -209,7 +209,9 @@ impl TestContext {
         RuntimeHostBuilder<graph_chain_ethereum::Chain>,
     > {
         let (logger, deployment, raw) = self.get_runner_context().await;
-        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
+        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor::new(
+            Arc::new(tokio::sync::Semaphore::new(1)),
+        ));
 
         let deployment_status_metric = self
             .instance_manager
