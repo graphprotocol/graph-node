@@ -78,7 +78,7 @@ tokio = { version = "1.45.1", features = [
 ] }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 tokio-retry = "0.3.0"
-toml = "0.9.5"
+toml = "0.9.6"
 url = "2.5.7"
 prometheus = "0.14.0"
 priority-queue = "2.5.0"
