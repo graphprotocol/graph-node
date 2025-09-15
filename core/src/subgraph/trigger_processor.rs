@@ -420,8 +420,8 @@ where
         
         // Always decrement queue depth by the number of processed triggers
         // This ensures cleanup even if processing failed partway through
-        if processed_count > 0 {
-            subgraph_state.queue_depth.fetch_sub(processed_count, Ordering::Relaxed);
+        if !triggers.is_empty() {
+            subgraph_state.queue_depth.fetch_sub(triggers.len(), Ordering::Relaxed);
         }
 
         result
