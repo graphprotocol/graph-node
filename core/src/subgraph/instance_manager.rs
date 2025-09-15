@@ -184,13 +184,30 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
-        // Configure sharded processor
+        // Configure trigger processor with backward compatibility
+        // Only enable sharding if explicitly configured with more than 1 shard
+        let enable_sharding = env_vars.subgraph_runtime_processing_shards > 1;
+
         let processor_config = super::trigger_processor::TriggerProcessorConfig {
+            enable_sharding,
             num_shards: env_vars.subgraph_runtime_processing_shards,
             workers_per_shard: env_vars.subgraph_runtime_workers_per_shard,
             max_queue_per_subgraph: env_vars.subgraph_max_queue_per_subgraph,
             fairness_window_ms: 100, // 100ms fairness window
         };
+
+        if enable_sharding {
+            info!(&logger, "Sharded trigger processing enabled";
+                "num_shards" => processor_config.num_shards,
+                "workers_per_shard" => processor_config.workers_per_shard,
+                "total_workers" => processor_config.num_shards * processor_config.workers_per_shard
+            );
+        } else {
+            info!(&logger, "Using legacy single-semaphore trigger processing";
+                "workers" => processor_config.workers_per_shard
+            );
+        }
+
         let trigger_processor = Arc::new(super::trigger_processor::SubgraphTriggerProcessor::new(
             processor_config,
         ));

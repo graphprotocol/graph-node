@@ -14,7 +14,7 @@ use crate::{
     components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
-use num_cpus;
+// removed num_cpus import - no longer used
 
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
@@ -270,7 +270,8 @@ pub struct EnvVars {
     /// is in seconds.
     pub ipfs_request_timeout: Duration,
     /// The number of processing shards for subgraph runtime processing.
-    /// The default value is the number of CPUs.
+    /// The default value is 1 (single semaphore for backward compatibility).
+    /// Set to > 1 to enable sharded processing (recommended: num_cpus).
     pub subgraph_runtime_processing_shards: usize,
     /// The number of worker threads per shard for subgraph runtime processing.
     /// The default value is 32.
@@ -377,7 +378,7 @@ impl EnvVars {
             ipfs_request_timeout,
             subgraph_runtime_processing_shards: inner
                 .subgraph_runtime_processing_shards
-                .unwrap_or_else(num_cpus::get),
+                .unwrap_or(1), // Default to 1 for backward compatibility
             subgraph_runtime_workers_per_shard: inner
                 .subgraph_runtime_workers_per_shard
                 .unwrap_or(32),

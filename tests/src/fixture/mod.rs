@@ -211,8 +211,9 @@ impl TestContext {
         let (logger, deployment, raw) = self.get_runner_context().await;
         let tp: Box<dyn TriggerProcessor<_, _>> =
             Box::new(SubgraphTriggerProcessor::new(TriggerProcessorConfig {
-                num_shards: 1,        // Simple setup for tests
-                workers_per_shard: 1, // Single worker for tests
+                enable_sharding: false, // Disabled for simple test setup
+                num_shards: 1,          // Simple setup for tests
+                workers_per_shard: 1,   // Single worker for tests
                 max_queue_per_subgraph: 10,
                 fairness_window_ms: 100,
             }));

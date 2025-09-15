@@ -6,22 +6,29 @@ use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::trigger_processor::{HostedTrigger, RunnableTriggers};
 use graph::data_source::TriggerData;
 use graph::prelude::tokio::sync::Semaphore;
-use graph::prelude::tokio::time::{Duration, Instant};
+use graph::prelude::tokio::time::{sleep, Duration, Instant};
 use graph::prelude::{
-    BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics,
+    BlockState, DeploymentHash, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics,
     TriggerProcessor,
 };
-use graph::slog::{debug, Logger};
+use graph::slog::{debug, warn, Logger};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock};
+
+// Use the standard library's hasher for now
+use std::collections::hash_map::DefaultHasher;
 
 /// Configuration for the trigger processor
 #[derive(Clone, Debug)]
 pub struct TriggerProcessorConfig {
-    /// Number of shards (pools) to create
+    /// Enable sharded processing (false = legacy single semaphore mode)
+    pub enable_sharding: bool,
+    /// Number of shards (pools) to create when sharding is enabled
     pub num_shards: usize,
-    /// Number of worker threads per shard
+    /// Number of worker threads per shard (or total when not sharding)
     pub workers_per_shard: usize,
     /// Maximum queue size per subgraph before applying backpressure
     pub max_queue_per_subgraph: usize,
@@ -32,10 +39,11 @@ pub struct TriggerProcessorConfig {
 impl Default for TriggerProcessorConfig {
     fn default() -> Self {
         Self {
-            // For 2500 subgraphs on 32 vCPUs:
-            // 32 shards = ~78 subgraphs per shard
-            num_shards: 32,
-            // 32 workers per shard = 1024 total concurrent executions
+            // Default to legacy mode to not surprise existing users
+            enable_sharding: false,
+            // When sharding is disabled, this is ignored
+            num_shards: 1,
+            // Default to 32 workers (same as before)
             workers_per_shard: 32,
             // Prevent any single subgraph from queuing too much work
             max_queue_per_subgraph: 100,
@@ -45,30 +53,246 @@ impl Default for TriggerProcessorConfig {
     }
 }
 
+/// Tracks per-shard load and metrics
+#[derive(Debug)]
+struct ShardMetrics {
+    /// Current number of active permits
+    active_permits: AtomicUsize,
+    /// Total triggers processed
+    total_processed: AtomicUsize,
+    /// Number of subgraphs assigned to this shard
+    assigned_subgraphs: AtomicUsize,
+}
 
-/// Scalable trigger processor that shards subgraphs across multiple pools
+impl ShardMetrics {
+    fn new() -> Self {
+        Self {
+            active_permits: AtomicUsize::new(0),
+            total_processed: AtomicUsize::new(0),
+            assigned_subgraphs: AtomicUsize::new(0),
+        }
+    }
+}
+
+/// Tracks per-subgraph state for backpressure
+#[derive(Debug, Clone)]
+struct SubgraphState {
+    /// Current queue depth for this subgraph
+    queue_depth: Arc<AtomicUsize>,
+    /// Shard assignment for this subgraph
+    shard_id: usize,
+}
+
+/// Scalable trigger processor that optionally shards subgraphs across multiple pools
 #[derive(Clone)]
 pub struct SubgraphTriggerProcessor {
-    // Use multiple semaphores for sharding instead of complex worker pools
+    /// Semaphores for concurrency control
+    /// In legacy mode: single semaphore
+    /// In sharded mode: one semaphore per shard
     semaphores: Vec<Arc<Semaphore>>,
+    /// Track subgraph to shard assignments for consistent routing
+    /// Using RwLock instead of DashMap for simplicity
+    subgraph_shards: Arc<RwLock<HashMap<DeploymentHash, SubgraphState>>>,
+    /// Metrics per shard
+    shard_metrics: Arc<Vec<ShardMetrics>>,
+    /// Configuration
     config: TriggerProcessorConfig,
 }
 
 impl SubgraphTriggerProcessor {
     pub fn new(config: TriggerProcessorConfig) -> Self {
-        let mut semaphores = Vec::with_capacity(config.num_shards);
+        let effective_shards = if config.enable_sharding {
+            config.num_shards.max(1)
+        } else {
+            1 // Legacy mode: single semaphore
+        };
 
-        // Create a semaphore per shard
-        for _ in 0..config.num_shards {
+        let mut semaphores = Vec::with_capacity(effective_shards);
+        let mut shard_metrics = Vec::with_capacity(effective_shards);
+
+        // Create semaphores and metrics
+        for _ in 0..effective_shards {
             semaphores.push(Arc::new(Semaphore::new(config.workers_per_shard)));
+            shard_metrics.push(ShardMetrics::new());
         }
 
         Self {
             semaphores,
+            subgraph_shards: Arc::new(RwLock::new(HashMap::new())),
+            shard_metrics: Arc::new(shard_metrics),
             config,
         }
     }
 
+    /// Get or assign a shard for a deployment using consistent hashing
+    fn get_shard_for_deployment(&self, deployment: &DeploymentHash) -> usize {
+        // Check if already assigned
+        {
+            let shards = self.subgraph_shards.read().unwrap();
+            if let Some(state) = shards.get(deployment) {
+                return state.shard_id;
+            }
+        }
+
+        // Assign new shard using DefaultHasher
+        let mut hasher = DefaultHasher::new();
+        deployment.hash(&mut hasher);
+        let shard_id = (hasher.finish() as usize) % self.semaphores.len();
+
+        // Track the assignment
+        let state = SubgraphState {
+            queue_depth: Arc::new(AtomicUsize::new(0)),
+            shard_id,
+        };
+
+        {
+            let mut shards = self.subgraph_shards.write().unwrap();
+            shards.insert(deployment.clone(), state);
+        }
+
+        self.shard_metrics[shard_id]
+            .assigned_subgraphs
+            .fetch_add(1, Ordering::Relaxed);
+
+        shard_id
+    }
+
+    /// Get or create subgraph state
+    fn get_or_create_subgraph_state(&self, deployment: &DeploymentHash) -> SubgraphState {
+        {
+            let shards = self.subgraph_shards.read().unwrap();
+            if let Some(state) = shards.get(deployment) {
+                return state.clone();
+            }
+        }
+
+        // Need to create new state
+        let shard_id = self.get_shard_for_deployment(deployment);
+
+        let shards = self.subgraph_shards.read().unwrap();
+        shards
+            .get(deployment)
+            .cloned()
+            .unwrap_or_else(|| SubgraphState {
+                queue_depth: Arc::new(AtomicUsize::new(0)),
+                shard_id,
+            })
+    }
+
+    /// Apply backpressure if queue is too deep
+    async fn apply_backpressure(
+        &self,
+        logger: &Logger,
+        deployment: &DeploymentHash,
+        queue_depth: usize,
+    ) {
+        if queue_depth > self.config.max_queue_per_subgraph {
+            warn!(logger, "Applying backpressure for overloaded subgraph";
+                "deployment" => deployment.to_string(),
+                "queue_depth" => queue_depth,
+                "max_allowed" => self.config.max_queue_per_subgraph
+            );
+
+            // Exponential backoff based on queue depth
+            let delay_ms =
+                ((queue_depth - self.config.max_queue_per_subgraph) * 10).min(1000) as u64; // Cap at 1 second
+            sleep(Duration::from_millis(delay_ms)).await;
+        }
+    }
+
+    /// Try to extract deployment hash from the trigger context
+    /// This is implementation-specific and may need adjustment
+    fn try_extract_deployment<C: Blockchain>(
+        &self,
+        _triggers: &[HostedTrigger<'_, C>],
+    ) -> Option<DeploymentHash> {
+        // This would need to be implemented based on your specific context
+        // For now, return None to use fallback
+        None
+    }
+
+    /// Get comprehensive metrics for monitoring
+    pub async fn get_metrics(&self) -> HashMap<String, usize> {
+        let mut metrics = HashMap::new();
+
+        // Basic configuration metrics
+        metrics.insert(
+            "sharding_enabled".to_string(),
+            self.config.enable_sharding as usize,
+        );
+        metrics.insert("total_shards".to_string(), self.semaphores.len());
+        metrics.insert(
+            "workers_per_shard".to_string(),
+            self.config.workers_per_shard,
+        );
+        metrics.insert(
+            "max_queue_per_subgraph".to_string(),
+            self.config.max_queue_per_subgraph,
+        );
+
+        // Per-shard metrics
+        for (i, (semaphore, shard_metric)) in self
+            .semaphores
+            .iter()
+            .zip(self.shard_metrics.iter())
+            .enumerate()
+        {
+            let available_permits = semaphore.available_permits();
+            let active_permits = shard_metric.active_permits.load(Ordering::Relaxed);
+            let total_processed = shard_metric.total_processed.load(Ordering::Relaxed);
+            let assigned_subgraphs = shard_metric.assigned_subgraphs.load(Ordering::Relaxed);
+
+            metrics.insert(format!("shard_{}_permits_available", i), available_permits);
+            metrics.insert(format!("shard_{}_permits_active", i), active_permits);
+            metrics.insert(format!("shard_{}_total_processed", i), total_processed);
+            metrics.insert(
+                format!("shard_{}_assigned_subgraphs", i),
+                assigned_subgraphs,
+            );
+        }
+
+        // Overall statistics
+        let shards = self.subgraph_shards.read().unwrap();
+        metrics.insert("total_assigned_subgraphs".to_string(), shards.len());
+
+        // Calculate load imbalance
+        if self.config.enable_sharding && self.semaphores.len() > 1 {
+            let loads: Vec<usize> = self
+                .shard_metrics
+                .iter()
+                .map(|m| m.assigned_subgraphs.load(Ordering::Relaxed))
+                .collect();
+
+            let max_load = *loads.iter().max().unwrap_or(&0);
+            let min_load = *loads.iter().min().unwrap_or(&0);
+            let imbalance = if min_load > 0 {
+                ((max_load - min_load) * 100) / min_load
+            } else {
+                0
+            };
+
+            metrics.insert("shard_imbalance_percent".to_string(), imbalance);
+        }
+
+        metrics
+    }
+
+    /// Get detailed status for a specific deployment
+    pub fn get_deployment_status(
+        &self,
+        deployment: &DeploymentHash,
+    ) -> Option<HashMap<String, usize>> {
+        let shards = self.subgraph_shards.read().unwrap();
+        shards.get(deployment).map(|state| {
+            let mut status = HashMap::new();
+            status.insert("shard_id".to_string(), state.shard_id);
+            status.insert(
+                "queue_depth".to_string(),
+                state.queue_depth.load(Ordering::Relaxed),
+            );
+            status
+        })
+    }
 }
 
 #[async_trait]
@@ -89,22 +313,51 @@ where
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
-        // Use the data source name as a hash to determine shard
-        // This ensures consistent sharding for the same data source/subgraph
-        let shard_id = if let Some(first_trigger) = triggers.first() {
-            let data_source_name = first_trigger.host.data_source().name();
-            let hash = data_source_name
-                .bytes()
-                .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
-            (hash as usize) % self.config.num_shards
-        } else {
+        if triggers.is_empty() {
             return Ok(state);
+        }
+
+        // Try to extract deployment hash from the context
+        // This is a best-effort approach - if we can't get it, fall back to data source name
+        let deployment_hash = if let Some(deployment) = self.try_extract_deployment(&triggers) {
+            deployment
+        } else {
+            // Fallback: create a synthetic deployment hash from data source
+            let data_source_name = triggers[0].host.data_source().name();
+            DeploymentHash::new(data_source_name)
+                .unwrap_or_else(|_| DeploymentHash::new("unknown").unwrap())
         };
+
+        // Determine shard assignment
+        let shard_id = if self.config.enable_sharding {
+            self.get_shard_for_deployment(&deployment_hash)
+        } else {
+            0 // Legacy mode: always use first (and only) semaphore
+        };
+
         let semaphore = &self.semaphores[shard_id];
 
-        debug!(logger, "Processing triggers in shard";
+        // Get subgraph state for backpressure
+        let subgraph_state = self.get_or_create_subgraph_state(&deployment_hash);
+
+        // Track queue depth
+        let current_queue_depth = subgraph_state
+            .queue_depth
+            .fetch_add(triggers.len(), Ordering::Relaxed);
+
+        // Apply backpressure if needed
+        self.apply_backpressure(
+            logger,
+            &deployment_hash,
+            current_queue_depth + triggers.len(),
+        )
+        .await;
+
+        debug!(logger, "Processing triggers";
+            "deployment" => deployment_hash.to_string(),
             "shard" => shard_id,
-            "trigger_count" => triggers.len()
+            "trigger_count" => triggers.len(),
+            "sharding_enabled" => self.config.enable_sharding
         );
 
         proof_of_indexing.start_handler(causality_region);
@@ -114,11 +367,17 @@ where
             mapping_trigger,
         } in triggers
         {
-            // Acquire permit from the specific shard
-            let _permit = semaphore.acquire().await.unwrap();
+            // Acquire permit and hold it during processing
+            let permit = semaphore.acquire().await.unwrap();
+
+            // Track active permits
+            self.shard_metrics[shard_id]
+                .active_permits
+                .fetch_add(1, Ordering::Relaxed);
 
             let start = Instant::now();
 
+            // Process with permit held
             state = host
                 .process_mapping_trigger(
                     logger,
@@ -129,6 +388,20 @@ where
                     instrument,
                 )
                 .await?;
+
+            // Permit is automatically dropped here, releasing it
+            drop(permit);
+
+            // Update metrics
+            self.shard_metrics[shard_id]
+                .active_permits
+                .fetch_sub(1, Ordering::Relaxed);
+            self.shard_metrics[shard_id]
+                .total_processed
+                .fetch_add(1, Ordering::Relaxed);
+
+            // Decrement queue depth after processing
+            subgraph_state.queue_depth.fetch_sub(1, Ordering::Relaxed);
 
             let elapsed = start.elapsed();
             subgraph_metrics.observe_trigger_processing_duration(elapsed.as_secs_f64());
@@ -142,27 +415,6 @@ where
         }
 
         Ok(state)
-    }
-}
-
-impl SubgraphTriggerProcessor {
-    /// Get metrics for monitoring
-    pub async fn get_metrics(&self) -> HashMap<String, usize> {
-        let mut metrics = HashMap::new();
-
-        for (i, semaphore) in self.semaphores.iter().enumerate() {
-            let available_permits = semaphore.available_permits();
-            let total_permits = self.config.workers_per_shard;
-            let in_use = total_permits - available_permits;
-
-            metrics.insert(format!("shard_{}_permits_in_use", i), in_use);
-            metrics.insert(format!("shard_{}_permits_available", i), available_permits);
-        }
-
-        metrics.insert("total_shards".to_string(), self.config.num_shards);
-        metrics.insert("workers_per_shard".to_string(), self.config.workers_per_shard);
-
-        metrics
     }
 }
 
