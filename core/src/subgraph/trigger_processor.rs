@@ -159,24 +159,29 @@ impl SubgraphTriggerProcessor {
 
     /// Get or create subgraph state
     fn get_or_create_subgraph_state(&self, deployment: &DeploymentHash) -> SubgraphState {
-        {
-            let shards = self.subgraph_shards.read().unwrap();
-            if let Some(state) = shards.get(deployment) {
-                return state.clone();
-            }
+        // Atomically check, insert, and return the subgraph state under a write lock
+        let mut shards = self.subgraph_shards.write().unwrap();
+        if let Some(state) = shards.get(deployment) {
+            return state.clone();
         }
 
-        // Need to create new state
-        let shard_id = self.get_shard_for_deployment(deployment);
+        // Assign new shard using DefaultHasher
+        let mut hasher = DefaultHasher::new();
+        deployment.hash(&mut hasher);
+        let shard_id = (hasher.finish() as usize) % self.semaphores.len();
 
-        let shards = self.subgraph_shards.read().unwrap();
-        shards
-            .get(deployment)
-            .cloned()
-            .unwrap_or_else(|| SubgraphState {
-                queue_depth: Arc::new(AtomicUsize::new(0)),
-                shard_id,
-            })
+        // Track the assignment
+        let state = SubgraphState {
+            queue_depth: Arc::new(AtomicUsize::new(0)),
+            shard_id,
+        };
+        shards.insert(deployment.clone(), state.clone());
+
+        self.shard_metrics[shard_id]
+            .assigned_subgraphs
+            .fetch_add(1, Ordering::Relaxed);
+
+        state
     }
 
     /// Apply backpressure if queue is too deep
