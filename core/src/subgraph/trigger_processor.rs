@@ -328,7 +328,7 @@ where
             deployment
         } else {
             // Fallback: create a synthetic deployment hash from data source
-            let data_source_name = triggers[0].host.data_source().name();
+            let data_source_name = triggers.first().unwrap().host.data_source().name();
             DeploymentHash::new(data_source_name)
                 .unwrap_or_else(|_| DeploymentHash::new("unknown").unwrap())
         };
