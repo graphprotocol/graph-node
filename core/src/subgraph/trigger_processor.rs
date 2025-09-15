@@ -316,8 +316,13 @@ where
         // This ensures triggers from the same data source/subgraph are always routed to 
         // the same shard, maintaining cache locality.
         let data_source_name = triggers[0].host.data_source().name();
+        // Use a unique fallback for invalid data source names to avoid sharding hotspots.
+        let deployment_id = triggers[0].host.deployment_id().as_str();
         let deployment_hash = DeploymentHash::new(data_source_name)
-            .unwrap_or_else(|_| DeploymentHash::new("unknown").unwrap());
+            .unwrap_or_else(|_| {
+                let fallback = format!("{}_{}", deployment_id, data_source_name);
+                DeploymentHash::new(&fallback).unwrap()
+            });
 
         // Determine shard assignment
         let shard_id = if self.config.enable_sharding {
