@@ -205,16 +205,6 @@ impl SubgraphTriggerProcessor {
         }
     }
 
-    /// Try to extract deployment hash from the trigger context
-    /// This is implementation-specific and may need adjustment
-    fn try_extract_deployment<C: Blockchain>(
-        &self,
-        _triggers: &[HostedTrigger<'_, C>],
-    ) -> Option<DeploymentHash> {
-        // This would need to be implemented based on your specific context
-        // For now, return None to use fallback
-        None
-    }
 
     /// Get comprehensive metrics for monitoring
     pub async fn get_metrics(&self) -> HashMap<String, usize> {
@@ -322,16 +312,12 @@ where
             return Ok(state);
         }
 
-        // Try to extract deployment hash from the context
-        // This is a best-effort approach - if we can't get it, fall back to data source name
-        let deployment_hash = if let Some(deployment) = self.try_extract_deployment(&triggers) {
-            deployment
-        } else {
-            // Fallback: create a synthetic deployment hash from data source
-            let data_source_name = triggers.first().unwrap().host.data_source().name();
-            DeploymentHash::new(data_source_name)
-                .unwrap_or_else(|_| DeploymentHash::new("unknown").unwrap())
-        };
+        // Create a synthetic deployment hash from data source name for consistent sharding.
+        // This ensures triggers from the same data source/subgraph are always routed to 
+        // the same shard, maintaining cache locality.
+        let data_source_name = triggers[0].host.data_source().name();
+        let deployment_hash = DeploymentHash::new(data_source_name)
+            .unwrap_or_else(|_| DeploymentHash::new("unknown").unwrap());
 
         // Determine shard assignment
         let shard_id = if self.config.enable_sharding {
@@ -345,18 +331,18 @@ where
         // Get subgraph state for backpressure
         let subgraph_state = self.get_or_create_subgraph_state(&deployment_hash);
 
-        // Track queue depth
-        let current_queue_depth = subgraph_state
+        // Check current queue depth before adding new triggers (avoid increment-then-check)
+        let current_queue_depth = subgraph_state.queue_depth.load(Ordering::Relaxed);
+        let projected_queue_depth = current_queue_depth + triggers.len();
+
+        // Apply backpressure if needed BEFORE incrementing queue depth
+        self.apply_backpressure(logger, &deployment_hash, projected_queue_depth)
+            .await;
+
+        // Only increment queue depth after backpressure check passes
+        subgraph_state
             .queue_depth
             .fetch_add(triggers.len(), Ordering::Relaxed);
-
-        // Apply backpressure if needed
-        self.apply_backpressure(
-            logger,
-            &deployment_hash,
-            current_queue_depth + triggers.len(),
-        )
-        .await;
 
         debug!(logger, "Processing triggers";
             "deployment" => deployment_hash.to_string(),
@@ -367,59 +353,78 @@ where
 
         proof_of_indexing.start_handler(causality_region);
 
-        for HostedTrigger {
-            host,
-            mapping_trigger,
-        } in triggers
-        {
-            // Acquire permit and hold it during processing
-            let permit = semaphore.acquire().await.unwrap();
+        // Track processed triggers to ensure proper queue depth cleanup
+        let mut processed_count = 0;
 
-            // Track active permits
-            self.shard_metrics[shard_id]
-                .active_permits
-                .fetch_add(1, Ordering::Relaxed);
+        // Use a closure to ensure queue depth is properly decremented on any exit path
+        let process_result = async {
+            for HostedTrigger {
+                host,
+                mapping_trigger,
+            } in triggers
+            {
+                // Acquire permit and hold it during processing
+                let permit = semaphore.acquire().await.unwrap();
 
-            let start = Instant::now();
+                // Track active permits
+                self.shard_metrics[shard_id]
+                    .active_permits
+                    .fetch_add(1, Ordering::Relaxed);
 
-            // Process with permit held
-            state = host
-                .process_mapping_trigger(
-                    logger,
-                    mapping_trigger,
-                    state,
-                    proof_of_indexing.cheap_clone(),
-                    debug_fork,
-                    instrument,
-                )
-                .await?;
+                let start = Instant::now();
 
-            // Permit is automatically dropped here, releasing it
-            drop(permit);
+                // Process with permit held
+                let result = host
+                    .process_mapping_trigger(
+                        logger,
+                        mapping_trigger,
+                        state,
+                        proof_of_indexing.cheap_clone(),
+                        debug_fork,
+                        instrument,
+                    )
+                    .await;
 
-            // Update metrics
-            self.shard_metrics[shard_id]
-                .active_permits
-                .fetch_sub(1, Ordering::Relaxed);
-            self.shard_metrics[shard_id]
-                .total_processed
-                .fetch_add(1, Ordering::Relaxed);
+                // Permit is automatically dropped here, releasing it
+                drop(permit);
 
-            // Decrement queue depth after processing
-            subgraph_state.queue_depth.fetch_sub(1, Ordering::Relaxed);
+                // Update metrics
+                self.shard_metrics[shard_id]
+                    .active_permits
+                    .fetch_sub(1, Ordering::Relaxed);
+                self.shard_metrics[shard_id]
+                    .total_processed
+                    .fetch_add(1, Ordering::Relaxed);
 
-            let elapsed = start.elapsed();
-            subgraph_metrics.observe_trigger_processing_duration(elapsed.as_secs_f64());
+                // Increment processed count for queue cleanup
+                processed_count += 1;
 
-            if elapsed > Duration::from_secs(30) {
-                debug!(logger, "Trigger processing took a long time";
-                    "duration_ms" => elapsed.as_millis(),
-                    "shard" => shard_id
-                );
+                // Handle result
+                state = result?;
+
+                let elapsed = start.elapsed();
+                subgraph_metrics.observe_trigger_processing_duration(elapsed.as_secs_f64());
+
+                if elapsed > Duration::from_secs(30) {
+                    debug!(logger, "Trigger processing took a long time";
+                        "duration_ms" => elapsed.as_millis(),
+                        "shard" => shard_id
+                    );
+                }
             }
+            Ok(state)
+        };
+
+        // Execute processing and ensure queue depth cleanup regardless of outcome
+        let result = process_result.await;
+        
+        // Always decrement queue depth by the number of processed triggers
+        // This ensures cleanup even if processing failed partway through
+        if processed_count > 0 {
+            subgraph_state.queue_depth.fetch_sub(processed_count, Ordering::Relaxed);
         }
 
-        Ok(state)
+        result
     }
 }
 
