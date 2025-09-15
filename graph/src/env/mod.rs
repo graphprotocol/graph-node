@@ -14,7 +14,6 @@ use crate::{
     components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
-// removed num_cpus import - no longer used
 
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
