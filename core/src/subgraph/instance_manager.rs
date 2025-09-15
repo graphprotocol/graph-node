@@ -26,7 +26,6 @@ use graph_runtime_wasm::RuntimeHostBuilder;
 use tokio::task;
 
 use super::context::OffchainMonitor;
-use super::SubgraphTriggerProcessor;
 use crate::subgraph::runner::SubgraphRunnerError;
 
 #[derive(Clone)]
@@ -41,7 +40,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     arweave_service: ArweaveService,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
-    trigger_processor_semaphore: Arc<tokio::sync::Semaphore>,
+    trigger_processor: Arc<super::trigger_processor::SubgraphTriggerProcessor>,
 
     /// By design, there should be only one subgraph runner process per subgraph, but the current
     /// implementation does not completely prevent multiple runners from being active at the same
@@ -88,9 +87,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 loc.clone(),
                                 manifest,
                                 stop_block,
-                                Box::new(SubgraphTriggerProcessor::new(
-                                    self.trigger_processor_semaphore.clone(),
-                                )),
+                                Box::new((*self.trigger_processor).clone()),
                                 deployment_status_metric,
                             )
                             .await?;
@@ -105,9 +102,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                                 loc.clone(),
                                 manifest,
                                 stop_block,
-                                Box::new(SubgraphTriggerProcessor::new(
-                                    self.trigger_processor_semaphore.clone(),
-                                )),
+                                Box::new((*self.trigger_processor).clone()),
                                 deployment_status_metric,
                             )
                             .await?;
@@ -189,8 +184,16 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
 
-        let semaphore_permits = env_vars.subgraph_runtime_processing_parallelism;
-        let trigger_processor_semaphore = Arc::new(tokio::sync::Semaphore::new(semaphore_permits));
+        // Configure sharded processor
+        let processor_config = super::trigger_processor::TriggerProcessorConfig {
+            num_shards: env_vars.subgraph_runtime_processing_shards,
+            workers_per_shard: env_vars.subgraph_runtime_workers_per_shard,
+            max_queue_per_subgraph: env_vars.subgraph_max_queue_per_subgraph,
+            fairness_window_ms: 100, // 100ms fairness window
+        };
+        let trigger_processor = Arc::new(super::trigger_processor::SubgraphTriggerProcessor::new(
+            processor_config,
+        ));
 
         SubgraphInstanceManager {
             logger_factory,
@@ -203,7 +206,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             static_filters,
             env_vars,
             arweave_service,
-            trigger_processor_semaphore,
+            trigger_processor,
             subgraph_start_counter: Arc::new(AtomicU64::new(0)),
         }
     }

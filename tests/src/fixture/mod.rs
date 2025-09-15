@@ -52,7 +52,7 @@ use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
     SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
-    SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
+    SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor, TriggerProcessorConfig,
 };
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
@@ -209,9 +209,13 @@ impl TestContext {
         RuntimeHostBuilder<graph_chain_ethereum::Chain>,
     > {
         let (logger, deployment, raw) = self.get_runner_context().await;
-        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor::new(
-            Arc::new(tokio::sync::Semaphore::new(1)),
-        ));
+        let tp: Box<dyn TriggerProcessor<_, _>> =
+            Box::new(SubgraphTriggerProcessor::new(TriggerProcessorConfig {
+                num_shards: 1,        // Simple setup for tests
+                workers_per_shard: 1, // Single worker for tests
+                max_queue_per_subgraph: 10,
+                fairness_window_ms: 100,
+            }));
 
         let deployment_status_metric = self
             .instance_manager

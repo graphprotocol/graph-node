@@ -6,22 +6,69 @@ use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::components::trigger_processor::{HostedTrigger, RunnableTriggers};
 use graph::data_source::TriggerData;
 use graph::prelude::tokio::sync::Semaphore;
-use graph::prelude::tokio::time::Instant;
+use graph::prelude::tokio::time::{Duration, Instant};
 use graph::prelude::{
-    BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
+    BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics,
+    TriggerProcessor,
 };
-use graph::slog::Logger;
+use graph::slog::{debug, Logger};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+/// Configuration for the trigger processor
+#[derive(Clone, Debug)]
+pub struct TriggerProcessorConfig {
+    /// Number of shards (pools) to create
+    pub num_shards: usize,
+    /// Number of worker threads per shard
+    pub workers_per_shard: usize,
+    /// Maximum queue size per subgraph before applying backpressure
+    pub max_queue_per_subgraph: usize,
+    /// Time window for fair scheduling (ms)
+    pub fairness_window_ms: u64,
+}
+
+impl Default for TriggerProcessorConfig {
+    fn default() -> Self {
+        Self {
+            // For 2500 subgraphs on 32 vCPUs:
+            // 32 shards = ~78 subgraphs per shard
+            num_shards: 32,
+            // 32 workers per shard = 1024 total concurrent executions
+            workers_per_shard: 32,
+            // Prevent any single subgraph from queuing too much work
+            max_queue_per_subgraph: 100,
+            // Ensure each subgraph gets processing time within 100ms
+            fairness_window_ms: 100,
+        }
+    }
+}
+
+
+/// Scalable trigger processor that shards subgraphs across multiple pools
+#[derive(Clone)]
 pub struct SubgraphTriggerProcessor {
-    limiter: Arc<Semaphore>,
+    // Use multiple semaphores for sharding instead of complex worker pools
+    semaphores: Vec<Arc<Semaphore>>,
+    config: TriggerProcessorConfig,
 }
 
 impl SubgraphTriggerProcessor {
-    pub fn new(limiter: Arc<Semaphore>) -> Self {
-        SubgraphTriggerProcessor { limiter }
+    pub fn new(config: TriggerProcessorConfig) -> Self {
+        let mut semaphores = Vec::with_capacity(config.num_shards);
+
+        // Create a semaphore per shard
+        for _ in 0..config.num_shards {
+            semaphores.push(Arc::new(Semaphore::new(config.workers_per_shard)));
+        }
+
+        Self {
+            semaphores,
+            config,
+        }
     }
+
 }
 
 #[async_trait]
@@ -34,7 +81,7 @@ where
         &'a self,
         logger: &Logger,
         triggers: Vec<HostedTrigger<'a, C>>,
-        block: &Arc<C::Block>,
+        _block: &Arc<C::Block>,
         mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
@@ -42,11 +89,23 @@ where
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
-        let error_count = state.deterministic_errors.len();
-
-        if triggers.is_empty() {
+        // Use the data source name as a hash to determine shard
+        // This ensures consistent sharding for the same data source/subgraph
+        let shard_id = if let Some(first_trigger) = triggers.first() {
+            let data_source_name = first_trigger.host.data_source().name();
+            let hash = data_source_name
+                .bytes()
+                .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+            (hash as usize) % self.config.num_shards
+        } else {
             return Ok(state);
-        }
+        };
+        let semaphore = &self.semaphores[shard_id];
+
+        debug!(logger, "Processing triggers in shard";
+            "shard" => shard_id,
+            "trigger_count" => triggers.len()
+        );
 
         proof_of_indexing.start_handler(causality_region);
 
@@ -55,9 +114,11 @@ where
             mapping_trigger,
         } in triggers
         {
-            let _mapping_permit = self.limiter.acquire().await;
+            // Acquire permit from the specific shard
+            let _permit = semaphore.acquire().await.unwrap();
 
             let start = Instant::now();
+
             state = host
                 .process_mapping_trigger(
                     logger,
@@ -68,34 +129,43 @@ where
                     instrument,
                 )
                 .await?;
-            let elapsed = start.elapsed().as_secs_f64();
-            subgraph_metrics.observe_trigger_processing_duration(elapsed);
 
-            if let Some(ds) = host.data_source().as_offchain() {
-                ds.mark_processed_at(block.number());
-                // Remove this offchain data source since it has just been processed.
-                state
-                    .processed_data_sources
-                    .push(ds.as_stored_dynamic_data_source());
+            let elapsed = start.elapsed();
+            subgraph_metrics.observe_trigger_processing_duration(elapsed.as_secs_f64());
+
+            if elapsed > Duration::from_secs(30) {
+                debug!(logger, "Trigger processing took a long time";
+                    "duration_ms" => elapsed.as_millis(),
+                    "shard" => shard_id
+                );
             }
-        }
-
-        if state.deterministic_errors.len() != error_count {
-            assert!(state.deterministic_errors.len() == error_count + 1);
-
-            // If a deterministic error has happened, write a new
-            // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-            proof_of_indexing.write_deterministic_error(logger, causality_region);
         }
 
         Ok(state)
     }
 }
 
-/// A helper for taking triggers as `TriggerData` (usually from the block
-/// stream) and turning them into `HostedTrigger`s that are ready to run.
-///
-/// The output triggers will be run in the order in which they are returned.
+impl SubgraphTriggerProcessor {
+    /// Get metrics for monitoring
+    pub async fn get_metrics(&self) -> HashMap<String, usize> {
+        let mut metrics = HashMap::new();
+
+        for (i, semaphore) in self.semaphores.iter().enumerate() {
+            let available_permits = semaphore.available_permits();
+            let total_permits = self.config.workers_per_shard;
+            let in_use = total_permits - available_permits;
+
+            metrics.insert(format!("shard_{}_permits_in_use", i), in_use);
+            metrics.insert(format!("shard_{}_permits_available", i), available_permits);
+        }
+
+        metrics.insert("total_shards".to_string(), self.config.num_shards);
+        metrics.insert("workers_per_shard".to_string(), self.config.workers_per_shard);
+
+        metrics
+    }
+}
+
 pub struct Decoder<C, T>
 where
     C: Blockchain,

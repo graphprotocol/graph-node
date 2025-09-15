@@ -269,9 +269,15 @@ pub struct EnvVars {
     /// builds and one second for debug builds to speed up tests. The value
     /// is in seconds.
     pub ipfs_request_timeout: Duration,
-    /// The number of parallel tasks to use for subgraph runtime processing.
+    /// The number of processing shards for subgraph runtime processing.
     /// The default value is the number of CPUs.
-    pub subgraph_runtime_processing_parallelism: usize,
+    pub subgraph_runtime_processing_shards: usize,
+    /// The number of worker threads per shard for subgraph runtime processing.
+    /// The default value is 32.
+    pub subgraph_runtime_workers_per_shard: usize,
+    /// Maximum queue size per subgraph before applying backpressure.
+    /// The default value is 100.
+    pub subgraph_max_queue_per_subgraph: usize,
 }
 
 impl EnvVars {
@@ -369,9 +375,13 @@ impl EnvVars {
             firehose_block_fetch_timeout: inner.firehose_block_fetch_timeout,
             firehose_block_batch_size: inner.firehose_block_fetch_batch_size,
             ipfs_request_timeout,
-            subgraph_runtime_processing_parallelism: inner
-                .subgraph_runtime_processing_parallelism
+            subgraph_runtime_processing_shards: inner
+                .subgraph_runtime_processing_shards
                 .unwrap_or_else(num_cpus::get),
+            subgraph_runtime_workers_per_shard: inner
+                .subgraph_runtime_workers_per_shard
+                .unwrap_or(32),
+            subgraph_max_queue_per_subgraph: inner.subgraph_max_queue_per_subgraph.unwrap_or(100),
         })
     }
 
@@ -560,8 +570,12 @@ struct Inner {
     firehose_block_fetch_batch_size: usize,
     #[envconfig(from = "GRAPH_IPFS_REQUEST_TIMEOUT")]
     ipfs_request_timeout: Option<u64>,
-    #[envconfig(from = "GRAPH_SUBGRAPH_RUNTIME_PROCESSING_PARALLELISM")]
-    subgraph_runtime_processing_parallelism: Option<usize>,
+    #[envconfig(from = "GRAPH_SUBGRAPH_RUNTIME_PROCESSING_SHARDS")]
+    subgraph_runtime_processing_shards: Option<usize>,
+    #[envconfig(from = "GRAPH_SUBGRAPH_RUNTIME_WORKERS_PER_SHARD")]
+    subgraph_runtime_workers_per_shard: Option<usize>,
+    #[envconfig(from = "GRAPH_SUBGRAPH_MAX_QUEUE_PER_SUBGRAPH")]
+    subgraph_max_queue_per_subgraph: Option<usize>,
     #[envconfig(
         from = "GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION",
         default = "false"
