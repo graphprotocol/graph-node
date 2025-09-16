@@ -124,7 +124,13 @@ impl SubgraphTriggerProcessor {
         }
     }
 
-    /// Get or assign a shard for a deployment using consistent hashing
+    /// Calculate shard ID for a deployment using consistent hashing
+    fn calculate_shard_id(&self, deployment: &DeploymentHash) -> usize {
+        let mut hasher = DefaultHasher::new();
+        deployment.hash(&mut hasher);
+        (hasher.finish() as usize) % self.semaphores.len()
+    }
+
     fn get_shard_for_deployment(&self, deployment: &DeploymentHash) -> usize {
         // Check if already assigned
         {
@@ -134,10 +140,8 @@ impl SubgraphTriggerProcessor {
             }
         }
 
-        // Assign new shard using DefaultHasher
-        let mut hasher = DefaultHasher::new();
-        deployment.hash(&mut hasher);
-        let shard_id = (hasher.finish() as usize) % self.semaphores.len();
+        // Assign new shard using consistent hashing
+        let shard_id = self.calculate_shard_id(deployment);
 
         // Track the assignment
         let state = SubgraphState {
@@ -165,10 +169,8 @@ impl SubgraphTriggerProcessor {
             return state.clone();
         }
 
-        // Assign new shard using DefaultHasher
-        let mut hasher = DefaultHasher::new();
-        deployment.hash(&mut hasher);
-        let shard_id = (hasher.finish() as usize) % self.semaphores.len();
+        // Assign new shard using consistent hashing
+        let shard_id = self.calculate_shard_id(deployment);
 
         // Track the assignment
         let state = SubgraphState {
@@ -204,7 +206,6 @@ impl SubgraphTriggerProcessor {
             sleep(Duration::from_millis(delay_ms)).await;
         }
     }
-
 
     /// Get comprehensive metrics for monitoring
     pub async fn get_metrics(&self) -> HashMap<String, usize> {
@@ -313,16 +314,17 @@ where
         }
 
         // Create a synthetic deployment hash from data source name for consistent sharding.
-        // This ensures triggers from the same data source/subgraph are always routed to 
+        // This ensures triggers from the same data source/subgraph are always routed to
         // the same shard, maintaining cache locality.
         let data_source_name = triggers[0].host.data_source().name();
-        // Use a unique fallback for invalid data source names to avoid sharding hotspots.
-        let deployment_id = triggers[0].host.deployment_id().as_str();
-        let deployment_hash = DeploymentHash::new(data_source_name)
-            .unwrap_or_else(|_| {
-                let fallback = format!("{}_{}", deployment_id, data_source_name);
-                DeploymentHash::new(&fallback).unwrap()
-            });
+        // Use data source name directly for deployment hash
+        let deployment_hash = DeploymentHash::new(data_source_name).unwrap_or_else(|_| {
+            // Use a hash of the name as fallback to ensure valid deployment hash
+            let mut hasher = DefaultHasher::new();
+            data_source_name.hash(&mut hasher);
+            let fallback = format!("deployment_{:x}", hasher.finish());
+            DeploymentHash::new(&fallback).unwrap()
+        });
 
         // Determine shard assignment
         let shard_id = if self.config.enable_sharding {
@@ -344,15 +346,18 @@ where
         self.apply_backpressure(logger, &deployment_hash, projected_queue_depth)
             .await;
 
+        // Save trigger count before moving triggers into async block
+        let trigger_count = triggers.len();
+
         // Only increment queue depth after backpressure check passes
         subgraph_state
             .queue_depth
-            .fetch_add(triggers.len(), Ordering::Relaxed);
+            .fetch_add(trigger_count, Ordering::Relaxed);
 
         debug!(logger, "Processing triggers";
             "deployment" => deployment_hash.to_string(),
             "shard" => shard_id,
-            "trigger_count" => triggers.len(),
+            "trigger_count" => trigger_count,
             "sharding_enabled" => self.config.enable_sharding
         );
 
@@ -422,11 +427,13 @@ where
 
         // Execute processing and ensure queue depth cleanup regardless of outcome
         let result = process_result.await;
-        
+
         // Always decrement queue depth by the number of processed triggers
         // This ensures cleanup even if processing failed partway through
-        if !triggers.is_empty() {
-            subgraph_state.queue_depth.fetch_sub(triggers.len(), Ordering::Relaxed);
+        if trigger_count > 0 {
+            subgraph_state
+                .queue_depth
+                .fetch_sub(trigger_count, Ordering::Relaxed);
         }
 
         result
