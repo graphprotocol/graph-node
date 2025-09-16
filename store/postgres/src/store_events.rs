@@ -92,15 +92,21 @@ pub struct SubscriptionManager {
 
     /// Keep the notification listener alive
     listener: StoreEventListener,
+
+    logger: Logger,
 }
 
 impl SubscriptionManager {
     pub fn new(logger: Logger, postgres_url: String, registry: Arc<MetricsRegistry>) -> Self {
-        let (listener, store_events) = StoreEventListener::new(logger, postgres_url, registry);
+        let logger = logger.new(o!("component" => "StoreEventListener"));
+
+        let (listener, store_events) =
+            StoreEventListener::new(logger.cheap_clone(), postgres_url, registry);
 
         let mut manager = SubscriptionManager {
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
             listener,
+            logger,
         };
 
         // Deal with store subscriptions
@@ -112,6 +118,32 @@ impl SubscriptionManager {
         manager
     }
 
+    async fn broadcast_event(
+        logger: &Logger,
+        subscriptions: &Arc<RwLock<HashMap<usize, Sender<Arc<StoreEvent>>>>>,
+        event: StoreEvent,
+    ) {
+        let event = Arc::new(event);
+
+        // Send to `subscriptions`.
+        {
+            let senders = subscriptions.read().unwrap().clone();
+
+            // Write change to all matching subscription streams; remove subscriptions
+            // whose receiving end has been dropped
+            for (id, sender) in senders {
+                if let Err(e) = sender.send(event.cheap_clone()).await {
+                    error!(
+                        logger,
+                        "Failed to send store event to subscriber {}: {}", id, e
+                    );
+                    // Receiver was dropped
+                    subscriptions.write().unwrap().remove(&id);
+                }
+            }
+        }
+    }
+
     /// Receive store events from Postgres and send them to all active
     /// subscriptions. Detect stale subscriptions in the process and
     /// close them.
@@ -121,24 +153,22 @@ impl SubscriptionManager {
     ) {
         let subscriptions = self.subscriptions.cheap_clone();
         let mut store_events = store_events.compat();
+        let logger = self.logger.cheap_clone();
 
         // This channel is constantly receiving things and there are locks involved,
         // so it's best to use a blocking task.
         graph::spawn_blocking(async move {
-            while let Some(Ok(event)) = store_events.next().await {
-                let event = Arc::new(event);
-
-                // Send to `subscriptions`.
-                {
-                    let senders = subscriptions.read().unwrap().clone();
-
-                    // Write change to all matching subscription streams; remove subscriptions
-                    // whose receiving end has been dropped
-                    for (id, sender) in senders {
-                        if sender.send(event.cheap_clone()).await.is_err() {
-                            // Receiver was dropped
-                            subscriptions.write().unwrap().remove(&id);
-                        }
+            loop {
+                match store_events.next().await {
+                    Some(Ok(event)) => {
+                        Self::broadcast_event(&logger, &subscriptions, event).await;
+                    }
+                    Some(Err(_)) => {
+                        error!(logger, "Error receiving store event");
+                    }
+                    None => {
+                        error!(logger, "Store event stream ended");
+                        break;
                     }
                 }
             }
@@ -147,6 +177,7 @@ impl SubscriptionManager {
 
     fn periodically_clean_up_stale_subscriptions(&self) {
         let subscriptions = self.subscriptions.cheap_clone();
+        let logger = self.logger.cheap_clone();
 
         // Clean up stale subscriptions every 5s
         graph::spawn(async move {
@@ -169,6 +200,7 @@ impl SubscriptionManager {
 
                     // Remove all stale subscriptions
                     for id in stale_ids {
+                        warn!(logger, "Removing stale subscription {}", id);
                         subscriptions.remove(&id);
                     }
                 }
