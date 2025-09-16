@@ -4,6 +4,7 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -236,7 +237,7 @@ jobs:
 
       - name: Run linting
         run: just lint
-  
+
   release-check:
     name: Build in release mode
     runs-on: ubuntu-latest
