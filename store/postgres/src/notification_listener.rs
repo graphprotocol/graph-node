@@ -284,6 +284,7 @@ impl NotificationListener {
                         }
                     }
                 }
+                warn!(logger, "Listener dropped. Terminating listener thread");
             }))
             .unwrap_or_else(|_| std::process::exit(1))
         });
