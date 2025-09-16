@@ -399,7 +399,7 @@ pub async fn run(
     // Obtain metrics server port
     let metrics_port = opt.metrics_port;
 
-    info!(logger, "Starting up");
+    info!(logger, "Starting up"; "node_id" => &node_id);
 
     // Set up metrics
     let (prometheus_registry, metrics_registry) = setup_metrics(&logger);
