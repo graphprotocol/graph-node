@@ -173,24 +173,25 @@ where
                                     anyhow!("Failed to get subgraph assignment entity: {}", e)
                                 })
                                 .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
+                                    let logger = logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => node_id.to_string()));
                                     if let Some((assigned,is_paused)) = assigned {
                                         if assigned == node_id {
 
                                             if is_paused{
                                                 // Subgraph is paused, so we don't start it
-                                                debug!(logger, "Deployment assignee is this node, but it is paused, so we don't start it"; "assigned_to" => assigned, "node_id" => &node_id,"paused" => is_paused);
+                                                debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "paused" => is_paused, "action" => "ignore");
                                                 return Box::new(stream::empty());
                                             }
 
                                             // Start subgraph on this node
-                                            debug!(logger, "Deployment assignee is this node, broadcasting add event"; "assigned_to" => assigned, "node_id" => &node_id);
+                                            debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "action" => "add");
                                             Box::new(stream::once(Ok(AssignmentEvent::Add {
                                                 deployment,
                                                 node_id: node_id.clone(),
                                             })))
                                         } else {
                                             // Ensure it is removed from this node
-                                            debug!(logger, "Deployment assignee is not this node, broadcasting remove event"; "assigned_to" => assigned, "node_id" => &node_id);
+                                            debug!(logger, "Deployment assignee is not this node"; "assigned_to" => assigned, "action" => "remove");
                                             Box::new(stream::once(Ok(AssignmentEvent::Remove {
                                                 deployment,
                                                 node_id: node_id.clone(),
@@ -198,7 +199,7 @@ where
                                         }
                                     } else {
                                         // Was added/updated, but is now gone.
-                                        debug!(logger, "Deployment has not assignee, we will get a separate remove event later"; "node_id" => &node_id);
+                                        debug!(logger, "Deployment assignee not found in database"; "action" => "ignore");
                                         Box::new(stream::empty())
                                     }
                                 })
