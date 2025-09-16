@@ -149,9 +149,10 @@ where
         let store = self.store.clone();
         let node_id = self.node_id.clone();
         let logger = self.logger.clone();
+        let logger2 = logger.clone();
 
         self.subscription_manager
-            .subscribe()
+            .subscribe().inspect(move |x| debug!(logger2, "Received store event: {:?}", x))
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
                 let changes: Vec<_> = event.changes.iter().cloned().map(AssignmentChange::into_parts).collect();
@@ -160,7 +161,7 @@ where
             .flatten()
             .and_then(
                 move |(deployment, operation)| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
-                    trace!(logger, "Received assignment change";
+                    debug!(logger, "Received assignment change";
                                    "deployment" => %deployment,
                                    "operation" => format!("{:?}", operation),
                                 );
