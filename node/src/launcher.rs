@@ -6,7 +6,7 @@ use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
 
 use crate::config::Config;
-use crate::dev::helpers::watch_subgraph_updates;
+use crate::helpers::watch_subgraph_updates;
 use crate::network_setup::Networks;
 use crate::opt::Opt;
 use crate::store_builder::StoreBuilder;

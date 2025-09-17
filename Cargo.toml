@@ -8,6 +8,7 @@ members = [
     "chain/ethereum",
     "chain/near",
     "chain/substreams",
+    "gnd",
     "graphql",
     "node",
     "runtime/derive",

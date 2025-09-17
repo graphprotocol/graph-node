@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use graph::prelude::{
     BlockPtr, DeploymentHash, NodeId, SubgraphRegistrarError, SubgraphStore as SubgraphStoreTrait,
 };
@@ -11,11 +11,6 @@ use graph::{
     prelude::{SubgraphName, SubgraphRegistrar},
 };
 use graph_store_postgres::SubgraphStore;
-
-pub struct DevModeContext {
-    pub watch: bool,
-    pub updates_rx: Receiver<(DeploymentHash, SubgraphName)>,
-}
 
 /// Cleanup a subgraph
 /// This is used to remove a subgraph before redeploying it when using the watch flag
@@ -62,7 +57,7 @@ async fn deploy_subgraph(
         })
 }
 
-pub async fn drop_and_recreate_subgraph(
+async fn drop_and_recreate_subgraph(
     logger: &Logger,
     subgraph_store: Arc<SubgraphStore>,
     subgraph_registrar: Arc<impl SubgraphRegistrar>,
@@ -123,38 +118,4 @@ pub async fn watch_subgraph_updates(
 
     error!(logger, "Subgraph watcher terminated unexpectedly"; "action" => "exiting");
     std::process::exit(1);
-}
-
-/// Parse an alias string into a tuple of (alias_name, manifest, Option<build_dir>)
-pub fn parse_alias(alias: &str) -> anyhow::Result<(String, String, Option<String>)> {
-    let mut split = alias.split(':');
-    let alias_name = split.next();
-    let alias_value = split.next();
-
-    if alias_name.is_none() || alias_value.is_none() || split.next().is_some() {
-        return Err(anyhow::anyhow!(
-            "Invalid alias format: expected 'alias=[BUILD_DIR:]manifest', got '{}'",
-            alias
-        ));
-    }
-
-    let alias_name = alias_name.unwrap().to_owned();
-    let (manifest, build_dir) = parse_manifest_arg(alias_value.unwrap())
-        .with_context(|| format!("While parsing alias '{}'", alias))?;
-
-    Ok((alias_name, manifest, build_dir))
-}
-
-/// Parse a manifest string into a tuple of (manifest, Option<build_dir>)
-pub fn parse_manifest_arg(value: &str) -> anyhow::Result<(String, Option<String>)> {
-    match value.split_once(':') {
-        Some((manifest, build_dir)) if !manifest.is_empty() => {
-            Ok((manifest.to_owned(), Some(build_dir.to_owned())))
-        }
-        Some(_) => Err(anyhow::anyhow!(
-            "Invalid manifest arg: missing manifest in '{}'",
-            value
-        )),
-        None => Ok((value.to_owned(), None)),
-    }
 }

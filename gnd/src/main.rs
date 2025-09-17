@@ -12,19 +12,16 @@ use graph::{
     tokio::{self, sync::mpsc},
 };
 use graph_core::polling_monitor::ipfs_service;
-use graph_node::{
-    dev::watcher,
-    dev::watcher::{parse_manifest_args, watch_subgraphs},
-    launcher,
-    opt::Opt,
-};
+use graph_node::{launcher, opt::Opt};
 use lazy_static::lazy_static;
+
+use gnd::watcher::{deploy_all_subgraphs, parse_manifest_args, watch_subgraphs};
 
 #[cfg(unix)]
 use pgtemp::{PgTempDB, PgTempDBBuilder};
 
 // Add an alias for the temporary Postgres DB handle. On non unix
-// targets we don’t have pgtemp, but we still need the type to satisfy the
+// targets we don't have pgtemp, but we still need the type to satisfy the
 // function signatures.
 #[cfg(unix)]
 type TempPgDB = PgTempDB;
@@ -39,7 +36,7 @@ lazy_static! {
 #[derive(Clone, Debug, Parser)]
 #[clap(
     name = "gnd",
-    about = "Graph Node Dev", 
+    about = "Graph Node Dev",
     author = "Graph Protocol, Inc.",
     version = RENDERED_TESTAMENT.as_str()
 )]
@@ -259,8 +256,7 @@ async fn main() -> Result<()> {
     });
 
     if let Err(e) =
-        watcher::deploy_all_subgraphs(&logger, &manifests_paths, &source_subgraph_aliases, &tx)
-            .await
+        deploy_all_subgraphs(&logger, &manifests_paths, &source_subgraph_aliases, &tx).await
     {
         error!(logger, "Error deploying subgraphs"; "error" => e.to_string());
         std::process::exit(1);
