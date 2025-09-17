@@ -9,10 +9,42 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use super::helpers::{parse_alias, parse_manifest_arg};
-
 const WATCH_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_BUILD_DIR: &str = "build";
+
+/// Parse an alias string into a tuple of (alias_name, manifest, Option<build_dir>)
+pub fn parse_alias(alias: &str) -> anyhow::Result<(String, String, Option<String>)> {
+    let mut split = alias.split(':');
+    let alias_name = split.next();
+    let alias_value = split.next();
+
+    if alias_name.is_none() || alias_value.is_none() || split.next().is_some() {
+        return Err(anyhow::anyhow!(
+            "Invalid alias format: expected 'alias=[BUILD_DIR:]manifest', got '{}'",
+            alias
+        ));
+    }
+
+    let alias_name = alias_name.unwrap().to_owned();
+    let (manifest, build_dir) = parse_manifest_arg(alias_value.unwrap())
+        .with_context(|| format!("While parsing alias '{}'", alias))?;
+
+    Ok((alias_name, manifest, build_dir))
+}
+
+/// Parse a manifest string into a tuple of (manifest, Option<build_dir>)
+pub fn parse_manifest_arg(value: &str) -> anyhow::Result<(String, Option<String>)> {
+    match value.split_once(':') {
+        Some((manifest, build_dir)) if !manifest.is_empty() => {
+            Ok((manifest.to_owned(), Some(build_dir.to_owned())))
+        }
+        Some(_) => Err(anyhow::anyhow!(
+            "Invalid manifest arg: missing manifest in '{}'",
+            value
+        )),
+        None => Ok((value.to_owned(), None)),
+    }
+}
 
 // Parses manifest arguments and returns a vector of paths to the manifest files
 pub fn parse_manifest_args(

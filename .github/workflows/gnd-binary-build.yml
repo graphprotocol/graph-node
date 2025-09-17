@@ -46,49 +46,17 @@ jobs:
         if: startsWith(matrix.runner, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpq-dev protobuf-compiler musl-tools libssl-dev
+          sudo apt-get install -y protobuf-compiler musl-tools
 
       - name: Install dependencies (macOS)
         if: startsWith(matrix.runner, 'macos')
         run: |
-          brew install postgresql protobuf
+          brew install protobuf
 
       - name: Install protobuf (Windows)
         if: startsWith(matrix.runner, 'windows')
         run: choco install protoc
 
-      - name: Cache vcpkg
-        uses: actions/cache@v4
-        if: startsWith(matrix.runner, 'windows')
-        id: vcpkg-cache
-        with:
-          path: |
-            ${{ github.workspace }}/vcpkg
-            C:/vcpkg/installed
-            C:/vcpkg/packages
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-
-
-      - name: Install vcpkg and dependencies (Windows)
-        if: startsWith(matrix.runner, 'windows') && steps.vcpkg-cache.outputs.cache-hit != 'true'
-        run: |
-          # Install vcpkg
-          git clone https://github.com/microsoft/vcpkg.git
-          cd vcpkg
-          .\bootstrap-vcpkg.bat
-          
-          # Install libpq using vcpkg
-          .\vcpkg.exe install libpq:x64-windows
-        shell: pwsh
-
-      - name: Set Windows environment variables
-        if: startsWith(matrix.runner, 'windows')
-        run: |
-          echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "LIBPQ_DIR=${{ github.workspace }}/vcpkg/installed/x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "RUSTFLAGS=-L ${{ github.workspace }}/vcpkg/installed/x64-windows/lib" | Out-File -FilePath $env:GITHUB_ENV -Append
-        shell: pwsh
 
       - name: Build gnd binary (Unix/Mac)
         if: ${{ !startsWith(matrix.runner, 'windows') }}
@@ -97,9 +65,6 @@ jobs:
       - name: Build gnd binary (Windows)
         if: startsWith(matrix.runner, 'windows')
         run: cargo build --bin gnd --release --target ${{ matrix.target }}
-        env:
-          LIBPQ_DIR: ${{ format('{0}/vcpkg/installed/x64-windows', github.workspace) }}
-          VCPKGRS_DYNAMIC: 1
 
       - name: Sign macOS binary
         if: startsWith(matrix.runner, 'macos')

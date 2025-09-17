@@ -1907,6 +1907,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "gnd"
+version = "0.36.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "git-testament",
+ "globset",
+ "graph",
+ "graph-core",
+ "graph-node",
+ "lazy_static",
+ "notify",
+ "openssl-sys",
+ "pgtemp",
+ "pq-sys",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "graph"
 version = "0.36.0"
 dependencies = [
@@ -2119,7 +2140,6 @@ dependencies = [
  "json-structural-diff",
  "lazy_static",
  "notify",
- "pgtemp",
  "prometheus",
  "serde",
  "shellexpand",
@@ -4007,11 +4027,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
-name = "pq-sys"
-version = "0.6.1"
+name = "pq-src"
+version = "0.3.9+libpq-17.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a24ff9e4cf6945c988f0db7005d87747bf72864965c3529d259ad155ac41d584"
+checksum = "24ee82a51d19317d15e43b82e496db215ad5bf09a245786e7ac75cb859e5ba46"
 dependencies = [
+ "cc",
+ "openssl-sys",
+]
+
+[[package]]
+name = "pq-sys"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dfd6cf44cca8f9624bc19df234fc4112873432f5fda1caff174527846d026fa9"
+dependencies = [
+ "libc",
+ "pq-src",
  "vcpkg",
 ]
 
