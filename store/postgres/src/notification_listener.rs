@@ -222,9 +222,6 @@ impl NotificationListener {
                     // longer than 500ms for new notifications to arrive,
                     // but limit the size of each batch to 128 to guarantee
                     // progress on a busy system
-                    if store_events {
-                        debug!(logger, "Waiting for store event"; "queue_size" => queue_size);
-                    }
                     let notifications: Vec<_> = conn
                         .notifications()
                         .timeout_iter(Duration::from_millis(500))
@@ -246,7 +243,7 @@ impl NotificationListener {
                         })
                         .filter(|notification| notification.channel() == channel_name.0)
                         .collect();
-                    if store_events {
+                    if store_events && notifications.len() > 0 {
                         debug!(logger, "Received store events"; "num_events" => notifications.len(), "queue_size" => conn.notifications().len());
                     }
                     // Read notifications until there hasn't been one for 500ms

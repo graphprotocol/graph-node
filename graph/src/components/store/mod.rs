@@ -9,7 +9,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Integer;
 use diesel_derives::{AsExpression, FromSqlRow};
 pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
-use slog::Logger;
+use slog::{debug, Logger};
 
 pub use super::subgraph::Entity;
 pub use err::{StoreError, StoreResult};
@@ -636,6 +636,7 @@ impl PartialEq for StoreEvent {
 /// A `StoreEventStream` produces the `StoreEvents`. Various filters can be applied
 /// to it to reduce which and how many events are delivered by the stream.
 pub struct StoreEventStream<S> {
+    logger: Logger,
     source: S,
 }
 
@@ -651,7 +652,9 @@ where
     type Error = ();
 
     fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-        self.source.poll()
+        let res = self.source.poll();
+        debug!(self.logger, "Polled store event"; "result" => format!("{:?}", res));
+        res
     }
 }
 
@@ -660,8 +663,14 @@ where
     S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send + 'static,
 {
     // Create a new `StoreEventStream` from another such stream
-    pub fn new(source: S) -> Self {
-        StoreEventStream { source }
+    pub fn new(logger: Logger, source: S) -> Self {
+        StoreEventStream { logger, source }
+    }
+}
+
+impl<S> Drop for StoreEventStream<S> {
+    fn drop(&mut self) {
+        debug!(self.logger, "Dropping store event stream");
     }
 }
 
