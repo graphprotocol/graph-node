@@ -98,7 +98,7 @@ pub struct SubscriptionManager {
 
 impl SubscriptionManager {
     pub fn new(logger: Logger, postgres_url: String, registry: Arc<MetricsRegistry>) -> Self {
-        let logger = logger.new(o!("component" => "StoreEventListener"));
+        let logger = logger.new(o!("component" => "StoreEventListener", "tag" => "assignment"));
 
         let (listener, store_events) =
             StoreEventListener::new(logger.cheap_clone(), postgres_url, registry);
@@ -128,6 +128,8 @@ impl SubscriptionManager {
         // Send to `subscriptions`.
         {
             let senders = subscriptions.read().unwrap().clone();
+            let ids = format!("{:?}", senders.keys().cloned().collect::<Vec<_>>());
+            debug!(logger, "Broadcasting store event"; "event" => format!("{:?}", event), "subscriptions" => ids);
 
             // Write change to all matching subscription streams; remove subscriptions
             // whose receiving end has been dropped
@@ -159,6 +161,7 @@ impl SubscriptionManager {
         // so it's best to use a blocking task.
         graph::spawn_blocking(async move {
             loop {
+                debug!(logger, "Waiting for store event");
                 match store_events.next().await {
                     Some(Ok(event)) => {
                         Self::broadcast_event(&logger, &subscriptions, event).await;
@@ -220,6 +223,7 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         // Add the new subscription
         self.subscriptions.write().unwrap().insert(id, sender);
 
+        debug!(self.logger, "New subscription {}", id);
         // Return the subscription ID and entity change stream
         StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
     }

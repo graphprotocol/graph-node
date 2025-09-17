@@ -152,7 +152,7 @@ where
         let logger2 = logger.clone();
 
         self.subscription_manager
-            .subscribe().inspect(move |x| debug!(logger2, "Received store event: {:?}", x))
+            .subscribe().inspect(move |x| debug!(logger2, "Received store event: {:?}", x; "tag" => "assignment"))
             .map_err(|()| anyhow!("Entity change stream failed"))
             .map(|event| {
                 let changes: Vec<_> = event.changes.iter().cloned().map(AssignmentChange::into_parts).collect();
@@ -164,6 +164,7 @@ where
                     debug!(logger, "Received assignment change";
                                    "deployment" => %deployment,
                                    "operation" => format!("{:?}", operation),
+                                   "tag" => "assignment"
                                 );
 
                     match operation {
@@ -174,7 +175,7 @@ where
                                     anyhow!("Failed to get subgraph assignment entity: {}", e)
                                 })
                                 .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
-                                    let logger = logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => node_id.to_string()));
+                                    let logger = logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => node_id.to_string(), "tag" => "assignment"));
                                     if let Some((assigned,is_paused)) = assigned {
                                         if assigned == node_id {
 

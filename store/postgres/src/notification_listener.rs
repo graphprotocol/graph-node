@@ -147,10 +147,19 @@ impl NotificationListener {
             }
         }
 
-        let logger = logger.new(o!(
-            "component" => "NotificationListener",
-            "channel" => channel_name.0.clone()
-        ));
+        let store_events = channel_name.0 == "store_events";
+        let logger = if store_events {
+            logger.new(o!(
+                "component" => "NotificationListener",
+                "channel" => channel_name.0.clone(),
+                "tag" => "assignment"
+            ))
+        } else {
+            logger.new(o!(
+                "component" => "NotificationListener",
+                "channel" => channel_name.0.clone()
+            ))
+        };
 
         debug!(
             logger,
@@ -284,7 +293,7 @@ impl NotificationListener {
                         }
                     }
                 }
-                warn!(logger, "Listener dropped. Terminating listener thread");
+                warn!(logger, "Listener dropped. Terminating listener thread"; "tag" => "assignment");
             }))
             .unwrap_or_else(|_| std::process::exit(1))
         });
