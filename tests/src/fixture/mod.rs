@@ -574,7 +574,6 @@ pub async fn setup_inner<C: Blockchain>(
     // Create IPFS-based subgraph provider
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
-        link_resolver.cheap_clone(),
         subgraph_instance_manager.clone(),
         sg_count,
     ));

@@ -60,7 +60,6 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
     async fn start_subgraph(
         self: Arc<Self>,
         loc: DeploymentLocator,
-        manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
     ) {
         let runner_index = self.subgraph_start_counter.fetch_add(1, Ordering::SeqCst);
@@ -78,6 +77,19 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
             let deployment_status_metric = deployment_status_metric.clone();
 
             async move {
+                let link_resolver = self
+                    .link_resolver
+                    .for_manifest(&loc.hash.to_string())
+                    .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+                let file_bytes = link_resolver
+                    .cat(&logger, &loc.hash.to_ipfs_link())
+                    .await
+                    .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+
+                let manifest: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes)
+                    .map_err(|e| SubgraphAssignmentProviderError::ResolveError(e.into()))?;
+
                 match BlockchainKind::from_manifest(&manifest)? {
                     BlockchainKind::Ethereum => {
                         let runner = instance_manager

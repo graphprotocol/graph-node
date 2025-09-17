@@ -158,7 +158,6 @@ pub async fn run(
     // Create IPFS-based subgraph provider
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
-        link_resolver.cheap_clone(),
         subgraph_instance_manager,
         sg_metrics,
     ));

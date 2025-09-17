@@ -294,12 +294,8 @@ fn build_subgraph_registrar(
     );
 
     // Create IPFS-based subgraph provider
-    let subgraph_provider = IpfsSubgraphAssignmentProvider::new(
-        &logger_factory,
-        link_resolver.clone(),
-        subgraph_instance_manager,
-        sg_count,
-    );
+    let subgraph_provider =
+        IpfsSubgraphAssignmentProvider::new(&logger_factory, subgraph_instance_manager, sg_count);
 
     // Check version switching mode environment variable
     let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
