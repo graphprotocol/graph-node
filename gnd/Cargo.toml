@@ -1,0 +1,32 @@
+[package]
+name = "gnd"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "gnd"
+path = "src/main.rs"
+
+[dependencies]
+# Core graph dependencies
+graph = { path = "../graph" }
+graph-core = { path = "../core" }
+graph-node = { path = "../node" }
+
+# Direct dependencies from current dev.rs
+anyhow = { workspace = true }
+clap = { workspace = true }
+env_logger = "0.11.8"
+git-testament = "0.2"
+lazy_static = "1.5.0"
+tokio = { workspace = true }
+serde = { workspace = true }
+
+# File watching
+notify = "8.2.0"
+globset = "0.4.16"
+pq-sys = { version = "0.7.2", features = ["bundled"] }
+openssl-sys = { version = "0.9.100", features = ["vendored"] }
+
+[target.'cfg(unix)'.dependencies]
+pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
