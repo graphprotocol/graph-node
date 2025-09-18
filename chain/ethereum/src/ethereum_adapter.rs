@@ -1005,28 +1005,31 @@ impl EthereumAdapter {
         // Create a HashMap of block numbers to Vec<EthereumBlockTriggerType>
         let matching_blocks = (from..=to)
             .filter_map(|block_number| {
+                let mut triggers = Vec::new();
+
                 filter
                     .polling_intervals
                     .iter()
-                    .find_map(|(start_block, interval)| {
+                    .for_each(|(start_block, interval)| {
                         let has_once_trigger = (*interval == 0) && (block_number == *start_block);
                         let has_polling_trigger = block_number >= *start_block
                             && *interval > 0
                             && ((block_number - start_block) % *interval) == 0;
 
-                        if has_once_trigger || has_polling_trigger {
-                            let mut triggers = Vec::new();
-                            if has_once_trigger {
-                                triggers.push(EthereumBlockTriggerType::Start);
-                            }
-                            if has_polling_trigger {
-                                triggers.push(EthereumBlockTriggerType::End);
-                            }
-                            Some((block_number, triggers))
-                        } else {
-                            None
+                        if has_once_trigger {
+                            triggers.push(EthereumBlockTriggerType::Start);
                         }
-                    })
+
+                        if has_polling_trigger {
+                            triggers.push(EthereumBlockTriggerType::End);
+                        }
+                    });
+
+                if triggers.is_empty() {
+                    None
+                } else {
+                    Some((block_number, triggers))
+                }
             })
             .collect::<HashMap<_, _>>();
 
