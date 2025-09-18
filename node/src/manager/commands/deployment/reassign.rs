@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use graph::prelude::NodeId;
@@ -12,10 +13,22 @@ use graphman::deployment::DeploymentSelector;
 pub fn run(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
-    deployment: DeploymentSelector,
+    deployment_selector: DeploymentSelector,
     node: &NodeId,
+    delay: Duration,
 ) -> Result<()> {
-    let deployment = load_deployment(primary_pool.clone(), &deployment)?;
+    super::pause::run(
+        primary_pool.clone(),
+        notification_sender.clone(),
+        deployment_selector.clone(),
+    )?;
+
+    println!(
+        "Waiting {}s to make sure pausing was processed ...",
+        delay.as_secs()
+    );
+
+    let deployment = load_deployment(primary_pool.clone(), &deployment_selector)?;
     let curr_node = deployment.assigned_node(primary_pool.clone())?;
     let reassign_msg = match &curr_node {
         Some(curr_node) => format!(
@@ -28,8 +41,8 @@ pub fn run(
     println!("{}", reassign_msg);
 
     let reassign_result = reassign_deployment(
-        primary_pool,
-        notification_sender,
+        primary_pool.clone(),
+        notification_sender.clone(),
         &deployment,
         node,
         curr_node,
@@ -49,6 +62,12 @@ pub fn run(
             }
         }
     }
+
+    super::resume::run(
+        primary_pool,
+        notification_sender,
+        deployment_selector.clone(),
+    )?;
 
     Ok(())
 }
