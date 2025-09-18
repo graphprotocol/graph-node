@@ -1,6 +1,6 @@
+use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
-use std::sync::Mutex;
 
 use anyhow::anyhow;
 use anyhow::Error;
@@ -168,7 +168,7 @@ pub struct AscHeapCtx {
     // is zeroed when initialized or grown.
     memory: Memory,
 
-    arena: Mutex<Arena>,
+    arena: RefCell<Arena>,
 }
 
 impl AscHeapCtx {
@@ -207,28 +207,28 @@ impl AscHeapCtx {
         Ok(Arc::new(AscHeapCtx {
             memory_allocate,
             memory,
-            arena: Mutex::new(Arena::new()),
+            arena: RefCell::new(Arena::new()),
             api_version,
             id_of_type,
         }))
     }
 
     fn arena_start_ptr(&self) -> i32 {
-        self.arena.lock().unwrap().start
+        self.arena.borrow().start
     }
 
     fn arena_free_size(&self) -> i32 {
-        self.arena.lock().unwrap().size
+        self.arena.borrow().size
     }
 
     fn set_arena(&self, start_ptr: i32, size: i32) {
-        let mut arena = self.arena.lock().unwrap();
+        let mut arena = self.arena.borrow_mut();
         arena.start = start_ptr;
         arena.size = size;
     }
 
     fn allocated(&self, size: i32) {
-        let mut arena = self.arena.lock().unwrap();
+        let mut arena = self.arena.borrow_mut();
         arena.start += size;
         arena.size -= size;
     }
