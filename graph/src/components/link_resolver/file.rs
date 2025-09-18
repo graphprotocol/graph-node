@@ -123,7 +123,7 @@ impl LinkResolverTrait for FileLinkResolver {
         Box::new(self.clone())
     }
 
-    async fn cat(&self, ctx: LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
+    async fn cat(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
         let link = remove_prefix(&link.link);
         let path = self.resolve_path(&link);
 
@@ -145,13 +145,13 @@ impl LinkResolverTrait for FileLinkResolver {
         Ok(Box::new(self.clone_for_manifest(manifest_path)?))
     }
 
-    async fn get_block(&self, _ctx: LinkResolverContext, _link: &Link) -> Result<Vec<u8>, Error> {
+    async fn get_block(&self, _ctx: &LinkResolverContext, _link: &Link) -> Result<Vec<u8>, Error> {
         Err(anyhow!("get_block is not implemented for FileLinkResolver").into())
     }
 
     async fn json_stream(
         &self,
-        _ctx: LinkResolverContext,
+        _ctx: &LinkResolverContext,
         _link: &Link,
     ) -> Result<JsonValueStream, Error> {
         Err(anyhow!("json_stream is not implemented for FileLinkResolver").into())
@@ -187,7 +187,7 @@ mod tests {
             link: test_file_path.to_string_lossy().to_string(),
         };
         let result = resolver
-            .cat(LinkResolverContext::test(), &link)
+            .cat(&LinkResolverContext::test(), &link)
             .await
             .unwrap();
         assert_eq!(result, test_content);
@@ -196,7 +196,7 @@ mod tests {
         let link = Link {
             link: "/test.txt".to_string(),
         };
-        let result = resolver.cat(LinkResolverContext::test(), &link).await;
+        let result = resolver.cat(&LinkResolverContext::test(), &link).await;
         assert!(
             result.is_err(),
             "Reading /test.txt should fail as it doesn't exist"
@@ -229,7 +229,7 @@ mod tests {
             link: "test.txt".to_string(),
         };
         let result = resolver
-            .cat(LinkResolverContext::test(), &link)
+            .cat(&LinkResolverContext::test(), &link)
             .await
             .unwrap();
         assert_eq!(result, test_content);
@@ -239,7 +239,7 @@ mod tests {
             link: test_file_path.to_string_lossy().to_string(),
         };
         let result = resolver
-            .cat(LinkResolverContext::test(), &link)
+            .cat(&LinkResolverContext::test(), &link)
             .await
             .unwrap();
         assert_eq!(result, test_content);
@@ -248,7 +248,7 @@ mod tests {
         let link = Link {
             link: "missing.txt".to_string(),
         };
-        let result = resolver.cat(LinkResolverContext::test(), &link).await;
+        let result = resolver.cat(&LinkResolverContext::test(), &link).await;
         assert!(result.is_err());
 
         // Clean up
@@ -287,7 +287,7 @@ mod tests {
             link: "alias1".to_string(),
         };
         let result1 = resolver
-            .cat(LinkResolverContext::test(), &link1)
+            .cat(&LinkResolverContext::test(), &link1)
             .await
             .unwrap();
         assert_eq!(result1, test_content1);
@@ -296,7 +296,7 @@ mod tests {
             link: "alias2".to_string(),
         };
         let result2 = resolver
-            .cat(LinkResolverContext::test(), &link2)
+            .cat(&LinkResolverContext::test(), &link2)
             .await
             .unwrap();
         assert_eq!(result2, test_content2);

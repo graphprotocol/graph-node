@@ -258,7 +258,7 @@ impl IpfsClient for CachingClient {
 
     async fn cat(
         self: Arc<Self>,
-        ctx: IpfsContext,
+        ctx: &IpfsContext,
         path: &ContentPath,
         max_size: usize,
         timeout: Option<Duration>,
@@ -277,7 +277,7 @@ impl IpfsClient for CachingClient {
 
     async fn get_block(
         self: Arc<Self>,
-        ctx: IpfsContext,
+        ctx: &IpfsContext,
         path: &ContentPath,
         timeout: Option<Duration>,
         retry_policy: RetryPolicy,

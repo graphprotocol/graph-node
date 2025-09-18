@@ -196,7 +196,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     ) -> Result<DataSource, Error> {
         let content = resolver
             .cat(
-                LinkResolverContext::new(deployment_hash, logger),
+                &LinkResolverContext::new(deployment_hash, logger),
                 &self.source.package.file,
             )
             .await?;
@@ -245,7 +245,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         let handler = match (self.mapping.handler, self.mapping.file) {
             (Some(handler), Some(file)) => {
                 let module_bytes = resolver
-                    .cat(LinkResolverContext::new(deployment_hash, logger), &file)
+                    .cat(&LinkResolverContext::new(deployment_hash, logger), &file)
                     .await
                     .with_context(|| format!("failed to resolve mapping {}", file.link))?;
 
@@ -740,13 +740,13 @@ mod test {
             unimplemented!()
         }
 
-        async fn cat(&self, _ctx: LinkResolverContext, _link: &Link) -> Result<Vec<u8>, Error> {
+        async fn cat(&self, _ctx: &LinkResolverContext, _link: &Link) -> Result<Vec<u8>, Error> {
             Ok(gen_package().encode_to_vec())
         }
 
         async fn get_block(
             &self,
-            _ctx: LinkResolverContext,
+            _ctx: &LinkResolverContext,
             _link: &Link,
         ) -> Result<Vec<u8>, Error> {
             unimplemented!()
@@ -754,7 +754,7 @@ mod test {
 
         async fn json_stream(
             &self,
-            _ctx: LinkResolverContext,
+            _ctx: &LinkResolverContext,
             _link: &Link,
         ) -> Result<JsonValueStream, Error> {
             unimplemented!()

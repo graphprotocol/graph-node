@@ -250,7 +250,7 @@ mod tests {
             .await;
 
         let bytes = client
-            .cat_stream(Default::default(), &make_path(), None, RetryPolicy::None)
+            .cat_stream(&Default::default(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -276,7 +276,7 @@ mod tests {
 
         let result = client
             .cat_stream(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 Some(ms(300)),
                 RetryPolicy::None,
@@ -305,7 +305,7 @@ mod tests {
 
         let _stream = client
             .cat_stream(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 None,
                 RetryPolicy::NonDeterministic,
@@ -326,7 +326,7 @@ mod tests {
 
         let bytes = client
             .cat(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -352,7 +352,7 @@ mod tests {
 
         let bytes = client
             .cat(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 data.len(),
                 None,
@@ -378,7 +378,7 @@ mod tests {
 
         client
             .cat(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 data.len() - 1,
                 None,
@@ -400,7 +400,7 @@ mod tests {
 
         client
             .cat(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 usize::MAX,
                 Some(ms(300)),
@@ -429,7 +429,7 @@ mod tests {
 
         let bytes = client
             .cat(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -452,7 +452,7 @@ mod tests {
             .await;
 
         let bytes = client
-            .get_block(Default::default(), &make_path(), None, RetryPolicy::None)
+            .get_block(&Default::default(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap();
 
@@ -471,7 +471,7 @@ mod tests {
 
         client
             .get_block(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 Some(ms(300)),
                 RetryPolicy::None,
@@ -499,7 +499,7 @@ mod tests {
 
         let bytes = client
             .get_block(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 None,
                 RetryPolicy::NonDeterministic,

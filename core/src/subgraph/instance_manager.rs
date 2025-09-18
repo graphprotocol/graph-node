@@ -85,7 +85,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
 
                 let file_bytes = link_resolver
                     .cat(
-                        LinkResolverContext::new(&loc.hash, &logger),
+                        &LinkResolverContext::new(&loc.hash, &logger),
                         &loc.hash.to_ipfs_link(),
                     )
                     .await
@@ -304,7 +304,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 let file_bytes = self
                     .link_resolver
                     .cat(
-                        LinkResolverContext::new(&deployment.hash, &logger),
+                        &LinkResolverContext::new(&deployment.hash, &logger),
                         &graft.base.to_ipfs_link(),
                     )
                     .await?;

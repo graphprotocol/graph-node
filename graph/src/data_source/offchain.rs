@@ -408,7 +408,7 @@ impl UnresolvedMapping {
             runtime: Arc::new(
                 resolver
                     .cat(
-                        LinkResolverContext::new(deployment_hash, logger),
+                        &LinkResolverContext::new(deployment_hash, logger),
                         &self.file,
                     )
                     .await?,

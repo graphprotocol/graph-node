@@ -28,10 +28,10 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     fn with_retries(&self) -> Box<dyn LinkResolver>;
 
     /// Fetches the link contents as bytes.
-    async fn cat(&self, ctx: LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error>;
+    async fn cat(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error>;
 
     /// Fetches the IPLD block contents as bytes.
-    async fn get_block(&self, ctx: LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error>;
+    async fn get_block(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error>;
 
     /// Creates a new resolver scoped to a specific subgraph manifest.
     ///
@@ -53,7 +53,7 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     /// separately.
     async fn json_stream(
         &self,
-        ctx: LinkResolverContext,
+        ctx: &LinkResolverContext,
         link: &Link,
     ) -> Result<JsonValueStream, Error>;
 }

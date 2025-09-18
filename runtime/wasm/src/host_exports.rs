@@ -481,7 +481,7 @@ impl HostExports {
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
         graph::block_on(self.link_resolver.cat(
-            LinkResolverContext::new(&self.subgraph_id, logger),
+            &LinkResolverContext::new(&self.subgraph_id, logger),
             &Link { link },
         ))
     }
@@ -495,7 +495,7 @@ impl HostExports {
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
         graph::block_on(self.link_resolver.get_block(
-            LinkResolverContext::new(&self.subgraph_id, logger),
+            &LinkResolverContext::new(&self.subgraph_id, logger),
             &Link { link },
         ))
     }
@@ -541,7 +541,7 @@ impl HostExports {
 
         let result = {
             let mut stream: JsonValueStream = graph::block_on(self.link_resolver.json_stream(
-                LinkResolverContext::new(&self.subgraph_id, &logger),
+                &LinkResolverContext::new(&self.subgraph_id, &logger),
                 &Link { link },
             ))?;
             let mut v = Vec::new();

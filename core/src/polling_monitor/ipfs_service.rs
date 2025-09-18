@@ -59,7 +59,7 @@ impl IpfsServiceInner {
         let res = self
             .client
             .cat(
-                ctx,
+                &ctx,
                 &path,
                 self.max_file_size,
                 Some(self.timeout),

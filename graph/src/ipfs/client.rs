@@ -32,7 +32,7 @@ pub trait IpfsClient: Send + Sync + 'static {
     /// The timeout is not propagated to the resulting stream.
     async fn cat_stream(
         self: Arc<Self>,
-        ctx: IpfsContext,
+        ctx: &IpfsContext,
         path: &ContentPath,
         timeout: Option<Duration>,
         retry_policy: RetryPolicy,
@@ -41,13 +41,14 @@ pub trait IpfsClient: Send + Sync + 'static {
             .create("IPFS.cat_stream", &ctx.logger(path))
             .no_timeout()
             .run({
-                let path = path.to_owned();
+                let path = path.cheap_clone();
+                let deployment_hash = ctx.deployment_hash();
 
                 move || {
-                    let client = self.clone();
-                    let metrics = self.metrics().clone();
-                    let deployment_hash = ctx.deployment_hash();
-                    let path = path.clone();
+                    let client = self.cheap_clone();
+                    let metrics = self.metrics().cheap_clone();
+                    let deployment_hash = deployment_hash.cheap_clone();
+                    let path = path.cheap_clone();
 
                     async move {
                         run_with_metrics(
@@ -71,7 +72,7 @@ pub trait IpfsClient: Send + Sync + 'static {
     /// does not return a response within the specified amount of time.
     async fn cat(
         self: Arc<Self>,
-        ctx: IpfsContext,
+        ctx: &IpfsContext,
         path: &ContentPath,
         max_size: usize,
         timeout: Option<Duration>,
@@ -81,13 +82,14 @@ pub trait IpfsClient: Send + Sync + 'static {
             .create("IPFS.cat", &ctx.logger(path))
             .no_timeout()
             .run({
-                let path = path.to_owned();
+                let path = path.cheap_clone();
+                let deployment_hash = ctx.deployment_hash();
 
                 move || {
-                    let client = self.clone();
-                    let metrics = self.metrics().clone();
-                    let deployment_hash = ctx.deployment_hash();
-                    let path = path.clone();
+                    let client = self.cheap_clone();
+                    let metrics = self.metrics().cheap_clone();
+                    let deployment_hash = deployment_hash.cheap_clone();
+                    let path = path.cheap_clone();
 
                     async move {
                         run_with_metrics(
@@ -111,7 +113,7 @@ pub trait IpfsClient: Send + Sync + 'static {
     /// does not return a response within the specified amount of time.
     async fn get_block(
         self: Arc<Self>,
-        ctx: IpfsContext,
+        ctx: &IpfsContext,
         path: &ContentPath,
         timeout: Option<Duration>,
         retry_policy: RetryPolicy,
@@ -120,13 +122,14 @@ pub trait IpfsClient: Send + Sync + 'static {
             .create("IPFS.get_block", &ctx.logger(path))
             .no_timeout()
             .run({
-                let path = path.to_owned();
+                let path = path.cheap_clone();
+                let deployment_hash = ctx.deployment_hash();
 
                 move || {
-                    let client = self.clone();
-                    let metrics = self.metrics().clone();
-                    let deployment_hash = ctx.deployment_hash();
-                    let path = path.clone();
+                    let client = self.cheap_clone();
+                    let metrics = self.metrics().cheap_clone();
+                    let deployment_hash = deployment_hash.cheap_clone();
+                    let path = path.cheap_clone();
 
                     async move {
                         run_with_metrics(
@@ -160,7 +163,7 @@ impl IpfsContext {
     }
 
     pub(super) fn deployment_hash(&self) -> Arc<str> {
-        self.deployment_hash.clone()
+        self.deployment_hash.cheap_clone()
     }
 
     pub(super) fn logger(&self, path: &ContentPath) -> Logger {

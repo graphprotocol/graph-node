@@ -140,7 +140,7 @@ mod tests {
         let pool = Arc::new(IpfsClientPool::new(clients));
 
         let bytes = pool
-            .cat_stream(Default::default(), &make_path(), None, RetryPolicy::None)
+            .cat_stream(&Default::default(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -194,7 +194,7 @@ mod tests {
 
         let bytes = pool
             .cat(
-                Default::default(),
+                &Default::default(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -246,7 +246,7 @@ mod tests {
         let pool = Arc::new(IpfsClientPool::new(clients));
 
         let bytes = pool
-            .get_block(Default::default(), &make_path(), None, RetryPolicy::None)
+            .get_block(&Default::default(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap();
 

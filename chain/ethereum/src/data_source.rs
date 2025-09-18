@@ -1395,7 +1395,7 @@ impl UnresolvedMapping {
                 .try_collect::<Vec<_>>(),
             async {
                 let module_bytes = resolver
-                    .cat(LinkResolverContext::new(deployment_hash, logger), &link)
+                    .cat(&LinkResolverContext::new(deployment_hash, logger), &link)
                     .await?;
                 Ok(Arc::new(module_bytes))
             },

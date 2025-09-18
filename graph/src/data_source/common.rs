@@ -348,7 +348,7 @@ impl UnresolvedMappingABI {
     ) -> Result<(MappingABI, AbiJson), anyhow::Error> {
         let contract_bytes = resolver
             .cat(
-                LinkResolverContext::new(deployment_hash, logger),
+                &LinkResolverContext::new(deployment_hash, logger),
                 &self.file,
             )
             .await

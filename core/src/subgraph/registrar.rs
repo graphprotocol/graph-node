@@ -299,7 +299,7 @@ where
             let mut raw: serde_yaml::Mapping = {
                 let file_bytes = resolver
                     .cat(
-                        LinkResolverContext::new(&hash, &logger),
+                        &LinkResolverContext::new(&hash, &logger),
                         &hash.to_ipfs_link(),
                     )
                     .await

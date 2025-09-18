@@ -483,7 +483,7 @@ impl UnresolvedSchema {
     ) -> Result<InputSchema, anyhow::Error> {
         let schema_bytes = resolver
             .cat(
-                LinkResolverContext::new(deployment_hash, logger),
+                &LinkResolverContext::new(deployment_hash, logger),
                 &self.file,
             )
             .await

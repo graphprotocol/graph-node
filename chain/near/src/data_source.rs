@@ -453,7 +453,7 @@ impl UnresolvedMapping {
         let api_version = semver::Version::parse(&api_version)?;
 
         let module_bytes = resolver
-            .cat(LinkResolverContext::new(deployment_hash, logger), &link)
+            .cat(&LinkResolverContext::new(deployment_hash, logger), &link)
             .await
             .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 

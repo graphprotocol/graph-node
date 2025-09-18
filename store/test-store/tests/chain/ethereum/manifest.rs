@@ -95,7 +95,7 @@ impl LinkResolver for TextResolver {
         Ok(Box::new(self.clone()))
     }
 
-    async fn cat(&self, _ctx: LinkResolverContext, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
+    async fn cat(&self, _ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)
             .ok_or(anyhow!("No text for {}", &link.link))
@@ -104,7 +104,7 @@ impl LinkResolver for TextResolver {
 
     async fn get_block(
         &self,
-        _ctx: LinkResolverContext,
+        _ctx: &LinkResolverContext,
         _link: &Link,
     ) -> Result<Vec<u8>, anyhow::Error> {
         unimplemented!()
@@ -112,7 +112,7 @@ impl LinkResolver for TextResolver {
 
     async fn json_stream(
         &self,
-        _ctx: LinkResolverContext,
+        _ctx: &LinkResolverContext,
         _link: &Link,
     ) -> Result<JsonValueStream, anyhow::Error> {
         unimplemented!()

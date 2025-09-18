@@ -1,13 +1,22 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use cid::Cid;
 use url::Url;
 
-use crate::ipfs::IpfsError;
-use crate::ipfs::IpfsResult;
+use crate::{
+    derive::CheapClone,
+    ipfs::{IpfsError, IpfsResult},
+};
 
 /// Represents a path to some data on IPFS.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, CheapClone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContentPath {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Inner {
     cid: Cid,
     path: Option<String>,
 }
@@ -81,21 +90,23 @@ impl ContentPath {
         }
 
         Ok(Self {
-            cid,
-            path: if path.is_empty() {
-                None
-            } else {
-                Some(path.to_string())
-            },
+            inner: Arc::new(Inner {
+                cid,
+                path: if path.is_empty() {
+                    None
+                } else {
+                    Some(path.to_string())
+                },
+            }),
         })
     }
 
     pub fn cid(&self) -> &Cid {
-        &self.cid
+        &self.inner.cid
     }
 
     pub fn path(&self) -> Option<&str> {
-        self.path.as_deref()
+        self.inner.path.as_deref()
     }
 }
 
@@ -122,9 +133,9 @@ impl TryFrom<crate::data::store::scalar::Bytes> for ContentPath {
 
 impl std::fmt::Display for ContentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let cid = &self.cid;
+        let cid = &self.inner.cid;
 
-        match self.path {
+        match self.inner.path {
             Some(ref path) => write!(f, "{cid}/{path}"),
             None => write!(f, "{cid}"),
         }
@@ -140,8 +151,10 @@ mod tests {
 
     fn make_path(cid: &str, path: Option<&str>) -> ContentPath {
         ContentPath {
-            cid: cid.parse().unwrap(),
-            path: path.map(ToOwned::to_owned),
+            inner: Arc::new(Inner {
+                cid: cid.parse().unwrap(),
+                path: path.map(ToOwned::to_owned),
+            }),
         }
     }
 

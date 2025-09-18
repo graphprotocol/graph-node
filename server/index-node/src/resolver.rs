@@ -497,7 +497,7 @@ impl<S: Store> IndexNodeResolver<S> {
             let file_bytes = self
                 .link_resolver
                 .cat(
-                    LinkResolverContext::new(deployment_hash, &self.logger),
+                    &LinkResolverContext::new(deployment_hash, &self.logger),
                     &deployment_hash.to_ipfs_link(),
                 )
                 .await

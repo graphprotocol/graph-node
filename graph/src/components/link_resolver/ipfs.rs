@@ -68,7 +68,7 @@ impl LinkResolver for IpfsResolver {
         Ok(Box::new(self.cheap_clone()))
     }
 
-    async fn cat(&self, ctx: LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
+    async fn cat(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
         let LinkResolverContext {
             deployment_hash,
             logger,
@@ -85,20 +85,20 @@ impl LinkResolver for IpfsResolver {
         };
 
         let ctx = IpfsContext {
-            deployment_hash,
-            logger,
+            deployment_hash: deployment_hash.cheap_clone(),
+            logger: logger.cheap_clone(),
         };
         let data = self
             .client
             .clone()
-            .cat(ctx, &path, max_file_size, timeout, retry_policy)
+            .cat(&ctx, &path, max_file_size, timeout, retry_policy)
             .await?
             .to_vec();
 
         Ok(data)
     }
 
-    async fn get_block(&self, ctx: LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
+    async fn get_block(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
         let LinkResolverContext {
             deployment_hash,
             logger,
@@ -116,13 +116,13 @@ impl LinkResolver for IpfsResolver {
         };
 
         let ctx = IpfsContext {
-            deployment_hash,
-            logger,
+            deployment_hash: deployment_hash.cheap_clone(),
+            logger: logger.cheap_clone(),
         };
         let data = self
             .client
             .clone()
-            .get_block(ctx, &path, timeout, retry_policy)
+            .get_block(&ctx, &path, timeout, retry_policy)
             .await?
             .to_vec();
 
@@ -131,7 +131,7 @@ impl LinkResolver for IpfsResolver {
 
     async fn json_stream(
         &self,
-        ctx: LinkResolverContext,
+        ctx: &LinkResolverContext,
         link: &Link,
     ) -> Result<JsonValueStream, Error> {
         let LinkResolverContext {
@@ -152,13 +152,13 @@ impl LinkResolver for IpfsResolver {
         };
 
         let ctx = IpfsContext {
-            deployment_hash,
-            logger,
+            deployment_hash: deployment_hash.cheap_clone(),
+            logger: logger.cheap_clone(),
         };
         let mut stream = self
             .client
             .clone()
-            .cat_stream(ctx, &path, timeout, retry_policy)
+            .cat_stream(&ctx, &path, timeout, retry_policy)
             .await?
             .fuse()
             .boxed()
@@ -272,7 +272,7 @@ mod tests {
 
         let err = IpfsResolver::cat(
             &resolver,
-            LinkResolverContext::test(),
+            &LinkResolverContext::test(),
             &Link { link: cid.clone() },
         )
         .await
@@ -298,7 +298,7 @@ mod tests {
         let resolver = IpfsResolver::new(Arc::new(client), Arc::new(env_vars));
 
         let stream =
-            IpfsResolver::json_stream(&resolver, LinkResolverContext::test(), &Link { link: cid })
+            IpfsResolver::json_stream(&resolver, &LinkResolverContext::test(), &Link { link: cid })
                 .await?;
         stream.map_ok(|sv| sv.value).try_collect().await
     }

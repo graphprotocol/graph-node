@@ -292,7 +292,7 @@ impl UnresolvedDataSource {
             Arc::from(resolver.for_manifest(&self.source.address.to_string())?);
         let source_raw = resolver
             .cat(
-                LinkResolverContext::new(deployment_hash, logger),
+                &LinkResolverContext::new(deployment_hash, logger),
                 &self.source.address.to_ipfs_link(),
             )
             .await
@@ -352,7 +352,7 @@ impl UnresolvedDataSource {
         if let Some(graft) = &manifest.graft {
             let graft_raw = resolver
                 .cat(
-                    LinkResolverContext::new(&manifest.id, logger),
+                    &LinkResolverContext::new(&manifest.id, logger),
                     &graft.base.to_ipfs_link(),
                 )
                 .await
@@ -533,7 +533,7 @@ impl UnresolvedMapping {
             runtime: Arc::new(
                 resolver
                     .cat(
-                        LinkResolverContext::new(deployment_hash, logger),
+                        &LinkResolverContext::new(deployment_hash, logger),
                         &self.file,
                     )
                     .await?,

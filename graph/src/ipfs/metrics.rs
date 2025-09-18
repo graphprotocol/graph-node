@@ -1,9 +1,16 @@
+use std::sync::Arc;
+
 use prometheus::{HistogramVec, IntCounterVec};
 
-use crate::components::metrics::MetricsRegistry;
+use crate::{components::metrics::MetricsRegistry, derive::CheapClone};
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, CheapClone)]
 pub struct IpfsMetrics {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
     request_count: Box<IntCounterVec>,
     error_count: Box<IntCounterVec>,
     not_found_count: Box<IntCounterVec>,
@@ -49,31 +56,39 @@ impl IpfsMetrics {
             .unwrap();
 
         Self {
-            request_count,
-            error_count,
-            not_found_count,
-            request_duration,
+            inner: Arc::new(Inner {
+                request_count,
+                error_count,
+                not_found_count,
+                request_duration,
+            }),
         }
     }
 
     pub(super) fn add_request(&self, deployment_hash: &str) {
-        self.request_count
+        self.inner
+            .request_count
             .with_label_values(&[deployment_hash])
             .inc()
     }
 
     pub(super) fn add_error(&self, deployment_hash: &str) {
-        self.error_count.with_label_values(&[deployment_hash]).inc()
+        self.inner
+            .error_count
+            .with_label_values(&[deployment_hash])
+            .inc()
     }
 
     pub(super) fn add_not_found(&self, deployment_hash: &str) {
-        self.not_found_count
+        self.inner
+            .not_found_count
             .with_label_values(&[deployment_hash])
             .inc()
     }
 
     pub(super) fn observe_request_duration(&self, deployment_hash: &str, duration_secs: f64) {
-        self.request_duration
+        self.inner
+            .request_duration
             .with_label_values(&[deployment_hash])
             .observe(duration_secs.clamp(0.2, 240.0));
     }
