@@ -582,7 +582,7 @@ mod tests {
 
         let server = mock_server().await;
         let client = Arc::new(
-            IpfsGatewayClient::new_unchecked(server.uri(), Default::default(), &logger).unwrap(),
+            IpfsGatewayClient::new_unchecked(server.uri(), IpfsMetrics::test(), &logger).unwrap(),
         );
 
         // Set up mock to fail twice then succeed to trigger retry with warning logs
@@ -604,7 +604,7 @@ mod tests {
         // This should trigger retry logs because we set up failures first
         let _result = client
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &path,
                 usize::MAX,
                 None,
