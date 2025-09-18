@@ -171,11 +171,9 @@ impl IpfsContext {
             slog::o!("deployment" => self.deployment_hash.to_string(), "path" => path.to_string()),
         )
     }
-}
 
-#[cfg(debug_assertions)]
-impl Default for IpfsContext {
-    fn default() -> Self {
+    #[cfg(debug_assertions)]
+    pub fn test() -> Self {
         Self {
             deployment_hash: "test".into(),
             logger: crate::log::discard(),

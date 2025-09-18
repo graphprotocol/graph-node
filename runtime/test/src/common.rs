@@ -6,8 +6,7 @@ use graph::data::subgraph::*;
 use graph::data_source;
 use graph::data_source::common::MappingABI;
 use graph::env::EnvVars;
-use graph::ipfs::IpfsRpcClient;
-use graph::ipfs::ServerAddress;
+use graph::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
 use graph::log;
 use graph::prelude::*;
 use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate, Mapping, TemplateSource};
@@ -66,7 +65,7 @@ fn mock_host_exports(
     );
 
     let client =
-        IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), Default::default(), &LOGGER)
+        IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), IpfsMetrics::test(), &LOGGER)
             .unwrap();
 
     HostExports::new(

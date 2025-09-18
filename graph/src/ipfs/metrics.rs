@@ -92,11 +92,9 @@ impl IpfsMetrics {
             .with_label_values(&[deployment_hash])
             .observe(duration_secs.clamp(0.2, 240.0));
     }
-}
 
-#[cfg(debug_assertions)]
-impl Default for IpfsMetrics {
-    fn default() -> Self {
+    #[cfg(debug_assertions)]
+    pub fn test() -> Self {
         Self::new(&MetricsRegistry::mock())
     }
 }

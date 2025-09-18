@@ -11,7 +11,7 @@ use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
 pub type IpfsService = Buffer<IpfsRequest, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, CheapClone)]
 pub struct IpfsRequest {
     pub ctx: IpfsContext,
     pub path: ContentPath,
@@ -107,8 +107,7 @@ mod test {
     use graph::components::link_resolver::ArweaveResolver;
     use graph::data::value::Word;
     use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
-    use graph::ipfs::IpfsRpcClient;
-    use graph::ipfs::ServerAddress;
+    use graph::ipfs::{IpfsContext, IpfsMetrics, IpfsRpcClient, ServerAddress};
     use graph::log::discard;
     use graph::tokio;
     use tower::ServiceExt;
@@ -136,7 +135,7 @@ mod test {
 
         let client = IpfsRpcClient::new_unchecked(
             ServerAddress::local_rpc_api(),
-            Default::default(),
+            IpfsMetrics::test(),
             &graph::log::discard(),
         )
         .unwrap();
@@ -146,7 +145,7 @@ mod test {
         let path = ContentPath::new(format!("{dir_cid}/file.txt")).unwrap();
         let content = svc
             .oneshot(IpfsRequest {
-                ctx: Default::default(),
+                ctx: IpfsContext::test(),
                 path,
             })
             .await
@@ -176,7 +175,7 @@ mod test {
 
         let server = MockServer::start().await;
         let ipfs_client =
-            IpfsRpcClient::new_unchecked(server.uri(), Default::default(), &discard()).unwrap();
+            IpfsRpcClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard()).unwrap();
         let ipfs_service = ipfs_service(Arc::new(ipfs_client), 10, Duration::from_secs(1), 1);
         let path = ContentPath::new(CID).unwrap();
 
@@ -200,7 +199,7 @@ mod test {
         // This means that we never reached the successful response.
         ipfs_service
             .oneshot(IpfsRequest {
-                ctx: Default::default(),
+                ctx: IpfsContext::test(),
                 path,
             })
             .await

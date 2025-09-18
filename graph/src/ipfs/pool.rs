@@ -75,7 +75,7 @@ mod tests {
     use wiremock::ResponseTemplate;
 
     use super::*;
-    use crate::ipfs::{ContentPath, IpfsGatewayClient, RetryPolicy};
+    use crate::ipfs::{ContentPath, IpfsContext, IpfsGatewayClient, IpfsMetrics, RetryPolicy};
     use crate::log::discard;
 
     const PATH: &str = "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
@@ -87,7 +87,8 @@ mod tests {
     async fn make_client() -> (MockServer, Arc<IpfsGatewayClient>) {
         let server = MockServer::start().await;
         let client =
-            IpfsGatewayClient::new_unchecked(server.uri(), Default::default(), &discard()).unwrap();
+            IpfsGatewayClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard())
+                .unwrap();
 
         (server, Arc::new(client))
     }
@@ -140,7 +141,7 @@ mod tests {
         let pool = Arc::new(IpfsClientPool::new(clients));
 
         let bytes = pool
-            .cat_stream(&Default::default(), &make_path(), None, RetryPolicy::None)
+            .cat_stream(&IpfsContext::test(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -194,7 +195,7 @@ mod tests {
 
         let bytes = pool
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -246,7 +247,7 @@ mod tests {
         let pool = Arc::new(IpfsClientPool::new(clients));
 
         let bytes = pool
-            .get_block(&Default::default(), &make_path(), None, RetryPolicy::None)
+            .get_block(&IpfsContext::test(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap();
 

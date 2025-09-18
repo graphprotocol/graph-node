@@ -149,7 +149,7 @@ mod tests {
     use wiremock::ResponseTemplate;
 
     use super::*;
-    use crate::ipfs::ContentPath;
+    use crate::ipfs::{ContentPath, IpfsContext, IpfsMetrics};
     use crate::log::discard;
 
     const CID: &str = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
@@ -173,7 +173,7 @@ mod tests {
     async fn make_client() -> (MockServer, Arc<IpfsRpcClient>) {
         let server = mock_server().await;
         let client =
-            IpfsRpcClient::new_unchecked(server.uri(), Default::default(), &discard()).unwrap();
+            IpfsRpcClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard()).unwrap();
 
         (server, Arc::new(client))
     }
@@ -190,7 +190,7 @@ mod tests {
     async fn new_fails_to_create_the_client_if_rpc_api_is_not_accessible() {
         let server = mock_server().await;
 
-        IpfsRpcClient::new(server.uri(), Default::default(), &discard())
+        IpfsRpcClient::new(server.uri(), IpfsMetrics::test(), &discard())
             .await
             .unwrap_err();
     }
@@ -205,7 +205,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        IpfsRpcClient::new(server.uri(), Default::default(), &discard())
+        IpfsRpcClient::new(server.uri(), IpfsMetrics::test(), &discard())
             .await
             .unwrap();
     }
@@ -227,7 +227,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        IpfsRpcClient::new(server.uri(), Default::default(), &discard())
+        IpfsRpcClient::new(server.uri(), IpfsMetrics::test(), &discard())
             .await
             .unwrap();
     }
@@ -236,7 +236,7 @@ mod tests {
     async fn new_unchecked_creates_the_client_without_checking_the_rpc_api() {
         let server = mock_server().await;
 
-        IpfsRpcClient::new_unchecked(server.uri(), Default::default(), &discard()).unwrap();
+        IpfsRpcClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard()).unwrap();
     }
 
     #[tokio::test]
@@ -250,7 +250,7 @@ mod tests {
             .await;
 
         let bytes = client
-            .cat_stream(&Default::default(), &make_path(), None, RetryPolicy::None)
+            .cat_stream(&IpfsContext::test(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap()
             .try_fold(BytesMut::new(), |mut acc, chunk| async {
@@ -276,7 +276,7 @@ mod tests {
 
         let result = client
             .cat_stream(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 Some(ms(300)),
                 RetryPolicy::None,
@@ -305,7 +305,7 @@ mod tests {
 
         let _stream = client
             .cat_stream(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 None,
                 RetryPolicy::NonDeterministic,
@@ -326,7 +326,7 @@ mod tests {
 
         let bytes = client
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -352,7 +352,7 @@ mod tests {
 
         let bytes = client
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 data.len(),
                 None,
@@ -378,7 +378,7 @@ mod tests {
 
         client
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 data.len() - 1,
                 None,
@@ -400,7 +400,7 @@ mod tests {
 
         client
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 usize::MAX,
                 Some(ms(300)),
@@ -429,7 +429,7 @@ mod tests {
 
         let bytes = client
             .cat(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 usize::MAX,
                 None,
@@ -452,7 +452,7 @@ mod tests {
             .await;
 
         let bytes = client
-            .get_block(&Default::default(), &make_path(), None, RetryPolicy::None)
+            .get_block(&IpfsContext::test(), &make_path(), None, RetryPolicy::None)
             .await
             .unwrap();
 
@@ -471,7 +471,7 @@ mod tests {
 
         client
             .get_block(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 Some(ms(300)),
                 RetryPolicy::None,
@@ -499,7 +499,7 @@ mod tests {
 
         let bytes = client
             .get_block(
-                &Default::default(),
+                &IpfsContext::test(),
                 &make_path(),
                 None,
                 RetryPolicy::NonDeterministic,

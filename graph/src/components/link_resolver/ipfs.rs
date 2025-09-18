@@ -244,8 +244,7 @@ mod tests {
     use super::*;
     use crate::env::EnvVars;
     use crate::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
-    use crate::ipfs::IpfsRpcClient;
-    use crate::ipfs::ServerAddress;
+    use crate::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
 
     #[tokio::test]
     async fn max_file_size() {
@@ -264,7 +263,7 @@ mod tests {
 
         let client = IpfsRpcClient::new_unchecked(
             ServerAddress::local_rpc_api(),
-            Default::default(),
+            IpfsMetrics::test(),
             &logger,
         )
         .unwrap();
@@ -292,7 +291,7 @@ mod tests {
         let logger = crate::log::discard();
         let client = IpfsRpcClient::new_unchecked(
             ServerAddress::local_rpc_api(),
-            Default::default(),
+            IpfsMetrics::test(),
             &logger,
         )?;
         let resolver = IpfsResolver::new(Arc::new(client), Arc::new(env_vars));

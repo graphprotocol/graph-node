@@ -58,7 +58,7 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     ) -> Result<JsonValueStream, Error>;
 }
 
-#[derive(Clone, Debug, CheapClone)]
+#[derive(Debug, Clone, CheapClone)]
 pub struct LinkResolverContext {
     pub deployment_hash: Arc<str>,
     pub logger: Logger,
