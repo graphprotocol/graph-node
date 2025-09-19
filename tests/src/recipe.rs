@@ -2,8 +2,8 @@ use crate::{
     fixture::{stores, Stores, TestInfo},
     helpers::run_cmd,
 };
-use graph::ipfs;
 use graph::prelude::{DeploymentHash, SubgraphName};
+use graph::{ipfs, prelude::MetricsRegistry};
 use std::process::Command;
 pub struct RunnerTestRecipe {
     pub stores: Stores,
@@ -93,7 +93,7 @@ pub async fn build_subgraph_with_pnpm_cmd_and_arg(
     // Test that IPFS is up.
     ipfs::IpfsRpcClient::new(
         ipfs::ServerAddress::local_rpc_api(),
-        ipfs::IpfsMetrics::test(),
+        ipfs::IpfsMetrics::new(&MetricsRegistry::mock()),
         &graph::log::discard(),
     )
     .await

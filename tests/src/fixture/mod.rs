@@ -269,7 +269,7 @@ impl TestContext {
         let file_bytes = self
             .link_resolver
             .cat(
-                &LinkResolverContext::test(),
+                &LinkResolverContext::new(&deployment.hash, &logger),
                 &deployment.hash.to_ipfs_link(),
             )
             .await
