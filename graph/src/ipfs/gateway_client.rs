@@ -170,6 +170,7 @@ mod tests {
     use wiremock::ResponseTemplate;
 
     use super::*;
+    use crate::data::subgraph::DeploymentHash;
     use crate::ipfs::{ContentPath, IpfsContext, IpfsMetrics};
     use crate::log::discard;
 
@@ -566,10 +567,31 @@ mod tests {
             fn log(
                 &self,
                 record: &Record,
-                _: &slog::OwnedKVList,
+                values: &slog::OwnedKVList,
             ) -> std::result::Result<Self::Ok, Self::Err> {
-                let message = format!("{}", record.msg());
+                use slog::KV;
+
+                let mut serialized_values = String::new();
+                let mut serializer = StringSerializer(&mut serialized_values);
+                values.serialize(record, &mut serializer).unwrap();
+
+                let message = format!("{}; {serialized_values}", record.msg());
                 self.messages.lock().unwrap().push(message);
+
+                Ok(())
+            }
+        }
+
+        struct StringSerializer<'a>(&'a mut String);
+
+        impl<'a> slog::Serializer for StringSerializer<'a> {
+            fn emit_arguments(
+                &mut self,
+                key: slog::Key,
+                val: &std::fmt::Arguments,
+            ) -> slog::Result {
+                use std::fmt::Write;
+                write!(self.0, "{}: {}, ", key, val).unwrap();
                 Ok(())
             }
         }
@@ -604,7 +626,7 @@ mod tests {
         // This should trigger retry logs because we set up failures first
         let _result = client
             .cat(
-                &IpfsContext::test(),
+                &IpfsContext::new(&DeploymentHash::default(), &logger),
                 &path,
                 usize::MAX,
                 None,
@@ -630,7 +652,7 @@ mod tests {
         let expected_cid = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
         let has_cid_in_operation = retry_messages
             .iter()
-            .any(|msg| msg.contains(&format!("IPFS.cat[{}]", expected_cid)));
+            .any(|msg| msg.contains(&format!("path: {expected_cid}")));
 
         assert!(
             has_cid_in_operation,
