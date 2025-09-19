@@ -50,7 +50,7 @@ pub enum IpfsError {
     #[error(transparent)]
     RequestFailed(RequestError),
 
-    #[error("Invalid cache configuration: {source}")]
+    #[error("Invalid cache configuration: {source:#}")]
     InvalidCacheConfig { source: anyhow::Error },
 }
 

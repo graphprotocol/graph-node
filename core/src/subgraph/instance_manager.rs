@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::metrics::subgraph::DeploymentStatusMetric;
 use graph::components::store::SourceableStore;
@@ -83,7 +84,10 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                     .map_err(SubgraphAssignmentProviderError::ResolveError)?;
 
                 let file_bytes = link_resolver
-                    .cat(&logger, &loc.hash.to_ipfs_link())
+                    .cat(
+                        &LinkResolverContext::new(&loc.hash, &logger),
+                        &loc.hash.to_ipfs_link(),
+                    )
                     .await
                     .map_err(SubgraphAssignmentProviderError::ResolveError)?;
 
@@ -299,7 +303,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             if self.subgraph_store.is_deployed(&graft.base)? {
                 let file_bytes = self
                     .link_resolver
-                    .cat(&logger, &graft.base.to_ipfs_link())
+                    .cat(
+                        &LinkResolverContext::new(&deployment.hash, &logger),
+                        &graft.base.to_ipfs_link(),
+                    )
                     .await?;
                 let yaml = String::from_utf8(file_bytes)?;
 
@@ -315,7 +322,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         );
 
         let manifest = manifest
-            .resolve(&link_resolver, &logger, ENV_VARS.max_spec_version.clone())
+            .resolve(
+                &deployment.hash,
+                &link_resolver,
+                &logger,
+                ENV_VARS.max_spec_version.clone(),
+            )
             .await?;
 
         {

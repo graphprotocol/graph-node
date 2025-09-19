@@ -162,7 +162,9 @@ async fn run_graph_node(
 ) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
-    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
+    let (prometheus_registry, metrics_registry) = launcher::setup_metrics(logger);
+
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &metrics_registry, &logger)
         .await
         .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
 
@@ -180,6 +182,8 @@ async fn run_graph_node(
         ipfs_service,
         link_resolver,
         Some(subgraph_updates_channel),
+        prometheus_registry,
+        metrics_registry,
     )
     .await;
     Ok(())

@@ -2,8 +2,8 @@ use crate::{
     fixture::{stores, Stores, TestInfo},
     helpers::run_cmd,
 };
-use graph::ipfs;
 use graph::prelude::{DeploymentHash, SubgraphName};
+use graph::{ipfs, prelude::MetricsRegistry};
 use std::process::Command;
 pub struct RunnerTestRecipe {
     pub stores: Stores,
@@ -91,9 +91,13 @@ pub async fn build_subgraph_with_pnpm_cmd_and_arg(
     arg: Option<&str>,
 ) -> DeploymentHash {
     // Test that IPFS is up.
-    ipfs::IpfsRpcClient::new(ipfs::ServerAddress::local_rpc_api(), &graph::log::discard())
-        .await
-        .expect("Could not connect to IPFS, make sure it's running at port 5001");
+    ipfs::IpfsRpcClient::new(
+        ipfs::ServerAddress::local_rpc_api(),
+        ipfs::IpfsMetrics::new(&MetricsRegistry::mock()),
+        &graph::log::discard(),
+    )
+    .await
+    .expect("Could not connect to IPFS, make sure it's running at port 5001");
 
     // Run codegen.
     run_cmd(Command::new("pnpm").arg("codegen").current_dir(dir));

@@ -1,8 +1,9 @@
 use graph::anyhow::Context;
 use graph::blockchain::{Block, TriggerWithHandler};
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::StoredDynamicDataSource;
 use graph::components::subgraph::InstanceDSTemplateInfo;
-use graph::data::subgraph::DataSourceContext;
+use graph::data::subgraph::{DataSourceContext, DeploymentHash};
 use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     anyhow::{anyhow, Error},
@@ -330,6 +331,7 @@ pub struct UnresolvedDataSource {
 impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         _manifest_idx: u32,
@@ -344,7 +346,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        let mapping = mapping.resolve(resolver, logger).await.with_context(|| {
+        let mapping = mapping.resolve(deployment_hash, resolver, logger).await.with_context(|| {
             format!(
                 "failed to resolve data source {} with source_account {:?} and source_start_block {}",
                 name, source.account, source.start_block
@@ -370,6 +372,7 @@ pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         _manifest_idx: u32,
@@ -383,7 +386,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         } = self;
 
         let mapping = mapping
-            .resolve(resolver, logger)
+            .resolve(deployment_hash, resolver, logger)
             .await
             .with_context(|| format!("failed to resolve data source template {}", name))?;
 
@@ -434,6 +437,7 @@ pub struct UnresolvedMapping {
 impl UnresolvedMapping {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<Mapping, Error> {
@@ -449,7 +453,7 @@ impl UnresolvedMapping {
         let api_version = semver::Version::parse(&api_version)?;
 
         let module_bytes = resolver
-            .cat(logger, &link)
+            .cat(&LinkResolverContext::new(deployment_hash, logger), &link)
             .await
             .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 

@@ -5,13 +5,17 @@ use anyhow::anyhow;
 use anyhow::Error;
 use bytes::Bytes;
 use graph::futures03::future::BoxFuture;
-use graph::ipfs::ContentPath;
-use graph::ipfs::IpfsClient;
-use graph::ipfs::RetryPolicy;
+use graph::ipfs::{ContentPath, IpfsClient, IpfsContext, RetryPolicy};
 use graph::{derive::CheapClone, prelude::CheapClone};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
-pub type IpfsService = Buffer<ContentPath, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
+pub type IpfsService = Buffer<IpfsRequest, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
+
+#[derive(Debug, Clone, CheapClone)]
+pub struct IpfsRequest {
+    pub ctx: IpfsContext,
+    pub path: ContentPath,
+}
 
 pub fn ipfs_service(
     client: Arc<dyn IpfsClient>,
@@ -43,7 +47,10 @@ struct IpfsServiceInner {
 }
 
 impl IpfsServiceInner {
-    async fn call_inner(self, path: ContentPath) -> Result<Option<Bytes>, Error> {
+    async fn call_inner(
+        self,
+        IpfsRequest { ctx, path }: IpfsRequest,
+    ) -> Result<Option<Bytes>, Error> {
         let multihash = path.cid().hash().code();
         if !SAFE_MULTIHASHES.contains(&multihash) {
             return Err(anyhow!("CID multihash {} is not allowed", multihash));
@@ -52,6 +59,7 @@ impl IpfsServiceInner {
         let res = self
             .client
             .cat(
+                &ctx,
                 &path,
                 self.max_file_size,
                 Some(self.timeout),
@@ -99,8 +107,7 @@ mod test {
     use graph::components::link_resolver::ArweaveResolver;
     use graph::data::value::Word;
     use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
-    use graph::ipfs::IpfsRpcClient;
-    use graph::ipfs::ServerAddress;
+    use graph::ipfs::{IpfsContext, IpfsMetrics, IpfsRpcClient, ServerAddress};
     use graph::log::discard;
     use graph::tokio;
     use tower::ServiceExt;
@@ -126,14 +133,24 @@ mod test {
 
         let dir_cid = add_resp.into_iter().find(|x| x.name == "dir").unwrap().hash;
 
-        let client =
-            IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), &graph::log::discard())
-                .unwrap();
+        let client = IpfsRpcClient::new_unchecked(
+            ServerAddress::local_rpc_api(),
+            IpfsMetrics::test(),
+            &graph::log::discard(),
+        )
+        .unwrap();
 
         let svc = ipfs_service(Arc::new(client), 100000, Duration::from_secs(30), 10);
 
         let path = ContentPath::new(format!("{dir_cid}/file.txt")).unwrap();
-        let content = svc.oneshot(path).await.unwrap().unwrap();
+        let content = svc
+            .oneshot(IpfsRequest {
+                ctx: IpfsContext::test(),
+                path,
+            })
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(content.to_vec(), random_bytes);
     }
@@ -157,7 +174,8 @@ mod test {
         const CID: &str = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
 
         let server = MockServer::start().await;
-        let ipfs_client = IpfsRpcClient::new_unchecked(server.uri(), &discard()).unwrap();
+        let ipfs_client =
+            IpfsRpcClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard()).unwrap();
         let ipfs_service = ipfs_service(Arc::new(ipfs_client), 10, Duration::from_secs(1), 1);
         let path = ContentPath::new(CID).unwrap();
 
@@ -179,6 +197,12 @@ mod test {
             .await;
 
         // This means that we never reached the successful response.
-        ipfs_service.oneshot(path).await.unwrap_err();
+        ipfs_service
+            .oneshot(IpfsRequest {
+                ctx: IpfsContext::test(),
+                path,
+            })
+            .await
+            .unwrap_err();
     }
 }

@@ -9,7 +9,7 @@ use crate::{
         },
         subgraph::InstanceDSTemplateInfo,
     },
-    data::subgraph::UnifiedMappingApiVersion,
+    data::subgraph::{DeploymentHash, UnifiedMappingApiVersion},
     data_source,
     prelude::{
         transaction_receipt::LightTransactionReceipt, BlockHash, ChainStore,
@@ -190,6 +190,7 @@ pub struct MockUnresolvedDataSource;
 impl<C: Blockchain> UnresolvedDataSource<C> for MockUnresolvedDataSource {
     async fn resolve(
         self,
+        _deployment_hash: &DeploymentHash,
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &slog::Logger,
         _manifest_idx: u32,
@@ -241,6 +242,7 @@ pub struct MockUnresolvedDataSourceTemplate;
 impl<C: Blockchain> UnresolvedDataSourceTemplate<C> for MockUnresolvedDataSourceTemplate {
     async fn resolve(
         self,
+        _deployment_hash: &DeploymentHash,
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &slog::Logger,
         _manifest_idx: u32,

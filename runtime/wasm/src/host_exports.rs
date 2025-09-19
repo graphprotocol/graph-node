@@ -13,6 +13,7 @@ use web3::types::H160;
 
 use graph::blockchain::BlockTime;
 use graph::blockchain::Blockchain;
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::subgraph::{
     InstanceDSTemplate, PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
@@ -479,7 +480,10 @@ impl HostExports {
         // Does not consume gas because this is not a part of the deterministic feature set.
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
-        graph::block_on(self.link_resolver.cat(logger, &Link { link }))
+        graph::block_on(self.link_resolver.cat(
+            &LinkResolverContext::new(&self.subgraph_id, logger),
+            &Link { link },
+        ))
     }
 
     pub(crate) fn ipfs_get_block(
@@ -490,7 +494,10 @@ impl HostExports {
         // Does not consume gas because this is not a part of the deterministic feature set.
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
-        graph::block_on(self.link_resolver.get_block(logger, &Link { link }))
+        graph::block_on(self.link_resolver.get_block(
+            &LinkResolverContext::new(&self.subgraph_id, logger),
+            &Link { link },
+        ))
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -501,7 +508,7 @@ impl HostExports {
     // of the callback must be `callback(JSONValue, Value)`, and the `userData`
     // parameter is passed to the callback without any changes
     pub(crate) fn ipfs_map(
-        link_resolver: &Arc<dyn LinkResolver>,
+        &self,
         wasm_ctx: &WasmInstanceData,
         link: String,
         callback: &str,
@@ -533,8 +540,10 @@ impl HostExports {
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
         let result = {
-            let mut stream: JsonValueStream =
-                graph::block_on(link_resolver.json_stream(&logger, &Link { link }))?;
+            let mut stream: JsonValueStream = graph::block_on(self.link_resolver.json_stream(
+                &LinkResolverContext::new(&self.subgraph_id, &logger),
+                &Link { link },
+            ))?;
             let mut v = Vec::new();
             while let Some(sv) = graph::block_on(stream.next()) {
                 let sv = sv?;

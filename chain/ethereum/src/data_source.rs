@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
+use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
 use graph::components::subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError};
 use graph::components::trigger_processor::RunnableTriggers;
+use graph::data::subgraph::DeploymentHash;
 use graph::data_source::common::{
     AbiJson, CallDecls, DeclaredCall, FindMappingABI, MappingABI, UnresolvedCallDecls,
     UnresolvedMappingABI,
@@ -1198,6 +1200,7 @@ pub struct UnresolvedDataSource {
 impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -1212,7 +1215,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        let mapping = mapping.resolve(resolver, logger, spec_version).await.with_context(|| {
+        let mapping = mapping.resolve(deployment_hash, resolver, logger, spec_version).await.with_context(|| {
             format!(
                 "failed to resolve data source {} with source_address {:?} and source_start_block {}",
                 name, source.address, source.start_block
@@ -1246,6 +1249,7 @@ pub struct DataSourceTemplate {
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
     async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
@@ -1260,7 +1264,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         } = self;
 
         let mapping = mapping
-            .resolve(resolver, logger, spec_version)
+            .resolve(deployment_hash, resolver, logger, spec_version)
             .await
             .with_context(|| format!("failed to resolve data source template {}", name))?;
 
@@ -1358,6 +1362,7 @@ impl FindMappingABI for Mapping {
 impl UnresolvedMapping {
     pub async fn resolve(
         self,
+        deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         spec_version: &semver::Version,
@@ -1380,12 +1385,18 @@ impl UnresolvedMapping {
             // resolve each abi
             abis.into_iter()
                 .map(|unresolved_abi| async {
-                    Result::<_, Error>::Ok(unresolved_abi.resolve(resolver, logger).await?)
+                    Result::<_, Error>::Ok(
+                        unresolved_abi
+                            .resolve(deployment_hash, resolver, logger)
+                            .await?,
+                    )
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             async {
-                let module_bytes = resolver.cat(logger, &link).await?;
+                let module_bytes = resolver
+                    .cat(&LinkResolverContext::new(deployment_hash, logger), &link)
+                    .await?;
                 Ok(Arc::new(module_bytes))
             },
         )

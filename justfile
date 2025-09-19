@@ -14,6 +14,10 @@ lint:
 check *EXTRA_FLAGS:
     cargo check {{EXTRA_FLAGS}}
 
+# Check all workspace members, all their targets and all their features
+check-all:
+    cargo check --workspace --all-features --all-targets
+
 # Build graph-node (cargo build --bin graph-node)
 build *EXTRA_FLAGS:
     cargo build --bin graph-node {{EXTRA_FLAGS}}

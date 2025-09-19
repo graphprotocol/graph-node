@@ -1,10 +1,13 @@
-use std::time::Duration;
+use std::{fmt::Debug, sync::Arc, time::Duration};
 
 use slog::Logger;
 
-use crate::data::subgraph::Link;
-use crate::prelude::Error;
-use std::fmt::Debug;
+use crate::{
+    cheap_clone::CheapClone,
+    data::subgraph::{DeploymentHash, Link},
+    derive::CheapClone,
+    prelude::Error,
+};
 
 mod arweave;
 mod file;
@@ -25,10 +28,10 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     fn with_retries(&self) -> Box<dyn LinkResolver>;
 
     /// Fetches the link contents as bytes.
-    async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
+    async fn cat(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error>;
 
     /// Fetches the IPLD block contents as bytes.
-    async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
+    async fn get_block(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error>;
 
     /// Creates a new resolver scoped to a specific subgraph manifest.
     ///
@@ -48,5 +51,32 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     /// values. The values must each be on a single line; newlines are significant
     /// as they are used to split the file contents and each line is deserialized
     /// separately.
-    async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error>;
+    async fn json_stream(
+        &self,
+        ctx: &LinkResolverContext,
+        link: &Link,
+    ) -> Result<JsonValueStream, Error>;
+}
+
+#[derive(Debug, Clone, CheapClone)]
+pub struct LinkResolverContext {
+    pub deployment_hash: Arc<str>,
+    pub logger: Logger,
+}
+
+impl LinkResolverContext {
+    pub fn new(deployment_hash: &DeploymentHash, logger: &Logger) -> Self {
+        Self {
+            deployment_hash: deployment_hash.as_str().into(),
+            logger: logger.cheap_clone(),
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn test() -> Self {
+        Self {
+            deployment_hash: "test".into(),
+            logger: crate::log::discard(),
+        }
+    }
 }

@@ -19,13 +19,13 @@ use graph::entity;
 use graph::env::ENV_VARS;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, Logger,
+    anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link,
     SubgraphManifest, SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
     UnvalidatedSubgraphManifest,
 };
 use graph::{
     blockchain::NodeCapabilities as _,
-    components::link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
+    components::link_resolver::{JsonValueStream, LinkResolver, LinkResolverContext},
     data::subgraph::SubgraphFeature,
 };
 
@@ -82,36 +82,37 @@ impl TextResolver {
 }
 
 #[async_trait]
-impl LinkResolverTrait for TextResolver {
-    fn with_timeout(&self, _timeout: Duration) -> Box<dyn LinkResolverTrait> {
+impl LinkResolver for TextResolver {
+    fn with_timeout(&self, _timeout: Duration) -> Box<dyn LinkResolver> {
         Box::new(self.clone())
     }
 
-    fn with_retries(&self) -> Box<dyn LinkResolverTrait> {
+    fn with_retries(&self) -> Box<dyn LinkResolver> {
         Box::new(self.clone())
     }
 
-    fn for_manifest(
-        &self,
-        _manifest_path: &str,
-    ) -> Result<Box<dyn LinkResolverTrait>, anyhow::Error> {
+    fn for_manifest(&self, _manifest_path: &str) -> Result<Box<dyn LinkResolver>, anyhow::Error> {
         Ok(Box::new(self.clone()))
     }
 
-    async fn cat(&self, _logger: &Logger, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
+    async fn cat(&self, _ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)
             .ok_or(anyhow!("No text for {}", &link.link))
             .map(Clone::clone)
     }
 
-    async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, anyhow::Error> {
+    async fn get_block(
+        &self,
+        _ctx: &LinkResolverContext,
+        _link: &Link,
+    ) -> Result<Vec<u8>, anyhow::Error> {
         unimplemented!()
     }
 
     async fn json_stream(
         &self,
-        _logger: &Logger,
+        _ctx: &LinkResolverContext,
         _link: &Link,
     ) -> Result<JsonValueStream, anyhow::Error> {
         unimplemented!()
@@ -134,7 +135,7 @@ async fn try_resolve_manifest(
     resolver.add("/ipfs/QmSourceSchema", &SOURCE_SUBGRAPH_SCHEMA);
     resolver.add(FILE_CID, &FILE);
 
-    let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+    let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
     let raw = serde_yaml::from_str(text)?;
     Ok(SubgraphManifest::resolve_from_raw(id, raw, &resolver, &LOGGER, max_spec_version).await?)
@@ -156,7 +157,7 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
     resolver.add(id.as_str(), &text);
     resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
 
-    let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+    let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
     let raw = serde_yaml::from_str(text).unwrap();
     UnvalidatedSubgraphManifest::resolve(id, raw, &resolver, &LOGGER, SPEC_VERSION_0_0_4.clone())
@@ -228,7 +229,7 @@ dataSources:
     entities:
         - Gravatar
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:
@@ -271,7 +272,7 @@ dataSources:
     entities:
         - Gravatar
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:
@@ -307,7 +308,7 @@ dataSources:
     entities:
         - Gravatar
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:
@@ -1305,7 +1306,7 @@ schema:
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA_FULLTEXT);
 
-            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+            let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
@@ -1357,7 +1358,7 @@ schema:
             resolver.add("/ipfs/Qmabi", &ABI);
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA_FULLTEXT);
 
-            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+            let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
@@ -1433,7 +1434,7 @@ dataSources:
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
             resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
-            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+            let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
@@ -1511,7 +1512,7 @@ dataSources:
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
             resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
-            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+            let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
@@ -1620,7 +1621,7 @@ dataSources:
             resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
             resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
 
-            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+            let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
@@ -1658,7 +1659,7 @@ dataSources:
     entities:
         - Gravatar
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:
@@ -1693,7 +1694,7 @@ dataSources:
             resolver.add("/ipfs/QmSource", &SOURCE_SUBGRAPH_MANIFEST);
             resolver.add("/ipfs/QmSourceSchema", &SOURCE_SUBGRAPH_SCHEMA);
 
-            let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+            let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
             let raw = serde_yaml::from_str(YAML).unwrap();
             UnvalidatedSubgraphManifest::resolve(
@@ -1728,7 +1729,7 @@ dataSources:
     entities:
         - User
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:
@@ -1787,7 +1788,7 @@ dataSources:
   entities:
       - User
   network: mainnet
-  source: 
+  source:
     address: 'QmNestedSource'
     startBlock: 9562480
   mapping:
@@ -1841,7 +1842,7 @@ specVersion: 1.3.0
     resolver.add("/ipfs/QmSource", &SOURCE_SUBGRAPH_MANIFEST);
     resolver.add("/ipfs/QmSourceSchema", &SOURCE_SUBGRAPH_SCHEMA);
 
-    let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
+    let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
 
     let raw = serde_yaml::from_str(yaml).unwrap();
     test_store::run_test_sequentially(|_| async move {
@@ -1880,7 +1881,7 @@ dataSources:
     entities:
         - Gravatar
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:
@@ -1916,7 +1917,7 @@ dataSources:
     entities:
         - Gravatar
     network: mainnet
-    source: 
+    source:
       address: 'QmSource'
       startBlock: 9562480
     mapping:

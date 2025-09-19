@@ -36,7 +36,10 @@ async fn main_inner() {
         logger,
         "Runtime configured with {} max blocking threads", *MAX_BLOCKING_THREADS
     );
-    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &logger)
+
+    let (prometheus_registry, metrics_registry) = launcher::setup_metrics(&logger);
+
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &metrics_registry, &logger)
         .await
         .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
 
@@ -49,5 +52,15 @@ async fn main_inner() {
 
     let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
 
-    launcher::run(logger, opt, env_vars, ipfs_service, link_resolver, None).await;
+    launcher::run(
+        logger,
+        opt,
+        env_vars,
+        ipfs_service,
+        link_resolver,
+        None,
+        prometheus_registry,
+        metrics_registry,
+    )
+    .await;
 }

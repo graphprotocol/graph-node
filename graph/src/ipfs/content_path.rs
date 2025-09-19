@@ -1,60 +1,112 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use cid::Cid;
+use url::Url;
 
-use crate::ipfs::IpfsError;
-use crate::ipfs::IpfsResult;
+use crate::{
+    derive::CheapClone,
+    ipfs::{IpfsError, IpfsResult},
+};
 
 /// Represents a path to some data on IPFS.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, CheapClone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContentPath {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Inner {
     cid: Cid,
     path: Option<String>,
 }
 
 impl ContentPath {
     /// Creates a new [ContentPath] from the specified input.
+    ///
+    /// Supports the following formats:
+    /// - <CID>[/<path>]
+    /// - /ipfs/<CID>[/<path>]
+    /// - ipfs://<CID>[/<path>]
+    /// - http[s]://.../ipfs/<CID>[/<path>]
+    /// - http[s]://.../api/v0/cat?arg=<CID>[/<path>]
     pub fn new(input: impl AsRef<str>) -> IpfsResult<Self> {
-        let input = input.as_ref();
+        let input = input.as_ref().trim();
 
         if input.is_empty() {
             return Err(IpfsError::InvalidContentPath {
-                input: "".to_owned(),
-                source: anyhow!("path is empty"),
+                input: "".to_string(),
+                source: anyhow!("content path is empty"),
             });
         }
 
-        let (cid, path) = input
-            .strip_prefix("/ipfs/")
-            .unwrap_or(input)
-            .split_once('/')
-            .unwrap_or((input, ""));
+        if input.starts_with("http://") || input.starts_with("https://") {
+            return Self::parse_from_url(input);
+        }
+
+        Self::parse_from_cid_and_path(input)
+    }
+
+    fn parse_from_url(input: &str) -> IpfsResult<Self> {
+        let url = Url::parse(input).map_err(|_err| IpfsError::InvalidContentPath {
+            input: input.to_string(),
+            source: anyhow!("input is not a valid URL"),
+        })?;
+
+        if let Some((_, x)) = url.query_pairs().find(|(key, _)| key == "arg") {
+            return Self::parse_from_cid_and_path(&x);
+        }
+
+        if let Some((_, x)) = url.path().split_once("/ipfs/") {
+            return Self::parse_from_cid_and_path(x);
+        }
+
+        Self::parse_from_cid_and_path(url.path())
+    }
+
+    fn parse_from_cid_and_path(mut input: &str) -> IpfsResult<Self> {
+        input = input.trim_matches('/');
+
+        for prefix in ["ipfs/", "ipfs://"] {
+            if let Some(input_without_prefix) = input.strip_prefix(prefix) {
+                input = input_without_prefix
+            }
+        }
+
+        let (cid, path) = input.split_once('/').unwrap_or((input, ""));
 
         let cid = cid
             .parse::<Cid>()
             .map_err(|err| IpfsError::InvalidContentPath {
-                input: input.to_owned(),
+                input: input.to_string(),
                 source: anyhow::Error::from(err).context("invalid CID"),
             })?;
 
         if path.contains('?') {
             return Err(IpfsError::InvalidContentPath {
-                input: input.to_owned(),
+                input: input.to_string(),
                 source: anyhow!("query parameters not allowed"),
             });
         }
 
         Ok(Self {
-            cid,
-            path: (!path.is_empty()).then_some(path.to_owned()),
+            inner: Arc::new(Inner {
+                cid,
+                path: if path.is_empty() {
+                    None
+                } else {
+                    Some(path.to_string())
+                },
+            }),
         })
     }
 
     pub fn cid(&self) -> &Cid {
-        &self.cid
+        &self.inner.cid
     }
 
     pub fn path(&self) -> Option<&str> {
-        self.path.as_deref()
+        self.inner.path.as_deref()
     }
 }
 
@@ -81,9 +133,9 @@ impl TryFrom<crate::data::store::scalar::Bytes> for ContentPath {
 
 impl std::fmt::Display for ContentPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let cid = &self.cid;
+        let cid = &self.inner.cid;
 
-        match self.path {
+        match self.inner.path {
             Some(ref path) => write!(f, "{cid}/{path}"),
             None => write!(f, "{cid}"),
         }
@@ -97,13 +149,22 @@ mod tests {
     const CID_V0: &str = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
     const CID_V1: &str = "bafybeiczsscdsbs7ffqz55asqdf3smv6klcw3gofszvwlyarci47bgf354";
 
+    fn make_path(cid: &str, path: Option<&str>) -> ContentPath {
+        ContentPath {
+            inner: Arc::new(Inner {
+                cid: cid.parse().unwrap(),
+                path: path.map(ToOwned::to_owned),
+            }),
+        }
+    }
+
     #[test]
     fn fails_on_empty_input() {
         let err = ContentPath::new("").unwrap_err();
 
         assert_eq!(
             err.to_string(),
-            "'' is not a valid IPFS content path: path is empty",
+            "'' is not a valid IPFS content path: content path is empty",
         );
     }
 
@@ -119,75 +180,37 @@ mod tests {
     #[test]
     fn accepts_a_valid_cid_v0() {
         let path = ContentPath::new(CID_V0).unwrap();
-
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V0.parse().unwrap(),
-                path: None,
-            }
-        );
+        assert_eq!(path, make_path(CID_V0, None));
     }
 
     #[test]
     fn accepts_a_valid_cid_v1() {
         let path = ContentPath::new(CID_V1).unwrap();
-
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V1.parse().unwrap(),
-                path: None,
-            }
-        );
+        assert_eq!(path, make_path(CID_V1, None));
     }
 
     #[test]
-    fn fails_on_a_leading_slash_followed_by_a_valid_cid() {
-        let err = ContentPath::new(format!("/{CID_V0}")).unwrap_err();
+    fn accepts_and_removes_leading_slashes() {
+        let path = ContentPath::new(format!("/{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
 
-        assert!(err.to_string().starts_with(&format!(
-            "'/{CID_V0}' is not a valid IPFS content path: invalid CID: "
-        )));
+        let path = ContentPath::new(format!("///////{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
     }
 
     #[test]
-    fn ignores_the_first_slash_after_the_cid() {
+    fn accepts_and_removes_trailing_slashes() {
         let path = ContentPath::new(format!("{CID_V0}/")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
 
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V0.parse().unwrap(),
-                path: None,
-            }
-        );
+        let path = ContentPath::new(format!("{CID_V0}///////")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
     }
 
     #[test]
     fn accepts_a_path_after_the_cid() {
         let path = ContentPath::new(format!("{CID_V0}/readme.md")).unwrap();
-
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V0.parse().unwrap(),
-                path: Some("readme.md".to_owned()),
-            }
-        );
-    }
-
-    #[test]
-    fn accepts_multiple_consecutive_slashes_after_the_cid() {
-        let path = ContentPath::new(format!("{CID_V0}//")).unwrap();
-
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V0.parse().unwrap(),
-                path: Some("/".to_owned()),
-            }
-        );
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
     }
 
     #[test]
@@ -214,23 +237,67 @@ mod tests {
     #[test]
     fn accepts_and_removes_the_ipfs_prefix() {
         let path = ContentPath::new(format!("/ipfs/{CID_V0}")).unwrap();
-
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V0.parse().unwrap(),
-                path: None,
-            }
-        );
+        assert_eq!(path, make_path(CID_V0, None));
 
         let path = ContentPath::new(format!("/ipfs/{CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+    }
 
-        assert_eq!(
-            path,
-            ContentPath {
-                cid: CID_V0.parse().unwrap(),
-                path: Some("readme.md".to_owned()),
-            }
-        );
+    #[test]
+    fn accepts_and_removes_the_ipfs_schema() {
+        let path = ContentPath::new(format!("ipfs://{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path = ContentPath::new(format!("ipfs://{CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+    }
+
+    #[test]
+    fn accepts_and_parses_ipfs_rpc_urls() {
+        let path = ContentPath::new(format!("http://ipfs.com/api/v0/cat?arg={CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path =
+            ContentPath::new(format!("http://ipfs.com/api/v0/cat?arg={CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+
+        let path = ContentPath::new(format!("https://ipfs.com/api/v0/cat?arg={CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path = ContentPath::new(format!(
+            "https://ipfs.com/api/v0/cat?arg={CID_V0}/readme.md"
+        ))
+        .unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+    }
+
+    #[test]
+    fn accepts_and_parses_ipfs_gateway_urls() {
+        let path = ContentPath::new(format!("http://ipfs.com/ipfs/{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path = ContentPath::new(format!("http://ipfs.com/ipfs/{CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+
+        let path = ContentPath::new(format!("https://ipfs.com/ipfs/{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path = ContentPath::new(format!("https://ipfs.com/ipfs/{CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+    }
+
+    #[test]
+    fn accepts_and_parses_paths_from_urls() {
+        let path = ContentPath::new(format!("http://ipfs.com/{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path = ContentPath::new(format!("http://ipfs.com/{CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
+
+        let path = ContentPath::new(format!("https://ipfs.com/{CID_V0}")).unwrap();
+        assert_eq!(path, make_path(CID_V0, None));
+
+        let path = ContentPath::new(format!("https://ipfs.com/{CID_V0}/readme.md")).unwrap();
+        assert_eq!(path, make_path(CID_V0, Some("readme.md")));
     }
 }
