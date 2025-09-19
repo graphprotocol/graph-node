@@ -4,5 +4,5 @@ mod subgraph;
 
 pub use crate::subgraph::{
     SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar, SubgraphRunner,
-    SubgraphTriggerProcessor,
+    SubgraphTriggerProcessor, TriggerProcessorConfig,
 };
