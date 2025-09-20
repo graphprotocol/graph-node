@@ -12,10 +12,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
             asset_name: gnd-linux-x86_64
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04
             asset_name: gnd-linux-aarch64
           - target: x86_64-apple-darwin
             runner: macos-13
