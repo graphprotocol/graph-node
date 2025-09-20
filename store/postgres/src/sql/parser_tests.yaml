@@ -1,0 +1,127 @@
+# Test cases for the SQL parser. Each test case has the following fields:
+#   name : an optional name for error messages
+#   sql  : the SQL query to parse
+#   ok   : the expected rewritten query
+#   err  : a part of the error message if parsing should fail
+# Of course, only one of ok and err can be specified
+
+- sql: select symbol, address from token where decimals > 10
+  ok: >
+      select symbol, address from (
+        select "id", "address", "symbol", "name", "decimals" from "sgd0815"."token" where block_range @> 2147483647) as token
+      where decimals > 10
+- sql: >
+      with tokens as (
+          select * from (values
+          ('0x0000000000000000000000000000000000000000','eth','ethereum',18),
+          ('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48','usdc','usd coin',6)
+          ) as t(address,symbol,name,decimals))
+      select date, t.symbol, sum(amount)/pow(10,t.decimals) as amount
+        from (select
+               date(to_timestamp(block_timestamp) at time zone 'utc') as date,
+               token, amount
+              from swap as sm,
+                   unnest(sm.amounts_in,sm.tokens_in) as smi(amount,token)
+              union all
+              select
+                date(to_timestamp(block_timestamp) at time zone 'utc') as date,
+                token, amount
+              from swap as sm,
+                   unnest(sm.amounts_out,sm.tokens_out) as smo(amount,token)) as tp
+      inner join
+        tokens as t on t.address = tp.token
+      group by tp.date, t.symbol, t.decimals
+      order by tp.date desc, amount desc
+  ok: >
+      with tokens as (
+        select * from (
+          values ('0x0000000000000000000000000000000000000000', 'eth', 'ethereum', 18),
+                 ('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 'usdc', 'usd coin', 6))
+          as t (address, symbol, name, decimals))
+      select date, t.symbol, sum(amount) / pow(10, t.decimals) as amount
+        from (select date(to_timestamp(block_timestamp) at time zone 'utc') as date, token, amount
+                from (select "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
+                        from "sgd0815"."swap" where block$ <= 2147483647) as sm,
+                     unnest(sm.amounts_in, sm.tokens_in) as smi (amount, token)
+              union all
+              select date(to_timestamp(block_timestamp) at time zone 'utc') as date, token, amount
+                from (select "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
+                        from "sgd0815"."swap" where block$ <= 2147483647) as sm,
+                     unnest(sm.amounts_out, sm.tokens_out) as smo (amount, token)) as tp
+                  join tokens as t on t.address = tp.token
+               group by tp.date, t.symbol, t.decimals
+               order by tp.date desc, amount desc
+- name: pg_sleep forbidden
+  sql: select pool from swap where '' = (select cast(pg_sleep(5) as text))
+  err: Unknown or unsupported function pg_sleep
+- name: table functions forbidden
+  sql: >
+    select vid, k.sname
+      from swap,
+        lateral(select current_schemas as sname from current_schemas(true)) as k
+  err: Unknown or unsupported function current_schemas
+- name: function without parens forbidden
+  sql: select input_token from swap where '' = (select user)
+  err: Unknown or unsupported function user
+- name: aggregation allowed
+  sql: >
+    select token0, sum(amount0) as total_amount
+      from swap
+     group by token0
+    having sum(amount0) > 1000
+  ok: >
+    SELECT token0, sum(amount0) AS total_amount
+      FROM (SELECT "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
+              FROM "sgd0815"."swap" WHERE block$ <= 2147483647) AS swap
+     GROUP BY token0
+    HAVING sum(amount0) > 1000
+- name: arbitrary function forbidden
+  sql: >
+    select token0 from swap
+     where '' = (select cast(do_strange_math(amount_in) as text))
+  err: Unknown or unsupported function do_strange_math
+- name: create table forbidden
+  sql: create table foo (id int primary key);
+  err: Only SELECT query is supported
+- name: insert forbidden
+  sql: insert into foo values (1);
+  err: Only SELECT query is supported
+- name: CTE allowed
+  sql: with foo as (select 1) select * from foo
+  ok:  with foo as (select 1) select * from foo
+- name: CTE with insert forbidden
+  sql: with foo as (insert into target values(1)) select * from bar
+  err: Only SELECT query is supported
+- name: only single statement
+  sql: select 1; select 2;
+  err: Multi statement is not supported
+- name: unknown tables forbidden
+  sql: select * from unknown_table
+  err: Unknown table unknown_table
+- name: qualified tables are forbidden
+  sql: select * from pg_catalog.pg_class
+  err: "Qualified table names are not supported: pg_catalog.pg_class"
+- name: aggregation tables are hidden
+  sql: select * from stats_hour
+  err: Unknown table stats_hour
+- name: CTEs take precedence
+  sql: with stats_hour as (select 1) select * from stats_hour
+  ok: WITH stats_hour AS (SELECT 1) SELECT * FROM stats_hour
+- name: aggregation tables use function syntax
+  sql: select * from stats('hour')
+  ok: SELECT * FROM (SELECT "id", "timestamp", "sum" FROM "sgd0815"."stats_hour" WHERE block$ <= 2147483647) AS stats_hour
+- name: unknown aggregation interval
+  sql: select * from stats('fortnight')
+  err: Unknown aggregation interval `fortnight` for table stats
+- name: aggregation tables with empty arg
+  sql: select * from stats('')
+  err: Unknown aggregation interval `` for table stats
+- name: aggregation tables with no args
+  sql: select * from stats()
+  err: Invalid syntax for aggregation stats
+- name: aggregation tables with multiple args
+  sql: select * from stats('hour', 'day')
+  err: Invalid syntax for aggregation stats
+- name: aggregation tables with alias
+  sql: select * from stats('hour') as sh
+  ok: SELECT * FROM (SELECT "id", "timestamp", "sum" FROM "sgd0815"."stats_hour" WHERE block$ <= 2147483647) AS sh

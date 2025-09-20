@@ -9,6 +9,8 @@ use graph::components::server::query::ServerResponse;
 use graph::components::server::query::ServerResult;
 use graph::components::versions::ApiVersion;
 use graph::data::query::QueryResult;
+use graph::data::query::SqlQueryMode;
+use graph::data::query::SqlQueryReq;
 use graph::data::subgraph::DeploymentHash;
 use graph::data::subgraph::SubgraphName;
 use graph::env::ENV_VARS;
@@ -21,6 +23,8 @@ use graph::hyper::{body::Body, header::HeaderValue};
 use graph::hyper::{Method, Request, Response, StatusCode};
 use graph::prelude::serde_json;
 use graph::prelude::serde_json::json;
+use graph::prelude::CacheWeight as _;
+use graph::prelude::QueryError;
 use graph::semver::VersionReq;
 use graph::slog::error;
 use graph::slog::Logger;
@@ -195,6 +199,51 @@ where
         Ok(result.as_http_response())
     }
 
+    async fn handle_sql_query<T: Body>(&self, request: Request<T>) -> ServerResult {
+        let body = request
+            .collect()
+            .await
+            .map_err(|_| ServerError::InternalError("Failed to read request body".into()))?
+            .to_bytes();
+        let sql_req: SqlQueryReq = serde_json::from_slice(&body)
+            .map_err(|e| ServerError::ClientError(format!("{}", e)))?;
+
+        let mode = sql_req.mode;
+        let result = self
+            .graphql_runner
+            .cheap_clone()
+            .run_sql_query(sql_req)
+            .await
+            .map_err(|e| ServerError::QueryError(QueryError::from(e)));
+
+        use SqlQueryMode::*;
+        let response_obj = match (result, mode) {
+            (Ok(result), Info) => {
+                json!({
+                    "count": result.len(),
+                    "bytes" : result.weight(),
+                })
+            }
+            (Ok(result), Data) => {
+                json!({
+                    "data": result,
+                })
+            }
+            (Err(e), _) => json!({
+                "error": e.to_string(),
+            }),
+        };
+
+        let response_str = serde_json::to_string(&response_obj).unwrap();
+
+        Ok(Response::builder()
+            .status(200)
+            .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .header(CONTENT_TYPE, "application/json")
+            .body(Full::from(response_str))
+            .unwrap())
+    }
+
     // Handles OPTIONS requests
     fn handle_graphql_options<T>(&self, _request: Request<T>) -> ServerResult {
         Ok(Response::builder()
@@ -327,7 +376,9 @@ where
                 let dest = format!("/{}/graphql", filtered_path);
                 self.handle_temp_redirect(dest)
             }
-
+            (Method::POST, &["subgraphs", "sql"] | &["subgraphs", "sql", ""]) => {
+                self.handle_sql_query(req).await
+            }
             (Method::POST, &["subgraphs", "id", subgraph_id]) => {
                 self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
                     .await
@@ -395,6 +446,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use graph::data::store::SqlQueryObject;
     use graph::data::value::{Object, Word};
     use graph::http_body_util::{BodyExt, Full};
     use graph::hyper::body::Bytes;
@@ -402,7 +454,7 @@ mod tests {
     use graph::hyper::{Method, Request, StatusCode};
     use graph::prelude::serde_json::json;
 
-    use graph::data::query::{QueryResults, QueryTarget};
+    use graph::data::query::{QueryResults, QueryTarget, SqlQueryReq};
     use graph::prelude::*;
 
     use crate::test_utils;
@@ -448,6 +500,13 @@ mod tests {
 
         fn metrics(&self) -> Arc<dyn GraphQLMetrics> {
             Arc::new(TestGraphQLMetrics)
+        }
+
+        async fn run_sql_query(
+            self: Arc<Self>,
+            _req: SqlQueryReq,
+        ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
+            unimplemented!()
         }
     }
 
