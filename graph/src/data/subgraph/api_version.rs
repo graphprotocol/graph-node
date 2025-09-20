@@ -5,6 +5,9 @@ use thiserror::Error;
 
 pub const API_VERSION_0_0_2: Version = Version::new(0, 0, 2);
 
+/// Changed calling convention for `ethereum.call`
+pub const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+
 /// This version adds a new subgraph validation step that rejects manifests whose mappings have
 /// different API versions if at least one of them is equal to or higher than `0.0.5`.
 pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
