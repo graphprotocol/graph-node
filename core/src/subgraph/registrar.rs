@@ -11,16 +11,16 @@ use graph::components::subgraph::Settings;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::Graft;
 use graph::data::value::Word;
-use graph::futures01;
-use graph::futures01::future;
 use graph::futures01::stream;
 use graph::futures01::Future;
 use graph::futures01::Stream;
+use graph::futures03;
 use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::future::FutureExt;
 use graph::futures03::future::TryFutureExt;
 use graph::futures03::stream::TryStreamExt;
+use graph::futures03::StreamExt;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
@@ -80,7 +80,7 @@ where
         }
     }
 
-    pub fn start(&self) -> impl Future<Item = (), Error = Error> {
+    pub async fn start(self: Arc<Self>) -> Result<(), Error> {
         let logger_clone1 = self.logger.clone();
         let logger_clone2 = self.logger.clone();
         let provider = self.provider.clone();
@@ -113,37 +113,37 @@ where
         let assignment_event_stream = self.assignment_events();
 
         // Deploy named subgraphs found in store
-        self.start_assigned_subgraphs().and_then(move |()| {
-            // Spawn a task to handle assignment events.
-            // Blocking due to store interactions. Won't be blocking after #905.
-            graph::spawn_blocking(
-                assignment_event_stream
-                    .compat()
-                    .map_err(SubgraphAssignmentProviderError::Unknown)
-                    .cancelable(&assignment_event_stream_cancel_handle)
-                    .compat()
-                    .for_each(move |assignment_event| {
-                        assert_eq!(assignment_event.node_id(), &node_id);
-                        handle_assignment_event(
-                            assignment_event,
-                            provider.clone(),
-                            logger_clone1.clone(),
-                        )
-                        .boxed()
-                        .compat()
-                    })
-                    .map_err(move |e| match e {
-                        CancelableError::Cancel => panic!("assignment event stream canceled"),
-                        CancelableError::Error(e) => {
-                            error!(logger_clone2, "Assignment event stream failed: {}", e);
-                            panic!("assignment event stream failed: {}", e);
-                        }
-                    })
-                    .compat(),
-            );
+        self.start_assigned_subgraphs().await?;
 
-            Ok(())
-        })
+        // Spawn a task to handle assignment events.
+        // Blocking due to store interactions. Won't be blocking after #905.
+        graph::spawn_blocking(
+            assignment_event_stream
+                .compat()
+                .map_err(SubgraphAssignmentProviderError::Unknown)
+                .cancelable(&assignment_event_stream_cancel_handle)
+                .compat()
+                .for_each(move |assignment_event| {
+                    assert_eq!(assignment_event.node_id(), &node_id);
+                    handle_assignment_event(
+                        assignment_event,
+                        provider.clone(),
+                        logger_clone1.clone(),
+                    )
+                    .boxed()
+                    .compat()
+                })
+                .map_err(move |e| match e {
+                    CancelableError::Cancel => panic!("assignment event stream canceled"),
+                    CancelableError::Error(e) => {
+                        error!(logger_clone2, "Assignment event stream failed: {}", e);
+                        panic!("assignment event stream failed: {}", e);
+                    }
+                })
+                .compat(),
+        );
+
+        Ok(())
     }
 
     pub fn assignment_events(&self) -> impl Stream<Item = AssignmentEvent, Error = Error> + Send {
@@ -220,36 +220,33 @@ where
             .flatten()
     }
 
-    fn start_assigned_subgraphs(&self) -> impl Future<Item = (), Error = Error> {
+    async fn start_assigned_subgraphs(&self) -> Result<(), Error> {
         let provider = self.provider.clone();
         let logger = self.logger.clone();
         let node_id = self.node_id.clone();
 
-        future::result(self.store.active_assignments(&self.node_id))
-            .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))
-            .and_then(move |deployments| {
-                // This operation should finish only after all subgraphs are
-                // started. We wait for the spawned tasks to complete by giving
-                // each a `sender` and waiting for all of them to be dropped, so
-                // the receiver terminates without receiving anything.
-                let deployments = HashSet::<DeploymentLocator>::from_iter(deployments);
-                let deployments_len = deployments.len();
-                let (sender, receiver) = futures01::sync::mpsc::channel::<()>(1);
-                for id in deployments {
-                    let sender = sender.clone();
-                    let logger = logger.clone();
+        let deployments = self
+            .store
+            .active_assignments(&self.node_id)
+            .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))?;
+        // This operation should finish only after all subgraphs are
+        // started. We wait for the spawned tasks to complete by giving
+        // each a `sender` and waiting for all of them to be dropped, so
+        // the receiver terminates without receiving anything.
+        let deployments = HashSet::<DeploymentLocator>::from_iter(deployments);
+        let deployments_len = deployments.len();
+        let (sender, receiver) = futures03::channel::mpsc::channel::<()>(1);
+        for id in deployments {
+            let sender = sender.clone();
+            let logger = logger.clone();
 
-                    graph::spawn(
-                        start_subgraph(id, provider.clone(), logger).map(move |()| drop(sender)),
-                    );
-                }
-                drop(sender);
-                receiver.collect().then(move |_| {
-                    info!(logger, "Started all assigned subgraphs";
-                                  "count" => deployments_len, "node_id" => &node_id);
-                    future::ok(())
-                })
-            })
+            graph::spawn(start_subgraph(id, provider.clone(), logger).map(move |()| drop(sender)));
+        }
+        drop(sender);
+        let _: Vec<_> = receiver.collect().await;
+        info!(logger, "Started all assigned subgraphs";
+                    "count" => deployments_len, "node_id" => &node_id);
+        Ok(())
     }
 }
 
