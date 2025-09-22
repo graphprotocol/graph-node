@@ -131,8 +131,8 @@ pub mod prelude {
         EntityCollection, EntityFilter, EntityLink, EntityOperation, EntityOrder,
         EntityOrderByChild, EntityOrderByChildInfo, EntityQuery, EntityRange, EntityWindow,
         EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats, QueryStore,
-        QueryStoreManager, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
-        SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
+        QueryStoreManager, StoreError, StoreEvent, StoreEventStreamBox, SubgraphStore,
+        UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
         BlockState, HostMetrics, InstanceDSTemplateInfo, RuntimeHost, RuntimeHostBuilder,

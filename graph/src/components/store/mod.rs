@@ -18,7 +18,7 @@ use strum_macros::Display;
 pub use traits::*;
 pub use write::Batch;
 
-use futures01::{Async, Stream};
+use futures01::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -633,37 +633,8 @@ impl PartialEq for StoreEvent {
     }
 }
 
-/// A `StoreEventStream` produces the `StoreEvents`. Various filters can be applied
-/// to it to reduce which and how many events are delivered by the stream.
-pub struct StoreEventStream<S> {
-    source: S,
-}
-
 /// A boxed `StoreEventStream`
-pub type StoreEventStreamBox =
-    StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>>;
-
-impl<S> Stream for StoreEventStream<S>
-where
-    S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send,
-{
-    type Item = Arc<StoreEvent>;
-    type Error = ();
-
-    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-        self.source.poll()
-    }
-}
-
-impl<S> StoreEventStream<S>
-where
-    S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send + 'static,
-{
-    // Create a new `StoreEventStream` from another such stream
-    pub fn new(source: S) -> Self {
-        StoreEventStream { source }
-    }
-}
+pub type StoreEventStreamBox = Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>;
 
 /// An entity operation that can be transacted into the store.
 #[derive(Clone, Debug, PartialEq)]
