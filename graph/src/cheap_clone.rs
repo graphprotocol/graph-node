@@ -118,4 +118,4 @@ cheap_clone_is_copy!(
     &'static str,
     std::time::Duration
 );
-cheap_clone_is_copy!(ethabi::Address);
+cheap_clone_is_copy!(alloy::primitives::Address);

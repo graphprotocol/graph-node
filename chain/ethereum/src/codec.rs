@@ -8,8 +8,15 @@ use graph::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
     prelude::{
-        web3,
-        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
+        alloy::{
+            self,
+            consensus::{ReceiptEnvelope, ReceiptWithBloom, TxEnvelope, TxType},
+            primitives::{aliases::B2048, Address, Bloom, Bytes, LogData, B256, U256},
+            rpc::types::{
+                AccessList, AccessListItem, Block as AlloyBlock, Transaction,
+                TransactionReceipt as AlloyTransactionReceipt,
+            },
+        },
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
     },
@@ -34,13 +41,13 @@ where
     }
 }
 
-impl TryDecodeProto<[u8; 256], H2048> for &[u8] {}
-impl TryDecodeProto<[u8; 32], H256> for &[u8] {}
-impl TryDecodeProto<[u8; 20], H160> for &[u8] {}
+impl TryDecodeProto<[u8; 32], B256> for &[u8] {}
+impl TryDecodeProto<[u8; 256], B2048> for &[u8] {}
+impl TryDecodeProto<[u8; 20], Address> for &[u8] {}
 
-impl From<&BigInt> for web3::types::U256 {
+impl From<&BigInt> for U256 {
     fn from(val: &BigInt) -> Self {
-        web3::types::U256::from_big_endian(&val.bytes)
+        U256::from_be_slice(&val.bytes)
     }
 }
 
@@ -68,49 +75,14 @@ impl<'a> TryInto<EthereumCall> for CallAt<'a> {
                 .value
                 .as_ref()
                 .map_or_else(|| U256::from(0), |v| v.into()),
-            gas_used: U256::from(self.call.gas_consumed),
-            input: Bytes(self.call.input.clone()),
-            output: Bytes(self.call.return_data.clone()),
+            gas_used: self.call.gas_consumed,
+            input: Bytes::from(self.call.input.clone()),
+            output: Bytes::from(self.call.return_data.clone()),
             block_hash: self.block.hash.try_decode_proto("call block hash")?,
             block_number: self.block.number as i32,
             transaction_hash: Some(self.trace.hash.try_decode_proto("call transaction hash")?),
             transaction_index: self.trace.index as u64,
         })
-    }
-}
-
-impl TryInto<web3::types::Call> for Call {
-    type Error = Error;
-
-    fn try_into(self) -> Result<web3::types::Call, Self::Error> {
-        Ok(web3::types::Call {
-            from: self.caller.try_decode_proto("call from address")?,
-            to: self.address.try_decode_proto("call to address")?,
-            value: self
-                .value
-                .as_ref()
-                .map_or_else(|| U256::from(0), |v| v.into()),
-            gas: U256::from(self.gas_limit),
-            input: Bytes::from(self.input.clone()),
-            call_type: CallType::try_from(self.call_type)
-                .map_err(|_| graph::anyhow::anyhow!("invalid call type: {}", self.call_type))?
-                .into(),
-        })
-    }
-}
-
-impl From<CallType> for web3::types::CallType {
-    fn from(val: CallType) -> Self {
-        match val {
-            CallType::Unspecified => web3::types::CallType::None,
-            CallType::Call => web3::types::CallType::Call,
-            CallType::Callcode => web3::types::CallType::CallCode,
-            CallType::Delegate => web3::types::CallType::DelegateCall,
-            CallType::Static => web3::types::CallType::StaticCall,
-
-            // FIXME (SF): Really not sure what this should map to, we are using None for now, need to revisit
-            CallType::Create => web3::types::CallType::None,
-        }
     }
 }
 
@@ -126,43 +98,36 @@ impl<'a> LogAt<'a> {
     }
 }
 
-impl<'a> TryInto<web3::types::Log> for LogAt<'a> {
+impl<'a> TryInto<alloy::rpc::types::Log> for LogAt<'a> {
     type Error = Error;
 
-    fn try_into(self) -> Result<web3::types::Log, Self::Error> {
-        Ok(web3::types::Log {
-            address: self.log.address.try_decode_proto("log address")?,
-            topics: self
-                .log
-                .topics
-                .iter()
-                .map(|t| t.try_decode_proto("topic"))
-                .collect::<Result<Vec<H256>, Error>>()?,
-            data: Bytes::from(self.log.data.clone()),
+    fn try_into(self) -> Result<alloy::rpc::types::Log, Self::Error> {
+        let topics = self
+            .log
+            .topics
+            .iter()
+            .map(|t| t.try_decode_proto("topic"))
+            .collect::<Result<Vec<B256>, Error>>()?;
+
+        Ok(alloy::rpc::types::Log {
+            inner: alloy::primitives::Log {
+                address: self.log.address.try_decode_proto("log address")?,
+                data: LogData::new(topics, self.log.data.clone().into())
+                    .ok_or_else(|| format_err!("invalid log data"))?,
+            },
             block_hash: Some(self.block.hash.try_decode_proto("log block hash")?),
-            block_number: Some(U64::from(self.block.number)),
+            block_number: Some(self.block.number),
             transaction_hash: Some(self.trace.hash.try_decode_proto("log transaction hash")?),
-            transaction_index: Some(U64::from(self.trace.index as u64)),
-            log_index: Some(U256::from(self.log.block_index)),
-            transaction_log_index: Some(U256::from(self.log.index)),
-            log_type: None,
-            removed: None,
+            transaction_index: Some(self.trace.index as u64),
+            log_index: Some(self.log.block_index as u64),
+            removed: false,
+            block_timestamp: self
+                .block
+                .header
+                .as_ref()
+                .map(|h| h.timestamp.as_ref().map(|t| t.seconds as u64))
+                .flatten(),
         })
-    }
-}
-
-impl TryFrom<TransactionTraceStatus> for Option<web3::types::U64> {
-    type Error = Error;
-
-    fn try_from(val: TransactionTraceStatus) -> Result<Self, Self::Error> {
-        match val {
-            TransactionTraceStatus::Unknown => Err(format_err!(
-                "Got a transaction trace with status UNKNOWN, datasource is broken"
-            )),
-            TransactionTraceStatus::Succeeded => Ok(Some(web3::types::U64::from(1))),
-            TransactionTraceStatus::Failed => Ok(Some(web3::types::U64::from(0))),
-            TransactionTraceStatus::Reverted => Ok(Some(web3::types::U64::from(0))),
-        }
     }
 }
 
@@ -177,34 +142,210 @@ impl<'a> TransactionTraceAt<'a> {
     }
 }
 
-impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
+impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
     type Error = Error;
 
-    fn try_into(self) -> Result<web3::types::Transaction, Self::Error> {
-        Ok(web3::types::Transaction {
-            hash: self.trace.hash.try_decode_proto("transaction hash")?,
-            nonce: U256::from(self.trace.nonce),
-            block_hash: Some(self.block.hash.try_decode_proto("transaction block hash")?),
-            block_number: Some(U64::from(self.block.number)),
-            transaction_index: Some(U64::from(self.trace.index as u64)),
-            from: Some(
-                self.trace
-                    .from
-                    .try_decode_proto("transaction from address")?,
-            ),
-            to: get_to_address(self.trace)?,
-            value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
-            gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
-            gas: U256::from(self.trace.gas_limit),
-            input: Bytes::from(self.trace.input.clone()),
-            v: None,
-            r: None,
-            s: None,
-            raw: None,
-            access_list: None,
-            max_fee_per_gas: None,
-            max_priority_fee_per_gas: None,
-            transaction_type: None,
+    fn try_into(self) -> Result<Transaction, Self::Error> {
+        use alloy::{
+            consensus::transaction::Recovered,
+            consensus::{
+                Signed, TxEip1559, TxEip2930, TxEip4844, TxEip4844Variant, TxEip7702, TxLegacy,
+            },
+            primitives::{Bytes, TxKind, U256},
+            rpc::types::Transaction as AlloyTransaction,
+        };
+
+        // Extract data from trace and block
+        let block_hash = self.block.hash.try_decode_proto("transaction block hash")?;
+        let block_number = self.block.number;
+        let transaction_index = Some(self.trace.index as u64);
+        let from_address = self
+            .trace
+            .from
+            .try_decode_proto("transaction from address")?;
+        let to = get_to_address(self.trace)?;
+        let value = self.trace.value.as_ref().map_or(U256::ZERO, |x| x.into());
+        let gas_price = self.trace.gas_price.as_ref().map_or(0u128, |x| {
+            let val: U256 = x.into();
+            val.to::<u128>()
+        });
+        let gas_limit = self.trace.gas_limit;
+        let input = Bytes::from(self.trace.input.clone());
+
+        let tx_type = u64::try_from(self.trace.r#type).map_err(|_| {
+            format_err!(
+                "Invalid transaction type value {} in transaction trace. Transaction type must be a valid u64.",
+                self.trace.r#type
+            )
+        })?;
+
+        let tx_type = TxType::try_from(tx_type).map_err(|_| {
+            format_err!(
+                "Unsupported transaction type {} in transaction trace. Only standard Ethereum transaction types (Legacy=0, EIP-2930=1, EIP-1559=2, EIP-4844=3, EIP-7702=4) are supported.",
+                tx_type
+            )
+        })?;
+
+        let nonce = self.trace.nonce;
+
+        // Extract EIP-1559 fee fields from trace
+        let max_fee_per_gas_u128 = self.trace.max_fee_per_gas.as_ref().map_or(gas_price, |x| {
+            let val: U256 = x.into();
+            val.to::<u128>()
+        });
+
+        let max_priority_fee_per_gas_u128 =
+            self.trace
+                .max_priority_fee_per_gas
+                .as_ref()
+                .map_or(0u128, |x| {
+                    let val: U256 = x.into();
+                    val.to::<u128>()
+                });
+
+        // Extract access list from trace
+        let access_list: AccessList = self
+            .trace
+            .access_list
+            .iter()
+            .map(|access_tuple| {
+                let address = Address::from_slice(&access_tuple.address);
+                let storage_keys = access_tuple
+                    .storage_keys
+                    .iter()
+                    .map(|key| B256::from_slice(key))
+                    .collect();
+                AccessListItem {
+                    address,
+                    storage_keys,
+                }
+            })
+            .collect::<Vec<_>>()
+            .into();
+
+        // Extract actual signature components from trace
+        let signature = extract_signature_from_trace(self.trace, tx_type)?;
+
+        let to_kind = match to {
+            Some(addr) => TxKind::Call(addr),
+            None => TxKind::Create,
+        };
+
+        let envelope = match tx_type {
+            TxType::Legacy => {
+                let tx = TxLegacy {
+                    chain_id: None,
+                    nonce,
+                    gas_price,
+                    gas_limit,
+                    to: to_kind,
+                    value,
+                    input: input.clone(),
+                };
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
+                TxEnvelope::Legacy(signed_tx)
+            }
+            TxType::Eip2930 => {
+                let tx = TxEip2930 {
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    nonce,
+                    gas_price,
+                    gas_limit,
+                    to: to_kind,
+                    value,
+                    access_list: access_list.clone(), // Use actual access list from trace
+                    input: input.clone(),
+                };
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
+                TxEnvelope::Eip2930(signed_tx)
+            }
+            TxType::Eip1559 => {
+                let tx = TxEip1559 {
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    nonce,
+                    gas_limit,
+                    max_fee_per_gas: max_fee_per_gas_u128,
+                    max_priority_fee_per_gas: max_priority_fee_per_gas_u128,
+                    to: to_kind,
+                    value,
+                    access_list: access_list.clone(), // Use actual access list from trace
+                    input: input.clone(),
+                };
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
+                TxEnvelope::Eip1559(signed_tx)
+            }
+            TxType::Eip4844 => {
+                let to_address = to.ok_or_else(|| {
+                    format_err!("EIP-4844 transactions cannot be contract creation transactions. The 'to' field must contain a valid address.")
+                })?;
+
+                let tx_eip4844 = TxEip4844 {
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    nonce,
+                    gas_limit,
+                    max_fee_per_gas: max_fee_per_gas_u128,
+                    max_priority_fee_per_gas: max_priority_fee_per_gas_u128,
+                    to: to_address,
+                    value,
+                    access_list: access_list.clone(), // Use actual access list from trace
+                    blob_versioned_hashes: Vec::new(), // TODO(alloy_migration): blob hashes not available in current protobuf definition
+                    max_fee_per_blob_gas: 0u128, // TODO(alloy_migration): blob gas fee not available in current protobuf definition
+                    input: input.clone(),
+                };
+                let tx = TxEip4844Variant::TxEip4844(tx_eip4844);
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
+                TxEnvelope::Eip4844(signed_tx)
+            }
+            TxType::Eip7702 => {
+                let to_address = to.ok_or_else(|| {
+                    format_err!("EIP-7702 transactions cannot be contract creation transactions. The 'to' field must contain a valid address.")
+                })?;
+
+                let tx = TxEip7702 {
+                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    nonce,
+                    gas_limit,
+                    max_fee_per_gas: max_fee_per_gas_u128,
+                    max_priority_fee_per_gas: max_priority_fee_per_gas_u128,
+                    to: to_address,
+                    value,
+                    access_list: access_list.clone(), // Use actual access list from trace
+                    authorization_list: Vec::new(), // TODO(alloy_migration): authorization list not available in current protobuf definition
+                    input: input.clone(),
+                };
+                let signed_tx = Signed::new_unchecked(
+                    tx,
+                    signature,
+                    self.trace.hash.try_decode_proto("transaction hash")?,
+                );
+                TxEnvelope::Eip7702(signed_tx)
+            }
+        };
+
+        let recovered = Recovered::new_unchecked(envelope, from_address);
+
+        Ok(AlloyTransaction {
+            inner: recovered,
+            block_hash: Some(block_hash),
+            block_number: Some(block_number),
+            transaction_index,
+            effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None }, // gas_price already contains effective gas price per protobuf spec
         })
     }
 }
@@ -217,143 +358,100 @@ impl TryInto<BlockFinality> for &Block {
     }
 }
 
+impl TryInto<AlloyBlock> for &Block {
+    type Error = Error;
+
+    fn try_into(self) -> Result<AlloyBlock, Self::Error> {
+        let header = self.header();
+
+        let block_hash = self.hash.try_decode_proto("block hash")?;
+        let consensus_header = alloy::consensus::Header {
+            number: header.number,
+            beneficiary: header.coinbase.try_decode_proto("author / coinbase")?,
+            parent_hash: header.parent_hash.try_decode_proto("parent hash")?,
+            ommers_hash: header.uncle_hash.try_decode_proto("uncle hash")?,
+            state_root: header.state_root.try_decode_proto("state root")?,
+            transactions_root: header
+                .transactions_root
+                .try_decode_proto("transactions root")?,
+            receipts_root: header.receipt_root.try_decode_proto("receipt root")?,
+            gas_used: header.gas_used,
+            gas_limit: header.gas_limit,
+            base_fee_per_gas: header.base_fee_per_gas.as_ref().map(|v| {
+                let val: U256 = v.into();
+                val.to::<u64>()
+            }),
+            extra_data: Bytes::from(header.extra_data.clone()),
+            logs_bloom: if header.logs_bloom.is_empty() {
+                Bloom::ZERO
+            } else {
+                Bloom::try_from(header.logs_bloom.as_slice())?
+            },
+            timestamp: header.timestamp.as_ref().map_or(0, |v| v.seconds as u64),
+            difficulty: header
+                .difficulty
+                .as_ref()
+                .map_or_else(|| U256::ZERO, |v| v.into()),
+
+            mix_hash: header.mix_hash.try_decode_proto("mix hash")?,
+            nonce: header.nonce.into(),
+
+            withdrawals_root: None, // TODO(alloy_migration): not available in current protobuf definition
+            blob_gas_used: None, // TODO(alloy_migration): not available in current protobuf definition
+            excess_blob_gas: None, // TODO(alloy_migration): not available in current protobuf definition
+            parent_beacon_block_root: None, // TODO(alloy_migration): not available in current protobuf definition
+            requests_hash: None, // TODO(alloy_migration): not available in current protobuf definition
+        };
+
+        let rpc_header = alloy::rpc::types::Header {
+            hash: block_hash,
+            inner: consensus_header,
+            total_difficulty: header.total_difficulty.as_ref().map(|v| v.into()),
+            size: Some(U256::from(self.size)),
+        };
+
+        let transactions = self
+            .transaction_traces
+            .iter()
+            .map(|t| TransactionTraceAt::new(t, self).try_into())
+            .collect::<Result<Vec<Transaction>, Error>>()?;
+
+        let uncles = self
+            .uncles
+            .iter()
+            .map(|u| u.hash.try_decode_proto("uncle hash"))
+            .collect::<Result<Vec<B256>, _>>()?;
+
+        Ok(AlloyBlock::new(
+            rpc_header,
+            alloy::rpc::types::BlockTransactions::Full(transactions),
+        )
+        .with_uncles(uncles))
+    }
+}
+
 impl TryInto<EthereumBlockWithCalls> for &Block {
     type Error = Error;
 
     fn try_into(self) -> Result<EthereumBlockWithCalls, Self::Error> {
-        let header = self.header.as_ref().ok_or_else(|| {
-            format_err!("block header should always be present from gRPC Firehose")
-        })?;
+        let alloy_block: AlloyBlock = self.try_into()?;
 
+        let transaction_receipts = self
+            .transaction_traces
+            .iter()
+            .filter_map(|t| transaction_trace_to_alloy_txn_reciept(t, self).transpose())
+            .collect::<Result<Vec<_>, Error>>()?
+            .into_iter()
+            // Transaction receipts will be shared along the code, so we put them into an
+            // Arc here to avoid excessive cloning.
+            .map(Arc::new)
+            .collect();
+
+        #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock {
-                    hash: Some(self.hash.try_decode_proto("block hash")?),
-                    number: Some(U64::from(self.number)),
-                    author: header.coinbase.try_decode_proto("author / coinbase")?,
-                    parent_hash: header.parent_hash.try_decode_proto("parent hash")?,
-                    uncles_hash: header.uncle_hash.try_decode_proto("uncle hash")?,
-                    state_root: header.state_root.try_decode_proto("state root")?,
-                    transactions_root: header
-                        .transactions_root
-                        .try_decode_proto("transactions root")?,
-                    receipts_root: header.receipt_root.try_decode_proto("receipt root")?,
-                    gas_used: U256::from(header.gas_used),
-                    gas_limit: U256::from(header.gas_limit),
-                    base_fee_per_gas: Some(
-                        header
-                            .base_fee_per_gas
-                            .as_ref()
-                            .map_or_else(U256::default, |v| v.into()),
-                    ),
-                    extra_data: Bytes::from(header.extra_data.clone()),
-                    logs_bloom: match &header.logs_bloom.len() {
-                        0 => None,
-                        _ => Some(header.logs_bloom.try_decode_proto("logs bloom")?),
-                    },
-                    timestamp: header
-                        .timestamp
-                        .as_ref()
-                        .map_or_else(U256::default, |v| U256::from(v.seconds)),
-                    difficulty: header
-                        .difficulty
-                        .as_ref()
-                        .map_or_else(U256::default, |v| v.into()),
-                    total_difficulty: Some(
-                        header
-                            .total_difficulty
-                            .as_ref()
-                            .map_or_else(U256::default, |v| v.into()),
-                    ),
-                    // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
-                    seal_fields: vec![],
-                    uncles: self
-                        .uncles
-                        .iter()
-                        .map(|u| u.hash.try_decode_proto("uncle hash"))
-                        .collect::<Result<Vec<H256>, _>>()?,
-                    transactions: self
-                        .transaction_traces
-                        .iter()
-                        .map(|t| TransactionTraceAt::new(t, self).try_into())
-                        .collect::<Result<Vec<web3::types::Transaction>, Error>>()?,
-                    size: Some(U256::from(self.size)),
-                    mix_hash: Some(header.mix_hash.try_decode_proto("mix hash")?),
-                    nonce: Some(H64::from_low_u64_be(header.nonce)),
-                }),
-                transaction_receipts: self
-                    .transaction_traces
-                    .iter()
-                    .filter_map(|t| {
-                        t.receipt.as_ref().map(|r| {
-                            Ok(web3::types::TransactionReceipt {
-                                transaction_hash: t.hash.try_decode_proto("transaction hash")?,
-                                transaction_index: U64::from(t.index),
-                                block_hash: Some(
-                                    self.hash.try_decode_proto("transaction block hash")?,
-                                ),
-                                block_number: Some(U64::from(self.number)),
-                                cumulative_gas_used: U256::from(r.cumulative_gas_used),
-                                // FIXME (SF): What is the rule here about gas_used being None, when it's 0?
-                                gas_used: Some(U256::from(t.gas_used)),
-                                contract_address: {
-                                    match t.calls.len() {
-                                        0 => None,
-                                        _ => {
-                                            match CallType::try_from(t.calls[0].call_type).map_err(
-                                                |_| {
-                                                    graph::anyhow::anyhow!(
-                                                        "invalid call type: {}",
-                                                        t.calls[0].call_type,
-                                                    )
-                                                },
-                                            )? {
-                                                CallType::Create => {
-                                                    Some(t.calls[0].address.try_decode_proto(
-                                                        "transaction contract address",
-                                                    )?)
-                                                }
-                                                _ => None,
-                                            }
-                                        }
-                                    }
-                                },
-                                logs: r
-                                    .logs
-                                    .iter()
-                                    .map(|l| LogAt::new(l, self, t).try_into())
-                                    .collect::<Result<Vec<_>, Error>>()?,
-                                status: TransactionTraceStatus::try_from(t.status)
-                                    .map_err(|_| {
-                                        graph::anyhow::anyhow!(
-                                            "invalid transaction trace status: {}",
-                                            t.status
-                                        )
-                                    })?
-                                    .try_into()?,
-                                root: match r.state_root.len() {
-                                    0 => None, // FIXME (SF): should this instead map to [0;32]?
-                                    // FIXME (SF): if len < 32, what do we do?
-                                    _ => Some(
-                                        r.state_root.try_decode_proto("transaction state root")?,
-                                    ),
-                                },
-                                logs_bloom: r
-                                    .logs_bloom
-                                    .try_decode_proto("transaction logs bloom")?,
-                                from: t.from.try_decode_proto("transaction from")?,
-                                to: get_to_address(t)?,
-                                transaction_type: None,
-                                effective_gas_price: None,
-                            })
-                        })
-                    })
-                    .collect::<Result<Vec<_>, Error>>()?
-                    .into_iter()
-                    // Transaction receipts will be shared along the code, so we put them into an
-                    // Arc here to avoid excessive cloning.
-                    .map(Arc::new)
-                    .collect(),
+                block: Arc::new(LightEthereumBlock::new(alloy_block)),
+                transaction_receipts,
             },
             // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block
             // TODO: Refactor in a way that this is no longer needed.
@@ -376,12 +474,121 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
     }
 }
 
+fn transaction_trace_to_alloy_txn_reciept(
+    t: &TransactionTrace,
+    block: &Block,
+) -> Result<Option<AlloyTransactionReceipt<ReceiptEnvelope<alloy::rpc::types::Log>>>, Error> {
+    use alloy::consensus::{Eip658Value, Receipt};
+    let r = t.receipt.as_ref();
+
+    if r.is_none() {
+        return Ok(None);
+    }
+
+    let r = r.unwrap();
+
+    let contract_address = match t.calls.len() {
+        0 => None,
+        _ => {
+            match CallType::try_from(t.calls[0].call_type).map_err(|_| {
+                graph::anyhow::anyhow!("invalid call type: {}", t.calls[0].call_type)
+            })? {
+                CallType::Create => Some(
+                    t.calls[0]
+                        .address
+                        .try_decode_proto("transaction contract address")?,
+                ),
+                _ => None,
+            }
+        }
+    };
+
+    let state_root = match &r.state_root {
+        b if b.is_empty() => None,
+        _ => Some(r.state_root.try_decode_proto("transaction state root")?),
+    };
+
+    let status = match TransactionTraceStatus::try_from(t.status)
+        .map_err(|_| format_err!("invalid transaction trace status: {}", t.status))?
+    {
+        TransactionTraceStatus::Unknown => {
+            return Err(format_err!(
+                "Transaction trace has UNKNOWN status; datasource is broken"
+            ))
+        }
+        TransactionTraceStatus::Succeeded => true,
+        TransactionTraceStatus::Failed | TransactionTraceStatus::Reverted => false,
+    };
+
+    // [EIP-658]: https://eips.ethereum.org/EIPS/eip-658
+    // Before EIP-658, the state root field was used to indicate the status of the transaction.
+    // After EIP-658, the status field is used to indicate the status of the transaction.
+    let status = match state_root {
+        Some(root) => Eip658Value::PostState(root),
+        None => Eip658Value::Eip658(status),
+    };
+
+    let logs: Vec<alloy::rpc::types::Log> = r
+        .logs
+        .iter()
+        .map(|l| LogAt::new(l, block, t).try_into())
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let core_receipt = Receipt {
+        status,
+        cumulative_gas_used: r.cumulative_gas_used,
+        logs,
+    };
+
+    let logs_bloom = Bloom::try_from(r.logs_bloom.as_slice())?;
+
+    let receipt_with_bloom = ReceiptWithBloom::new(core_receipt, logs_bloom);
+
+    let tx_type = TxType::try_from(u64::try_from(t.r#type).map_err(|_| {
+        format_err!(
+            "Invalid transaction type value {} in transaction receipt. Transaction type must be a valid u64.",
+            t.r#type
+        )
+    })?).map_err(|_| {
+        format_err!(
+            "Unsupported transaction type {} in transaction receipt. Only standard Ethereum transaction types (Legacy=0, EIP-2930=1, EIP-1559=2, EIP-4844=3, EIP-7702=4) are supported.",
+            t.r#type
+        )
+    })?;
+
+    let envelope = match tx_type {
+        TxType::Legacy => ReceiptEnvelope::Legacy(receipt_with_bloom),
+        TxType::Eip2930 => ReceiptEnvelope::Eip2930(receipt_with_bloom),
+        TxType::Eip1559 => ReceiptEnvelope::Eip1559(receipt_with_bloom),
+        TxType::Eip4844 => ReceiptEnvelope::Eip4844(receipt_with_bloom),
+        TxType::Eip7702 => ReceiptEnvelope::Eip7702(receipt_with_bloom),
+    };
+
+    Ok(Some(AlloyTransactionReceipt {
+        transaction_hash: t.hash.try_decode_proto("transaction hash")?,
+        transaction_index: Some(t.index as u64),
+        block_hash: Some(block.hash.try_decode_proto("transaction block hash")?),
+        block_number: Some(block.number),
+        gas_used: t.gas_used,
+        contract_address,
+        from: t.from.try_decode_proto("transaction from")?,
+        to: get_to_address(t)?,
+        effective_gas_price: t.gas_price.as_ref().map_or(0u128, |x| {
+            let val: U256 = x.into();
+            val.to::<u128>()
+        }), // gas_price already contains effective gas price per protobuf spec
+        blob_gas_used: None, // TODO(alloy_migration): blob gas used not available in current protobuf definition
+        blob_gas_price: None, // TODO(alloy_migration): blob gas price not available in current protobuf definition
+        inner: envelope,
+    }))
+}
+
 impl BlockHeader {
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         match self.parent_hash.len() {
             0 => None,
             _ => Some(BlockPtr::from((
-                H256::from_slice(self.parent_hash.as_ref()),
+                B256::from_slice(self.parent_hash.as_ref()),
                 self.number - 1,
             ))),
         }
@@ -390,13 +597,13 @@ impl BlockHeader {
 
 impl<'a> From<&'a BlockHeader> for BlockPtr {
     fn from(b: &'a BlockHeader) -> BlockPtr {
-        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
+        BlockPtr::from((B256::from_slice(b.hash.as_ref()), b.number))
     }
 }
 
 impl<'a> From<&'a Block> for BlockPtr {
     fn from(b: &'a Block) -> BlockPtr {
-        BlockPtr::from((H256::from_slice(b.hash.as_ref()), b.number))
+        BlockPtr::from((B256::from_slice(b.hash.as_ref()), b.number))
     }
 }
 
@@ -530,7 +737,19 @@ mod test {
     }
 }
 
-fn get_to_address(trace: &TransactionTrace) -> Result<Option<H160>, Error> {
+fn extract_signature_from_trace(
+    _trace: &TransactionTrace,
+    _tx_type: TxType,
+) -> Result<alloy::signers::Signature, Error> {
+    use alloy::primitives::{Signature as PrimitiveSignature, U256};
+
+    // Create a dummy signature with r = 0, s = 0 and even y-parity (false)
+    let dummy = PrimitiveSignature::new(U256::ZERO, U256::ZERO, false);
+
+    Ok(dummy.into())
+}
+
+fn get_to_address(trace: &TransactionTrace) -> Result<Option<Address>, Error> {
     // Try to detect contract creation transactions, which have no 'to' address
     let is_contract_creation = trace.to.len() == 0
         || trace.calls.get(0).map_or(false, |call| {
