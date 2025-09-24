@@ -10,6 +10,7 @@ use diesel::sql_types::Integer;
 use diesel_derives::{AsExpression, FromSqlRow};
 pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
 use slog::Logger;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub use super::subgraph::Entity;
 pub use err::{StoreError, StoreResult};
@@ -18,7 +19,6 @@ use strum_macros::Display;
 pub use traits::*;
 pub use write::Batch;
 
-use futures01::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -634,7 +634,7 @@ impl PartialEq for StoreEvent {
 }
 
 /// A boxed `StoreEventStream`
-pub type StoreEventStreamBox = Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>;
+pub type StoreEventStreamBox = ReceiverStream<Arc<StoreEvent>>;
 
 /// An entity operation that can be transacted into the store.
 #[derive(Clone, Debug, PartialEq)]

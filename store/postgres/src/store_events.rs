@@ -221,6 +221,6 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         self.subscriptions.write().unwrap().insert(id, sender);
 
         // Return the subscription ID and entity change stream
-        Box::new(ReceiverStream::new(receiver).map(Ok).compat())
+        ReceiverStream::new(receiver)
     }
 }

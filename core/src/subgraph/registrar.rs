@@ -11,15 +11,12 @@ use graph::components::subgraph::Settings;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::Graft;
 use graph::data::value::Word;
-use graph::futures01::stream;
-use graph::futures01::Future;
-use graph::futures01::Stream;
 use graph::futures03;
-use graph::futures03::compat::Future01CompatExt;
-use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::future::FutureExt;
 use graph::futures03::future::TryFutureExt;
+use graph::futures03::stream;
 use graph::futures03::stream::TryStreamExt;
+use graph::futures03::Stream;
 use graph::futures03::StreamExt;
 use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
@@ -81,13 +78,6 @@ where
     }
 
     pub async fn start(self: Arc<Self>) -> Result<(), Error> {
-        let logger_clone1 = self.logger.clone();
-        let logger_clone2 = self.logger.clone();
-        let provider = self.provider.clone();
-        let node_id = self.node_id.clone();
-        let assignment_event_stream_cancel_handle =
-            self.assignment_event_stream_cancel_guard.handle();
-
         // The order of the following three steps is important:
         // - Start assignment event stream
         // - Read assignments table and start assigned subgraphs
@@ -109,114 +99,138 @@ where
         // The `handle_assignment_events` function handles these cases by ignoring AlreadyRunning
         // (on subgraph start) which makes the operations idempotent. Subgraph stop is already idempotent.
 
+        fn panic_on_cancel(
+            logger: &Logger,
+            e: CancelableError<SubgraphAssignmentProviderError>,
+        ) -> ! {
+            match e {
+                CancelableError::Cancel => {
+                    panic!("assignment event stream canceled")
+                }
+                CancelableError::Error(e) => {
+                    error!(logger, "Assignment event stream failed: {}", e);
+                    panic!("assignment event stream failed: {}", e);
+                }
+            }
+        }
+
         // Start event stream
-        let assignment_event_stream = self.assignment_events();
+        let assignment_event_stream = self.cheap_clone().assignment_events().await;
 
         // Deploy named subgraphs found in store
         self.start_assigned_subgraphs().await?;
 
         // Spawn a task to handle assignment events.
         // Blocking due to store interactions. Won't be blocking after #905.
-        graph::spawn_blocking(
-            assignment_event_stream
-                .compat()
-                .map_err(SubgraphAssignmentProviderError::Unknown)
-                .cancelable(&assignment_event_stream_cancel_handle)
-                .compat()
-                .for_each(move |assignment_event| {
-                    assert_eq!(assignment_event.node_id(), &node_id);
-                    handle_assignment_event(
-                        assignment_event,
-                        provider.clone(),
-                        logger_clone1.clone(),
-                    )
-                    .boxed()
-                    .compat()
-                })
-                .map_err(move |e| match e {
-                    CancelableError::Cancel => panic!("assignment event stream canceled"),
-                    CancelableError::Error(e) => {
-                        error!(logger_clone2, "Assignment event stream failed: {}", e);
-                        panic!("assignment event stream failed: {}", e);
-                    }
-                })
-                .compat(),
-        );
+        let assignment_event_stream_cancel_handle =
+            self.assignment_event_stream_cancel_guard.handle();
 
+        let fut =
+            Box::pin(assignment_event_stream.map_err(SubgraphAssignmentProviderError::Unknown))
+                .cancelable(&assignment_event_stream_cancel_handle)
+                .for_each({
+                    move |event| {
+                        let this = self.cheap_clone();
+                        let provider = self.provider.clone();
+                        async move {
+                            if let Err(e) = match event {
+                                Ok(event) => {
+                                    assert_eq!(event.node_id(), &this.node_id);
+                                    handle_assignment_event(event, provider.clone(), &this.logger)
+                                        .await
+                                }
+                                Err(e) => Err(e),
+                            } {
+                                panic_on_cancel(&this.logger, e);
+                            };
+                        }
+                    }
+                });
+
+        graph::spawn_blocking(fut);
         Ok(())
     }
 
-    pub fn assignment_events(&self) -> impl Stream<Item = AssignmentEvent, Error = Error> + Send {
-        let store = self.store.clone();
-        let node_id = self.node_id.clone();
-        let logger = self.logger.clone();
+    /// Maps an assignment change to an assignment event by checking the
+    /// current state in the database, ignoring changes that do not affect
+    /// this node or do not require anything to change.
+    fn map_assignment(&self, change: AssignmentChange) -> Result<Option<AssignmentEvent>, Error> {
+        let (deployment, operation) = change.into_parts();
 
+        trace!(self.logger, "Received assignment change";
+           "deployment" => %deployment,
+           "operation" => format!("{:?}", operation),
+        );
+
+        match operation {
+            AssignmentOperation::Set => {
+                let assigned = self
+                    .store
+                    .assignment_status(&deployment)
+                    .map_err(|e| anyhow!("Failed to get subgraph assignment entity: {}", e))?;
+
+                let logger = self.logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => self.node_id.to_string()));
+                if let Some((assigned, is_paused)) = assigned {
+                    if &assigned == &self.node_id {
+                        if is_paused {
+                            // Subgraph is paused, so we don't start it
+                            debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "paused" => is_paused, "action" => "ignore");
+                            return Ok(None);
+                        }
+
+                        // Start subgraph on this node
+                        debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "action" => "add");
+                        Ok(Some(AssignmentEvent::Add {
+                            deployment,
+                            node_id: self.node_id.clone(),
+                        }))
+                    } else {
+                        // Ensure it is removed from this node
+                        debug!(logger, "Deployment assignee is not this node"; "assigned_to" => assigned, "action" => "remove");
+                        Ok(Some(AssignmentEvent::Remove {
+                            deployment,
+                            node_id: self.node_id.clone(),
+                        }))
+                    }
+                } else {
+                    // Was added/updated, but is now gone.
+                    debug!(self.logger, "Deployment assignee not found in database"; "action" => "ignore");
+                    Ok(None)
+                }
+            }
+            AssignmentOperation::Removed => {
+                // Send remove event without checking node ID.
+                // If node ID does not match, then this is a no-op when handled in
+                // assignment provider.
+                Ok(Some(AssignmentEvent::Remove {
+                    deployment,
+                    node_id: self.node_id.clone(),
+                }))
+            }
+        }
+    }
+
+    pub async fn assignment_events(
+        self: Arc<Self>,
+    ) -> impl Stream<Item = Result<AssignmentEvent, Error>> + Send {
         self.subscription_manager
             .subscribe()
-            .map_err(|()| anyhow!("Entity change stream failed"))
-            .map(|event| {
-                let changes: Vec<_> = event.changes.iter().cloned().map(AssignmentChange::into_parts).collect();
-                stream::iter_ok(changes)
-            })
+            .map(|event| futures03::stream::iter(event.changes.clone()))
             .flatten()
-            .and_then(
-                move |(deployment, operation)| -> Result<Box<dyn Stream<Item = _, Error = _> + Send>, _> {
-                    trace!(logger, "Received assignment change";
-                                   "deployment" => %deployment,
-                                   "operation" => format!("{:?}", operation),
-                                );
+            .then({
+                let this = self.cheap_clone();
+                move |change| {
+                    let this = this.cheap_clone();
 
-                    match operation {
-                        AssignmentOperation::Set => {
-                            store
-                                .assignment_status(&deployment)
-                                .map_err(|e| {
-                                    anyhow!("Failed to get subgraph assignment entity: {}", e)
-                                })
-                                .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
-                                    let logger = logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => node_id.to_string()));
-                                    if let Some((assigned,is_paused)) = assigned {
-                                        if assigned == node_id {
-
-                                            if is_paused{
-                                                // Subgraph is paused, so we don't start it
-                                                debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "paused" => is_paused, "action" => "ignore");
-                                                return Box::new(stream::empty());
-                                            }
-
-                                            // Start subgraph on this node
-                                            debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "action" => "add");
-                                            Box::new(stream::once(Ok(AssignmentEvent::Add {
-                                                deployment,
-                                                node_id: node_id.clone(),
-                                            })))
-                                        } else {
-                                            // Ensure it is removed from this node
-                                            debug!(logger, "Deployment assignee is not this node"; "assigned_to" => assigned, "action" => "remove");
-                                            Box::new(stream::once(Ok(AssignmentEvent::Remove {
-                                                deployment,
-                                                node_id: node_id.clone(),
-                                            })))
-                                        }
-                                    } else {
-                                        // Was added/updated, but is now gone.
-                                        debug!(logger, "Deployment assignee not found in database"; "action" => "ignore");
-                                        Box::new(stream::empty())
-                                    }
-                                })
-                        }
-                        AssignmentOperation::Removed => {
-                            // Send remove event without checking node ID.
-                            // If node ID does not match, then this is a no-op when handled in
-                            // assignment provider.
-                            Ok(Box::new(stream::once(Ok(AssignmentEvent::Remove {
-                                deployment,
-                                node_id: node_id.clone(),
-                            }))))
+                    async move {
+                        match this.map_assignment(change) {
+                            Ok(Some(event)) => stream::once(futures03::future::ok(event)).boxed(),
+                            Ok(None) => stream::empty().boxed(),
+                            Err(e) => stream::once(futures03::future::err(e)).boxed(),
                         }
                     }
-                },
-            )
+                }
+            })
             .flatten()
     }
 
@@ -235,6 +249,8 @@ where
         // the receiver terminates without receiving anything.
         let deployments = HashSet::<DeploymentLocator>::from_iter(deployments);
         let deployments_len = deployments.len();
+        debug!(logger, "Starting all assigned subgraphs";
+                    "count" => deployments_len, "node_id" => &node_id);
         let (sender, receiver) = futures03::channel::mpsc::channel::<()>(1);
         for id in deployments {
             let sender = sender.clone();
@@ -442,7 +458,7 @@ where
 async fn handle_assignment_event(
     event: AssignmentEvent,
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
-    logger: Logger,
+    logger: &Logger,
 ) -> Result<(), CancelableError<SubgraphAssignmentProviderError>> {
     let logger = logger.clone();
 
