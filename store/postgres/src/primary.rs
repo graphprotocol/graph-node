@@ -30,6 +30,7 @@ use diesel::{
     Connection as _,
 };
 use graph::{
+    cheap_clone::CheapClone,
     components::store::DeploymentLocator,
     data::{
         store::scalar::ToPrimitive,
@@ -1886,8 +1887,9 @@ pub fn is_empty(conn: &mut PgConnection) -> Result<bool, StoreError> {
 /// a query returns either success or anything but a
 /// `Err(StoreError::DatabaseUnavailable)`. This only works for tables that
 /// are mirrored through `refresh_tables`
+#[derive(Clone, CheapClone)]
 pub struct Mirror {
-    pools: Vec<ConnectionPool>,
+    pools: Arc<Vec<ConnectionPool>>,
 }
 
 impl Mirror {
@@ -1917,6 +1919,7 @@ impl Mirror {
                 pools.push(pool.clone());
                 pools
             });
+        let pools = Arc::new(pools);
         Mirror { pools }
     }
 
@@ -1925,7 +1928,7 @@ impl Mirror {
     /// used for non-critical uses like command line tools
     pub fn primary_only(primary: ConnectionPool) -> Mirror {
         Mirror {
-            pools: vec![primary],
+            pools: Arc::new(vec![primary]),
         }
     }
 
@@ -1940,7 +1943,7 @@ impl Mirror {
         mut f: impl 'a
             + FnMut(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
-        for pool in &self.pools {
+        for pool in self.pools.as_ref() {
             let mut conn = match pool.get() {
                 Ok(conn) => conn,
                 Err(StoreError::DatabaseUnavailable) => continue,
@@ -1953,6 +1956,27 @@ impl Mirror {
             }
         }
         Err(StoreError::DatabaseUnavailable)
+    }
+
+    /// An async version of `read` that spawns a blocking task to do the
+    /// actual work. This is useful when you want to call `read` from an
+    /// async context
+    pub(crate) async fn read_async<T, F>(&self, mut f: F) -> Result<T, StoreError>
+    where
+        T: 'static + Send,
+        F: 'static
+            + Send
+            + FnMut(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, StoreError>,
+    {
+        let this = self.cheap_clone();
+        let res = graph::spawn_blocking(async move { this.read(|conn| f(conn)) }).await;
+        match res {
+            Ok(v) => v,
+            Err(e) => Err(internal_error!(
+                "spawn_blocking in read_async failed: {}",
+                e
+            )),
+        }
     }
 
     /// Refresh the contents of mirrored tables from the primary (through
@@ -2050,8 +2074,10 @@ impl Mirror {
         self.read(|conn| queries::assignments(conn, node))
     }
 
-    pub fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        self.read(|conn| queries::active_assignments(conn, node))
+    pub async fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
+        let node = node.clone();
+        self.read_async(move |conn| queries::active_assignments(conn, &node))
+            .await
     }
 
     pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {

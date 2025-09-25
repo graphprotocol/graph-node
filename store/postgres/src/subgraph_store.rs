@@ -1469,9 +1469,13 @@ impl SubgraphStoreTrait for SubgraphStore {
             .map(|sites| sites.iter().map(|site| site.into()).collect())
     }
 
-    fn active_assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
+    async fn active_assignments(
+        &self,
+        node: &NodeId,
+    ) -> Result<Vec<DeploymentLocator>, StoreError> {
         self.mirror
             .active_assignments(node)
+            .await
             .map(|sites| sites.iter().map(|site| site.into()).collect())
     }
 

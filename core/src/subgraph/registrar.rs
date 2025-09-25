@@ -242,6 +242,7 @@ where
         let deployments = self
             .store
             .active_assignments(&self.node_id)
+            .await
             .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))?;
         // This operation should finish only after all subgraphs are
         // started. We wait for the spawned tasks to complete by giving
