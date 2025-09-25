@@ -2843,6 +2843,7 @@ dependencies = [
  "futures 0.3.31",
  "graph_derive",
  "graphql-parser",
+ "heck 0.5.0",
  "hex",
  "hex-literal 1.1.0",
  "http 0.2.12",

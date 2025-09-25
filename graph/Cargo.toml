@@ -98,6 +98,7 @@ ahash.workspace = true
 alloy.workspace = true
 arrow-flight.workspace = true
 arrow.workspace = true
+heck.workspace = true
 lazy-regex.workspace = true
 
 [dev-dependencies]
