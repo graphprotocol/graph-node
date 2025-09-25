@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::sync::Mutex;
+use std::{collections::HashSet, time::Instant};
 
 use async_trait::async_trait;
 
@@ -67,28 +67,28 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProvider<I> {
 
 #[async_trait]
 impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAssignmentProvider<I> {
-    async fn start(
-        &self,
-        loc: DeploymentLocator,
-        stop_block: Option<BlockNumber>,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
+    async fn start(&self, loc: DeploymentLocator, stop_block: Option<BlockNumber>) {
         let logger = self.logger_factory.subgraph_logger(&loc);
 
         // If subgraph ID already in set
         if !self.deployment_registry.insert(loc.id) {
             info!(logger, "Subgraph deployment is already running");
 
-            return Err(SubgraphAssignmentProviderError::AlreadyRunning(
-                loc.hash.clone(),
-            ));
+            return;
         }
+
+        let start_time = Instant::now();
 
         self.instance_manager
             .cheap_clone()
             .start_subgraph(loc, stop_block)
             .await;
 
-        Ok(())
+        debug!(
+            logger,
+            "Subgraph started";
+            "start_ms" => start_time.elapsed().as_millis()
+        );
     }
 
     async fn stop(

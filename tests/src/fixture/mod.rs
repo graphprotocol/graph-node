@@ -286,8 +286,7 @@ impl TestContext {
 
         self.provider
             .start(self.deployment.clone(), Some(stop_block.number))
-            .await
-            .expect("unable to start subgraph");
+            .await;
 
         debug!(self.logger, "TEST: syncing to {}", stop_block.number);
 
@@ -305,10 +304,7 @@ impl TestContext {
         // In case the subgraph has been previously started.
         self.provider.stop(self.deployment.clone()).await.unwrap();
 
-        self.provider
-            .start(self.deployment.clone(), None)
-            .await
-            .expect("unable to start subgraph");
+        self.provider.start(self.deployment.clone(), None).await;
 
         wait_for_sync(
             &self.logger,

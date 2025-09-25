@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::time::Instant;
 
 use async_trait::async_trait;
 use graph::blockchain::Blockchain;
@@ -12,7 +11,6 @@ use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::Graft;
 use graph::data::value::Word;
 use graph::futures03;
-use graph::futures03::future::FutureExt;
 use graph::futures03::future::TryFutureExt;
 use graph::futures03::stream;
 use graph::futures03::stream::TryStreamExt;
@@ -238,7 +236,6 @@ where
     }
 
     async fn start_assigned_subgraphs(&self) -> Result<(), Error> {
-        let provider = self.provider.clone();
         let logger = self.logger.clone();
         let node_id = self.node_id.clone();
 
@@ -258,9 +255,12 @@ where
         let (sender, receiver) = futures03::channel::mpsc::channel::<()>(1);
         for id in deployments {
             let sender = sender.clone();
-            let logger = logger.clone();
+            let provider = self.provider.cheap_clone();
 
-            graph::spawn(start_subgraph(id, provider.clone(), logger).map(move |()| drop(sender)));
+            graph::spawn(async move {
+                provider.start(id, None).await;
+                drop(sender)
+            });
         }
         drop(sender);
         let _: Vec<_> = receiver.collect().await;
@@ -473,7 +473,7 @@ async fn handle_assignment_event(
             deployment,
             node_id: _,
         } => {
-            start_subgraph(deployment, provider.clone(), logger).await;
+            provider.start(deployment, None).await;
             Ok(())
         }
         AssignmentEvent::Remove {
@@ -483,39 +483,6 @@ async fn handle_assignment_event(
             Ok(()) => Ok(()),
             Err(e) => Err(CancelableError::Error(e)),
         },
-    }
-}
-
-async fn start_subgraph(
-    deployment: DeploymentLocator,
-    provider: Arc<impl SubgraphAssignmentProviderTrait>,
-    logger: Logger,
-) {
-    let logger = logger
-        .new(o!("subgraph_id" => deployment.hash.to_string(), "sgd" => deployment.id.to_string()));
-
-    trace!(logger, "Start subgraph");
-
-    let start_time = Instant::now();
-    let result = provider.start(deployment.clone(), None).await;
-
-    debug!(
-        logger,
-        "Subgraph started";
-        "start_ms" => start_time.elapsed().as_millis()
-    );
-
-    match result {
-        Ok(()) => (),
-        Err(SubgraphAssignmentProviderError::AlreadyRunning(_)) => (),
-        Err(e) => {
-            // Errors here are likely an issue with the subgraph.
-            error!(
-                logger,
-                "Subgraph instance failed to start";
-                "error" => e.to_string()
-            );
-        }
     }
 }
 
