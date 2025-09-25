@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use anyhow::{anyhow, bail, Error, Result};
 use sqlparser_latest::ast::{self, Visit, Visitor};
 
-use super::format::Ident;
+use crate::nozzle::common::Ident;
 
 /// Validates the dataset and tables used by the SQL query to ensure consistency with the explicitly declared ones.
 ///
@@ -59,6 +59,9 @@ impl<'a> TableValidator<'a> {
         let Some(dataset) = ident_iter.next() else {
             return Ok(());
         };
+
+        let table = table?;
+        let dataset = dataset?;
 
         if *self.dataset != dataset {
             bail!("'{name}': invalid dataset '{dataset}'");
