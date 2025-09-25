@@ -10,7 +10,7 @@ use crate::nozzle::error;
 
 /// Client for connecting to Nozzle core and executing SQL queries.
 pub trait Client {
-    type Error: Error + error::IsDeterministic;
+    type Error: Error + error::IsDeterministic + Send + Sync + 'static;
 
     /// Executes a SQL query and returns the corresponding schema.
     fn schema(

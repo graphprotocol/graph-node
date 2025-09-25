@@ -1,9 +1,10 @@
 use std::ops::ControlFlow;
 
+use alloy::json_abi::JsonAbi;
 use anyhow::{bail, Context, Result};
 use sqlparser_latest::ast::{self, visit_expressions_mut};
 
-use super::Abi;
+use crate::nozzle::common::Ident;
 
 static FUNCTION_NAME: &str = "sg_event_signature";
 
@@ -18,7 +19,10 @@ static FUNCTION_NAME: &str = "sg_event_signature";
 /// - The event name is not found in `abis`
 ///
 /// The returned error is deterministic.
-pub(super) fn resolve_event_signatures(query: &mut ast::Query, abis: &[Abi<'_>]) -> Result<()> {
+pub(super) fn resolve_event_signatures(
+    query: &mut ast::Query,
+    abis: &[(&Ident, &JsonAbi)],
+) -> Result<()> {
     let visit_result = visit_expressions_mut(query, |expr| match visit_expr(expr, abis) {
         Ok(()) => ControlFlow::Continue(()),
         Err(e) => ControlFlow::Break(e),
@@ -31,7 +35,7 @@ pub(super) fn resolve_event_signatures(query: &mut ast::Query, abis: &[Abi<'_>])
     Ok(())
 }
 
-fn visit_expr(expr: &mut ast::Expr, abis: &[Abi<'_>]) -> Result<()> {
+fn visit_expr(expr: &mut ast::Expr, abis: &[(&Ident, &JsonAbi)]) -> Result<()> {
     let ast::Expr::Function(function) = expr else {
         return Ok(());
     };
@@ -93,13 +97,13 @@ fn get_arg<'a>(arg: &'a ast::FunctionArg) -> Option<&'a str> {
 }
 
 fn get_event<'a>(
-    abis: &'a [Abi<'_>],
+    abis: &'a [(&Ident, &JsonAbi)],
     contract_name: &str,
     event_name: &str,
 ) -> Option<&'a alloy::json_abi::Event> {
     abis.iter()
-        .find(|abi| abi.name.as_str() == contract_name)
-        .map(|abi| abi.contract.event(event_name))
+        .find(|(name, _)| name.as_str() == contract_name)
+        .map(|(_, contract)| contract.event(event_name))
         .flatten()
         .map(|events| events.first())
         .flatten()

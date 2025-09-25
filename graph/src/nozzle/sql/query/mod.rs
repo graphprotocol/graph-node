@@ -19,6 +19,7 @@ use crate::{cheap_clone::CheapClone, nozzle::common::Ident};
 ///
 /// Parses, validates and resolves a SQL query and prepares it for execution on a Nozzle server.
 /// The data returned by executing this query is used to create Subgraph entities.
+#[derive(Debug, Clone)]
 pub struct Query {
     /// The raw SQL AST that represents the SQL query.
     ast: ast::Query,
@@ -28,15 +29,6 @@ pub struct Query {
 
     /// The tables that the SQL query requests data from.
     tables: Vec<Ident>,
-}
-
-/// Contains the ABI information that is used to resolve event signatures in SQL queries.
-pub struct Abi<'a> {
-    /// The name of the contract.
-    pub name: &'a Ident,
-
-    /// The JSON ABI of the contract.
-    pub contract: &'a JsonAbi,
 }
 
 impl Query {
@@ -55,7 +47,7 @@ impl Query {
         dataset: &Ident,
         tables: &[Ident],
         source_address: &Address,
-        abis: impl IntoIterator<Item = Abi<'a>>,
+        abis: impl IntoIterator<Item = (&'a Ident, &'a JsonAbi)>,
     ) -> Result<Self> {
         let mut query = parse::query(sql).context("failed to parse SQL query")?;
         let abis = abis.into_iter().collect_vec();
@@ -117,7 +109,11 @@ impl Query {
     /// - Event signature function calls cannot be resolved
     ///
     /// The returned error is deterministic.
-    fn resolve(query: &mut ast::Query, source_address: &Address, abis: &[Abi<'_>]) -> Result<()> {
+    fn resolve(
+        query: &mut ast::Query,
+        source_address: &Address,
+        abis: &[(&Ident, &JsonAbi)],
+    ) -> Result<()> {
         resolve_source_address::resolve_source_address(query, source_address)?;
         resolve_event_signatures::resolve_event_signatures(query, abis)?;
 
