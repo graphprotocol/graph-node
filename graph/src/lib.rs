@@ -37,6 +37,8 @@ pub mod env;
 
 pub mod ipfs;
 
+pub mod nozzle;
+
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod tokio;
 #[cfg(debug_assertions)]
