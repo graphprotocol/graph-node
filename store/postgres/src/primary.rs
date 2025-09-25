@@ -2088,8 +2088,12 @@ impl Mirror {
     /// the subgraph is assigned to, and `is_paused` is true if the
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
-    pub fn assignment_status(&self, site: &Site) -> Result<Option<(NodeId, bool)>, StoreError> {
-        self.read(|conn| queries::assignment_status(conn, site))
+    pub async fn assignment_status(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<Option<(NodeId, bool)>, StoreError> {
+        self.read_async(move |conn| queries::assignment_status(conn, &site))
+            .await
     }
 
     pub fn find_active_site(&self, subgraph: &DeploymentHash) -> Result<Option<Site>, StoreError> {

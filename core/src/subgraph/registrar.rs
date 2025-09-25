@@ -121,7 +121,6 @@ where
         self.start_assigned_subgraphs().await?;
 
         // Spawn a task to handle assignment events.
-        // Blocking due to store interactions. Won't be blocking after #905.
         let assignment_event_stream_cancel_handle =
             self.assignment_event_stream_cancel_guard.handle();
 
@@ -147,14 +146,17 @@ where
                     }
                 });
 
-        graph::spawn_blocking(fut);
+        graph::spawn(fut);
         Ok(())
     }
 
     /// Maps an assignment change to an assignment event by checking the
     /// current state in the database, ignoring changes that do not affect
     /// this node or do not require anything to change.
-    fn map_assignment(&self, change: AssignmentChange) -> Result<Option<AssignmentEvent>, Error> {
+    async fn map_assignment(
+        &self,
+        change: AssignmentChange,
+    ) -> Result<Option<AssignmentEvent>, Error> {
         let (deployment, operation) = change.into_parts();
 
         trace!(self.logger, "Received assignment change";
@@ -167,6 +169,7 @@ where
                 let assigned = self
                     .store
                     .assignment_status(&deployment)
+                    .await
                     .map_err(|e| anyhow!("Failed to get subgraph assignment entity: {}", e))?;
 
                 let logger = self.logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => self.node_id.to_string()));
@@ -223,7 +226,7 @@ where
                     let this = this.cheap_clone();
 
                     async move {
-                        match this.map_assignment(change) {
+                        match this.map_assignment(change).await {
                             Ok(Some(event)) => stream::once(futures03::future::ok(event)).boxed(),
                             Ok(None) => stream::empty().boxed(),
                             Err(e) => stream::once(futures03::future::err(e)).boxed(),

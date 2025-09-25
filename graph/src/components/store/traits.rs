@@ -121,7 +121,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// the subgraph is assigned to, and `is_paused` is true if the
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
-    fn assignment_status(
+    async fn assignment_status(
         &self,
         deployment: &DeploymentLocator,
     ) -> Result<Option<(NodeId, bool)>, StoreError>;
