@@ -5,6 +5,7 @@ pub mod codec;
 pub mod common;
 pub mod error;
 pub mod log;
+pub mod sql;
 pub mod stream_aggregator;
 
 pub use self::{
