@@ -11,11 +11,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use arrow::array::{Array, RecordBatch};
 
 use self::{
-    array_decoder::ArrayDecoder,
-    decoder::Decoder,
-    list_decoder::ListDecoder,
-    mapping_decoder::MappingDecoder,
-    name_cache::{NameCache, NormalizedName},
+    array_decoder::ArrayDecoder, decoder::Decoder, list_decoder::ListDecoder,
+    mapping_decoder::MappingDecoder, name_cache::NameCache,
 };
 use crate::{
     data::{
@@ -23,6 +20,7 @@ use crate::{
         store::{Id, IdType, Value},
         value::Word,
     },
+    nozzle::common::Ident,
     schema::{EntityKey, EntityType, Field, InputSchema},
 };
 
@@ -164,8 +162,8 @@ impl Codec {
             .fields()
             .into_iter()
             .zip(record_batch.columns())
-            .map(|(field, array)| (self.normalized_name(field.name()), array.as_ref()))
-            .collect::<HashMap<_, _>>();
+            .map(|(field, array)| Ok((self.ident(field.name())?, array.as_ref())))
+            .collect::<Result<HashMap<_, _>>>()?;
 
         let mut value_decoders = BTreeMap::new();
         for field in &object_type.fields {
@@ -195,7 +193,7 @@ impl Codec {
     fn value_decoder<'a>(
         &mut self,
         field: &'a Field,
-        columns: &HashMap<NormalizedName, &'a dyn Array>,
+        columns: &HashMap<Ident, &'a dyn Array>,
     ) -> Result<Option<Box<dyn Decoder<Value> + 'a>>> {
         // VIDs are auto-generated
         if field.name.eq_ignore_ascii_case("vid") {
@@ -207,7 +205,7 @@ impl Codec {
             return Ok(None);
         }
 
-        let normalized_name = self.normalized_name(&field.name);
+        let normalized_name = self.ident(&field.name)?;
         let array = match columns.get(&normalized_name) {
             Some(&array) => array,
             None => {
@@ -231,8 +229,7 @@ impl Codec {
         Ok(Some(decoder))
     }
 
-    // Returns a normalized version of `name`.
-    fn normalized_name(&mut self, name: impl AsRef<str>) -> NormalizedName {
-        self.name_cache.normalized(name.as_ref())
+    fn ident(&mut self, name: impl AsRef<str>) -> Result<Ident> {
+        self.name_cache.ident(name.as_ref())
     }
 }

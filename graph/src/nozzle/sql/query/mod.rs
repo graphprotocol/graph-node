@@ -13,6 +13,8 @@ use anyhow::{bail, Context, Result};
 use itertools::Itertools;
 use sqlparser_latest::ast;
 
+use crate::{cheap_clone::CheapClone, nozzle::common::Ident};
+
 /// Represents a valid SQL query of a Nozzle Subgraph.
 ///
 /// Parses, validates and resolves a SQL query and prepares it for execution on a Nozzle server.
@@ -22,16 +24,16 @@ pub struct Query {
     ast: ast::Query,
 
     /// The dataset that the SQL query requests data from.
-    dataset: format::Ident,
+    dataset: Ident,
 
     /// The tables that the SQL query requests data from.
-    tables: Vec<format::Ident>,
+    tables: Vec<Ident>,
 }
 
 /// Contains the ABI information that is used to resolve event signatures in SQL queries.
 pub struct Abi<'a> {
     /// The name of the contract.
-    pub name: &'a str,
+    pub name: &'a Ident,
 
     /// The JSON ABI of the contract.
     pub contract: &'a JsonAbi,
@@ -50,23 +52,21 @@ impl Query {
     /// The returned error is deterministic.
     pub fn new<'a>(
         sql: impl AsRef<str>,
-        dataset: impl AsRef<str>,
-        tables: impl IntoIterator<Item = impl AsRef<str>>,
+        dataset: &Ident,
+        tables: &[Ident],
         source_address: &Address,
         abis: impl IntoIterator<Item = Abi<'a>>,
     ) -> Result<Self> {
         let mut query = parse::query(sql).context("failed to parse SQL query")?;
-        let dataset = format::Ident::new(dataset);
-        let tables = tables.into_iter().map(format::Ident::new).collect_vec();
         let abis = abis.into_iter().collect_vec();
 
-        Self::validate(&query, &dataset, &tables).context("failed to validate SQL query")?;
+        Self::validate(&query, dataset, tables).context("failed to validate SQL query")?;
         Self::resolve(&mut query, source_address, &abis).context("failed to resolve SQL query")?;
 
         Ok(Self {
             ast: query,
-            dataset,
-            tables,
+            dataset: dataset.cheap_clone(),
+            tables: tables.to_vec(),
         })
     }
 
@@ -98,11 +98,7 @@ impl Query {
     /// - The SQL query uses custom `SETTINGS`
     ///
     /// The returned error is deterministic.
-    fn validate(
-        query: &ast::Query,
-        dataset: &format::Ident,
-        tables: &[format::Ident],
-    ) -> Result<()> {
+    fn validate(query: &ast::Query, dataset: &Ident, tables: &[Ident]) -> Result<()> {
         validate_tables::validate_tables(query, dataset, tables)?;
 
         if query.settings.is_some() {
@@ -132,27 +128,6 @@ impl Query {
 impl fmt::Display for Query {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.ast)
-    }
-}
-
-mod format {
-    use std::fmt;
-
-    /// Represents a normalized SQL identifier.
-    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub(super) struct Ident(Box<str>);
-
-    impl Ident {
-        /// Creates a normalized SQL identifier.
-        pub(super) fn new(s: impl AsRef<str>) -> Self {
-            Self(s.as_ref().to_lowercase().into())
-        }
-    }
-
-    impl fmt::Display for Ident {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.0)
-        }
     }
 }
 

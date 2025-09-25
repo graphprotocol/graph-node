@@ -98,7 +98,7 @@ fn get_event<'a>(
     event_name: &str,
 ) -> Option<&'a alloy::json_abi::Event> {
     abis.iter()
-        .find(|abi| abi.name == contract_name)
+        .find(|abi| abi.name.as_str() == contract_name)
         .map(|abi| abi.contract.event(event_name))
         .flatten()
         .map(|events| events.first())

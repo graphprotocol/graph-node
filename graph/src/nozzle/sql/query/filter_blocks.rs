@@ -3,7 +3,8 @@ use std::{collections::BTreeMap, ops::ControlFlow};
 use alloy::primitives::BlockNumber;
 use sqlparser_latest::ast::{self, VisitMut, VisitorMut};
 
-use super::{format::Ident, parse};
+use super::parse;
+use crate::{cheap_clone::CheapClone, nozzle::common::Ident};
 
 /// Applies a block range filter to the SQL query.
 ///
@@ -23,7 +24,7 @@ pub(super) fn filter_blocks(
 ) {
     let tables_to_cte_mapping = tables_to_cte_mapping(dataset, tables);
 
-    let mut table_to_cte_replacer = TableToCteReplacer::new(&tables_to_cte_mapping);
+    let mut table_to_cte_replacer = TableToCteReplacer::new(dataset, &tables_to_cte_mapping);
     let _: ControlFlow<()> = VisitMut::visit(query, &mut table_to_cte_replacer);
 
     match &mut query.with {
@@ -32,6 +33,7 @@ pub(super) fn filter_blocks(
 
             add_cte_filters(
                 &mut with.cte_tables,
+                dataset,
                 &tables_to_cte_mapping,
                 start_block,
                 end_block,
@@ -42,6 +44,7 @@ pub(super) fn filter_blocks(
 
             add_cte_filters(
                 &mut cte_tables,
+                dataset,
                 &tables_to_cte_mapping,
                 start_block,
                 end_block,
@@ -57,20 +60,15 @@ pub(super) fn filter_blocks(
 }
 
 // Maps `dataset` and `tables` to consistent names for temporary result sets.
-fn tables_to_cte_mapping(dataset: &Ident, tables: &[Ident]) -> BTreeMap<String, String> {
+fn tables_to_cte_mapping(dataset: &Ident, tables: &[Ident]) -> BTreeMap<Ident, String> {
     tables
         .into_iter()
-        .map(|table| {
-            let dataset_table = format!("{dataset}.{table}");
-            let cte_table = format!("sg_{dataset}_{table}");
-
-            (dataset_table, cte_table)
-        })
+        .map(|table| (table.cheap_clone(), format!("sg_{dataset}_{table}")))
         .collect()
 }
 
 /// Removes previously added temporary result sets from the SQL query.
-fn remove_cte_filters(ctes: &mut Vec<ast::Cte>, tables_to_cte_mapping: &BTreeMap<String, String>) {
+fn remove_cte_filters(ctes: &mut Vec<ast::Cte>, tables_to_cte_mapping: &BTreeMap<Ident, String>) {
     ctes.retain(|cte| {
         !tables_to_cte_mapping
             .values()
@@ -81,7 +79,8 @@ fn remove_cte_filters(ctes: &mut Vec<ast::Cte>, tables_to_cte_mapping: &BTreeMap
 /// Creates temporary result sets for each table in the dataset and adds them to the SQL query.
 fn add_cte_filters(
     ctes: &mut Vec<ast::Cte>,
-    tables_to_cte_mapping: &BTreeMap<String, String>,
+    dataset: &Ident,
+    tables_to_cte_mapping: &BTreeMap<Ident, String>,
     start_block: BlockNumber,
     end_block: BlockNumber,
 ) {
@@ -89,7 +88,7 @@ fn add_cte_filters(
 
     for (table, cte_table) in tables_to_cte_mapping {
         let query = parse::query(format!(
-            "SELECT * FROM {table} WHERE _block_num BETWEEN {start_block} AND {end_block} ORDER BY _block_num ASC"
+            "SELECT * FROM {dataset}.{table} WHERE _block_num BETWEEN {start_block} AND {end_block} ORDER BY _block_num ASC"
         ))
         .unwrap();
 
@@ -111,13 +110,15 @@ fn add_cte_filters(
 
 /// Walks the SQL AST and replaces each table reference with a temporary result set name.
 struct TableToCteReplacer<'a> {
-    tables_to_cte_mapping: &'a BTreeMap<String, String>,
+    dataset: &'a Ident,
+    tables_to_cte_mapping: &'a BTreeMap<Ident, String>,
 }
 
 impl<'a> TableToCteReplacer<'a> {
     /// Creates a new replacer.
-    fn new(tables_to_cte_mapping: &'a BTreeMap<String, String>) -> Self {
+    fn new(dataset: &'a Ident, tables_to_cte_mapping: &'a BTreeMap<Ident, String>) -> Self {
         Self {
+            dataset,
             tables_to_cte_mapping,
         }
     }
@@ -143,14 +144,21 @@ impl<'a> TableToCteReplacer<'a> {
             return;
         };
 
-        let dataset_table = format!("{}.{}", Ident::new(dataset), Ident::new(table));
-        let Some(cte_table) = self.tables_to_cte_mapping.get(&dataset_table) else {
+        let (Ok(dataset), Ok(table)) = (Ident::new(dataset), Ident::new(table)) else {
+            return;
+        };
+
+        if *self.dataset != dataset {
+            return;
+        }
+
+        let Some(cte_table) = self.tables_to_cte_mapping.get(&table) else {
             return;
         };
 
         if alias.is_none() {
             *alias = Some(ast::TableAlias {
-                name: ast::Ident::new(table),
+                name: ast::Ident::new(table.as_str()),
                 columns: Vec::new(),
             })
         }
