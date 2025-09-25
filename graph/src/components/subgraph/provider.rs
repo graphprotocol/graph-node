@@ -6,8 +6,5 @@ use crate::{components::store::DeploymentLocator, prelude::*};
 #[async_trait]
 pub trait SubgraphAssignmentProvider: Send + Sync + 'static {
     async fn start(&self, deployment: DeploymentLocator, stop_block: Option<BlockNumber>);
-    async fn stop(
-        &self,
-        deployment: DeploymentLocator,
-    ) -> Result<(), SubgraphAssignmentProviderError>;
+    async fn stop(&self, deployment: DeploymentLocator);
 }

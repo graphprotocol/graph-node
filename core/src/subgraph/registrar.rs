@@ -472,18 +472,13 @@ async fn handle_assignment_event(
         AssignmentEvent::Add {
             deployment,
             node_id: _,
-        } => {
-            provider.start(deployment, None).await;
-            Ok(())
-        }
+        } => provider.start(deployment, None).await,
         AssignmentEvent::Remove {
             deployment,
             node_id: _,
-        } => match provider.stop(deployment).await {
-            Ok(()) => Ok(()),
-            Err(e) => Err(CancelableError::Error(e)),
-        },
+        } => provider.stop(deployment).await,
     }
+    Ok(())
 }
 
 /// Resolves the subgraph's earliest block

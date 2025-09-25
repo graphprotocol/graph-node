@@ -91,15 +91,11 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
         );
     }
 
-    async fn stop(
-        &self,
-        deployment: DeploymentLocator,
-    ) -> Result<(), SubgraphAssignmentProviderError> {
+    async fn stop(&self, deployment: DeploymentLocator) {
         // If subgraph ID was in set
         if self.deployment_registry.remove(&deployment.id) {
             // Shut down subgraph processing
             self.instance_manager.stop_subgraph(deployment).await;
         }
-        Ok(())
     }
 }
