@@ -130,15 +130,12 @@ where
                         let this = self.cheap_clone();
                         let provider = self.provider.clone();
                         async move {
-                            if let Err(e) = match event {
+                            match event {
                                 Ok(event) => {
                                     assert_eq!(event.node_id(), &this.node_id);
-                                    handle_assignment_event(event, provider.clone(), &this.logger)
-                                        .await
+                                    handle_assignment_event(event, provider.clone()).await
                                 }
-                                Err(e) => Err(e),
-                            } {
-                                panic_on_cancel(&this.logger, e);
+                                Err(e) => panic_on_cancel(&this.logger, e),
                             };
                         }
                     }
@@ -462,12 +459,7 @@ where
 async fn handle_assignment_event(
     event: AssignmentEvent,
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
-    logger: &Logger,
-) -> Result<(), CancelableError<SubgraphAssignmentProviderError>> {
-    let logger = logger.clone();
-
-    debug!(logger, "Received assignment event: {:?}", event);
-
+) {
     match event {
         AssignmentEvent::Add {
             deployment,
@@ -478,7 +470,6 @@ async fn handle_assignment_event(
             node_id: _,
         } => provider.stop(deployment).await,
     }
-    Ok(())
 }
 
 /// Resolves the subgraph's earliest block
