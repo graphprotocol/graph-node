@@ -107,6 +107,7 @@ rand = { version = "0.9.2", features = ["os_rng"] }
 
 # Dependencies related to Nozzle Subgraphs
 ahash = "0.8.11"
+alloy = { version = "1.0.12", default-features = false, features = ["json-abi", "serde"] }
 arrow = { version = "=55.0.0" }
 arrow-flight = { version = "=55.0.0", features = ["flight-sql-experimental"] }
 lazy-regex = "3.4.1"

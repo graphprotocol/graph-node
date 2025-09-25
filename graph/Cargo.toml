@@ -95,6 +95,7 @@ object_store = { version = "0.12.4", features = ["gcp"] }
 
 # Dependencies related to Nozzle Subgraphs
 ahash.workspace = true
+alloy.workspace = true
 arrow-flight.workspace = true
 arrow.workspace = true
 lazy-regex.workspace = true
