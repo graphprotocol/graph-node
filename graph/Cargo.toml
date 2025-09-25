@@ -100,6 +100,7 @@ arrow-flight.workspace = true
 arrow.workspace = true
 heck.workspace = true
 lazy-regex.workspace = true
+sqlparser-latest.workspace = true
 
 [dev-dependencies]
 clap.workspace = true

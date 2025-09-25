@@ -112,6 +112,7 @@ arrow = { version = "=55.0.0" }
 arrow-flight = { version = "=55.0.0", features = ["flight-sql-experimental"] }
 heck = "0.5.0"
 lazy-regex = "3.4.1"
+sqlparser-latest = { version = "0.57.0", package = "sqlparser", features = ["visitor"] }
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]

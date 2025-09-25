@@ -2883,7 +2883,8 @@ dependencies = [
  "slog-async",
  "slog-envlogger",
  "slog-term",
- "sqlparser",
+ "sqlparser 0.57.0",
+ "sqlparser 0.60.0",
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
  "strum_macros 0.27.2",
@@ -3160,7 +3161,7 @@ dependencies = [
  "rand 0.9.2",
  "serde",
  "serde_json",
- "sqlparser",
+ "sqlparser 0.60.0",
  "stable-hash 0.3.4",
  "thiserror 2.0.17",
  "tokio",
@@ -6501,13 +6502,35 @@ dependencies = [
 
 [[package]]
 name = "sqlparser"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07c5f081b292a3d19637f0b32a79e28ff14a9fd23ef47bd7fce08ff5de221eca"
+dependencies = [
+ "log",
+ "recursive",
+ "sqlparser_derive 0.3.0",
+]
+
+[[package]]
+name = "sqlparser"
 version = "0.60.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "505aa16b045c4c1375bf5f125cce3813d0176325bfe9ffc4a903f423de7774ff"
 dependencies = [
  "log",
  "recursive",
- "sqlparser_derive",
+ "sqlparser_derive 0.4.0",
+]
+
+[[package]]
+name = "sqlparser_derive"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da5fc6819faabb412da764b99d3b713bb55083c11e7e0c00144d386cd6a1939c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
