@@ -103,6 +103,12 @@ serde_plain = "1.0.2"
 csv = "1.3.1"
 object_store = { version = "0.12.3", features = ["gcp"] }
 
+# Dependencies related to Nozzle Subgraphs
+ahash.workspace = true
+arrow-flight.workspace = true
+arrow.workspace = true
+lazy-regex.workspace = true
+
 [dev-dependencies]
 clap.workspace = true
 maplit = "1.0.2"
