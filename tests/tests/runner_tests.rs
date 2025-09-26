@@ -82,11 +82,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     let stop_block = test_ptr(2);
     base_ctx.start_and_sync_to(stop_block).await;
-    base_ctx
-        .provider
-        .stop(base_ctx.deployment.clone())
-        .await
-        .unwrap();
+    base_ctx.provider.stop(base_ctx.deployment.clone()).await;
 
     // Test loading data sources from DB.
     let stop_block = test_ptr(3);

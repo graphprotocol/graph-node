@@ -1,5 +1,4 @@
 use crate::{
-    components::store::DeploymentLocator,
     derive::CacheWeight,
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
@@ -80,28 +79,6 @@ impl<'de> de::Deserialize<'de> for NodeId {
         let s: String = de::Deserialize::deserialize(deserializer)?;
         NodeId::new(s.clone())
             .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid node ID"))
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type")]
-pub enum AssignmentEvent {
-    Add {
-        deployment: DeploymentLocator,
-        node_id: NodeId,
-    },
-    Remove {
-        deployment: DeploymentLocator,
-        node_id: NodeId,
-    },
-}
-
-impl AssignmentEvent {
-    pub fn node_id(&self) -> &NodeId {
-        match self {
-            AssignmentEvent::Add { node_id, .. } => node_id,
-            AssignmentEvent::Remove { node_id, .. } => node_id,
-        }
     }
 }
 

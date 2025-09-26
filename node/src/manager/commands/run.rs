@@ -216,8 +216,7 @@ pub async fn run(
 
     let locator = locate(subgraph_store.as_ref(), &hash)?;
 
-    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block))
-        .await?;
+    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block)).await;
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;

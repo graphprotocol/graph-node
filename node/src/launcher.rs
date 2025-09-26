@@ -1,8 +1,6 @@
 use anyhow::Result;
 
 use git_testament::{git_testament, render_testament};
-use graph::futures01::Future as _;
-use graph::futures03::compat::Future01CompatExt;
 use graph::futures03::future::TryFutureExt;
 
 use crate::config::Config;
@@ -524,9 +522,9 @@ pub async fn run(
 
         graph::spawn(
             subgraph_registrar
+                .cheap_clone()
                 .start()
-                .map_err(|e| panic!("failed to initialize subgraph provider {}", e))
-                .compat(),
+                .map_err(|e| panic!("failed to initialize subgraph provider {}", e)),
         );
 
         // Start admin JSON-RPC server.

@@ -121,7 +121,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// the subgraph is assigned to, and `is_paused` is true if the
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
-    fn assignment_status(
+    async fn assignment_status(
         &self,
         deployment: &DeploymentLocator,
     ) -> Result<Option<(NodeId, bool)>, StoreError>;
@@ -129,7 +129,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Returns assignments that are not paused
-    fn active_assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError>;
+    async fn active_assignments(&self, node: &NodeId)
+        -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
