@@ -22,7 +22,7 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-base64 = "0"
+base64 = "0.22"
 
 [build-dependencies]
 tonic-build = { workspace = true }
