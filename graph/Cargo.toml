@@ -74,7 +74,7 @@ tokio-retry = { workspace = true }
 toml = "0.9.7"
 url = "2.5.7"
 prometheus = "0.14.0"
-priority-queue = "2.6.0"
+priority-queue = "2.7.0"
 tonic = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
