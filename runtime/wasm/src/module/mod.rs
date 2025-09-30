@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
@@ -6,6 +5,7 @@ use anyhow::anyhow;
 use anyhow::Error;
 use graph::blockchain::Blockchain;
 use graph::data_source::subgraph;
+use graph::parking_lot::RwLock;
 use graph::util::mem::init_slice;
 use semver::Version;
 use wasmtime::AsContext;
@@ -168,7 +168,7 @@ pub struct AscHeapCtx {
     // is zeroed when initialized or grown.
     memory: Memory,
 
-    arena: RefCell<Arena>,
+    arena: RwLock<Arena>,
 }
 
 impl AscHeapCtx {
@@ -207,28 +207,28 @@ impl AscHeapCtx {
         Ok(Arc::new(AscHeapCtx {
             memory_allocate,
             memory,
-            arena: RefCell::new(Arena::new()),
+            arena: RwLock::new(Arena::new()),
             api_version,
             id_of_type,
         }))
     }
 
     fn arena_start_ptr(&self) -> i32 {
-        self.arena.borrow().start
+        self.arena.read().start
     }
 
     fn arena_free_size(&self) -> i32 {
-        self.arena.borrow().size
+        self.arena.read().size
     }
 
     fn set_arena(&self, start_ptr: i32, size: i32) {
-        let mut arena = self.arena.borrow_mut();
+        let mut arena = self.arena.write();
         arena.start = start_ptr;
         arena.size = size;
     }
 
     fn allocated(&self, size: i32) {
-        let mut arena = self.arena.borrow_mut();
+        let mut arena = self.arena.write();
         arena.start += size;
         arena.size -= size;
     }
