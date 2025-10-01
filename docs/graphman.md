@@ -371,20 +371,26 @@ Inspect all blocks after block `13000000`:
 
 Remove the call cache of the specified chain.
 
-If block numbers are not mentioned in `--from` and `--to`, then all the call cache will be removed.
+Either remove entries in the range `--from` and `--to`, remove stale contracts which have not been accessed for a specified duration `--ttl_days`, or remove the entire cache with `--remove-entire-cache`. Removing the entire cache can reduce indexing performance significantly and should generally be avoided.
 
-USAGE:
-    graphman chain call-cache <CHAIN_NAME> remove [OPTIONS]
+    Usage: graphman chain call-cache <CHAIN_NAME> remove [OPTIONS]
 
-OPTIONS:
+    Options:
+        --remove-entire-cache
+            Remove the entire cache
+
+        --ttl-days <TTL_DAYS>
+            Remove stale contracts based on call_meta table
+
     -f, --from <FROM>
             Starting block number
 
-    -h, --help
-            Print help information
-
     -t, --to <TO>
             Ending block number
+
+    -h, --help
+            Print help (see a summary with '-h')
+
 
 ### DESCRIPTION
 
@@ -404,6 +410,12 @@ the first block number will be used as the starting block number.
 The `to` option is used to specify the ending block number of the block range. In the absence of `to` option,
 the last block number will be used as the ending block number.
 
+#### `--remove-entire-cache`
+The `--remove-entire-cache` option is used to remove the entire call cache of the specified chain.
+
+#### `--ttl-days <TTL_DAYS>`
+The `--ttl-days` option is used to remove stale contracts based on the `call_meta.accessed_at` field. For example, if `--ttl-days` is set to 7, all calls to a contract that has not been accessed in the last 7 days will be removed from the call cache.
+
 ### EXAMPLES
 
 Remove the call cache for all blocks numbered from 10 to 20:
@@ -412,5 +424,9 @@ Remove the call cache for all blocks numbered from 10 to 20:
 
 Remove all the call cache of the specified chain:
 
-    graphman --config config.toml chain call-cache ethereum remove
+    graphman --config config.toml chain call-cache ethereum remove --remove-entire-cache
+
+Remove stale contracts from the call cache that have not been accessed in the last 7 days:
+
+    graphman --config config.toml chain call-cache ethereum remove --ttl-days 7
 
