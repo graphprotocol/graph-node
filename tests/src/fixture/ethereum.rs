@@ -86,7 +86,7 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
 
     #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block.into()))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -130,7 +130,7 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
         .with_transactions(transactions);
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block.into()))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,

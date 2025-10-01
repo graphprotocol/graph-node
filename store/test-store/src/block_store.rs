@@ -125,7 +125,7 @@ impl FakeBlock {
         let block = Block::empty(rpc_header);
 
         EthereumBlock {
-            block: Arc::new(LightEthereumBlock::new(block)),
+            block: Arc::new(LightEthereumBlock::new(block.into())),
             transaction_receipts: Vec::new(),
         }
     }

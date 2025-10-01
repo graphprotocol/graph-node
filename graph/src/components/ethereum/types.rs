@@ -1,8 +1,9 @@
 use alloy::{
+    network::{AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, TransactionResponse},
     primitives::{Address, Bytes, B256, U256, U64},
     rpc::types::{
         trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
-        Log, Transaction,
+        Log,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -10,15 +11,35 @@ use std::sync::Arc;
 
 use crate::{
     blockchain::{BlockPtr, BlockTime},
-    prelude::{alloy::rpc::types::Block as AlloyBlock, BlockNumber},
+    prelude::BlockNumber,
 };
 
+// Use Alloy's official types for handling any transaction type
+pub type AnyTransaction = AnyRpcTransaction;
+pub type AnyBlock = AnyRpcBlock;
+
+// BlockWrapper wraps AnyBlock
 #[allow(dead_code)]
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct BlockWrapper(AlloyBlock);
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BlockWrapper(AnyBlock);
+
+impl Default for BlockWrapper {
+    fn default() -> Self {
+        use alloy::rpc::types::{Block, BlockTransactions};
+        use alloy::serde::WithOtherFields;
+
+        let default_block = Block {
+            header: AnyRpcHeader::default(),
+            transactions: BlockTransactions::Full(vec![]),
+            uncles: vec![],
+            withdrawals: None,
+        };
+        Self(AnyBlock::new(WithOtherFields::new(default_block)))
+    }
+}
 
 impl BlockWrapper {
-    pub fn new(block: AlloyBlock) -> Self {
+    pub fn new(block: AnyBlock) -> Self {
         Self(block)
     }
 
@@ -34,11 +55,11 @@ impl BlockWrapper {
         self.0.header.timestamp
     }
 
-    pub fn transactions(&self) -> Option<&[Transaction]> {
+    pub fn transactions(&self) -> Option<&[AnyTransaction]> {
         self.0.transactions.as_transactions()
     }
 
-    pub fn inner(&self) -> &AlloyBlock {
+    pub fn inner(&self) -> &AnyBlock {
         &self.0
     }
 
@@ -51,15 +72,15 @@ pub type LightEthereumBlock = BlockWrapper;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
+    fn transaction_for_log(&self, log: &Log) -> Option<AnyTransaction>;
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<AnyTransaction>;
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
     fn block_ptr(&self) -> BlockPtr;
     fn timestamp(&self) -> BlockTime;
 }
 
-impl LightEthereumBlockExt for AlloyBlock {
+impl LightEthereumBlockExt for AnyBlock {
     fn number(&self) -> BlockNumber {
         self.header.number as BlockNumber
     }
@@ -70,20 +91,20 @@ impl LightEthereumBlockExt for AlloyBlock {
         BlockTime::since_epoch(time, 0)
     }
 
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
+    fn transaction_for_log(&self, log: &Log) -> Option<AnyTransaction> {
         log.transaction_hash.and_then(|hash| {
             self.transactions
                 .txns()
-                .find(|tx| tx.inner.hash() == &hash)
+                .find(|tx| &tx.tx_hash() == &hash)
                 .cloned()
         })
     }
 
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<AnyTransaction> {
         call.transaction_hash.and_then(|hash| {
             self.transactions
                 .txns()
-                .find(|tx| tx.inner.hash() == &hash)
+                .find(|tx| &tx.tx_hash() == &hash)
                 .cloned()
         })
     }
@@ -112,11 +133,11 @@ impl LightEthereumBlockExt for LightEthereumBlock {
         self.0.header.number.try_into().unwrap()
     }
 
-    fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<Transaction> {
+    fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<AnyTransaction> {
         self.0.transaction_for_log(log)
     }
 
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<AnyTransaction> {
         self.0.transaction_for_call(call)
     }
 

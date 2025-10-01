@@ -21,10 +21,10 @@ use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
 use graph::prelude::alloy::primitives::Address;
-use graph::prelude::alloy::rpc::types::Transaction;
 use graph::prelude::{
     alloy::{
         self,
+        network::TransactionResponse,
         primitives::B256,
         providers::{
             ext::TraceApi,
@@ -732,7 +732,7 @@ impl EthereumAdapter {
                                 .map_err(Error::from)
                                 .and_then(|block| {
                                     block
-                                        .map(|b| Arc::new(LightEthereumBlock::new(b)))
+                                        .map(|b| Arc::new(LightEthereumBlock::new(b.into())))
                                         .ok_or_else(|| {
                                             anyhow::anyhow!(
                                                 "Ethereum node did not find block {:?}",
@@ -1334,7 +1334,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
             return Ok(EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block.into())),
                 transaction_receipts: Vec::new(),
             });
         }
@@ -1353,7 +1353,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         fetch_receipts_with_retry(alloy, hashes, block_hash, logger, supports_block_receipts)
             .await
             .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block.into())),
                 transaction_receipts: transaction_receipts
                     .into_iter()
                     .map(|receipt| receipt)
@@ -2043,13 +2043,13 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     }
 
     // And obtain all Transaction values for the calls in this block.
-    let transactions: Vec<&Transaction> = {
+    let transactions: Vec<&AnyTransaction> = {
         match &block.block {
             BlockFinality::Final(ref block) => block
                 .transactions()
                 .ok_or_else(|| anyhow!("Block transactions not available"))?
                 .iter()
-                .filter(|transaction| transaction_hashes.contains(transaction.inner.tx_hash()))
+                .filter(|transaction| transaction_hashes.contains(&transaction.tx_hash()))
                 .collect(),
             BlockFinality::NonFinal(_block_with_calls) => {
                 unreachable!(
@@ -2079,13 +2079,13 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
         .collect::<BTreeMap<B256, LightTransactionReceipt>>();
 
     // Do we have a receipt for each transaction under analysis?
-    let mut receipts_and_transactions: Vec<(&Transaction, LightTransactionReceipt)> = Vec::new();
-    let mut transactions_without_receipt: Vec<&Transaction> = Vec::new();
+    let mut receipts_and_transactions: Vec<(&AnyTransaction, LightTransactionReceipt)> = Vec::new();
+    let mut transactions_without_receipt: Vec<&AnyTransaction> = Vec::new();
     for transaction in transactions.iter() {
-        if let Some(receipt) = receipts.remove(transaction.inner.tx_hash()) {
-            receipts_and_transactions.push((transaction, receipt));
+        if let Some(receipt) = receipts.remove(&transaction.tx_hash()) {
+            receipts_and_transactions.push((*transaction, receipt));
         } else {
-            transactions_without_receipt.push(transaction);
+            transactions_without_receipt.push(*transaction);
         }
     }
 
@@ -2093,7 +2093,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     let futures = transactions_without_receipt
         .iter()
         .map(|transaction| async move {
-            fetch_receipt_from_ethereum_client(eth, *transaction.inner.tx_hash())
+            fetch_receipt_from_ethereum_client(eth, transaction.tx_hash())
                 .await
                 .map(|receipt| (transaction, receipt))
         });
@@ -2108,9 +2108,9 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     // additional Ethereum API calls for future scans on this block.
 
     // With all transactions and receipts in hand, we can evaluate the success of each transaction
-    let mut transaction_success: BTreeMap<&B256, bool> = BTreeMap::new();
+    let mut transaction_success: BTreeMap<B256, bool> = BTreeMap::new();
     for (transaction, receipt) in receipts_and_transactions.into_iter() {
-        transaction_success.insert(&transaction.inner.tx_hash(), receipt.status);
+        transaction_success.insert(transaction.tx_hash(), receipt.status);
     }
 
     // Confidence check: Did we inspect the status of all transactions?
@@ -2623,7 +2623,7 @@ mod tests {
 
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block.into())),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2765,7 +2765,7 @@ mod tests {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block.into())),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2796,7 +2796,7 @@ mod tests {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block)),
+                block: Arc::new(LightEthereumBlock::new(block.into())),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {

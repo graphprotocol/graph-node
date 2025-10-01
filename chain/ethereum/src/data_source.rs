@@ -4,6 +4,7 @@ use graph::abi;
 use graph::abi::EventExt;
 use graph::abi::FunctionExt;
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
+use graph::components::ethereum::AnyTransaction;
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
@@ -21,8 +22,9 @@ use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
 use graph::prelude::alloy::{
     consensus::{TxEnvelope, TxLegacy},
-    primitives::{Address, B256},
-    rpc::types::{Log, Transaction},
+    network::TransactionResponse,
+    primitives::{Address, B256, U256},
+    rpc::types::Log,
 };
 use graph::prelude::{alloy, Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
@@ -440,11 +442,12 @@ fn create_dummy_transaction(
     block_hash: B256,
     transaction_index: Option<u64>,
     transaction_hash: Option<B256>,
-) -> Result<Transaction<TxEnvelope>, anyhow::Error> {
+) -> Result<AnyTransaction, anyhow::Error> {
+    use alloy::serde::WithOtherFields;
+    use graph::components::ethereum::AnyTxEnvelope;
     use graph::prelude::alloy::{
-        consensus::transaction::Recovered,
-        consensus::Signed,
-        primitives::{Signature, U256},
+        consensus::transaction::Recovered, consensus::Signed, primitives::Signature,
+        rpc::types::Transaction,
     };
 
     let tx = TxLegacy::default();
@@ -454,17 +457,22 @@ fn create_dummy_transaction(
 
     let tx_hash = transaction_hash.ok_or(anyhow!("Log has no transaction hash"))?;
     let signed_tx = Signed::new_unchecked(tx, signature, tx_hash);
-    let envelope = TxEnvelope::Legacy(signed_tx);
+    let eth_envelope = TxEnvelope::Legacy(signed_tx);
 
-    let recovered = Recovered::new_unchecked(envelope, Address::ZERO);
+    // Wrap in AnyTxEnvelope
+    let any_envelope = AnyTxEnvelope::Ethereum(eth_envelope);
 
-    Ok(Transaction {
+    let recovered = Recovered::new_unchecked(any_envelope, Address::ZERO);
+
+    let inner_tx = Transaction {
         inner: recovered,
         block_hash: Some(block_hash),
         block_number: Some(block_number),
-        transaction_index: transaction_index,
+        transaction_index,
         effective_gas_price: None,
-    })
+    };
+
+    Ok(AnyTransaction::new(WithOtherFields::new(inner_tx)))
 }
 
 impl DataSource {

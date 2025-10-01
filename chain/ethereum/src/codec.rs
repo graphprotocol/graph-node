@@ -298,11 +298,8 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     .map(|hash| B256::from_slice(hash))
                     .collect();
 
-                let max_fee_per_blob_gas_u128 = self
-                    .trace
-                    .blob_gas_fee_cap
-                    .as_ref()
-                    .map_or(0u128, |x| {
+                let max_fee_per_blob_gas_u128 =
+                    self.trace.blob_gas_fee_cap.as_ref().map_or(0u128, |x| {
                         let val: U256 = x.into();
                         val.to::<u128>()
                     });
@@ -422,20 +419,28 @@ impl TryInto<AlloyBlock> for &Block {
             withdrawals_root: if header.withdrawals_root.is_empty() {
                 None
             } else {
-                Some(header.withdrawals_root.try_decode_proto("withdrawals root")?)
+                Some(
+                    header
+                        .withdrawals_root
+                        .try_decode_proto("withdrawals root")?,
+                )
             },
             blob_gas_used: header.blob_gas_used,
             excess_blob_gas: header.excess_blob_gas,
             parent_beacon_block_root: if header.parent_beacon_root.is_empty() {
                 None
             } else {
-                Some(header.parent_beacon_root.try_decode_proto("parent beacon root")?)
+                Some(
+                    header
+                        .parent_beacon_root
+                        .try_decode_proto("parent beacon root")?,
+                )
             },
             requests_hash: if header.requests_hash.is_empty() {
                 None
             } else {
                 Some(header.requests_hash.try_decode_proto("requests hash")?)
-            }
+            },
         };
 
         let rpc_header = alloy::rpc::types::Header {
@@ -489,7 +494,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(alloy_block)),
+                block: Arc::new(LightEthereumBlock::new(alloy_block.into())),
                 transaction_receipts,
             },
             // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block

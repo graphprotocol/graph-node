@@ -1,14 +1,15 @@
 use graph::abi;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
+use graph::components::ethereum::AnyTransaction;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
 use graph::prelude::alloy::consensus::Transaction as TransactionTrait;
+use graph::prelude::alloy::network::TransactionResponse;
 use graph::prelude::alloy::primitives::{Address, B256, U256};
 use graph::prelude::alloy::rpc::types::Log;
-use graph::prelude::alloy::rpc::types::Transaction;
 use graph::prelude::alloy::rpc::types::TransactionReceipt as AlloyTransactionReceipt;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
@@ -38,7 +39,7 @@ static U256_DEFAULT: U256 = U256::ZERO;
 pub enum MappingTrigger {
     Log {
         block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
+        transaction: Arc<AnyTransaction>,
         log: Arc<Log>,
         params: Vec<abi::DynSolParam>,
         receipt: Option<Arc<AlloyTransactionReceipt>>,
@@ -46,7 +47,7 @@ pub enum MappingTrigger {
     },
     Call {
         block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
+        transaction: Arc<AnyTransaction>,
         call: Arc<EthereumCall>,
         inputs: Vec<abi::DynSolParam>,
         outputs: Vec<abi::DynSolParam>,
@@ -77,12 +78,12 @@ impl std::fmt::Debug for MappingTrigger {
         #[derive(Debug)]
         enum MappingTriggerWithoutBlock {
             Log {
-                _transaction: Arc<Transaction>,
+                _transaction: Arc<AnyTransaction>,
                 _log: Arc<Log>,
                 _params: Vec<abi::DynSolParam>,
             },
             Call {
-                _transaction: Arc<Transaction>,
+                _transaction: Arc<AnyTransaction>,
                 _call: Arc<EthereumCall>,
                 _inputs: Vec<abi::DynSolParam>,
                 _outputs: Vec<abi::DynSolParam>,
@@ -482,30 +483,30 @@ impl<'a> EthereumBlockData<'a> {
 /// Ethereum transaction data.
 #[derive(Clone, Debug)]
 pub struct EthereumTransactionData<'a> {
-    tx: &'a Transaction,
+    tx: &'a AnyTransaction,
     base_fee_per_gas: Option<u64>,
 }
 
 impl<'a> EthereumTransactionData<'a> {
     // We don't implement `From` because it causes confusion with the `from`
     // accessor method
-    fn new(tx: &'a Transaction, base_fee_per_gas: Option<u64>) -> EthereumTransactionData<'a> {
+    fn new(tx: &'a AnyTransaction, base_fee_per_gas: Option<u64>) -> EthereumTransactionData<'a> {
         EthereumTransactionData {
             tx,
             base_fee_per_gas,
         }
     }
 
-    pub fn hash(&self) -> &B256 {
-        &self.tx.inner.tx_hash()
+    pub fn hash(&self) -> B256 {
+        self.tx.tx_hash()
     }
 
     pub fn index(&self) -> u64 {
         self.tx.transaction_index.unwrap()
     }
 
-    pub fn from(&self) -> &Address {
-        self.tx.inner.signer_ref()
+    pub fn from(&self) -> Address {
+        self.tx.from()
     }
 
     pub fn to(&self) -> Option<Address> {
@@ -545,7 +546,7 @@ pub struct EthereumEventData<'a> {
 impl<'a> EthereumEventData<'a> {
     pub fn new(
         block: &'a LightEthereumBlock,
-        tx: &'a Transaction,
+        tx: &'a AnyTransaction,
         log: &'a Log,
         params: &'a [abi::DynSolParam],
     ) -> Self {
@@ -594,7 +595,7 @@ pub struct EthereumCallData<'a> {
 impl<'a> EthereumCallData<'a> {
     fn new(
         block: &'a LightEthereumBlock,
-        transaction: &'a Transaction,
+        transaction: &'a AnyTransaction,
         call: &'a EthereumCall,
         inputs: &'a [abi::DynSolParam],
         outputs: &'a [abi::DynSolParam],
