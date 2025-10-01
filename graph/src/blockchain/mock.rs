@@ -571,6 +571,9 @@ impl ChainStore for MockChainStore {
     async fn clear_call_cache(&self, _from: BlockNumber, _to: BlockNumber) -> Result<(), Error> {
         unimplemented!()
     }
+    async fn clear_stale_call_cache(&self, _ttl_days: i32) -> Result<(), Error> {
+        unimplemented!()
+    }
     fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
