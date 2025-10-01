@@ -291,6 +291,22 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     format_err!("EIP-4844 transactions cannot be contract creation transactions. The 'to' field must contain a valid address.")
                 })?;
 
+                let blob_versioned_hashes: Vec<B256> = self
+                    .trace
+                    .blob_hashes
+                    .iter()
+                    .map(|hash| B256::from_slice(hash))
+                    .collect();
+
+                let max_fee_per_blob_gas_u128 = self
+                    .trace
+                    .blob_gas_fee_cap
+                    .as_ref()
+                    .map_or(0u128, |x| {
+                        let val: U256 = x.into();
+                        val.to::<u128>()
+                    });
+
                 let tx_eip4844 = TxEip4844 {
                     chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
                     nonce,
@@ -300,8 +316,8 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     to: to_address,
                     value,
                     access_list: access_list.clone(), // Use actual access list from trace
-                    blob_versioned_hashes: Vec::new(), // TODO(alloy_migration): blob hashes not available in current protobuf definition
-                    max_fee_per_blob_gas: 0u128, // TODO(alloy_migration): blob gas fee not available in current protobuf definition
+                    blob_versioned_hashes,
+                    max_fee_per_blob_gas: max_fee_per_blob_gas_u128,
                     input: input.clone(),
                 };
                 let tx = TxEip4844Variant::TxEip4844(tx_eip4844);
@@ -317,6 +333,13 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     format_err!("EIP-7702 transactions cannot be contract creation transactions. The 'to' field must contain a valid address.")
                 })?;
 
+                // Convert set_code_authorizations to alloy authorization list
+                // Note: Alloy's SignedAuthorization expects the full authorization data
+                // For now, we'll leave this empty as converting the protobuf SetCodeAuthorization
+                // to alloy's SignedAuthorization requires signature reconstruction which is complex.
+                // The authorization data is available in self.trace.set_code_authorizations if needed.
+                let authorization_list = Vec::new(); // TODO(alloy_migration): Complex conversion from SetCodeAuthorization to alloy::consensus::SignedAuthorization
+
                 let tx = TxEip7702 {
                     chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
                     nonce,
@@ -326,7 +349,7 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
                     to: to_address,
                     value,
                     access_list: access_list.clone(), // Use actual access list from trace
-                    authorization_list: Vec::new(), // TODO(alloy_migration): authorization list not available in current protobuf definition
+                    authorization_list,
                     input: input.clone(),
                 };
                 let signed_tx = Signed::new_unchecked(
@@ -396,17 +419,33 @@ impl TryInto<AlloyBlock> for &Block {
             mix_hash: header.mix_hash.try_decode_proto("mix hash")?,
             nonce: header.nonce.into(),
 
-            withdrawals_root: None, // TODO(alloy_migration): not available in current protobuf definition
-            blob_gas_used: None, // TODO(alloy_migration): not available in current protobuf definition
-            excess_blob_gas: None, // TODO(alloy_migration): not available in current protobuf definition
-            parent_beacon_block_root: None, // TODO(alloy_migration): not available in current protobuf definition
-            requests_hash: None, // TODO(alloy_migration): not available in current protobuf definition
+            withdrawals_root: if header.withdrawals_root.is_empty() {
+                None
+            } else {
+                Some(header.withdrawals_root.try_decode_proto("withdrawals root")?)
+            },
+            blob_gas_used: header.blob_gas_used,
+            excess_blob_gas: header.excess_blob_gas,
+            parent_beacon_block_root: if header.parent_beacon_root.is_empty() {
+                None
+            } else {
+                Some(header.parent_beacon_root.try_decode_proto("parent beacon root")?)
+            },
+            requests_hash: if header.requests_hash.is_empty() {
+                None
+            } else {
+                Some(header.requests_hash.try_decode_proto("requests hash")?)
+            }
         };
 
         let rpc_header = alloy::rpc::types::Header {
             hash: block_hash,
             inner: consensus_header,
-            total_difficulty: header.total_difficulty.as_ref().map(|v| v.into()),
+            total_difficulty: {
+                #[allow(deprecated)]
+                let total_difficulty = &header.total_difficulty;
+                total_difficulty.as_ref().map(|v| v.into())
+            },
             size: Some(U256::from(self.size)),
         };
 
@@ -577,8 +616,11 @@ fn transaction_trace_to_alloy_txn_reciept(
             let val: U256 = x.into();
             val.to::<u128>()
         }), // gas_price already contains effective gas price per protobuf spec
-        blob_gas_used: None, // TODO(alloy_migration): blob gas used not available in current protobuf definition
-        blob_gas_price: None, // TODO(alloy_migration): blob gas price not available in current protobuf definition
+        blob_gas_used: r.blob_gas_used,
+        blob_gas_price: r.blob_gas_price.as_ref().map(|x| {
+            let val: U256 = x.into();
+            val.to::<u128>()
+        }),
         inner: envelope,
     }))
 }
