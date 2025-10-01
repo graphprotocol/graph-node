@@ -259,12 +259,13 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         .difficulty
                         .as_ref()
                         .map_or_else(U256::default, |v| v.into()),
-                    total_difficulty: Some(
-                        header
-                            .total_difficulty
+                    total_difficulty: Some({
+                        #[allow(deprecated)]
+                        let total_difficulty = &header.total_difficulty;
+                        total_difficulty
                             .as_ref()
-                            .map_or_else(U256::default, |v| v.into()),
-                    ),
+                            .map_or_else(U256::default, |v| v.into())
+                    }),
                     // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
                     seal_fields: vec![],
                     uncles: self
