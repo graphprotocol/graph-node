@@ -39,7 +39,8 @@ use graph::data_source::CausalityRegion;
 use graph::internal_error;
 use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
-    EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
+    AggregationInterval, EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition,
+    InputSchema,
 };
 use graph::slog::warn;
 use index::IndexList;
@@ -94,7 +95,7 @@ pub const STRING_PREFIX_SIZE: usize = 256;
 pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
 
 lazy_static! {
-    static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
+    pub(crate) static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
         .graphql
         .sql_statement_timeout
         .map(|duration| format!("set local statement_timeout={}", duration.as_millis()));
@@ -442,12 +443,13 @@ impl Layout {
         Ok(())
     }
 
-    /// Find the table with the provided `name`. The name must exactly match
-    /// the name of an existing table. No conversions of the name are done
-    pub fn table(&self, name: &SqlName) -> Option<&Table> {
+    /// Find the table with the provided `sql_name`. The name must exactly
+    /// match the name of an existing table. No conversions of the name are
+    /// done
+    pub fn table(&self, sql_name: &str) -> Option<&Table> {
         self.tables
             .values()
-            .find(|table| &table.name == name)
+            .find(|table| &table.name == sql_name)
             .map(|rc| rc.as_ref())
     }
 
@@ -1153,6 +1155,27 @@ impl Layout {
             rollups.push(rollup);
         }
         Ok(rollups)
+    }
+
+    /// Given an aggregation name that is already snake-cased like `stats`
+    /// (for an an aggregation `type Stats @aggregation(..)`) and an
+    /// interval, return the table that holds the aggregated data, like
+    /// `stats_hour`.
+    pub fn aggregation_table(
+        &self,
+        aggregation: &str,
+        interval: AggregationInterval,
+    ) -> Option<&Table> {
+        let sql_name = format!("{}_{interval}", aggregation);
+        self.table(&sql_name)
+    }
+
+    /// Return true if the layout has an aggregation with the given name
+    /// like `stats` (already snake_cased)
+    pub fn has_aggregation(&self, aggregation: &str) -> bool {
+        self.input_schema
+            .aggregation_names()
+            .any(|agg_name| SqlName::from(agg_name).as_str() == aggregation)
     }
 
     /// Roll up all timeseries for each entry in `block_times`. The overall
