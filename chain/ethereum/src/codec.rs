@@ -872,6 +872,105 @@ mod test {
             format!(r#"{{"block":{{"data":null,"timestamp":"{}"}}}}"#, now)
         );
     }
+
+    #[test]
+    fn test_unknown_transaction_type_conversion() {
+        use super::TransactionTraceAt;
+        use crate::codec::TransactionTrace;
+        use graph::prelude::alloy::network::AnyTxEnvelope;
+        use graph::prelude::alloy::primitives::B256;
+
+        let mut block = Block::default();
+        let mut header = BlockHeader::default();
+        header.number = 123456;
+        header.timestamp = Some(Timestamp {
+            seconds: 1234567890,
+            nanos: 0,
+        });
+        block.header = Some(header);
+        block.number = 123456;
+        block.hash = vec![0u8; 32];
+
+        let mut trace = TransactionTrace::default();
+        trace.r#type = 126; // 0x7e Optimism deposit transaction
+        trace.hash = vec![1u8; 32];
+        trace.from = vec![2u8; 20];
+        trace.to = vec![3u8; 20];
+        trace.nonce = 42;
+        trace.gas_limit = 21000;
+        trace.index = 0;
+
+        let trace_at = TransactionTraceAt::new(&trace, &block);
+        let result: Result<
+            graph::prelude::alloy::rpc::types::Transaction<AnyTxEnvelope>,
+            graph::prelude::Error,
+        > = trace_at.try_into();
+
+        assert!(
+            result.is_ok(),
+            "Should successfully convert unknown transaction type"
+        );
+
+        let tx = result.unwrap();
+
+        match tx.inner.inner() {
+            AnyTxEnvelope::Unknown(unknown_envelope) => {
+                assert_eq!(unknown_envelope.inner.ty.0, 126);
+                assert_eq!(unknown_envelope.hash, B256::from_slice(&trace.hash));
+                assert!(
+                    !unknown_envelope.inner.fields.is_empty(),
+                    "OtherFields should contain transaction data"
+                );
+            }
+            _ => panic!("Expected AnyTxEnvelope::Unknown, got Ethereum variant"),
+        }
+
+        assert_eq!(tx.block_number, Some(123456));
+        assert_eq!(tx.transaction_index, Some(0));
+        assert_eq!(tx.block_hash, Some(B256::from_slice(&block.hash)));
+    }
+
+    #[test]
+    fn test_unknown_receipt_type_conversion() {
+        use super::transaction_trace_to_alloy_txn_reciept;
+        use crate::codec::TransactionTrace;
+
+        let mut block = Block::default();
+        let mut header = BlockHeader::default();
+        header.number = 123456;
+        block.header = Some(header);
+        block.hash = vec![0u8; 32];
+
+        let mut trace = TransactionTrace::default();
+        trace.r#type = 126; // 0x7e Optimism deposit transaction
+        trace.hash = vec![1u8; 32];
+        trace.from = vec![2u8; 20];
+        trace.to = vec![3u8; 20];
+        trace.index = 0;
+        trace.gas_used = 21000;
+        trace.status = 1;
+
+        let mut receipt = super::TransactionReceipt::default();
+        receipt.cumulative_gas_used = 21000;
+        receipt.logs_bloom = vec![0u8; 256];
+        trace.receipt = Some(receipt);
+
+        let result = transaction_trace_to_alloy_txn_reciept(&trace, &block);
+
+        assert!(
+            result.is_ok(),
+            "Should successfully convert receipt with unknown transaction type"
+        );
+
+        let receipt_opt = result.unwrap();
+        assert!(receipt_opt.is_some(), "Receipt should be present");
+
+        let receipt = receipt_opt.unwrap();
+
+        assert_eq!(receipt.inner.inner.r#type, 126);
+        assert_eq!(receipt.gas_used, 21000);
+        assert_eq!(receipt.transaction_index, Some(0));
+    }
 }
 
 fn extract_signature_from_trace(
