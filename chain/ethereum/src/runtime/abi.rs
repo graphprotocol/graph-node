@@ -117,20 +117,6 @@ impl ToAscObj<AscLogArray> for &[Log] {
     }
 }
 
-// impl ToAscObj<AscLogArray> for Vec<Log> {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscLogArray, HostExportError> {
-//         let logs = self
-//             .iter()
-//             .map(|log| asc_new(heap, &log, gas))
-//             .collect::<Result<Vec<_>, _>>()?;
-//         Ok(AscLogArray(Array::new(&logs, heap, gas)?))
-//     }
-// }
-
 impl AscIndexId for AscLogArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayLog;
 }
@@ -598,47 +584,6 @@ where
     }
 }
 
-impl<'a, T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
-    for (EthereumEventData<'a>, Option<&TransactionReceipt>)
-where
-    T: AscType + AscIndexId,
-    B: AscType + AscIndexId,
-    EthereumTransactionData<'a>: ToAscObj<T>,
-    EthereumBlockData<'a>: ToAscObj<B>,
-{
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEthereumEvent_0_0_7<T, B>, HostExportError> {
-        let (event_data, optional_receipt) = self;
-        let AscEthereumEvent {
-            address,
-            log_index,
-            transaction_log_index,
-            log_type,
-            block,
-            transaction,
-            params,
-        } = event_data.to_asc_obj(heap, gas)?;
-        let receipt = if let Some(receipt_data) = optional_receipt {
-            asc_new(heap, receipt_data, gas)?
-        } else {
-            AscPtr::null()
-        };
-        Ok(AscEthereumEvent_0_0_7 {
-            address,
-            log_index,
-            transaction_log_index,
-            log_type,
-            block,
-            transaction,
-            params,
-            receipt,
-        })
-    }
-}
-
 impl<'a, T, B, Inner> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
     for (
         EthereumEventData<'a>,
@@ -684,94 +629,6 @@ where
         })
     }
 }
-
-// impl<'a, T, B> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
-//     for (EthereumEventData<'a>, Option<&TransactionReceipt>)
-// where
-//     T: AscType + AscIndexId,
-//     B: AscType + AscIndexId,
-//     EthereumTransactionData<'a>: ToAscObj<T>,
-//     EthereumBlockData<'a>: ToAscObj<B>,
-// {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscEthereumEvent_0_0_7<T, B>, HostExportError> {
-//         let (event_data, optional_receipt) = self;
-//         let AscEthereumEvent {
-//             address,
-//             log_index,
-//             transaction_log_index,
-//             log_type,
-//             block,
-//             transaction,
-//             params,
-//         } = event_data.to_asc_obj(heap, gas)?;
-//         let receipt = if let Some(receipt_data) = optional_receipt {
-//             asc_new(heap, receipt_data, gas)?
-//         } else {
-//             AscPtr::null()
-//         };
-//         Ok(AscEthereumEvent_0_0_7 {
-//             address,
-//             log_index,
-//             transaction_log_index,
-//             log_type,
-//             block,
-//             transaction,
-//             params,
-//             receipt,
-//         })
-//     }
-// }
-
-// impl ToAscObj<AscEthereumLog> for Log {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscEthereumLog, HostExportError> {
-//         Ok(AscEthereumLog {
-//             address: asc_new(heap, &self.address, gas)?,
-//             topics: asc_new(heap, &self.topics, gas)?,
-//             data: asc_new(heap, self.data.0.as_slice(), gas)?,
-//             block_hash: self
-//                 .block_hash
-//                 .map(|block_hash| asc_new(heap, &block_hash, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             block_number: self
-//                 .block_number
-//                 .map(|block_number| asc_new(heap, &BigInt::from(block_number), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             transaction_hash: self
-//                 .transaction_hash
-//                 .map(|txn_hash| asc_new(heap, &txn_hash, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             transaction_index: self
-//                 .transaction_index
-//                 .map(|txn_index| asc_new(heap, &BigInt::from(txn_index), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             log_index: self
-//                 .log_index
-//                 .map(|log_index| asc_new(heap, &BigInt::from_unsigned_u256(&log_index), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             transaction_log_index: self
-//                 .transaction_log_index
-//                 .map(|index| asc_new(heap, &BigInt::from_unsigned_u256(&index), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             log_type: self
-//                 .log_type
-//                 .as_ref()
-//                 .map(|log_type| asc_new(heap, &log_type, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             removed: self
-//                 .removed
-//                 .map(|removed| asc_new(heap, &AscWrapped { inner: removed }, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//         })
-//     }
-// }
 
 impl ToAscObj<AscEthereumLog> for Log {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -903,50 +760,6 @@ impl ToAscObj<AscEthereumTransactionReceipt>
         })
     }
 }
-
-// impl ToAscObj<AscEthereumTransactionReceipt> for &TransactionReceipt {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscEthereumTransactionReceipt, HostExportError> {
-//         Ok(AscEthereumTransactionReceipt {
-//             transaction_hash: asc_new(heap, &self.transaction_hash, gas)?,
-//             transaction_index: asc_new(heap, &BigInt::from(self.transaction_index), gas)?,
-//             block_hash: self
-//                 .block_hash
-//                 .map(|block_hash| asc_new(heap, &block_hash, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             block_number: self
-//                 .block_number
-//                 .map(|block_number| asc_new(heap, &BigInt::from(block_number), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             cumulative_gas_used: asc_new(
-//                 heap,
-//                 &BigInt::from_unsigned_u256(&self.cumulative_gas_used),
-//                 gas,
-//             )?,
-//             gas_used: self
-//                 .gas_used
-//                 .map(|gas_used| asc_new(heap, &BigInt::from_unsigned_u256(&gas_used), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             contract_address: self
-//                 .contract_address
-//                 .map(|contract_address| asc_new(heap, &contract_address, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             logs: asc_new(heap, &self.logs, gas)?,
-//             status: self
-//                 .status
-//                 .map(|status| asc_new(heap, &BigInt::from(status), gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             root: self
-//                 .root
-//                 .map(|root| asc_new(heap, &root, gas))
-//                 .unwrap_or(Ok(AscPtr::null()))?,
-//             logs_bloom: asc_new(heap, self.logs_bloom.as_bytes(), gas)?,
-//         })
-//     }
-// }
 
 impl<'a> ToAscObj<AscEthereumCall> for EthereumCallData<'a> {
     fn to_asc_obj<H: AscHeap + ?Sized>(

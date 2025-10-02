@@ -169,7 +169,6 @@ impl PollingBlockIngestor {
         eth_adapter: &Arc<EthereumAdapter>,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHash>, IngestorError> {
-        // TODO: B256::from_slice can panic
         let block_hash = B256::from_slice(block_hash.as_slice());
 
         // Get the fully populated block
