@@ -1,36 +1,238 @@
 # NEWS
 
+## v0.41.0
+
+### New Features
+
+- Added support for struct field access in declarative calls - enables accessing nested struct fields directly in declarative subgraph handlers (#6099)
+- New standalone `gnd` (Graph Node Dev) crate - a graph-node binary optimized for local development with minimal setup required (#6167)
+- Extended IPFS usage metrics and logging capabilities (#6058)
+- Extended support for additional IPFS content path formats (#6058)
+
+### Improvements
+
+- Deferred IPFS manifest fetching when starting subgraphs - fixes issue where slow IPFS responses could block assignment event processing, preventing new subgraphs from being assigned (#6170)
+- Added Content Identifier (CID) to IPFS retry logs for better debugging and tracking of IPFS operations (#6144)
+- Runtime now uses interior mutability in `AscHeapCtx` for improved performance (#6053)
+- Fixed handling of empty arrays in indexing status queries - prevents errors when querying deployments with empty array filters (#6143)
+- Fixed case-insensitive array inputs in queries - array filter values are now properly case-normalized (#6075)
+- Fixed panic when handling empty lists in `list_values` - resolves crashes with empty array filters (#6100)
+- Enhanced logging for subgraph assignment processing with more detailed information (#6169)
+- Added logging for `MAX_BLOCKING_THREADS` configuration setting (#6161)
+
+
+## v0.40.1
+
+### Improvements
+- Enhanced IPFS logging to include Content Identifiers (CIDs) in operation names for better debugging
+
+## v0.40.0
+### Critical Bugfix
+**GraphQL Empty Array Panic Fix**
+Fixed GraphQL query panic with empty arrays: Resolved a critical bug where GraphQL queries using _in filters (like id_in, name_in, etc.) with empty arrays would cause the graph-node to panic with `index out of bounds: the len is 0 but the index is 0`(#6100)
+
+### New Features
+
+**IPFS File System Caching**
+- IPFS files can now be cached to disk using the `GRAPH_IPFS_CACHE_LOCATION` environment variable - reduces IPFS requests after restarts and improves performance. Cache directory must be writable by graph-node and in a trusted location (#6031)
+
+### Improvements
+
+**Performance**
+- Speed up appending changes to batch operations (#6025)
+- Improved backoff strategy for offchain data sources - files not found are subject to exponential backoff, with configurable maximum backoff via `GRAPH_FDS_MAX_BACKOFF` (default: 600 seconds) (#6043)
+
+**GraphQL**
+- Better error messages for OR operator usage with column filters (#6078)
+
+**graphman**
+- Remove create flag from `graphman deploy` command (#6077)
+- `graphman reassign` now shows clearer success messages (#6074)
+
+**Runtime**
+- Update Wasmtime version for improved WebAssembly performance (#6050)
+
+### Bug Fixes
+
+- Fixed subgraph composition sync failures when entities have different ID types - resolves "UNION types bytea and text cannot be matched" error (#6080)
+- Fixed database down migration issue (#6065)
+- Fixed pruning status reporting accuracy - completion percentage now correctly reflects progress when copying non-final entities (#6062)
+
+
+## v0.39.0
+
+### Breaking Changes
+
+#### Database Schema Changes
+- **Major schema migration**: The `subgraphs.subgraph_deployment` table has been split into two tables: ([#6003](https://github.com/graphprotocol/graph-node/pull/6003))
+  - `subgraphs.head` - stores frequently changing metadata (block hash, block number, entity count, firehose cursor)
+  - `subgraphs.deployment` - stores less frequently changing data
+  
+  **Note**: This migration will run automatically but may take time on large databases; anything beyond a minute or two will most likely be due to long-running queries blocking the migration. While it is possible to apply this migration with rolling updates to all graph-node processes, it is recommended to shut down all graph-node processes first and them start them up again.
+
+  **Note**: External processes accessing the `subgraph_deployment` table, such as dashboards, will not work after the migration. Queries that these tools run will need to be updated. Joining the `head` and `deployment` table on `id` will yield the same data that used to live in the `subgraph_deployment` table, though a few columns were also renamed. See [the documentation](https://github.com/graphprotocol/graph-node/blob/master/docs/implementation/metadata.md#subgraphshead) for details.
+
+#### Removed Features
+- **Arweave blockchain support removed** - Arweave subgraphs are no longer supported (Arweave file data sources remain unaffected) ([#5951](https://github.com/graphprotocol/graph-node/pull/5951))
+- **`graphman drop` command removed** - To remove a deployment, run `graphman remove <name>` for each name the deployment has (see `graphman info`), then run `graphman unused record && graphman unused remove` ([#5974](https://github.com/graphprotocol/graph-node/pull/5974))
+
+#### Behavior Changes
+- **Failed subgraphs are now paused instead of unassigned** - This prevents unwanted side effects like canceling active copy operations ([#5971](https://github.com/graphprotocol/graph-node/pull/5971))
+- **Various store errors are now classified as deterministic** - May affect error handling in your monitoring ([#5943](https://github.com/graphprotocol/graph-node/pull/5943))
+
+---
+
+### New Features
+
+#### Enhanced Pruning Management
+- **Pruning status tracking**: New database tables track pruning progress per deployment ([#5949](https://github.com/graphprotocol/graph-node/pull/5949))
+- **Pruning timeout protection**: Long-running prune operations can be killed and retried if they exceed `GRAPH_STORE_BATCH_TIMEOUT` ([#6002](https://github.com/graphprotocol/graph-node/pull/6002))
+- **Better pruning estimates**: Uses PostgreSQL statistics for more accurate predictions (requires PostgreSQL 17+ for full functionality) ([#6012](https://github.com/graphprotocol/graph-node/pull/6012))
+- **New graphman commands**: ([#5949](https://github.com/graphprotocol/graph-node/pull/5949))
+  - `graphman prune status` - View status of prune operations
+  - `graphman prune run` - Manually trigger pruning
+  - `graphman prune set` - Configure pruning parameters
+
+#### Block Ingestion Tools
+- **`graphman chain ingest <chain_name> <block_number>`** - Manually ingest specific blocks into the block cache ([#5945](https://github.com/graphprotocol/graph-node/pull/5945))
+
+#### IPFS Improvements
+- **Configurable retry limits**: Set max retry attempts with `GRAPH_IPFS_MAX_ATTEMPTS` (default: 100,000) ([#5998](https://github.com/graphprotocol/graph-node/pull/5998))
+- **Configurable timeouts**: ([e1d9876](https://github.com/graphprotocol/graph-node/commit/e1d98766724adf9089f52006df0152090b27395d))
+  - `GRAPH_IPFS_REQUEST_TIMEOUT` - Request timeout (default: 60s release, 1s debug)
+  - Max retry delay increased to 60 seconds ([#5995](https://github.com/graphprotocol/graph-node/pull/5995))
+
+---
+
+### Improvements
+
+#### Error Handling
+- Store errors now properly classified as deterministic vs non-deterministic ([#5943](https://github.com/graphprotocol/graph-node/pull/5943))
+- Pruning errors no longer cause subgraph failure - they're logged and retried later ([#5972](https://github.com/graphprotocol/graph-node/pull/5972))
+- Better error messages for:
+  - Source subgraph manifest resolution ([#5950](https://github.com/graphprotocol/graph-node/pull/5950))
+  - Store write failures
+  - Unique constraint violations ([#5943](https://github.com/graphprotocol/graph-node/pull/5943))
+
+#### Performance
+- Optimized GraphQL result caching ([#6006](https://github.com/graphprotocol/graph-node/pull/6006))
+- Reduced code duplication in subgraph processing ([#5952](https://github.com/graphprotocol/graph-node/pull/5952))
+
+#### Operational
+- Pruning status history limited to last 5 runs per deployment (configurable via `GRAPH_STORE_HISTORY_KEEP_STATUS`) ([#5949](https://github.com/graphprotocol/graph-node/pull/5949))
+- Deployments being pruned are properly handled during concurrent operations
+- Subgraph reassignment now shows the current node assignment ([be6c9402](https://github.com/graphprotocol/graph-node/commit/be6c9402dbd2eb14898fe948a5a7bfd633f1c42e))
+- CLI accepts bare numeric deployment IDs in all `graphman` commands ([#5954](https://github.com/graphprotocol/graph-node/pull/5954))
+- Removed Ganache-specific chain handling - cleans up obsolete code ([#5975](https://github.com/graphprotocol/graph-node/pull/5975))
+
+---
+
+### Bug Fixes
+
+- Fixed VID sequence naming to comply with PostgreSQL 63-character limit ([a322a634](https://github.com/graphprotocol/graph-node/commit/a322a63455421a94429d3ca9f7543bfca6b2086d))
+- Fixed pruning of tables with VID sequences using CASCADE drops ([#5968](https://github.com/graphprotocol/graph-node/pull/5968))
+- PostgreSQL unique constraint violations now lead to deterministic subgraph failures ([#5943](https://github.com/graphprotocol/graph-node/pull/5943))
+- Fixed various edge cases in error classification ([#5943](https://github.com/graphprotocol/graph-node/pull/5943))
+- Fixed numerical precision issues with large VID values ([#5970](https://github.com/graphprotocol/graph-node/pull/5970))
+
+---
+
+### Configuration Changes
+
+#### New Environment Variables
+- `GRAPH_IPFS_MAX_ATTEMPTS` - Maximum IPFS retry attempts (default: 100,000)
+- `GRAPH_IPFS_REQUEST_TIMEOUT` - IPFS request timeout in seconds
+- `GRAPH_STORE_BATCH_TIMEOUT` - Timeout for batch operations like pruning
+- `GRAPH_STORE_HISTORY_KEEP_STATUS` - Number of pruning status records to keep (default: 5)
+- `GRAPH_STORE_PRUNE_DISABLE_RANGE_BOUND_ESTIMATION` - Disable new pruning estimation method (temporary compatibility flag)
+- `GRAPH_STORE_ERRORS_ARE_NON_DETERMINISTIC` - Revert to treating all errors as non-deterministic (temporary compatibility flag)
+
+---
+
 ## v0.38.0
 
-### What's new
+### Breaking changes
 
-- A new `deployment_synced` metric is added [(#5816)](https://github.com/graphprotocol/graph-node/pull/5816)
-  that indicates whether a deployment has reached the chain head since it was deployed.
+- **Removal of GraphQL subscriptions** – the WebSocket server and every `Subscription`‑related code path were deleted. Applications that need live updates must switch to polling or an external event system. ([#5836](https://github.com/graphprotocol/graph-node/pull/5836))  
+- **Removal of Cosmos support** – all Cosmos chain and runtime code was removed. ([#5833](https://github.com/graphprotocol/graph-node/pull/5833))  
+- **`GRAPH_STORE_LAST_ROLLUP_FROM_POI` deleted** – this setting is no longer needed and will be ignored. ([#5936](https://github.com/graphprotocol/graph-node/pull/5936))  
+- **No dependency on `pg_stat_statements`** – Graph Node no longer executes `pg_stat_statements_reset()` after running database migrations and therefore is agnostic to whether that extension is installed or not ([#5926](https://github.com/graphprotocol/graph-node/pull/5926))  
 
-  **Possible values for the metric:**
-    - `0` - means that the deployment is not synced;
-    - `1` - means that the deployment is synced;
+---
 
-  _If a deployment is not running, the metric reports no value for that deployment._
+### New features & improvements
+
+1. **Faster grafting and copying**
+   - A single graft/copy operation can now copy multiple tables in parallel. The number of parallel operations per graft/copy can be configured by setting  `GRAPH_STORE_BATCH_WORKERS`, which defaults to 1. The total number of parallel operations is also limited by the `fdw_pool_size` which defaults to 5 and can be set in `graph-node.toml`
+   - A large number of parallel grafts/copies might get blocked by the size of tokio's blocking thread pool. To avoid that block, the size of that pool can now be configured with `GRAPH_MAX_BLOCKING_THREADS`. It defaults to 512 (tokio's default) but setting this to a large number like 2048 should be safe. ([#5948](https://github.com/graphprotocol/graph-node/pull/5948))  
+
+3. **Better control of graft/copy batches**  
+   - To avoid table bloat, especially in `subgraphs.subgraph_deployment`, graft/copy splits the work up into smaller batches which should take `GRAPH_STORE_BATCH_TARGET_DURATION` each. Sometimes, the estimation for how long a batch will take goes horribly wrong. To guard against that, the new setting `GRAPH_STORE_BATCH_TIMEOUT` sets a timeout, which is unlimited by default. When set, batches that take longer than this are aborted and restarted with a much smaller size. ([3c183731](https://github.com/graphprotocol/graph-node/commit/3c18373109d16dadab2d9c52fdd5f81cf3de6dbe))  
+   - The number of rows that are fetched from the source shard for cross-shard grafts/copies in a single operation can be controlled through `GRAPH_STORE_FDW_FETCH_SIZE`. Its default has been lowered from 10 000 to 1 000, as larger sizes have shown to not be effective and actually cause the graft/copy to slow down in some cases ([#5924](https://github.com/graphprotocol/graph-node/pull/5924))  
+   - Deployments being copied are excluded from pruning. ([#5893](https://github.com/graphprotocol/graph-node/pull/5893)) 
+   - Failed deployments can now be copied.  ([#5893](https://github.com/graphprotocol/graph-node/pull/5893)) 
+
+5. **Composable subgraphs**  
+   - Mutable entities are no longer allowed in composed subgraphs. ([#5909](https://github.com/graphprotocol/graph-node/pull/5909)) 
+   - Graft chains are validated for incompatible spec versions. ([#5911](https://github.com/graphprotocol/graph-node/pull/5911))
+   - New env‑var `GRAPH_ETHEREUM_FORCE_RPC_FOR_BLOCK_PTRS` prefers RPC over Firehose. ([#5876](https://github.com/graphprotocol/graph-node/pull/5876))
+
+6. **Aggregations**  
+   - Aggregate entities can be ordered by any field, not only `timestamp` / `id`. ([#5829](https://github.com/graphprotocol/graph-node/pull/5829))
+
+7. **Start‑up hardening**  
+   - Database setup now uses a single lock on the primary to prevent race conditions when multiple nodes start together. ([#5926](https://github.com/graphprotocol/graph-node/pull/5926))
+   - Shards with pool size 0 are filtered out at boot. ([#5926](https://github.com/graphprotocol/graph-node/pull/5926))
+
+8. **Graphman quality‑of‑life**  
+   - Load management disabled while running `graphman` commands. ([c765ce7a](https://github.com/graphprotocol/graph-node/commit/c765ce7a09dd93249a8541503f7c55f0a686dfc6))  
+   - `graphman copy create` errors include the source deployment ID. ([701f77d2](https://github.com/graphprotocol/graph-node/commit/701f77d2d39decfef2ec2d91aa5df0cf5abb7c69))  
+
+9. **Combined views of sharded tables in the primary**
+   - The primary now has a namespace `sharded` that contains views that combines sharded tables such as `subgraph_deployment` into one view across shards. ([#5820](https://github.com/graphprotocol/graph-node/pull/5820))
+---
+
+### Fixes (selected)
+
+- Aggregate indexes were sometimes created twice when postponed. ([4be64c16](https://github.com/graphprotocol/graph-node/commit/4be64c16f575c9da424ac730e26a497f829683ee))  
+- Duplicate `remove` operations in a write batch no longer cause failures. ([17360f56](https://github.com/graphprotocol/graph-node/commit/17360f56c7657e49d2b5da2fafa5d8d633d556f7))  
+- Incorrect hashing when grafting from subgraphs with `specVersion` < 0.0.6 fixed. ([#5917](https://github.com/graphprotocol/graph-node/pull/5917))  
+- Firehose TLS configuration corrected. ([36ad6a24](https://github.com/graphprotocol/graph-node/commit/36ad6a24a2456fa5504f14b20dd59c0cffae2b40))  
+- Numerous small fixes in estimation of graft/copy batch size, namespace mapping, copy status display, and error messages.  
+
+---
+
 
 ## v0.37.0
 
 ### What's new
 
-- A new `deployment_status` metric is added [(#5720)](https://github.com/graphprotocol/graph-node/pull/5720) with the
-  following behavior:
-    - Once graph-node has figured out that it should index a deployment, `deployment_status` is set to `1` _(starting)_;
-    - When the block stream is created and blocks are ready to be processed, `deployment_status` is set to `2` _(
-      running)_;
-    - When a deployment is unassigned, `deployment_status` is set to `3` _(stopped)_;
-    - If a temporary or permanent failure occurs, `deployment_status` is set to `4` _(failed)_;
-        - If indexing manages to recover from a temporary failure, the `deployment_status` is set back to `2` _(
-          running)_;
+- **Composable Subgraphs**: A feature that enables subgraphs to use other subgraphs as data sources. This introduces modularity in subgraph development by allowing developers to create source subgraphs that can be referenced by dependent subgraphs. The feature supports up to 5 subgraph datasources.
+
+  **Note for Indexers**: To deploy a dependent subgraph, the source subgraph(s) must already be deployed and available on your infrastructure.
+
+- **YAML Parsing in Subgraph Mappings**: Added YAML parsing support to subgraph mappings through new host functions, enabling subgraphs to parse YAML documents (including subgraph manifests) directly in their mappings
+
+### Improvements
+
+- Added new deployment metrics:
+  - `deployment_status`: Tracks deployment lifecycle (starting, running, stopped, failed)
+  - `deployment_synced`: Indicates if deployment has reached chain head
+- Optimized copy, graft, and prune operations for unevenly distributed rows
+- Improved error handling for substreams-powered subgraphs
+- Enhanced error handling when restarting paused subgraphs
+- Improved Firehose block request handling with retries and block cache
+<!-- - Various VID-related fixes and improvements -->
+- Fixed issue with metrics not reporting updated values
+
+### Graphman
+
+- Added unassign/reassign commands to GraphQL API
 
 ### Breaking changes
 
-- The `deployment_failed` metric is removed and the failures are reported by the new `deployment_status`
-  metric. [(#5720)](https://github.com/graphprotocol/graph-node/pull/5720)
+- The `deployment_failed` metric has been removed in favor of the new `deployment_status` metric
+
 
 ## v0.36.0
 
