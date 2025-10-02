@@ -311,7 +311,9 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
             }
             TxType::Eip2930 => {
                 let tx = TxEip2930 {
-                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    // Firehose protobuf doesn't provide chain_id for transactions.
+                    // Using 0 as placeholder since the transaction has already been validated on-chain.
+                    chain_id: 0,
                     nonce,
                     gas_price,
                     gas_limit,
@@ -329,7 +331,9 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
             }
             TxType::Eip1559 => {
                 let tx = TxEip1559 {
-                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    // Firehose protobuf doesn't provide chain_id for transactions.
+                    // Using 0 as placeholder since the transaction has already been validated on-chain.
+                    chain_id: 0,
                     nonce,
                     gas_limit,
                     max_fee_per_gas: max_fee_per_gas_u128,
@@ -365,7 +369,9 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                     });
 
                 let tx_eip4844 = TxEip4844 {
-                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    // Firehose protobuf doesn't provide chain_id for transactions.
+                    // Using 0 as placeholder since the transaction has already been validated on-chain.
+                    chain_id: 0,
                     nonce,
                     gas_limit,
                     max_fee_per_gas: max_fee_per_gas_u128,
@@ -391,14 +397,31 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                 })?;
 
                 // Convert set_code_authorizations to alloy authorization list
-                // Note: Alloy's SignedAuthorization expects the full authorization data
-                // For now, we'll leave this empty as converting the protobuf SetCodeAuthorization
-                // to alloy's SignedAuthorization requires signature reconstruction which is complex.
-                // The authorization data is available in self.trace.set_code_authorizations if needed.
-                let authorization_list = Vec::new(); // TODO(alloy_migration): Complex conversion from SetCodeAuthorization to alloy::consensus::SignedAuthorization
+                let authorization_list: Vec<alloy::eips::eip7702::SignedAuthorization> = self
+                    .trace
+                    .set_code_authorizations
+                    .iter()
+                    .map(|auth| {
+                        let inner = alloy::eips::eip7702::Authorization {
+                            chain_id: U256::from_be_slice(&auth.chain_id),
+                            address: Address::from_slice(&auth.address),
+                            nonce: auth.nonce,
+                        };
+
+                        let r = U256::from_be_slice(&auth.r);
+                        let s = U256::from_be_slice(&auth.s);
+                        let y_parity = auth.v as u8;
+
+                        alloy::eips::eip7702::SignedAuthorization::new_unchecked(
+                            inner, y_parity, r, s,
+                        )
+                    })
+                    .collect();
 
                 let tx = TxEip7702 {
-                    chain_id: 0, // TODO(alloy_migration): extract actual chain_id from trace (0 = placeholder)
+                    // Firehose protobuf doesn't provide chain_id for transactions.
+                    // Using 0 as placeholder since the transaction has already been validated on-chain.
+                    chain_id: 0,
                     nonce,
                     gas_limit,
                     max_fee_per_gas: max_fee_per_gas_u128,
