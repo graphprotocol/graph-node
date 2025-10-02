@@ -491,6 +491,39 @@ fn eth_call_cache() {
 }
 
 #[test]
+/// Tests mainly query correctness. Requires data in order not to hit early returns when no stale contracts are found.
+fn test_clear_stale_call_cache() {
+    let chain = vec![];
+    run_test_async(chain, |store, _, _| async move {
+        let logger = LOGGER.cheap_clone();
+        let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
+        let return_value: [u8; 3] = [7, 8, 9];
+
+        // Insert a call cache entry, otherwise it will hit an early return and won't test all queries
+        let call = call::Request::new(address, call.to_vec(), 0);
+        store
+            .set_call(
+                &logger,
+                call.cheap_clone(),
+                BLOCK_ONE.block_ptr(),
+                call::Retval::Value(Bytes::from(return_value)),
+            )
+            .unwrap();
+
+        // Confirm the call cache entry is there
+        let ret = store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        assert!(ret.is_some());
+
+        // Note: The storage field is not accessible from here, so we cannot fetch the Schema for the private chain
+        // and manually populate the cache and meta tables or alter the accessed_at timestamp.
+        // We can only test that the function runs to completion without error.
+        let result = store.clear_stale_call_cache(7).await;
+        assert!(result.is_ok());
+    });
+}
+
+#[test]
 /// Tests only query correctness. No data is involved.
 fn test_transaction_receipts_in_block_function() {
     let chain = vec![];
