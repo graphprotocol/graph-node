@@ -475,6 +475,7 @@ fn eth_call_cache() {
             .unwrap();
         assert_eq!(&new_return_value, ret.as_slice());
 
+        // Reverted calls should not be cached
         store
             .set_call(
                 &logger,
@@ -484,6 +485,19 @@ fn eth_call_cache() {
             )
             .unwrap();
         let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();
+        assert_eq!(None, ret);
+
+        // Empty return values should not be cached
+        let return_value: [u8; 0] = [];
+        store
+            .set_call(
+                &logger,
+                call.cheap_clone(),
+                BLOCK_FOUR.block_ptr(),
+                ccr(&return_value),
+            )
+            .unwrap();
+        let ret = store.get_call(&call, BLOCK_FOUR.block_ptr()).unwrap();
         assert_eq!(None, ret);
 
         Ok(())
