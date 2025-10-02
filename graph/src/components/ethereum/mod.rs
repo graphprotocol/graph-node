@@ -6,4 +6,4 @@ pub use self::types::{
 };
 
 // Re-export Alloy network types for convenience
-pub use alloy::network::{AnyRpcBlock, AnyRpcTransaction, AnyTxEnvelope};
+pub use alloy::network::{AnyHeader, AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope};

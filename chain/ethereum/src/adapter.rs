@@ -1,6 +1,7 @@
 use anyhow::Error;
 use graph::abi;
 use graph::blockchain::ChainIdentifier;
+use graph::components::ethereum::AnyBlock;
 use graph::components::subgraph::MappingError;
 use graph::data::store::ethereum::call;
 use graph::data_source::common::ContractCall;
@@ -8,7 +9,6 @@ use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
 use graph::prelude::alloy::primitives::{Address, B256};
-use graph::prelude::alloy::rpc::types::Block as AlloyBlock;
 use graph::prelude::alloy::rpc::types::Log;
 use graph::prelude::alloy::transports::{RpcError, TransportErrorKind};
 use itertools::Itertools;
@@ -1118,19 +1118,19 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_hash: B256,
-    ) -> Result<Option<AlloyBlock>, Error>;
+    ) -> Result<Option<AnyBlock>, Error>;
 
     async fn block_by_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Result<Option<AlloyBlock>, Error>;
+    ) -> Result<Option<AnyBlock>, Error>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
     async fn load_full_block(
         &self,
         logger: &Logger,
-        block: AlloyBlock,
+        block: AnyBlock,
     ) -> Result<EthereumBlock, bc::IngestorError>;
 
     /// Finds the hash and number of the lowest non-null block with height greater than or equal to

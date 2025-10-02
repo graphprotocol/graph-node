@@ -24,7 +24,7 @@ use graph::prelude::alloy::primitives::Address;
 use graph::prelude::{
     alloy::{
         self,
-        network::TransactionResponse,
+        network::{AnyNetwork, TransactionResponse},
         primitives::B256,
         providers::{
             ext::TraceApi,
@@ -35,7 +35,7 @@ use graph::prelude::{
         },
         rpc::types::{
             trace::{filter::TraceFilter as AlloyTraceFilter, parity::LocalizedTransactionTrace},
-            Block as AlloyBlock, TransactionInput, TransactionRequest,
+            TransactionInput, TransactionRequest,
         },
         transports::{RpcError, TransportErrorKind},
     },
@@ -84,7 +84,8 @@ type AlloyProvider = FillProvider<
         Identity,
         JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
     >,
-    RootProvider,
+    RootProvider<AnyNetwork>,
+    AnyNetwork,
 >;
 
 #[derive(Clone)]
@@ -140,17 +141,24 @@ impl EthereumAdapter {
         call_only: bool,
     ) -> Self {
         let alloy = match &transport {
-            Transport::RPC { client, .. } => {
-                Arc::new(alloy::providers::ProviderBuilder::new().connect_client(client.clone()))
-            }
+            Transport::RPC { client, .. } => Arc::new(
+                alloy::providers::ProviderBuilder::<_, _, AnyNetwork>::default()
+                    .network::<AnyNetwork>()
+                    .with_recommended_fillers()
+                    .connect_client(client.clone()),
+            ),
             Transport::IPC(ipc_connect) => Arc::new(
-                alloy::providers::ProviderBuilder::new()
+                alloy::providers::ProviderBuilder::<_, _, AnyNetwork>::default()
+                    .network::<AnyNetwork>()
+                    .with_recommended_fillers()
                     .connect_ipc(ipc_connect.clone())
                     .await
                     .unwrap(),
             ),
             Transport::WS(ws_connect) => Arc::new(
-                alloy::providers::ProviderBuilder::new()
+                alloy::providers::ProviderBuilder::<_, _, AnyNetwork>::default()
+                    .network::<AnyNetwork>()
+                    .with_recommended_fillers()
                     .connect_ws(ws_connect.clone())
                     .await
                     .unwrap(),
@@ -300,7 +308,7 @@ impl EthereumAdapter {
     // cached. The result is not used for anything critical, so it is fine to be lazy.
     async fn check_block_receipt_support_and_update_cache(
         &self,
-        alloy: Arc<dyn Provider>,
+        alloy: Arc<AlloyProvider>,
         block_hash: B256,
         supports_eip_1898: bool,
         call_only: bool,
@@ -663,7 +671,7 @@ impl EthereumAdapter {
                         req = req.gas_limit(gas as u64);
                     }
 
-                    let result = alloy.call(req).block(alloy_block_id).await;
+                    let result = alloy.call(req.into()).block(alloy_block_id).await;
 
                     match result {
                         Ok(bytes) => Ok(call::Retval::Value(scalar::Bytes::from(bytes))),
@@ -732,7 +740,7 @@ impl EthereumAdapter {
                                 .map_err(Error::from)
                                 .and_then(|block| {
                                     block
-                                        .map(|b| Arc::new(LightEthereumBlock::new(b.into())))
+                                        .map(|b| Arc::new(LightEthereumBlock::new(b)))
                                         .ok_or_else(|| {
                                             anyhow::anyhow!(
                                                 "Ethereum node did not find block {:?}",
@@ -1252,7 +1260,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
         block_hash: B256,
-    ) -> Result<Option<AlloyBlock>, Error> {
+    ) -> Result<Option<AnyBlock>, Error> {
         let alloy = self.alloy.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
@@ -1286,7 +1294,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Result<Option<AlloyBlock>, Error> {
+    ) -> Result<Option<AnyBlock>, Error> {
         let alloy = self.alloy.clone();
         let logger = logger.clone();
         let retry_log_message = format!(
@@ -1323,7 +1331,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn load_full_block(
         &self,
         logger: &Logger,
-        block: AlloyBlock,
+        block: AnyBlock,
     ) -> Result<EthereumBlock, IngestorError> {
         let alloy = self.alloy.clone();
         let logger = logger.clone();
@@ -1334,7 +1342,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         if block.transactions.is_empty() {
             trace!(logger, "Block {} contains no transactions", block_hash);
             return Ok(EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block.into())),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 transaction_receipts: Vec::new(),
             });
         }
@@ -1353,7 +1361,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         fetch_receipts_with_retry(alloy, hashes, block_hash, logger, supports_block_receipts)
             .await
             .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block.into())),
+                block: Arc::new(LightEthereumBlock::new(block)),
                 transaction_receipts: transaction_receipts
                     .into_iter()
                     .map(|receipt| receipt)
@@ -2003,7 +2011,7 @@ pub(crate) fn parse_block_triggers(
 async fn fetch_receipt_from_ethereum_client(
     eth: &EthereumAdapter,
     transaction_hash: B256,
-) -> anyhow::Result<alloy::rpc::types::TransactionReceipt> {
+) -> anyhow::Result<alloy::network::AnyTransactionReceipt> {
     match eth.alloy.get_transaction_receipt(transaction_hash).await {
         Ok(Some(receipt)) => Ok(receipt),
         Ok(None) => bail!("Could not find transaction receipt"),
@@ -2152,11 +2160,11 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
 /// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry loop.
 async fn fetch_transaction_receipts_in_batch_with_retry(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::network::AnyTransactionReceipt>>, IngestorError> {
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
         block_hash
@@ -2178,11 +2186,11 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
 
 /// Deprecated. Attempts to fetch multiple transaction receipts in a batching context.
 async fn fetch_transaction_receipts_in_batch(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::network::AnyTransactionReceipt>>, IngestorError> {
     // Use the batch method to get all receipts at once
     let receipts = batch_get_transaction_receipts(alloy, hashes.clone())
         .await
@@ -2208,16 +2216,16 @@ async fn fetch_transaction_receipts_in_batch(
 }
 
 async fn batch_get_transaction_receipts(
-    provider: Arc<dyn Provider>,
+    provider: Arc<AlloyProvider>,
     tx_hashes: Vec<B256>,
-) -> Result<Vec<Option<alloy::rpc::types::TransactionReceipt>>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Option<alloy::network::AnyTransactionReceipt>>, Box<dyn std::error::Error>> {
     let mut batch = alloy::rpc::client::BatchRequest::new(provider.client());
     let mut receipt_futures = Vec::new();
 
     // Add all receipt requests to batch
     for tx_hash in &tx_hashes {
         let receipt_future = batch
-            .add_call::<(B256,), Option<alloy::rpc::types::TransactionReceipt>>(
+            .add_call::<(B256,), Option<alloy::network::AnyTransactionReceipt>>(
                 "eth_getTransactionReceipt",
                 &(*tx_hash,),
             )?;
@@ -2238,7 +2246,7 @@ async fn batch_get_transaction_receipts(
 }
 
 pub(crate) async fn check_block_receipt_support(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     block_hash: B256,
     supports_eip_1898: bool,
     call_only: bool,
@@ -2267,12 +2275,12 @@ pub(crate) async fn check_block_receipt_support(
 // based on whether block receipts are supported or individual transaction receipts
 // need to be fetched.
 async fn fetch_receipts_with_retry(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
     supports_block_receipts: bool,
-) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::network::AnyTransactionReceipt>>, IngestorError> {
     if supports_block_receipts {
         return fetch_block_receipts_with_retry(alloy, hashes, block_hash, logger).await;
     }
@@ -2281,11 +2289,11 @@ async fn fetch_receipts_with_retry(
 
 // Fetches receipts for each transaction in the block individually.
 async fn fetch_individual_receipts_with_retry(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::network::AnyTransactionReceipt>>, IngestorError> {
     if ENV_VARS.fetch_receipts_in_batches {
         return fetch_transaction_receipts_in_batch_with_retry(alloy, hashes, block_hash, logger)
             .await;
@@ -2305,18 +2313,18 @@ async fn fetch_individual_receipts_with_retry(
         .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
 
     graph::tokio_stream::StreamExt::collect::<
-        Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError>,
+        Result<Vec<Arc<alloy::network::AnyTransactionReceipt>>, IngestorError>,
     >(receipt_stream)
     .await
 }
 
 /// Fetches transaction receipts of all transactions in a block with `eth_getBlockReceipts` call.
 async fn fetch_block_receipts_with_retry(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     hashes: Vec<B256>,
     block_hash: B256,
     logger: Logger,
-) -> Result<Vec<Arc<alloy::rpc::types::TransactionReceipt>>, IngestorError> {
+) -> Result<Vec<Arc<alloy::network::AnyTransactionReceipt>>, IngestorError> {
     use graph::prelude::alloy::rpc::types::BlockId;
     let logger = logger.cheap_clone();
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
@@ -2357,11 +2365,11 @@ async fn fetch_block_receipts_with_retry(
 
 /// Retries fetching a single transaction receipt using alloy, then converts to web3 format.
 async fn fetch_transaction_receipt_with_retry(
-    alloy: Arc<dyn Provider>,
+    alloy: Arc<AlloyProvider>,
     transaction_hash: B256,
     block_hash: B256,
     logger: Logger,
-) -> Result<Arc<alloy::rpc::types::TransactionReceipt>, IngestorError> {
+) -> Result<Arc<alloy::network::AnyTransactionReceipt>, IngestorError> {
     let logger = logger.cheap_clone();
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
@@ -2385,11 +2393,11 @@ async fn fetch_transaction_receipt_with_retry(
 }
 
 fn resolve_transaction_receipt(
-    transaction_receipt: Option<alloy::rpc::types::TransactionReceipt>,
+    transaction_receipt: Option<alloy::network::AnyTransactionReceipt>,
     transaction_hash: B256,
     block_hash: B256,
     logger: Logger,
-) -> Result<alloy::rpc::types::TransactionReceipt, IngestorError> {
+) -> Result<alloy::network::AnyTransactionReceipt, IngestorError> {
     match transaction_receipt {
         // A receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
@@ -2522,10 +2530,10 @@ async fn get_transaction_receipts_for_transaction_hashes(
     transaction_hashes_by_block: &HashMap<B256, HashSet<B256>>,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     logger: Logger,
-) -> Result<HashMap<B256, Arc<alloy::rpc::types::TransactionReceipt>>, anyhow::Error> {
+) -> Result<HashMap<B256, Arc<alloy::network::AnyTransactionReceipt>>, anyhow::Error> {
     use std::collections::hash_map::Entry::Vacant;
 
-    let mut receipts_by_hash: HashMap<B256, Arc<alloy::rpc::types::TransactionReceipt>> =
+    let mut receipts_by_hash: HashMap<B256, Arc<alloy::network::AnyTransactionReceipt>> =
         HashMap::new();
 
     // Return early if input set is empty
@@ -2607,6 +2615,8 @@ mod tests {
         EthereumBlockWithCalls,
     };
     use graph::blockchain::BlockPtr;
+    use graph::components::ethereum::AnyBlock;
+    use graph::prelude::alloy::network::AnyNetwork;
     use graph::prelude::alloy::primitives::{Address, Bytes, B256};
     use graph::prelude::alloy::providers::mock::Asserter;
     use graph::prelude::alloy::providers::ProviderBuilder;
@@ -2623,7 +2633,7 @@ mod tests {
 
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block.into())),
+                block: Arc::new(LightEthereumBlock::new(AnyBlock::from(block))),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2684,7 +2694,10 @@ mod tests {
             let json_value: Value = serde_json::from_str(json_response).unwrap();
 
             let asserter = Asserter::new();
-            let provider = ProviderBuilder::new().connect_mocked_client(asserter.clone());
+            let provider = ProviderBuilder::<_, _, AnyNetwork>::default()
+                .network::<AnyNetwork>()
+                .with_recommended_fillers()
+                .connect_mocked_client(asserter.clone());
 
             asserter.push_success(&json_value);
 
@@ -2765,7 +2778,7 @@ mod tests {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block.into())),
+                block: Arc::new(LightEthereumBlock::new(AnyBlock::from(block))),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {
@@ -2796,7 +2809,7 @@ mod tests {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block.into())),
+                block: Arc::new(LightEthereumBlock::new(AnyBlock::from(block))),
                 ..Default::default()
             },
             calls: Some(vec![EthereumCall {

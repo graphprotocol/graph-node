@@ -1,5 +1,5 @@
 use alloy::{
-    network::{AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, TransactionResponse},
+    network::{AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, ReceiptResponse, TransactionResponse},
     primitives::{Address, Bytes, B256, U256, U64},
     rpc::types::{
         trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
@@ -199,7 +199,7 @@ pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Arc<LightEthereumBlock>,
-    pub transaction_receipts: Vec<Arc<alloy::rpc::types::TransactionReceipt>>,
+    pub transaction_receipts: Vec<Arc<alloy::network::AnyTransactionReceipt>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]

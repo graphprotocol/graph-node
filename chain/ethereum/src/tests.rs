@@ -123,7 +123,7 @@ fn test_trigger_ordering() {
 
     let b = Block::default();
 
-    let b = LightEthereumBlock::new(b.into());
+    let b = LightEthereumBlock::new(graph::components::ethereum::AnyBlock::from(b));
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
@@ -203,7 +203,7 @@ fn test_trigger_dedup() {
     let b = Block::default();
 
     #[allow(unreachable_code)]
-    let b = LightEthereumBlock::new(b.into());
+    let b = LightEthereumBlock::new(graph::components::ethereum::AnyBlock::from(b));
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(

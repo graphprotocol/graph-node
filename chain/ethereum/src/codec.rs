@@ -7,15 +7,15 @@ use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
+    components::ethereum::{AnyBlock, AnyHeader, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope},
     prelude::{
         alloy::{
             self,
-            consensus::{ReceiptEnvelope, ReceiptWithBloom, TxEnvelope, TxType},
+            consensus::{ReceiptWithBloom, TxEnvelope, TxType},
+            network::AnyReceiptEnvelope,
             primitives::{aliases::B2048, Address, Bloom, Bytes, LogData, B256, U256},
-            rpc::types::{
-                AccessList, AccessListItem, Block as AlloyBlock, Transaction,
-                TransactionReceipt as AlloyTransactionReceipt,
-            },
+            rpc::types::{self as alloy_rpc_types, AccessList, AccessListItem, Transaction},
+            serde::WithOtherFields,
         },
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
@@ -142,18 +142,21 @@ impl<'a> TransactionTraceAt<'a> {
     }
 }
 
-impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
+impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
     type Error = Error;
 
-    fn try_into(self) -> Result<Transaction, Self::Error> {
+    fn try_into(self) -> Result<Transaction<AnyTxEnvelope>, Self::Error> {
         use alloy::{
             consensus::transaction::Recovered,
             consensus::{
                 Signed, TxEip1559, TxEip2930, TxEip4844, TxEip4844Variant, TxEip7702, TxLegacy,
             },
+            network::{AnyTxEnvelope, AnyTxType, UnknownTxEnvelope, UnknownTypedTransaction},
             primitives::{Bytes, TxKind, U256},
             rpc::types::Transaction as AlloyTransaction,
+            serde::OtherFields,
         };
+        use std::collections::BTreeMap;
 
         // Extract data from trace and block
         let block_hash = self.block.hash.try_decode_proto("transaction block hash")?;
@@ -172,20 +175,77 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
         let gas_limit = self.trace.gas_limit;
         let input = Bytes::from(self.trace.input.clone());
 
-        let tx_type = u64::try_from(self.trace.r#type).map_err(|_| {
+        let tx_type_u64 = u64::try_from(self.trace.r#type).map_err(|_| {
             format_err!(
                 "Invalid transaction type value {} in transaction trace. Transaction type must be a valid u64.",
                 self.trace.r#type
             )
         })?;
 
-        let tx_type = TxType::try_from(tx_type).map_err(|_| {
-            format_err!(
-                "Unsupported transaction type {} in transaction trace. Only standard Ethereum transaction types (Legacy=0, EIP-2930=1, EIP-1559=2, EIP-4844=3, EIP-7702=4) are supported.",
-                tx_type
-            )
-        })?;
+        // Try to convert to known Ethereum transaction type
+        let tx_type_result = TxType::try_from(tx_type_u64);
 
+        // If this is an unknown transaction type, create an UnknownTxEnvelope
+        if tx_type_result.is_err() {
+            let mut fields_map = BTreeMap::new();
+
+            fields_map.insert(
+                "nonce".to_string(),
+                jsonrpc_core::serde_json::json!(format!("0x{:x}", self.trace.nonce)),
+            );
+            fields_map.insert(
+                "from".to_string(),
+                jsonrpc_core::serde_json::json!(format!("{:?}", from_address)),
+            );
+            if let Some(to_addr) = to {
+                fields_map.insert(
+                    "to".to_string(),
+                    jsonrpc_core::serde_json::json!(format!("{:?}", to_addr)),
+                );
+            }
+            fields_map.insert(
+                "value".to_string(),
+                jsonrpc_core::serde_json::json!(format!("0x{:x}", value)),
+            );
+            fields_map.insert(
+                "gas".to_string(),
+                jsonrpc_core::serde_json::json!(format!("0x{:x}", gas_limit)),
+            );
+            fields_map.insert(
+                "gasPrice".to_string(),
+                jsonrpc_core::serde_json::json!(format!("0x{:x}", gas_price)),
+            );
+            fields_map.insert(
+                "input".to_string(),
+                jsonrpc_core::serde_json::json!(format!("0x{}", hex::encode(&input))),
+            );
+
+            let fields = OtherFields::new(fields_map);
+            let unknown_tx = UnknownTypedTransaction {
+                ty: AnyTxType(tx_type_u64 as u8),
+                fields,
+                memo: Default::default(),
+            };
+
+            let tx_hash = self.trace.hash.try_decode_proto("transaction hash")?;
+            let unknown_envelope = UnknownTxEnvelope {
+                hash: tx_hash,
+                inner: unknown_tx,
+            };
+
+            let any_envelope = AnyTxEnvelope::Unknown(unknown_envelope);
+            let recovered = Recovered::new_unchecked(any_envelope, from_address);
+
+            return Ok(AlloyTransaction {
+                inner: recovered,
+                block_hash: Some(block_hash),
+                block_number: Some(block_number),
+                transaction_index,
+                effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None },
+            });
+        }
+
+        let tx_type = tx_type_result.unwrap();
         let nonce = self.trace.nonce;
 
         // Extract EIP-1559 fee fields from trace
@@ -358,7 +418,8 @@ impl<'a> TryInto<Transaction> for TransactionTraceAt<'a> {
             }
         };
 
-        let recovered = Recovered::new_unchecked(envelope, from_address);
+        let any_envelope = AnyTxEnvelope::Ethereum(envelope);
+        let recovered = Recovered::new_unchecked(any_envelope, from_address);
 
         Ok(AlloyTransaction {
             inner: recovered,
@@ -378,10 +439,10 @@ impl TryInto<BlockFinality> for &Block {
     }
 }
 
-impl TryInto<AlloyBlock> for &Block {
+impl TryInto<AnyBlock> for &Block {
     type Error = Error;
 
-    fn try_into(self) -> Result<AlloyBlock, Self::Error> {
+    fn try_into(self) -> Result<AnyBlock, Self::Error> {
         let header = self.header();
 
         let block_hash = self.hash.try_decode_proto("block hash")?;
@@ -458,7 +519,7 @@ impl TryInto<AlloyBlock> for &Block {
             .transaction_traces
             .iter()
             .map(|t| TransactionTraceAt::new(t, self).try_into())
-            .collect::<Result<Vec<Transaction>, Error>>()?;
+            .collect::<Result<Vec<Transaction<AnyTxEnvelope>>, Error>>()?;
 
         let uncles = self
             .uncles
@@ -466,11 +527,23 @@ impl TryInto<AlloyBlock> for &Block {
             .map(|u| u.hash.try_decode_proto("uncle hash"))
             .collect::<Result<Vec<B256>, _>>()?;
 
-        Ok(AlloyBlock::new(
-            rpc_header,
-            alloy::rpc::types::BlockTransactions::Full(transactions),
-        )
-        .with_uncles(uncles))
+        use alloy::rpc::types::Block;
+
+        let any_header: AnyRpcHeader = rpc_header.map(AnyHeader::from);
+
+        let any_transactions: Vec<AnyRpcTransaction> = transactions
+            .into_iter()
+            .map(|tx| AnyRpcTransaction::new(WithOtherFields::new(tx)))
+            .collect();
+
+        let any_block = Block {
+            header: any_header,
+            transactions: alloy::rpc::types::BlockTransactions::Full(any_transactions),
+            uncles,
+            withdrawals: None,
+        };
+
+        Ok(AnyBlock::new(WithOtherFields::new(any_block)))
     }
 }
 
@@ -478,7 +551,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
     type Error = Error;
 
     fn try_into(self) -> Result<EthereumBlockWithCalls, Self::Error> {
-        let alloy_block: AlloyBlock = self.try_into()?;
+        let alloy_block: AnyBlock = self.try_into()?;
 
         let transaction_receipts = self
             .transaction_traces
@@ -494,7 +567,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
         #[allow(unreachable_code)]
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(alloy_block.into())),
+                block: Arc::new(LightEthereumBlock::new(alloy_block)),
                 transaction_receipts,
             },
             // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block
@@ -521,7 +594,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
 fn transaction_trace_to_alloy_txn_reciept(
     t: &TransactionTrace,
     block: &Block,
-) -> Result<Option<AlloyTransactionReceipt<ReceiptEnvelope<alloy::rpc::types::Log>>>, Error> {
+) -> Result<Option<alloy::network::AnyTransactionReceipt>, Error> {
     use alloy::consensus::{Eip658Value, Receipt};
     let r = t.receipt.as_ref();
 
@@ -588,27 +661,19 @@ fn transaction_trace_to_alloy_txn_reciept(
 
     let receipt_with_bloom = ReceiptWithBloom::new(core_receipt, logs_bloom);
 
-    let tx_type = TxType::try_from(u64::try_from(t.r#type).map_err(|_| {
+    let tx_type_u64 = u64::try_from(t.r#type).map_err(|_| {
         format_err!(
             "Invalid transaction type value {} in transaction receipt. Transaction type must be a valid u64.",
             t.r#type
         )
-    })?).map_err(|_| {
-        format_err!(
-            "Unsupported transaction type {} in transaction receipt. Only standard Ethereum transaction types (Legacy=0, EIP-2930=1, EIP-1559=2, EIP-4844=3, EIP-7702=4) are supported.",
-            t.r#type
-        )
     })?;
 
-    let envelope = match tx_type {
-        TxType::Legacy => ReceiptEnvelope::Legacy(receipt_with_bloom),
-        TxType::Eip2930 => ReceiptEnvelope::Eip2930(receipt_with_bloom),
-        TxType::Eip1559 => ReceiptEnvelope::Eip1559(receipt_with_bloom),
-        TxType::Eip4844 => ReceiptEnvelope::Eip4844(receipt_with_bloom),
-        TxType::Eip7702 => ReceiptEnvelope::Eip7702(receipt_with_bloom),
+    let any_envelope = AnyReceiptEnvelope {
+        inner: receipt_with_bloom,
+        r#type: tx_type_u64 as u8,
     };
 
-    Ok(Some(AlloyTransactionReceipt {
+    let receipt = alloy_rpc_types::TransactionReceipt {
         transaction_hash: t.hash.try_decode_proto("transaction hash")?,
         transaction_index: Some(t.index as u64),
         block_hash: Some(block.hash.try_decode_proto("transaction block hash")?),
@@ -626,8 +691,10 @@ fn transaction_trace_to_alloy_txn_reciept(
             let val: U256 = x.into();
             val.to::<u128>()
         }),
-        inner: envelope,
-    }))
+        inner: any_envelope,
+    };
+
+    Ok(Some(WithOtherFields::new(receipt)))
 }
 
 impl BlockHeader {
