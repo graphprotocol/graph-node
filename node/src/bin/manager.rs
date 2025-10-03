@@ -169,6 +169,14 @@ pub enum Command {
         deployment: DeploymentSearch,
         /// The name of the node that should index the deployment
         node: String,
+        /// Sleep for this many seconds between pausing and reassigning subgraphs
+        #[clap(
+            long,
+            short,
+            default_value = "20",
+            value_parser = parse_duration_in_secs
+        )]
+        sleep: Duration,
     },
     /// Unassign a deployment
     Unassign {
@@ -1230,7 +1238,11 @@ async fn main() -> anyhow::Result<()> {
             let deployment = make_deployment_selector(deployment);
             commands::deployment::unassign::run(primary_pool, notifications_sender, deployment)
         }
-        Reassign { deployment, node } => {
+        Reassign {
+            deployment,
+            node,
+            sleep,
+        } => {
             let notifications_sender = ctx.notification_sender();
             let primary_pool = ctx.primary_pool();
             let deployment = make_deployment_selector(deployment);
@@ -1240,6 +1252,7 @@ async fn main() -> anyhow::Result<()> {
                 notifications_sender,
                 deployment,
                 &node,
+                sleep,
             )
         }
         Pause { deployment } => {
