@@ -84,7 +84,7 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
-    pub fn alloc_obj<H: AscHeap + ?Sized>(
+    pub async fn alloc_obj<H: AscHeap + ?Sized>(
         asc_obj: C,
         heap: &mut H,
         gas: &GasCounter,
@@ -94,7 +94,7 @@ impl<C: AscType> AscPtr<C> {
     {
         match heap.api_version() {
             version if version <= &API_VERSION_0_0_4 => {
-                let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?, gas)?;
+                let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?, gas).await?;
                 Ok(AscPtr::new(heap_ptr))
             }
             _ => {
@@ -110,10 +110,11 @@ impl<C: AscType> AscPtr<C> {
                     C::INDEX_ASC_TYPE_ID,
                     asc_obj.content_len(&bytes),
                     bytes.len(),
-                )?;
+                )
+                .await?;
                 let header_len = header.len() as u32;
 
-                let heap_ptr = heap.raw_new(&[header, bytes].concat(), gas)?;
+                let heap_ptr = heap.raw_new(&[header, bytes].concat(), gas).await?;
 
                 // Use header length as offset. so the AscPtr points directly at the content.
                 Ok(AscPtr::new(heap_ptr + header_len))
@@ -140,7 +141,7 @@ impl<C: AscType> AscPtr<C> {
     /// - rt_id: u32 -> identifier for the class being allocated
     /// - rt_size: u32 -> content size
     /// Only used for version >= 0.0.5.
-    fn generate_header<H: AscHeap + ?Sized>(
+    async fn generate_header<H: AscHeap + ?Sized>(
         heap: &mut H,
         type_id_index: IndexForAscTypeId,
         content_length: usize,
@@ -150,7 +151,7 @@ impl<C: AscType> AscPtr<C> {
 
         let gc_info: [u8; 4] = (0u32).to_le_bytes();
         let gc_info2: [u8; 4] = (0u32).to_le_bytes();
-        let asc_type_id = heap.asc_type_id(type_id_index)?;
+        let asc_type_id = heap.asc_type_id(type_id_index).await?;
         let rt_id: [u8; 4] = asc_type_id.to_le_bytes();
         let rt_size: [u8; 4] = (content_length as u32).to_le_bytes();
 

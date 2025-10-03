@@ -35,6 +35,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
+use futures03::future::BoxFuture;
 use graph_derive::CheapClone;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -545,9 +546,14 @@ pub struct HostFnCtx<'a> {
 #[derive(Clone, CheapClone)]
 pub struct HostFn {
     pub name: &'static str,
-    pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
+    pub func: Arc<
+        dyn Send
+            + Sync
+            + for<'a> Fn(HostFnCtx<'a>, u32) -> BoxFuture<'a, Result<u32, HostExportError>>,
+    >,
 }
 
+#[async_trait]
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
     fn host_fns(&self, ds: &data_source::DataSource<C>) -> Result<Vec<HostFn>, Error>;
 }

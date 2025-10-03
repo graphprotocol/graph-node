@@ -2,6 +2,7 @@ use graph::blockchain::Block;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::derive::CheapClone;
+use graph::prelude::async_trait;
 use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
@@ -38,15 +39,16 @@ impl std::fmt::Debug for NearTrigger {
     }
 }
 
+#[async_trait]
 impl ToAscPtr for NearTrigger {
-    fn to_asc_ptr<H: AscHeap>(
+    async fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
-            NearTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
-            NearTrigger::Receipt(receipt) => asc_new(heap, receipt.as_ref(), gas)?.erase(),
+            NearTrigger::Block(block) => asc_new(heap, block.as_ref(), gas).await?.erase(),
+            NearTrigger::Receipt(receipt) => asc_new(heap, receipt.as_ref(), gas).await?.erase(),
         })
     }
 }
@@ -160,20 +162,23 @@ mod tests {
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
         runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
+        tokio,
         util::mem::init_slice,
     };
 
-    #[test]
-    fn block_trigger_to_asc_ptr() {
+    #[tokio::test]
+    async fn block_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
 
-        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::new(GasMetrics::mock()));
+        let result = trigger
+            .to_asc_ptr(&mut heap, &GasCounter::new(GasMetrics::mock()))
+            .await;
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn receipt_trigger_to_asc_ptr() {
+    #[tokio::test]
+    async fn receipt_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Receipt(Arc::new(ReceiptWithOutcome {
             block: Arc::new(block()),
@@ -181,7 +186,9 @@ mod tests {
             receipt: receipt().unwrap(),
         }));
 
-        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::new(GasMetrics::mock()));
+        let result = trigger
+            .to_asc_ptr(&mut heap, &GasCounter::new(GasMetrics::mock()))
+            .await;
         assert!(result.is_ok());
     }
 
@@ -444,8 +451,9 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl AscHeap for BytesHeap {
-        fn raw_new(
+        async fn raw_new(
             &mut self,
             bytes: &[u8],
             _gas: &GasCounter,
@@ -501,7 +509,7 @@ mod tests {
             &self.api_version
         }
 
-        fn asc_type_id(
+        async fn asc_type_id(
             &mut self,
             type_id_index: graph::runtime::IndexForAscTypeId,
         ) -> Result<u32, HostExportError> {

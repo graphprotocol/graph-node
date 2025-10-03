@@ -114,14 +114,14 @@ pub struct TypedArray<T> {
 }
 
 impl<T: AscValue> TypedArray<T> {
-    pub(crate) fn new<H: AscHeap + ?Sized>(
+    pub(crate) async fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         let buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let byte_length = content.len() as u32;
-        let ptr = AscPtr::alloc_obj(buffer, heap, gas)?;
+        let ptr = AscPtr::alloc_obj(buffer, heap, gas).await?;
         Ok(TypedArray {
             buffer: AscPtr::new(ptr.wasm_ptr()), // new AscPtr necessary to convert type parameter
             data_start: ptr.wasm_ptr(),
@@ -264,13 +264,13 @@ pub struct Array<T> {
 }
 
 impl<T: AscValue> Array<T> {
-    pub fn new<H: AscHeap + ?Sized>(
+    pub async fn new<H: AscHeap + ?Sized>(
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
         let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
-        let buffer = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
+        let buffer = AscPtr::alloc_obj(arr_buffer, heap, gas).await?;
         let buffer_data_length = buffer.read_len(heap, gas)?;
         Ok(Array {
             buffer: AscPtr::new(buffer.wasm_ptr()),
