@@ -280,7 +280,7 @@ pub async fn ingest(
     let number = block.header.number;
     // For inserting the block, it doesn't matter whether the block is final or not.
     let block = Arc::new(BlockFinality::Final(Arc::new(LightEthereumBlock::new(
-        block.into(),
+        block,
     ))));
     chain_store.upsert_block(block).await?;
 

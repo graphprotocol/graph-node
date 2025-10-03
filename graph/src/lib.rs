@@ -41,7 +41,6 @@ pub mod abi;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod task_spawn;
-
 pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };

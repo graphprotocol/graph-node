@@ -2,6 +2,7 @@ use graph::abi::DynSolValueExt;
 use graph::abi::{self};
 use graph::data::store::scalar::Timestamp;
 use graph::data::value::Word;
+use graph::prelude::alloy::primitives::{Address, B256};
 use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
 use graph::runtime::AscHeap;
@@ -10,16 +11,13 @@ use graph::runtime::{
 };
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{
-    prelude::{
-        alloy::{self, primitives::U256},
-        serde_json,
-    },
+    prelude::{alloy::primitives::U256, serde_json},
     runtime::FromAscObj,
 };
 
 use crate::asc_abi::class::*;
 
-impl FromAscObj<Uint8Array> for alloy::primitives::Address {
+impl FromAscObj<Uint8Array> for Address {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
         heap: &H,
@@ -31,7 +29,7 @@ impl FromAscObj<Uint8Array> for alloy::primitives::Address {
     }
 }
 
-impl ToAscObj<Uint8Array> for alloy::primitives::Address {
+impl ToAscObj<Uint8Array> for Address {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -41,7 +39,7 @@ impl ToAscObj<Uint8Array> for alloy::primitives::Address {
     }
 }
 
-impl ToAscObj<Uint8Array> for alloy::primitives::B256 {
+impl ToAscObj<Uint8Array> for B256 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -51,7 +49,7 @@ impl ToAscObj<Uint8Array> for alloy::primitives::B256 {
     }
 }
 
-impl FromAscObj<Uint8Array> for alloy::primitives::B256 {
+impl FromAscObj<Uint8Array> for B256 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
         heap: &H,

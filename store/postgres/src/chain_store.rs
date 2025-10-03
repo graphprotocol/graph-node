@@ -169,7 +169,7 @@ mod data {
         hash: Vec<u8>,
     }
 
-    // Like H256::from_slice, but returns an error instead of panicking
+    // Like B256::from_slice, but returns an error instead of panicking
     // when `bytes` does not have the right length
     fn b256_from_bytes(bytes: &[u8]) -> Result<B256, StoreError> {
         if bytes.len() == B256::len_bytes() {

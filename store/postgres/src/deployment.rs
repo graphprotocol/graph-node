@@ -23,13 +23,12 @@ use graph::{
 };
 use graph::{components::store::StoreResult, semver::Version};
 use graph::{
-    data::store::scalar::ToPrimitive,
-    prelude::{anyhow, hex, BlockNumber, BlockPtr, DeploymentHash, DeploymentState, StoreError},
-    schema::InputSchema,
-};
-use graph::{
     data::subgraph::schema::{DeploymentCreate, SubgraphManifestEntity},
     util::backoff::ExponentialBackoff,
+};
+use graph::{
+    prelude::{anyhow, hex, BlockNumber, BlockPtr, DeploymentHash, DeploymentState, StoreError},
+    schema::InputSchema,
 };
 use stable_hash_legacy::crypto::SetHasher;
 use std::sync::Arc;
@@ -261,14 +260,13 @@ fn graft(
             //
             // workaround for arweave
             let hash = B256::from_slice(&hash.as_slice()[..32]);
-            let block = block.to_u64().expect("block numbers fit into a u64");
             let subgraph = DeploymentHash::new(subgraph.clone()).map_err(|_| {
                 StoreError::Unknown(anyhow!(
                     "the base subgraph for a graft must be a valid subgraph id but is `{}`",
                     subgraph
                 ))
             })?;
-            Ok(Some((subgraph, BlockPtr::from((hash, block as i32)))))
+            Ok(Some((subgraph, BlockPtr::from((hash, block)))))
         }
         _ => unreachable!(
             "graftBlockHash and graftBlockNumber are either both set or neither is set"

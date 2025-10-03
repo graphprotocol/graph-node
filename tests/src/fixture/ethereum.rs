@@ -79,12 +79,10 @@ pub async fn chain(
 }
 
 pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
-    #[allow(unused_variables)]
     let ptr = test_ptr(0);
 
     let block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256());
 
-    #[allow(unreachable_code)]
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
         block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block.into()))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(

@@ -43,6 +43,8 @@ impl From<U64> for Value {
 pub mod call {
     use std::sync::Arc;
 
+    use alloy::primitives::Address;
+
     use crate::data::store::scalar::Bytes;
 
     use super::CheapClone;
@@ -104,7 +106,7 @@ pub mod call {
     /// on the call's return value
     #[derive(Debug, Clone, CheapClone)]
     pub struct Request {
-        pub address: alloy::primitives::Address,
+        pub address: Address,
         pub encoded_call: Arc<Bytes>,
         /// The index is set by the caller and is used to identify the
         /// request in related data structures that the caller might have
@@ -112,7 +114,7 @@ pub mod call {
     }
 
     impl Request {
-        pub fn new(address: alloy::primitives::Address, encoded_call: Vec<u8>, index: u32) -> Self {
+        pub fn new(address: Address, encoded_call: Vec<u8>, index: u32) -> Self {
             Request {
                 address,
                 encoded_call: Arc::new(Bytes::from(encoded_call)),

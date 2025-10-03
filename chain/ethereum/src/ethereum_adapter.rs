@@ -20,12 +20,11 @@ use graph::futures03::future::try_join_all;
 use graph::futures03::{
     self, compat::Future01CompatExt, FutureExt, StreamExt, TryFutureExt, TryStreamExt,
 };
-use graph::prelude::alloy::primitives::Address;
 use graph::prelude::{
     alloy::{
         self,
         network::{AnyNetwork, TransactionResponse},
-        primitives::B256,
+        primitives::{Address, B256},
         providers::{
             ext::TraceApi,
             fillers::{
@@ -182,7 +181,7 @@ impl EthereumAdapter {
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: BlockNumber,
         to: BlockNumber,
-        addresses: Vec<alloy::primitives::Address>,
+        addresses: Vec<Address>,
     ) -> Result<Vec<LocalizedTransactionTrace>, Error> {
         assert!(!self.call_only);
 
@@ -223,7 +222,7 @@ impl EthereumAdapter {
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: BlockNumber,
         to: BlockNumber,
-        addresses: Vec<alloy::primitives::Address>,
+        addresses: Vec<Address>,
     ) -> Result<Vec<LocalizedTransactionTrace>, Error> {
         let alloy_trace_filter = Self::build_trace_filter(from, to, &addresses);
         let start = Instant::now();
@@ -249,7 +248,7 @@ impl EthereumAdapter {
     fn build_trace_filter(
         from: BlockNumber,
         to: BlockNumber,
-        addresses: &[alloy::primitives::Address],
+        addresses: &[Address],
     ) -> AlloyTraceFilter {
         let filter = AlloyTraceFilter::default()
             .from_block(from as u64)
@@ -420,7 +419,7 @@ impl EthereumAdapter {
         subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
         from: BlockNumber,
         to: BlockNumber,
-        addresses: Vec<alloy::primitives::Address>,
+        addresses: Vec<Address>,
     ) -> impl futures03::Stream<Item = Result<LocalizedTransactionTrace, Error>> + Send {
         if from > to {
             panic!(
@@ -575,7 +574,7 @@ impl EthereumAdapter {
     async fn code(
         &self,
         logger: &Logger,
-        address: alloy::primitives::Address,
+        address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::Bytes, EthereumRpcError> {
         let alloy = self.alloy.clone();
@@ -609,7 +608,7 @@ impl EthereumAdapter {
     async fn balance(
         &self,
         logger: &Logger,
-        address: alloy::primitives::Address,
+        address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::U256, EthereumRpcError> {
         let alloy = self.alloy.clone();
@@ -1372,7 +1371,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn get_balance(
         &self,
         logger: &Logger,
-        address: alloy::primitives::Address,
+        address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::U256, EthereumRpcError> {
         debug!(
@@ -1386,7 +1385,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     async fn get_code(
         &self,
         logger: &Logger,
-        address: alloy::primitives::Address,
+        address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::Bytes, EthereumRpcError> {
         debug!(

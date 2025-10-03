@@ -595,7 +595,7 @@ where
     EthereumTransactionData<'a>: ToAscObj<T>,
     EthereumBlockData<'a>: ToAscObj<B>,
     Inner: Send + Sync,
-    for<'b> &'b TransactionReceipt<Inner>: ToAscObj<AscEthereumTransactionReceipt>,
+    TransactionReceipt<Inner>: ToAscObj<AscEthereumTransactionReceipt>,
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -673,51 +673,8 @@ impl ToAscObj<AscEthereumLog> for Log {
     }
 }
 
-impl ToAscObj<AscEthereumTransactionReceipt> for &alloy::rpc::types::TransactionReceipt {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEthereumTransactionReceipt, HostExportError> {
-        Ok(AscEthereumTransactionReceipt {
-            transaction_hash: asc_new(heap, &self.transaction_hash, gas)?,
-            transaction_index: asc_new(
-                heap,
-                &BigInt::from(
-                    self.transaction_index
-                        .ok_or(HostExportError::Unknown(anyhow!(
-                            "Transaction index is missing"
-                        )))?,
-                ),
-                gas,
-            )?,
-            block_hash: self
-                .block_hash
-                .map(|block_hash| asc_new(heap, &block_hash, gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            block_number: self
-                .block_number
-                .map(|block_number| asc_new(heap, &BigInt::from(block_number), gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            cumulative_gas_used: asc_new(heap, &BigInt::from(self.gas_used), gas)?,
-            gas_used: asc_new(heap, &BigInt::from(self.gas_used), gas)?,
-            contract_address: self
-                .contract_address
-                .map(|contract_address| asc_new(heap, &contract_address, gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            logs: asc_new(heap, &self.logs(), gas)?,
-            status: asc_new(heap, &BigInt::from(self.status() as u64), gas)?,
-            root: self
-                .state_root()
-                .map(|root| asc_new(heap, &root, gas))
-                .unwrap_or(Ok(AscPtr::null()))?,
-            logs_bloom: asc_new(heap, self.inner.logs_bloom().as_slice(), gas)?,
-        })
-    }
-}
-
 impl ToAscObj<AscEthereumTransactionReceipt>
-    for &TransactionReceipt<alloy::network::AnyReceiptEnvelope<Log>>
+    for TransactionReceipt<alloy::network::AnyReceiptEnvelope<Log>>
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,

@@ -222,7 +222,7 @@ impl From<(Vec<u8>, i32)> for BlockPtr {
 }
 
 impl From<(B256, i32)> for BlockPtr {
-    fn from((hash, number): (alloy::primitives::B256, i32)) -> BlockPtr {
+    fn from((hash, number): (B256, i32)) -> BlockPtr {
         BlockPtr {
             hash: hash.into(),
             number,
@@ -230,7 +230,7 @@ impl From<(B256, i32)> for BlockPtr {
     }
 }
 impl From<(B256, u64)> for BlockPtr {
-    fn from((hash, number): (alloy::primitives::B256, u64)) -> BlockPtr {
+    fn from((hash, number): (B256, u64)) -> BlockPtr {
         let number = i32::try_from(number).unwrap();
         BlockPtr {
             hash: hash.into(),
@@ -239,8 +239,8 @@ impl From<(B256, u64)> for BlockPtr {
     }
 }
 
-impl From<(alloy::primitives::B256, i64)> for BlockPtr {
-    fn from((hash, number): (alloy::primitives::B256, i64)) -> BlockPtr {
+impl From<(B256, i64)> for BlockPtr {
+    fn from((hash, number): (B256, i64)) -> BlockPtr {
         let number = i32::try_from(number).unwrap();
         BlockPtr {
             hash: hash.into(),
@@ -446,9 +446,7 @@ impl IntoValue for ExtendedBlockPtr {
 impl TryFrom<(B256, i32, B256, u64)> for ExtendedBlockPtr {
     type Error = anyhow::Error;
 
-    fn try_from(
-        tuple: (alloy::primitives::B256, i32, alloy::primitives::B256, u64),
-    ) -> Result<Self, Self::Error> {
+    fn try_from(tuple: (B256, i32, B256, u64)) -> Result<Self, Self::Error> {
         let (hash, block_number, parent_hash, timestamp) = tuple;
 
         // Convert timestamp to `BlockTime`

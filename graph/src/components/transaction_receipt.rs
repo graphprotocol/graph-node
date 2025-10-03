@@ -5,7 +5,6 @@
 
 use alloy::network::ReceiptResponse;
 use alloy::primitives::B256;
-use alloy::rpc::types::TransactionReceipt;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LightTransactionReceipt {
@@ -17,24 +16,11 @@ pub struct LightTransactionReceipt {
     pub status: bool,
 }
 
-impl From<TransactionReceipt> for LightTransactionReceipt {
-    fn from(receipt: alloy::rpc::types::TransactionReceipt) -> Self {
-        LightTransactionReceipt {
-            transaction_hash: receipt.transaction_hash,
-            transaction_index: receipt.transaction_index.unwrap(),
-            block_hash: receipt.block_hash,
-            block_number: receipt.block_number,
-            gas_used: receipt.gas_used,
-            status: receipt.status(),
-        }
-    }
-}
-
 impl From<alloy::network::AnyTransactionReceipt> for LightTransactionReceipt {
     fn from(receipt: alloy::network::AnyTransactionReceipt) -> Self {
         LightTransactionReceipt {
             transaction_hash: receipt.transaction_hash,
-            transaction_index: receipt.transaction_index.unwrap(),
+            transaction_index: receipt.transaction_index.unwrap(), // unwrap is safe because its None only for pending transactions, graph-node does not ingest pending transactions
             block_hash: receipt.block_hash,
             block_number: receipt.block_number,
             gas_used: receipt.gas_used,

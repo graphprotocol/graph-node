@@ -1,3 +1,4 @@
+use alloy::primitives::Address;
 use diesel::deserialize::FromSql;
 use diesel::pg::PgValue;
 use diesel::serialize::ToSql;
@@ -57,8 +58,8 @@ impl<'a> From<&'a [u8]> for Bytes {
     }
 }
 
-impl From<alloy::primitives::Address> for Bytes {
-    fn from(address: alloy::primitives::Address) -> Bytes {
+impl From<Address> for Bytes {
+    fn from(address: Address) -> Bytes {
         Bytes::from(address.as_ref())
     }
 }

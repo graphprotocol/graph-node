@@ -10,8 +10,7 @@ use crate::{
     data::value::Word,
     prelude::Link,
 };
-use alloy::primitives::Address;
-use alloy::primitives::U256;
+use alloy::primitives::{Address, U256};
 use alloy::rpc::types::Log;
 use anyhow::{anyhow, Context, Error};
 use graph_derive::CheapClone;
@@ -1327,7 +1326,7 @@ impl DeclaredCall {
 #[derive(Clone, Debug)]
 pub struct ContractCall {
     pub contract_name: String,
-    pub address: alloy::primitives::Address,
+    pub address: Address,
     pub block_ptr: BlockPtr,
     pub function: abi::Function,
     pub args: Vec<abi::DynSolValue>,
@@ -1336,6 +1335,8 @@ pub struct ContractCall {
 
 #[cfg(test)]
 mod tests {
+    use alloy::primitives::B256;
+
     use crate::data::subgraph::SPEC_VERSION_1_3_0;
 
     use super::*;
@@ -1706,15 +1707,15 @@ mod tests {
 
         // Test scenario 1: Unknown parameter
         let inner_log = alloy::primitives::Log {
-            address: alloy::primitives::Address::ZERO,
+            address: Address::ZERO,
             data: alloy::primitives::LogData::new_unchecked(vec![].into(), vec![].into()),
         };
         let log = Log {
             inner: inner_log,
-            block_hash: Some(alloy::primitives::B256::ZERO),
+            block_hash: Some(B256::ZERO),
             block_number: Some(1),
             block_timestamp: None,
-            transaction_hash: Some(alloy::primitives::B256::ZERO),
+            transaction_hash: Some(B256::ZERO),
             transaction_index: Some(0),
             log_index: Some(0),
             removed: false,
@@ -1772,9 +1773,9 @@ mod tests {
         // Create a structure where base has only 2 fields instead of 3
         // The parser thinks there should be 3 fields based on ABI, but at runtime we provide only 2
         let base_struct = DynSolValue::Tuple(vec![
-            DynSolValue::Address(alloy::primitives::Address::from([1u8; 20])), // addr at index 0
-            DynSolValue::Uint(U256::from(100u64), 256),                        // amount at index 1
-                                                                               // Missing the active field at index 2!
+            DynSolValue::Address(Address::from([1u8; 20])), // addr at index 0
+            DynSolValue::Uint(U256::from(100u64), 256),     // amount at index 1
+                                                            // Missing the active field at index 2!
         ]);
 
         let params = vec![DynSolParam {

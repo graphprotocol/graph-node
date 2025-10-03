@@ -22,7 +22,7 @@ use graph::slog::debug;
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
-    prelude::{alloy, EthereumCallCache},
+    prelude::{alloy::primitives::Address, EthereumCallCache},
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     slog::Logger,
 };
@@ -221,7 +221,7 @@ fn eth_get_balance(
     let logger = &ctx.logger;
     let block_ptr = &ctx.block_ptr;
 
-    let address: alloy::primitives::Address = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
+    let address: Address = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
 
     let result = graph::block_on(eth_adapter.get_balance(logger, address, block_ptr.clone()));
 
@@ -255,7 +255,7 @@ fn eth_has_code(
     let logger = &ctx.logger;
     let block_ptr = &ctx.block_ptr;
 
-    let address: alloy::primitives::Address = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
+    let address: Address = asc_get(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?;
 
     let result = graph::block_on(eth_adapter.get_code(logger, address, block_ptr.clone()))
         .map(|v| !v.is_empty());
@@ -386,7 +386,7 @@ fn eth_call(
 #[derive(Clone, Debug)]
 pub struct UnresolvedContractCall {
     pub contract_name: String,
-    pub contract_address: alloy::primitives::Address,
+    pub contract_address: Address,
     pub function_name: String,
     pub function_signature: Option<String>,
     pub function_args: Vec<abi::DynSolValue>,
