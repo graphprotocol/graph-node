@@ -166,8 +166,9 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for abi::DynSolValue {
 
                 asc_new(heap, &n, gas)?.to_payload()
             }
-            Self::FixedBytes(val, _) => {
-                asc_new::<Uint8Array, _, _>(heap, val.as_slice(), gas)?.to_payload()
+            Self::FixedBytes(val, size) => {
+                // FixedBytes stores the value in a 32-byte word, but we only want the first `size` bytes
+                asc_new::<Uint8Array, _, _>(heap, &val.as_slice()[..*size], gas)?.to_payload()
             }
             Self::Address(val) => {
                 asc_new::<AscAddress, _, _>(heap, val.as_slice(), gas)?.to_payload()
