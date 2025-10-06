@@ -15,7 +15,7 @@ use graph::schema::Field;
 use graph::slog::warn;
 use graph::util::cache_weight;
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use graph::data::graphql::TypeExt;
@@ -89,7 +89,7 @@ struct Node {
     /// copies to the point where we need to convert to `q::Value`, and it
     /// would be desirable to base the data structure that GraphQL execution
     /// uses on a DAG rather than a tree, but that's a good amount of work
-    children: BTreeMap<Word, Vec<Rc<Node>>>,
+    children: BTreeMap<Word, Vec<Arc<Node>>>,
 }
 
 impl From<QueryObject> for Node {
@@ -111,11 +111,11 @@ impl CacheWeight for Node {
 
 /// Convert a list of nodes into a `q::Value::List` where each node has also
 /// been converted to a `q::Value`
-fn node_list_as_value(nodes: Vec<Rc<Node>>) -> r::Value {
+fn node_list_as_value(nodes: Vec<Arc<Node>>) -> r::Value {
     r::Value::List(
         nodes
             .into_iter()
-            .map(|node| Rc::try_unwrap(node).unwrap_or_else(|rc| rc.as_ref().clone()))
+            .map(|node| Arc::try_unwrap(node).unwrap_or_else(|arc| arc.as_ref().clone()))
             .map(Into::into)
             .collect(),
     )
@@ -211,9 +211,9 @@ impl Node {
             .expect("__typename must be a string")
     }
 
-    fn set_children(&mut self, response_key: String, nodes: Vec<Rc<Node>>) {
-        fn nodes_weight(nodes: &Vec<Rc<Node>>) -> usize {
-            let vec_weight = nodes.capacity() * std::mem::size_of::<Rc<Node>>();
+    fn set_children(&mut self, response_key: String, nodes: Vec<Arc<Node>>) {
+        fn nodes_weight(nodes: &Vec<Arc<Node>>) -> usize {
+            let vec_weight = nodes.capacity() * std::mem::size_of::<Arc<Node>>();
             let children_weight = nodes.iter().map(|node| node.weight()).sum::<usize>();
             vec_weight + children_weight
         }
@@ -483,7 +483,7 @@ fn add_children(
     children: Vec<Node>,
     response_key: &str,
 ) -> Result<(), QueryExecutionError> {
-    let children: Vec<_> = children.into_iter().map(Rc::new).collect();
+    let children: Vec<_> = children.into_iter().map(Arc::new).collect();
 
     if parents.len() == 1 {
         let parent = parents.first_mut().expect("we just checked");
@@ -495,7 +495,7 @@ fn add_children(
     // children to their parent. This relies on the fact that interfaces
     // make sure that id's are distinct across all implementations of the
     // interface.
-    let mut grouped: HashMap<&Id, Vec<Rc<Node>>> = HashMap::default();
+    let mut grouped: HashMap<&Id, Vec<Arc<Node>>> = HashMap::default();
     for child in children.iter() {
         let parent = child.parent.as_ref().ok_or_else(|| {
             QueryExecutionError::Panic(format!(
