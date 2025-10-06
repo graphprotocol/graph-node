@@ -125,7 +125,7 @@ impl StatusStore for Store {
         Ok(info)
     }
 
-    fn versions_for_subgraph_id(
+    async fn versions_for_subgraph_id(
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {

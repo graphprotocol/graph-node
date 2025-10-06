@@ -719,7 +719,7 @@ pub trait StatusStore: Send + Sync + 'static {
     /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.
     /// The return values are the ids of the `subgraphs.subgraph_version` for
     /// the current and pending versions of the subgraph
-    fn versions_for_subgraph_id(
+    async fn versions_for_subgraph_id(
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError>;
