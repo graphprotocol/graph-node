@@ -122,7 +122,10 @@ impl<S: Store> IndexNodeResolver<S> {
         }
     }
 
-    fn resolve_indexing_statuses(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+    async fn resolve_indexing_statuses(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
         let deployments = field
             .argument_value("subgraphs")
             .map(|value| match value {
@@ -139,11 +142,12 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let infos = self
             .store
-            .status(status::Filter::Deployments(deployments))?;
+            .status(status::Filter::Deployments(deployments))
+            .await?;
         Ok(infos.into_value())
     }
 
-    fn resolve_indexing_statuses_for_subgraph_name(
+    async fn resolve_indexing_statuses_for_subgraph_name(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -162,7 +166,8 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let infos = self
             .store
-            .status(status::Filter::SubgraphName(subgraph_name))?;
+            .status(status::Filter::SubgraphName(subgraph_name))
+            .await?;
 
         Ok(infos.into_value())
     }
@@ -439,7 +444,7 @@ impl<S: Store> IndexNodeResolver<S> {
         Ok(r::Value::List(public_poi_results))
     }
 
-    fn resolve_indexing_status_for_version(
+    async fn resolve_indexing_status_for_version(
         &self,
         field: &a::Field,
 
@@ -456,10 +461,13 @@ impl<S: Store> IndexNodeResolver<S> {
             "current_version" => current_version,
         );
 
-        let infos = self.store.status(status::Filter::SubgraphVersion(
-            subgraph_name,
-            current_version,
-        ))?;
+        let infos = self
+            .store
+            .status(status::Filter::SubgraphVersion(
+                subgraph_name,
+                current_version,
+            ))
+            .await?;
 
         Ok(infos
             .into_iter()
@@ -807,10 +815,11 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         // Resolves the `field.name` top-level field.
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
-                self.resolve_indexing_statuses(field)
+                self.resolve_indexing_statuses(field).await
             }
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
                 self.resolve_indexing_statuses_for_subgraph_name(field)
+                    .await
             }
             (None, "CachedEthereumCall", "cachedEthereumCalls") => {
                 self.resolve_cached_ethereum_calls(field).await
@@ -836,10 +845,10 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         // Resolves the `field.name` top-level field.
         match (prefetched_object, field.name.as_str()) {
             (None, "indexingStatusForCurrentVersion") => {
-                self.resolve_indexing_status_for_version(field, true)
+                self.resolve_indexing_status_for_version(field, true).await
             }
             (None, "indexingStatusForPendingVersion") => {
-                self.resolve_indexing_status_for_version(field, false)
+                self.resolve_indexing_status_for_version(field, false).await
             }
             (None, "subgraphFeatures") => self.resolve_subgraph_features(field).await,
             (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),

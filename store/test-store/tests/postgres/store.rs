@@ -297,9 +297,10 @@ fn remove_test_data(store: Arc<DieselSubgraphStore>) {
         .expect("deleting test entities succeeds");
 }
 
-fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u64 {
+async fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u64 {
     let info = store
         .status(status::Filter::Deployments(vec![subgraph_id.to_string()]))
+        .await
         .unwrap();
     let info = info.first().unwrap();
     info.entity_count
@@ -313,7 +314,7 @@ fn delete_entity() {
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
 
-        let count = get_entity_count(store.clone(), &deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
         transact_and_wait(
             &store.subgraph_store(),
             &deployment,
@@ -324,7 +325,10 @@ fn delete_entity() {
         )
         .await
         .unwrap();
-        assert_eq!(count, get_entity_count(store.clone(), &deployment.hash) + 1);
+        assert_eq!(
+            count,
+            get_entity_count(store.clone(), &deployment.hash).await + 1
+        );
 
         // Check that that the deleted entity id is not present
         assert!(writable.get(&entity_key).unwrap().is_none());
@@ -400,7 +404,7 @@ fn insert_entity() {
             Some("green"),
             5,
         );
-        let count = get_entity_count(store.clone(), &deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
         transact_and_wait(
             &store.subgraph_store(),
             &deployment,
@@ -409,7 +413,10 @@ fn insert_entity() {
         )
         .await
         .unwrap();
-        assert_eq!(count + 1, get_entity_count(store.clone(), &deployment.hash));
+        assert_eq!(
+            count + 1,
+            get_entity_count(store.clone(), &deployment.hash).await
+        );
 
         // Check that new record is in the store
         writable.get(&entity_key).unwrap().unwrap();
@@ -441,7 +448,7 @@ fn update_existing() {
         assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
 
         // Set test entity; as the entity already exists an update should be performed
-        let count = get_entity_count(store.clone(), &deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
         transact_entity_operations(
             &store.subgraph_store(),
             &deployment,
@@ -450,7 +457,10 @@ fn update_existing() {
         )
         .await
         .unwrap();
-        assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
+        assert_eq!(
+            count,
+            get_entity_count(store.clone(), &deployment.hash).await
+        );
 
         // Verify that the entity in the store has changed to what we have set.
         let bin_name = match new_data.get("bin_name") {
@@ -939,9 +949,12 @@ async fn check_basic_revert(store: Arc<DieselStore>, deployment: &DeploymentLoca
 #[test]
 fn revert_block_basic_user() {
     run_test(|store, _, deployment| async move {
-        let count = get_entity_count(store.clone(), &deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
         check_basic_revert(store.clone(), &deployment).await;
-        assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
+        assert_eq!(
+            count,
+            get_entity_count(store.clone(), &deployment.hash).await
+        );
     })
 }
 
@@ -969,9 +982,12 @@ fn revert_block_with_delete() {
         .unwrap();
 
         // Revert deletion
-        let count = get_entity_count(store.clone(), &deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
-        assert_eq!(count + 1, get_entity_count(store.clone(), &deployment.hash));
+        assert_eq!(
+            count + 1,
+            get_entity_count(store.clone(), &deployment.hash).await
+        );
 
         // Query after revert
         let returned_entities = store
@@ -1015,9 +1031,12 @@ fn revert_block_with_partial_update() {
         .unwrap();
 
         // Perform revert operation, reversing the partial update
-        let count = get_entity_count(store.clone(), &deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
-        assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
+        assert_eq!(
+            count,
+            get_entity_count(store.clone(), &deployment.hash).await
+        );
 
         // Obtain the reverted entity from the store
         let reverted_entity = writable.get(&entity_key).unwrap().expect("missing entity");

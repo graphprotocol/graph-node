@@ -386,13 +386,17 @@ fn status() {
                 "notASubgraph".to_string(),
                 "not-even-a-valid-id".to_string(),
             ]))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
         assert_eq!(NAME, info.subgraph);
         assert!(!info.synced);
 
-        let infos = store.status(status::Filter::Deployments(vec![])).unwrap();
+        let infos = store
+            .status(status::Filter::Deployments(vec![]))
+            .await
+            .unwrap();
         assert_eq!(2, infos.len());
         let info = infos
             .into_iter()
@@ -403,6 +407,7 @@ fn status() {
 
         let infos = store
             .status(status::Filter::SubgraphName(NAME.to_string()))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
@@ -411,6 +416,7 @@ fn status() {
 
         let infos = store
             .status(status::Filter::SubgraphVersion(NAME.to_string(), true))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
@@ -419,16 +425,19 @@ fn status() {
 
         let infos = store
             .status(status::Filter::SubgraphVersion(NAME.to_string(), false))
+            .await
             .unwrap();
         assert!(infos.is_empty());
 
         let infos = store
             .status(status::Filter::SubgraphName("invalid name".to_string()))
+            .await
             .unwrap();
         assert_eq!(0, infos.len());
 
         let infos = store
             .status(status::Filter::SubgraphName("notASubgraph".to_string()))
+            .await
             .unwrap();
         assert_eq!(0, infos.len());
 
@@ -437,6 +446,7 @@ fn status() {
                 "notASubgraph".to_string(),
                 true,
             ))
+            .await
             .unwrap();
         assert_eq!(0, infos.len());
 
@@ -461,6 +471,7 @@ fn status() {
             .status(status::Filter::Deployments(vec![deployment
                 .hash
                 .to_string()]))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
