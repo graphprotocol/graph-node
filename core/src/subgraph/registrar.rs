@@ -18,9 +18,9 @@ use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use graph::tokio_retry::Retry;
 use graph::util::futures::retry_strategy;
 use graph::util::futures::RETRY_DEFAULT_LIMIT;
+use tokio_retry::Retry;
 
 pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,
@@ -233,7 +233,7 @@ where
         &self,
         name: SubgraphName,
     ) -> Result<CreateSubgraphResult, SubgraphRegistrarError> {
-        let id = self.store.create_subgraph(name.clone())?;
+        let id = self.store.create_subgraph(name.clone()).await?;
 
         debug!(self.logger, "Created subgraph"; "subgraph_name" => name.to_string());
 
@@ -365,7 +365,7 @@ where
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError> {
-        self.store.clone().remove_subgraph(name.clone())?;
+        self.store.clone().remove_subgraph(name.clone()).await?;
 
         debug!(self.logger, "Removed subgraph"; "subgraph_name" => name.to_string());
 
@@ -381,31 +381,31 @@ where
         hash: &DeploymentHash,
         node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
-        let locator = self.store.active_locator(hash)?;
+        let locator = self.store.active_locator(hash).await?;
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
-        self.store.reassign_subgraph(&deployment, node_id)?;
+        self.store.reassign_subgraph(&deployment, node_id).await?;
 
         Ok(())
     }
 
     async fn pause_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
-        let locator = self.store.active_locator(hash)?;
+        let locator = self.store.active_locator(hash).await?;
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
-        self.store.pause_subgraph(&deployment)?;
+        self.store.pause_subgraph(&deployment).await?;
 
         Ok(())
     }
 
     async fn resume_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
-        let locator = self.store.active_locator(hash)?;
+        let locator = self.store.active_locator(hash).await?;
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
-        self.store.resume_subgraph(&deployment)?;
+        self.store.resume_subgraph(&deployment).await?;
 
         Ok(())
     }
@@ -491,7 +491,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     // Validate the graft_base if there is a pending graft, ensuring its presence.
     // If the subgraph is new (indicated by DeploymentNotFound), the graft_base should be validated.
     // If the subgraph already exists and there is no pending graft, graft_base validation is not required.
-    let should_validate = match store.graft_pending(&deployment) {
+    let should_validate = match store.graft_pending(&deployment).await {
         Ok(graft_pending) => graft_pending,
         Err(StoreError::DeploymentNotFound(_)) => true,
         Err(e) => return Err(SubgraphRegistrarError::StoreError(e)),
@@ -512,7 +512,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     let store = store.clone();
     let deployment_store = store.clone();
 
-    if !store.subgraph_exists(&name)? {
+    if !store.subgraph_exists(&name).await? {
         debug!(
             logger,
             "Subgraph not found, could not create_subgraph_version";
@@ -587,5 +587,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
             network_name.into(),
             version_switching_mode,
         )
+        .await
         .map_err(SubgraphRegistrarError::SubgraphDeploymentError)
 }

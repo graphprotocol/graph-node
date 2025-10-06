@@ -5,6 +5,7 @@ use graph::data_source::CausalityRegion;
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::Range;
 use test_store::*;
@@ -102,14 +103,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
+        .await
         .unwrap()
-}
-
-/// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<DieselSubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
 }
 
 /// Test harness for running database integration tests.
@@ -123,12 +118,12 @@ where
         ) -> R
         + Send
         + 'static,
-    R: std::future::Future<Output = ()> + Send + 'static,
+    R: Future<Output = ()> + Send + 'static,
 {
     run_test_sequentially(|store| async move {
         let subgraph_store = store.subgraph_store();
         // Reset state before starting
-        remove_test_data(subgraph_store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let deployment = insert_test_data(subgraph_store.clone()).await;
@@ -214,17 +209,18 @@ async fn pause_writer(deployment: &DeploymentLocator) {
 ///
 /// `read_count` lets us look up entities in different ways to exercise
 /// different methods in `WritableStore`
-fn get_with_pending<F>(batch: bool, read_count: F)
+fn get_with_pending<R, F>(batch: bool, read_count: F)
 where
-    F: Send + Fn(&dyn WritableStore) -> i32 + Sync + 'static,
+    F: Send + Fn(Arc<dyn WritableStore>) -> R + Sync + 'static,
+    R: Future<Output = i32> + Send + 'static,
 {
     run_test(move |store, writable, _, deployment| async move {
         let subgraph_store = store.subgraph_store();
 
-        let read_count = || read_count(writable.as_ref());
+        let read_count = || read_count(writable.cheap_clone());
 
         if !batch {
-            writable.deployment_synced(block_pointer(0)).unwrap();
+            writable.deployment_synced(block_pointer(0)).await.unwrap();
         }
 
         for count in 1..4 {
@@ -236,10 +232,10 @@ where
         for count in 4..7 {
             insert_count(&subgraph_store, &deployment, count, count, false).await;
         }
-        assert_eq!(6, read_count());
+        assert_eq!(6, read_count().await);
 
         writable.flush().await.unwrap();
-        assert_eq!(6, read_count());
+        assert_eq!(6, read_count().await);
 
         // Test reading back with pending writes and a pending revert
         for count in 7..10 {
@@ -250,28 +246,34 @@ where
             .await
             .unwrap();
 
-        assert_eq!(2, read_count());
+        assert_eq!(2, read_count().await);
 
         writable.flush().await.unwrap();
-        assert_eq!(2, read_count());
+        assert_eq!(2, read_count().await);
     })
 }
 
 /// Get the count using `WritableStore::get_many`
-fn count_get_many(writable: &dyn WritableStore) -> i32 {
+async fn count_get_many(writable: Arc<dyn WritableStore>) -> i32 {
     let key = count_key("1");
     let keys = BTreeSet::from_iter(vec![key.clone()]);
-    let counter = writable.get_many(keys).unwrap().get(&key).unwrap().clone();
+    let counter = writable
+        .get_many(keys)
+        .await
+        .unwrap()
+        .get(&key)
+        .unwrap()
+        .clone();
     counter.get("count").unwrap().as_int().unwrap()
 }
 
 /// Get the count using `WritableStore::get`
-fn count_get(writable: &dyn WritableStore) -> i32 {
-    let counter = writable.get(&count_key("1")).unwrap().unwrap();
+async fn count_get(writable: Arc<dyn WritableStore>) -> i32 {
+    let counter = writable.get(&count_key("1")).await.unwrap().unwrap();
     counter.get("count").unwrap().as_int().unwrap()
 }
 
-fn count_get_derived(writable: &dyn WritableStore) -> i32 {
+async fn count_get_derived(writable: Arc<dyn WritableStore>) -> i32 {
     let key = count_key("1");
     let query = DerivedEntityQuery {
         entity_type: key.entity_type.clone(),
@@ -279,7 +281,7 @@ fn count_get_derived(writable: &dyn WritableStore) -> i32 {
         value: key.entity_id.clone(),
         causality_region: CausalityRegion::ONCHAIN,
     };
-    let map = writable.get_derived(&query).unwrap();
+    let map = writable.get_derived(&query).await.unwrap();
     let counter = map.get(&key).unwrap();
     counter.get("count").unwrap().as_int().unwrap()
 }
@@ -318,7 +320,7 @@ fn get_derived_nobatch() {
 fn restart() {
     run_test(|store, writable, _, deployment| async move {
         let subgraph_store = store.subgraph_store();
-        let schema = subgraph_store.input_schema(&deployment.hash).unwrap();
+        let schema = subgraph_store.input_schema(&deployment.hash).await.unwrap();
 
         // Cause an error by leaving out the non-nullable `count` attribute
         let entity_ops = vec![EntityOperation::Set {
@@ -378,18 +380,19 @@ fn read_range_test() {
             r#"(7, [EntitySourceOperation { entity_op: Delete, entity_type: EntityType(Counter), entity: Entity { count: Int(12), id: String("1"), vid: Int8(6) }, vid: 6 }])"#,
         ];
         let subgraph_store = store.subgraph_store();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
 
         for count in 1..=5 {
             insert_count(&subgraph_store, &deployment, count, 2 * count, false).await;
         }
         writable.flush().await.unwrap();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
 
         let br: Range<BlockNumber> = 0..18;
         let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .await
             .unwrap();
         assert_eq!(e.len(), 5);
         for en in &e {
@@ -401,9 +404,10 @@ fn read_range_test() {
             insert_count(&subgraph_store, &deployment, count, 2 * count, false).await;
         }
         writable.flush().await.unwrap();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types, CausalityRegion::ONCHAIN, br)
+            .await
             .unwrap();
         assert_eq!(e.len(), 7);
         for en in &e {
@@ -418,17 +422,18 @@ fn read_range_test() {
 fn read_immutable_only_range_test() {
     run_test(|store, writable, sourceable, deployment| async move {
         let subgraph_store = store.subgraph_store();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
 
         for count in 1..=4 {
             insert_count(&subgraph_store, &deployment, count, 2 * count, true).await;
         }
         writable.flush().await.unwrap();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
         let br: Range<BlockNumber> = 0..18;
         let entity_types = vec![COUNTER2_TYPE.clone()];
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .await
             .unwrap();
         assert_eq!(e.len(), 4);
     })
@@ -444,7 +449,7 @@ fn read_range_pool_created_test() {
 
         // Rest of the test remains the same
         let subgraph_store = store.subgraph_store();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
 
         let pool_created_type = TEST_SUBGRAPH_SCHEMA.entity_type("PoolCreated").unwrap();
         let entity_types = vec![pool_created_type.clone()];
@@ -490,11 +495,12 @@ fn read_range_pool_created_test() {
             .unwrap();
         }
         writable.flush().await.unwrap();
-        writable.deployment_synced(block_pointer(0)).unwrap();
+        writable.deployment_synced(block_pointer(0)).await.unwrap();
 
         let br: Range<BlockNumber> = 0..18;
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .await
             .unwrap();
         assert_eq!(e.len(), 2);
         for en in &e {

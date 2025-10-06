@@ -1307,7 +1307,7 @@ async fn wait_for_blockchain_block(block_number: i32) -> bool {
 }
 
 /// The main test entrypoint.
-#[tokio::test]
+#[graph::test]
 async fn integration_tests() -> anyhow::Result<()> {
     let test_name_to_run = std::env::var("TEST_CASE").ok();
 

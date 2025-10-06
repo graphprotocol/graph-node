@@ -13,7 +13,7 @@ use integration_tests::{
 };
 
 /// The main test entrypoint.
-#[tokio::test]
+#[graph::test]
 async fn gnd_tests() -> anyhow::Result<()> {
     set_dev_mode(true);
 

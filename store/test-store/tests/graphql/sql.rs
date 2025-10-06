@@ -35,7 +35,7 @@ where
                 .await
                 .unwrap();
 
-            let result = query_store.execute_sql(&sql);
+            let result = query_store.execute_sql(&sql).await;
             test(result, id_type);
         }
 

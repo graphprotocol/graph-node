@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 crossbeam = "0.8"
 graph = { path = "../graph" }
 graphql-tools = "0.4.0"

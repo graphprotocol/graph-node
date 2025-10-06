@@ -202,7 +202,7 @@ impl ElasticDrain {
         let mut interval = tokio::time::interval(self.config.flush_interval);
         let max_retries = self.config.max_retries;
 
-        crate::task_spawn::spawn(async move {
+        crate::tokio::spawn(async move {
             loop {
                 interval.tick().await;
 

@@ -173,7 +173,7 @@ impl StoreBuilder {
         (store, pools, coord)
     }
 
-    pub fn make_store(
+    pub async fn make_store(
         logger: &Logger,
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
@@ -192,18 +192,18 @@ impl StoreBuilder {
         let logger = logger.new(o!("component" => "BlockStore"));
 
         let chain_store_metrics = Arc::new(ChainStoreMetrics::new(registry));
-        let block_store = Arc::new(
-            DieselBlockStore::new(
-                logger,
-                networks,
-                pools,
-                subgraph_store.notification_sender(),
-                chain_store_metrics,
-            )
-            .expect("Creating the BlockStore works"),
-        );
+        let block_store = DieselBlockStore::new(
+            logger,
+            networks,
+            pools,
+            subgraph_store.notification_sender(),
+            chain_store_metrics,
+        )
+        .await
+        .expect("Creating the BlockStore works");
         block_store
             .update_db_version()
+            .await
             .expect("Updating `db_version` should work");
 
         Arc::new(DieselStore::new(subgraph_store, block_store))
@@ -292,7 +292,7 @@ impl StoreBuilder {
 
     /// Return a store that combines both a `Store` for subgraph data
     /// and a `BlockStore` for all chain related data
-    pub fn network_store(self, networks: Vec<impl Into<String>>) -> Arc<DieselStore> {
+    pub async fn network_store(self, networks: Vec<impl Into<String>>) -> Arc<DieselStore> {
         Self::make_store(
             &self.logger,
             self.pools,
@@ -301,6 +301,7 @@ impl StoreBuilder {
             networks.into_iter().map(Into::into).collect(),
             self.registry,
         )
+        .await
     }
 
     pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {

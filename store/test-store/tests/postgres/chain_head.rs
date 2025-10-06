@@ -1,7 +1,7 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
-use diesel::RunQueryDsl;
+use diesel_async::RunQueryDsl;
 use graph::blockchain::{BlockHash, BlockPtr};
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
@@ -43,7 +43,11 @@ where
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             block_store::set_chain(chain.clone(), name).await;
 
-            let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store
+                .block_store()
+                .chain_store(name)
+                .await
+                .expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.cheap_clone()).unwrap_or_else(|err| {
@@ -68,7 +72,11 @@ where
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             let cached = block_store::set_chain(chain.clone(), name).await;
 
-            let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store
+                .block_store()
+                .chain_store(name)
+                .await
+                .expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.clone(), cached).await;
@@ -259,40 +267,42 @@ fn block_hashes_by_number() {
         &*BLOCK_TWO,
         &*BLOCK_TWO_NO_PARENT,
     ];
-    run_test(chain, move |store, _| {
-        let hashes = store.block_hashes_by_block_number(1).unwrap();
+    run_test_async(chain, move |store, _, _| async move {
+        let hashes = store.block_hashes_by_block_number(1).await.unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
-        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        let hashes = store.block_hashes_by_block_number(2).await.unwrap();
         assert_eq!(2, hashes.len());
         assert!(hashes.contains(&BLOCK_TWO.block_hash()));
         assert!(hashes.contains(&BLOCK_TWO_NO_PARENT.block_hash()));
 
-        let hashes = store.block_hashes_by_block_number(127).unwrap();
+        let hashes = store.block_hashes_by_block_number(127).await.unwrap();
         assert_eq!(0, hashes.len());
 
         let deleted = store
             .confirm_block_hash(1, &BLOCK_ONE.block_hash())
+            .await
             .unwrap();
         assert_eq!(0, deleted);
 
         let deleted = store
             .confirm_block_hash(2, &BLOCK_TWO.block_hash())
+            .await
             .unwrap();
         assert_eq!(1, deleted);
 
         // Make sure that we do not delete anything for a nonexistent block
         let deleted = store
             .confirm_block_hash(127, &GENESIS_BLOCK.block_hash())
+            .await
             .unwrap();
         assert_eq!(0, deleted);
 
-        let hashes = store.block_hashes_by_block_number(1).unwrap();
+        let hashes = store.block_hashes_by_block_number(1).await.unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
-        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        let hashes = store.block_hashes_by_block_number(2).await.unwrap();
         assert_eq!(vec![BLOCK_TWO.block_hash()], hashes);
-        Ok(())
     })
 }
 
@@ -425,7 +435,7 @@ fn ancestor_block_skipped() {
 fn eth_call_cache() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
 
-    run_test(chain, |store, _| {
+    run_test_async(chain, |store, _, _| async move {
         let logger = LOGGER.cheap_clone();
         fn ccr(value: &[u8]) -> call::Retval {
             call::Retval::Value(Bytes::from(value))
@@ -437,39 +447,48 @@ fn eth_call_cache() {
 
         let call = call::Request::new(address, call.to_vec(), 0);
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 ccr(&return_value),
             )
+            .await
             .unwrap();
 
-        let ret = store.get_call(&call, GENESIS_BLOCK.block_ptr()).unwrap();
+        let ret = store
+            .get_call(&call, GENESIS_BLOCK.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_none());
 
         let ret = store
             .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
             .unwrap()
             .unwrap()
             .retval
             .unwrap();
         assert_eq!(&return_value, ret.as_slice());
 
-        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).unwrap();
+        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).await.unwrap();
         assert!(ret.is_none());
 
         let new_return_value: [u8; 3] = [10, 11, 12];
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_TWO.block_ptr(),
                 ccr(&new_return_value),
             )
+            .await
             .unwrap();
         let ret = store
             .get_call(&call, BLOCK_TWO.block_ptr())
+            .await
             .unwrap()
             .unwrap()
             .retval
@@ -478,30 +497,35 @@ fn eth_call_cache() {
 
         // Reverted calls should not be cached
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_THREE.block_ptr(),
                 call::Retval::Null,
             )
+            .await
             .unwrap();
-        let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();
+        let ret = store
+            .get_call(&call, BLOCK_THREE.block_ptr())
+            .await
+            .unwrap();
         assert_eq!(None, ret);
 
         // Empty return values should not be cached
         let return_value: [u8; 0] = [];
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_FOUR.block_ptr(),
                 ccr(&return_value),
             )
+            .await
             .unwrap();
-        let ret = store.get_call(&call, BLOCK_FOUR.block_ptr()).unwrap();
+        let ret = store.get_call(&call, BLOCK_FOUR.block_ptr()).await.unwrap();
         assert_eq!(None, ret);
-
-        Ok(())
     })
 }
 
@@ -522,32 +546,39 @@ fn test_clear_stale_call_cache() {
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
-        let mut conn = PRIMARY_POOL.get().unwrap();
-
         // Insert a call cache entry, otherwise it will hit an early return and won't test all queries
         let call = call::Request::new(address, call.to_vec(), 0);
         chain_store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 call::Retval::Value(Bytes::from(return_value)),
             )
+            .await
             .unwrap();
 
         // Confirm the call cache entry is there
-        let ret = chain_store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        let ret = chain_store
+            .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_some());
 
         // Now we need to update the accessed_at timestamp to be stale, so it gets deleted
-        // Get namespace from chains table
-        let namespace: String = diesel::sql_query(format!(
-            "SELECT namespace FROM public.chains WHERE name = '{}'",
-            chain_store.chain
-        ))
-        .get_result::<Namespace>(&mut conn)
-        .unwrap()
-        .namespace;
+        // Get namespace from chains table in the primary
+        let namespace: String = {
+            let mut conn = PRIMARY_POOL.get().await.unwrap();
+            diesel::sql_query(format!(
+                "SELECT namespace FROM public.chains WHERE name = '{}'",
+                chain_store.chain
+            ))
+            .get_result::<Namespace>(&mut conn)
+            .await
+            .unwrap()
+            .namespace
+        };
 
         // Determine the correct meta table name
         let meta_table: String = match namespace.as_str() {
@@ -555,18 +586,26 @@ fn test_clear_stale_call_cache() {
             _ => format!("{namespace}.call_meta"),
         };
 
-        // Update accessed_at to be 8 days ago, so it's stale for a 7 day threshold
-        let _ = diesel::sql_query(format!(
-            "UPDATE {meta_table} SET accessed_at = NOW() - INTERVAL '8 days' WHERE contract_address = $1"
-        )).bind::<diesel::sql_types::Bytea, _>(address.as_bytes())
-        .execute(&mut conn)
-        .unwrap();
-
+        // Update accessed_at to be 8 days ago, so it's stale for a 7 day
+        // threshold in the shard where the chain lives
+        {
+            let mut conn = chain_store.get_conn_for_test().await.unwrap();
+            diesel::sql_query(format!(
+                "UPDATE {meta_table} SET accessed_at = NOW() - INTERVAL '8 days' WHERE contract_address = $1"
+            ))
+            .bind::<diesel::sql_types::Bytea, _>(address.as_bytes())
+            .execute(&mut conn)
+            .await
+            .unwrap();
+        }
         let result = chain_store.clear_stale_call_cache(7, None).await;
         assert!(result.is_ok());
 
         // Confirm the call cache entry was removed
-        let ret = chain_store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        let ret = chain_store
+            .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_none());
     });
 }

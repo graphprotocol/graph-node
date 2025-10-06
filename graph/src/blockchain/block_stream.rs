@@ -5,6 +5,7 @@ use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
+use async_trait::async_trait;
 use futures03::Stream;
 use prost_types::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -498,7 +499,9 @@ async fn get_entities_for_range(
         .iter()
         .map(|name| schema.entity_type(name))
         .collect();
-    Ok(store.get_range(entity_types?, CausalityRegion::ONCHAIN, from..to)?)
+    Ok(store
+        .get_range(entity_types?, CausalityRegion::ONCHAIN, from..to)
+        .await?)
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
@@ -983,7 +986,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn consume_stream() {
         let initial_block = 100;
         let buffer_size = 5;

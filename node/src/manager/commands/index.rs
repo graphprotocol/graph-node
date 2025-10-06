@@ -39,7 +39,7 @@ pub async fn create(
     after: Option<i32>,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
-    let deployment_locator = search.locate_unique(&pool)?;
+    let deployment_locator = search.locate_unique(&pool).await?;
     println!("Index creation started. Please wait.");
 
     // If the fields contain the block range column, we use GIN
@@ -166,7 +166,7 @@ pub async fn list(
         Ok(())
     }
 
-    let deployment_locator = search.locate_unique(&pool)?;
+    let deployment_locator = search.locate_unique(&pool).await?;
     let indexes: Vec<_> = {
         let mut indexes = store
             .indexes_for_entity(&deployment_locator, entity_name)
@@ -207,7 +207,7 @@ pub async fn drop(
     search: DeploymentSearch,
     index_name: &str,
 ) -> Result<(), anyhow::Error> {
-    let deployment_locator = search.locate_unique(&pool)?;
+    let deployment_locator = search.locate_unique(&pool).await?;
     store
         .drop_index_for_deployment(&deployment_locator, index_name)
         .await?;

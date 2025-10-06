@@ -1,4 +1,8 @@
+use async_trait::async_trait;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
+use tokio::sync::RwLock;
+use tokio::time::timeout;
+
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
@@ -22,14 +26,11 @@ use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
-use graph::tokio::sync::RwLock;
-use graph::tokio::time::timeout;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak,
-        trace, warn,
+        debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
@@ -733,18 +734,19 @@ impl EthereumAdapter {
                 call.gas,
             )
             .await?;
-        let _ = cache
+        if let Err(e) = cache
             .set_call(
                 &logger,
                 req.cheap_clone(),
                 call.block_ptr.cheap_clone(),
                 result.clone(),
             )
-            .map_err(|e| {
-                error!(logger, "EthereumAdapter: call cache set error";
+            .await
+        {
+            error!(logger, "EthereumAdapter: call cache set error";
                         "contract_address" => format!("{:?}", req.address),
-                        "error" => e.to_string())
-            });
+                        "error" => e.to_string());
+        }
 
         Ok(req.response(result, call::Source::Rpc))
     }
@@ -1653,6 +1655,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let (mut resps, missing) = cache
             .get_calls(&reqs, block_ptr)
+            .await
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .unwrap_or_else(|_| (Vec::new(), reqs));
 
@@ -1729,7 +1732,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .iter()
             .map(|block| block as &dyn graph::blockchain::Block)
             .collect();
-        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
+        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()).await {
             error!(logger, "Error writing to block cache {}", e);
         }
         blocks.extend(new_blocks);
@@ -2367,7 +2370,7 @@ async fn fetch_individual_receipts_with_retry(
     }
 
     // Use a stream to fetch receipts individually
-    let hash_stream = graph::tokio_stream::iter(hashes);
+    let hash_stream = tokio_stream::iter(hashes);
     let receipt_stream = hash_stream
         .map(move |tx_hash| {
             fetch_transaction_receipt_with_retry(
@@ -2379,7 +2382,7 @@ async fn fetch_individual_receipts_with_retry(
         })
         .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
 
-    graph::tokio_stream::StreamExt::collect::<Result<Vec<Arc<TransactionReceipt>>, IngestorError>>(
+    tokio_stream::StreamExt::collect::<Result<Vec<Arc<TransactionReceipt>>, IngestorError>>(
         receipt_stream,
     )
     .await
@@ -2672,7 +2675,6 @@ mod tests {
     };
     use graph::blockchain::BlockPtr;
     use graph::prelude::ethabi::ethereum_types::U64;
-    use graph::prelude::tokio::{self};
     use graph::prelude::web3::transports::test::TestTransport;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
     use graph::prelude::web3::Web3;
@@ -2720,7 +2722,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_check_block_receipts_support() {
         let mut transport = TestTransport::default();
 

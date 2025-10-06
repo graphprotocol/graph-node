@@ -26,13 +26,13 @@ use graph::log::factory::LoggerFactory;
 use graph::prelude::anyhow;
 use graph::prelude::MetricsRegistry;
 use graph::slog::{debug, info, o, warn, Logger};
-use graph::tokio::time::timeout;
 use graph::url::Url;
 use graph_chain_ethereum::{self as ethereum, Transport};
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use tokio::time::timeout;
 
 // The status of a provider that we learned from connecting to it
 #[derive(PartialEq)]
@@ -354,7 +354,7 @@ pub async fn networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     networks: &Networks,
-    store: Arc<BlockStore>,
+    store: BlockStore,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
@@ -378,7 +378,7 @@ pub async fn networks_as_chains(
     });
 
     for (chain_id, adapters, kind) in chains.into_iter() {
-        let chain_store = match store.chain_store(chain_id) {
+        let chain_store = match store.chain_store(chain_id).await {
             Some(c) => c,
             None => {
                 let ident = match timeout(
@@ -395,6 +395,7 @@ pub async fn networks_as_chains(
                 };
                 store
                     .create_chain_store(chain_id, ident)
+                    .await
                     .expect("must be able to create store if one is not yet setup for the chain")
             }
         };
@@ -547,11 +548,11 @@ mod test {
     use graph::components::network_provider::ChainName;
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
-    use graph::prelude::{tokio, MetricsRegistry};
+    use graph::prelude::MetricsRegistry;
     use graph_chain_ethereum::NodeCapabilities;
     use std::sync::Arc;
 
-    #[tokio::test]
+    #[graph::test]
     async fn correctly_parse_ethereum_networks() {
         let logger = logger(true);
 

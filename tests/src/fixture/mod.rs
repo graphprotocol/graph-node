@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Error;
 use async_stream::stream;
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -40,10 +41,10 @@ use graph::ipfs::{IpfsClient, IpfsMetrics};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    async_trait, lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
-    GraphQlRunner as _, IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError,
-    SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
-    SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
+    lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
+    IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
+    SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::schema::InputSchema;
 use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
@@ -357,18 +358,28 @@ impl TestContext {
         query_res.indexing_status_for_current_version
     }
 
-    pub fn rewind(&self, block_ptr_to: BlockPtr) {
+    pub async fn rewind(&self, block_ptr_to: BlockPtr) {
         self.store
             .rewind(self.deployment.hash.clone(), block_ptr_to)
+            .await
             .unwrap()
     }
 }
 
 impl Drop for TestContext {
     fn drop(&mut self) {
-        if let Err(e) = cleanup(&self.store, &self.subgraph_name, &self.deployment.hash) {
-            crit!(self.logger, "error cleaning up test subgraph"; "error" => e.to_string());
-        }
+        // Using drop to clean up the subgraph after the test is too clever
+        // by half and should really be done with an explicit method,
+        // something like `TestContext::cleanup(self)`.
+        let store = self.store.cheap_clone();
+        let subgraph_name = self.subgraph_name.clone();
+        let deployment_hash = self.deployment.hash.clone();
+        let logger = self.logger.cheap_clone();
+        graph::spawn(async move {
+            if let Err(e) = cleanup(&store, &subgraph_name, &deployment_hash).await {
+                crit!(logger, "error cleaning up test subgraph"; "error" => e.to_string());
+            }
+        });
     }
 }
 
@@ -423,7 +434,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
         .into();
     let chain_head_listener = store_builder.chain_head_update_listener();
     let network_identifiers: Vec<ChainName> = vec![network_name.clone()].into_iter().collect();
-    let network_store = store_builder.network_store(network_identifiers);
+    let network_store = store_builder.network_store(network_identifiers).await;
     let ident = ChainIdentifier {
         net_version: "".into(),
         genesis_block_hash: test_ptr(0).hash,
@@ -431,6 +442,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let chain_store = network_store
         .block_store()
         .create_chain_store(&network_name, ident)
+        .await
         .unwrap_or_else(|_| panic!("No chain store for {}", &network_name));
 
     Stores {
@@ -499,7 +511,9 @@ pub async fn setup_inner<C: Blockchain>(
 
     // Make sure we're starting from a clean state.
     let subgraph_store = stores.network_store.subgraph_store();
-    cleanup(&subgraph_store, &test_info.subgraph_name, &test_info.hash).unwrap();
+    cleanup(&subgraph_store, &test_info.subgraph_name, &test_info.hash)
+        .await
+        .unwrap();
 
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain.chain());
@@ -631,15 +645,15 @@ pub async fn setup_inner<C: Blockchain>(
     }
 }
 
-pub fn cleanup(
+pub async fn cleanup(
     subgraph_store: &SubgraphStore,
     name: &SubgraphName,
     hash: &DeploymentHash,
 ) -> Result<(), Error> {
-    let locators = subgraph_store.locators(hash)?;
-    subgraph_store.remove_subgraph(name.clone())?;
+    let locators = subgraph_store.locators(hash).await?;
+    subgraph_store.remove_subgraph(name.clone()).await?;
     for locator in locators {
-        subgraph_store.remove_deployment(locator.id.into())?;
+        subgraph_store.remove_deployment(locator.id.into()).await?;
     }
     Ok(())
 }
@@ -692,7 +706,7 @@ pub async fn wait_for_sync(
             }
         };
         info!(logger, "TEST: sync status: {:?}", block_ptr);
-        let status = store.status_for_id(deployment.id);
+        let status = store.status_for_id(deployment.id).await;
 
         if let Some(fatal_error) = status.fatal_error {
             return Err(fatal_error);

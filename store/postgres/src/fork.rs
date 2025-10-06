@@ -4,8 +4,8 @@ use std::{
     sync::Mutex,
 };
 
+use async_trait::async_trait;
 use graph::{
-    block_on,
     components::store::SubgraphFork as SubgraphForkTrait,
     internal_error,
     prelude::{
@@ -44,8 +44,13 @@ pub(crate) struct SubgraphFork {
     logger: Logger,
 }
 
+#[async_trait]
 impl SubgraphForkTrait for SubgraphFork {
-    fn fetch(&self, entity_type_name: String, id: String) -> Result<Option<Entity>, StoreError> {
+    async fn fetch(
+        &self,
+        entity_type_name: String,
+        id: String,
+    ) -> Result<Option<Entity>, StoreError> {
         {
             let mut fids = self.fetched_ids.lock().map_err(|e| {
                 StoreError::ForkFailure(format!(
@@ -76,7 +81,7 @@ impl SubgraphForkTrait for SubgraphFork {
             query: self.query_string(&entity_type_name, fields)?,
             variables: Variables { id },
         };
-        let raw_json = block_on(self.send(&query))?;
+        let raw_json = self.send(&query).await?;
         if !raw_json.contains("data") {
             return Err(StoreError::ForkFailure(format!(
                 "the GraphQL query \"{:?}\" to `{}` failed with \"{}\"",

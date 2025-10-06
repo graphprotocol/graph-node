@@ -1,4 +1,5 @@
 use anyhow::Error;
+use async_trait::async_trait;
 use graph::{
     blockchain::{
         self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
@@ -8,9 +9,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
         trigger_processor::HostedTrigger,
     },
-    prelude::{
-        anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
-    },
+    prelude::{anyhow, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder},
     slog::Logger,
     substreams::Modules,
 };
@@ -224,12 +223,15 @@ where
                         logger,
                     );
 
-                    state.entity_cache.set(
-                        key,
-                        entity,
-                        block.number,
-                        Some(&mut state.write_capacity_remaining),
-                    )?;
+                    state
+                        .entity_cache
+                        .set(
+                            key,
+                            entity,
+                            block.number,
+                            Some(&mut state.write_capacity_remaining),
+                        )
+                        .await?;
                 }
                 ParsedChanges::Delete(entity_key) => {
                     let entity_type = entity_key.entity_type.cheap_clone();

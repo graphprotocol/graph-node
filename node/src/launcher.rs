@@ -77,7 +77,7 @@ async fn setup_store(
     let primary_pool = store_builder.primary_pool();
     let subscription_manager = store_builder.subscription_manager();
     let chain_head_update_listener = store_builder.chain_head_update_listener();
-    let network_store = store_builder.network_store(config.chain_ids());
+    let network_store = store_builder.network_store(config.chain_ids()).await;
 
     (
         primary_pool,
@@ -104,7 +104,7 @@ async fn build_blockchain_map(
 
     if env_vars.genesis_validation_enabled {
         provider_checks.push(Arc::new(network_provider::GenesisHashCheck::from_id_store(
-            block_store.clone(),
+            Box::new(block_store.cheap_clone()),
         )));
     }
 
@@ -139,7 +139,10 @@ async fn build_blockchain_map(
     Arc::new(blockchain_map)
 }
 
-fn cleanup_ethereum_shallow_blocks(blockchain_map: &BlockchainMap, network_store: &Arc<Store>) {
+async fn cleanup_ethereum_shallow_blocks(
+    blockchain_map: &BlockchainMap,
+    network_store: &Arc<Store>,
+) {
     match blockchain_map
         .get_all_by_kind::<graph_chain_ethereum::Chain>(BlockchainKind::Ethereum)
         .ok()
@@ -159,6 +162,7 @@ fn cleanup_ethereum_shallow_blocks(blockchain_map: &BlockchainMap, network_store
             network_store
                 .block_store()
                 .cleanup_ethereum_shallow_blocks(eth_network_names)
+                .await
                 .unwrap();
         }
         // This code path only happens if the downcast on the blockchain map fails, that
@@ -476,7 +480,7 @@ pub async fn run(
 
         // see comment on cleanup_ethereum_shallow_blocks
         if !opt.disable_block_ingestor {
-            cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store);
+            cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store).await;
         }
 
         let graphql_server = build_graphql_server(

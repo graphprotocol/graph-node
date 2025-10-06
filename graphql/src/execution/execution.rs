@@ -296,7 +296,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
     let (mut values, trace) = if data_set.is_empty() && meta_items.is_empty() {
         (Object::default(), Trace::None)
     } else {
-        let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set)?;
+        let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set).await?;
         data_set.push_fields(meta_items)?;
         (
             execute_selection_set_to_map(ctx, &data_set, root_type, initial_data).await?,

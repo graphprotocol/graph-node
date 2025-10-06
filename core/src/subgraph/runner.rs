@@ -426,7 +426,10 @@ where
             modifications: mut mods,
             entity_lfu_cache: cache,
             evict_stats,
-        } = entity_cache.as_modifications(block_ptr.number).classify()?;
+        } = entity_cache
+            .as_modifications(block_ptr.number)
+            .await
+            .classify()?;
         section.end();
 
         log_evict_stats(&self.logger, &evict_stats);
@@ -495,6 +498,9 @@ where
         // In this scenario the only entity that is stored/transacted is the PoI,
         // all of the others are discarded.
         if has_errors && self.inputs.errors_are_fatal() {
+            if let Err(e) = self.inputs.store.flush().await {
+                error!(logger, "Failed to flush store after fatal errors"; "error" => format!("{:#}", e));
+            }
             // Only the first error is reported.
             return Err(ProcessingError::Deterministic(Box::new(
                 first_error.unwrap(),
@@ -512,7 +518,7 @@ where
             .non_deterministic()?;
 
         if has_errors {
-            self.maybe_cancel()?;
+            self.maybe_cancel().await?;
         }
 
         Ok(())
@@ -520,13 +526,14 @@ where
 
     /// Cancel the subgraph if `disable_fail_fast` is not set and it is not
     /// synced
-    fn maybe_cancel(&self) -> Result<(), ProcessingError> {
+    async fn maybe_cancel(&self) -> Result<(), ProcessingError> {
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
         let store = &self.inputs.store;
         if !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
                 .pause_subgraph()
+                .await
                 .map_err(|e| ProcessingError::Unknown(e.into()))?;
 
             // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
@@ -990,7 +997,8 @@ where
                     let outcome = self
                         .inputs
                         .store
-                        .unfail_non_deterministic_error(&block_ptr)?;
+                        .unfail_non_deterministic_error(&block_ptr)
+                        .await?;
 
                     // Stop trying to unfail.
                     self.state.should_try_unfail_non_deterministic = false;
@@ -1286,7 +1294,8 @@ where
             mods.extend(
                 block_state
                     .entity_cache
-                    .as_modifications(block.number())?
+                    .as_modifications(block.number())
+                    .await?
                     .modifications,
             );
             processed_data_sources.extend(block_state.processed_data_sources);
@@ -1566,7 +1575,7 @@ async fn update_proof_of_indexing(
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
     // Helper to store the digest as a PoI entity in the cache
-    fn store_poi_entity(
+    async fn store_poi_entity(
         entity_cache: &mut EntityCache,
         key: EntityKey,
         digest: Bytes,
@@ -1586,7 +1595,7 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi, block, None)
+        entity_cache.set(key, poi, block, None).await
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
@@ -1610,6 +1619,7 @@ async fn update_proof_of_indexing(
         let poi_digest = entity_cache.schema.poi_digest().clone();
         let prev_poi = entity_cache
             .get(&entity_key, GetScope::Store)
+            .await
             .map_err(Error::from)?
             .map(|entity| match entity.get(poi_digest.as_str()) {
                 Some(Value::Bytes(b)) => b.clone(),
@@ -1628,7 +1638,8 @@ async fn update_proof_of_indexing(
             updated_proof_of_indexing,
             block_time,
             block_number,
-        )?;
+        )
+        .await?;
     }
 
     Ok(())

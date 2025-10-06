@@ -1,8 +1,10 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
+
 use graph::components::store::QueryPermit;
 use graph::data::query::{CacheStatus, Trace};
-use graph::prelude::{async_trait, s, Error, QueryExecutionError};
+use graph::prelude::{s, Error, QueryExecutionError};
 use graph::schema::ApiSchema;
 use graph::{
     data::graphql::ObjectOrInterface,
@@ -21,7 +23,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     async fn query_permit(&self) -> QueryPermit;
 
     /// Prepare for executing a query by prefetching as much data as possible
-    fn prefetch(
+    async fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,

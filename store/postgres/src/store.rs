@@ -32,11 +32,11 @@ use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 #[derive(Clone)]
 pub struct Store {
     subgraph_store: Arc<SubgraphStore>,
-    block_store: Arc<BlockStore>,
+    block_store: BlockStore,
 }
 
 impl Store {
-    pub fn new(subgraph_store: Arc<SubgraphStore>, block_store: Arc<BlockStore>) -> Self {
+    pub fn new(subgraph_store: Arc<SubgraphStore>, block_store: BlockStore) -> Self {
         Self {
             subgraph_store,
             block_store,
@@ -47,7 +47,7 @@ impl Store {
         self.subgraph_store.cheap_clone()
     }
 
-    pub fn block_store(&self) -> Arc<BlockStore> {
+    pub fn block_store(&self) -> BlockStore {
         self.block_store.cheap_clone()
     }
 }
@@ -60,7 +60,7 @@ impl StoreTrait for Store {
         self.subgraph_store.cheap_clone()
     }
 
-    fn block_store(&self) -> Arc<Self::BlockStore> {
+    fn block_store(&self) -> Self::BlockStore {
         self.block_store.cheap_clone()
     }
 }
@@ -78,15 +78,13 @@ impl QueryStoreManager for Store {
         let api_version = target.get_version();
         let target = target.clone();
         let (store, site, replica) = graph::spawn_blocking_allow_panic(move || {
-            store
-                .replica_for_query(target.clone())
-                .map_err(|e| e.into())
+            graph::block_on(store.replica_for_query(target.clone())).map_err(|e| e.into())
         })
         .await
         .map_err(|e| QueryExecutionError::Panic(e.to_string()))
         .and_then(|x| x)?;
 
-        let chain_store = self.block_store.chain_store(&site.network).ok_or_else(|| {
+        let chain_store = self.block_store.chain_store(&site.network).await.ok_or_else(|| {
             internal_error!(
                 "Subgraphs index a known network, but {} indexes `{}` which we do not know about. This is most likely a configuration error.",
                 site.deployment,
@@ -94,21 +92,24 @@ impl QueryStoreManager for Store {
             )
         })?;
 
-        Ok(Arc::new(QueryStore::new(
-            store,
-            chain_store,
-            site,
-            replica,
-            Arc::new(api_version.clone()),
-        )))
+        Ok(Arc::new(
+            QueryStore::new(
+                store,
+                chain_store,
+                site,
+                replica,
+                Arc::new(api_version.clone()),
+            )
+            .await,
+        ))
     }
 }
 
 #[async_trait]
 impl StatusStore for Store {
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let mut infos = self.subgraph_store.status(filter)?;
-        let ptrs = self.block_store.chain_head_pointers()?;
+    async fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+        let mut infos = self.subgraph_store.status(filter).await?;
+        let ptrs = self.block_store.chain_head_pointers().await?;
         for info in &mut infos {
             for chain in &mut info.chains {
                 chain.chain_head_block = ptrs.get(&chain.network).map(|ptr| ptr.clone().into());
@@ -117,27 +118,30 @@ impl StatusStore for Store {
         Ok(infos)
     }
 
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        let mut info = self.subgraph_store.version_info(version_id)?;
+    async fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
+        let mut info = self.subgraph_store.version_info(version_id).await?;
 
-        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
+        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network).await?;
 
         Ok(info)
     }
 
-    fn versions_for_subgraph_id(
+    async fn versions_for_subgraph_id(
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.subgraph_store.versions_for_subgraph_id(subgraph_id)
+        self.subgraph_store
+            .versions_for_subgraph_id(subgraph_id)
+            .await
     }
 
-    fn subgraphs_for_deployment_hash(
+    async fn subgraphs_for_deployment_hash(
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         self.subgraph_store
             .subgraphs_for_deployment_hash(deployment_hash)
+            .await
     }
 
     async fn get_proof_of_indexing(

@@ -1,12 +1,12 @@
 use std::mem::MaybeUninit;
 
+use async_trait::async_trait;
 use semver::Version;
 
 use super::{
     gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, HostExportError,
     IndexForAscTypeId,
 };
-use crate::prelude::async_trait;
 
 // A 128 limit is plenty for any subgraph, while the `fn recursion_limit` test ensures it is not
 // large enough to cause stack overflows.

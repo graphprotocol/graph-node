@@ -1,13 +1,14 @@
 //! SQL queries to load dynamic data sources
 
+use diesel::insert_into;
 use diesel::{
     delete,
     dsl::{count, sql},
-    prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
+    prelude::{ExpressionMethods, QueryDsl},
     sql_query,
     sql_types::{Integer, Text},
 };
-use diesel::{insert_into, pg::PgConnection};
+use diesel_async::RunQueryDsl;
 
 use graph::{
     components::store::{write, StoredDynamicDataSource},
@@ -18,6 +19,7 @@ use graph::{
 };
 
 use crate::primary::Site;
+use crate::AsyncPgConnection;
 use crate::ForeignServer;
 
 table! {
@@ -35,8 +37,8 @@ table! {
     }
 }
 
-pub(super) fn load(
-    conn: &mut PgConnection,
+pub(super) async fn load(
+    conn: &mut AsyncPgConnection,
     id: &str,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,
@@ -57,7 +59,8 @@ pub(super) fn load(
         ))
         .filter(decds::ethereum_block_number.le(sql(&format!("{}::numeric", block))))
         .order_by((decds::ethereum_block_number, decds::vid))
-        .load::<(i64, String, Option<String>, Vec<u8>, BigDecimal)>(conn)?;
+        .load::<(i64, String, Option<String>, Vec<u8>, BigDecimal)>(conn)
+        .await?;
 
     let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
     for (vid, name, context, address, creation_block) in dds.into_iter() {
@@ -98,8 +101,8 @@ pub(super) fn load(
     Ok(data_sources)
 }
 
-pub(super) fn insert(
-    conn: &mut PgConnection,
+pub(super) async fn insert(
+    conn: &mut AsyncPgConnection,
     deployment: &DeploymentHash,
     data_sources: &write::DataSources,
     manifest_idx_and_name: &[(u32, String)],
@@ -163,13 +166,14 @@ pub(super) fn insert(
     insert_into(decds::table)
         .values(dds)
         .execute(conn)
+        .await
         .map_err(|e| e.into())
 }
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
-pub(crate) fn copy(
-    conn: &mut PgConnection,
+pub(crate) async fn copy(
+    conn: &mut AsyncPgConnection,
     src: &Site,
     dst: &Site,
     target_block: BlockNumber,
@@ -189,7 +193,8 @@ pub(crate) fn copy(
     let count = decds::table
         .filter(decds::deployment.eq(dst.deployment.as_str()))
         .select(count(decds::vid))
-        .get_result::<i64>(conn)?;
+        .get_result::<i64>(conn)
+        .await?;
     if count > 0 {
         return Ok(count as usize);
     }
@@ -212,25 +217,32 @@ pub(crate) fn copy(
         .bind::<Text, _>(src.deployment.as_str())
         .bind::<Text, _>(dst.deployment.as_str())
         .bind::<Integer, _>(target_block)
-        .execute(conn)?)
+        .execute(conn)
+        .await?)
 }
 
-pub(super) fn revert(
-    conn: &mut PgConnection,
+pub(super) async fn revert(
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
     let dds = decds::table.filter(decds::deployment.eq(id.as_str()));
-    delete(dds.filter(decds::ethereum_block_number.ge(sql(&block.to_string())))).execute(conn)?;
+    delete(dds.filter(decds::ethereum_block_number.ge(sql(&block.to_string()))))
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
-pub(crate) fn drop(conn: &mut PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
+pub(crate) async fn drop(
+    conn: &mut AsyncPgConnection,
+    id: &DeploymentHash,
+) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
     delete(decds::table.filter(decds::deployment.eq(id.as_str())))
         .execute(conn)
+        .await
         .map_err(|e| e.into())
 }

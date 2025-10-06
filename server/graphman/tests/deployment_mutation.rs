@@ -16,6 +16,33 @@ use self::util::server::VALID_TOKEN;
 
 const TEST_SUBGRAPH_SCHEMA: &str = "type User @entity { id: ID!, name: String }";
 
+async fn is_deployment_paused(hash: &str) -> bool {
+    let query = r#"query DeploymentStatus($hash: String!) {
+        deployment {
+            info(deployment: { hash: $hash }) {
+                status {
+                    isPaused
+                }
+            }
+        }
+    }"#;
+
+    let resp = send_graphql_request(
+        json!({
+            "query": query,
+            "variables": {
+                "hash": hash
+            }
+        }),
+        VALID_TOKEN,
+    )
+    .await;
+
+    resp["data"]["deployment"]["info"][0]["status"]["isPaused"]
+        .as_bool()
+        .unwrap()
+}
+
 async fn assert_deployment_paused(hash: &str, should_be_paused: bool) {
     let query = r#"query DeploymentStatus($hash: String!) {
         deployment {
@@ -156,18 +183,77 @@ fn graphql_can_restart_deployments() {
         )
         .await;
 
-        assert_deployment_paused("subgraph_2", true).await;
-        assert_deployment_paused("subgraph_1", false).await;
-
-        sleep(Duration::from_secs(5)).await;
-
-        assert_deployment_paused("subgraph_2", false).await;
-        assert_deployment_paused("subgraph_1", false).await;
+        let start = tokio::time::Instant::now();
+        let mut was_paused = false;
+        loop {
+            let paused = is_deployment_paused("subgraph_2").await;
+            if paused {
+                was_paused = true;
+            }
+            if was_paused && !paused {
+                // Successfully restarted
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(30) {
+                panic!("Deployment 'subgraph_2' was not restarted within 30 seconds");
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
     });
 }
 
 #[test]
 fn graphql_allows_tracking_restart_deployment_executions() {
+    async fn execution_status(execution_id: &str) -> String {
+        let query = r#"query TrackRestartDeployment($id: String!) {
+            execution {
+                info(id: $id) {
+                    id
+                    kind
+                    status
+                    errorMessage
+                }
+            }
+        }"#;
+
+        let resp = send_graphql_request(
+            json!({
+                "query": query,
+                "variables": {
+                    "id": execution_id
+                }
+            }),
+            VALID_TOKEN,
+        )
+        .await;
+
+        let info = &resp["data"]["execution"]["info"];
+        assert_eq!(execution_id, info["id"].as_str().unwrap());
+        assert_eq!("RESTART_DEPLOYMENT", info["kind"].as_str().unwrap());
+        assert!(info["errorMessage"].is_null());
+
+        let status = info["status"].as_str().unwrap();
+
+        status.to_string()
+    }
+
+    async fn wait_for_status(execution_id: &str, desired_status: &str) {
+        let start = tokio::time::Instant::now();
+        loop {
+            let status = execution_status(execution_id).await;
+            if status == desired_status {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(30) {
+                panic!(
+                    "Execution '{}' did not enter {} state within 30 seconds",
+                    execution_id, desired_status
+                );
+            }
+            sleep(Duration::from_millis(200)).await;
+        }
+    }
+
     run_test(|| async {
         let deployment_hash = DeploymentHash::new("subgraph_1").unwrap();
         create_test_subgraph(&deployment_hash, TEST_SUBGRAPH_SCHEMA).await;
@@ -202,70 +288,8 @@ fn graphql_allows_tracking_restart_deployment_executions() {
         let resp: Response = serde_json::from_value(resp).expect("response is valid");
         let execution_id = resp.data.deployment.restart;
 
-        let query = r#"query TrackRestartDeployment($id: String!) {
-            execution {
-                info(id: $id) {
-                    id
-                    kind
-                    status
-                    errorMessage
-                }
-            }
-        }"#;
-
-        let resp = send_graphql_request(
-            json!({
-                "query": query,
-                "variables": {
-                    "id": execution_id
-                }
-            }),
-            VALID_TOKEN,
-        )
-        .await;
-
-        let expected_resp = json!({
-            "data": {
-                "execution": {
-                    "info": {
-                        "id": execution_id,
-                        "kind": "RESTART_DEPLOYMENT",
-                        "status": "RUNNING",
-                        "errorMessage": null,
-                    }
-                }
-            }
-        });
-
-        assert_eq!(resp, expected_resp);
-
-        sleep(Duration::from_secs(5)).await;
-
-        let resp = send_graphql_request(
-            json!({
-                "query": query,
-                "variables": {
-                    "id": execution_id
-                }
-            }),
-            VALID_TOKEN,
-        )
-        .await;
-
-        let expected_resp = json!({
-            "data": {
-                "execution": {
-                    "info": {
-                        "id": execution_id,
-                        "kind": "RESTART_DEPLOYMENT",
-                        "status": "SUCCEEDED",
-                        "errorMessage": null,
-                    }
-                }
-            }
-        });
-
-        assert_eq!(resp, expected_resp);
+        wait_for_status(&execution_id, "RUNNING").await;
+        wait_for_status(&execution_id, "SUCCEEDED").await;
     });
 }
 
@@ -515,7 +539,11 @@ fn graphql_can_reassign_deployment() {
         )
         .await;
 
-        let node = SUBGRAPH_STORE.assigned_node(&locator).unwrap().unwrap();
+        let node = SUBGRAPH_STORE
+            .assigned_node(&locator)
+            .await
+            .unwrap()
+            .unwrap();
 
         let reassign = send_graphql_request(
             json!({

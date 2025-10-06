@@ -106,7 +106,7 @@ where
         let store = store.subgraph_store();
 
         // Reset state before starting
-        remove_test_data(store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let deployment = insert_test_data(store.clone()).await;
@@ -164,6 +164,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             "fake_network".to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
+        .await
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -268,13 +269,6 @@ fn create_test_entity(
     }
 }
 
-/// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<DieselSubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
-}
-
 async fn create_grafted_subgraph(
     subgraph_id: &DeploymentHash,
     schema: &str,
@@ -285,7 +279,7 @@ async fn create_grafted_subgraph(
     test_store::create_subgraph(subgraph_id, schema, base).await
 }
 
-fn find_entities(
+async fn find_entities(
     store: &DieselSubgraphStore,
     deployment: &DeploymentLocator,
 ) -> (Vec<Entity>, Vec<Id>) {
@@ -302,6 +296,7 @@ fn find_entities(
 
     let entities = store
         .find(query)
+        .await
         .expect("store.find failed to execute query");
 
     let ids = entities
@@ -315,7 +310,7 @@ async fn check_graft(
     store: Arc<DieselSubgraphStore>,
     deployment: DeploymentLocator,
 ) -> Result<(), StoreError> {
-    let (entities, ids) = find_entities(store.as_ref(), &deployment);
+    let (entities, ids) = find_entities(store.as_ref(), &deployment).await;
 
     let ids_str = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
     assert_eq!(vec!["3", "1", "2"], ids_str);
@@ -325,7 +320,7 @@ async fn check_graft(
     let mut shaq = entities.first().unwrap().clone();
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
 
-    let schema = store.input_schema(&deployment.hash)?;
+    let schema = store.input_schema(&deployment.hash).await?;
     let user_type = schema.entity_type("User").unwrap();
 
     // Make our own entries for block 2
@@ -410,7 +405,7 @@ fn graft() {
         .await
         .expect("grafting onto block 0 works");
 
-        let (entities, ids) = find_entities(store.as_ref(), &deployment);
+        let (entities, ids) = find_entities(store.as_ref(), &deployment).await;
         let ids_str = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
         assert_eq!(vec!["1"], ids_str);
         let shaq = entities.first().unwrap().clone();
@@ -419,11 +414,11 @@ fn graft() {
     })
 }
 
-fn other_shard(
+async fn other_shard(
     store: &DieselSubgraphStore,
     src: &DeploymentLocator,
 ) -> Result<Option<Shard>, StoreError> {
-    let src_shard = store.shard(src)?;
+    let src_shard = store.shard(src).await?;
 
     match all_shards()
         .into_iter()
@@ -443,14 +438,16 @@ fn other_shard(
 #[test]
 fn copy() {
     run_test(|store, src| async move {
-        if let Some(dst_shard) = other_shard(&store, &src)? {
-            let deployment = store.copy_deployment(
-                &src,
-                dst_shard,
-                NODE_ID.clone(),
-                BLOCKS[1].clone(),
-                OnSync::None,
-            )?;
+        if let Some(dst_shard) = other_shard(&store, &src).await? {
+            let deployment = store
+                .copy_deployment(
+                    &src,
+                    dst_shard,
+                    NODE_ID.clone(),
+                    BLOCKS[1].clone(),
+                    OnSync::None,
+                )
+                .await?;
 
             store
                 .cheap_clone()
@@ -459,7 +456,7 @@ fn copy() {
                 .start_subgraph_deployment(&LOGGER)
                 .await?;
 
-            store.activate(&deployment)?;
+            store.activate(&deployment).await?;
 
             check_graft(store, deployment).await?;
         }
@@ -474,14 +471,10 @@ fn copy() {
 fn on_sync() {
     for on_sync in [OnSync::None, OnSync::Activate, OnSync::Replace] {
         run_test(move |store, src| async move {
-            if let Some(dst_shard) = other_shard(&store, &src)? {
-                let dst = store.copy_deployment(
-                    &src,
-                    dst_shard,
-                    NODE_ID.clone(),
-                    BLOCKS[1].clone(),
-                    on_sync,
-                )?;
+            if let Some(dst_shard) = other_shard(&store, &src).await? {
+                let dst = store
+                    .copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone(), on_sync)
+                    .await?;
 
                 let writable = store
                     .cheap_clone()
@@ -489,13 +482,13 @@ fn on_sync() {
                     .await?;
 
                 writable.start_subgraph_deployment(&LOGGER).await?;
-                writable.deployment_synced(BLOCKS[0].clone())?;
+                writable.deployment_synced(BLOCKS[0].clone()).await?;
 
-                let mut primary = primary_connection();
-                let src_site = primary.locate_site(src)?.unwrap();
-                let src_node = primary.assigned_node(&src_site)?;
-                let dst_site = primary.locate_site(dst)?.unwrap();
-                let dst_node = primary.assigned_node(&dst_site)?;
+                let mut primary = primary_connection().await;
+                let src_site = primary.locate_site(src).await?.unwrap();
+                let src_node = primary.assigned_node(&src_site).await?;
+                let dst_site = primary.locate_site(dst).await?.unwrap();
+                let dst_node = primary.assigned_node(&dst_site).await?;
 
                 assert!(dst_node.is_some());
                 match on_sync {
@@ -523,14 +516,16 @@ fn on_sync() {
     // Check that on_sync does not cause an error when the source of the
     // copy has vanished
     run_test(move |store, src| async move {
-        if let Some(dst_shard) = other_shard(&store, &src)? {
-            let dst = store.copy_deployment(
-                &src,
-                dst_shard,
-                NODE_ID.clone(),
-                BLOCKS[1].clone(),
-                OnSync::Replace,
-            )?;
+        if let Some(dst_shard) = other_shard(&store, &src).await? {
+            let dst = store
+                .copy_deployment(
+                    &src,
+                    dst_shard,
+                    NODE_ID.clone(),
+                    BLOCKS[1].clone(),
+                    OnSync::Replace,
+                )
+                .await?;
 
             let writable = store
                 .cheap_clone()
@@ -540,13 +535,13 @@ fn on_sync() {
             // Perform the copy
             writable.start_subgraph_deployment(&LOGGER).await?;
 
-            let mut primary = primary_connection();
-            let src_site = primary.locate_site(src.clone())?.unwrap();
-            primary.unassign_subgraph(&src_site)?;
-            store.activate(&dst)?;
-            store.remove_deployment(src.id.into())?;
+            let mut primary = primary_connection().await;
+            let src_site = primary.locate_site(src.clone()).await?.unwrap();
+            primary.unassign_subgraph(&src_site).await?;
+            store.activate(&dst).await?;
+            store.remove_deployment(src.id.into()).await?;
 
-            let res = writable.deployment_synced(BLOCKS[2].clone());
+            let res = writable.deployment_synced(BLOCKS[2].clone()).await;
             assert!(res.is_ok());
         }
         Ok(())
@@ -558,7 +553,7 @@ fn prune() {
     struct Progress;
     impl PruneReporter for Progress {}
 
-    fn check_at_block(
+    async fn check_at_block(
         store: &DieselSubgraphStore,
         src: &DeploymentLocator,
         strategy: PruningStrategy,
@@ -578,6 +573,7 @@ fn prune() {
             .collect::<Vec<_>>();
         let act: Vec<_> = store
             .find(query)
+            .await
             .unwrap()
             .into_iter()
             .map(|entity| entity.id())
@@ -592,10 +588,12 @@ fn prune() {
         run_test(move |store, src| async move {
             store
                 .set_history_blocks(&src, -3, 10)
+                .await
                 .expect_err("history_blocks can not be set to a negative number");
 
             store
                 .set_history_blocks(&src, 10, 10)
+                .await
                 .expect_err("history_blocks must be bigger than reorg_threshold");
 
             // Add another version for user 2 at block 4
@@ -663,10 +661,10 @@ fn prune() {
             // Check which versions exist at every block, even if they are
             // before the new earliest block, since we don't have a convenient
             // way to load all entity versions with their block range
-            check_at_block(&store, &src, strategy, 0, vec!["1"]);
-            check_at_block(&store, &src, strategy, 1, vec!["1", "2"]);
+            check_at_block(&store, &src, strategy, 0, vec!["1"]).await;
+            check_at_block(&store, &src, strategy, 1, vec!["1", "2"]).await;
             for block in 2..=5 {
-                check_at_block(&store, &src, strategy, block, vec!["1", "2", "3"]);
+                check_at_block(&store, &src, strategy, block, vec!["1", "2", "3"]).await;
             }
             Ok(())
         })

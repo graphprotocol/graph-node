@@ -6,8 +6,8 @@ use graphman::deployment::DeploymentSelector;
 
 use crate::resolvers::context::GraphmanContext;
 
-pub fn run(ctx: &GraphmanContext, deployment: &DeploymentSelector) -> Result<()> {
-    let active_deployment = load_active_deployment(ctx.primary_pool.clone(), deployment);
+pub async fn run(ctx: &GraphmanContext, deployment: &DeploymentSelector) -> Result<()> {
+    let active_deployment = load_active_deployment(ctx.primary_pool.clone(), deployment).await;
 
     match active_deployment {
         Ok(active_deployment) => {
@@ -15,7 +15,8 @@ pub fn run(ctx: &GraphmanContext, deployment: &DeploymentSelector) -> Result<()>
                 ctx.primary_pool.clone(),
                 ctx.notification_sender.clone(),
                 active_deployment,
-            )?;
+            )
+            .await?;
         }
         Err(PauseDeploymentError::AlreadyPaused(_)) => {
             return Ok(());

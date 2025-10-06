@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail};
+use async_trait::async_trait;
 use graph::blockchain::ChainIdentifier;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::NetworkDetails;
@@ -12,7 +13,7 @@ use itertools::Itertools;
 use std::sync::Arc;
 
 pub use graph::impl_slog_value;
-use graph::prelude::{async_trait, Error};
+use graph::prelude::Error;
 
 use crate::adapter::EthereumAdapter as _;
 use crate::capabilities::NodeCapabilities;
@@ -319,7 +320,6 @@ mod tests {
         firehose::SubgraphLimit,
         prelude::MetricsRegistry,
         slog::{o, Discard, Logger},
-        tokio,
         url::Url,
     };
     use std::sync::Arc;
@@ -383,7 +383,7 @@ mod tests {
         assert_eq!(true, &full_traces >= &full_traces);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_selects_eth_call() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -489,7 +489,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_unlimited() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -560,7 +560,7 @@ mod tests {
         assert_eq!(keep.iter().any(|a| !a.is_call_only()), false);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_disable_call_only_fallback() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -627,7 +627,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_no_call_only_fallback() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -673,7 +673,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn eth_adapter_selection_multiple_adapters() {
         let logger = Logger::root(Discard, o!());
         let unavailable_provider = "unavailable-provider";
@@ -786,7 +786,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn eth_adapter_selection_single_adapter() {
         let logger = Logger::root(Discard, o!());
         let unavailable_provider = "unavailable-provider";

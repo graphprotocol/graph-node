@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::anyhow::Context;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::link_resolver::LinkResolverContext;
@@ -8,7 +9,7 @@ use graph::prelude::SubgraphManifestValidationError;
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
-    prelude::{async_trait, BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger},
+    prelude::{BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger},
     semver,
 };
 use std::collections::HashSet;

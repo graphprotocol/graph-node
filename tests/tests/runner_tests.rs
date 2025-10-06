@@ -55,7 +55,7 @@ fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn data_source_revert() -> anyhow::Result<()> {
     *TEST_WITH_NO_REORG.lock().unwrap() = true;
 
@@ -174,7 +174,7 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[graph::test]
 async fn typename() -> anyhow::Result<()> {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("typename", "typename").await;
@@ -202,7 +202,7 @@ async fn typename() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[graph::test]
 async fn api_version_0_0_7() {
     let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_custom_cmd(
         "api_version_0_0_7",
@@ -244,7 +244,7 @@ async fn api_version_0_0_7() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn api_version_0_0_8() {
     let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_custom_cmd(
         "api_version_0_0_8",
@@ -278,7 +278,7 @@ async fn api_version_0_0_8() {
     assert_eq_ignore_backtrace(&err, &expected_err);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn derived_loaders() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("derived_loaders", "derived-loaders").await;
@@ -438,7 +438,7 @@ async fn derived_loaders() {
 // changed the way TriggerFilters were built
 // A bug was introduced in the PR which resulted in filters for substreams not being included
 // This test tests that the TriggerFilter is built correctly for substreams
-#[tokio::test]
+#[graph::test]
 async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("substreams", "substreams").await;
@@ -465,7 +465,7 @@ async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[graph::test]
 async fn end_block() -> anyhow::Result<()> {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("end_block", "end-block").await;
@@ -542,7 +542,7 @@ async fn end_block() -> anyhow::Result<()> {
 
     // Simulate a chain reorg and ensure the filter rebuilds accurately post-reorg.
     {
-        ctx.rewind(test_ptr(6));
+        ctx.rewind(test_ptr(6)).await;
 
         let mut blocks = blocks[0..8].to_vec().clone();
 
@@ -589,7 +589,7 @@ async fn end_block() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[graph::test]
 async fn file_data_sources() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("file-data-sourcess", "file-data-sources").await;
@@ -727,7 +727,7 @@ async fn file_data_sources() {
 
     // Should not allow creating conflicting entity. ie: Entity created in offchain handler cannot be created in onchain handler
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -752,7 +752,7 @@ async fn file_data_sources() {
 
     // Should not allow accessing entities created in offchain handlers in onchain handlers
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -785,7 +785,7 @@ async fn file_data_sources() {
 
     // Prevent access to entities created by offchain handlers when using derived loaders in onchain handlers.
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -828,7 +828,7 @@ async fn file_data_sources() {
 
     // Should not allow creating entity that is not declared in the manifest for the offchain datasource
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -847,7 +847,7 @@ async fn file_data_sources() {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn block_handlers() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("block_handlers", "block-handlers").await;
@@ -971,7 +971,7 @@ async fn block_handlers() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn template_static_filters_false_positives() {
     let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new(
         "template_static_filters_false_positives",
@@ -1011,7 +1011,7 @@ async fn template_static_filters_false_positives() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_data_source_context() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("parse_data_source_context", "data-sources").await;
@@ -1039,7 +1039,7 @@ async fn parse_data_source_context() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn retry_create_ds() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("retry_create_ds", "data-source-revert2").await;
@@ -1096,7 +1096,7 @@ async fn retry_create_ds() {
     assert_eq!(runner.context().hosts_len(), 2);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn fatal_error() -> anyhow::Result<()> {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("fatal_error", "fatal-error").await;
@@ -1153,7 +1153,7 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(poi2 != poi100);
 
     // Test that rewind unfails the subgraph.
-    ctx.rewind(test_ptr(1));
+    ctx.rewind(test_ptr(1)).await;
     let status = ctx.indexing_status().await;
     assert!(status.health == SubgraphHealth::Healthy);
     assert!(status.fatal_error.is_none());
@@ -1161,7 +1161,7 @@ async fn fatal_error() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[graph::test]
 async fn arweave_file_data_sources() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("arweave_file_data_sources", "arweave-file-data-sources").await;

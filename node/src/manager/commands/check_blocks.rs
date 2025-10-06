@@ -30,7 +30,7 @@ pub async fn by_number(
     logger: &Logger,
     delete_duplicates: bool,
 ) -> anyhow::Result<()> {
-    let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store)?;
+    let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store).await?;
 
     match &block_hashes.as_slice() {
         [] => bail!("Could not find a block with number {} in store", number),
@@ -54,14 +54,15 @@ pub async fn by_range(
     let range = ranges::Range::new(range_from, range_to)?;
     let max = match range.upper_bound {
         // When we have an open upper bound, we use the chain head's block number
-        None => steps::find_chain_head(&chain_store)?,
+        None => steps::find_chain_head(&chain_store).await?,
         Some(x) => x,
     };
     // FIXME: This performs poorly.
     // TODO: This could be turned into async code
     for block_number in range.lower_bound..=max {
         println!("Checking block [{block_number}/{max}]");
-        let block_hashes = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
+        let block_hashes =
+            steps::resolve_block_hash_from_block_number(block_number, &chain_store).await?;
         match &block_hashes.as_slice() {
             [] => eprintln!("Found no block hash with number {block_number}"),
             [block_hash] => {
@@ -87,7 +88,7 @@ pub async fn by_range(
     Ok(())
 }
 
-pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow::Result<()> {
+pub async fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow::Result<()> {
     let prompt = format!(
         "This will delete all cached blocks for {}.\nProceed?",
         chain_store.chain
@@ -99,6 +100,7 @@ pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow
 
     chain_store
         .truncate_block_cache()
+        .await
         .with_context(|| format!("Failed to truncate block cache for {}", chain_store.chain))
 }
 
@@ -115,7 +117,7 @@ async fn run(
     let diff = steps::diff_block_pair(&cached_block, &provider_block);
     steps::report_difference(diff.as_deref(), block_hash);
     if diff.is_some() {
-        steps::delete_block(block_hash, &chain_store)?;
+        steps::delete_block(block_hash, &chain_store).await?;
     }
     Ok(())
 }
@@ -138,7 +140,7 @@ async fn handle_multiple_block_hashes(
     if delete_duplicates {
         println!("Deleting duplicated blocks...");
         for hash in block_hashes {
-            steps::delete_block(hash, chain_store)?;
+            steps::delete_block(hash, chain_store).await?;
         }
     } else {
         eprintln!(
@@ -164,11 +166,11 @@ mod steps {
     /// Multiple block hashes can be returned as the store does not enforce uniqueness based on
     /// block numbers.
     /// Returns an empty vector if no block hash is found.
-    pub(super) fn resolve_block_hash_from_block_number(
+    pub(super) async fn resolve_block_hash_from_block_number(
         number: i32,
         chain_store: &ChainStore,
     ) -> anyhow::Result<Vec<H256>> {
-        let block_hashes = chain_store.block_hashes_by_block_number(number)?;
+        let block_hashes = chain_store.block_hashes_by_block_number(number).await?;
         Ok(block_hashes
             .into_iter()
             .map(|x| H256::from_slice(&x.as_slice()[..32]))
@@ -245,16 +247,16 @@ mod steps {
     }
 
     /// Attempts to delete a block from the block cache.
-    pub(super) fn delete_block(hash: &H256, chain_store: &ChainStore) -> anyhow::Result<()> {
+    pub(super) async fn delete_block(hash: &H256, chain_store: &ChainStore) -> anyhow::Result<()> {
         println!("Deleting block {hash} from cache.");
-        chain_store.delete_blocks(&[hash])?;
+        chain_store.delete_blocks(&[hash]).await?;
         println!("Done.");
         Ok(())
     }
 
     /// Queries the [`ChainStore`] about the chain head.
-    pub(super) fn find_chain_head(chain_store: &ChainStore) -> anyhow::Result<i32> {
-        let chain_head: Option<i32> = chain_store.chain_head_block(&chain_store.chain)?;
+    pub(super) async fn find_chain_head(chain_store: &ChainStore) -> anyhow::Result<i32> {
+        let chain_head: Option<i32> = chain_store.chain_head_block(&chain_store.chain).await?;
         chain_head.ok_or_else(|| anyhow!("Could not find the chain head for {}", chain_store.chain))
     }
 }

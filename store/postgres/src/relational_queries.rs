@@ -54,8 +54,11 @@ use crate::{
 /// Those are columns that we always want to fetch from the database.
 const BASE_SQL_COLUMNS: [&str; 2] = ["id", "vid"];
 
-/// The maximum number of bind variables that can be used in a query
-pub(crate) const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
+/// The maximum number of bind variables that can be used in a query.
+/// Because of [this
+/// bug](https://github.com/rust-postgres/rust-postgres/issues/1302) we use
+/// i16::MAX instead of u16::MAX which is what Postgres actually supports
+pub(crate) const POSTGRES_MAX_PARAMETERS: usize = i16::MAX as usize; // 32767
 
 const SORT_KEY_COLUMN: &str = "sort_key$";
 

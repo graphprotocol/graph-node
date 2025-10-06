@@ -5,13 +5,14 @@ use graphman::deployment::DeploymentSelector;
 
 use crate::resolvers::context::GraphmanContext;
 
-pub fn run(ctx: &GraphmanContext, deployment: &DeploymentSelector) -> Result<()> {
-    let deployment = load_assigned_deployment(ctx.primary_pool.clone(), deployment)?;
+pub async fn run(ctx: &GraphmanContext, deployment: &DeploymentSelector) -> Result<()> {
+    let deployment = load_assigned_deployment(ctx.primary_pool.clone(), deployment).await?;
     unassign_deployment(
         ctx.primary_pool.clone(),
         ctx.notification_sender.clone(),
         deployment,
-    )?;
+    )
+    .await?;
 
     Ok(())
 }

@@ -17,7 +17,7 @@ impl ExecutionQuery {
     /// Returns all stored command execution data.
     pub async fn info(&self, ctx: &Context<'_>, id: ExecutionId) -> Result<Execution> {
         let store = ctx.data::<Arc<GraphmanStore>>()?.to_owned();
-        let execution = store.load_execution(id.into())?;
+        let execution = store.load_execution(id.into()).await?;
 
         Ok(execution.try_into()?)
     }

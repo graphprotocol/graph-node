@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
+use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
@@ -32,8 +33,8 @@ use graph::{
     components::store::DeploymentLocator,
     firehose,
     prelude::{
-        async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Logger, LoggerFactory,
+        o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls, Logger,
+        LoggerFactory,
     },
 };
 use prost::Message;
@@ -551,9 +552,11 @@ impl Blockchain for Chain {
         self.block_refetcher.get_block(self, logger, cursor).await
     }
 
-    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+    async fn runtime(
+        &self,
+    ) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
         let call_cache = Arc::new(BufferedCallCache::new(self.call_cache.cheap_clone()));
-        let chain_ident = self.chain_store.chain_identifier()?;
+        let chain_ident = self.chain_store.chain_identifier().await?;
 
         let builder = self.runtime_adapter_builder.build(
             self.eth_adapters.cheap_clone(),
@@ -1266,7 +1269,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 #[cfg(test)]
 mod tests {
     use graph::blockchain::mock::MockChainStore;
-    use graph::{slog, tokio};
+    use graph::slog;
 
     use super::*;
     use std::sync::Arc;
@@ -1283,7 +1286,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_single_block() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1302,7 +1305,7 @@ mod tests {
         assert!(missing.is_empty());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_duplicate_blocks() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1325,7 +1328,7 @@ mod tests {
         assert_eq!(missing[0], 1);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_missing_blocks() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1344,7 +1347,7 @@ mod tests {
         assert_eq!(missing, vec![2]);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_multiple_valid_blocks() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1366,7 +1369,7 @@ mod tests {
         assert!(missing.is_empty());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_mixed_scenario() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();

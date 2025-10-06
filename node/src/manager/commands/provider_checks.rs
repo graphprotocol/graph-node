@@ -10,18 +10,14 @@ use graph::components::network_provider::NetworkDetails;
 use graph::components::network_provider::ProviderCheck;
 use graph::components::network_provider::ProviderCheckStatus;
 use graph::prelude::tokio;
+use graph::prelude::CheapClone;
 use graph::prelude::Logger;
 use graph_store_postgres::BlockStore;
 use itertools::Itertools;
 
 use crate::network_setup::Networks;
 
-pub async fn execute(
-    logger: &Logger,
-    networks: &Networks,
-    store: Arc<BlockStore>,
-    timeout: Duration,
-) {
+pub async fn execute(logger: &Logger, networks: &Networks, store: BlockStore, timeout: Duration) {
     let chain_name_iter = networks
         .adapters
         .iter()
@@ -37,7 +33,7 @@ pub async fn execute(
             .providers_unchecked(chain_name)
             .unique_by(|x| x.provider_name())
         {
-            let validator = chain_id_validator(store.clone());
+            let validator = chain_id_validator(Box::new(store.cheap_clone()));
             match tokio::time::timeout(
                 timeout,
                 run_checks(logger, chain_name, adapter, validator.clone()),
@@ -58,7 +54,7 @@ pub async fn execute(
             .providers_unchecked(chain_name)
             .unique_by(|x| x.provider_name())
         {
-            let validator = chain_id_validator(store.clone());
+            let validator = chain_id_validator(Box::new(store.cheap_clone()));
             match tokio::time::timeout(timeout, run_checks(logger, chain_name, adapter, validator))
                 .await
             {
@@ -76,7 +72,7 @@ pub async fn execute(
             .providers_unchecked(chain_name)
             .unique_by(|x| x.provider_name())
         {
-            let validator = chain_id_validator(store.clone());
+            let validator = chain_id_validator(Box::new(store.cheap_clone()));
             match tokio::time::timeout(
                 timeout,
                 run_checks(logger, chain_name, adapter, validator.clone()),

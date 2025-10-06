@@ -48,25 +48,25 @@ where
         }
     }
 
-    pub fn handle(&self, logger: &Logger, req: &[&str]) -> ServerResult {
+    pub async fn handle(&self, logger: &Logger, req: &[&str]) -> ServerResult {
         match req {
-            ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id),
-            ["subgraph-version", version] => self.handle_subgraph_version(version),
-            ["subgraph-repo", version] => self.handle_subgraph_repo(version),
-            ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
+            ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id).await,
+            ["subgraph-version", version] => self.handle_subgraph_version(version).await,
+            ["subgraph-repo", version] => self.handle_subgraph_repo(version).await,
+            ["entity-count", deployment] => self.handle_entity_count(logger, deployment).await,
             ["subgraphs-for-deployment", deployment_hash] => {
-                self.handle_subgraphs_for_deployment(deployment_hash)
+                self.handle_subgraphs_for_deployment(deployment_hash).await
             }
             _ => handle_not_found(),
         }
     }
 
-    fn handle_subgraph_versions(&self, subgraph_id: &str) -> ServerResult {
+    async fn handle_subgraph_versions(&self, subgraph_id: &str) -> ServerResult {
         if let Some(value) = self.versions.get(subgraph_id) {
             return Ok(as_http_response(value.as_ref()));
         }
 
-        let (current, pending) = self.store.versions_for_subgraph_id(subgraph_id)?;
+        let (current, pending) = self.store.versions_for_subgraph_id(subgraph_id).await?;
 
         let value = object! {
             currentVersion: current,
@@ -78,8 +78,8 @@ where
         Ok(resp)
     }
 
-    fn handle_subgraph_version(&self, version: &str) -> ServerResult {
-        let vi = self.version_info(version)?;
+    async fn handle_subgraph_version(&self, version: &str) -> ServerResult {
+        let vi = self.version_info(version).await?;
 
         let latest_ethereum_block_number = vi.latest_ethereum_block_number;
         let total_ethereum_blocks_count = vi.total_ethereum_blocks_count;
@@ -98,8 +98,8 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_subgraph_repo(&self, version: &str) -> ServerResult {
-        let vi = self.version_info(version)?;
+    async fn handle_subgraph_repo(&self, version: &str) -> ServerResult {
+        let vi = self.version_info(version).await?;
 
         let value = object! {
             createdAt: vi.created_at.as_str(),
@@ -109,7 +109,7 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_entity_count(&self, logger: &Logger, deployment: &str) -> ServerResult {
+    async fn handle_entity_count(&self, logger: &Logger, deployment: &str) -> ServerResult {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
         if start.elapsed() > ENV_VARS.explorer_lock_threshold {
@@ -130,7 +130,8 @@ where
         let start = Instant::now();
         let infos = self
             .store
-            .status(status::Filter::Deployments(vec![deployment.to_string()]))?;
+            .status(status::Filter::Deployments(vec![deployment.to_string()]))
+            .await?;
         if start.elapsed() > ENV_VARS.explorer_query_threshold {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "query_status",
@@ -167,21 +168,22 @@ where
         Ok(resp)
     }
 
-    fn version_info(&self, version: &str) -> Result<Arc<VersionInfo>, ServerError> {
+    async fn version_info(&self, version: &str) -> Result<Arc<VersionInfo>, ServerError> {
         match self.version_infos.get(version) {
             Some(vi) => Ok(vi),
             None => {
-                let vi = Arc::new(self.store.version_info(version)?);
+                let vi = Arc::new(self.store.version_info(version).await?);
                 self.version_infos.set(version.to_string(), vi.clone());
                 Ok(vi)
             }
         }
     }
 
-    fn handle_subgraphs_for_deployment(&self, deployment_hash: &str) -> ServerResult {
+    async fn handle_subgraphs_for_deployment(&self, deployment_hash: &str) -> ServerResult {
         let name_version_pairs: Vec<r::Value> = self
             .store
-            .subgraphs_for_deployment_hash(deployment_hash)?
+            .subgraphs_for_deployment_hash(deployment_hash)
+            .await?
             .into_iter()
             .map(|(name, version)| {
                 object! {

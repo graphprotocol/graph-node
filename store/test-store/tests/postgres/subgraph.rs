@@ -1,24 +1,20 @@
-use graph::futures03;
 use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{DeploymentId, DeploymentLocator, StatusStore},
     },
-    data::query::QueryTarget,
-    data::subgraph::{schema::SubgraphHealth, SubgraphFeature},
-    data::subgraph::{
-        schema::{DeploymentCreate, SubgraphError},
-        DeploymentFeatures,
+    data::{
+        query::QueryTarget,
+        subgraph::{
+            schema::{DeploymentCreate, SubgraphError, SubgraphHealth},
+            DeploymentFeatures, SubgraphFeature,
+        },
     },
-    prelude::AssignmentChange,
-    prelude::BlockPtr,
-    prelude::QueryStoreManager,
-    prelude::StoreEvent,
-    prelude::SubgraphManifest,
-    prelude::SubgraphName,
-    prelude::SubgraphVersionSwitchingMode,
-    prelude::UnfailOutcome,
-    prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
+    prelude::{
+        AssignmentChange, BlockPtr, CheapClone, DeploymentHash, NodeId, QueryStoreManager,
+        StoreError, StoreEvent, SubgraphManifest, SubgraphName, SubgraphStore as _,
+        SubgraphVersionSwitchingMode, UnfailOutcome,
+    },
     schema::InputSchema,
     semver::Version,
 };
@@ -66,16 +62,16 @@ fn unassigned(deployment: &DeploymentLocator) -> AssignmentChange {
     AssignmentChange::removed(deployment.clone())
 }
 
-fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
-    let mut primary = primary_connection();
-    let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
+async fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
+    let mut primary = primary_connection().await;
+    let (current, _) = primary.versions_for_subgraph(subgraph_name).await.unwrap();
     let current = current.unwrap();
-    store.version_info(&current).unwrap()
+    store.version_info(&current).await.unwrap()
 }
 
-fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
-    let mut primary = primary_connection();
-    primary.get_subgraph_features(id).unwrap()
+async fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
+    let mut primary = primary_connection().await;
+    primary.get_subgraph_features(id).await.unwrap()
 }
 
 async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
@@ -92,13 +88,17 @@ async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
 fn reassign_subgraph() {
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new("reassignSubgraph").unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
-    fn find_assignment(store: &SubgraphStore, deployment: &DeploymentLocator) -> Option<String> {
+    async fn find_assignment(
+        store: &SubgraphStore,
+        deployment: &DeploymentLocator,
+    ) -> Option<String> {
         store
             .assigned_node(deployment)
+            .await
             .unwrap()
             .map(|node| node.to_string())
     }
@@ -108,7 +108,7 @@ fn reassign_subgraph() {
         let store = store.subgraph_store();
 
         // Check our setup
-        let node = find_assignment(store.as_ref(), &id);
+        let node = find_assignment(store.as_ref(), &id).await;
         let placement = place("test").expect("the test config places deployments");
         if let Some((_, nodes)) = placement {
             // If the test config does not have deployment rules, we can't check
@@ -125,8 +125,9 @@ fn reassign_subgraph() {
             let node = NodeId::new("left").unwrap();
             let expected = vec![StoreEvent::new(vec![assigned(&id)])];
 
-            let (_, events) = tap_store_events(|| store.reassign_subgraph(&id, &node).unwrap());
-            let node = find_assignment(store.as_ref(), &id);
+            let (_, events) =
+                tap_store_events(async || store.reassign_subgraph(&id, &node).await.unwrap()).await;
+            let node = find_assignment(store.as_ref(), &id).await;
             assert_eq!(Some("left"), node.as_deref());
             assert_eq!(expected, events);
         }
@@ -138,21 +139,31 @@ fn create_subgraph() {
     const SUBGRAPH_NAME: &str = "create/subgraph";
 
     // Return the versions (not deployments) for a subgraph
-    fn subgraph_versions(primary: &mut Primary) -> (Option<String>, Option<String>) {
-        primary.versions_for_subgraph(SUBGRAPH_NAME).unwrap()
+    async fn subgraph_versions(primary: &mut Primary) -> (Option<String>, Option<String>) {
+        primary.versions_for_subgraph(SUBGRAPH_NAME).await.unwrap()
+    }
+
+    async fn deployment_for_version(
+        primary: &mut Primary,
+        name: Option<String>,
+    ) -> Result<Option<String>, StoreError> {
+        match name {
+            None => Ok(None),
+            Some(name) => primary.deployment_for_version(&name).await,
+        }
     }
 
     /// Return the deployment for the current and the pending version of the
     /// subgraph with the given `entity_id`
-    fn subgraph_deployments(primary: &mut Primary) -> (Option<String>, Option<String>) {
-        let (current, pending) = subgraph_versions(primary);
+    async fn subgraph_deployments(primary: &mut Primary) -> (Option<String>, Option<String>) {
+        let (current, pending) = subgraph_versions(primary).await;
         (
-            current.and_then(|v| primary.deployment_for_version(&v).unwrap()),
-            pending.and_then(|v| primary.deployment_for_version(&v).unwrap()),
+            deployment_for_version(primary, current).await.unwrap(),
+            deployment_for_version(primary, pending).await.unwrap(),
         )
     }
 
-    fn deploy(
+    async fn deploy(
         store: &SubgraphStore,
         id: &str,
         mode: SubgraphVersionSwitchingMode,
@@ -177,7 +188,7 @@ fn create_subgraph() {
         let deployment = DeploymentCreate::new(String::new(), &manifest, None);
         let node_id = NodeId::new("left").unwrap();
 
-        let (deployment, events) = tap_store_events(|| {
+        let (deployment, events) = tap_store_events(async || {
             store
                 .create_subgraph_deployment(
                     name,
@@ -187,8 +198,10 @@ fn create_subgraph() {
                     NETWORK_NAME.to_string(),
                     mode,
                 )
+                .await
                 .unwrap()
-        });
+        })
+        .await;
         let events = events
             .into_iter()
             .flat_map(|event| event.changes.into_iter())
@@ -202,24 +215,24 @@ fn create_subgraph() {
         changes
     }
 
-    fn deployment_synced(
+    async fn deployment_synced(
         store: &Arc<SubgraphStore>,
         deployment: &DeploymentLocator,
         block_ptr: BlockPtr,
     ) {
-        futures03::executor::block_on(store.cheap_clone().writable(
-            LOGGER.clone(),
-            deployment.id,
-            Arc::new(Vec::new()),
-        ))
-        .expect("can get writable")
-        .deployment_synced(block_ptr)
-        .unwrap();
+        store
+            .cheap_clone()
+            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+            .await
+            .expect("can get writable")
+            .deployment_synced(block_ptr)
+            .await
+            .unwrap();
     }
 
     // Test VersionSwitchingMode::Instant
     run_test_sequentially(|store| async move {
-        remove_subgraphs();
+        remove_subgraphs().await;
         let store = store.subgraph_store();
 
         const MODE: SubgraphVersionSwitchingMode = SubgraphVersionSwitchingMode::Instant;
@@ -227,51 +240,52 @@ fn create_subgraph() {
         const ID2: &str = "instant2";
         const ID3: &str = "instant3";
 
-        let mut primary = primary_connection();
+        let mut primary = primary_connection().await;
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
-        let (_, events) = tap_store_events(|| store.create_subgraph(name.clone()).unwrap());
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (_, events) =
+            tap_store_events(async || store.create_subgraph(name.clone()).await.unwrap()).await;
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
 
         // Deploy
-        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE);
+        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE).await;
         let expected = deploy_event(&deployment1);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID1), current.as_deref());
         assert!(pending.is_none());
 
         // Deploying again overwrites current
-        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE);
+        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE).await;
         let mut expected = deploy_event(&deployment2);
         expected.insert(unassigned(&deployment1));
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID2), current.as_deref());
         assert!(pending.is_none());
 
         // Sync deployment
-        deployment_synced(&store, &deployment2, GENESIS_PTR.clone());
+        deployment_synced(&store, &deployment2, GENESIS_PTR.clone()).await;
 
         // Deploying again still overwrites current
-        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE).await;
         let mut expected = deploy_event(&deployment3);
         expected.insert(unassigned(&deployment2));
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID3), current.as_deref());
         assert!(pending.is_none());
     });
 
     // Test VersionSwitchingMode::Synced
     run_test_sequentially(|store| async move {
-        remove_subgraphs();
+        remove_subgraphs().await;
         let store = store.subgraph_store();
 
         const MODE: SubgraphVersionSwitchingMode = SubgraphVersionSwitchingMode::Synced;
@@ -279,60 +293,61 @@ fn create_subgraph() {
         const ID2: &str = "synced2";
         const ID3: &str = "synced3";
 
-        let mut primary = primary_connection();
+        let mut primary = primary_connection().await;
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
-        let (_, events) = tap_store_events(|| store.create_subgraph(name.clone()).unwrap());
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (_, events) =
+            tap_store_events(async || store.create_subgraph(name.clone()).await.unwrap()).await;
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
 
         // Deploy
-        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE);
+        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE).await;
         let expected = deploy_event(&deployment1);
         assert_eq!(expected, events);
 
-        let versions = subgraph_versions(&mut primary);
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let versions = subgraph_versions(&mut primary).await;
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID1), current.as_deref());
         assert!(pending.is_none());
 
         // Deploying the same thing again does nothing
-        let (deployment1_again, events) = deploy(store.as_ref(), ID1, MODE);
+        let (deployment1_again, events) = deploy(store.as_ref(), ID1, MODE).await;
         assert!(events.is_empty());
         assert_eq!(&deployment1, &deployment1_again);
-        let versions2 = subgraph_versions(&mut primary);
+        let versions2 = subgraph_versions(&mut primary).await;
         assert_eq!(versions, versions2);
 
         // Deploy again, current is not synced, so it gets replaced
-        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE);
+        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE).await;
         let mut expected = deploy_event(&deployment2);
         expected.insert(unassigned(&deployment1));
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID2), current.as_deref());
         assert!(pending.is_none());
 
         // Deploy when current is synced leaves current alone and adds pending
-        deployment_synced(&store, &deployment2, GENESIS_PTR.clone());
-        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE);
+        deployment_synced(&store, &deployment2, GENESIS_PTR.clone()).await;
+        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE).await;
         let expected = deploy_event(&deployment3);
         assert_eq!(expected, events);
 
-        let versions = subgraph_versions(&mut primary);
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let versions = subgraph_versions(&mut primary).await;
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(Some(ID3), pending.as_deref());
 
         // Deploying that same thing again changes nothing
-        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE).await;
         assert!(events.is_empty());
         assert_eq!(&deployment3, &deployment3_again);
-        let versions2 = subgraph_versions(&mut primary);
+        let versions2 = subgraph_versions(&mut primary).await;
         assert_eq!(versions, versions2);
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(Some(ID3), pending.as_deref());
 
@@ -342,22 +357,22 @@ fn create_subgraph() {
         let mut expected = HashSet::new();
         expected.insert(unassigned(&deployment3));
 
-        let (deployment2_again, events) = deploy(store.as_ref(), ID2, MODE);
+        let (deployment2_again, events) = deploy(store.as_ref(), ID2, MODE).await;
         assert_eq!(&deployment2, &deployment2_again);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID2), current.as_deref());
         assert_eq!(None, pending.as_deref());
 
         // Mark `ID3` as synced and deploy that again
-        deployment_synced(&store, &deployment3, GENESIS_PTR.clone());
+        deployment_synced(&store, &deployment3, GENESIS_PTR.clone()).await;
         let expected = HashSet::from([unassigned(&deployment2), assigned(&deployment3)]);
-        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE).await;
         assert_eq!(&deployment3, &deployment3_again);
         assert_eq!(expected, events);
 
-        let (current, pending) = subgraph_deployments(&mut primary);
+        let (current, pending) = subgraph_deployments(&mut primary).await;
         assert_eq!(Some(ID3), current.as_deref());
         assert_eq!(None, pending.as_deref());
     })
@@ -370,7 +385,7 @@ fn status() {
 
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         let deployment = create_test_subgraph(&id, SUBGRAPH_GQL).await;
         create_test_subgraph(&DeploymentHash::new(OTHER).unwrap(), SUBGRAPH_GQL).await;
         deployment
@@ -386,13 +401,17 @@ fn status() {
                 "notASubgraph".to_string(),
                 "not-even-a-valid-id".to_string(),
             ]))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
         assert_eq!(NAME, info.subgraph);
         assert!(!info.synced);
 
-        let infos = store.status(status::Filter::Deployments(vec![])).unwrap();
+        let infos = store
+            .status(status::Filter::Deployments(vec![]))
+            .await
+            .unwrap();
         assert_eq!(2, infos.len());
         let info = infos
             .into_iter()
@@ -403,6 +422,7 @@ fn status() {
 
         let infos = store
             .status(status::Filter::SubgraphName(NAME.to_string()))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
@@ -411,6 +431,7 @@ fn status() {
 
         let infos = store
             .status(status::Filter::SubgraphVersion(NAME.to_string(), true))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
@@ -419,16 +440,19 @@ fn status() {
 
         let infos = store
             .status(status::Filter::SubgraphVersion(NAME.to_string(), false))
+            .await
             .unwrap();
         assert!(infos.is_empty());
 
         let infos = store
             .status(status::Filter::SubgraphName("invalid name".to_string()))
+            .await
             .unwrap();
         assert_eq!(0, infos.len());
 
         let infos = store
             .status(status::Filter::SubgraphName("notASubgraph".to_string()))
+            .await
             .unwrap();
         assert_eq!(0, infos.len());
 
@@ -437,6 +461,7 @@ fn status() {
                 "notASubgraph".to_string(),
                 true,
             ))
+            .await
             .unwrap();
         assert_eq!(0, infos.len());
 
@@ -461,6 +486,7 @@ fn status() {
             .status(status::Filter::Deployments(vec![deployment
                 .hash
                 .to_string()]))
+            .await
             .unwrap();
         assert_eq!(1, infos.len());
         let info = infos.first().unwrap();
@@ -479,7 +505,7 @@ fn version_info() {
 
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         block_store::set_chain(vec![], NETWORK_NAME).await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
@@ -495,7 +521,7 @@ fn version_info() {
         .await
         .unwrap();
 
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.synced);
         assert_eq!(false, vi.failed);
@@ -521,7 +547,7 @@ fn subgraph_features() {
         const NAME: &str = "subgraph_features";
         let id = DeploymentHash::new(NAME).unwrap();
 
-        remove_subgraphs();
+        remove_subgraphs().await;
         block_store::set_chain(vec![], NETWORK_NAME).await;
         create_test_subgraph_with_features(&id, SUBGRAPH_FEATURES_GQL).await;
 
@@ -537,7 +563,7 @@ fn subgraph_features() {
             has_bytes_as_ids,
             immutable_entities,
             has_aggregations,
-        } = get_subgraph_features(id.to_string()).unwrap();
+        } = get_subgraph_features(id.to_string()).await.unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
         assert_eq!("1.3.0", spec_version);
@@ -562,8 +588,8 @@ fn subgraph_features() {
             vec!["User2".to_string(), "Data".to_string()]
         );
 
-        test_store::remove_subgraph(&id);
-        let features = get_subgraph_features(id.to_string());
+        test_store::remove_subgraph(&id).await;
+        let features = get_subgraph_features(id.to_string()).await;
         // Subgraph was removed, so we expect the entry to be removed from `subgraph_features` table
         assert!(features.is_none());
     })
@@ -576,9 +602,9 @@ fn subgraph_error() {
         let deployment =
             test_store::create_test_subgraph(&subgraph_id, "type Foo @entity { id: ID! }").await;
 
-        let count = || -> usize {
+        let count = async || -> usize {
             let store = store.subgraph_store();
-            store.error_count(&subgraph_id).unwrap()
+            store.error_count(&subgraph_id).await.unwrap()
         };
 
         let error = SubgraphError {
@@ -589,12 +615,12 @@ fn subgraph_error() {
             deterministic: false,
         };
 
-        assert!(count() == 0);
+        assert!(count().await == 0);
 
         transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error], false)
             .await
             .unwrap();
-        assert!(count() == 1);
+        assert!(count().await == 1);
 
         let error = SubgraphError {
             subgraph_id: subgraph_id.clone(),
@@ -608,7 +634,7 @@ fn subgraph_error() {
         transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error], false)
             .await
             .unwrap();
-        assert!(count() == 1);
+        assert!(count().await == 1);
 
         let error2 = SubgraphError {
             subgraph_id: subgraph_id.clone(),
@@ -621,9 +647,9 @@ fn subgraph_error() {
         transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2], false)
             .await
             .unwrap();
-        assert!(count() == 2);
+        assert!(count().await == 2);
 
-        test_store::remove_subgraph(&subgraph_id);
+        test_store::remove_subgraph(&subgraph_id).await;
     })
 }
 
@@ -635,9 +661,9 @@ fn subgraph_non_fatal_error() {
         let deployment =
             test_store::create_test_subgraph(&subgraph_id, "type Foo @entity { id: ID! }").await;
 
-        let count = || -> usize {
+        let count = async || -> usize {
             let store = store.subgraph_store();
-            let count = store.error_count(&subgraph_id).unwrap();
+            let count = store.error_count(&subgraph_id).await.unwrap();
             println!("count: {}", count);
             count
         };
@@ -650,14 +676,14 @@ fn subgraph_non_fatal_error() {
             deterministic: true,
         };
 
-        assert!(count() == 0);
+        assert!(count().await == 0);
 
         transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error], true)
             .await
             .unwrap();
-        assert!(count() == 1);
+        assert!(count().await == 1);
 
-        let info = subgraph_store.status_for_id(deployment.id);
+        let info = subgraph_store.status_for_id(deployment.id).await;
 
         assert!(info.non_fatal_errors.len() == 1);
         assert!(info.health == SubgraphHealth::Unhealthy);
@@ -674,14 +700,14 @@ fn subgraph_non_fatal_error() {
         transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error2], false)
             .await
             .unwrap();
-        assert!(count() == 2);
+        assert!(count().await == 2);
 
-        let info = subgraph_store.status_for_id(deployment.id);
+        let info = subgraph_store.status_for_id(deployment.id).await;
 
         assert!(info.non_fatal_errors.len() == 1);
         assert!(info.health == SubgraphHealth::Unhealthy);
 
-        test_store::remove_subgraph(&subgraph_id);
+        test_store::remove_subgraph(&subgraph_id).await;
     })
 }
 
@@ -689,7 +715,7 @@ fn subgraph_non_fatal_error() {
 fn fatal_vs_non_fatal() {
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new("failUnfail").unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
@@ -749,7 +775,7 @@ fn fail_unfail_deterministic_error() {
 
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
@@ -777,7 +803,7 @@ fn fail_unfail_deterministic_error() {
         // We don't have any errors and the subgraph is healthy.
         let state = query_store.deployment_state().await.unwrap();
         assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -795,7 +821,7 @@ fn fail_unfail_deterministic_error() {
         // Still no fatal errors.
         let state = query_store.deployment_state().await.unwrap();
         assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -820,7 +846,7 @@ fn fail_unfail_deterministic_error() {
         // Now we have a fatal error because the subgraph failed.
         let state = query_store.deployment_state().await.unwrap();
         assert!(state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -835,12 +861,12 @@ fn fail_unfail_deterministic_error() {
         assert_eq!(outcome, UnfailOutcome::Unfailed);
         let state = query_store.deployment_state().await.unwrap();
         assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
 
-        test_store::remove_subgraphs();
+        test_store::remove_subgraphs().await;
     })
 }
 
@@ -850,16 +876,16 @@ fn fail_unfail_deterministic_error_noop() {
 
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
         let deployment = setup().await;
 
-        let count = || -> usize {
+        let count = async || -> usize {
             let store = store.subgraph_store();
-            store.error_count(&deployment.hash).unwrap()
+            store.error_count(&deployment.hash).await.unwrap()
         };
 
         // Process the first block.
@@ -873,8 +899,8 @@ fn fail_unfail_deterministic_error_noop() {
         .unwrap();
 
         // We don't have any errors and the subgraph is healthy.
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -890,8 +916,8 @@ fn fail_unfail_deterministic_error_noop() {
         .unwrap();
 
         // Still no fatal errors.
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -910,8 +936,8 @@ fn fail_unfail_deterministic_error_noop() {
 
         // Nothing to unfail, state continues the same.
         assert_eq!(outcome, UnfailOutcome::Noop);
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -928,8 +954,8 @@ fn fail_unfail_deterministic_error_noop() {
         writable.fail_subgraph(error).await.unwrap();
 
         // Now we have a fatal error because the subgraph failed.
-        assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 1);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -943,8 +969,8 @@ fn fail_unfail_deterministic_error_noop() {
         // State continues the same, nothing happened.
         // Neither the block got reverted or error deleted.
         assert_eq!(outcome, UnfailOutcome::Noop);
-        assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 1);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -970,13 +996,13 @@ fn fail_unfail_deterministic_error_noop() {
         // State continues the same.
         // Neither the block got reverted or error deleted.
         assert_eq!(outcome, UnfailOutcome::Noop);
-        assert_eq!(count(), 2);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 2);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
-        test_store::remove_subgraphs();
+        test_store::remove_subgraphs().await;
     })
 }
 
@@ -986,16 +1012,16 @@ fn fail_unfail_non_deterministic_error() {
 
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
         let deployment = setup().await;
 
-        let count = || -> usize {
+        let count = async || -> usize {
             let store = store.subgraph_store();
-            store.error_count(&deployment.hash).unwrap()
+            store.error_count(&deployment.hash).await.unwrap()
         };
 
         // Process the first block.
@@ -1009,8 +1035,8 @@ fn fail_unfail_non_deterministic_error() {
         .unwrap();
 
         // We don't have any errors.
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -1033,8 +1059,8 @@ fn fail_unfail_non_deterministic_error() {
         writable.fail_subgraph(error).await.unwrap();
 
         // Now we have a fatal error because the subgraph failed.
-        assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 1);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -1050,24 +1076,27 @@ fn fail_unfail_non_deterministic_error() {
         .unwrap();
 
         // Subgraph failed but it's deployment head pointer advanced.
-        assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 1);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Unfail the subgraph and delete the fatal error.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // We don't have fatal errors anymore and the subgraph is healthy.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
-        test_store::remove_subgraphs();
+        test_store::remove_subgraphs().await;
     })
 }
 
@@ -1077,16 +1106,16 @@ fn fail_unfail_non_deterministic_error_noop() {
 
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
+        remove_subgraphs().await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
     run_test_sequentially(|store| async move {
         let deployment = setup().await;
 
-        let count = || -> usize {
+        let count = async || -> usize {
             let store = store.subgraph_store();
-            store.error_count(&deployment.hash).unwrap()
+            store.error_count(&deployment.hash).await.unwrap()
         };
 
         // Process the first block.
@@ -1100,8 +1129,8 @@ fn fail_unfail_non_deterministic_error_noop() {
         .unwrap();
 
         // We don't have any errors and the subgraph is healthy.
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -1117,8 +1146,8 @@ fn fail_unfail_non_deterministic_error_noop() {
         .unwrap();
 
         // Still no errors.
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1130,12 +1159,15 @@ fn fail_unfail_non_deterministic_error_noop() {
             .expect("can get writable");
 
         // Running unfail without any errors will do nothing.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // State continues the same, nothing happened.
         assert_eq!(outcome, UnfailOutcome::Noop);
-        assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 0);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1152,19 +1184,22 @@ fn fail_unfail_non_deterministic_error_noop() {
         writable.fail_subgraph(error).await.unwrap();
 
         // We now have a fatal error because the subgraph failed.
-        assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 1);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Running unfail_non_deterministic_error will be NOOP, the error is deterministic.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // Nothing happeened, state continues the same.
         assert_eq!(outcome, UnfailOutcome::Noop);
-        assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 1);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1181,16 +1216,19 @@ fn fail_unfail_non_deterministic_error_noop() {
         writable.fail_subgraph(error).await.unwrap();
 
         // Since the block range of the block won't match the deployment head, this will be NOOP.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // State continues the same besides a new error added to the database.
         assert_eq!(outcome, UnfailOutcome::Noop);
-        assert_eq!(count(), 2);
-        let vi = get_version_info(&store, NAME);
+        assert_eq!(count().await, 2);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
-        test_store::remove_subgraphs();
+        test_store::remove_subgraphs().await;
     })
 }

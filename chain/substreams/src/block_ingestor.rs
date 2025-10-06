@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::mapper::Mapper;
 use anyhow::{Context, Error};
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{BlockStreamError, FirehoseCursor};
 use graph::blockchain::BlockchainKind;
 use graph::blockchain::{
@@ -12,14 +13,14 @@ use graph::components::store::ChainHeadStore;
 use graph::prelude::MetricsRegistry;
 use graph::slog::trace;
 use graph::substreams::Package;
-use graph::tokio_stream::StreamExt;
 use graph::{
     blockchain::block_stream::BlockStreamEvent,
     cheap_clone::CheapClone,
-    prelude::{async_trait, error, info, DeploymentHash, Logger},
+    prelude::{error, info, DeploymentHash, Logger},
     util::backoff::ExponentialBackoff,
 };
 use prost::Message;
+use tokio_stream::StreamExt;
 
 const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] = include_bytes!(
     "../../../substreams/substreams-head-tracker/substreams-head-tracker-v1.0.0.spkg"
@@ -54,7 +55,7 @@ impl SubstreamsBlockIngestor {
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
         loop {
-            match self.chain_store.clone().chain_head_cursor() {
+            match self.chain_store.clone().chain_head_cursor().await {
                 Ok(cursor) => return cursor.unwrap_or_default(),
                 Err(e) => {
                     error!(self.logger, "Fetching chain head cursor failed: {:#}", e);

@@ -24,6 +24,6 @@ impl DeploymentQuery {
                           When not provided, no additional version filter is applied.")]
         version: Option<DeploymentVersionSelector>,
     ) -> Result<Vec<DeploymentInfo>> {
-        info::run(ctx, deployment, version)
+        info::run(ctx, deployment, version).await
     }
 }

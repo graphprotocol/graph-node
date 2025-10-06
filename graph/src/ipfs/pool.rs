@@ -101,7 +101,7 @@ mod tests {
         Duration::from_millis(millis)
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_stream_streams_the_response_from_the_fastest_client() {
         let (server_1, client_1) = make_client().await;
         let (server_2, client_2) = make_client().await;
@@ -154,7 +154,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"server_3");
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_streams_the_response_from_the_fastest_client() {
         let (server_1, client_1) = make_client().await;
         let (server_2, client_2) = make_client().await;
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"server_3")
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn get_block_streams_the_response_from_the_fastest_client() {
         let (server_1, client_1) = make_client().await;
         let (server_2, client_2) = make_client().await;

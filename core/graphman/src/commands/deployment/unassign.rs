@@ -33,22 +33,24 @@ pub enum UnassignDeploymentError {
     Common(#[from] GraphmanError),
 }
 
-pub fn load_assigned_deployment(
+pub async fn load_assigned_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<AssignedDeployment, UnassignDeploymentError> {
-    let mut primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
         deployment,
         &DeploymentVersionSelector::All,
-    )?;
+    )
+    .await?;
 
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let site = catalog_conn
         .locate_site(locator.clone())
+        .await
         .map_err(GraphmanError::from)?
         .ok_or_else(|| {
             GraphmanError::Store(anyhow!("deployment site not found for '{locator}'"))
@@ -56,6 +58,7 @@ pub fn load_assigned_deployment(
 
     match catalog_conn
         .assigned_node(&site)
+        .await
         .map_err(GraphmanError::from)?
     {
         Some(_) => Ok(AssignedDeployment { locator, site }),
@@ -65,16 +68,18 @@ pub fn load_assigned_deployment(
     }
 }
 
-pub fn unassign_deployment(
+pub async fn unassign_deployment(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: AssignedDeployment,
 ) -> Result<(), GraphmanError> {
-    let primary_conn = primary_pool.get()?;
+    let primary_conn = primary_pool.get().await?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
-    let changes = catalog_conn.unassign_subgraph(&deployment.site)?;
-    catalog_conn.send_store_event(&notification_sender, &StoreEvent::new(changes))?;
+    let changes = catalog_conn.unassign_subgraph(&deployment.site).await?;
+    catalog_conn
+        .send_store_event(&notification_sender, &StoreEvent::new(changes))
+        .await?;
 
     Ok(())
 }

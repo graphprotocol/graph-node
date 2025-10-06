@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use crate::codec::{entity_change, EntityChanges};
 use anyhow::{anyhow, Error};
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{
     BlockStreamError, BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor,
     SubstreamsError,
@@ -12,8 +13,8 @@ use graph::data::store::scalar::{Bytes, Timestamp};
 use graph::data::store::IdType;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::prelude::{BigDecimal, BlockPtr};
+use graph::prelude::{BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::schema::InputSchema;
 use graph::slog::error;
 use graph::substreams::Clock;

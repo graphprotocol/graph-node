@@ -132,7 +132,7 @@ mod tests {
         assert_eq!(backoff.next_attempt(), Duration::from_secs(45));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn test_sleep_async() {
         let mut backoff =
             ExponentialBackoff::new(Duration::from_secs_f32(0.1), Duration::from_secs_f32(0.2));

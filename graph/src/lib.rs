@@ -38,8 +38,10 @@ pub mod env;
 pub mod ipfs;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
-mod task_spawn;
-pub use task_spawn::{
+mod tokio;
+#[cfg(debug_assertions)]
+pub use tokio::TEST_RUNTIME;
+pub use tokio::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
 
@@ -48,6 +50,7 @@ pub use bytes;
 pub use futures01;
 pub use futures03;
 pub use graph_derive as derive;
+pub use graph_derive::test;
 pub use http;
 pub use http0;
 pub use http_body_util;
@@ -62,9 +65,6 @@ pub use slog;
 pub use sqlparser;
 pub use stable_hash;
 pub use stable_hash_legacy;
-pub use tokio;
-pub use tokio_retry;
-pub use tokio_stream;
 pub use url;
 
 /// A prelude that makes all system component traits and data types available.
@@ -77,7 +77,6 @@ pub use url;
 pub mod prelude {
     pub use ::anyhow;
     pub use anyhow::{anyhow, Context as _, Error};
-    pub use async_trait::async_trait;
     pub use atty;
     pub use chrono;
     pub use diesel;

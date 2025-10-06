@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::{
     data::{query::SqlQueryReq, store::SqlQueryObject},
     http::StatusCode,
@@ -167,7 +168,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn rejects_empty_json() {
         let logger = Logger::root(slog::Discard, o!());
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
@@ -199,7 +200,7 @@ mod test {
         assert_eq!(message, "{\"error\":\"GraphQL server error (client error): The \\\"query\\\" field is missing in request data\"}");
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn rejects_invalid_queries() {
         let logger = Logger::root(slog::Discard, o!());
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
@@ -269,7 +270,7 @@ mod test {
         assert_eq!(column, 1);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn accepts_valid_queries() {
         let logger = Logger::root(slog::Discard, o!());
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
@@ -306,7 +307,7 @@ mod test {
         assert_eq!(name, "Jordi".to_string());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn accepts_valid_queries_with_variables() {
         let logger = Logger::root(slog::Discard, o!());
         let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));

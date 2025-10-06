@@ -29,7 +29,7 @@ impl GenesisHashCheck {
         }
     }
 
-    pub fn from_id_store(id_store: Arc<dyn ChainIdStore>) -> Self {
+    pub fn from_id_store(id_store: Box<dyn ChainIdStore>) -> Self {
         Self {
             chain_identifier_store: chain_id_validator(id_store),
         }
@@ -68,7 +68,8 @@ impl ProviderCheck for GenesisHashCheck {
 
         let check_result = self
             .chain_identifier_store
-            .validate_identifier(chain_name, &chain_identifier);
+            .validate_identifier(chain_name, &chain_identifier)
+            .await;
 
         use ChainIdentifierValidationError::*;
 
@@ -77,7 +78,8 @@ impl ProviderCheck for GenesisHashCheck {
             Err(IdentifierNotSet(_)) => {
                 let update_result = self
                     .chain_identifier_store
-                    .update_identifier(chain_name, &chain_identifier);
+                    .update_identifier(chain_name, &chain_identifier)
+                    .await;
 
                 if let Err(err) = update_result {
                     let message = format!(
@@ -190,7 +192,7 @@ mod tests {
 
     #[async_trait]
     impl ChainIdentifierValidator for TestChainIdentifierStore {
-        fn validate_identifier(
+        async fn validate_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,
@@ -198,7 +200,7 @@ mod tests {
             self.validate_identifier_calls.lock().unwrap().remove(0)
         }
 
-        fn update_identifier(
+        async fn update_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,
@@ -243,7 +245,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_temporary_failure_when_network_provider_request_fails() {
         let store = Arc::new(TestChainIdentifierStore::default());
         let check = GenesisHashCheck::new(store);
@@ -266,7 +268,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_valid_when_store_successfully_validates_chain_identifier() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store.validate_identifier_call(Ok(()));
@@ -293,7 +295,7 @@ mod tests {
         assert_eq!(status, ProviderCheckStatus::Valid);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_temporary_failure_on_initial_chain_identifier_update_error() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store.validate_identifier_call(Err(ChainIdentifierValidationError::IdentifierNotSet(
@@ -326,7 +328,7 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_valid_on_initial_chain_identifier_update() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store.validate_identifier_call(Err(ChainIdentifierValidationError::IdentifierNotSet(
@@ -356,7 +358,7 @@ mod tests {
         assert_eq!(status, ProviderCheckStatus::Valid);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_valid_when_stored_identifier_network_version_is_zero() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store.validate_identifier_call(Err(ChainIdentifierValidationError::NetVersionMismatch {
@@ -387,7 +389,7 @@ mod tests {
         assert_eq!(status, ProviderCheckStatus::Valid);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_fails_on_identifier_network_version_mismatch() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store.validate_identifier_call(Err(ChainIdentifierValidationError::NetVersionMismatch {
@@ -418,7 +420,7 @@ mod tests {
         assert!(matches!(status, ProviderCheckStatus::Failed { .. }));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_fails_on_identifier_genesis_hash_mismatch() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store.validate_identifier_call(Err(
@@ -451,7 +453,7 @@ mod tests {
         assert!(matches!(status, ProviderCheckStatus::Failed { .. }));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_temporary_failure_on_store_errors() {
         let store = Arc::new(TestChainIdentifierStore::default());
         store

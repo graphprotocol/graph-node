@@ -1,11 +1,19 @@
 use anyhow::anyhow;
 use diesel::dsl::sql;
-use diesel::prelude::*;
 use diesel::sql_types::Text;
+use diesel::BoolExpressionMethods;
+use diesel::ExpressionMethods;
+use diesel::JoinOnDsl;
+use diesel::NullableExpressionMethods;
+use diesel::PgTextExpressionMethods;
+use diesel::QueryDsl;
+use diesel::Queryable;
+use diesel_async::RunQueryDsl;
 use graph::components::store::DeploymentId;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::DeploymentHash;
 use graph_store_postgres::command_support::catalog;
+use graph_store_postgres::AsyncPgConnection;
 use itertools::Itertools;
 
 use crate::GraphmanError;
@@ -48,8 +56,8 @@ impl Deployment {
     }
 }
 
-pub(crate) fn load_deployments(
-    primary_conn: &mut PgConnection,
+pub(crate) async fn load_deployments(
+    primary_conn: &mut AsyncPgConnection,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<Vec<Deployment>, GraphmanError> {
@@ -124,15 +132,16 @@ pub(crate) fn load_deployments(
         }
     }
 
-    query.load(primary_conn).map_err(Into::into)
+    query.load(primary_conn).await.map_err(Into::into)
 }
 
-pub(crate) fn load_deployment_locator(
-    primary_conn: &mut PgConnection,
+pub(crate) async fn load_deployment_locator(
+    primary_conn: &mut AsyncPgConnection,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<DeploymentLocator, GraphmanError> {
-    let deployment_locator = load_deployments(primary_conn, deployment, version)?
+    let deployment_locator = load_deployments(primary_conn, deployment, version)
+        .await?
         .into_iter()
         .map(|deployment| deployment.locator())
         .unique()

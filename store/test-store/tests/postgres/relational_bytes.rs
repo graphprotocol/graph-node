@@ -1,12 +1,13 @@
 //! Test relational schemas that use `Bytes` to store ids
-use diesel::connection::SimpleConnection as _;
-use diesel::pg::PgConnection;
+use diesel_async::SimpleAsyncConnection;
+
 use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
 use graph::entity;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::{EntityKey, EntityType, InputSchema};
+use graph_store_postgres::AsyncPgConnection;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -71,9 +72,10 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(conn: &mut PgConnection) {
+async fn remove_test_data(conn: &mut AsyncPgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
+        .await
         .expect("Failed to drop test schema");
 }
 
@@ -119,17 +121,31 @@ pub fn row_group_delete(
     group
 }
 
-fn insert_entity(conn: &mut PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
+async fn insert_entity(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    entity: Entity,
+) {
     let entity_type = layout.input_schema.entity_type(entity_type).unwrap();
     let key = entity_type.key(entity.id());
 
     let entities = vec![(key.clone(), entity)];
     let group = row_group_insert(&entity_type, 0, entities);
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
+    layout
+        .insert(&LOGGER, conn, &group, &MOCK_STOPWATCH)
+        .await
+        .expect(&errmsg);
 }
 
-fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, vid: i64) {
+async fn insert_thing(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    id: &str,
+    name: &str,
+    vid: i64,
+) {
     insert_entity(
         conn,
         layout,
@@ -139,14 +155,15 @@ fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, 
             name: name,
             vid: vid,
         },
-    );
+    )
+    .await;
 }
 
-fn create_schema(conn: &mut PgConnection) -> Layout {
+async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
     let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
-    conn.batch_execute(&query).unwrap();
+    conn.batch_execute(&query).await.unwrap();
 
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -154,6 +171,7 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
         NETWORK_NAME.to_string(),
     );
     Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+        .await
         .expect("Failed to create relational schema")
 }
 
@@ -189,38 +207,39 @@ macro_rules! assert_entity_eq {
     }};
 }
 
-fn run_test<F>(test: F)
+async fn run_test<F>(test: F)
 where
-    F: FnOnce(&mut PgConnection, &Layout),
+    F: AsyncFnOnce(&mut AsyncPgConnection, &Layout),
 {
-    run_test_with_conn(|conn| {
+    run_test_with_conn(async |conn| {
         // Reset state before starting
-        remove_test_data(conn);
+        remove_test_data(conn).await;
 
         // Seed database with test data
-        let layout = create_schema(conn);
+        let layout = create_schema(conn).await;
 
         // Run test
-        test(conn, &layout);
-    });
+        test(conn, &layout).await;
+    })
+    .await;
 }
 
-#[test]
-fn bad_id() {
-    run_test(|conn, layout| {
-        fn find(
-            conn: &mut PgConnection,
+#[graph::test]
+async fn bad_id() {
+    run_test(async |conn, layout| {
+        async fn find(
+            conn: &mut AsyncPgConnection,
             layout: &Layout,
             id: &str,
         ) -> Result<Option<Entity>, StoreError> {
             let key = THING_TYPE.parse_key(id)?;
-            layout.find(conn, &key, BLOCK_NUMBER_MAX)
+            layout.find(conn, &key, BLOCK_NUMBER_MAX).await
         }
 
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
-        let res = find(conn, layout, "bad");
+        let res = find(conn, layout, "bad").await;
         assert!(res.is_err());
         assert_eq!(
             "store error: can not convert `bad` to Id::Bytes: Odd number of digits",
@@ -228,7 +247,7 @@ fn bad_id() {
         );
 
         // We do not allow the `\x` prefix that Postgres uses
-        let res = find(conn, layout, "\\xbadd");
+        let res = find(conn, layout, "\\xbadd").await;
         assert!(res.is_err());
         assert_eq!(
             "store error: can not convert `\\xbadd` to Id::Bytes: Invalid character '\\\\' at position 0",
@@ -236,53 +255,59 @@ fn bad_id() {
         );
 
         // Having the '0x' prefix is ok
-        let res = find(conn, layout, "0xbadd");
+        let res = find(conn, layout, "0xbadd").await;
         assert!(res.is_ok());
 
         // Using non-hex characters is also bad
-        let res = find(conn, layout, "nope");
+        let res = find(conn, layout, "nope").await;
         assert!(res.is_err());
         assert_eq!(
             "store error: can not convert `nope` to Id::Bytes: Invalid character 'n' at position 0",
             res.err().unwrap().to_string()
         );
-    });
+    }).await;
 }
 
-#[test]
-fn find() {
-    run_test(|mut conn, layout| {
-        fn find_entity(conn: &mut PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
+#[graph::test]
+async fn find() {
+    run_test(async |mut conn, layout| {
+        async fn find_entity(
+            conn: &mut AsyncPgConnection,
+            layout: &Layout,
+            id: &str,
+        ) -> Option<Entity> {
             let key = THING_TYPE.parse_key(id).unwrap();
             layout
                 .find(conn, &key, BLOCK_NUMBER_MAX)
+                .await
                 .expect(&format!("Failed to read Thing[{}]", id))
         }
 
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
-        insert_thing(&mut conn, layout, ID, NAME, 0);
+        insert_thing(&mut conn, layout, ID, NAME, 0).await;
 
         // Happy path: find existing entity
-        let entity = find_entity(conn, layout, ID).unwrap();
+        let entity = find_entity(conn, layout, ID).await.unwrap();
         assert_entity_eq!(BEEF_ENTITY.clone(), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
-        let entity = find_entity(conn, layout, "badd");
+        let entity = find_entity(conn, layout, "badd").await;
         assert!(entity.is_none());
-    });
+    })
+    .await;
 }
 
-#[test]
-fn find_many() {
-    run_test(|mut conn, layout| {
+#[graph::test]
+async fn find_many() {
+    run_test(async |mut conn, layout| {
         const ID: &str = "0xdeadbeef";
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
-        insert_thing(&mut conn, layout, ID, NAME, 0);
-        insert_thing(&mut conn, layout, ID2, NAME2, 1);
+        insert_thing(&mut conn, layout, ID, NAME, 0).await;
+        insert_thing(&mut conn, layout, ID2, NAME2, 1).await;
 
         let mut id_map = BTreeMap::default();
         let ids = IdList::try_from_iter(
@@ -296,6 +321,7 @@ fn find_many() {
 
         let entities = layout
             .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
+            .await
             .expect("Failed to read many things");
         assert_eq!(2, entities.len());
 
@@ -303,13 +329,14 @@ fn find_many() {
         let id2_key = THING_TYPE.parse_key(ID2).unwrap();
         assert!(entities.contains_key(&id_key), "Missing ID");
         assert!(entities.contains_key(&id2_key), "Missing ID2");
-    });
+    })
+    .await;
 }
 
-#[test]
-fn update() {
-    run_test(|mut conn, layout| {
-        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
+#[graph::test]
+async fn update() {
+    run_test(async |mut conn, layout| {
+        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
@@ -323,27 +350,30 @@ fn update() {
         let group = row_group_update(&entity_type, 1, entities);
         layout
             .update(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to update");
 
         let actual = layout
             .find(conn, &THING_TYPE.key(entity_id), BLOCK_NUMBER_MAX)
+            .await
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 
         assert_entity_eq!(entity, actual);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn delete() {
-    run_test(|mut conn, layout| {
+#[graph::test]
+async fn delete() {
+    run_test(async |mut conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
-        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID).unwrap();
         two.set("vid", 1i64).unwrap();
-        insert_entity(&mut conn, layout, "Thing", two);
+        insert_entity(&mut conn, layout, "Thing", two).await;
 
         // Delete where nothing is getting deleted
         let key = THING_TYPE.parse_key("ffff").unwrap();
@@ -352,6 +382,7 @@ fn delete() {
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
             .delete(&mut conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -363,9 +394,11 @@ fn delete() {
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
             .delete(&mut conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(1, count);
-    });
+    })
+    .await;
 }
 
 //
@@ -386,7 +419,10 @@ const GRANDCHILD2: &str = "0xfafa02";
 ///     +- child2
 ///          +- grandchild2
 ///
-fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
+async fn make_thing_tree(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+) -> (Entity, Entity, Entity) {
     let root = entity! { layout.input_schema =>
         id: ROOT,
         name: "root",
@@ -420,21 +456,26 @@ fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity,
         vid: 4i64,
     };
 
-    insert_entity(conn, layout, "Thing", root.clone());
-    insert_entity(conn, layout, "Thing", child1.clone());
-    insert_entity(conn, layout, "Thing", child2.clone());
-    insert_entity(conn, layout, "Thing", grand_child1);
-    insert_entity(conn, layout, "Thing", grand_child2);
+    insert_entity(conn, layout, "Thing", root.clone()).await;
+    insert_entity(conn, layout, "Thing", child1.clone()).await;
+    insert_entity(conn, layout, "Thing", child2.clone()).await;
+    insert_entity(conn, layout, "Thing", grand_child1).await;
+    insert_entity(conn, layout, "Thing", grand_child2).await;
     (root, child1, child2)
 }
 
-#[test]
-fn query() {
-    fn fetch(conn: &mut PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
+#[graph::test]
+async fn query() {
+    async fn fetch(
+        conn: &mut AsyncPgConnection,
+        layout: &Layout,
+        coll: EntityCollection,
+    ) -> Vec<String> {
         let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
         let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
         layout
             .query::<Entity>(&LOGGER, conn, query)
+            .await
             .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()
@@ -442,21 +483,21 @@ fn query() {
             .collect::<Vec<_>>()
     }
 
-    run_test(|mut conn, layout| {
+    run_test(async |mut conn, layout| {
         // This test exercises the different types of queries we generate;
         // the type of query is based on knowledge of what the test data
         // looks like, not on just an inference from the GraphQL model.
         // Especially the multiplicity for type A and B queries is determined
         // by knowing whether there are one or many entities per parent
         // in the test data
-        make_thing_tree(&mut conn, layout);
+        make_thing_tree(&mut conn, layout).await;
 
         // See https://graphprotocol.github.io/rfcs/engineering-plans/0001-graphql-query-prefetching.html#handling-parentchild-relationships
         // for a discussion of the various types of relationships and queries
 
         // EntityCollection::All
         let coll = EntityCollection::All(vec![(THING_TYPE.clone(), AttributeNames::All)]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type A, many
@@ -470,7 +511,7 @@ fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![ROOT], things);
 
         // EntityCollection::Window, type A, single
@@ -486,7 +527,7 @@ fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type B, many
@@ -500,7 +541,7 @@ fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type B, single
@@ -514,7 +555,7 @@ fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type C
@@ -529,7 +570,7 @@ fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type D
@@ -544,7 +585,8 @@ fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![ROOT, ROOT], things);
-    });
+    })
+    .await;
 }

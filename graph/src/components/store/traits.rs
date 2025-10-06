@@ -31,30 +31,32 @@ pub trait SubscriptionManager: Send + Sync + 'static {
 
 /// Subgraph forking is the process of lazily fetching entities
 /// from another subgraph's store (usually a remote one).
+#[async_trait]
 pub trait SubgraphFork: Send + Sync + 'static {
-    fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
+    async fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
 }
 
 /// A special trait to handle looking up ENS names from special rainbow
 /// tables that need to be manually loaded into the system
+#[async_trait]
 pub trait EnsLookup: Send + Sync + 'static {
     /// Find the reverse of keccak256 for `hash` through looking it up in the
     /// rainbow table.
-    fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError>;
+    async fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError>;
     // Check if the rainbow table is filled.
-    fn is_table_empty(&self) -> Result<bool, StoreError>;
+    async fn is_table_empty(&self) -> Result<bool, StoreError>;
 }
 
 /// An entry point for all operations that require access to the node's storage
 /// layer. It provides access to a [`BlockStore`] and a [`SubgraphStore`].
 pub trait Store: Clone + StatusStore + Send + Sync + 'static {
     /// The [`BlockStore`] implementor used by this [`Store`].
-    type BlockStore: BlockStore;
+    type BlockStore: BlockStore + CheapClone;
 
     /// The [`SubgraphStore`] implementor used by this [`Store`].
     type SubgraphStore: SubgraphStore;
 
-    fn block_store(&self) -> Arc<Self::BlockStore>;
+    fn block_store(&self) -> Self::BlockStore;
 
     fn subgraph_store(&self) -> Arc<Self::SubgraphStore>;
 }
@@ -67,7 +69,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+    async fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     async fn subgraph_features(
         &self,
@@ -78,7 +80,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
     /// create a new deployment, and point the current or pending version of
     /// `name` at it, depending on the `mode`
-    fn create_subgraph_deployment(
+    async fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
         schema: &InputSchema,
@@ -89,33 +91,39 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<DeploymentLocator, StoreError>;
 
     /// Create a subgraph_feature record in the database
-    fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError>;
+    async fn create_subgraph_features(
+        &self,
+        features: DeploymentFeatures,
+    ) -> Result<(), StoreError>;
 
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
     /// subgraph
-    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
+    async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
 
     /// Remove a subgraph and all its versions; if deployments that were used
     /// by this subgraph do not need to be indexed anymore, also remove
     /// their assignment, but keep the deployments themselves around
-    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
 
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.
-    fn reassign_subgraph(
+    async fn reassign_subgraph(
         &self,
         deployment: &DeploymentLocator,
         node_id: &NodeId,
     ) -> Result<(), StoreError>;
 
-    fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
+    async fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
-    fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
+    async fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
-    fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
+    async fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
-    fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError>;
+    async fn assigned_node(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Option<NodeId>, StoreError>;
 
     /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
     /// the subgraph is assigned to, and `is_paused` is true if the
@@ -126,35 +134,38 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: &DeploymentLocator,
     ) -> Result<Option<(NodeId, bool)>, StoreError>;
 
-    fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError>;
-
     /// Returns assignments that are not paused
     async fn active_assignments(&self, node: &NodeId)
         -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
-    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
+    async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
 
     /// Returns a collection of all [`EntityModification`] items in relation to
     /// the given [`BlockNumber`]. No distinction is made between inserts and
     /// updates, which may be returned as either [`EntityModification::Insert`]
     /// or [`EntityModification::Overwrite`].
-    fn entity_changes_in_block(
+    async fn entity_changes_in_block(
         &self,
         subgraph_id: &DeploymentHash,
         block_number: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<InputSchema, StoreError>;
+    async fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<InputSchema, StoreError>;
 
     /// Return a bool represeting whether there is a pending graft for the subgraph
-    fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+    async fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(
+    ///
+    /// We use the store as a cache for the `ApiSchema`, so that we do not
+    /// have to rebuild the `ApiSchema` from `InputSchema.api_schema()` for
+    /// every query. That's a bit clumsy and it might be better to make the
+    /// `InputSchema` the cache instead.
+    async fn api_schema(
         &self,
         subgraph_id: &DeploymentHash,
         api_version: &ApiVersion,
@@ -162,7 +173,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
     /// that is used for debugging purposes only.
-    fn debug_fork(
+    async fn debug_fork(
         &self,
         subgraph_id: &DeploymentHash,
         logger: Logger,
@@ -205,11 +216,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
     async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Find all deployment locators for the subgraph with the given hash.
-    fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
+    async fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Find the deployment locator for the active deployment with the given
     /// hash. Returns `None` if there is no deployment with that hash
-    fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError>;
+    async fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError>;
 
     /// This migrates subgraphs that existed before the raw_yaml column was added.
     async fn set_manifest_raw_yaml(
@@ -221,21 +232,22 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return `true` if the `instrument` flag for the deployment is set.
     /// When this flag is set, indexing of the deployment should log
     /// additional diagnostic information
-    fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
+    async fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
 }
 
+#[async_trait]
 pub trait ReadStore: Send + Sync + 'static {
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
     /// Look up multiple entities as of the latest block.
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
     /// Reverse lookup
-    fn get_derived(
+    async fn get_derived(
         &self,
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
@@ -244,23 +256,24 @@ pub trait ReadStore: Send + Sync + 'static {
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+#[async_trait]
 impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        (**self).get(key)
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        (**self).get(key).await
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        (**self).get_many(keys)
+        (**self).get_many(keys).await
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         entity_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        (**self).get_derived(entity_derived)
+        (**self).get_derived(entity_derived).await
     }
 
     fn input_schema(&self) -> InputSchema {
@@ -298,7 +311,7 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
 pub trait SourceableStore: Sync + Send + 'static {
     /// Returns all versions of entities of the given entity_type that were
     /// changed in the given block_range.
-    fn get_range(
+    async fn get_range(
         &self,
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
@@ -314,13 +327,15 @@ pub trait SourceableStore: Sync + Send + 'static {
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
 #[async_trait]
 impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
-    fn get_range(
+    async fn get_range(
         &self,
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
-        (**self).get_range(entity_types, causality_region, block_range)
+        (**self)
+            .get_range(entity_types, causality_region, block_range)
+            .await
     }
 
     fn input_schema(&self) -> InputSchema {
@@ -361,7 +376,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     /// If a non-deterministic error happened and the current deployment head is past the error
     /// block range, this function unfails the subgraph and deletes the error.
-    fn unfail_non_deterministic_error(
+    async fn unfail_non_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError>;
@@ -393,13 +408,13 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     ) -> Result<(), StoreError>;
 
     /// Force synced status, used for testing.
-    fn deployment_synced(&self, block_ptr: BlockPtr) -> Result<(), StoreError>;
+    async fn deployment_synced(&self, block_ptr: BlockPtr) -> Result<(), StoreError>;
 
     /// Return true if the deployment with the given id is fully synced, and return false otherwise.
     /// Cheap, cached operation.
     fn is_deployment_synced(&self) -> bool;
 
-    fn pause_subgraph(&self) -> Result<(), StoreError>;
+    async fn pause_subgraph(&self) -> Result<(), StoreError>;
 
     /// Load the dynamic data sources for the given deployment
     async fn load_dynamic_data_sources(
@@ -447,10 +462,11 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }
 
+#[async_trait]
 pub trait BlockStore: ChainIdStore + Send + Sync + 'static {
     type ChainStore: ChainStore;
 
-    fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
+    async fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
 }
 
 /// An interface for tracking the chain head in the store used by most chain
@@ -467,7 +483,7 @@ pub trait ChainHeadStore: Send + Sync {
     /// Get the current head block cursor for this chain.
     ///
     /// The head block cursor will be None on initial set up.
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
+    async fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
 
     /// This method does actually three operations:
     /// - Upserts received block into blocks table
@@ -483,10 +499,10 @@ pub trait ChainHeadStore: Send + Sync {
 #[async_trait]
 pub trait ChainIdStore: Send + Sync + 'static {
     /// Return the chain identifier for this store.
-    fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
+    async fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
 
     /// Update the chain identifier for this store.
-    fn set_chain_identifier(
+    async fn set_chain_identifier(
         &self,
         chain_name: &ChainName,
         ident: &ChainIdentifier,
@@ -497,12 +513,12 @@ pub trait ChainIdStore: Send + Sync + 'static {
 #[async_trait]
 pub trait ChainStore: ChainHeadStore {
     /// Get a pointer to this blockchain's genesis block.
-    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
+    async fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
 
-    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
+    async fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
 
     /// Try to update the head block pointer to the block with the highest block number.
     ///
@@ -563,17 +579,24 @@ pub trait ChainStore: ChainHeadStore {
     /// and the number of blocks deleted.
     /// We will never remove blocks that are within `ancestor_count` of
     /// the chain head.
-    fn cleanup_cached_blocks(
+    async fn cleanup_cached_blocks(
         &self,
         ancestor_count: BlockNumber,
     ) -> Result<Option<(BlockNumber, usize)>, Error>;
 
     /// Return the hashes of all blocks with the given number
-    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error>;
+    async fn block_hashes_by_block_number(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Vec<BlockHash>, Error>;
 
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
-    fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
+    async fn confirm_block_hash(
+        &self,
+        number: BlockNumber,
+        hash: &BlockHash,
+    ) -> Result<usize, Error>;
 
     /// Find the block with `block_hash` and return the network name, number, timestamp and parentHash if present.
     /// Currently, the timestamp is only returned if it's present in the top level block. This format is
@@ -607,18 +630,19 @@ pub trait ChainStore: ChainHeadStore {
     ) -> Result<(), Error>;
 
     /// Return the chain identifier for this store.
-    fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
+    async fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
 
     /// Workaround for Rust issue #65991 that keeps us from using an
     /// `Arc<dyn ChainStore>` as an `Arc<dyn ChainHeadStore>`
     fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore>;
 }
 
+#[async_trait]
 pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing
     /// about the call.
-    fn get_call(
+    async fn get_call(
         &self,
         call: &call::Request,
         block: BlockPtr,
@@ -627,7 +651,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     /// Get the return values of many Ethereum calls. For the ones found in
     /// the cache, return a `Response`; the ones that were not found are
     /// returned as the original `Request`
-    fn get_calls(
+    async fn get_calls(
         &self,
         reqs: &[call::Request],
         block: BlockPtr,
@@ -635,11 +659,11 @@ pub trait EthereumCallCache: Send + Sync + 'static {
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
-    fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
+    async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
 
     /// Stores the provided Ethereum call in the cache.
-    fn set_call(
-        &self,
+    async fn set_call(
+        self: Arc<Self>,
         logger: &Logger,
         call: call::Request,
         block: BlockPtr,
@@ -655,12 +679,12 @@ pub struct QueryPermit {
 /// Store operations used when serving queries for a specific deployment
 #[async_trait]
 pub trait QueryStore: Send + Sync {
-    fn find_query_values(
+    async fn find_query_values(
         &self,
         query: EntityQuery,
     ) -> Result<(Vec<QueryObject>, Trace), QueryExecutionError>;
 
-    fn execute_sql(&self, sql: &str) -> Result<Vec<SqlQueryObject>, QueryExecutionError>;
+    async fn execute_sql(&self, sql: &str) -> Result<Vec<SqlQueryObject>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
@@ -688,9 +712,9 @@ pub trait QueryStore: Send + Sync {
     /// return details about it needed for executing queries
     async fn deployment_state(&self) -> Result<DeploymentState, QueryExecutionError>;
 
-    fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
+    async fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
-    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError>;
+    async fn input_schema(&self) -> Result<InputSchema, QueryExecutionError>;
 
     fn network_name(&self) -> &str;
 
@@ -712,23 +736,23 @@ pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
     async fn query_permit(&self) -> QueryPermit;
 
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
+    async fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Support for the explorer-specific API
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
+    async fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
 
     /// Support for the explorer-specific API; note that `subgraph_id` must be
     /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.
     /// The return values are the ids of the `subgraphs.subgraph_version` for
     /// the current and pending versions of the subgraph
-    fn versions_for_subgraph_id(
+    async fn versions_for_subgraph_id(
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError>;
 
     /// Support for the explorer-specific API. Returns a vector of (name, version) of all
     /// subgraphs for a given deployment hash.
-    fn subgraphs_for_deployment_hash(
+    async fn subgraphs_for_deployment_hash(
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError>;

@@ -229,7 +229,9 @@ where
             }
             (Method::OPTIONS, ["graphql"]) => Ok(Self::handle_graphql_options(req)),
 
-            (Method::GET, ["explorer", rest @ ..]) => self.explorer.handle(&self.logger, rest),
+            (Method::GET, ["explorer", rest @ ..]) => {
+                self.explorer.handle(&self.logger, rest).await
+            }
 
             _ => Ok(Self::handle_not_found()),
         }

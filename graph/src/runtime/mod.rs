@@ -14,14 +14,14 @@ pub use asc_heap::{
 pub use asc_ptr::AscPtr;
 
 use anyhow::Error;
+use async_trait::async_trait;
 use semver::Version;
+
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
 
 use self::gas::GasCounter;
-
-use crate::prelude::async_trait;
 
 /// Marker trait for AssemblyScript types that the id should
 /// be in the header.

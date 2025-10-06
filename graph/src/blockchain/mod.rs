@@ -213,7 +213,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     fn is_refetch_block_required(&self) -> bool;
 
-    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook)>;
+    async fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook)>;
 
     fn chain_client(&self) -> Arc<ChainClient<Self>>;
 

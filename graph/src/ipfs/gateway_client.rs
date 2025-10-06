@@ -217,7 +217,7 @@ mod tests {
         Duration::from_millis(millis)
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn new_fails_to_create_the_client_if_gateway_is_not_accessible() {
         let server = mock_server().await;
 
@@ -226,7 +226,7 @@ mod tests {
             .unwrap_err();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn new_creates_the_client_if_it_can_check_the_gateway() {
         let server = mock_server().await;
 
@@ -252,7 +252,7 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn new_retries_gateway_check_on_non_deterministic_errors() {
         let server = mock_server().await;
 
@@ -272,14 +272,14 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn new_unchecked_creates_the_client_without_checking_the_gateway() {
         let server = mock_server().await;
 
         IpfsGatewayClient::new_unchecked(server.uri(), IpfsMetrics::test(), &discard()).unwrap();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_stream_returns_the_content() {
         let (server, client) = make_client().await;
 
@@ -304,7 +304,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"some data")
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_stream_fails_on_timeout() {
         let (server, client) = make_client().await;
 
@@ -326,7 +326,7 @@ mod tests {
         assert!(matches!(result, Err(_)));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_stream_retries_the_request_on_non_deterministic_errors() {
         let (server, client) = make_client().await;
 
@@ -354,7 +354,7 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_returns_the_content() {
         let (server, client) = make_client().await;
 
@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"some data");
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_returns_the_content_if_max_size_is_equal_to_the_content_size() {
         let (server, client) = make_client().await;
 
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), data);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_fails_if_content_is_too_large() {
         let (server, client) = make_client().await;
 
@@ -428,7 +428,7 @@ mod tests {
             .unwrap_err();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_fails_on_timeout() {
         let (server, client) = make_client().await;
 
@@ -450,7 +450,7 @@ mod tests {
             .unwrap_err();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn cat_retries_the_request_on_non_deterministic_errors() {
         let (server, client) = make_client().await;
 
@@ -481,7 +481,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"some data");
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn get_block_returns_the_block_content() {
         let (server, client) = make_client().await;
 
@@ -499,7 +499,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"some data");
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn get_block_fails_on_timeout() {
         let (server, client) = make_client().await;
 
@@ -520,7 +520,7 @@ mod tests {
             .unwrap_err();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn get_block_retries_the_request_on_non_deterministic_errors() {
         let (server, client) = make_client().await;
 
@@ -550,7 +550,7 @@ mod tests {
         assert_eq!(bytes.as_ref(), b"some data");
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn operation_names_include_cid_for_debugging() {
         use slog::{o, Drain, Logger, Record};
         use std::sync::{Arc, Mutex};

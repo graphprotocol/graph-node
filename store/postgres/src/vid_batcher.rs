@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use diesel::{
     sql_query,
     sql_types::{BigInt, Integer},
-    PgConnection, RunQueryDsl as _,
 };
+use diesel_async::RunQueryDsl as _;
 use graph::{
     env::ENV_VARS,
     prelude::{BlockNumber, BlockPtr, StoreError},
@@ -15,6 +15,7 @@ use crate::{
     catalog,
     primary::Namespace,
     relational::{Table, VID_COLUMN},
+    AsyncPgConnection,
 };
 
 /// The initial batch size for tables that do not have an array column
@@ -118,13 +119,13 @@ impl VidBatcher {
     /// The `vid_range` is inclusive, i.e., the batcher will iterate over
     /// all vids `vid_range.0 <= vid <= vid_range.1`; for an empty table,
     /// the `vid_range` must be set to `(-1, 0)`
-    pub fn load(
-        conn: &mut PgConnection,
+    pub async fn load(
+        conn: &mut AsyncPgConnection,
         nsp: &Namespace,
         table: &Table,
         vid_range: VidRange,
     ) -> Result<Self, StoreError> {
-        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN)?;
+        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN).await?;
         let batch_size = AdaptiveBatchSize::new(table);
         Self::new(bounds, vid_range, batch_size)
     }
@@ -209,9 +210,9 @@ impl VidBatcher {
     /// The function returns the time it took to process the batch and the
     /// result of `f`. If the batcher is finished, `f` will not be called,
     /// and `None` will be returned as its result.
-    pub fn step<F, T>(&mut self, f: F) -> Result<(Duration, Option<T>), StoreError>
+    pub async fn step<F, T>(&mut self, f: F) -> Result<(Duration, Option<T>), StoreError>
     where
-        F: FnOnce(i64, i64) -> Result<T, StoreError>,
+        F: AsyncFnOnce(i64, i64) -> Result<T, StoreError>,
     {
         if self.finished() {
             return Ok((Duration::from_secs(0), None));
@@ -222,7 +223,7 @@ impl VidBatcher {
             Some(ogive) => {
                 self.step_timer.start();
 
-                let res = f(self.start, self.end)?;
+                let res = f(self.start, self.end).await?;
                 let duration = self.step_timer.elapsed();
 
                 let batch_size = self.batch_size.adapt(duration);
@@ -274,8 +275,8 @@ impl VidRange {
     }
 
     /// Return the full range of `vid` values in the table `src`
-    pub fn for_copy(
-        conn: &mut PgConnection,
+    pub async fn for_copy(
+        conn: &mut AsyncPgConnection,
         src: &Table,
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
@@ -284,17 +285,20 @@ impl VidRange {
         } else {
             "lower(block_range) <= $1"
         };
-        let vid_range = sql_query(format!(
-            "/* controller=copy,target={target_number} */ \
-             select coalesce(min(vid), 0) as min_vid, \
-                    coalesce(max(vid), -1) as max_vid \
-               from {src_name} where {max_block_clause}",
-            target_number = target_block.number,
-            src_name = src.qualified_name.as_str(),
-            max_block_clause = max_block_clause
-        ))
-        .bind::<Integer, _>(&target_block.number)
-        .load::<VidRange>(conn)?
+        let vid_range = diesel_async::RunQueryDsl::load::<VidRange>(
+            sql_query(format!(
+                "/* controller=copy,target={target_number} */ \
+                 select coalesce(min(vid), 0) as min_vid, \
+                        coalesce(max(vid), -1) as max_vid \
+                   from {src_name} where {max_block_clause}",
+                target_number = target_block.number,
+                src_name = src.qualified_name.as_str(),
+                max_block_clause = max_block_clause
+            ))
+            .bind::<Integer, _>(&target_block.number),
+            conn,
+        )
+        .await?
         .pop()
         .unwrap_or(EMPTY_VID_RANGE);
         Ok(vid_range)
@@ -303,8 +307,8 @@ impl VidRange {
     /// Return the first and last vid of any entity that is visible in the
     /// block range from `first_block` (inclusive) to `last_block`
     /// (exclusive)
-    pub fn for_prune(
-        conn: &mut PgConnection,
+    pub async fn for_prune(
+        conn: &mut AsyncPgConnection,
         src: &Table,
         first_block: BlockNumber,
         last_block: BlockNumber,
@@ -322,6 +326,7 @@ impl VidRange {
         .bind::<Integer, _>(first_block)
         .bind::<Integer, _>(last_block)
         .get_result::<VidRange>(conn)
+        .await
         .map_err(StoreError::from)
     }
 }
@@ -356,11 +361,10 @@ mod tests {
             assert_eq!(self.vid.batch_size.size, size, "at size");
         }
 
-        #[track_caller]
-        fn step(&mut self, start: i64, end: i64, duration: Duration) {
+        async fn step(&mut self, start: i64, end: i64, duration: Duration) {
             self.vid.step_timer.set(duration);
 
-            match self.vid.step(|s, e| Ok((s, e))).unwrap() {
+            match self.vid.step(async |s, e| Ok((s, e))).await.unwrap() {
                 (d, Some((s, e))) => {
                     // Failing here indicates that our clever Timer is misbehaving
                     assert_eq!(d, duration, "step duration");
@@ -378,10 +382,9 @@ mod tests {
             }
         }
 
-        #[track_caller]
-        fn run(&mut self, start: i64, end: i64, size: i64, duration: Duration) {
+        async fn run(&mut self, start: i64, end: i64, size: i64, duration: Duration) {
             self.at(start, end, size);
-            self.step(start, end, duration);
+            self.step(start, end, duration).await;
         }
 
         fn finished(&self) -> bool {
@@ -400,31 +403,31 @@ mod tests {
         }
     }
 
-    #[test]
-    fn simple() {
+    #[graph::test]
+    async fn simple() {
         let bounds = vec![10, 20, 30, 40, 49];
         let mut batcher = Batcher::new(bounds, 5);
 
         batcher.at(10, 15, 5);
 
-        batcher.step(10, 15, S001);
+        batcher.step(10, 15, S001).await;
         batcher.at(16, 26, 10);
 
-        batcher.step(16, 26, S001);
+        batcher.step(16, 26, S001).await;
         batcher.at(27, 46, 20);
         assert!(!batcher.finished());
 
-        batcher.step(27, 46, S001);
+        batcher.step(27, 46, S001).await;
         batcher.at(47, 49, 40);
         assert!(!batcher.finished());
 
-        batcher.step(47, 49, S001);
+        batcher.step(47, 49, S001).await;
         assert!(batcher.finished());
         batcher.at(50, 49, 80);
     }
 
-    #[test]
-    fn non_uniform() {
+    #[graph::test]
+    async fn non_uniform() {
         // A distribution that is flat in the beginning and then steeper and
         // linear towards the end. The easiest way to see this is to graph
         // `(bounds[i], i*40)`
@@ -433,23 +436,23 @@ mod tests {
 
         // The schedule of how we move through the bounds above in batches,
         // with varying timings for each batch
-        batcher.run(040, 075, 10, S010);
-        batcher.run(076, 145, 20, S010);
-        batcher.run(146, 240, 40, S200);
-        batcher.run(241, 270, 20, S200);
-        batcher.run(271, 281, 10, S200);
-        batcher.run(282, 287, 05, S050);
-        batcher.run(288, 298, 10, S050);
-        batcher.run(299, 309, 20, S050);
-        batcher.run(310, 325, 40, S100);
-        batcher.run(326, 336, 40, S100);
-        batcher.run(337, 347, 40, S100);
-        batcher.run(348, 357, 40, S100);
-        batcher.run(358, 359, 40, S010);
+        batcher.run(040, 075, 10, S010).await;
+        batcher.run(076, 145, 20, S010).await;
+        batcher.run(146, 240, 40, S200).await;
+        batcher.run(241, 270, 20, S200).await;
+        batcher.run(271, 281, 10, S200).await;
+        batcher.run(282, 287, 05, S050).await;
+        batcher.run(288, 298, 10, S050).await;
+        batcher.run(299, 309, 20, S050).await;
+        batcher.run(310, 325, 40, S100).await;
+        batcher.run(326, 336, 40, S100).await;
+        batcher.run(337, 347, 40, S100).await;
+        batcher.run(348, 357, 40, S100).await;
+        batcher.run(358, 359, 40, S010).await;
         assert!(batcher.finished());
 
         batcher.at(360, 359, 80);
-        batcher.step(360, 359, S010);
+        batcher.step(360, 359, S010).await;
     }
 
     #[test]
@@ -471,8 +474,8 @@ mod tests {
         assert_eq!(100_000, ogive.end());
     }
 
-    #[test]
-    fn vid_batcher_handles_large_vid() {
+    #[graph::test]
+    async fn vid_batcher_handles_large_vid() {
         // An example with very large `vid` values which come from the new
         // schema of setting the `vid` to `block_num << 32 + sequence_num`.
         // These values are taken from an actual example subgraph and cuased
@@ -556,16 +559,15 @@ mod tests {
 
         // Run through the entire `vid_batcher`, collecting start and end in
         // `steps`
-        let steps = std::iter::from_fn(|| {
-            vid_batcher
-                .step(|start, end| Ok((start, end, end - start)))
-                .unwrap()
-                .1
-        })
-        .fold(Vec::new(), |mut steps, (start, end, step)| {
+        let mut steps = Vec::new();
+        while let Some((start, end, step)) = vid_batcher
+            .step(async |start, end| Ok((start, end, end - start)))
+            .await
+            .unwrap()
+            .1
+        {
             steps.push((start, end, step));
-            steps
-        });
+        }
 
         assert_eq!(STEPS, &steps);
     }

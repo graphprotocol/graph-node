@@ -82,7 +82,7 @@ pub async fn run(
     let subgraph_name =
         SubgraphName::new(name.clone()).map_err(|_| anyhow!("Invalid subgraph name"))?;
 
-    let exists = subgraph_store.subgraph_exists(&subgraph_name)?;
+    let exists = subgraph_store.subgraph_exists(&subgraph_name).await?;
 
     if !exists {
         println!("Creating subgraph `{}`", name);

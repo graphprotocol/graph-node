@@ -148,13 +148,15 @@ impl WasmInstanceContext<'_> {
 
         let entity_type: String = asc_get(self, entity_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
-        let entity_option = host_exports.store_get(
-            &mut self.as_mut().ctx.state,
-            entity_type.clone(),
-            id.clone(),
-            gas,
-            scope,
-        )?;
+        let entity_option = host_exports
+            .store_get(
+                &mut self.as_mut().ctx.state,
+                entity_type.clone(),
+                id.clone(),
+                gas,
+                scope,
+            )
+            .await?;
 
         if self.as_ref().ctx.instrument {
             debug!(self.as_ref().ctx.logger, "store_get";
@@ -172,7 +174,7 @@ impl WasmInstanceContext<'_> {
             }
             None => match &debug_fork {
                 Some(fork) => {
-                    let entity_option = fork.fetch(entity_type, id).map_err(|e| {
+                    let entity_option = fork.fetch(entity_type, id).await.map_err(|e| {
                         HostExportError::Unknown(anyhow!(
                             "store_get: failed to fetch entity from the debug fork: {}",
                             e
@@ -265,18 +267,20 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
 
-        host_exports.store_set(
-            &logger,
-            block_number,
-            &mut ctx.state,
-            &ctx.proof_of_indexing,
-            ctx.timestamp,
-            entity,
-            id,
-            data,
-            &stopwatch,
-            gas,
-        )?;
+        host_exports
+            .store_set(
+                &logger,
+                block_number,
+                &mut ctx.state,
+                &ctx.proof_of_indexing,
+                ctx.timestamp,
+                entity,
+                id,
+                data,
+                &stopwatch,
+                gas,
+            )
+            .await?;
 
         Ok(())
     }
@@ -344,13 +348,15 @@ impl WasmInstanceContext<'_> {
         let id: String = asc_get(self, id_ptr, gas)?;
         let field: String = asc_get(self, field_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let entities = host_exports.store_load_related(
-            &mut self.as_mut().ctx.state,
-            entity_type.clone(),
-            id.clone(),
-            field.clone(),
-            gas,
-        )?;
+        let entities = host_exports
+            .store_load_related(
+                &mut self.as_mut().ctx.state,
+                entity_type.clone(),
+                id.clone(),
+                field.clone(),
+                gas,
+            )
+            .await?;
 
         let entities: Vec<Vec<(Word, Value)>> =
             entities.into_iter().map(|entity| entity.sorted()).collect();
@@ -1100,8 +1106,10 @@ impl WasmInstanceContext<'_> {
         let hash: String = asc_get(self, hash_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
-        let name = host_exports.ens_name_by_hash(&hash, gas, &mut ctx.state)?;
-        if name.is_none() && self.as_ref().ctx.host_exports.is_ens_data_empty()? {
+        let name = host_exports
+            .ens_name_by_hash(&hash, gas, &mut ctx.state)
+            .await?;
+        if name.is_none() && self.as_ref().ctx.host_exports.is_ens_data_empty().await? {
             return Err(anyhow!(
                 "Missing ENS data: see https://github.com/graphprotocol/ens-rainbow"
             )

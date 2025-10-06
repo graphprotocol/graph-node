@@ -797,7 +797,7 @@ mod test {
     use crate::endpoint::EndpointMetrics;
     use crate::firehose::SubgraphLimit;
 
-    #[tokio::test]
+    #[crate::test]
     async fn firehose_endpoint_errors() {
         let endpoint = vec![Arc::new(FirehoseEndpoint::new(
             String::new(),
@@ -830,7 +830,7 @@ mod test {
         assert!(err.to_string().contains("unable to get a connection"));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn firehose_endpoint_with_limit() {
         let endpoint = vec![Arc::new(FirehoseEndpoint::new(
             String::new(),
@@ -858,7 +858,7 @@ mod test {
         endpoints.endpoint().await.unwrap();
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn firehose_endpoint_no_traffic() {
         let endpoint = vec![Arc::new(FirehoseEndpoint::new(
             String::new(),
@@ -878,7 +878,7 @@ mod test {
         assert!(err.to_string().contains("conn_pool_size"));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn firehose_endpoint_selection() {
         let logger = Logger::root(Discard, o!());
         let endpoint_metrics = Arc::new(EndpointMetrics::new(

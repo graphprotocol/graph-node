@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 use hyper::body::Incoming;
 use hyper::Request;
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
 
+use crate::anyhow;
 use crate::cheap_clone::CheapClone;
 use crate::hyper::server::conn::http1;
 use crate::hyper::service::service_fn;
 use crate::hyper_util::rt::TokioIo;
 use crate::slog::error;
-use crate::tokio::net::TcpListener;
-use crate::tokio::task::JoinHandle;
-use crate::{anyhow, tokio};
 
 use crate::prelude::Logger;
 

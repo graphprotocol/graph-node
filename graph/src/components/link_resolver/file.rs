@@ -165,7 +165,7 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    #[tokio::test]
+    #[crate::test]
     async fn test_file_resolver_absolute() {
         // Test the resolver without a base directory (absolute paths only)
 
@@ -207,7 +207,7 @@ mod tests {
         let _ = fs::remove_dir(temp_dir);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn test_file_resolver_with_base_dir() {
         // Test the resolver with a base directory
 
@@ -256,7 +256,7 @@ mod tests {
         let _ = fs::remove_dir(temp_dir);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn test_file_resolver_with_aliases() {
         // Create a temporary directory for test files
         let temp_dir = env::temp_dir().join("file_resolver_test_aliases");

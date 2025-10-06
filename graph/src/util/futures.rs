@@ -485,7 +485,7 @@ mod tests {
     use slog::o;
     use std::sync::Mutex;
 
-    #[tokio::test]
+    #[crate::test]
     async fn test() {
         let logger = Logger::root(::slog::Discard, o!());
 
@@ -510,7 +510,7 @@ mod tests {
         assert_eq!(result, Ok(10));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn limit_reached() {
         let logger = Logger::root(::slog::Discard, o!());
 
@@ -535,7 +535,7 @@ mod tests {
         assert_eq!(result, Err(5));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn limit_not_reached() {
         let logger = Logger::root(::slog::Discard, o!());
 
@@ -560,7 +560,7 @@ mod tests {
         assert_eq!(result, Ok(10));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn custom_when() {
         let logger = Logger::root(::slog::Discard, o!());
         let c = Mutex::new(0);

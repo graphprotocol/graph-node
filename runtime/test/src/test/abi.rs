@@ -32,12 +32,12 @@ async fn test_unbounded_loop(api_version: Version) {
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn unbounded_loop_v0_0_4() {
     test_unbounded_loop(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn unbounded_loop_v0_0_5() {
     test_unbounded_loop(API_VERSION_0_0_5).await;
 }
@@ -66,12 +66,12 @@ async fn test_unbounded_recursion(api_version: Version) {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn unbounded_recursion_v0_0_4() {
     test_unbounded_recursion(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn unbounded_recursion_v0_0_5() {
     test_unbounded_recursion(API_VERSION_0_0_5).await;
 }
@@ -110,12 +110,12 @@ async fn test_abi_array(api_version: Version, gas_used: u64) {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_array_v0_0_4() {
     test_abi_array(API_VERSION_0_0_4, 695935).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_array_v0_0_5() {
     test_abi_array(API_VERSION_0_0_5, 1636130).await;
 }
@@ -140,12 +140,12 @@ async fn test_abi_subarray(api_version: Version) {
     assert_eq!(new_vec, vec![3]);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_subarray_v0_0_4() {
     test_abi_subarray(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_subarray_v0_0_5() {
     test_abi_subarray(API_VERSION_0_0_5).await;
 }
@@ -172,12 +172,12 @@ async fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     assert_eq!(new_vec, concated);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_bytes_and_fixed_bytes_v0_0_4() {
     test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_bytes_and_fixed_bytes_v0_0_5() {
     test_abi_bytes_and_fixed_bytes(API_VERSION_0_0_5).await;
 }
@@ -298,14 +298,14 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
 
 /// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
 /// and assert the final token is the same as the starting one.
-#[tokio::test]
+#[graph::test]
 async fn abi_ethabi_token_identity_v0_0_4() {
     test_abi_ethabi_token_identity(API_VERSION_0_0_4).await;
 }
 
 /// Test a roundtrip Token -> Payload -> Token identity conversion through asc,
 /// and assert the final token is the same as the starting one.
-#[tokio::test]
+#[graph::test]
 async fn abi_ethabi_token_identity_v0_0_5() {
     test_abi_ethabi_token_identity(API_VERSION_0_0_5).await;
 }
@@ -427,12 +427,12 @@ async fn test_abi_store_value(api_version: Version) {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_store_value_v0_0_4() {
     test_abi_store_value(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_store_value_v0_0_5() {
     test_abi_store_value(API_VERSION_0_0_5).await;
 }
@@ -461,12 +461,12 @@ async fn test_abi_h160(api_version: Version) {
     )
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_h160_v0_0_4() {
     test_abi_h160(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_h160_v0_0_5() {
     test_abi_h160(API_VERSION_0_0_5).await;
 }
@@ -487,12 +487,12 @@ async fn test_string(api_version: Version) {
     assert_eq!(doubled_string, string.repeat(2));
 }
 
-#[tokio::test]
+#[graph::test]
 async fn string_v0_0_4() {
     test_string(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn string_v0_0_5() {
     test_string(API_VERSION_0_0_5).await;
 }
@@ -527,12 +527,12 @@ async fn test_abi_big_int(api_version: Version) {
     assert_eq!(new_uint, new_uint_from_u256);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_big_int_v0_0_4() {
     test_abi_big_int(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abi_big_int_v0_0_5() {
     test_abi_big_int(API_VERSION_0_0_5).await;
 }
@@ -555,12 +555,12 @@ async fn test_big_int_to_string(api_version: Version) {
     assert_eq!(string, big_int_str);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn big_int_to_string_v0_0_4() {
     test_big_int_to_string(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn big_int_to_string_v0_0_5() {
     test_big_int_to_string(API_VERSION_0_0_5).await;
 }
@@ -590,7 +590,7 @@ async fn test_invalid_discriminant(api_version: Version) {
 
 // This should panic rather than exhibiting UB. It's hard to test for UB, but
 // when reproducing a SIGILL was observed which would be caught by this.
-#[tokio::test]
+#[graph::test]
 #[should_panic]
 async fn invalid_discriminant_v0_0_4() {
     test_invalid_discriminant(API_VERSION_0_0_4).await;
@@ -598,7 +598,7 @@ async fn invalid_discriminant_v0_0_4() {
 
 // This should panic rather than exhibiting UB. It's hard to test for UB, but
 // when reproducing a SIGILL was observed which would be caught by this.
-#[tokio::test]
+#[graph::test]
 #[should_panic]
 async fn invalid_discriminant_v0_0_5() {
     test_invalid_discriminant(API_VERSION_0_0_5).await;

@@ -109,7 +109,6 @@ mod test {
     use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
     use graph::ipfs::{IpfsContext, IpfsMetrics, IpfsRpcClient, ServerAddress};
     use graph::log::discard;
-    use graph::tokio;
     use tower::ServiceExt;
     use wiremock::matchers as m;
     use wiremock::Mock;
@@ -118,7 +117,7 @@ mod test {
 
     use super::*;
 
-    #[tokio::test]
+    #[graph::test]
     async fn cat_file_in_folder() {
         let random_bytes = "One morning, when Gregor Samsa woke \
           from troubled dreams, he found himself transformed in his bed \
@@ -155,7 +154,7 @@ mod test {
         assert_eq!(content.to_vec(), random_bytes);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn arweave_get() {
         const ID: &str = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
 
@@ -169,7 +168,7 @@ mod test {
         assert_eq!(expected, body);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn no_client_retries_to_allow_polling_monitor_to_handle_retries_internally() {
         const CID: &str = "QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn";
 

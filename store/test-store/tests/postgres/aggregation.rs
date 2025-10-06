@@ -21,8 +21,10 @@ use graph::{
     prelude::lazy_static,
     schema::InputSchema,
 };
-use graph_store_postgres::{Store as DieselStore, SubgraphStore};
-use test_store::{create_test_subgraph, run_test_sequentially, BLOCKS, LOGGER, METRICS_REGISTRY};
+use graph_store_postgres::Store as DieselStore;
+use test_store::{
+    create_test_subgraph, remove_subgraphs, run_test_sequentially, BLOCKS, LOGGER, METRICS_REGISTRY,
+};
 
 const SCHEMA: &str = r#"
 type Data @entity(timeseries: true) {
@@ -63,12 +65,6 @@ lazy_static! {
     static ref TIMES: Vec<BlockTime> = vec![minutes(30), minutes(40), minutes(65), minutes(120)];
 }
 
-fn remove_test_data(store: Arc<SubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
-}
-
 pub async fn insert(
     store: &Arc<dyn WritableStore>,
     deployment: &DeploymentLocator,
@@ -91,6 +87,7 @@ pub async fn insert(
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(block_ptr_to.number)
+        .await
         .expect("failed to convert to modifications")
         .modifications;
     let metrics_registry = METRICS_REGISTRY.clone();
@@ -206,8 +203,7 @@ struct TestEnv {
 }
 
 impl TestEnv {
-    #[track_caller]
-    fn all_entities(&self, entity_type: &str, block: BlockNumber) -> Vec<Entity> {
+    async fn all_entities(&self, entity_type: &str, block: BlockNumber) -> Vec<Entity> {
         let entity_type = self
             .writable
             .input_schema()
@@ -221,6 +217,7 @@ impl TestEnv {
         self.store
             .subgraph_store()
             .find(query)
+            .await
             .expect("query succeeds")
     }
 }
@@ -231,9 +228,8 @@ where
     R: Future<Output = ()> + Send + 'static,
 {
     run_test_sequentially(|store| async move {
-        let subgraph_store = store.subgraph_store();
         // Reset state before starting
-        remove_test_data(subgraph_store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let hash = DeploymentHash::new("rollupSubgraph").unwrap();
@@ -288,12 +284,12 @@ fn entity_diff(left: &[Entity], right: &[Entity]) -> Result<String, std::fmt::Er
 #[test]
 fn simple() {
     run_test(|env| async move {
-        let x = env.all_entities("Stats_day", BlockNumber::MAX);
+        let x = env.all_entities("Stats_day", BlockNumber::MAX).await;
         assert_eq!(Vec::<Entity>::new(), x);
 
         let exp = stats_hour(&env.writable.input_schema());
         for i in 0..4 {
-            let act = env.all_entities("Stats_hour", BLOCKS[i].number);
+            let act = env.all_entities("Stats_hour", BLOCKS[i].number).await;
             let diff = entity_diff(&exp[i], &act).unwrap();
             if !diff.is_empty() {
                 panic!("entities for BLOCKS[{}] differ:\n{}", i, diff);

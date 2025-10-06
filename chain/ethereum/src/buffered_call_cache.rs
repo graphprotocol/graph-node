@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use async_trait::async_trait;
 use graph::{
     cheap_clone::CheapClone,
     components::store::EthereumCallCache,
@@ -47,8 +48,9 @@ impl BufferedCallCache {
     }
 }
 
+#[async_trait]
 impl EthereumCallCache for BufferedCallCache {
-    fn get_call(
+    async fn get_call(
         &self,
         call: &call::Request,
         block: BlockPtr,
@@ -59,7 +61,7 @@ impl EthereumCallCache for BufferedCallCache {
             return Ok(Some(value));
         }
 
-        let result = self.call_cache.get_call(&call, block)?;
+        let result = self.call_cache.get_call(&call, block).await?;
 
         let mut buffer = self.buffer.lock().unwrap();
         if let Some(call::Response {
@@ -73,7 +75,7 @@ impl EthereumCallCache for BufferedCallCache {
         Ok(result)
     }
 
-    fn get_calls(
+    async fn get_calls(
         &self,
         reqs: &[call::Request],
         block: BlockPtr,
@@ -90,7 +92,7 @@ impl EthereumCallCache for BufferedCallCache {
             }
         }
 
-        let (stored, calls) = self.call_cache.get_calls(&missing, block)?;
+        let (stored, calls) = self.call_cache.get_calls(&missing, block).await?;
 
         {
             let mut buffer = self.buffer.lock().unwrap();
@@ -103,15 +105,15 @@ impl EthereumCallCache for BufferedCallCache {
         Ok((resps, calls))
     }
 
-    fn get_calls_in_block(
+    async fn get_calls_in_block(
         &self,
         block: BlockPtr,
     ) -> Result<Vec<CachedEthereumCall>, graph::prelude::Error> {
-        self.call_cache.get_calls_in_block(block)
+        self.call_cache.get_calls_in_block(block).await
     }
 
-    fn set_call(
-        &self,
+    async fn set_call(
+        self: Arc<Self>,
         logger: &Logger,
         call: call::Request,
         block: BlockPtr,
@@ -130,15 +132,14 @@ impl EthereumCallCache for BufferedCallCache {
 
         let cache = self.call_cache.cheap_clone();
         let logger = logger.cheap_clone();
-        let _ = graph::spawn_blocking_allow_panic(move || {
-            cache
-                .set_call(&logger, call.cheap_clone(), block, return_value)
-                .map_err(|e| {
-                    error!(logger, "BufferedCallCache: call cache set error";
+        if let Err(e) = cache
+            .set_call(&logger, call.cheap_clone(), block, return_value)
+            .await
+        {
+            error!(logger, "BufferedCallCache: call cache set error";
                             "contract_address" => format!("{:?}", call.address),
                             "error" => e.to_string())
-                })
-        });
+        }
 
         Ok(())
     }

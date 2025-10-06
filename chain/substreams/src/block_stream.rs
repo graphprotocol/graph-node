@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use std::sync::Arc;
 
 use graph::{
@@ -11,7 +12,7 @@ use graph::{
     },
     components::store::{DeploymentLocator, SourceableStore},
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{async_trait, BlockNumber, BlockPtr},
+    prelude::{BlockNumber, BlockPtr},
     schema::InputSchema,
     slog::o,
 };

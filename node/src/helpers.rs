@@ -5,25 +5,25 @@ use graph::prelude::{
     BlockPtr, DeploymentHash, NodeId, SubgraphRegistrarError, SubgraphStore as SubgraphStoreTrait,
 };
 use graph::slog::{error, info, Logger};
-use graph::tokio::sync::mpsc::Receiver;
 use graph::{
     components::store::DeploymentLocator,
     prelude::{SubgraphName, SubgraphRegistrar},
 };
 use graph_store_postgres::SubgraphStore;
+use tokio::sync::mpsc::Receiver;
 
 /// Cleanup a subgraph
 /// This is used to remove a subgraph before redeploying it when using the watch flag
-fn cleanup_dev_subgraph(
+async fn cleanup_dev_subgraph(
     logger: &Logger,
     subgraph_store: &SubgraphStore,
     name: &SubgraphName,
     locator: &DeploymentLocator,
 ) -> Result<()> {
     info!(logger, "Removing subgraph"; "name" => name.to_string(), "id" => locator.id.to_string(), "hash" => locator.hash.to_string());
-    subgraph_store.remove_subgraph(name.clone())?;
-    subgraph_store.unassign_subgraph(locator)?;
-    subgraph_store.remove_deployment(locator.id.into())?;
+    subgraph_store.remove_subgraph(name.clone()).await?;
+    subgraph_store.unassign_subgraph(locator).await?;
+    subgraph_store.remove_deployment(locator.id.into()).await?;
     info!(logger, "Subgraph removed"; "name" => name.to_string(), "id" => locator.id.to_string(), "hash" => locator.hash.to_string());
     Ok(())
 }
@@ -66,9 +66,9 @@ async fn drop_and_recreate_subgraph(
     node_id: NodeId,
     hash: DeploymentHash,
 ) -> Result<DeploymentLocator> {
-    let locator = subgraph_store.active_locator(&hash)?;
+    let locator = subgraph_store.active_locator(&hash).await?;
     if let Some(locator) = locator.clone() {
-        cleanup_dev_subgraph(logger, &subgraph_store, &name, &locator)?;
+        cleanup_dev_subgraph(logger, &subgraph_store, &name, &locator).await?;
     }
 
     deploy_subgraph(

@@ -7,6 +7,7 @@ edition.workspace = true
 tonic-build = { workspace = true }
 
 [dependencies]
+async-trait = { workspace = true }
 graph = { path = "../../graph" }
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 lazy_static = "1.5.0"
@@ -17,6 +18,7 @@ anyhow = "1.0"
 hex = "0.4.3"
 semver = "1.0.27"
 base64 = "0.22.1"
+tokio-stream = { workspace = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

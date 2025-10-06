@@ -246,7 +246,7 @@ mod tests {
     use crate::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
     use crate::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
 
-    #[tokio::test]
+    #[crate::test]
     async fn max_file_size() {
         let mut env_vars = EnvVars::default();
         env_vars.mappings.max_ipfs_file_bytes = 200;
@@ -302,7 +302,7 @@ mod tests {
         stream.map_ok(|sv| sv.value).try_collect().await
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn read_json_stream() {
         let values = json_round_trip("\"with newline\"\n", EnvVars::default()).await;
         assert_eq!(vec![json!("with newline")], values.unwrap());
@@ -324,7 +324,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn ipfs_map_file_size() {
         let file = "\"small test string that trips the size restriction\"";
         let mut env_vars = EnvVars::default();

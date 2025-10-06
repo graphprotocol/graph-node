@@ -6,7 +6,7 @@ use crate::entities::DeploymentSelector;
 use crate::entities::DeploymentVersionSelector;
 use crate::resolvers::context::GraphmanContext;
 
-pub fn run(
+pub async fn run(
     ctx: &Context<'_>,
     deployment: Option<DeploymentSelector>,
     version: Option<DeploymentVersionSelector>,
@@ -27,13 +27,15 @@ pub fn run(
         ctx.primary_pool.clone(),
         &deployment,
         &version,
-    )?;
+    )
+    .await?;
 
     let statuses = if load_status {
         graphman::commands::deployment::info::load_deployment_statuses(
             ctx.store.clone(),
             &deployments,
-        )?
+        )
+        .await?
     } else {
         Default::default()
     };

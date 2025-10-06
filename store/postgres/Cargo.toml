@@ -4,11 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = { workspace = true }
 blake3 = "1.8"
 chrono = { workspace = true }
+deadpool = { workspace = true }
 derive_more = { version = "2.0.1", features = ["full"] }
 diesel = { workspace = true }
+diesel-async = { workspace = true }
 diesel-dynamic-schema = { workspace = true }
 diesel-derive-enum = { workspace = true }
 diesel_derives = { workspace = true }
@@ -27,6 +29,8 @@ rand.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
 anyhow = "1.0.100"
 git-testament = "0.2.6"
 itertools = "0.14.0"

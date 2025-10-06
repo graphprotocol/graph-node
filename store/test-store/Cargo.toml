@@ -6,6 +6,7 @@ authors = ["Leonardo Yvens <leoyvens@gmail.com>"]
 description = "Provides static store instance for tests."
 
 [dependencies]
+async-trait = { workspace = true }
 graph-graphql = { path = "../../graphql" }
 graph-node = { path = "../../node" }
 graph = { path = "../../graph" }
@@ -14,7 +15,9 @@ graph-chain-ethereum = { path = "../../chain/ethereum" }
 lazy_static = "1.5"
 hex-literal = "1.0"
 diesel = { workspace = true }
+diesel-async = { workspace = true }
 prost-types = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 hex = "0.4.3"
