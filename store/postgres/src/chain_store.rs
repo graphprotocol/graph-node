@@ -2449,7 +2449,10 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Into::into)
     }
 
-    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
+    async fn block_hashes_by_block_number(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Vec<BlockHash>, Error> {
         let mut conn = self.get_conn()?;
         self.storage
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
