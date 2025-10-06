@@ -48,9 +48,9 @@ where
         }
     }
 
-    pub fn handle(&self, logger: &Logger, req: &[&str]) -> ServerResult {
+    pub async fn handle(&self, logger: &Logger, req: &[&str]) -> ServerResult {
         match req {
-            ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id),
+            ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id).await,
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
             ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
@@ -61,12 +61,12 @@ where
         }
     }
 
-    fn handle_subgraph_versions(&self, subgraph_id: &str) -> ServerResult {
+    async fn handle_subgraph_versions(&self, subgraph_id: &str) -> ServerResult {
         if let Some(value) = self.versions.get(subgraph_id) {
             return Ok(as_http_response(value.as_ref()));
         }
 
-        let (current, pending) = self.store.versions_for_subgraph_id(subgraph_id)?;
+        let (current, pending) = self.store.versions_for_subgraph_id(subgraph_id).await?;
 
         let value = object! {
             currentVersion: current,
