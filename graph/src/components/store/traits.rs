@@ -728,7 +728,7 @@ pub trait StatusStore: Send + Sync + 'static {
 
     /// Support for the explorer-specific API. Returns a vector of (name, version) of all
     /// subgraphs for a given deployment hash.
-    fn subgraphs_for_deployment_hash(
+    async fn subgraphs_for_deployment_hash(
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError>;
