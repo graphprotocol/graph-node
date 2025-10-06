@@ -7,7 +7,7 @@ use graph::{
     cheap_clone::CheapClone,
     components::store::EthereumCallCache,
     data::store::ethereum::call,
-    prelude::{BlockPtr, CachedEthereumCall},
+    prelude::{async_trait, BlockPtr, CachedEthereumCall},
     slog::{error, Logger},
 };
 
@@ -47,6 +47,7 @@ impl BufferedCallCache {
     }
 }
 
+#[async_trait]
 impl EthereumCallCache for BufferedCallCache {
     fn get_call(
         &self,
@@ -110,8 +111,8 @@ impl EthereumCallCache for BufferedCallCache {
         self.call_cache.get_calls_in_block(block)
     }
 
-    fn set_call(
-        &self,
+    async fn set_call(
+        self: Arc<Self>,
         logger: &Logger,
         call: call::Request,
         block: BlockPtr,
@@ -130,15 +131,14 @@ impl EthereumCallCache for BufferedCallCache {
 
         let cache = self.call_cache.cheap_clone();
         let logger = logger.cheap_clone();
-        let _ = graph::spawn_blocking_allow_panic(move || {
-            cache
-                .set_call(&logger, call.cheap_clone(), block, return_value)
-                .map_err(|e| {
-                    error!(logger, "BufferedCallCache: call cache set error";
+        if let Err(e) = cache
+            .set_call(&logger, call.cheap_clone(), block, return_value)
+            .await
+        {
+            error!(logger, "BufferedCallCache: call cache set error";
                             "contract_address" => format!("{:?}", call.address),
                             "error" => e.to_string())
-                })
-        });
+        }
 
         Ok(())
     }

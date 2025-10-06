@@ -607,6 +607,7 @@ pub trait ChainStore: ChainHeadStore {
     fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore>;
 }
 
+#[async_trait]
 pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing
@@ -631,8 +632,8 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
 
     /// Stores the provided Ethereum call in the cache.
-    fn set_call(
-        &self,
+    async fn set_call(
+        self: Arc<Self>,
         logger: &Logger,
         call: call::Request,
         block: BlockPtr,

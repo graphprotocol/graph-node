@@ -2757,6 +2757,7 @@ fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
         .map(Some)
 }
 
+#[async_trait]
 impl EthereumCallCache for ChainStore {
     fn get_call(
         &self,
@@ -2832,8 +2833,8 @@ impl EthereumCallCache for ChainStore {
         conn.transaction::<_, Error, _>(|conn| self.storage.get_calls_in_block(conn, block))
     }
 
-    fn set_call(
-        &self,
+    async fn set_call(
+        self: Arc<Self>,
         _: &Logger,
         call: call::Request,
         block: BlockPtr,
@@ -2847,16 +2848,20 @@ impl EthereumCallCache for ChainStore {
             return Ok(());
         };
         let id = contract_call_id(&call, &block);
-        let conn = &mut *self.get_conn()?;
-        conn.transaction(|conn| {
-            self.storage.set_call(
-                conn,
-                id.as_ref(),
-                call.address.as_ref(),
-                block.number,
-                &return_value,
-            )
+        graph::spawn_blocking_allow_panic(move || {
+            let conn = &mut *self.get_conn()?;
+            conn.transaction(|conn| {
+                self.storage.set_call(
+                    conn,
+                    id.as_ref(),
+                    call.address.as_ref(),
+                    block.number,
+                    &return_value,
+                )
+            })
         })
+        .await??;
+        Ok(())
     }
 }
 
