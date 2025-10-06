@@ -2785,7 +2785,7 @@ impl EthereumCallCache for ChainStore {
         }))
     }
 
-    fn get_calls(
+    async fn get_calls(
         &self,
         reqs: &[call::Request],
         block: BlockPtr,

@@ -621,7 +621,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     /// Get the return values of many Ethereum calls. For the ones found in
     /// the cache, return a `Response`; the ones that were not found are
     /// returned as the original `Request`
-    fn get_calls(
+    async fn get_calls(
         &self,
         reqs: &[call::Request],
         block: BlockPtr,

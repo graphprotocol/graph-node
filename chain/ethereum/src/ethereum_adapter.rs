@@ -1653,6 +1653,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let (mut resps, missing) = cache
             .get_calls(&reqs, block_ptr)
+            .await
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .unwrap_or_else(|_| (Vec::new(), reqs));
 
