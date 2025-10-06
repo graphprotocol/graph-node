@@ -2455,7 +2455,11 @@ impl ChainStoreTrait for ChainStore {
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
     }
 
-    fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error> {
+    async fn confirm_block_hash(
+        &self,
+        number: BlockNumber,
+        hash: &BlockHash,
+    ) -> Result<usize, Error> {
         let mut conn = self.get_conn()?;
         self.storage
             .confirm_block_hash(&mut conn, &self.chain, number, hash)

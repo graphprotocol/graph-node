@@ -258,7 +258,7 @@ fn block_hashes_by_number() {
         &*BLOCK_TWO,
         &*BLOCK_TWO_NO_PARENT,
     ];
-    run_test(chain, move |store, _| {
+    run_test_async(chain, move |store, _, _| async move {
         let hashes = store.block_hashes_by_block_number(1).unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
@@ -272,17 +272,20 @@ fn block_hashes_by_number() {
 
         let deleted = store
             .confirm_block_hash(1, &BLOCK_ONE.block_hash())
+            .await
             .unwrap();
         assert_eq!(0, deleted);
 
         let deleted = store
             .confirm_block_hash(2, &BLOCK_TWO.block_hash())
+            .await
             .unwrap();
         assert_eq!(1, deleted);
 
         // Make sure that we do not delete anything for a nonexistent block
         let deleted = store
             .confirm_block_hash(127, &GENESIS_BLOCK.block_hash())
+            .await
             .unwrap();
         assert_eq!(0, deleted);
 
@@ -291,7 +294,6 @@ fn block_hashes_by_number() {
 
         let hashes = store.block_hashes_by_block_number(2).unwrap();
         assert_eq!(vec![BLOCK_TWO.block_hash()], hashes);
-        Ok(())
     })
 }
 
