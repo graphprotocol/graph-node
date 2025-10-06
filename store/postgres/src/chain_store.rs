@@ -2956,7 +2956,7 @@ fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
 
 #[async_trait]
 impl EthereumCallCache for ChainStore {
-    fn get_call(
+    async fn get_call(
         &self,
         req: &call::Request,
         block: BlockPtr,

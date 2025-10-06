@@ -49,7 +49,7 @@ impl BufferedCallCache {
 
 #[async_trait]
 impl EthereumCallCache for BufferedCallCache {
-    fn get_call(
+    async fn get_call(
         &self,
         call: &call::Request,
         block: BlockPtr,
@@ -60,7 +60,7 @@ impl EthereumCallCache for BufferedCallCache {
             return Ok(Some(value));
         }
 
-        let result = self.call_cache.get_call(&call, block)?;
+        let result = self.call_cache.get_call(&call, block).await?;
 
         let mut buffer = self.buffer.lock().unwrap();
         if let Some(call::Response {

@@ -447,18 +447,22 @@ fn eth_call_cache() {
             .await
             .unwrap();
 
-        let ret = store.get_call(&call, GENESIS_BLOCK.block_ptr()).unwrap();
+        let ret = store
+            .get_call(&call, GENESIS_BLOCK.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_none());
 
         let ret = store
             .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
             .unwrap()
             .unwrap()
             .retval
             .unwrap();
         assert_eq!(&return_value, ret.as_slice());
 
-        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).unwrap();
+        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).await.unwrap();
         assert!(ret.is_none());
 
         let new_return_value: [u8; 3] = [10, 11, 12];
@@ -474,6 +478,7 @@ fn eth_call_cache() {
             .unwrap();
         let ret = store
             .get_call(&call, BLOCK_TWO.block_ptr())
+            .await
             .unwrap()
             .unwrap()
             .retval
@@ -491,7 +496,10 @@ fn eth_call_cache() {
             )
             .await
             .unwrap();
-        let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();
+        let ret = store
+            .get_call(&call, BLOCK_THREE.block_ptr())
+            .await
+            .unwrap();
         assert_eq!(None, ret);
 
         // Empty return values should not be cached
@@ -506,7 +514,7 @@ fn eth_call_cache() {
             )
             .await
             .unwrap();
-        let ret = store.get_call(&call, BLOCK_FOUR.block_ptr()).unwrap();
+        let ret = store.get_call(&call, BLOCK_FOUR.block_ptr()).await.unwrap();
         assert_eq!(None, ret);
     })
 }
@@ -544,7 +552,10 @@ fn test_clear_stale_call_cache() {
             .unwrap();
 
         // Confirm the call cache entry is there
-        let ret = chain_store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        let ret = chain_store
+            .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_some());
 
         // Now we need to update the accessed_at timestamp to be stale, so it gets deleted
@@ -574,7 +585,10 @@ fn test_clear_stale_call_cache() {
         assert!(result.is_ok());
 
         // Confirm the call cache entry was removed
-        let ret = chain_store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        let ret = chain_store
+            .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_none());
     });
 }

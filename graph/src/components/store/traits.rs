@@ -619,7 +619,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     /// Returns the return value of the provided Ethereum call, if present
     /// in the cache. A return of `None` indicates that we know nothing
     /// about the call.
-    fn get_call(
+    async fn get_call(
         &self,
         call: &call::Request,
         block: BlockPtr,
