@@ -629,7 +629,7 @@ pub trait EthereumCallCache: Send + Sync + 'static {
 
     /// Returns all cached calls for a given `block`. This method does *not*
     /// update the last access time of the returned cached calls.
-    fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
+    async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error>;
 
     /// Stores the provided Ethereum call in the cache.
     async fn set_call(
