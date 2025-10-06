@@ -122,7 +122,7 @@ async fn create_inner(
         .block_store()
         .chain_store(network)
         .ok_or_else(|| anyhow!("could not find chain store for network {}", network))?;
-    let mut hashes = chain_store.block_hashes_by_block_number(src_number)?;
+    let mut hashes = chain_store.block_hashes_by_block_number(src_number).await?;
     let hash = match hashes.len() {
         0 => bail!(
             "could not find a block with number {} in our cache",

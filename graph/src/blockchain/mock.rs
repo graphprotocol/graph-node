@@ -544,7 +544,10 @@ impl ChainStore for MockChainStore {
     ) -> Result<Option<(BlockNumber, usize)>, Error> {
         unimplemented!()
     }
-    fn block_hashes_by_block_number(&self, _number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
+    async fn block_hashes_by_block_number(
+        &self,
+        _number: BlockNumber,
+    ) -> Result<Vec<BlockHash>, Error> {
         unimplemented!()
     }
     async fn confirm_block_hash(

@@ -1077,7 +1077,9 @@ impl SubgraphStoreInner {
                 Some(chain_store) => chain_store,
                 None => return Ok(None),
             };
-            let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
+            let mut hashes = chain_store
+                .block_hashes_by_block_number(block_number)
+                .await?;
 
             // If we have multiple versions of this block using any of them could introduce
             // non-determinism because we don't know which one is the right one
