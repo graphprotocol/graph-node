@@ -573,7 +573,11 @@ pub trait ChainStore: ChainHeadStore {
 
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
-    fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
+    async fn confirm_block_hash(
+        &self,
+        number: BlockNumber,
+        hash: &BlockHash,
+    ) -> Result<usize, Error>;
 
     /// Find the block with `block_hash` and return the network name, number, timestamp and parentHash if present.
     /// Currently, the timestamp is only returned if it's present in the top level block. This format is
