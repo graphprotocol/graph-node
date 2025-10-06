@@ -569,7 +569,10 @@ pub trait ChainStore: ChainHeadStore {
     ) -> Result<Option<(BlockNumber, usize)>, Error>;
 
     /// Return the hashes of all blocks with the given number
-    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error>;
+    async fn block_hashes_by_block_number(
+        &self,
+        number: BlockNumber,
+    ) -> Result<Vec<BlockHash>, Error>;
 
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number

@@ -260,15 +260,15 @@ fn block_hashes_by_number() {
         &*BLOCK_TWO_NO_PARENT,
     ];
     run_test_async(chain, move |store, _, _| async move {
-        let hashes = store.block_hashes_by_block_number(1).unwrap();
+        let hashes = store.block_hashes_by_block_number(1).await.unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
-        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        let hashes = store.block_hashes_by_block_number(2).await.unwrap();
         assert_eq!(2, hashes.len());
         assert!(hashes.contains(&BLOCK_TWO.block_hash()));
         assert!(hashes.contains(&BLOCK_TWO_NO_PARENT.block_hash()));
 
-        let hashes = store.block_hashes_by_block_number(127).unwrap();
+        let hashes = store.block_hashes_by_block_number(127).await.unwrap();
         assert_eq!(0, hashes.len());
 
         let deleted = store
@@ -290,10 +290,10 @@ fn block_hashes_by_number() {
             .unwrap();
         assert_eq!(0, deleted);
 
-        let hashes = store.block_hashes_by_block_number(1).unwrap();
+        let hashes = store.block_hashes_by_block_number(1).await.unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
-        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        let hashes = store.block_hashes_by_block_number(2).await.unwrap();
         assert_eq!(vec![BLOCK_TWO.block_hash()], hashes);
     })
 }

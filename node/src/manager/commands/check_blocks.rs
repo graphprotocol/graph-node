@@ -30,7 +30,7 @@ pub async fn by_number(
     logger: &Logger,
     delete_duplicates: bool,
 ) -> anyhow::Result<()> {
-    let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store)?;
+    let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store).await?;
 
     match &block_hashes.as_slice() {
         [] => bail!("Could not find a block with number {} in store", number),
@@ -61,7 +61,8 @@ pub async fn by_range(
     // TODO: This could be turned into async code
     for block_number in range.lower_bound..=max {
         println!("Checking block [{block_number}/{max}]");
-        let block_hashes = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
+        let block_hashes =
+            steps::resolve_block_hash_from_block_number(block_number, &chain_store).await?;
         match &block_hashes.as_slice() {
             [] => eprintln!("Found no block hash with number {block_number}"),
             [block_hash] => {
@@ -164,11 +165,11 @@ mod steps {
     /// Multiple block hashes can be returned as the store does not enforce uniqueness based on
     /// block numbers.
     /// Returns an empty vector if no block hash is found.
-    pub(super) fn resolve_block_hash_from_block_number(
+    pub(super) async fn resolve_block_hash_from_block_number(
         number: i32,
         chain_store: &ChainStore,
     ) -> anyhow::Result<Vec<H256>> {
-        let block_hashes = chain_store.block_hashes_by_block_number(number)?;
+        let block_hashes = chain_store.block_hashes_by_block_number(number).await?;
         Ok(block_hashes
             .into_iter()
             .map(|x| H256::from_slice(&x.as_slice()[..32]))
