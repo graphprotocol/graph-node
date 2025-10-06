@@ -551,7 +551,9 @@ impl Blockchain for Chain {
         self.block_refetcher.get_block(self, logger, cursor).await
     }
 
-    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+    async fn runtime(
+        &self,
+    ) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
         let call_cache = Arc::new(BufferedCallCache::new(self.call_cache.cheap_clone()));
         let chain_ident = self.chain_store.chain_identifier()?;
 
