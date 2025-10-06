@@ -6,14 +6,16 @@ use crate::blockchain::BlockHash;
 use crate::blockchain::ChainIdentifier;
 use crate::components::network_provider::ChainName;
 use crate::components::store::ChainIdStore;
+use crate::prelude::async_trait;
 
 /// Additional requirements for stores that are necessary for provider checks.
+#[async_trait]
 pub trait ChainIdentifierValidator: Send + Sync + 'static {
     /// Verifies that the chain identifier returned by the network provider
     /// matches the previously stored value.
     ///
     /// Fails if the identifiers do not match or if something goes wrong.
-    fn validate_identifier(
+    async fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
@@ -65,8 +67,9 @@ impl ChainIdentifierStore {
     }
 }
 
+#[async_trait]
 impl ChainIdentifierValidator for ChainIdentifierStore {
-    fn validate_identifier(
+    async fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
@@ -74,6 +77,7 @@ impl ChainIdentifierValidator for ChainIdentifierStore {
         let store_identifier = self
             .store
             .chain_identifier(chain_name)
+            .await
             .map_err(|err| ChainIdentifierValidationError::Store(err))?;
 
         if store_identifier.is_default() {

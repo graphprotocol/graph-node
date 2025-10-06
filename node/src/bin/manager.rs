@@ -1397,6 +1397,7 @@ async fn main() -> anyhow::Result<()> {
                         chain_name,
                         shard,
                     )
+                    .await
                 }
 
                 UpdateGenesis {

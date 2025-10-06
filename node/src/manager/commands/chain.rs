@@ -203,7 +203,7 @@ pub async fn update_chain_genesis(
     Ok(())
 }
 
-pub fn change_block_cache_shard(
+pub async fn change_block_cache_shard(
     primary_store: ConnectionPool,
     store: Arc<BlockStore>,
     chain_name: String,
@@ -223,7 +223,7 @@ pub fn change_block_cache_shard(
         .chain_store(&chain_name)
         .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
     let new_name = format!("{}-old", &chain_name);
-    let ident = chain_store.chain_identifier()?;
+    let ident = chain_store.chain_identifier().await?;
 
     conn.transaction(|conn| -> Result<(), StoreError> {
         let shard = Shard::new(shard.to_string())?;

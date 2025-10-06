@@ -571,7 +571,7 @@ impl ChainStore for MockChainStore {
     async fn clear_call_cache(&self, _from: BlockNumber, _to: BlockNumber) -> Result<(), Error> {
         unimplemented!()
     }
-    fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
+    async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
     fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore> {
@@ -579,8 +579,9 @@ impl ChainStore for MockChainStore {
     }
 }
 
+#[async_trait]
 impl ChainIdStore for MockChainStore {
-    fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
+    async fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
     fn set_chain_identifier(
