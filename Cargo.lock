@@ -4020,11 +4020,12 @@ dependencies = [
 
 [[package]]
 name = "pq-sys"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfd6cf44cca8f9624bc19df234fc4112873432f5fda1caff174527846d026fa9"
+checksum = "412a4cb9e93795c0594dab7c1c4ec1c8b42b514e1baf6e9f63d14aa376e5bd04"
 dependencies = [
  "libc",
+ "pkg-config",
  "pq-src",
  "vcpkg",
 ]
