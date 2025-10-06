@@ -458,7 +458,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn runtime(
+    async fn runtime(
         &self,
     ) -> anyhow::Result<(std::sync::Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook)> {
         bail!("mock has no runtime adapter")

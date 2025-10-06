@@ -185,7 +185,9 @@ impl Blockchain for Chain {
             number,
         })
     }
-    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+    async fn runtime(
+        &self,
+    ) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
         Ok((Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook))
     }
 
