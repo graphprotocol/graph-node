@@ -55,7 +55,7 @@ where
             ["subgraph-repo", version] => self.handle_subgraph_repo(version).await,
             ["entity-count", deployment] => self.handle_entity_count(logger, deployment).await,
             ["subgraphs-for-deployment", deployment_hash] => {
-                self.handle_subgraphs_for_deployment(deployment_hash)
+                self.handle_subgraphs_for_deployment(deployment_hash).await
             }
             _ => handle_not_found(),
         }
@@ -179,10 +179,11 @@ where
         }
     }
 
-    fn handle_subgraphs_for_deployment(&self, deployment_hash: &str) -> ServerResult {
+    async fn handle_subgraphs_for_deployment(&self, deployment_hash: &str) -> ServerResult {
         let name_version_pairs: Vec<r::Value> = self
             .store
-            .subgraphs_for_deployment_hash(deployment_hash)?
+            .subgraphs_for_deployment_hash(deployment_hash)
+            .await?
             .into_iter()
             .map(|(name, version)| {
                 object! {
