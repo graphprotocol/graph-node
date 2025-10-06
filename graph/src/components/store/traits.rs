@@ -483,7 +483,7 @@ pub trait ChainHeadStore: Send + Sync {
 #[async_trait]
 pub trait ChainIdStore: Send + Sync + 'static {
     /// Return the chain identifier for this store.
-    fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
+    async fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
 
     /// Update the chain identifier for this store.
     fn set_chain_identifier(
@@ -607,7 +607,7 @@ pub trait ChainStore: ChainHeadStore {
     ) -> Result<(), Error>;
 
     /// Return the chain identifier for this store.
-    fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
+    async fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
 
     /// Workaround for Rust issue #65991 that keeps us from using an
     /// `Arc<dyn ChainStore>` as an `Arc<dyn ChainHeadStore>`

@@ -555,7 +555,7 @@ impl Blockchain for Chain {
         &self,
     ) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
         let call_cache = Arc::new(BufferedCallCache::new(self.call_cache.cheap_clone()));
-        let chain_ident = self.chain_store.chain_identifier()?;
+        let chain_ident = self.chain_store.chain_identifier().await?;
 
         let builder = self.runtime_adapter_builder.build(
             self.eth_adapters.cheap_clone(),
