@@ -104,11 +104,11 @@ impl EthereumCallCache for BufferedCallCache {
         Ok((resps, calls))
     }
 
-    fn get_calls_in_block(
+    async fn get_calls_in_block(
         &self,
         block: BlockPtr,
     ) -> Result<Vec<CachedEthereumCall>, graph::prelude::Error> {
-        self.call_cache.get_calls_in_block(block)
+        self.call_cache.get_calls_in_block(block).await
     }
 
     async fn set_call(

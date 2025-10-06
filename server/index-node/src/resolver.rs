@@ -310,7 +310,7 @@ impl<S: Store> IndexNodeResolver<S> {
         };
         let block_ptr = BlockPtr::new(block_hash.cheap_clone(), block_number);
 
-        let calls = match call_cache.get_calls_in_block(block_ptr) {
+        let calls = match call_cache.get_calls_in_block(block_ptr).await {
             Ok(c) => c,
             Err(e) => {
                 error!(

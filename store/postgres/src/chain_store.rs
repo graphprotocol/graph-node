@@ -3025,7 +3025,7 @@ impl EthereumCallCache for ChainStore {
         Ok((resps, calls))
     }
 
-    fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
+    async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &mut *self.get_conn()?;
         conn.transaction::<_, Error, _>(|conn| self.storage.get_calls_in_block(conn, block))
     }
