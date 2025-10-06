@@ -52,7 +52,7 @@ serde_json = { workspace = true }
 serde_regex = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = "0.10.9"
-slog = { version = "2.7.0", features = [
+slog = { version = "2.8.0", features = [
     "release_max_level_trace",
     "max_level_trace",
 ] }
