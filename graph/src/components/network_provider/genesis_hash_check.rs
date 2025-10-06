@@ -68,7 +68,8 @@ impl ProviderCheck for GenesisHashCheck {
 
         let check_result = self
             .chain_identifier_store
-            .validate_identifier(chain_name, &chain_identifier);
+            .validate_identifier(chain_name, &chain_identifier)
+            .await;
 
         use ChainIdentifierValidationError::*;
 
@@ -190,7 +191,7 @@ mod tests {
 
     #[async_trait]
     impl ChainIdentifierValidator for TestChainIdentifierStore {
-        fn validate_identifier(
+        async fn validate_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,

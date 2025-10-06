@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::anyhow;
+use async_trait::async_trait;
 use diesel::{
     query_dsl::methods::FilterDsl as _,
     r2d2::{ConnectionManager, PooledConnection},
@@ -608,13 +609,17 @@ impl BlockStoreTrait for BlockStore {
     }
 }
 
+#[async_trait]
 impl ChainIdStore for BlockStore {
-    fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, anyhow::Error> {
+    async fn chain_identifier(
+        &self,
+        chain_name: &ChainName,
+    ) -> Result<ChainIdentifier, anyhow::Error> {
         let chain_store = self
             .chain_store(&chain_name)
             .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
 
-        chain_store.chain_identifier()
+        chain_store.chain_identifier().await
     }
 
     fn set_chain_identifier(
