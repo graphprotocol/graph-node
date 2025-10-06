@@ -512,7 +512,7 @@ impl ChainStore for MockChainStore {
     }
 
     // Implement other required methods with minimal implementations
-    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
+    async fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
         unimplemented!()
     }
     async fn upsert_block(&self, _block: Arc<dyn Block>) -> Result<(), Error> {
