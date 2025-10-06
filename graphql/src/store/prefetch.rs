@@ -591,7 +591,7 @@ impl<'a> Loader<'a> {
         selection_set: &a::SelectionSet,
         parent_interval: Option<AggregationInterval>,
     ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-        let input_schema = self.resolver.store.input_schema()?;
+        let input_schema = self.resolver.store.input_schema().await?;
         let mut errors: Vec<QueryExecutionError> = Vec::new();
         let at_root = is_root_node(parents.iter());
 
@@ -697,7 +697,7 @@ impl<'a> Loader<'a> {
         join: &MaybeJoin<'_>,
         field: &a::Field,
     ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
-        let input_schema = self.resolver.store.input_schema()?;
+        let input_schema = self.resolver.store.input_schema().await?;
         let child_type = join.child_type();
         let mut query = build_query(
             child_type,
