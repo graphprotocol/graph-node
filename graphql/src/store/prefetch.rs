@@ -546,7 +546,7 @@ fn add_children(
 /// cases where the store contains data that violates the data model by having
 /// multiple values for what should be a relationship to a single object in
 /// @derivedFrom fields
-pub fn run(
+pub async fn run(
     resolver: &StoreResolver,
     ctx: &ExecutionContext,
     selection_set: &a::SelectionSet,
@@ -557,8 +557,9 @@ pub fn run(
     let trace = Trace::block(resolver.block_number(), ctx.trace);
 
     // Execute the root selection set against the root query type.
-    let (nodes, trace) =
-        loader.execute_selection_set(make_root_node(), trace, selection_set, None)?;
+    let (nodes, trace) = loader
+        .execute_selection_set(make_root_node(), trace, selection_set, None)
+        .await?;
 
     graphql_metrics.observe_query_result_size(nodes.weight());
     let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
@@ -583,7 +584,7 @@ impl<'a> Loader<'a> {
         Loader { resolver, ctx }
     }
 
-    fn execute_selection_set(
+    async fn execute_selection_set(
         &self,
         mut parents: Vec<Node>,
         mut parent_trace: Trace,
@@ -651,14 +652,15 @@ impl<'a> Loader<'a> {
                     ))
                 };
 
-                match self.fetch(&parents, &join, field) {
+                match self.fetch(&parents, &join, field).await {
                     Ok((children, trace)) => {
-                        match self.execute_selection_set(
+                        let exec_fut = Box::pin(self.execute_selection_set(
                             children,
                             trace,
                             &field.selection_set,
                             child_interval,
-                        ) {
+                        ));
+                        match exec_fut.await {
                             Ok((children, trace)) => {
                                 add_children(
                                     &input_schema,
@@ -689,7 +691,7 @@ impl<'a> Loader<'a> {
     /// Query child entities for `parents` from the store. The `join` indicates
     /// in which child field to look for the parent's id/join field. When
     /// `is_single` is `true`, there is at most one child per parent.
-    fn fetch(
+    async fn fetch(
         &self,
         parents: &[&mut Node],
         join: &MaybeJoin<'_>,
@@ -743,6 +745,7 @@ impl<'a> Loader<'a> {
         self.resolver
             .store
             .find_query_values(query)
+            .await
             .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
     }
 
