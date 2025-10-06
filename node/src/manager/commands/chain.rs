@@ -296,7 +296,9 @@ pub async fn ingest(
     let block = Arc::new(BlockFinality::Final(Arc::new(block)));
     chain_store.upsert_block(block).await?;
 
-    let rows = chain_store.confirm_block_hash(ptr.number, &ptr.hash)?;
+    let rows = chain_store
+        .confirm_block_hash(ptr.number, &ptr.hash)
+        .await?;
 
     println!("Inserted block {}", ptr);
     if rows > 0 {
