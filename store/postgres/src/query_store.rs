@@ -153,12 +153,12 @@ impl QueryStoreTrait for QueryStore {
         Ok(self.store.deployment_state(self.site.cheap_clone()).await?)
     }
 
-    fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
+    async fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
         let info = self.store.subgraph_info(self.site.cheap_clone())?;
         Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
-    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
+    async fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
         let layout = self.store.find_layout(self.site.cheap_clone())?;
         Ok(layout.input_schema.cheap_clone())
     }
