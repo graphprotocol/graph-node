@@ -106,7 +106,7 @@ where
         let store = self.store.query_store(target.clone()).await?;
         let state = store.deployment_state().await?;
         let network = Some(store.network_name().to_string());
-        let schema = store.api_schema()?;
+        let schema = store.api_schema().await?;
 
         let latest_block = match store.block_ptr().await.ok().flatten() {
             Some(block) => Some(LatestBlockInfo {
