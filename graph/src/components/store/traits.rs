@@ -706,7 +706,7 @@ pub trait StatusStore: Send + Sync + 'static {
     async fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Support for the explorer-specific API
-    fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
+    async fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;
 
     /// Support for the explorer-specific API; note that `subgraph_id` must be
     /// the id of an entry in `subgraphs.subgraph`, not that of a deployment.

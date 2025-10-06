@@ -66,11 +66,11 @@ fn unassigned(deployment: &DeploymentLocator) -> AssignmentChange {
     AssignmentChange::removed(deployment.clone())
 }
 
-fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
+async fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
     let mut primary = primary_connection();
     let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
     let current = current.unwrap();
-    store.version_info(&current).unwrap()
+    store.version_info(&current).await.unwrap()
 }
 
 fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
@@ -506,7 +506,7 @@ fn version_info() {
         .await
         .unwrap();
 
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.synced);
         assert_eq!(false, vi.failed);
@@ -788,7 +788,7 @@ fn fail_unfail_deterministic_error() {
         // We don't have any errors and the subgraph is healthy.
         let state = query_store.deployment_state().await.unwrap();
         assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -806,7 +806,7 @@ fn fail_unfail_deterministic_error() {
         // Still no fatal errors.
         let state = query_store.deployment_state().await.unwrap();
         assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -831,7 +831,7 @@ fn fail_unfail_deterministic_error() {
         // Now we have a fatal error because the subgraph failed.
         let state = query_store.deployment_state().await.unwrap();
         assert!(state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -846,7 +846,7 @@ fn fail_unfail_deterministic_error() {
         assert_eq!(outcome, UnfailOutcome::Unfailed);
         let state = query_store.deployment_state().await.unwrap();
         assert!(!state.has_deterministic_errors(&latest_block(&store, deployment.id).await));
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -885,7 +885,7 @@ fn fail_unfail_deterministic_error_noop() {
 
         // We don't have any errors and the subgraph is healthy.
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -902,7 +902,7 @@ fn fail_unfail_deterministic_error_noop() {
 
         // Still no fatal errors.
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -922,7 +922,7 @@ fn fail_unfail_deterministic_error_noop() {
         // Nothing to unfail, state continues the same.
         assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -940,7 +940,7 @@ fn fail_unfail_deterministic_error_noop() {
 
         // Now we have a fatal error because the subgraph failed.
         assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -955,7 +955,7 @@ fn fail_unfail_deterministic_error_noop() {
         // Neither the block got reverted or error deleted.
         assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -982,7 +982,7 @@ fn fail_unfail_deterministic_error_noop() {
         // Neither the block got reverted or error deleted.
         assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 2);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1021,7 +1021,7 @@ fn fail_unfail_non_deterministic_error() {
 
         // We don't have any errors.
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -1045,7 +1045,7 @@ fn fail_unfail_non_deterministic_error() {
 
         // Now we have a fatal error because the subgraph failed.
         assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -1062,7 +1062,7 @@ fn fail_unfail_non_deterministic_error() {
 
         // Subgraph failed but it's deployment head pointer advanced.
         assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1073,7 +1073,7 @@ fn fail_unfail_non_deterministic_error() {
         // We don't have fatal errors anymore and the subgraph is healthy.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1112,7 +1112,7 @@ fn fail_unfail_non_deterministic_error_noop() {
 
         // We don't have any errors and the subgraph is healthy.
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(0), vi.latest_ethereum_block_number);
@@ -1129,7 +1129,7 @@ fn fail_unfail_non_deterministic_error_noop() {
 
         // Still no errors.
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1146,7 +1146,7 @@ fn fail_unfail_non_deterministic_error_noop() {
         // State continues the same, nothing happened.
         assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 0);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(false, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1164,7 +1164,7 @@ fn fail_unfail_non_deterministic_error_noop() {
 
         // We now have a fatal error because the subgraph failed.
         assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1175,7 +1175,7 @@ fn fail_unfail_non_deterministic_error_noop() {
         // Nothing happeened, state continues the same.
         assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 1);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
@@ -1197,7 +1197,7 @@ fn fail_unfail_non_deterministic_error_noop() {
         // State continues the same besides a new error added to the database.
         assert_eq!(outcome, UnfailOutcome::Noop);
         assert_eq!(count(), 2);
-        let vi = get_version_info(&store, NAME);
+        let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
