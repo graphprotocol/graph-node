@@ -2276,7 +2276,7 @@ impl ChainHeadStore for ChainStore {
 
 #[async_trait]
 impl ChainStoreTrait for ChainStore {
-    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
+    async fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
         let ident = self.chain_identifier()?;
 
         Ok(BlockPtr {
@@ -2323,7 +2323,7 @@ impl ChainStoreTrait for ChainStore {
 
         let (missing, ptr) = {
             let chain_store = self.clone();
-            let genesis_block_ptr = self.genesis_block_ptr()?.hash_as_h256();
+            let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
             self.pool
                 .with_conn(move |conn, _| {
                     let candidate = chain_store
