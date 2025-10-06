@@ -44,7 +44,7 @@ impl QueryStore {
 
 #[async_trait]
 impl QueryStoreTrait for QueryStore {
-    fn find_query_values(
+    async fn find_query_values(
         &self,
         query: EntityQuery,
     ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {

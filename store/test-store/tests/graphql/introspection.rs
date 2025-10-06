@@ -25,7 +25,7 @@ pub struct MockResolver;
 impl Resolver for MockResolver {
     const CACHEABLE: bool = false;
 
-    fn prefetch(
+    async fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,

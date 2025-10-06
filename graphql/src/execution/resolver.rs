@@ -21,7 +21,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     async fn query_permit(&self) -> QueryPermit;
 
     /// Prepare for executing a query by prefetching as much data as possible
-    fn prefetch(
+    async fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,

@@ -770,7 +770,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         self.store.query_permit().await
     }
 
-    fn prefetch(
+    async fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,
