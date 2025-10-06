@@ -53,7 +53,7 @@ where
             ["subgraph-versions", subgraph_id] => self.handle_subgraph_versions(subgraph_id).await,
             ["subgraph-version", version] => self.handle_subgraph_version(version),
             ["subgraph-repo", version] => self.handle_subgraph_repo(version),
-            ["entity-count", deployment] => self.handle_entity_count(logger, deployment),
+            ["entity-count", deployment] => self.handle_entity_count(logger, deployment).await,
             ["subgraphs-for-deployment", deployment_hash] => {
                 self.handle_subgraphs_for_deployment(deployment_hash)
             }
@@ -109,7 +109,7 @@ where
         Ok(as_http_response(&value))
     }
 
-    fn handle_entity_count(&self, logger: &Logger, deployment: &str) -> ServerResult {
+    async fn handle_entity_count(&self, logger: &Logger, deployment: &str) -> ServerResult {
         let start = Instant::now();
         let count = self.entity_counts.get(deployment);
         if start.elapsed() > ENV_VARS.explorer_lock_threshold {
@@ -130,7 +130,8 @@ where
         let start = Instant::now();
         let infos = self
             .store
-            .status(status::Filter::Deployments(vec![deployment.to_string()]))?;
+            .status(status::Filter::Deployments(vec![deployment.to_string()]))
+            .await?;
         if start.elapsed() > ENV_VARS.explorer_query_threshold {
             warn!(logger, "Getting entity_count takes too long";
             "action" => "query_status",

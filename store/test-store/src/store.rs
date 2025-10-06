@@ -513,6 +513,7 @@ async fn execute_subgraph_query_internal(
         STORE.as_ref(),
         status::Filter::Deployments(vec![id.to_string()]),
     )
+    .await
     .unwrap();
     let network = Some(status[0].chains[0].network.clone());
     let trace = query.trace;

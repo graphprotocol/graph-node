@@ -703,7 +703,7 @@ pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
     async fn query_permit(&self) -> QueryPermit;
 
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
+    async fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 
     /// Support for the explorer-specific API
     fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError>;

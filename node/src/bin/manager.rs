@@ -1171,7 +1171,7 @@ async fn main() -> anyhow::Result<()> {
                 no_name,
             };
 
-            commands::deployment::info::run(ctx, args)
+            commands::deployment::info::run(ctx, args).await
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();

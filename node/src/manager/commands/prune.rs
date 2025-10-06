@@ -169,7 +169,7 @@ struct Args {
     latest_block: BlockNumber,
 }
 
-fn check_args(
+async fn check_args(
     store: &Arc<Store>,
     primary_pool: ConnectionPool,
     search: DeploymentSearch,
@@ -178,7 +178,8 @@ fn check_args(
     let history = history as BlockNumber;
     let deployment = search.locate_unique(&primary_pool)?;
     let mut info = store
-        .status(status::Filter::DeploymentIds(vec![deployment.id]))?
+        .status(status::Filter::DeploymentIds(vec![deployment.id]))
+        .await?
         .pop()
         .ok_or_else(|| anyhow!("deployment {deployment} not found"))?;
     if info.chains.len() > 1 {
@@ -250,7 +251,7 @@ async fn run_inner(
     once: bool,
     do_first_prune: bool,
 ) -> Result<(), anyhow::Error> {
-    let args = check_args(&store, primary_pool, search, history)?;
+    let args = check_args(&store, primary_pool, search, history).await?;
 
     if do_first_prune {
         first_prune(&store, &args, rebuild_threshold, delete_threshold).await?;

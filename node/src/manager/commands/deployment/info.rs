@@ -33,7 +33,7 @@ pub struct Args {
     pub no_name: bool,
 }
 
-pub fn run(ctx: Context, args: Args) -> Result<()> {
+pub async fn run(ctx: Context, args: Args) -> Result<()> {
     let Context {
         primary_pool,
         store,
@@ -67,7 +67,7 @@ pub fn run(ctx: Context, args: Args) -> Result<()> {
     }
 
     let statuses = if status {
-        Some(load_deployment_statuses(store, &deployments)?)
+        Some(load_deployment_statuses(store, &deployments).await?)
     } else {
         None
     };

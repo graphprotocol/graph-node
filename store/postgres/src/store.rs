@@ -106,7 +106,7 @@ impl QueryStoreManager for Store {
 
 #[async_trait]
 impl StatusStore for Store {
-    fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+    async fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         let mut infos = self.subgraph_store.status(filter)?;
         let ptrs = self.block_store.chain_head_pointers()?;
         for info in &mut infos {
