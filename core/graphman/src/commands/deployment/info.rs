@@ -36,7 +36,7 @@ pub fn load_deployments(
     crate::deployment::load_deployments(&mut primary_conn, &deployment, &version)
 }
 
-pub fn load_deployment_statuses(
+pub async fn load_deployment_statuses(
     store: Arc<Store>,
     deployments: &[Deployment],
 ) -> Result<HashMap<i32, DeploymentStatus>, GraphmanError> {
@@ -48,7 +48,8 @@ pub fn load_deployment_statuses(
         .collect_vec();
 
     let deployment_statuses = store
-        .status(Filter::DeploymentIds(deployment_ids))?
+        .status(Filter::DeploymentIds(deployment_ids))
+        .await?
         .into_iter()
         .map(|status| {
             let id = status.id.0;
