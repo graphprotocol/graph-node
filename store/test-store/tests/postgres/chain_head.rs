@@ -425,7 +425,7 @@ fn ancestor_block_skipped() {
 fn eth_call_cache() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
 
-    run_test(chain, |store, _| {
+    run_test_async(chain, |store, _, _| async move {
         let logger = LOGGER.cheap_clone();
         fn ccr(value: &[u8]) -> call::Retval {
             call::Retval::Value(Bytes::from(value))
@@ -437,12 +437,14 @@ fn eth_call_cache() {
 
         let call = call::Request::new(address, call.to_vec(), 0);
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 ccr(&return_value),
             )
+            .await
             .unwrap();
 
         let ret = store.get_call(&call, GENESIS_BLOCK.block_ptr()).unwrap();
@@ -461,12 +463,14 @@ fn eth_call_cache() {
 
         let new_return_value: [u8; 3] = [10, 11, 12];
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_TWO.block_ptr(),
                 ccr(&new_return_value),
             )
+            .await
             .unwrap();
         let ret = store
             .get_call(&call, BLOCK_TWO.block_ptr())
@@ -478,12 +482,14 @@ fn eth_call_cache() {
 
         // Reverted calls should not be cached
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_THREE.block_ptr(),
                 call::Retval::Null,
             )
+            .await
             .unwrap();
         let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();
         assert_eq!(None, ret);
@@ -491,17 +497,17 @@ fn eth_call_cache() {
         // Empty return values should not be cached
         let return_value: [u8; 0] = [];
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_FOUR.block_ptr(),
                 ccr(&return_value),
             )
+            .await
             .unwrap();
         let ret = store.get_call(&call, BLOCK_FOUR.block_ptr()).unwrap();
         assert_eq!(None, ret);
-
-        Ok(())
     })
 }
 
@@ -527,12 +533,14 @@ fn test_clear_stale_call_cache() {
         // Insert a call cache entry, otherwise it will hit an early return and won't test all queries
         let call = call::Request::new(address, call.to_vec(), 0);
         chain_store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 call::Retval::Value(Bytes::from(return_value)),
             )
+            .await
             .unwrap();
 
         // Confirm the call cache entry is there
