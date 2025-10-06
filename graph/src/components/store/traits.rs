@@ -497,7 +497,7 @@ pub trait ChainIdStore: Send + Sync + 'static {
 #[async_trait]
 pub trait ChainStore: ChainHeadStore {
     /// Get a pointer to this blockchain's genesis block.
-    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
+    async fn genesis_block_ptr(&self) -> Result<BlockPtr, Error>;
 
     /// Insert a block into the store (or update if they are already present).
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error>;
