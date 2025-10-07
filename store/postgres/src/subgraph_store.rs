@@ -1395,7 +1395,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn.transaction(|conn| -> Result<_, StoreError> {
             let mut pconn = primary::Connection::new(conn);

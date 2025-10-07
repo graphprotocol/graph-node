@@ -1223,7 +1223,7 @@ async fn main() -> anyhow::Result<()> {
                 Setting { name } => commands::config::setting(&name),
             }
         }
-        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
+        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name).await,
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
             let notifications_sender = ctx.notification_sender();
