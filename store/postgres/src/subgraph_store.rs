@@ -1596,7 +1596,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         }
     }
 
-    fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
+    async fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         let (store, _) = self.store(id)?;
         let graft_detail = store.graft_pending(id)?;
         Ok(graft_detail.is_some())

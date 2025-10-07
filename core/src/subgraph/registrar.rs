@@ -491,7 +491,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     // Validate the graft_base if there is a pending graft, ensuring its presence.
     // If the subgraph is new (indicated by DeploymentNotFound), the graft_base should be validated.
     // If the subgraph already exists and there is no pending graft, graft_base validation is not required.
-    let should_validate = match store.graft_pending(&deployment) {
+    let should_validate = match store.graft_pending(&deployment).await {
         Ok(graft_pending) => graft_pending,
         Err(StoreError::DeploymentNotFound(_)) => true,
         Err(e) => return Err(SubgraphRegistrarError::StoreError(e)),
