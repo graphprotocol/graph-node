@@ -381,7 +381,7 @@ where
         hash: &DeploymentHash,
         node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
-        let locator = self.store.active_locator(hash)?;
+        let locator = self.store.active_locator(hash).await?;
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
@@ -391,7 +391,7 @@ where
     }
 
     async fn pause_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
-        let locator = self.store.active_locator(hash)?;
+        let locator = self.store.active_locator(hash).await?;
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
@@ -401,7 +401,7 @@ where
     }
 
     async fn resume_subgraph(&self, hash: &DeploymentHash) -> Result<(), SubgraphRegistrarError> {
-        let locator = self.store.active_locator(hash)?;
+        let locator = self.store.active_locator(hash).await?;
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
