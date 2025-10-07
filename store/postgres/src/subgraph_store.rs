@@ -1527,7 +1527,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(info.api.get(version).unwrap().clone())
     }
 
-    fn debug_fork(
+    async fn debug_fork(
         &self,
         id: &DeploymentHash,
         logger: Logger,
