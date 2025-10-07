@@ -1297,7 +1297,7 @@ async fn mixed_mutability() {
         // this. They rely on the EntityCache filtering out entity changes
         // that are already in the store
         let id = DeploymentHash::new(subgraph_id).unwrap();
-        remove_subgraph(&id);
+        remove_subgraph(&id).await;
     }
     let res = insert_and_query(subgraph_id, document, entities, query)
         .await

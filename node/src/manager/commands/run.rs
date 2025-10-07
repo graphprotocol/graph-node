@@ -27,8 +27,8 @@ use graph_core::{
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 
-fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
-    let mut locators = store.locators(hash)?;
+async fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
+    let mut locators = store.locators(hash).await?;
     match locators.len() {
         0 => bail!("could not find subgraph {hash} we just created"),
         1 => Ok(locators.pop().unwrap()),
@@ -214,7 +214,7 @@ pub async fn run(
     )
     .await?;
 
-    let locator = locate(subgraph_store.as_ref(), &hash)?;
+    let locator = locate(subgraph_store.as_ref(), &hash).await?;
 
     SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block)).await;
 

@@ -1614,7 +1614,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     /// Find the deployment locators for the subgraph with the given hash
-    fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
+    async fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         Ok(self
             .mirror
             .find_sites(&[hash.to_string()], false)?
