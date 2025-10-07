@@ -31,8 +31,9 @@ pub trait SubscriptionManager: Send + Sync + 'static {
 
 /// Subgraph forking is the process of lazily fetching entities
 /// from another subgraph's store (usually a remote one).
+#[async_trait]
 pub trait SubgraphFork: Send + Sync + 'static {
-    fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
+    async fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError>;
 }
 
 /// A special trait to handle looking up ENS names from special rainbow
