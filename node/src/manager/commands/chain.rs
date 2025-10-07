@@ -188,13 +188,15 @@ pub async fn update_chain_genesis(
     // Update the local shard's genesis, whether or not it is the primary.
     // The chains table is replicated from the primary and keeps another genesis hash.
     // To keep those in sync we need to update the primary and then refresh the shard tables.
-    store.set_chain_identifier(
-        &chain_id,
-        &ChainIdentifier {
-            net_version: ident.net_version.clone(),
-            genesis_block_hash: genesis_hash,
-        },
-    )?;
+    store
+        .set_chain_identifier(
+            &chain_id,
+            &ChainIdentifier {
+                net_version: ident.net_version.clone(),
+                genesis_block_hash: genesis_hash,
+            },
+        )
+        .await?;
 
     // Refresh the new values
     println!("Refresh mappings");

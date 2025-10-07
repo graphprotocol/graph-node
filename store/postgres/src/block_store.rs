@@ -622,7 +622,7 @@ impl ChainIdStore for BlockStore {
         chain_store.chain_identifier().await
     }
 
-    fn set_chain_identifier(
+    async fn set_chain_identifier(
         &self,
         chain_name: &ChainName,
         ident: &ChainIdentifier,

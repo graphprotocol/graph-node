@@ -486,7 +486,7 @@ pub trait ChainIdStore: Send + Sync + 'static {
     async fn chain_identifier(&self, chain_name: &ChainName) -> Result<ChainIdentifier, Error>;
 
     /// Update the chain identifier for this store.
-    fn set_chain_identifier(
+    async fn set_chain_identifier(
         &self,
         chain_name: &ChainName,
         ident: &ChainIdentifier,
