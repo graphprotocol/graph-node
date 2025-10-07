@@ -78,7 +78,8 @@ impl ProviderCheck for GenesisHashCheck {
             Err(IdentifierNotSet(_)) => {
                 let update_result = self
                     .chain_identifier_store
-                    .update_identifier(chain_name, &chain_identifier);
+                    .update_identifier(chain_name, &chain_identifier)
+                    .await;
 
                 if let Err(err) = update_result {
                     let message = format!(
@@ -199,7 +200,7 @@ mod tests {
             self.validate_identifier_calls.lock().unwrap().remove(0)
         }
 
-        fn update_identifier(
+        async fn update_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,

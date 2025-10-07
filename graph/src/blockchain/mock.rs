@@ -598,7 +598,7 @@ impl ChainIdStore for MockChainStore {
     async fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
-    fn set_chain_identifier(
+    async fn set_chain_identifier(
         &self,
         _name: &ChainName,
         _ident: &ChainIdentifier,
