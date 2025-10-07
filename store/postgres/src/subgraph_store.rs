@@ -1418,7 +1418,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+    async fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
         pconn.transaction(|conn| -> Result<_, StoreError> {
