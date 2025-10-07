@@ -382,13 +382,16 @@ Either remove entries in the range `--from` and `--to`, remove stale contracts w
         --ttl-days <TTL_DAYS>
             Remove stale contracts based on call_meta table
 
-    -f, --from <FROM>
+        --ttl-max-contracts <TTL_MAX_CONTRACTS>
+            Limit the number of contracts to consider for stale contract removal
+
+        -f, --from <FROM>
             Starting block number
 
-    -t, --to <TO>
+        -t, --to <TO>
             Ending block number
 
-    -h, --help
+        -h, --help
             Print help (see a summary with '-h')
 
 
@@ -416,6 +419,9 @@ The `--remove-entire-cache` option is used to remove the entire call cache of th
 #### `--ttl-days <TTL_DAYS>`
 The `--ttl-days` option is used to remove stale contracts based on the `call_meta.accessed_at` field. For example, if `--ttl-days` is set to 7, all calls to a contract that has not been accessed in the last 7 days will be removed from the call cache.
 
+#### `--ttl-max-contracts <TTL_MAX_CONTRACTS>`
+The `--ttl-max-contracts` option is used to limit the maximum number of contracts to be removed when using the `--ttl-days` option. For example, if `--ttl-max-contracts` is set to 100, at most 100 contracts will be removed from the call cache even if more contracts meet the TTL criteria.
+
 ### EXAMPLES
 
 Remove the call cache for all blocks numbered from 10 to 20:
@@ -429,4 +435,7 @@ Remove all the call cache of the specified chain:
 Remove stale contracts from the call cache that have not been accessed in the last 7 days:
 
     graphman --config config.toml chain call-cache ethereum remove --ttl-days 7
+
+Remove stale contracts from the call cache that have not been accessed in the last 7 days, limiting the removal to a maximum of 100 contracts:
+    graphman --config config.toml chain call-cache ethereum remove --ttl-days 7 --ttl-max-contracts 100
 
