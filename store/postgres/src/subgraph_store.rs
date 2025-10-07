@@ -1448,7 +1448,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError> {
+    async fn assigned_node(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Option<NodeId>, StoreError> {
         let site = self.find_site(deployment.id.into())?;
         self.mirror.assigned_node(site.as_ref())
     }

@@ -515,7 +515,11 @@ fn graphql_can_reassign_deployment() {
         )
         .await;
 
-        let node = SUBGRAPH_STORE.assigned_node(&locator).unwrap().unwrap();
+        let node = SUBGRAPH_STORE
+            .assigned_node(&locator)
+            .await
+            .unwrap()
+            .unwrap();
 
         let reassign = send_graphql_request(
             json!({
