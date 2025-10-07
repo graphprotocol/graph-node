@@ -1359,7 +1359,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     // FIXME: This method should not get a node_id
-    fn create_subgraph_deployment(
+    async fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
         schema: &InputSchema,

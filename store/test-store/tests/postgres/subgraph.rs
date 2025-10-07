@@ -191,6 +191,7 @@ fn create_subgraph() {
                     NETWORK_NAME.to_string(),
                     mode,
                 )
+                .await
                 .unwrap()
         })
         .await;

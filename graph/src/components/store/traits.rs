@@ -78,7 +78,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
     /// create a new deployment, and point the current or pending version of
     /// `name` at it, depending on the `mode`
-    fn create_subgraph_deployment(
+    async fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
         schema: &InputSchema,
