@@ -129,7 +129,7 @@ fn reassign_subgraph() {
             let expected = vec![StoreEvent::new(vec![assigned(&id)])];
 
             let (_, events) =
-                tap_store_events(async || store.reassign_subgraph(&id, &node).unwrap()).await;
+                tap_store_events(async || store.reassign_subgraph(&id, &node).await.unwrap()).await;
             let node = find_assignment(store.as_ref(), &id).await;
             assert_eq!(Some("left"), node.as_deref());
             assert_eq!(expected, events);
