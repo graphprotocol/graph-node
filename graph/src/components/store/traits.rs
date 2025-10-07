@@ -140,7 +140,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// the given [`BlockNumber`]. No distinction is made between inserts and
     /// updates, which may be returned as either [`EntityModification::Insert`]
     /// or [`EntityModification::Overwrite`].
-    fn entity_changes_in_block(
+    async fn entity_changes_in_block(
         &self,
         subgraph_id: &DeploymentHash,
         block_number: BlockNumber,

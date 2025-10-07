@@ -1501,7 +1501,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         .await
     }
 
-    fn entity_changes_in_block(
+    async fn entity_changes_in_block(
         &self,
         subgraph_id: &DeploymentHash,
         block: BlockNumber,
