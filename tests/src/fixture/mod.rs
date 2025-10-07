@@ -651,7 +651,7 @@ pub async fn cleanup(
     let locators = subgraph_store.locators(hash).await?;
     subgraph_store.remove_subgraph(name.clone()).await?;
     for locator in locators {
-        subgraph_store.remove_deployment(locator.id.into())?;
+        subgraph_store.remove_deployment(locator.id.into()).await?;
     }
     Ok(())
 }

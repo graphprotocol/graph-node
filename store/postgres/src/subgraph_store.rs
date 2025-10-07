@@ -674,7 +674,7 @@ impl SubgraphStoreInner {
         Ok(site.as_ref().into())
     }
 
-    pub fn copy_deployment(
+    pub async fn copy_deployment(
         &self,
         src: &DeploymentLocator,
         shard: Shard,
@@ -698,7 +698,7 @@ impl SubgraphStoreInner {
         // The very last thing we do when we set up a copy here is assign it
         // to a node. Therefore, if `dst` is already assigned, this function
         // should not have been called.
-        if let Some(node) = self.mirror.assigned_node(dst.as_ref())? {
+        if let Some(node) = self.mirror.assigned_node(dst.as_ref()).await? {
             return Err(StoreError::Unknown(anyhow!(
                 "can not copy into deployment {} since it is already assigned to node `{}`",
                 dst_loc,
@@ -905,12 +905,12 @@ impl SubgraphStoreInner {
     /// Remove a deployment, i.e., all its data and metadata. This is only permissible
     /// if the deployment is unused in the sense that it is neither the current nor
     /// pending version of any subgraph, and is not currently assigned to any node
-    pub fn remove_deployment(&self, id: DeploymentId) -> Result<(), StoreError> {
+    pub async fn remove_deployment(&self, id: DeploymentId) -> Result<(), StoreError> {
         let site = self.find_site(id)?;
         let store = self.for_site(site.as_ref())?;
 
         // Check that deployment is not assigned
-        let mut removable = self.mirror.assigned_node(site.as_ref())?.is_none();
+        let mut removable = self.mirror.assigned_node(site.as_ref()).await?.is_none();
 
         // Check that it is not current/pending for any subgraph if it is
         // the active deployment of that subgraph
@@ -1458,7 +1458,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         deployment: &DeploymentLocator,
     ) -> Result<Option<NodeId>, StoreError> {
         let site = self.find_site(deployment.id.into())?;
-        self.mirror.assigned_node(site.as_ref())
+        self.mirror.assigned_node(site.as_ref()).await
     }
 
     /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
