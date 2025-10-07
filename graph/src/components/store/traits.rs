@@ -154,7 +154,12 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(
+    ///
+    /// We use the store as a cache for the `ApiSchema`, so that we do not
+    /// have to rebuild the `ApiSchema` from `InputSchema.api_schema()` for
+    /// every query. That's a bit clumsy and it might be better to make the
+    /// `InputSchema` the cache instead.
+    async fn api_schema(
         &self,
         subgraph_id: &DeploymentHash,
         api_version: &ApiVersion,
