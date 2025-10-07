@@ -1572,7 +1572,7 @@ async fn update_proof_of_indexing(
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
     // Helper to store the digest as a PoI entity in the cache
-    fn store_poi_entity(
+    async fn store_poi_entity(
         entity_cache: &mut EntityCache,
         key: EntityKey,
         digest: Bytes,
@@ -1592,7 +1592,7 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi, block, None)
+        entity_cache.set(key, poi, block, None).await
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
@@ -1616,6 +1616,7 @@ async fn update_proof_of_indexing(
         let poi_digest = entity_cache.schema.poi_digest().clone();
         let prev_poi = entity_cache
             .get(&entity_key, GetScope::Store)
+            .await
             .map_err(Error::from)?
             .map(|entity| match entity.get(poi_digest.as_str()) {
                 Some(Value::Bytes(b)) => b.clone(),
@@ -1634,7 +1635,8 @@ async fn update_proof_of_indexing(
             updated_proof_of_indexing,
             block_time,
             block_number,
-        )?;
+        )
+        .await?;
     }
 
     Ok(())

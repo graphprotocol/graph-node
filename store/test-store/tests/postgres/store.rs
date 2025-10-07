@@ -312,7 +312,7 @@ fn delete_entity() {
         let entity_key = USER_TYPE.parse_key("3").unwrap();
 
         // Check that there is an entity to remove.
-        writable.get(&entity_key).unwrap().unwrap();
+        writable.get(&entity_key).await.unwrap().unwrap();
 
         let count = get_entity_count(store.clone(), &deployment.hash).await;
         transact_and_wait(
@@ -331,7 +331,7 @@ fn delete_entity() {
         );
 
         // Check that that the deleted entity id is not present
-        assert!(writable.get(&entity_key).unwrap().is_none());
+        assert!(writable.get(&entity_key).await.unwrap().is_none());
     })
 }
 
@@ -342,7 +342,7 @@ fn get_entity_1() {
         let schema = ReadStore::input_schema(&writable);
 
         let key = USER_TYPE.parse_key("1").unwrap();
-        let result = writable.get(&key).unwrap();
+        let result = writable.get(&key).await.unwrap();
 
         let bin_name = Value::Bytes("Johnton".as_bytes().into());
         let expected_entity = entity! { schema =>
@@ -369,7 +369,7 @@ fn get_entity_3() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
         let key = USER_TYPE.parse_key("3").unwrap();
-        let result = writable.get(&key).unwrap();
+        let result = writable.get(&key).await.unwrap();
 
         let expected_entity = entity! { schema =>
            id: "3",
@@ -419,7 +419,7 @@ fn insert_entity() {
         );
 
         // Check that new record is in the store
-        writable.get(&entity_key).unwrap().unwrap();
+        writable.get(&entity_key).await.unwrap().unwrap();
     })
 }
 
@@ -445,7 +445,7 @@ fn update_existing() {
         };
 
         // Verify that the entity before updating is different from what we expect afterwards
-        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
+        assert_ne!(writable.get(&entity_key).await.unwrap().unwrap(), new_data);
 
         // Set test entity; as the entity already exists an update should be performed
         let count = get_entity_count(store.clone(), &deployment.hash).await;
@@ -469,7 +469,7 @@ fn update_existing() {
         };
 
         new_data.insert("bin_name", Value::Bytes(bin_name)).unwrap();
-        assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
+        assert_eq!(writable.get(&entity_key).await.unwrap(), Some(new_data));
     })
 }
 
@@ -484,6 +484,7 @@ fn partially_update_existing() {
 
         let original_entity = writable
             .get(&entity_key)
+            .await
             .unwrap()
             .expect("entity not found");
 
@@ -503,6 +504,7 @@ fn partially_update_existing() {
         // Obtain the updated entity from the store
         let updated_entity = writable
             .get(&entity_key)
+            .await
             .unwrap()
             .expect("entity not found");
 
@@ -1015,7 +1017,11 @@ fn revert_block_with_partial_update() {
         let partial_entity =
             entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 5i64 };
 
-        let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
+        let original_entity = writable
+            .get(&entity_key)
+            .await
+            .unwrap()
+            .expect("missing entity");
 
         // Set test entity; as the entity already exists an update should be performed
         transact_entity_operations(
@@ -1039,7 +1045,11 @@ fn revert_block_with_partial_update() {
         );
 
         // Obtain the reverted entity from the store
-        let reverted_entity = writable.get(&entity_key).unwrap().expect("missing entity");
+        let reverted_entity = writable
+            .get(&entity_key)
+            .await
+            .unwrap()
+            .expect("missing entity");
 
         // Verify that the entity has been returned to its original state
         assert_eq!(reverted_entity, original_entity);
@@ -1108,7 +1118,11 @@ fn revert_block_with_dynamic_data_source_operations() {
             entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null, vid: 5i64 };
 
         // Get the original user for comparisons
-        let original_user = writable.get(&user_key).unwrap().expect("missing entity");
+        let original_user = writable
+            .get(&user_key)
+            .await
+            .unwrap()
+            .expect("missing entity");
 
         // Create operations to add a dynamic data source
         let mut data_source = mock_data_source();
@@ -1134,7 +1148,11 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is no longer the original
         assert_ne!(
-            writable.get(&user_key).unwrap().expect("missing entity"),
+            writable
+                .get(&user_key)
+                .await
+                .unwrap()
+                .expect("missing entity"),
             original_user
         );
 
@@ -1154,7 +1172,11 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Verify that the user is the original again
         assert_eq!(
-            writable.get(&user_key).unwrap().expect("missing entity"),
+            writable
+                .get(&user_key)
+                .await
+                .unwrap()
+                .expect("missing entity"),
             original_user
         );
 

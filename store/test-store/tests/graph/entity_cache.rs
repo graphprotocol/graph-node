@@ -56,7 +56,7 @@ impl MockStore {
 
 #[async_trait]
 impl ReadStore for MockStore {
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         Ok(self.get_many_res.get(key).cloned())
     }
 
@@ -211,12 +211,14 @@ async fn insert_modifications() {
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+        .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
+        .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
@@ -260,12 +262,14 @@ async fn overwrite_modifications() {
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+        .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994};
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
+        .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
@@ -299,12 +303,15 @@ async fn consecutive_modifications() {
     let update_data =
         entity! { SCHEMA => id: "mogwai", founded: 1995, label: "Rock Action Records" };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key, update_data, 0, None).unwrap();
+    cache.set(update_key, update_data, 0, None).await.unwrap();
 
     // Then, just reset the "label".
     let update_data = entity! { SCHEMA => id: "mogwai", label: Value::Null };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key.clone(), update_data, 0, None).unwrap();
+    cache
+        .set(update_key.clone(), update_data, 0, None)
+        .await
+        .unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
@@ -332,6 +339,7 @@ async fn check_vid_sequence() {
         let mogwai_data = entity! { SCHEMA => id: id, name: name };
         cache
             .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+            .await
             .unwrap();
     }
 
@@ -701,7 +709,7 @@ fn check_for_update_async_related() {
             EntityOperation::Set { ref data, .. } => data.clone(),
             _ => unreachable!(),
         };
-        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
+        assert_ne!(writable.get(&entity_key).await.unwrap().unwrap(), new_data);
         // insert a new wallet
         transact_entity_operations(
             &store,
@@ -768,37 +776,43 @@ fn scoped_get() {
         let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
         let mut wallet5 = create_wallet_entity_no_vid("5", &account5, 100);
         let key5 = WALLET_TYPE.parse_key("5").unwrap();
-        cache.set(key5.clone(), wallet5.clone(), 0, None).unwrap();
+        cache
+            .set(key5.clone(), wallet5.clone(), 0, None)
+            .await
+            .unwrap();
 
         wallet5.set_vid(100).unwrap();
         // For the new entity, we can retrieve it with either scope
-        let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
+        let act5 = cache.get(&key5, GetScope::InBlock).await.unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
-        let act5 = cache.get(&key5, GetScope::Store).unwrap();
+        let act5 = cache.get(&key5, GetScope::Store).await.unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
 
         let mut wallet1a = wallet1.clone();
         wallet1a.set_vid(1).unwrap();
         // For an entity in the store, we can not get it `InBlock` but with
         // `Store`
-        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
         assert_eq!(None, act1);
-        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        let act1 = cache.get(&key1, GetScope::Store).await.unwrap();
         assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
 
         // Even after reading from the store, the entity is not visible with
         // `InBlock`
-        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
         assert_eq!(None, act1);
         // But if it gets updated, it becomes visible with either scope
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
-        cache.set(key1.clone(), wallet1.clone(), 0, None).unwrap();
+        cache
+            .set(key1.clone(), wallet1.clone(), 0, None)
+            .await
+            .unwrap();
         wallet1a = wallet1;
         wallet1a.set_vid(101).unwrap();
-        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
         assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
-        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        let act1 = cache.get(&key1, GetScope::Store).await.unwrap();
         assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
     })
 }
@@ -818,10 +832,10 @@ fn no_internal_keys() {
         }
         let key = WALLET_TYPE.parse_key("1").unwrap();
 
-        let wallet = writable.get(&key).unwrap().unwrap();
+        let wallet = writable.get(&key).await.unwrap().unwrap();
         check(&key, &wallet);
 
-        let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
+        let wallet = cache.get(&key, GetScope::Store).await.unwrap().unwrap();
         check(&key, &wallet);
     });
 }
@@ -833,15 +847,15 @@ fn no_interface_mods() {
 
         // This should probably be an error, but changing that would not be
         // backwards compatible
-        assert_eq!(None, cache.get(&key, GetScope::InBlock).unwrap());
+        assert_eq!(None, cache.get(&key, GetScope::InBlock).await.unwrap());
 
         assert!(matches!(
-            cache.get(&key, GetScope::Store),
+            cache.get(&key, GetScope::Store).await,
             Err(StoreError::UnknownTable(_))
         ));
 
         let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
 
-        cache.set(key, entity, 0, None).unwrap_err();
+        cache.set(key, entity, 0, None).await.unwrap_err();
     })
 }
