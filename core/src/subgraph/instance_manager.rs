@@ -301,7 +301,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .set_manifest_raw_yaml(&deployment.hash, raw_yaml)
             .await?;
         if let Some(graft) = &manifest.graft {
-            if self.subgraph_store.is_deployed(&graft.base)? {
+            if self.subgraph_store.is_deployed(&graft.base).await? {
                 let file_bytes = self
                     .link_resolver
                     .cat(
