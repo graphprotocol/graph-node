@@ -361,7 +361,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     /// If a non-deterministic error happened and the current deployment head is past the error
     /// block range, this function unfails the subgraph and deletes the error.
-    fn unfail_non_deterministic_error(
+    async fn unfail_non_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError>;

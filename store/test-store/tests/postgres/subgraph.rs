@@ -1067,7 +1067,10 @@ fn fail_unfail_non_deterministic_error() {
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Unfail the subgraph and delete the fatal error.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // We don't have fatal errors anymore and the subgraph is healthy.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
@@ -1140,7 +1143,10 @@ fn fail_unfail_non_deterministic_error_noop() {
             .expect("can get writable");
 
         // Running unfail without any errors will do nothing.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // State continues the same, nothing happened.
         assert_eq!(outcome, UnfailOutcome::Noop);
@@ -1169,7 +1175,10 @@ fn fail_unfail_non_deterministic_error_noop() {
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
         // Running unfail_non_deterministic_error will be NOOP, the error is deterministic.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // Nothing happeened, state continues the same.
         assert_eq!(outcome, UnfailOutcome::Noop);
@@ -1191,7 +1200,10 @@ fn fail_unfail_non_deterministic_error_noop() {
         writable.fail_subgraph(error).await.unwrap();
 
         // Since the block range of the block won't match the deployment head, this will be NOOP.
-        let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
+        let outcome = writable
+            .unfail_non_deterministic_error(&BLOCKS[1])
+            .await
+            .unwrap();
 
         // State continues the same besides a new error added to the database.
         assert_eq!(outcome, UnfailOutcome::Noop);
