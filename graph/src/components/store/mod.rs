@@ -38,6 +38,7 @@ use crate::data_source::CausalityRegion;
 use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
 use crate::internal_error;
+use crate::prelude::async_trait;
 use crate::prelude::{s, Attribute, DeploymentHash, ValueType};
 use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
 use crate::util::stats::MovingStats;
@@ -867,6 +868,7 @@ impl EmptyStore {
     }
 }
 
+#[async_trait]
 impl ReadStore for EmptyStore {
     fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         Ok(None)
@@ -876,7 +878,7 @@ impl ReadStore for EmptyStore {
         Ok(BTreeMap::new())
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         _query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {

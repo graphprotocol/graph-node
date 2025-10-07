@@ -224,6 +224,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
 }
 
+#[async_trait]
 pub trait ReadStore: Send + Sync + 'static {
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
@@ -235,7 +236,7 @@ pub trait ReadStore: Send + Sync + 'static {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
     /// Reverse lookup
-    fn get_derived(
+    async fn get_derived(
         &self,
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
@@ -244,6 +245,7 @@ pub trait ReadStore: Send + Sync + 'static {
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+#[async_trait]
 impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         (**self).get(key)
@@ -256,11 +258,11 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_many(keys)
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         entity_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        (**self).get_derived(entity_derived)
+        (**self).get_derived(entity_derived).await
     }
 
     fn input_schema(&self) -> InputSchema {

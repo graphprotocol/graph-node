@@ -415,7 +415,7 @@ impl HostExports {
         Ok(result)
     }
 
-    pub(crate) fn store_load_related(
+    pub(crate) async fn store_load_related(
         &self,
         state: &mut BlockState,
         entity_type: String,
@@ -433,7 +433,7 @@ impl HostExports {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.load_related(&store_key)?;
+        let result = state.entity_cache.load_related(&store_key).await?;
 
         Self::track_gas_and_ops(
             gas,

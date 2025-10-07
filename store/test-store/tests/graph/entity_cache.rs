@@ -54,6 +54,7 @@ impl MockStore {
     }
 }
 
+#[async_trait]
 impl ReadStore for MockStore {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         Ok(self.get_many_res.get(key).cloned())
@@ -66,7 +67,7 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         _key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -543,7 +544,7 @@ fn check_for_account_with_multiple_wallets() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
@@ -563,7 +564,7 @@ fn check_for_account_with_single_wallet() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
         let expeted_vec = vec![wallet_1];
 
@@ -581,7 +582,7 @@ fn check_for_account_with_no_wallet() {
             entity_id: account_id,
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let expeted_vec = vec![];
 
         assert_eq!(result, expeted_vec);
@@ -598,7 +599,7 @@ fn check_for_account_that_doesnt_exist() {
             entity_id: account_id,
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let expeted_vec = vec![];
 
         assert_eq!(result, expeted_vec);
@@ -615,7 +616,7 @@ fn check_for_non_existent_field() {
             entity_id: account_id,
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap_err();
+        let result = cache.load_related(&request).await.unwrap_err();
         let expected = format!(
             "Entity {}[{}]: unknown field `{}`",
             request.entity_type, request.entity_id, request.entity_field,
@@ -647,7 +648,7 @@ fn check_for_insert_async_store() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
         let wallet_2 = create_wallet_entity("5", &account_id, 79_i32, 12);
         let wallet_3 = create_wallet_entity("6", &account_id, 200_i32, 13);
@@ -679,7 +680,7 @@ fn check_for_insert_async_not_related() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
@@ -717,7 +718,7 @@ fn check_for_update_async_related() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![new_data, wallet_2, wallet_3];
@@ -747,7 +748,7 @@ fn check_for_delete_async_related() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![wallet_2, wallet_3];

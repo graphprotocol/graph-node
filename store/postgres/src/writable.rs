@@ -1533,6 +1533,7 @@ impl WritableStore {
     }
 }
 
+#[async_trait]
 impl ReadStore for WritableStore {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.writer.get(key)
@@ -1545,7 +1546,7 @@ impl ReadStore for WritableStore {
         self.writer.get_many(keys)
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
