@@ -467,6 +467,7 @@ specVersion: 0.0.2
         let schema = store
             .subgraph_store()
             .input_schema(&deployment.hash)
+            .await
             .unwrap();
 
         // Adds an example entity.
@@ -551,6 +552,7 @@ specVersion: 0.0.2
         let schema = store
             .subgraph_store()
             .input_schema(&deployment.hash)
+            .await
             .unwrap();
         // This check is awkward since the test manifest has other problems
         // that the validation complains about as setting up a valid manifest

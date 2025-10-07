@@ -1027,7 +1027,7 @@ async fn test_entity_store(api_version: Version) {
     )
     .await;
 
-    let schema = store.input_schema(&deployment.hash).unwrap();
+    let schema = store.input_schema(&deployment.hash).await.unwrap();
 
     let alex = entity! { schema => id: "alex", name: "Alex", vid: 0i64 };
     let steve = entity! { schema => id: "steve", name: "Steve", vid: 1i64 };

@@ -326,7 +326,7 @@ fn get_derived_nobatch() {
 fn restart() {
     run_test(|store, writable, _, deployment| async move {
         let subgraph_store = store.subgraph_store();
-        let schema = subgraph_store.input_schema(&deployment.hash).unwrap();
+        let schema = subgraph_store.input_schema(&deployment.hash).await.unwrap();
 
         // Cause an error by leaving out the non-nullable `count` attribute
         let entity_ops = vec![EntityOperation::Set {
