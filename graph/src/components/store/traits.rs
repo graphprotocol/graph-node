@@ -67,7 +67,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Check if the store is accepting queries for the specified subgraph.
     /// May return true even if the specified subgraph is not currently assigned to an indexing
     /// node, as the store will still accept queries.
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+    async fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     async fn subgraph_features(
         &self,
