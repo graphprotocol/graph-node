@@ -91,7 +91,7 @@ pub async fn run(
     let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
 
     let chain_head_update_listener = store_builder.chain_head_update_listener();
-    let network_store = store_builder.network_store(config.chain_ids());
+    let network_store = store_builder.network_store(config.chain_ids()).await;
     let block_store = network_store.block_store();
 
     let mut provider_checks: Vec<Arc<dyn graph::components::network_provider::ProviderCheck>> =

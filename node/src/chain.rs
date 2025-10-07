@@ -395,6 +395,7 @@ pub async fn networks_as_chains(
                 };
                 store
                     .create_chain_store(chain_id, ident)
+                    .await
                     .expect("must be able to create store if one is not yet setup for the chain")
             }
         };

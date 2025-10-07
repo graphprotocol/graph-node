@@ -236,7 +236,7 @@ impl BlockStore {
     /// Each entry in `chains` gives the chain name, the network identifier,
     /// and the name of the database shard for the chain. The `ChainStore` for
     /// a chain uses the pool from `pools` for the given shard.
-    pub fn new(
+    pub async fn new(
         logger: Logger,
         // (network, shard)
         shards: Vec<(String, Shard)>,
@@ -428,14 +428,15 @@ impl BlockStore {
         Ok(map)
     }
 
-    pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
+    pub async fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         let store = self
             .store(chain)
+            .await
             .ok_or_else(|| internal_error!("unknown network `{}`", chain))?;
         store.chain_head_block(chain)
     }
 
-    fn lookup_chain<'a>(&'a self, chain: &'a str) -> Result<Option<Arc<ChainStore>>, StoreError> {
+    async fn lookup_chain(&self, chain: &str) -> Result<Option<Arc<ChainStore>>, StoreError> {
         // See if we have that chain in the database even if it wasn't one
         // of the configured chains
         self.mirror.read(|conn| {
@@ -447,7 +448,7 @@ impl BlockStore {
         })
     }
 
-    fn store(&self, chain: &str) -> Option<Arc<ChainStore>> {
+    async fn store(&self, chain: &str) -> Option<Arc<ChainStore>> {
         let store = self
             .stores
             .read()
@@ -461,15 +462,16 @@ impl BlockStore {
         // suppress errors here since it will be very rare that we look up
         // a chain from the database as most of them will be set up when
         // the block store is created
-        self.lookup_chain(chain).unwrap_or_else(|e| {
+        self.lookup_chain(chain).await.unwrap_or_else(|e| {
                 error!(&self.logger, "Error getting chain from store"; "network" => chain, "error" => e.to_string());
                 None
             })
     }
 
-    pub fn drop_chain(&self, chain: &str) -> Result<(), StoreError> {
+    pub async fn drop_chain(&self, chain: &str) -> Result<(), StoreError> {
         let chain_store = self
             .store(chain)
+            .await
             .ok_or_else(|| internal_error!("unknown chain {}", chain))?;
 
         // Delete from the primary first since that's where
@@ -571,12 +573,12 @@ impl BlockStore {
 
         Ok(())
     }
-    pub fn create_chain_store(
+    pub async fn create_chain_store(
         &self,
         network: &str,
         ident: ChainIdentifier,
     ) -> anyhow::Result<Arc<ChainStore>> {
-        match self.store(network) {
+        match self.store(network).await {
             Some(chain_store) => {
                 return Ok(chain_store);
             }
@@ -606,7 +608,7 @@ impl BlockStoreTrait for BlockStore {
     type ChainStore = ChainStore;
 
     async fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>> {
-        self.store(network)
+        self.store(network).await
     }
 }
 
