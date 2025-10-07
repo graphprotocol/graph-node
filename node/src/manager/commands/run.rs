@@ -239,7 +239,10 @@ pub async fn run(
     }
 
     info!(&logger, "Removing subgraph {}", name);
-    subgraph_store.clone().remove_subgraph(subgraph_name)?;
+    subgraph_store
+        .clone()
+        .remove_subgraph(subgraph_name)
+        .await?;
 
     if let Some(host) = metrics_ctx.prometheus_host {
         let mfs = metrics_ctx.prometheus.gather();

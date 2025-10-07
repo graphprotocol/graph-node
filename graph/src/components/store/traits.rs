@@ -99,7 +99,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Remove a subgraph and all its versions; if deployments that were used
     /// by this subgraph do not need to be indexed anymore, also remove
     /// their assignment, but keep the deployments themselves around
-    fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
 
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.
