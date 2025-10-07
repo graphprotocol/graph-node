@@ -254,10 +254,10 @@ pub async fn create_test_subgraph_with_features(
     locator
 }
 
-pub fn remove_subgraph(id: &DeploymentHash) {
+pub async fn remove_subgraph(id: &DeploymentHash) {
     let name = SubgraphName::new_unchecked(id.to_string());
     SUBGRAPH_STORE.remove_subgraph(name).unwrap();
-    let locs = SUBGRAPH_STORE.locators(id.as_str()).unwrap();
+    let locs = SUBGRAPH_STORE.locators(id.as_str()).await.unwrap();
     let mut conn = primary_connection();
     for loc in locs {
         let site = conn.locate_site(loc.clone()).unwrap().unwrap();

@@ -205,7 +205,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Find all deployment locators for the subgraph with the given hash.
-    fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
+    async fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Find the deployment locator for the active deployment with the given
     /// hash. Returns `None` if there is no deployment with that hash
