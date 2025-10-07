@@ -2,8 +2,12 @@ use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 
-use diesel::{dsl::sql, prelude::*};
-use diesel::{sql_types::Text, PgConnection};
+use diesel::dsl::sql;
+use diesel::sql_types::Text;
+use diesel::{
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, PgTextExpressionMethods, QueryDsl,
+    RunQueryDsl,
+};
 
 use graph::components::store::DeploymentId;
 use graph::{
@@ -11,8 +15,8 @@ use graph::{
     prelude::{anyhow, lazy_static, regex::Regex, DeploymentHash},
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
-use graph_store_postgres::unused;
 use graph_store_postgres::ConnectionPool;
+use graph_store_postgres::{unused, PgConnection};
 
 lazy_static! {
     // `Qm...` optionally follow by `:$shard`

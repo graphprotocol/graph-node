@@ -1,4 +1,4 @@
-use diesel::{self, PgConnection};
+use diesel;
 use graph::blockchain::mock::MockDataSource;
 use graph::blockchain::BlockTime;
 use graph::blockchain::ChainIdentifier;
@@ -25,6 +25,7 @@ use graph_graphql::prelude::{
 use graph_graphql::test_support::GraphQLMetrics;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
+use graph_store_postgres::PgConnection;
 use graph_store_postgres::{
     layout_for_tests::FAKE_NETWORK_SHARED, BlockStore as DieselBlockStore, ConnectionPool,
     DeploymentPlacer, Shard, SubgraphStore as DieselSubgraphStore, SubscriptionManager,

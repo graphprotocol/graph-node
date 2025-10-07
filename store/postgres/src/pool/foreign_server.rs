@@ -1,4 +1,4 @@
-use diesel::{connection::SimpleConnection, pg::PgConnection};
+use diesel::connection::SimpleConnection;
 
 use graph::{
     prelude::{
@@ -16,7 +16,7 @@ use crate::catalog;
 use crate::primary::NAMESPACE_PUBLIC;
 use crate::{Shard, PRIMARY_SHARD};
 
-use super::{PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
+use super::{PgConnection, PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
 
 #[derive(Clone)]
 pub struct ForeignServer {

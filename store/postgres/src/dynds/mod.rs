@@ -3,8 +3,7 @@ pub(crate) mod shared;
 
 pub(crate) use private::DataSourcesTable;
 
-use crate::primary::Site;
-use diesel::PgConnection;
+use crate::{pool::PgConnection, primary::Site};
 use graph::{
     components::store::{write, StoredDynamicDataSource},
     data_source::CausalityRegion,

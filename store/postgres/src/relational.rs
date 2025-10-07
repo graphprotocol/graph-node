@@ -25,9 +25,7 @@ use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::{
-    debug_query, sql_query, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
-};
+use diesel::{debug_query, sql_query, OptionalExtension, QueryDsl, QueryResult, RunQueryDsl};
 use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
@@ -57,6 +55,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::pool::PgConnection;
 use crate::relational::value::{FromOidRow, OidRow};
 use crate::relational_queries::{
     ConflictingEntitiesData, ConflictingEntitiesQuery, EntityDataExt, FindChangesQuery,

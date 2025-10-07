@@ -1,8 +1,6 @@
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
-use diesel::pg::PgConnection;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
-use diesel::{prelude::*, sql_query};
+use diesel::{sql_query, RunQueryDsl};
 use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
@@ -31,7 +29,7 @@ use lru_time_cache::LruCache;
 use rand::{rng, seq::SliceRandom};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
-use std::ops::{Bound, DerefMut};
+use std::ops::Bound;
 use std::ops::{Deref, Range};
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
@@ -53,6 +51,7 @@ use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
+use crate::pool::PgConnection;
 use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table, STATEMENT_TIMEOUT};
@@ -430,36 +429,25 @@ impl DeploymentStore {
         &self,
         f: impl 'static
             + Send
-            + AsyncFnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
+            + AsyncFnOnce(&mut PgConnection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         self.pool.with_conn(f).await
     }
 
     /// Deprecated. Use `with_conn` instead.
-    async fn get_conn(
-        &self,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+    async fn get_conn(&self) -> Result<PgConnection, StoreError> {
         self.pool.get_sync().await
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
-    async fn read_only_conn(
-        &self,
-        idx: usize,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    async fn read_only_conn(&self, idx: usize) -> Result<PgConnection, Error> {
         self.read_only_pools[idx]
             .get_sync()
             .await
             .map_err(Error::from)
     }
 
-    pub(crate) async fn get_replica_conn(
-        &self,
-        replica: ReplicaId,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    pub(crate) async fn get_replica_conn(&self, replica: ReplicaId) -> Result<PgConnection, Error> {
         let conn = match replica {
             ReplicaId::Main => self.get_conn().await?,
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx).await?,
@@ -583,7 +571,7 @@ impl DeploymentStore {
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
-        let conn = &mut *self.get_conn().await?;
+        let conn = &mut self.get_conn().await?;
         detail::deployment_details(conn, ids).await
     }
 
@@ -592,7 +580,7 @@ impl DeploymentStore {
         locator: &DeploymentLocator,
     ) -> Result<DeploymentDetail, StoreError> {
         let id = DeploymentId::from(locator.clone());
-        let conn = &mut *self.get_conn().await?;
+        let conn = &mut self.get_conn().await?;
         detail::deployment_details_for_id(conn, &id).await
     }
 
@@ -600,7 +588,7 @@ impl DeploymentStore {
         &self,
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
-        let conn = &mut *self.get_conn().await?;
+        let conn = &mut self.get_conn().await?;
         detail::deployment_statuses(conn, sites).await
     }
 
@@ -822,9 +810,8 @@ impl DeploymentStore {
 
     pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
         let store = self.clone();
-        let mut binding = self.get_conn().await?;
-        let conn = binding.deref_mut();
-        IndexList::load(conn, site, store).await
+        let mut conn = self.get_conn().await?;
+        IndexList::load(&mut conn, site, store).await
     }
 
     /// Drops an index for a given deployment, concurrently.
@@ -892,7 +879,7 @@ impl DeploymentStore {
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
         async fn do_prune(
             store: Arc<DeploymentStore>,
-            mut conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+            mut conn: &mut PgConnection,
             site: Arc<Site>,
             cancel: &CancelHandle,
             req: PruneRequest,

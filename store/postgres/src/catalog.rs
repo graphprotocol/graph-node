@@ -1,7 +1,7 @@
+use diesel::sql_query;
 use diesel::sql_types::{Bool, Integer};
 use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
-use diesel::{pg::PgConnection, sql_query};
 use diesel::{
     sql_types::{Array, BigInt, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
@@ -22,6 +22,7 @@ use graph::{
     prelude::{lazy_static, StoreError, BLOCK_NUMBER_MAX},
 };
 
+use crate::pool::PgConnection;
 use crate::{
     block_range::BLOCK_RANGE_COLUMN,
     pool::ForeignServer,

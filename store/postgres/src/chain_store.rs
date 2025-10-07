@@ -1,10 +1,7 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
-use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
-use diesel::{insert_into, update};
+use diesel::{insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use diesel_async::scoped_futures::ScopedFutureExt;
 
 use graph::components::store::ChainHeadStore;
@@ -37,7 +34,7 @@ use graph::prelude::{
 use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
-use crate::pool::AsyncConnection;
+use crate::pool::{AsyncConnection, PgConnection};
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool,
 };
@@ -88,16 +85,18 @@ pub use data::Storage;
 /// Encapuslate access to the blocks table for a chain.
 mod data {
     use crate::diesel::dsl::IntervalDsl;
+    use diesel::dsl::sql;
     use diesel::sql_types::{Array, Binary, Bool, Nullable};
     use diesel::{connection::SimpleConnection, insert_into};
-    use diesel::{delete, prelude::*, sql_query};
+    use diesel::{
+        delete, sql_query, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl,
+    };
     use diesel::{
         deserialize::FromSql,
         pg::Pg,
         serialize::{Output, ToSql},
         sql_types::Text,
     };
-    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
@@ -119,6 +118,7 @@ mod data {
     use std::iter::FromIterator;
     use std::str::FromStr;
 
+    use crate::pool::PgConnection;
     use crate::transaction_receipt::RawTransactionReceipt;
 
     use super::JsonBlock;
@@ -1948,7 +1948,7 @@ impl ChainStore {
         matches!(self.status, ChainStatus::Ingestible)
     }
 
-    async fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    async fn get_conn(&self) -> Result<PgConnection, Error> {
         self.pool.get_sync().await.map_err(Error::from)
     }
 
@@ -3019,7 +3019,7 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
     ) -> Result<Option<call::Response>, Error> {
         let id = contract_call_id(req, &block);
-        let conn = &mut *self.get_conn().await?;
+        let conn = &mut self.get_conn().await?;
         let return_value = conn
             .transaction_async::<_, Error, _>(|conn| {
                 async {
@@ -3060,7 +3060,7 @@ impl EthereumCallCache for ChainStore {
             .collect();
         let id_refs: Vec<_> = ids.iter().map(|id| id.as_slice()).collect();
 
-        let conn = &mut *self.get_conn().await?;
+        let conn = &mut self.get_conn().await?;
         let rows = conn
             .transaction_async::<_, Error, _>(|conn| {
                 self.storage
@@ -3094,7 +3094,7 @@ impl EthereumCallCache for ChainStore {
     }
 
     async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
-        let conn = &mut *self.get_conn().await?;
+        let conn = &mut self.get_conn().await?;
         conn.transaction_async::<_, Error, _>(|conn| {
             self.storage.get_calls_in_block(conn, block).scope_boxed()
         })

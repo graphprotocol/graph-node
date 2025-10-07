@@ -15,10 +15,11 @@
 //!           happens to it
 
 use diesel::sql_types::Bool;
-use diesel::{sql_query, PgConnection, RunQueryDsl};
+use diesel::{sql_query, RunQueryDsl};
 use graph::prelude::StoreError;
 
 use crate::command_support::catalog::Site;
+use crate::pool::PgConnection;
 use crate::primary::DeploymentId;
 
 /// A locking scope for a particular deployment. We use different scopes for

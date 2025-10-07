@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use diesel::{
     sql_query,
     sql_types::{BigInt, Integer},
-    PgConnection, RunQueryDsl as _,
+    RunQueryDsl as _,
 };
 use graph::{
     env::ENV_VARS,
@@ -13,6 +13,7 @@ use graph::{
 
 use crate::{
     catalog,
+    pool::PgConnection,
     primary::Namespace,
     relational::{Table, VID_COLUMN},
 };

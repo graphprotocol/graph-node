@@ -4,8 +4,8 @@
 #![allow(unused_macros)]
 use diesel::dsl::sql;
 use diesel::prelude::{
-    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
-    QueryDsl, RunQueryDsl, SelectableHelper as _,
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
+    RunQueryDsl, SelectableHelper as _,
 };
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
@@ -28,6 +28,7 @@ use crate::deployment::{
     deployment as subgraph_deployment, graph_node_versions, head as subgraph_head, subgraph_error,
     subgraph_manifest, SubgraphHealth as HealthType,
 };
+use crate::pool::PgConnection;
 use crate::primary::{DeploymentId, Site};
 
 git_testament_macros!(version);

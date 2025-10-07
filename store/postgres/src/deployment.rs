@@ -1,8 +1,7 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId};
-use diesel::pg::PgConnection;
+use crate::{advisory_lock, detail::GraphNodeVersion, pool::PgConnection, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, now, select, sql, update},
