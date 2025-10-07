@@ -233,7 +233,7 @@ impl EntityCache {
         Ok(entity)
     }
 
-    pub fn load_related(
+    pub async fn load_related(
         &mut self,
         eref: &LoadRelatedRequest,
     ) -> Result<Vec<Entity>, anyhow::Error> {
@@ -246,7 +246,7 @@ impl EntityCache {
             causality_region: eref.causality_region,
         };
 
-        let mut entity_map = self.store.get_derived(&query)?;
+        let mut entity_map = self.store.get_derived(&query).await?;
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
