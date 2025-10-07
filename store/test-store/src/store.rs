@@ -360,6 +360,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(block_ptr_to.number)
+        .await
         .expect("failed to convert to modifications")
         .modifications;
     let metrics_registry = Arc::new(MetricsRegistry::mock());

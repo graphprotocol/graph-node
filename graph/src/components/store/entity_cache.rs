@@ -471,7 +471,7 @@ impl EntityCache {
     /// to the current state is actually needed.
     ///
     /// Also returns the updated `LfuCache`.
-    pub fn as_modifications(
+    pub async fn as_modifications(
         mut self,
         block: BlockNumber,
     ) -> Result<ModificationsAndCache, StoreError> {
@@ -493,7 +493,7 @@ impl EntityCache {
         // violation in the database, ensuring correctness
         let missing = missing.filter(|key| !key.entity_type.is_immutable());
 
-        for (entity_key, entity) in self.store.get_many(missing.cloned().collect())? {
+        for (entity_key, entity) in self.store.get_many(missing.cloned().collect()).await? {
             self.current.insert(entity_key, Some(Arc::new(entity)));
         }
 
