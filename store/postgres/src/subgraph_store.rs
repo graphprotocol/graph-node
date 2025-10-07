@@ -1387,7 +1387,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError> {
+    async fn create_subgraph_features(
+        &self,
+        features: DeploymentFeatures,
+    ) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn.transaction(|conn| {
             let mut pconn = primary::Connection::new(conn);

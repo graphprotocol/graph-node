@@ -89,7 +89,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<DeploymentLocator, StoreError>;
 
     /// Create a subgraph_feature record in the database
-    fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError>;
+    async fn create_subgraph_features(
+        &self,
+        features: DeploymentFeatures,
+    ) -> Result<(), StoreError>;
 
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
