@@ -5,7 +5,7 @@ use std::fmt::{Display, Write};
 use std::sync::Arc;
 
 use diesel::sql_types::{Bool, Text};
-use diesel::{sql_query, PgConnection, RunQueryDsl};
+use diesel::{sql_query, RunQueryDsl};
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
@@ -18,6 +18,7 @@ use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::catalog;
 use crate::command_support::catalog::Site;
 use crate::deployment_store::DeploymentStore;
+use crate::pool::PgConnection;
 use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
 

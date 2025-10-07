@@ -1,8 +1,10 @@
 //! Helpers for working with async Postgres connections.
 
-use diesel::{connection::TransactionManager, pg::PgConnection, result::Error, Connection};
+use diesel::{connection::TransactionManager, result::Error, Connection};
 use diesel_async::scoped_futures::ScopedBoxFuture;
 use graph::futures03::{future::BoxFuture, FutureExt};
+
+use crate::pool::PgConnection;
 
 /// A diesel connection that supports async transactions that can be used
 /// with synchronous connections. This implementation is blocking even if

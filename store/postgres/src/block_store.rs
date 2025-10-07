@@ -6,10 +6,7 @@ use std::{
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use diesel::{
-    query_dsl::methods::FilterDsl as _, sql_query, ExpressionMethods as _, PgConnection,
-    RunQueryDsl,
-};
+use diesel::{query_dsl::methods::FilterDsl as _, sql_query, ExpressionMethods as _, RunQueryDsl};
 use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::{
     blockchain::ChainIdentifier,
@@ -28,7 +25,7 @@ use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 use crate::{
     chain_head_listener::ChainHeadUpdateSender,
     chain_store::{ChainStoreMetrics, Storage},
-    pool::ConnectionPool,
+    pool::{ConnectionPool, PgConnection},
     primary::Mirror as PrimaryMirror,
     ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
@@ -54,8 +51,7 @@ pub mod primary {
     use std::convert::TryFrom;
 
     use diesel::{
-        delete, insert_into, update, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
-        RunQueryDsl,
+        delete, insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
     };
     use graph::{
         blockchain::{BlockHash, ChainIdentifier},
@@ -63,7 +59,7 @@ pub mod primary {
         prelude::StoreError,
     };
 
-    use crate::chain_store::Storage;
+    use crate::{chain_store::Storage, pool::PgConnection};
     use crate::{ConnectionPool, Shard};
 
     table! {

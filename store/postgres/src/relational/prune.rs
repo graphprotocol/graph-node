@@ -4,7 +4,7 @@ use diesel::{
     connection::SimpleConnection,
     sql_query,
     sql_types::{BigInt, Integer},
-    PgConnection, RunQueryDsl,
+    RunQueryDsl,
 };
 use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
@@ -22,6 +22,7 @@ use crate::{
     catalog,
     copy::BATCH_STATEMENT_TIMEOUT,
     deployment,
+    pool::PgConnection,
     relational::{Table, VID_COLUMN},
     vid_batcher::{VidBatcher, VidRange},
     AsyncConnection,
@@ -590,8 +591,8 @@ mod status {
         query_builder::QueryFragment,
         serialize::{Output, ToSql},
         sql_types::Text,
-        table, update, AsChangeset, ExpressionMethods as _, OptionalExtension, PgConnection,
-        QueryDsl as _, RunQueryDsl as _,
+        table, update, AsChangeset, ExpressionMethods as _, OptionalExtension, QueryDsl as _,
+        RunQueryDsl as _,
     };
     use diesel_async::scoped_futures::ScopedFutureExt;
     use graph::{
@@ -601,6 +602,7 @@ mod status {
     };
 
     use crate::{
+        pool::PgConnection,
         relational::{Layout, Table},
         vid_batcher::{VidBatcher, VidRange},
         AsyncConnection, ConnectionPool,

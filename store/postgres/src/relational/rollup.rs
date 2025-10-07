@@ -58,7 +58,7 @@ use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
 
-use diesel::{sql_query, PgConnection, RunQueryDsl as _};
+use diesel::{sql_query, RunQueryDsl as _};
 
 use diesel::sql_types::{Integer, Nullable, Timestamptz};
 use graph::blockchain::BlockTime;
@@ -72,6 +72,7 @@ use graph::sqlparser::ast as p;
 use graph::sqlparser::parser::ParserError;
 use itertools::Itertools;
 
+use crate::pool::PgConnection;
 use crate::relational::Table;
 
 use super::{Column, SqlName};

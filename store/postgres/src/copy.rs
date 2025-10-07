@@ -23,12 +23,8 @@ use std::{
 };
 
 use diesel::{
-    connection::SimpleConnection as _,
-    dsl::sql,
-    insert_into,
-    r2d2::{ConnectionManager, PooledConnection},
-    select, sql_query, update, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
-    RunQueryDsl,
+    connection::SimpleConnection as _, dsl::sql, insert_into, select, sql_query, update,
+    ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
 };
 use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
@@ -49,6 +45,7 @@ use itertools::Itertools;
 use crate::{
     advisory_lock, catalog, deployment,
     dynds::DataSourcesTable,
+    pool::PgConnection,
     primary::{DeploymentId, Primary, Site},
     relational::{index::IndexList, Layout, Table},
     relational_queries as rq,
@@ -679,12 +676,12 @@ impl From<Result<CopyTableWorker, StoreError>> for WorkerResult {
 /// This struct helps us with that. It wraps a connection and tracks whether
 /// the connection was used to acquire the copy lock
 struct LockTrackingConnection {
-    inner: PooledConnection<ConnectionManager<PgConnection>>,
+    inner: PgConnection,
     has_lock: bool,
 }
 
 impl LockTrackingConnection {
-    fn new(inner: PooledConnection<ConnectionManager<PgConnection>>) -> Self {
+    fn new(inner: PgConnection) -> Self {
         Self {
             inner,
             has_lock: false,

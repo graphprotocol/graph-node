@@ -4,10 +4,11 @@
 use crate::{
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
-    pool::PRIMARY_PUBLIC,
+    pool::{PgConnection, PRIMARY_PUBLIC},
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
     ConnectionPool, ForeignServer, NotificationSender,
 };
+use diesel::dsl::{delete, insert_into, sql, update};
 use diesel::prelude::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
     OptionalExtension, QueryDsl, RunQueryDsl,
@@ -21,11 +22,6 @@ use diesel::{
     serialize::{Output, ToSql},
     sql_types::{Array, BigInt, Bool, Integer, Text},
 };
-use diesel::{
-    dsl::{delete, insert_into, sql, update},
-    r2d2::PooledConnection,
-};
-use diesel::{pg::PgConnection, r2d2::ConnectionManager};
 use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
     components::store::DeploymentLocator,
@@ -440,7 +436,6 @@ pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network
 mod queries {
     use diesel::data_types::PgTimestamp;
     use diesel::dsl::{exists, sql};
-    use diesel::pg::PgConnection;
     use diesel::prelude::{
         BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
         OptionalExtension, QueryDsl, RunQueryDsl,
@@ -455,6 +450,7 @@ mod queries {
     };
     use std::{collections::HashMap, convert::TryFrom, convert::TryInto};
 
+    use crate::pool::PgConnection;
     use crate::Shard;
 
     use super::{DeploymentId, Schema, Site};
@@ -761,11 +757,11 @@ mod queries {
 /// A wrapper for a database connection that provides access to functionality
 /// that works only on the primary database
 pub struct Connection {
-    conn: PooledConnection<ConnectionManager<PgConnection>>,
+    conn: PgConnection,
 }
 
 impl Connection {
-    pub fn new(conn: PooledConnection<ConnectionManager<PgConnection>>) -> Self {
+    pub fn new(conn: PgConnection) -> Self {
         Self { conn }
     }
 
@@ -786,7 +782,7 @@ impl Connection {
         R: Send + 'a,
         'a: 'conn,
     {
-        type TM = <PooledConnection<ConnectionManager<PgConnection>> as diesel::Connection>::TransactionManager;
+        type TM = <PgConnection as diesel::Connection>::TransactionManager;
 
         async move {
             TM::begin_transaction(&mut self.conn)?;

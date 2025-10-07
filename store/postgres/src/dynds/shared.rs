@@ -1,5 +1,6 @@
 //! SQL queries to load dynamic data sources
 
+use diesel::insert_into;
 use diesel::{
     delete,
     dsl::{count, sql},
@@ -7,7 +8,6 @@ use diesel::{
     sql_query,
     sql_types::{Integer, Text},
 };
-use diesel::{insert_into, pg::PgConnection};
 
 use graph::{
     components::store::{write, StoredDynamicDataSource},
@@ -17,6 +17,7 @@ use graph::{
     prelude::{serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError},
 };
 
+use crate::pool::PgConnection;
 use crate::primary::Site;
 use crate::ForeignServer;
 

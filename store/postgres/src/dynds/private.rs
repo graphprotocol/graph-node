@@ -2,11 +2,10 @@ use std::{collections::HashMap, i32, ops::Bound};
 
 use diesel::{
     pg::{sql_types, Pg},
-    prelude::*,
     query_builder::{AstPass, QueryFragment, QueryId},
     sql_query,
     sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
-    PgConnection, QueryDsl, RunQueryDsl,
+    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult, RunQueryDsl,
 };
 
 use graph::{
@@ -17,7 +16,7 @@ use graph::{
     prelude::{serde_json, BlockNumber, StoreError},
 };
 
-use crate::{primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS};
+use crate::{pool::PgConnection, primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS};
 
 type DynTable = diesel_dynamic_schema::Table<String, Namespace>;
 type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;

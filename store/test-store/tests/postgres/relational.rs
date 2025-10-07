@@ -1,6 +1,5 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
-use diesel::pg::PgConnection;
 use graph::components::store::write::{EntityModification, RowGroup};
 use graph::data::store::scalar;
 use graph::entity;
@@ -13,6 +12,7 @@ use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
+use graph_store_postgres::PgConnection;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;

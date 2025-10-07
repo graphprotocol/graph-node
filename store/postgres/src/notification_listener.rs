@@ -1,4 +1,3 @@
-use diesel::pg::PgConnection;
 use diesel::select;
 use diesel::sql_types::Text;
 use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
@@ -16,6 +15,8 @@ use tokio::sync::mpsc::{channel, Receiver};
 
 use graph::prelude::serde_json;
 use graph::prelude::*;
+
+use crate::pool::PgConnection;
 
 #[cfg(debug_assertions)]
 lazy_static::lazy_static! {

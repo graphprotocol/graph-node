@@ -1,9 +1,9 @@
-use diesel::r2d2::Builder;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
-use diesel::{connection::SimpleConnection, pg::PgConnection};
+use diesel::connection::SimpleConnection;
 use diesel::{sql_query, RunQueryDsl};
-
+use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
+use diesel_async::pooled_connection::{mobc, AsyncDieselConnectionManager};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
+
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
 use graph::derive::CheapClone;
@@ -38,6 +38,12 @@ pub use async_txn::AsyncConnection;
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
 use state_tracker::{ErrorHandler, EventHandler, StateTracker};
+
+type AsyncPool = mobc::Pool<diesel_async::AsyncPgConnection>;
+/// A database connection for asynchronous diesel operations
+pub type AsyncPgConnection = mobc::PooledConnection<diesel_async::AsyncPgConnection>;
+/// A database connection for 'classic' synchronous diesel operations
+pub type PgConnection = AsyncConnectionWrapper<AsyncPgConnection>;
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
@@ -205,6 +211,7 @@ impl PoolState {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct ConnectionPool {
     inner: PoolState,
@@ -355,25 +362,20 @@ impl ConnectionPool {
         &self,
         f: impl 'static
             + Send
-            + AsyncFnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
+            + AsyncFnOnce(&mut PgConnection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let pool = self.get_ready()?;
         pool.with_conn(f).await
     }
 
-    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.get_ready()?.get()
+    pub async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
+        self.get_ready()?.get().await
     }
 
     /// An async version of `get`. For now, this calls `get` synchronously.
     /// Once `get` is not used anymore, we can make it truly async.
-    pub async fn get_sync(
-        &self,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.get()
+    pub async fn get_sync(&self) -> Result<PgConnection, StoreError> {
+        self.get().await.map(AsyncConnectionWrapper::from)
     }
 
     /// Get a connection from the pool for foreign data wrapper access;
@@ -383,11 +385,7 @@ impl ConnectionPool {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    pub fn get_fdw<F>(
-        &self,
-        logger: &Logger,
-        timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    pub fn get_fdw<F>(&self, logger: &Logger, timeout: F) -> Result<PgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
@@ -401,7 +399,7 @@ impl ConnectionPool {
         &self,
         logger: &Logger,
         timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    ) -> Result<PgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
@@ -410,16 +408,13 @@ impl ConnectionPool {
 
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
-    fn try_get_fdw(
-        &self,
-        logger: &Logger,
-        timeout: Duration,
-    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+    async fn try_get_fdw(&self, logger: &Logger, timeout: Duration) -> Option<PgConnection> {
         let Ok(inner) = self.get_ready() else {
             return None;
         };
         self.state_tracker
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
+            .await
     }
 
     /// An async version of `try_get_fdw`. For now, this calls `try_get_fdw`
@@ -429,8 +424,8 @@ impl ConnectionPool {
         &self,
         logger: &Logger,
         timeout: Duration,
-    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
-        self.try_get_fdw(logger, timeout)
+    ) -> Option<PgConnection> {
+        self.try_get_fdw(logger, timeout).await
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
@@ -462,7 +457,7 @@ impl ConnectionPool {
 pub struct PoolInner {
     logger: Logger,
     pub shard: Shard,
-    pool: Pool<ConnectionManager<PgConnection>>,
+    pool: AsyncPool,
     // A separate pool for connections that will use foreign data wrappers.
     // Once such a connection accesses a foreign table, Postgres keeps a
     // connection to the foreign server until the connection is closed.
@@ -473,7 +468,7 @@ pub struct PoolInner {
     // this will no longer be needed since it will then be possible to
     // explicitly close connections to foreign servers when a connection is
     // returned to the pool.
-    fdw_pool: Option<Pool<ConnectionManager<PgConnection>>>,
+    fdw_pool: Option<AsyncPool>,
     limiter: Arc<Semaphore>,
     postgres_url: String,
     pub(crate) wait_stats: PoolWaitStats,
@@ -515,13 +510,21 @@ impl PoolInner {
                 const_labels.clone(),
             )
             .expect("failed to create `store_connection_error_count` counter");
-        let error_handler = Box::new(ErrorHandler::new(
+        crit!(
+            logger_pool,
+            "Unfinished: not to replicate ErrorHandler with mobc"
+        );
+        let _error_handler = Box::new(ErrorHandler::new(
             logger_pool.clone(),
             error_counter,
             state_tracker.clone(),
         ));
         let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
-        let event_handler = Box::new(EventHandler::new(
+        crit!(
+            logger_pool,
+            "Unfinished: need to replicate EventHandler with mobc"
+        );
+        let _event_handler = Box::new(EventHandler::new(
             logger_pool.clone(),
             registry.cheap_clone(),
             wait_stats.clone(),
@@ -530,8 +533,12 @@ impl PoolInner {
         ));
 
         // Connect to Postgres
-        let conn_manager = ConnectionManager::new(postgres_url.clone());
-        let min_idle = ENV_VARS.store.connection_min_idle.filter(|min_idle| {
+        let conn_manager = AsyncDieselConnectionManager::new(postgres_url.clone());
+        crit!(
+            logger_pool,
+            "Unfinished: need to replicate min_idle with mobc"
+        );
+        let _min_idle = ENV_VARS.store.connection_min_idle.filter(|min_idle| {
             if *min_idle <= pool_size {
                 true
             } else {
@@ -544,24 +551,18 @@ impl PoolInner {
                 false
             }
         });
-        let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
-            .error_handler(error_handler.clone())
-            .event_handler(event_handler.clone())
-            .connection_timeout(ENV_VARS.store.connection_timeout)
-            .max_size(pool_size)
-            .min_idle(min_idle)
-            .idle_timeout(Some(ENV_VARS.store.connection_idle_timeout));
-        let pool = builder.build_unchecked(conn_manager);
+        let builder: mobc::Builder<_> = mobc::Pool::builder()
+            .get_timeout(Some(ENV_VARS.store.connection_timeout))
+            .max_open(pool_size as u64)
+            .max_idle_lifetime(Some(ENV_VARS.store.connection_idle_timeout));
+        let pool = builder.build(conn_manager);
         let fdw_pool = fdw_pool_size.map(|pool_size| {
-            let conn_manager = ConnectionManager::new(postgres_url.clone());
-            let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
-                .error_handler(error_handler)
-                .event_handler(event_handler)
-                .connection_timeout(ENV_VARS.store.connection_timeout)
-                .max_size(pool_size)
-                .min_idle(Some(1))
-                .idle_timeout(Some(FDW_IDLE_TIMEOUT));
-            builder.build_unchecked(conn_manager)
+            let conn_manager = AsyncDieselConnectionManager::new(postgres_url.clone());
+            let builder = mobc::Pool::builder()
+                .get_timeout(Some(ENV_VARS.store.connection_timeout))
+                .max_open(pool_size as u64)
+                .max_idle_lifetime(Some(FDW_IDLE_TIMEOUT));
+            builder.build(conn_manager)
         });
 
         let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
@@ -634,10 +635,7 @@ impl PoolInner {
         &self,
         f: impl 'static
             + Send
-            + AsyncFnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
+            + AsyncFnOnce(&mut PgConnection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let _permit = self.limiter.acquire().await;
         let pool = self.clone();
@@ -677,23 +675,21 @@ impl PoolInner {
         }
     }
 
-    fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
+    async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
+        self.pool
+            .get()
+            .await
+            .map_err(|_| StoreError::DatabaseUnavailable)
     }
 
     /// An async version of `get`. For now, this calls `get` synchronously.
     /// Once `get` is not used anymore, we can make it truly async.
-    pub async fn get_sync(
-        &self,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.get()
+    pub async fn get_sync(&self) -> Result<PgConnection, StoreError> {
+        self.get().await.map(AsyncConnectionWrapper::from)
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
-    fn fdw_pool(
-        &self,
-        logger: &Logger,
-    ) -> Result<&Pool<ConnectionManager<PgConnection>>, StoreError> {
+    fn fdw_pool(&self, logger: &Logger) -> Result<&AsyncPool, StoreError> {
         let pool = match &self.fdw_pool {
             Some(pool) => pool,
             None => {
@@ -713,21 +709,17 @@ impl PoolInner {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    fn get_fdw<F>(
-        &self,
-        logger: &Logger,
-        mut timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    fn get_fdw<F>(&self, logger: &Logger, mut timeout: F) -> Result<PgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
         let pool = self.fdw_pool(logger)?;
         loop {
-            match pool.get() {
-                Ok(conn) => return Ok(conn),
+            match graph::block_on(pool.get()) {
+                Ok(conn) => return Ok(AsyncConnectionWrapper::from(conn)),
                 Err(e) => {
                     if timeout() {
-                        return Err(e.into());
+                        return Err(anyhow!("timeout in get_fdw: {e}").into());
                     }
                 }
             }
@@ -737,11 +729,7 @@ impl PoolInner {
     /// Get a connection from the fdw pool if one is available. We wait for
     /// `timeout` for a connection which should be set just big enough to
     /// allow establishing a connection
-    fn try_get_fdw(
-        &self,
-        logger: &Logger,
-        timeout: Duration,
-    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+    fn try_get_fdw(&self, logger: &Logger, timeout: Duration) -> Option<PgConnection> {
         // Any error trying to get a connection is treated as "couldn't get
         // a connection in time". If there is a serious error with the
         // database, e.g., because it's not available, the next database
@@ -749,10 +737,10 @@ impl PoolInner {
         let Ok(fdw_pool) = self.fdw_pool(logger) else {
             return None;
         };
-        let Ok(conn) = fdw_pool.get_timeout(timeout) else {
+        let Ok(conn) = graph::block_on(fdw_pool.get_timeout(timeout)) else {
             return None;
         };
-        Some(conn)
+        Some(AsyncConnectionWrapper::from(conn))
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
@@ -760,18 +748,18 @@ impl PoolInner {
     }
 
     /// Check that we can connect to the database
-    pub fn check(&self) -> bool {
-        self.pool
-            .get()
-            .ok()
-            .map(|mut conn| sql_query("select 1").execute(&mut conn).is_ok())
-            .unwrap_or(false)
+    pub async fn check(&self) -> bool {
+        let Ok(mut conn) = self.get_sync().await else {
+            return false;
+        };
+
+        sql_query("select 1").execute(&mut conn).is_ok()
     }
 
     async fn locale_check(
         &self,
         logger: &Logger,
-        mut conn: PooledConnection<ConnectionManager<PgConnection>>,
+        mut conn: PgConnection,
     ) -> Result<(), StoreError> {
         Ok(
             if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {

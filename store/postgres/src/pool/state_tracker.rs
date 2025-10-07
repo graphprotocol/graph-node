@@ -49,12 +49,23 @@ impl StateTracker {
         self.ignore_timeout.load(Ordering::Relaxed)
     }
 
-    pub(super) fn ignore_timeout<F, R>(&self, f: F) -> R
+    pub(super) async fn ignore_timeout<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
     {
         self.ignore_timeout.store(true, Ordering::Relaxed);
         let res = f();
+        self.ignore_timeout.store(false, Ordering::Relaxed);
+        res
+    }
+
+    #[allow(dead_code)]
+    pub(super) async fn ignore_timeout_async<F, R>(&self, f: F) -> R
+    where
+        F: AsyncFnOnce() -> R,
+    {
+        self.ignore_timeout.store(true, Ordering::Relaxed);
+        let res = f().await;
         self.ignore_timeout.store(false, Ordering::Relaxed);
         res
     }
