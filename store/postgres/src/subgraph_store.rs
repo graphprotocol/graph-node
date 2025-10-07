@@ -1481,7 +1481,7 @@ impl SubgraphStoreTrait for SubgraphStore {
             .map(|sites| sites.iter().map(|site| site.into()).collect())
     }
 
-    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
+    async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
         self.mirror.subgraph_exists(name)
     }
 
