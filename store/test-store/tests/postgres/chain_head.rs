@@ -518,7 +518,7 @@ fn test_clear_stale_call_cache() {
         // Note: The storage field is not accessible from here, so we cannot fetch the Schema for the private chain
         // and manually populate the cache and meta tables or alter the accessed_at timestamp.
         // We can only test that the function runs to completion without error.
-        let result = store.clear_stale_call_cache(7).await;
+        let result = store.clear_stale_call_cache(7, None).await;
         assert!(result.is_ok());
     });
 }
