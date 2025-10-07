@@ -1517,7 +1517,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(layout.input_schema.cheap_clone())
     }
 
-    fn api_schema(
+    async fn api_schema(
         &self,
         id: &DeploymentHash,
         version: &ApiVersion,
