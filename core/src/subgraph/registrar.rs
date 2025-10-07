@@ -512,7 +512,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     let store = store.clone();
     let deployment_store = store.clone();
 
-    if !store.subgraph_exists(&name)? {
+    if !store.subgraph_exists(&name).await? {
         debug!(
             logger,
             "Subgraph not found, could not create_subgraph_version";
