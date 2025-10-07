@@ -632,14 +632,16 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
                 genesis_block_hash: GENESIS_PTR.hash.clone(),
             };
 
-            let store = builder.network_store(
-                vec![
-                    (NETWORK_NAME.to_string()),
-                    (FAKE_NETWORK_SHARED.to_string()),
-                ]
-                .into_iter()
-                .collect(),
-            );
+            let store = builder
+                .network_store(
+                    vec![
+                        (NETWORK_NAME.to_string()),
+                        (FAKE_NETWORK_SHARED.to_string()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )
+                .await;
             match store.block_store().chain_store(NETWORK_NAME).await {
                 Some(cs) => {
                     cs.set_chain_identifier_for_tests(&ChainIdentifier {
@@ -652,6 +654,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
                     store
                         .block_store()
                         .create_chain_store(NETWORK_NAME, ident)
+                        .await
                         .expect("unable to create test network store");
                 }
             }

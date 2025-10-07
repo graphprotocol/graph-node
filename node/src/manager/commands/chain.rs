@@ -153,7 +153,11 @@ pub async fn info(
     Ok(())
 }
 
-pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> Result<(), Error> {
+pub async fn remove(
+    primary: ConnectionPool,
+    store: Arc<BlockStore>,
+    name: String,
+) -> Result<(), Error> {
     let sites = {
         let mut conn =
             graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
@@ -172,7 +176,7 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
         bail!("remove all deployments using chain {} first", name);
     }
 
-    store.drop_chain(&name)?;
+    store.drop_chain(&name).await?;
 
     Ok(())
 }

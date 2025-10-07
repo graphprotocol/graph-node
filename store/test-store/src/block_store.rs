@@ -199,6 +199,7 @@ pub async fn set_chain(chain: FakeBlockList, network: &str) -> Vec<(BlockPtr, Bl
                     genesis_block_hash: GENESIS_PTR.hash.clone(),
                 },
             )
+            .await
             .unwrap(),
     };
     let chain: Vec<Arc<dyn BlockchainBlock>> = chain

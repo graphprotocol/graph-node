@@ -77,7 +77,7 @@ async fn setup_store(
     let primary_pool = store_builder.primary_pool();
     let subscription_manager = store_builder.subscription_manager();
     let chain_head_update_listener = store_builder.chain_head_update_listener();
-    let network_store = store_builder.network_store(config.chain_ids());
+    let network_store = store_builder.network_store(config.chain_ids()).await;
 
     (
         primary_pool,

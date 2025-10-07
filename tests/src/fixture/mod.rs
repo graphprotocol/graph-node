@@ -432,7 +432,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
         .into();
     let chain_head_listener = store_builder.chain_head_update_listener();
     let network_identifiers: Vec<ChainName> = vec![network_name.clone()].into_iter().collect();
-    let network_store = store_builder.network_store(network_identifiers);
+    let network_store = store_builder.network_store(network_identifiers).await;
     let ident = ChainIdentifier {
         net_version: "".into(),
         genesis_block_hash: test_ptr(0).hash,
@@ -440,6 +440,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let chain_store = network_store
         .block_store()
         .create_chain_store(&network_name, ident)
+        .await
         .unwrap_or_else(|_| panic!("No chain store for {}", &network_name));
 
     Stores {
