@@ -1195,6 +1195,7 @@ fn subgraph_schema_types_have_subgraph_id_directive() {
         let schema = store
             .subgraph_store()
             .api_schema(&deployment.hash, &Default::default())
+            .await
             .expect("test subgraph should have a schema");
         for typedef in schema
             .definitions()
