@@ -43,8 +43,12 @@ impl PollingBlockIngestor {
         })
     }
 
-    fn cleanup_cached_blocks(&self) {
-        match self.chain_store.cleanup_cached_blocks(self.ancestor_count) {
+    async fn cleanup_cached_blocks(&self) {
+        match self
+            .chain_store
+            .cleanup_cached_blocks(self.ancestor_count)
+            .await
+        {
             Ok(Some((min_block, count))) => {
                 if count > 0 {
                     info!(
@@ -256,7 +260,7 @@ impl BlockIngestor for PollingBlockIngestor {
             }
 
             if ENV_VARS.cleanup_blocks {
-                self.cleanup_cached_blocks()
+                self.cleanup_cached_blocks().await
             }
 
             tokio::time::sleep(self.polling_interval).await;

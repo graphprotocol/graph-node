@@ -2379,7 +2379,7 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Into::into)
     }
 
-    fn cleanup_cached_blocks(
+    async fn cleanup_cached_blocks(
         &self,
         ancestor_count: BlockNumber,
     ) -> Result<Option<(BlockNumber, usize)>, Error> {

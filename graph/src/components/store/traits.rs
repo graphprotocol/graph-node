@@ -563,7 +563,7 @@ pub trait ChainStore: ChainHeadStore {
     /// and the number of blocks deleted.
     /// We will never remove blocks that are within `ancestor_count` of
     /// the chain head.
-    fn cleanup_cached_blocks(
+    async fn cleanup_cached_blocks(
         &self,
         ancestor_count: BlockNumber,
     ) -> Result<Option<(BlockNumber, usize)>, Error>;
