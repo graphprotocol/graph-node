@@ -147,7 +147,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<InputSchema, StoreError>;
+    async fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<InputSchema, StoreError>;
 
     /// Return a bool represeting whether there is a pending graft for the subgraph
     async fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;

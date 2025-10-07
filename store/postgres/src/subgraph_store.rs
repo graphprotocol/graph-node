@@ -1511,7 +1511,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(changes)
     }
 
-    fn input_schema(&self, id: &DeploymentHash) -> Result<InputSchema, StoreError> {
+    async fn input_schema(&self, id: &DeploymentHash) -> Result<InputSchema, StoreError> {
         let (store, site) = self.store(id)?;
         let layout = store.find_layout(site)?;
         Ok(layout.input_schema.cheap_clone())
@@ -1567,7 +1567,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let deployment = deployment.into();
         let site = self.find_site(deployment)?;
         let store = self.for_site(&site)?;
-        let input_schema = self.input_schema(&site.deployment)?;
+        let input_schema = self.input_schema(&site.deployment).await?;
 
         Ok(Arc::new(SourceableStore::new(
             site,

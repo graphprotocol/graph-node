@@ -325,7 +325,7 @@ async fn check_graft(
     let mut shaq = entities.first().unwrap().clone();
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
 
-    let schema = store.input_schema(&deployment.hash)?;
+    let schema = store.input_schema(&deployment.hash).await?;
     let user_type = schema.entity_type("User").unwrap();
 
     // Make our own entries for block 2

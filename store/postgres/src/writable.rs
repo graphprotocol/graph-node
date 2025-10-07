@@ -172,7 +172,7 @@ impl SyncStore {
     ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
-        let input_schema = subgraph_store.input_schema(&site.deployment)?;
+        let input_schema = subgraph_store.input_schema(&site.deployment).await?;
         let last_rollup = LastRollupTracker::new(
             writable.cheap_clone(),
             site.cheap_clone(),
