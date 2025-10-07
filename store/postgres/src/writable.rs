@@ -1535,7 +1535,7 @@ impl WritableStore {
 
 #[async_trait]
 impl ReadStore for WritableStore {
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.writer.get(key)
     }
 

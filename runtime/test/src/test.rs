@@ -1352,17 +1352,17 @@ impl Host {
         }
     }
 
-    fn store_set(
+    async fn store_set(
         &mut self,
         entity_type: &str,
         id: &str,
         data: Vec<(&str, &str)>,
     ) -> Result<(), HostExportError> {
         let data: Vec<_> = data.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
-        self.store_setv(entity_type, id, data)
+        self.store_setv(entity_type, id, data).await
     }
 
-    fn store_setv(
+    async fn store_setv(
         &mut self,
         entity_type: &str,
         id: &str,
@@ -1370,31 +1370,35 @@ impl Host {
     ) -> Result<(), HostExportError> {
         let id = String::from(id);
         let data = HashMap::from_iter(data.into_iter().map(|(k, v)| (Word::from(k), v)));
-        self.host_exports.store_set(
-            &self.ctx.logger,
-            12, // Arbitrary block number
-            &mut self.ctx.state,
-            &self.ctx.proof_of_indexing,
-            entity_type.to_string(),
-            id,
-            data,
-            &self.stopwatch,
-            &self.gas,
-        )
+        self.host_exports
+            .store_set(
+                &self.ctx.logger,
+                12, // Arbitrary block number
+                &mut self.ctx.state,
+                &self.ctx.proof_of_indexing,
+                entity_type.to_string(),
+                id,
+                data,
+                &self.stopwatch,
+                &self.gas,
+            )
+            .await
     }
 
-    fn store_get(
+    async fn store_get(
         &mut self,
         entity_type: &str,
         id: &str,
     ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
         let user_id = String::from(id);
-        self.host_exports.store_get(
-            &mut self.ctx.state,
-            entity_type.to_string(),
-            user_id,
-            &self.gas,
-        )
+        self.host_exports
+            .store_get(
+                &mut self.ctx.state,
+                entity_type.to_string(),
+                user_id,
+                &self.gas,
+            )
+            .await
     }
 }
 
@@ -1426,17 +1430,20 @@ async fn test_store_set_id() {
     let mut host = Host::new(schema, "hostStoreSetId", "boolean.wasm", None).await;
 
     host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
+        .await
         .expect("setting with same id works");
 
     let err = host
         .store_set(USER, UID, vec![("id", "ux"), ("name", "user1")])
+        .await
         .expect_err("setting with different id fails");
     err_says(err, "conflicts with ID passed");
 
     host.store_set(USER, UID, vec![("name", "user2")])
+        .await
         .expect("setting with no id works");
 
-    let entity = host.store_get(USER, UID).unwrap().unwrap();
+    let entity = host.store_get(USER, UID).await.unwrap().unwrap();
     assert_eq!(
         "u1",
         entity.id().to_string(),
@@ -1446,6 +1453,7 @@ async fn test_store_set_id() {
     let beef = Value::Bytes("0xbeef".parse().unwrap());
     let err = host
         .store_setv(USER, "0xbeef", vec![("id", beef)])
+        .await
         .expect_err("setting with Bytes id fails");
     err_says(
         err,
@@ -1453,6 +1461,7 @@ async fn test_store_set_id() {
     );
 
     host.store_setv(USER, UID, vec![("id", Value::Int(32))])
+        .await
         .expect_err("id must be a string");
 
     //
@@ -1462,6 +1471,7 @@ async fn test_store_set_id() {
 
     let err = host
         .store_set(BINARY, BID, vec![("id", BID), ("name", "user1")])
+        .await
         .expect_err("setting with string id in values fails");
     err_says(
         err,
@@ -1473,18 +1483,21 @@ async fn test_store_set_id() {
         BID,
         vec![("id", bid_bytes), ("name", Value::from("user1"))],
     )
+    .await
     .expect("setting with bytes id in values works");
 
     let beef = Value::Bytes("0xbeef".parse().unwrap());
     let err = host
         .store_setv(BINARY, BID, vec![("id", beef)])
+        .await
         .expect_err("setting with different id fails");
     err_says(err, "conflicts with ID passed");
 
     host.store_set(BINARY, BID, vec![("name", "user2")])
+        .await
         .expect("setting with no id works");
 
-    let entity = host.store_get(BINARY, BID).unwrap().unwrap();
+    let entity = host.store_get(BINARY, BID).await.unwrap().unwrap();
     assert_eq!(
         BID,
         entity.id().to_string(),
@@ -1493,6 +1506,7 @@ async fn test_store_set_id() {
 
     let err = host
         .store_setv(BINARY, BID, vec![("id", Value::Int(32))])
+        .await
         .expect_err("id must be Bytes");
     err_says(
         err,
@@ -1527,6 +1541,7 @@ async fn test_store_set_invalid_fields() {
     .await;
 
     host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
+        .await
         .unwrap();
 
     let err = host
@@ -1540,6 +1555,7 @@ async fn test_store_set_invalid_fields() {
                 ("test2", "invalid_field"),
             ],
         )
+        .await
         .err()
         .unwrap();
 
@@ -1554,6 +1570,7 @@ async fn test_store_set_invalid_fields() {
             UID,
             vec![("id", "u1"), ("name", "user1"), ("test3", "invalid_field")],
         )
+        .await
         .err()
         .unwrap();
 
@@ -1579,6 +1596,7 @@ async fn test_store_set_invalid_fields() {
                 ("test2", "invalid_field"),
             ],
         )
+        .await
         .err()
         .is_none();
 
@@ -1609,12 +1627,16 @@ async fn generate_id() {
     // new id. Note that the types of the ids have an incorrect type, but
     // that doesn't matter since they get overwritten.
     host.store_set(INT8, AUTO, vec![("id", "u1"), ("name", "int1")])
+        .await
         .expect("setting auto works");
     host.store_set(INT8, AUTO, vec![("id", "u1"), ("name", "int2")])
+        .await
         .expect("setting auto works");
     host.store_set(BINARY, AUTO, vec![("id", "u1"), ("name", "bin1")])
+        .await
         .expect("setting auto works");
     host.store_set(BINARY, AUTO, vec![("id", "u1"), ("name", "bin2")])
+        .await
         .expect("setting auto works");
 
     let entity_cache = host.ctx.state.entity_cache;
@@ -1671,12 +1693,15 @@ async fn test_store_intf() {
     let mut host = Host::new(schema, "hostStoreSetIntf", "boolean.wasm", None).await;
 
     host.store_set(PERSON, UID, vec![("id", "u1"), ("name", "user1")])
+        .await
         .expect_err("can not use store_set with an interface");
 
     host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
+        .await
         .expect("storing user works");
 
     host.store_get(PERSON, UID)
+        .await
         .expect_err("store_get with interface does not work");
 }
 
@@ -1717,6 +1742,7 @@ async fn test_store_ts() {
             ("amount", b20.clone()),
         ],
     )
+    .await
     .expect("Setting 'Data' is allowed");
 
     // This is very backhanded: we generate an id the same way that
@@ -1724,11 +1750,16 @@ async fn test_store_ts() {
     let did = IdType::Int8.generate_id(12, 0).unwrap();
 
     // Set overrides the user-supplied timestamp for timeseries
-    let data = host.store_get(DATA, &did.to_string()).unwrap().unwrap();
+    let data = host
+        .store_get(DATA, &did.to_string())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(Some(&Value::from(block_time)), data.get("timestamp"));
 
     let err = host
         .store_setv(STATS, SID, vec![("amount", b20)])
+        .await
         .expect_err("store_set must fail for aggregations");
     err_says(
         err,
@@ -1737,6 +1768,7 @@ async fn test_store_ts() {
 
     let err = host
         .store_get(STATS, SID)
+        .await
         .expect_err("store_get must fail for timeseries");
     err_says(
         err,

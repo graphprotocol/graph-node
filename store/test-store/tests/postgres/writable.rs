@@ -275,7 +275,7 @@ async fn count_get_many(writable: Arc<dyn WritableStore>) -> i32 {
 
 /// Get the count using `WritableStore::get`
 async fn count_get(writable: Arc<dyn WritableStore>) -> i32 {
-    let counter = writable.get(&count_key("1")).unwrap().unwrap();
+    let counter = writable.get(&count_key("1")).await.unwrap().unwrap();
     counter.get("count").unwrap().as_int().unwrap()
 }
 

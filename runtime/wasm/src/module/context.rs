@@ -148,13 +148,15 @@ impl WasmInstanceContext<'_> {
 
         let entity_type: String = asc_get(self, entity_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
-        let entity_option = host_exports.store_get(
-            &mut self.as_mut().ctx.state,
-            entity_type.clone(),
-            id.clone(),
-            gas,
-            scope,
-        )?;
+        let entity_option = host_exports
+            .store_get(
+                &mut self.as_mut().ctx.state,
+                entity_type.clone(),
+                id.clone(),
+                gas,
+                scope,
+            )
+            .await?;
 
         if self.as_ref().ctx.instrument {
             debug!(self.as_ref().ctx.logger, "store_get";
@@ -265,18 +267,20 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
 
-        host_exports.store_set(
-            &logger,
-            block_number,
-            &mut ctx.state,
-            &ctx.proof_of_indexing,
-            ctx.timestamp,
-            entity,
-            id,
-            data,
-            &stopwatch,
-            gas,
-        )?;
+        host_exports
+            .store_set(
+                &logger,
+                block_number,
+                &mut ctx.state,
+                &ctx.proof_of_indexing,
+                ctx.timestamp,
+                entity,
+                id,
+                data,
+                &stopwatch,
+                gas,
+            )
+            .await?;
 
         Ok(())
     }

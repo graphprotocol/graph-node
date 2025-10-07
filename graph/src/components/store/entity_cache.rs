@@ -187,7 +187,7 @@ impl EntityCache {
         self.handler_updates.clear();
     }
 
-    pub fn get(
+    pub async fn get(
         &mut self,
         key: &EntityKey,
         scope: GetScope,
@@ -197,7 +197,7 @@ impl EntityCache {
         let mut entity: Option<Arc<Entity>> = match scope {
             GetScope::Store => {
                 if !self.current.contains_key(key) {
-                    let entity = self.store.get(key)?;
+                    let entity = self.store.get(key).await?;
                     self.current.insert(key.clone(), entity.map(Arc::new));
                 }
                 // Unwrap: we just inserted the entity
@@ -213,7 +213,7 @@ impl EntityCache {
         // always creates it in a new style.
         debug_assert!(match scope {
             GetScope::Store => {
-                entity == self.store.get(key).unwrap().map(Arc::new)
+                entity == self.store.get(key).await.unwrap().map(Arc::new)
             }
             GetScope::InBlock => true,
         });
@@ -364,7 +364,7 @@ impl EntityCache {
     /// with existing data. The entity will be validated against the
     /// subgraph schema, and any errors will result in an `Err` being
     /// returned.
-    pub fn set(
+    pub async fn set(
         &mut self,
         key: EntityKey,
         entity: Entity,
@@ -407,7 +407,7 @@ impl EntityCache {
         // lookup in the database and check again with an entity that merges
         // the existing entity with the changes
         if !is_valid {
-            let entity = self.get(&key, GetScope::Store)?.ok_or_else(|| {
+            let entity = self.get(&key, GetScope::Store).await?.ok_or_else(|| {
                 anyhow!(
                     "Failed to read entity {}[{}] back from cache",
                     key.entity_type,
