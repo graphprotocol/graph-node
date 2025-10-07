@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use diesel::{
     deserialize::FromSql,
     pg::Pg,
@@ -1326,13 +1327,14 @@ impl EnsLookup {
     }
 }
 
+#[async_trait]
 impl EnsLookupTrait for EnsLookup {
-    fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
+    async fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
         let conn = self.primary.get()?;
         primary::Connection::new(conn).find_ens_name(hash)
     }
 
-    fn is_table_empty(&self) -> Result<bool, StoreError> {
+    async fn is_table_empty(&self) -> Result<bool, StoreError> {
         match self.state.load(std::sync::atomic::Ordering::SeqCst) {
             STATE_ENS_NOT_CHECKED => {}
             STATE_ENS_EMPTY => return Ok(true),
