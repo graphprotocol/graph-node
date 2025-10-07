@@ -152,7 +152,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn deployment_synced(&self, _block_ptr: BlockPtr) -> Result<(), StoreError> {
+    async fn deployment_synced(&self, _block_ptr: BlockPtr) -> Result<(), StoreError> {
         unimplemented!()
     }
 
