@@ -162,7 +162,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
     /// that is used for debugging purposes only.
-    fn debug_fork(
+    async fn debug_fork(
         &self,
         subgraph_id: &DeploymentHash,
         logger: Logger,

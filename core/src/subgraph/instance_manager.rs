@@ -438,7 +438,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // Obtain the debug fork from the subgraph store
         let debug_fork = self
             .subgraph_store
-            .debug_fork(&deployment.hash, logger.clone())?;
+            .debug_fork(&deployment.hash, logger.clone())
+            .await?;
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
