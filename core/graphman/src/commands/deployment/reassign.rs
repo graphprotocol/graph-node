@@ -77,7 +77,7 @@ pub fn load_deployment(
     Ok(Deployment { locator, site })
 }
 
-pub fn reassign_deployment(
+pub async fn reassign_deployment(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: &Deployment,
@@ -115,6 +115,7 @@ pub fn reassign_deployment(
     let mirror = catalog::Mirror::primary_only(primary_pool);
     let count = mirror
         .assignments(&node)
+        .await
         .map_err(GraphmanError::from)?
         .len();
     if count == 1 {

@@ -9,7 +9,7 @@ use graphman::commands::deployment::reassign::{
 };
 use graphman::deployment::DeploymentSelector;
 
-pub fn run(
+pub async fn run(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: DeploymentSelector,
@@ -33,7 +33,8 @@ pub fn run(
         &deployment,
         node,
         curr_node,
-    )?;
+    )
+    .await?;
 
     match reassign_result {
         ReassignResult::Ok => {

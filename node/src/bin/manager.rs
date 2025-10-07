@@ -1251,6 +1251,7 @@ async fn main() -> anyhow::Result<()> {
                 deployment,
                 &node,
             )
+            .await
         }
         Pause { deployment } => {
             let notifications_sender = ctx.notification_sender();

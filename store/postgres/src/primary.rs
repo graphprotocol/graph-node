@@ -2070,7 +2070,7 @@ impl Mirror {
         &self.pools[0]
     }
 
-    pub fn assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
+    pub async fn assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
         self.read(|conn| queries::assignments(conn, node))
     }
 

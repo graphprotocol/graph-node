@@ -27,7 +27,7 @@ pub async fn unassign(
     Ok(())
 }
 
-pub fn reassign(
+pub async fn reassign(
     primary: ConnectionPool,
     sender: &NotificationSender,
     search: &DeploymentSearch,
@@ -63,7 +63,7 @@ pub fn reassign(
     // assigns to a node that wasn't used before, warn the user that they
     // might have mistyped the node name
     let mirror = catalog::Mirror::primary_only(primary);
-    let count = mirror.assignments(&node)?.len();
+    let count = mirror.assignments(&node).await?.len();
     if count == 1 {
         println!("warning: this is the only deployment assigned to {node}");
         println!("         are you sure it is spelled correctly?");
