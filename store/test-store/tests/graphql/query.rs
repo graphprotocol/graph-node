@@ -456,6 +456,7 @@ async fn insert_test_entities(
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
+        .await
         .unwrap();
 
     let s = id_type.songs();

@@ -480,7 +480,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             node_id,
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
-        )
+        ).await
         .unwrap();
 
     // 1 account 3 wallets

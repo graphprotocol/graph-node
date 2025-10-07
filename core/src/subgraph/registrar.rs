@@ -587,5 +587,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
             network_name.into(),
             version_switching_mode,
         )
+        .await
         .map_err(SubgraphRegistrarError::SubgraphDeploymentError)
 }
