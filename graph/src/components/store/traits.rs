@@ -230,7 +230,7 @@ pub trait ReadStore: Send + Sync + 'static {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
     /// Look up multiple entities as of the latest block.
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
@@ -251,11 +251,11 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get(key)
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        (**self).get_many(keys)
+        (**self).get_many(keys).await
     }
 
     async fn get_derived(

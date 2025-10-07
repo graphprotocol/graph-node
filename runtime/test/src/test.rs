@@ -566,7 +566,8 @@ async fn run_ipfs_map(
         .take_ctx()
         .take_state()
         .entity_cache
-        .as_modifications(0)?
+        .as_modifications(0)
+        .await?
         .modifications;
 
     // Bring the modifications into a predictable order (by entity_id)
@@ -1081,7 +1082,7 @@ async fn test_entity_store(api_version: Version) {
         &mut ctx.ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),
     );
-    let mut mods = cache.as_modifications(0).unwrap().modifications;
+    let mut mods = cache.as_modifications(0).await.unwrap().modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -1102,6 +1103,7 @@ async fn test_entity_store(api_version: Version) {
         .take_state()
         .entity_cache
         .as_modifications(0)
+        .await
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());
@@ -1616,7 +1618,11 @@ async fn generate_id() {
         .expect("setting auto works");
 
     let entity_cache = host.ctx.state.entity_cache;
-    let mods = entity_cache.as_modifications(12).unwrap().modifications;
+    let mods = entity_cache
+        .as_modifications(12)
+        .await
+        .unwrap()
+        .modifications;
     let id_map: HashMap<&str, Id> = HashMap::from_iter(
         vec![
             (

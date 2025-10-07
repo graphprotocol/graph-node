@@ -60,7 +60,7 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.get(key).cloned())
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         _keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -194,12 +194,12 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store);
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
-#[test]
-fn insert_modifications() {
+#[tokio::test]
+async fn insert_modifications() {
     // Return no entities from the store, forcing the cache to treat any `set`
     // operation as an insert.
     let store = MockStore::new(BTreeMap::new());
@@ -222,7 +222,7 @@ fn insert_modifications() {
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -241,8 +241,8 @@ fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<Enti
     map
 }
 
-#[test]
-fn overwrite_modifications() {
+#[tokio::test]
+async fn overwrite_modifications() {
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
     let store = {
@@ -271,7 +271,7 @@ fn overwrite_modifications() {
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -281,8 +281,8 @@ fn overwrite_modifications() {
     );
 }
 
-#[test]
-fn consecutive_modifications() {
+#[tokio::test]
+async fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
     let store = {
@@ -308,7 +308,7 @@ fn consecutive_modifications() {
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::overwrite(
@@ -319,8 +319,8 @@ fn consecutive_modifications() {
     );
 }
 
-#[test]
-fn check_vid_sequence() {
+#[tokio::test]
+async fn check_vid_sequence() {
     let store = MockStore::new(BTreeMap::new());
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
@@ -335,7 +335,7 @@ fn check_vid_sequence() {
             .unwrap();
     }
 
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     let mods = result.unwrap().modifications;
     for m in mods {
         match m {

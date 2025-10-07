@@ -91,6 +91,7 @@ pub async fn insert(
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(block_ptr_to.number)
+        .await
         .expect("failed to convert to modifications")
         .modifications;
     let metrics_registry = METRICS_REGISTRY.clone();
