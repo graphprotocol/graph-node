@@ -1224,7 +1224,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Remove { name } => commands::remove::run(ctx.subgraph_store(), &name).await,
-        Create { name } => commands::create::run(ctx.subgraph_store(), name),
+        Create { name } => commands::create::run(ctx.subgraph_store(), name).await,
         Unassign { deployment } => {
             let notifications_sender = ctx.notification_sender();
             let primary_pool = ctx.primary_pool();

@@ -233,7 +233,7 @@ where
         &self,
         name: SubgraphName,
     ) -> Result<CreateSubgraphResult, SubgraphRegistrarError> {
-        let id = self.store.create_subgraph(name.clone())?;
+        let id = self.store.create_subgraph(name.clone()).await?;
 
         debug!(self.logger, "Created subgraph"; "subgraph_name" => name.to_string());
 

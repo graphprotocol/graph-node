@@ -1379,7 +1379,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         )
     }
 
-    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
+    async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn.transaction(|conn| {
             let mut pconn = primary::Connection::new(conn);

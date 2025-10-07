@@ -236,7 +236,7 @@ fn create_subgraph() {
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let (_, events) =
-            tap_store_events(async || store.create_subgraph(name.clone()).unwrap()).await;
+            tap_store_events(async || store.create_subgraph(name.clone()).await.unwrap()).await;
         let (current, pending) = subgraph_deployments(&mut primary);
         assert!(events.is_empty());
         assert!(current.is_none());
@@ -289,7 +289,7 @@ fn create_subgraph() {
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let (_, events) =
-            tap_store_events(async || store.create_subgraph(name.clone()).unwrap()).await;
+            tap_store_events(async || store.create_subgraph(name.clone()).await.unwrap()).await;
         let (current, pending) = subgraph_deployments(&mut primary);
         assert!(events.is_empty());
         assert!(current.is_none());
