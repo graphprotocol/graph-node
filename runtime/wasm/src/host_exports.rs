@@ -222,7 +222,7 @@ impl HostExports {
         )))
     }
 
-    pub(crate) fn store_set(
+    pub(crate) async fn store_set(
         &self,
         logger: &Logger,
         block: BlockNumber,
@@ -337,12 +337,15 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
-        state.entity_cache.set(
-            key,
-            entity,
-            block,
-            Some(&mut state.write_capacity_remaining),
-        )?;
+        state
+            .entity_cache
+            .set(
+                key,
+                entity,
+                block,
+                Some(&mut state.write_capacity_remaining),
+            )
+            .await?;
 
         Ok(())
     }
@@ -382,7 +385,7 @@ impl HostExports {
         Ok(())
     }
 
-    pub(crate) fn store_get<'a>(
+    pub(crate) async fn store_get<'a>(
         &self,
         state: &'a mut BlockState,
         entity_type: String,
@@ -396,7 +399,7 @@ impl HostExports {
         let store_key = entity_type.parse_key_in(entity_id, self.data_source.causality_region)?;
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.get(&store_key, scope)?;
+        let result = state.entity_cache.get(&store_key, scope).await?;
 
         Self::track_gas_and_ops(
             gas,
@@ -1335,7 +1338,7 @@ pub mod test_support {
             }
         }
 
-        pub fn store_set(
+        pub async fn store_set(
             &self,
             logger: &Logger,
             block: BlockNumber,
@@ -1347,21 +1350,23 @@ pub mod test_support {
             stopwatch: &StopwatchMetrics,
             gas: &GasCounter,
         ) -> Result<(), HostExportError> {
-            self.host_exports.store_set(
-                logger,
-                block,
-                state,
-                proof_of_indexing,
-                self.block_time,
-                entity_type,
-                entity_id,
-                data,
-                stopwatch,
-                gas,
-            )
+            self.host_exports
+                .store_set(
+                    logger,
+                    block,
+                    state,
+                    proof_of_indexing,
+                    self.block_time,
+                    entity_type,
+                    entity_id,
+                    data,
+                    stopwatch,
+                    gas,
+                )
+                .await
         }
 
-        pub fn store_get(
+        pub async fn store_get(
             &self,
             state: &mut BlockState,
             entity_type: String,
@@ -1370,6 +1375,7 @@ pub mod test_support {
         ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
             self.host_exports
                 .store_get(state, entity_type, entity_id, gas, GetScope::Store)
+                .await
         }
     }
 }

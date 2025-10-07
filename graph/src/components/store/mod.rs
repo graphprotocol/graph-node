@@ -870,7 +870,7 @@ impl EmptyStore {
 
 #[async_trait]
 impl ReadStore for EmptyStore {
-    fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         Ok(None)
     }
 

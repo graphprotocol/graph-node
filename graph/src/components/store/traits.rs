@@ -227,7 +227,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait ReadStore: Send + Sync + 'static {
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
     /// Look up multiple entities as of the latest block.
     async fn get_many(
@@ -247,8 +247,8 @@ pub trait ReadStore: Send + Sync + 'static {
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
 #[async_trait]
 impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        (**self).get(key)
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        (**self).get(key).await
     }
 
     async fn get_many(
