@@ -1201,6 +1201,7 @@ async fn main() -> anyhow::Result<()> {
                     let count = count.unwrap_or(1_000_000);
                     let older = older.map(|older| chrono::Duration::minutes(older as i64));
                     commands::unused_deployments::remove(store, count, deployment.as_deref(), older)
+                        .await
                 }
             }
         }

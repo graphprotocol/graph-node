@@ -217,7 +217,7 @@ impl Job for UnusedJob {
         };
 
         for deployment in remove {
-            match self.store.remove_deployment(deployment.id) {
+            match self.store.remove_deployment(deployment.id).await {
                 Ok(()) => { /* ignore */ }
                 Err(e) => {
                     error!(logger, "failed to remove unused deployment";

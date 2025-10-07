@@ -163,7 +163,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             node_id,
             "fake_network".to_string(),
             SubgraphVersionSwitchingMode::Instant,
-        ).await
+        )
+        .await
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -444,13 +445,15 @@ fn other_shard(
 fn copy() {
     run_test(|store, src| async move {
         if let Some(dst_shard) = other_shard(&store, &src)? {
-            let deployment = store.copy_deployment(
-                &src,
-                dst_shard,
-                NODE_ID.clone(),
-                BLOCKS[1].clone(),
-                OnSync::None,
-            )?;
+            let deployment = store
+                .copy_deployment(
+                    &src,
+                    dst_shard,
+                    NODE_ID.clone(),
+                    BLOCKS[1].clone(),
+                    OnSync::None,
+                )
+                .await?;
 
             store
                 .cheap_clone()
@@ -475,13 +478,9 @@ fn on_sync() {
     for on_sync in [OnSync::None, OnSync::Activate, OnSync::Replace] {
         run_test(move |store, src| async move {
             if let Some(dst_shard) = other_shard(&store, &src)? {
-                let dst = store.copy_deployment(
-                    &src,
-                    dst_shard,
-                    NODE_ID.clone(),
-                    BLOCKS[1].clone(),
-                    on_sync,
-                )?;
+                let dst = store
+                    .copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone(), on_sync)
+                    .await?;
 
                 let writable = store
                     .cheap_clone()
@@ -524,13 +523,15 @@ fn on_sync() {
     // copy has vanished
     run_test(move |store, src| async move {
         if let Some(dst_shard) = other_shard(&store, &src)? {
-            let dst = store.copy_deployment(
-                &src,
-                dst_shard,
-                NODE_ID.clone(),
-                BLOCKS[1].clone(),
-                OnSync::Replace,
-            )?;
+            let dst = store
+                .copy_deployment(
+                    &src,
+                    dst_shard,
+                    NODE_ID.clone(),
+                    BLOCKS[1].clone(),
+                    OnSync::Replace,
+                )
+                .await?;
 
             let writable = store
                 .cheap_clone()
@@ -544,7 +545,7 @@ fn on_sync() {
             let src_site = primary.locate_site(src.clone())?.unwrap();
             primary.unassign_subgraph(&src_site)?;
             store.activate(&dst)?;
-            store.remove_deployment(src.id.into())?;
+            store.remove_deployment(src.id.into()).await?;
 
             let res = writable.deployment_synced(BLOCKS[2].clone()).await;
             assert!(res.is_ok());

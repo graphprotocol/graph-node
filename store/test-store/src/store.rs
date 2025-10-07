@@ -263,7 +263,7 @@ pub async fn remove_subgraph(id: &DeploymentHash) {
     for loc in locs {
         let site = conn.locate_site(loc.clone()).unwrap().unwrap();
         conn.unassign_subgraph(&site).unwrap();
-        SUBGRAPH_STORE.remove_deployment(site.id).unwrap();
+        SUBGRAPH_STORE.remove_deployment(site.id).await.unwrap();
     }
 }
 
