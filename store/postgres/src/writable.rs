@@ -1575,7 +1575,7 @@ impl SourceableStore {
 
 #[async_trait]
 impl store::SourceableStore for SourceableStore {
-    fn get_range(
+    async fn get_range(
         &self,
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,

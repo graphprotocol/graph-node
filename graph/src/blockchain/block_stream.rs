@@ -498,7 +498,9 @@ async fn get_entities_for_range(
         .iter()
         .map(|name| schema.entity_type(name))
         .collect();
-    Ok(store.get_range(entity_types?, CausalityRegion::ONCHAIN, from..to)?)
+    Ok(store
+        .get_range(entity_types?, CausalityRegion::ONCHAIN, from..to)
+        .await?)
 }
 
 impl<C: Blockchain> TriggersAdapterWrapper<C> {
