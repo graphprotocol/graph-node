@@ -365,7 +365,7 @@ where
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError> {
-        self.store.clone().remove_subgraph(name.clone())?;
+        self.store.clone().remove_subgraph(name.clone()).await?;
 
         debug!(self.logger, "Removed subgraph"; "subgraph_name" => name.to_string());
 

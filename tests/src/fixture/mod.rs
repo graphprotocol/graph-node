@@ -648,7 +648,7 @@ pub async fn cleanup(
     hash: &DeploymentHash,
 ) -> Result<(), Error> {
     let locators = subgraph_store.locators(hash).await?;
-    subgraph_store.remove_subgraph(name.clone())?;
+    subgraph_store.remove_subgraph(name.clone()).await?;
     for locator in locators {
         subgraph_store.remove_deployment(locator.id.into())?;
     }
