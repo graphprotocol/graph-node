@@ -128,7 +128,8 @@ fn reassign_subgraph() {
             let node = NodeId::new("left").unwrap();
             let expected = vec![StoreEvent::new(vec![assigned(&id)])];
 
-            let (_, events) = tap_store_events(|| store.reassign_subgraph(&id, &node).unwrap());
+            let (_, events) =
+                tap_store_events(async || store.reassign_subgraph(&id, &node).unwrap()).await;
             let node = find_assignment(store.as_ref(), &id).await;
             assert_eq!(Some("left"), node.as_deref());
             assert_eq!(expected, events);
@@ -155,7 +156,7 @@ fn create_subgraph() {
         )
     }
 
-    fn deploy(
+    async fn deploy(
         store: &SubgraphStore,
         id: &str,
         mode: SubgraphVersionSwitchingMode,
@@ -180,7 +181,7 @@ fn create_subgraph() {
         let deployment = DeploymentCreate::new(String::new(), &manifest, None);
         let node_id = NodeId::new("left").unwrap();
 
-        let (deployment, events) = tap_store_events(|| {
+        let (deployment, events) = tap_store_events(async || {
             store
                 .create_subgraph_deployment(
                     name,
@@ -191,7 +192,8 @@ fn create_subgraph() {
                     mode,
                 )
                 .unwrap()
-        });
+        })
+        .await;
         let events = events
             .into_iter()
             .flat_map(|event| event.changes.into_iter())
@@ -233,14 +235,15 @@ fn create_subgraph() {
         let mut primary = primary_connection();
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
-        let (_, events) = tap_store_events(|| store.create_subgraph(name.clone()).unwrap());
+        let (_, events) =
+            tap_store_events(async || store.create_subgraph(name.clone()).unwrap()).await;
         let (current, pending) = subgraph_deployments(&mut primary);
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
 
         // Deploy
-        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE);
+        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE).await;
         let expected = deploy_event(&deployment1);
         assert_eq!(expected, events);
 
@@ -249,7 +252,7 @@ fn create_subgraph() {
         assert!(pending.is_none());
 
         // Deploying again overwrites current
-        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE);
+        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE).await;
         let mut expected = deploy_event(&deployment2);
         expected.insert(unassigned(&deployment1));
         assert_eq!(expected, events);
@@ -262,7 +265,7 @@ fn create_subgraph() {
         deployment_synced(&store, &deployment2, GENESIS_PTR.clone()).await;
 
         // Deploying again still overwrites current
-        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE).await;
         let mut expected = deploy_event(&deployment3);
         expected.insert(unassigned(&deployment2));
         assert_eq!(expected, events);
@@ -285,14 +288,15 @@ fn create_subgraph() {
         let mut primary = primary_connection();
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
-        let (_, events) = tap_store_events(|| store.create_subgraph(name.clone()).unwrap());
+        let (_, events) =
+            tap_store_events(async || store.create_subgraph(name.clone()).unwrap()).await;
         let (current, pending) = subgraph_deployments(&mut primary);
         assert!(events.is_empty());
         assert!(current.is_none());
         assert!(pending.is_none());
 
         // Deploy
-        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE);
+        let (deployment1, events) = deploy(store.as_ref(), ID1, MODE).await;
         let expected = deploy_event(&deployment1);
         assert_eq!(expected, events);
 
@@ -302,14 +306,14 @@ fn create_subgraph() {
         assert!(pending.is_none());
 
         // Deploying the same thing again does nothing
-        let (deployment1_again, events) = deploy(store.as_ref(), ID1, MODE);
+        let (deployment1_again, events) = deploy(store.as_ref(), ID1, MODE).await;
         assert!(events.is_empty());
         assert_eq!(&deployment1, &deployment1_again);
         let versions2 = subgraph_versions(&mut primary);
         assert_eq!(versions, versions2);
 
         // Deploy again, current is not synced, so it gets replaced
-        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE);
+        let (deployment2, events) = deploy(store.as_ref(), ID2, MODE).await;
         let mut expected = deploy_event(&deployment2);
         expected.insert(unassigned(&deployment1));
         assert_eq!(expected, events);
@@ -320,7 +324,7 @@ fn create_subgraph() {
 
         // Deploy when current is synced leaves current alone and adds pending
         deployment_synced(&store, &deployment2, GENESIS_PTR.clone()).await;
-        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3, events) = deploy(store.as_ref(), ID3, MODE).await;
         let expected = deploy_event(&deployment3);
         assert_eq!(expected, events);
 
@@ -330,7 +334,7 @@ fn create_subgraph() {
         assert_eq!(Some(ID3), pending.as_deref());
 
         // Deploying that same thing again changes nothing
-        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE).await;
         assert!(events.is_empty());
         assert_eq!(&deployment3, &deployment3_again);
         let versions2 = subgraph_versions(&mut primary);
@@ -345,7 +349,7 @@ fn create_subgraph() {
         let mut expected = HashSet::new();
         expected.insert(unassigned(&deployment3));
 
-        let (deployment2_again, events) = deploy(store.as_ref(), ID2, MODE);
+        let (deployment2_again, events) = deploy(store.as_ref(), ID2, MODE).await;
         assert_eq!(&deployment2, &deployment2_again);
         assert_eq!(expected, events);
 
@@ -356,7 +360,7 @@ fn create_subgraph() {
         // Mark `ID3` as synced and deploy that again
         deployment_synced(&store, &deployment3, GENESIS_PTR.clone()).await;
         let expected = HashSet::from([unassigned(&deployment2), assigned(&deployment3)]);
-        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE);
+        let (deployment3_again, events) = deploy(store.as_ref(), ID3, MODE).await;
         assert_eq!(&deployment3, &deployment3_again);
         assert_eq!(expected, events);
 
