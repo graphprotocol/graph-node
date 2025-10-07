@@ -1059,18 +1059,18 @@ impl HostExports {
         Ok(())
     }
 
-    pub(crate) fn ens_name_by_hash(
+    pub(crate) async fn ens_name_by_hash(
         &self,
         hash: &str,
         gas: &GasCounter,
         state: &mut BlockState,
     ) -> Result<Option<String>, anyhow::Error> {
         Self::track_gas_and_ops(gas, state, gas::ENS_NAME_BY_HASH, "ens_name_by_hash")?;
-        Ok(self.ens_lookup.find_name(hash)?)
+        Ok(self.ens_lookup.find_name(hash).await?)
     }
 
-    pub(crate) fn is_ens_data_empty(&self) -> Result<bool, anyhow::Error> {
-        Ok(self.ens_lookup.is_table_empty()?)
+    pub(crate) async fn is_ens_data_empty(&self) -> Result<bool, anyhow::Error> {
+        Ok(self.ens_lookup.is_table_empty().await?)
     }
 
     pub(crate) fn log_log(
