@@ -263,7 +263,13 @@ where
 async fn count_get_many(writable: Arc<dyn WritableStore>) -> i32 {
     let key = count_key("1");
     let keys = BTreeSet::from_iter(vec![key.clone()]);
-    let counter = writable.get_many(keys).unwrap().get(&key).unwrap().clone();
+    let counter = writable
+        .get_many(keys)
+        .await
+        .unwrap()
+        .get(&key)
+        .unwrap()
+        .clone();
     counter.get("count").unwrap().as_int().unwrap()
 }
 

@@ -1539,7 +1539,7 @@ impl ReadStore for WritableStore {
         self.writer.get(key)
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {

@@ -874,7 +874,10 @@ impl ReadStore for EmptyStore {
         Ok(None)
     }
 
-    fn get_many(&self, _: BTreeSet<EntityKey>) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+    async fn get_many(
+        &self,
+        _: BTreeSet<EntityKey>,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(BTreeMap::new())
     }
 
