@@ -1730,7 +1730,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .iter()
             .map(|block| block as &dyn graph::blockchain::Block)
             .collect();
-        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
+        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()).await {
             error!(logger, "Error writing to block cache {}", e);
         }
         blocks.extend(new_blocks);

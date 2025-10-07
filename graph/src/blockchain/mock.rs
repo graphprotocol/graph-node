@@ -518,7 +518,7 @@ impl ChainStore for MockChainStore {
     async fn upsert_block(&self, _block: Arc<dyn Block>) -> Result<(), Error> {
         unimplemented!()
     }
-    fn upsert_light_blocks(&self, _blocks: &[&dyn Block]) -> Result<(), Error> {
+    async fn upsert_light_blocks(&self, _blocks: &[&dyn Block]) -> Result<(), Error> {
         unimplemented!()
     }
     async fn attempt_chain_head_update(

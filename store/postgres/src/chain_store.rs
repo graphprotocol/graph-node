@@ -2119,7 +2119,7 @@ impl ChainStoreTrait for ChainStore {
         .map_err(Error::from)
     }
 
-    fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
+    async fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
         let mut conn = self.pool.get()?;
         for block in blocks {
             self.storage
