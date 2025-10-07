@@ -42,7 +42,11 @@ where
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             block_store::set_chain(chain.clone(), name).await;
 
-            let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store
+                .block_store()
+                .chain_store(name)
+                .await
+                .expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.cheap_clone()).unwrap_or_else(|err| {
@@ -67,7 +71,11 @@ where
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             let cached = block_store::set_chain(chain.clone(), name).await;
 
-            let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store
+                .block_store()
+                .chain_store(name)
+                .await
+                .expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.clone(), cached).await;

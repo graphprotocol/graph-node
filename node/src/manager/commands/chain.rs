@@ -52,7 +52,7 @@ pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(),
         );
     }
     for chain in chains {
-        let head_block = match store.chain_store(&chain.name) {
+        let head_block = match store.chain_store(&chain.name).await {
             None => "no chain".to_string(),
             Some(chain_store) => chain_store
                 .chain_head_ptr()
@@ -113,6 +113,7 @@ pub async fn info(
 
     let chain_store = store
         .chain_store(&chain.name)
+        .await
         .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
     let head_block = chain_store.cheap_clone().chain_head_ptr().await?;
     let ancestor = match &head_block {
@@ -223,6 +224,7 @@ pub async fn change_block_cache_shard(
 
     let chain_store = store
         .chain_store(&chain_name)
+        .await
         .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
     let new_name = format!("{}-old", &chain_name);
     let ident = chain_store.chain_identifier().await?;

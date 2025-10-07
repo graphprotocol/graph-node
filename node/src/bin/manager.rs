@@ -1026,11 +1026,12 @@ impl Context {
         Networks::from_config(logger, &self.config, registry, metrics, &[]).await
     }
 
-    fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
+    async fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
         use graph::components::store::BlockStore;
         self.store()
             .block_store()
             .chain_store(chain_name)
+            .await
             .ok_or_else(|| anyhow::anyhow!("Could not find a network named '{}'", chain_name))
     }
 
@@ -1051,7 +1052,7 @@ impl Context {
         )
         .await?;
 
-        let chain_store = self.chain_store(chain_name)?;
+        let chain_store = self.chain_store(chain_name).await?;
         let ethereum_adapter = networks
             .ethereum_rpcs(chain_name.into())
             .cheapest()
@@ -1464,7 +1465,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Truncate { chain_name, force } => {
                     use commands::check_blocks::truncate;
-                    let chain_store = ctx.chain_store(&chain_name)?;
+                    let chain_store = ctx.chain_store(&chain_name).await?;
                     truncate(chain_store, force)
                 }
                 CallCache { method, chain_name } => {
@@ -1474,7 +1475,7 @@ async fn main() -> anyhow::Result<()> {
                             to,
                             remove_entire_cache,
                         } => {
-                            let chain_store = ctx.chain_store(&chain_name)?;
+                            let chain_store = ctx.chain_store(&chain_name).await?;
                             if !remove_entire_cache && from.is_none() && to.is_none() {
                                 bail!("you must specify either --from and --to or --remove-entire-cache");
                             }

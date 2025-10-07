@@ -40,7 +40,7 @@ async fn block_ptr(
 
     let chain = chains.iter().next().unwrap().to_string();
 
-    let chain_store = match store.chain_store(&chain) {
+    let chain_store = match store.chain_store(&chain).await {
         None => bail!("can not find chain store for {}", chain),
         Some(store) => store,
     };
@@ -165,7 +165,7 @@ pub async fn run(
 
         let start_block = match deployment_details.start_block {
             Some(ptr) => Some(ptr),
-            None => match block_store.chain_store(chain) {
+            None => match block_store.chain_store(chain).await {
                 Some(chain_store) => chain_store.genesis_block_ptr().await.ok(),
                 None => None,
             },

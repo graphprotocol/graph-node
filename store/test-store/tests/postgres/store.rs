@@ -1677,6 +1677,7 @@ fn cleanup_cached_blocks() {
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
+            .await
             .expect("fake chain store");
         let cleaned = chain_store
             .cleanup_cached_blocks(10)
@@ -1710,6 +1711,7 @@ fn parse_timestamp() {
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
+            .await
             .expect("fake chain store");
 
         let (_network, number, timestamp, _) = chain_store
@@ -1744,6 +1746,7 @@ fn parse_timestamp_firehose() {
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
+            .await
             .expect("fake chain store");
 
         let (_network, number, timestamp, _) = chain_store
@@ -1778,6 +1781,7 @@ fn parse_null_timestamp() {
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
+            .await
             .expect("fake chain store");
 
         let (_network, number, timestamp, _) = chain_store
