@@ -512,7 +512,7 @@ where
             .non_deterministic()?;
 
         if has_errors {
-            self.maybe_cancel()?;
+            self.maybe_cancel().await?;
         }
 
         Ok(())
@@ -520,13 +520,14 @@ where
 
     /// Cancel the subgraph if `disable_fail_fast` is not set and it is not
     /// synced
-    fn maybe_cancel(&self) -> Result<(), ProcessingError> {
+    async fn maybe_cancel(&self) -> Result<(), ProcessingError> {
         // To prevent a buggy pending version from replacing a current version, if errors are
         // present the subgraph will be unassigned.
         let store = &self.inputs.store;
         if !ENV_VARS.disable_fail_fast && !store.is_deployment_synced() {
             store
                 .pause_subgraph()
+                .await
                 .map_err(|e| ProcessingError::Unknown(e.into()))?;
 
             // Use `Canceled` to avoiding setting the subgraph health to failed, an error was

@@ -1733,7 +1733,7 @@ impl WritableStoreTrait for WritableStore {
         self.is_deployment_synced.load(Ordering::SeqCst)
     }
 
-    fn pause_subgraph(&self) -> Result<(), StoreError> {
+    async fn pause_subgraph(&self) -> Result<(), StoreError> {
         self.store.pause_subgraph(&self.store.site)
     }
 

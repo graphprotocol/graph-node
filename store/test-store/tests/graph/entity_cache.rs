@@ -141,7 +141,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn pause_subgraph(&self) -> Result<(), StoreError> {
+    async fn pause_subgraph(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
