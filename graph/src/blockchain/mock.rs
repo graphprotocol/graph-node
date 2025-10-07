@@ -484,7 +484,7 @@ impl ChainHeadStore for MockChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
+    async fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
         unimplemented!()
     }
     async fn set_chain_head(

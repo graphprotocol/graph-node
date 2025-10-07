@@ -467,7 +467,7 @@ pub trait ChainHeadStore: Send + Sync {
     /// Get the current head block cursor for this chain.
     ///
     /// The head block cursor will be None on initial set up.
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
+    async fn chain_head_cursor(&self) -> Result<Option<String>, Error>;
 
     /// This method does actually three operations:
     /// - Upserts received block into blocks table

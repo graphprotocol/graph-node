@@ -2217,7 +2217,7 @@ impl ChainHeadStore for ChainStore {
             .await?)
     }
 
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
+    async fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
         use public::ethereum_networks::dsl::*;
 
         ethereum_networks
