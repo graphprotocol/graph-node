@@ -228,7 +228,7 @@ async fn setup(
     match loc {
         Some(loc) if id_type.deployment_id() == loc.hash.as_str() => loc,
         Some(loc) => {
-            test_store::remove_subgraph(&loc.hash);
+            test_store::remove_subgraph(&loc.hash).await;
             initialize(store, id, features, id_type).await
         }
         None => initialize(store, id, features, id_type).await,

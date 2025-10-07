@@ -572,7 +572,7 @@ fn subgraph_features() {
             vec!["User2".to_string(), "Data".to_string()]
         );
 
-        test_store::remove_subgraph(&id);
+        test_store::remove_subgraph(&id).await;
         let features = get_subgraph_features(id.to_string());
         // Subgraph was removed, so we expect the entry to be removed from `subgraph_features` table
         assert!(features.is_none());
@@ -633,7 +633,7 @@ fn subgraph_error() {
             .unwrap();
         assert!(count() == 2);
 
-        test_store::remove_subgraph(&subgraph_id);
+        test_store::remove_subgraph(&subgraph_id).await;
     })
 }
 
@@ -691,7 +691,7 @@ fn subgraph_non_fatal_error() {
         assert!(info.non_fatal_errors.len() == 1);
         assert!(info.health == SubgraphHealth::Unhealthy);
 
-        test_store::remove_subgraph(&subgraph_id);
+        test_store::remove_subgraph(&subgraph_id).await;
     })
 }
 
