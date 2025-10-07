@@ -344,13 +344,15 @@ impl WasmInstanceContext<'_> {
         let id: String = asc_get(self, id_ptr, gas)?;
         let field: String = asc_get(self, field_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
-        let entities = host_exports.store_load_related(
-            &mut self.as_mut().ctx.state,
-            entity_type.clone(),
-            id.clone(),
-            field.clone(),
-            gas,
-        )?;
+        let entities = host_exports
+            .store_load_related(
+                &mut self.as_mut().ctx.state,
+                entity_type.clone(),
+                id.clone(),
+                field.clone(),
+                gas,
+            )
+            .await?;
 
         let entities: Vec<Vec<(Word, Value)>> =
             entities.into_iter().map(|entity| entity.sorted()).collect();
