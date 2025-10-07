@@ -126,8 +126,6 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: &DeploymentLocator,
     ) -> Result<Option<(NodeId, bool)>, StoreError>;
 
-    fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError>;
-
     /// Returns assignments that are not paused
     async fn active_assignments(&self, node: &NodeId)
         -> Result<Vec<DeploymentLocator>, StoreError>;

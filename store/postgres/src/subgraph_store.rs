@@ -1465,12 +1465,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.mirror.assignment_status(site).await
     }
 
-    fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
-        self.mirror
-            .assignments(node)
-            .map(|sites| sites.iter().map(|site| site.into()).collect())
-    }
-
     async fn active_assignments(
         &self,
         node: &NodeId,
