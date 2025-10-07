@@ -111,7 +111,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
-    fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
+    async fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
     async fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
