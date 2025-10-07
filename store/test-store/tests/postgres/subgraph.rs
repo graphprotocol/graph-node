@@ -95,9 +95,13 @@ fn reassign_subgraph() {
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
-    fn find_assignment(store: &SubgraphStore, deployment: &DeploymentLocator) -> Option<String> {
+    async fn find_assignment(
+        store: &SubgraphStore,
+        deployment: &DeploymentLocator,
+    ) -> Option<String> {
         store
             .assigned_node(deployment)
+            .await
             .unwrap()
             .map(|node| node.to_string())
     }
@@ -107,7 +111,7 @@ fn reassign_subgraph() {
         let store = store.subgraph_store();
 
         // Check our setup
-        let node = find_assignment(store.as_ref(), &id);
+        let node = find_assignment(store.as_ref(), &id).await;
         let placement = place("test").expect("the test config places deployments");
         if let Some((_, nodes)) = placement {
             // If the test config does not have deployment rules, we can't check
@@ -125,7 +129,7 @@ fn reassign_subgraph() {
             let expected = vec![StoreEvent::new(vec![assigned(&id)])];
 
             let (_, events) = tap_store_events(|| store.reassign_subgraph(&id, &node).unwrap());
-            let node = find_assignment(store.as_ref(), &id);
+            let node = find_assignment(store.as_ref(), &id).await;
             assert_eq!(Some("left"), node.as_deref());
             assert_eq!(expected, events);
         }

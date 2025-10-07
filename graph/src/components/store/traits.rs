@@ -115,7 +115,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
 
-    fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError>;
+    async fn assigned_node(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Option<NodeId>, StoreError>;
 
     /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
     /// the subgraph is assigned to, and `is_paused` is true if the

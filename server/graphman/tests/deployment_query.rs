@@ -58,7 +58,11 @@ fn graphql_returns_deployment_info() {
         .await;
 
         let namespace = format!("sgd{}", locator.id);
-        let node = SUBGRAPH_STORE.assigned_node(&locator).unwrap().unwrap();
+        let node = SUBGRAPH_STORE
+            .assigned_node(&locator)
+            .await
+            .unwrap()
+            .unwrap();
         let qs = STORE
             .query_store(QueryTarget::Deployment(
                 locator.hash.clone(),
