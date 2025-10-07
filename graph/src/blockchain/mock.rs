@@ -538,7 +538,7 @@ impl ChainStore for MockChainStore {
     ) -> Result<Option<(Value, BlockPtr)>, Error> {
         unimplemented!()
     }
-    fn cleanup_cached_blocks(
+    async fn cleanup_cached_blocks(
         &self,
         _ancestor_count: BlockNumber,
     ) -> Result<Option<(BlockNumber, usize)>, Error> {
