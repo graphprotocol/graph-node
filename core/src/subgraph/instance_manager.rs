@@ -229,7 +229,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         for hash in hashes {
             let loc = subgraph_store
-                .active_locator(&hash)?
+                .active_locator(&hash)
+                .await?
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
             let sourceable_store = subgraph_store.clone().sourceable(loc.id.clone()).await?;

@@ -209,7 +209,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Find the deployment locator for the active deployment with the given
     /// hash. Returns `None` if there is no deployment with that hash
-    fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError>;
+    async fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError>;
 
     /// This migrates subgraphs that existed before the raw_yaml column was added.
     async fn set_manifest_raw_yaml(

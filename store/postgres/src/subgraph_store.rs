@@ -1623,7 +1623,7 @@ impl SubgraphStoreTrait for SubgraphStore {
             .collect())
     }
 
-    fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError> {
+    async fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError> {
         let sites = self.mirror.find_sites(&[hash.to_string()], true)?;
         if sites.len() > 1 {
             return Err(internal_error!(

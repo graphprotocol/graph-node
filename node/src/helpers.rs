@@ -66,7 +66,7 @@ async fn drop_and_recreate_subgraph(
     node_id: NodeId,
     hash: DeploymentHash,
 ) -> Result<DeploymentLocator> {
-    let locator = subgraph_store.active_locator(&hash)?;
+    let locator = subgraph_store.active_locator(&hash).await?;
     if let Some(locator) = locator.clone() {
         cleanup_dev_subgraph(logger, &subgraph_store, &name, &locator)?;
     }
