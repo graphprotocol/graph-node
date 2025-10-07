@@ -298,7 +298,7 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
 pub trait SourceableStore: Sync + Send + 'static {
     /// Returns all versions of entities of the given entity_type that were
     /// changed in the given block_range.
-    fn get_range(
+    async fn get_range(
         &self,
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
@@ -314,13 +314,15 @@ pub trait SourceableStore: Sync + Send + 'static {
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
 #[async_trait]
 impl<T: ?Sized + SourceableStore> SourceableStore for Arc<T> {
-    fn get_range(
+    async fn get_range(
         &self,
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
-        (**self).get_range(entity_types, causality_region, block_range)
+        (**self)
+            .get_range(entity_types, causality_region, block_range)
+            .await
     }
 
     fn input_schema(&self) -> InputSchema {

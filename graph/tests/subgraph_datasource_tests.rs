@@ -70,7 +70,7 @@ impl MockSourcableStore {
 
 #[async_trait]
 impl SourceableStore for MockSourcableStore {
-    fn get_range(
+    async fn get_range(
         &self,
         entity_types: Vec<EntityType>,
         _causality_region: CausalityRegion,

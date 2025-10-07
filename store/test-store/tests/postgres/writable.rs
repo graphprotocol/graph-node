@@ -390,6 +390,7 @@ fn read_range_test() {
         let entity_types = vec![COUNTER_TYPE.clone(), COUNTER2_TYPE.clone()];
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .await
             .unwrap();
         assert_eq!(e.len(), 5);
         for en in &e {
@@ -404,6 +405,7 @@ fn read_range_test() {
         writable.deployment_synced(block_pointer(0)).await.unwrap();
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types, CausalityRegion::ONCHAIN, br)
+            .await
             .unwrap();
         assert_eq!(e.len(), 7);
         for en in &e {
@@ -429,6 +431,7 @@ fn read_immutable_only_range_test() {
         let entity_types = vec![COUNTER2_TYPE.clone()];
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .await
             .unwrap();
         assert_eq!(e.len(), 4);
     })
@@ -495,6 +498,7 @@ fn read_range_pool_created_test() {
         let br: Range<BlockNumber> = 0..18;
         let e: BTreeMap<i32, Vec<EntitySourceOperation>> = sourceable
             .get_range(entity_types.clone(), CausalityRegion::ONCHAIN, br.clone())
+            .await
             .unwrap();
         assert_eq!(e.len(), 2);
         for en in &e {
