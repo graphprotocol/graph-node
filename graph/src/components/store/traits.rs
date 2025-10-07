@@ -134,7 +134,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
-    fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
+    async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError>;
 
     /// Returns a collection of all [`EntityModification`] items in relation to
     /// the given [`BlockNumber`]. No distinction is made between inserts and
