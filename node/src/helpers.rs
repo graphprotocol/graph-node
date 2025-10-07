@@ -23,7 +23,7 @@ async fn cleanup_dev_subgraph(
     info!(logger, "Removing subgraph"; "name" => name.to_string(), "id" => locator.id.to_string(), "hash" => locator.hash.to_string());
     subgraph_store.remove_subgraph(name.clone()).await?;
     subgraph_store.unassign_subgraph(locator).await?;
-    subgraph_store.remove_deployment(locator.id.into())?;
+    subgraph_store.remove_deployment(locator.id.into()).await?;
     info!(logger, "Subgraph removed"; "name" => name.to_string(), "id" => locator.id.to_string(), "hash" => locator.hash.to_string());
     Ok(())
 }

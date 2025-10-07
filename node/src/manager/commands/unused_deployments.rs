@@ -75,7 +75,7 @@ pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn remove(
+pub async fn remove(
     store: Arc<SubgraphStore>,
     count: usize,
     deployment: Option<&str>,
@@ -123,7 +123,7 @@ pub fn remove(
         }
 
         let start = Instant::now();
-        match store.remove_deployment(deployment.id) {
+        match store.remove_deployment(deployment.id).await {
             Ok(()) => {
                 println!(
                     "done removing {} from {} in {:.1}s\n",

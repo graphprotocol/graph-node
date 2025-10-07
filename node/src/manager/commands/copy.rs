@@ -147,7 +147,9 @@ async fn create_inner(
     let shard = Shard::new(shard)?;
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id `{}`", node))?;
 
-    let dst = subgraph_store.copy_deployment(&src, shard, node, base_ptr, on_sync)?;
+    let dst = subgraph_store
+        .copy_deployment(&src, shard, node, base_ptr, on_sync)
+        .await?;
 
     println!("created deployment {} as copy of {}", dst, src);
     Ok(())

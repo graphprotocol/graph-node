@@ -2080,7 +2080,7 @@ impl Mirror {
             .await
     }
 
-    pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
+    pub async fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
         self.read(|conn| queries::assigned_node(conn, site))
     }
 
