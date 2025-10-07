@@ -23,7 +23,7 @@ pub trait ChainIdentifierValidator: Send + Sync + 'static {
 
     /// Saves the provided identifier that will be used as the source of truth
     /// for future validations.
-    fn update_identifier(
+    async fn update_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
@@ -112,13 +112,14 @@ impl ChainIdentifierValidator for ChainIdentifierStore {
         Ok(())
     }
 
-    fn update_identifier(
+    async fn update_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
     ) -> Result<(), ChainIdentifierValidationError> {
         self.store
             .set_chain_identifier(chain_name, chain_identifier)
+            .await
             .map_err(|err| ChainIdentifierValidationError::Store(err))
     }
 }
