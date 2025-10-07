@@ -991,7 +991,8 @@ where
                     let outcome = self
                         .inputs
                         .store
-                        .unfail_non_deterministic_error(&block_ptr)?;
+                        .unfail_non_deterministic_error(&block_ptr)
+                        .await?;
 
                     // Stop trying to unfail.
                     self.state.should_try_unfail_non_deterministic = false;

@@ -113,7 +113,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<UnfailOutcome, StoreError> {
+    async fn unfail_non_deterministic_error(
+        &self,
+        _: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         unimplemented!()
     }
 
