@@ -221,7 +221,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return `true` if the `instrument` flag for the deployment is set.
     /// When this flag is set, indexing of the deployment should log
     /// additional diagnostic information
-    fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
+    async fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
 }
 
 #[async_trait]

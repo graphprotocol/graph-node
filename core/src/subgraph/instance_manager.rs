@@ -511,7 +511,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let causality_region_seq =
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
-        let instrument = self.subgraph_store.instrument(&deployment)?;
+        let instrument = self.subgraph_store.instrument(&deployment).await?;
 
         let decoder = Box::new(Decoder::new(decoder_hook));
 
