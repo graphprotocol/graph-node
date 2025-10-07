@@ -172,7 +172,7 @@ impl<S: Store> IndexNodeResolver<S> {
         Ok(infos.into_value())
     }
 
-    fn resolve_entity_changes_in_block(
+    async fn resolve_entity_changes_in_block(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -187,7 +187,8 @@ impl<S: Store> IndexNodeResolver<S> {
         let entity_changes = self
             .store
             .subgraph_store()
-            .entity_changes_in_block(&subgraph_id, block_number)?;
+            .entity_changes_in_block(&subgraph_id, block_number)
+            .await?;
 
         Ok(entity_changes_to_graphql(entity_changes))
     }
@@ -851,7 +852,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
                 self.resolve_indexing_status_for_version(field, false).await
             }
             (None, "subgraphFeatures") => self.resolve_subgraph_features(field).await,
-            (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
+            (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field).await,
             // The top-level `subgraphVersions` field
             (None, "apiVersions") => self.resolve_api_versions(field),
             (None, "version") => self.version(),
