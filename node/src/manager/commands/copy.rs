@@ -121,6 +121,7 @@ async fn create_inner(
     let chain_store = store
         .block_store()
         .chain_store(network)
+        .await
         .ok_or_else(|| anyhow!("could not find chain store for network {}", network))?;
     let mut hashes = chain_store.block_hashes_by_block_number(src_number).await?;
     let hash = match hashes.len() {

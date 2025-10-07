@@ -378,7 +378,7 @@ pub async fn networks_as_chains(
     });
 
     for (chain_id, adapters, kind) in chains.into_iter() {
-        let chain_store = match store.chain_store(chain_id) {
+        let chain_store = match store.chain_store(chain_id).await {
             Some(c) => c,
             None => {
                 let ident = match timeout(

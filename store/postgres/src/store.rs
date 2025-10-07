@@ -86,7 +86,7 @@ impl QueryStoreManager for Store {
         .map_err(|e| QueryExecutionError::Panic(e.to_string()))
         .and_then(|x| x)?;
 
-        let chain_store = self.block_store.chain_store(&site.network).ok_or_else(|| {
+        let chain_store = self.block_store.chain_store(&site.network).await.ok_or_else(|| {
             internal_error!(
                 "Subgraphs index a known network, but {} indexes `{}` which we do not know about. This is most likely a configuration error.",
                 site.deployment,

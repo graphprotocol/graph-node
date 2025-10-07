@@ -1073,7 +1073,7 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(id)?;
 
         let block_hash = {
-            let chain_store = match block_store.chain_store(&site.network) {
+            let chain_store = match block_store.chain_store(&site.network).await {
                 Some(chain_store) => chain_store,
                 None => return Ok(None),
             };
