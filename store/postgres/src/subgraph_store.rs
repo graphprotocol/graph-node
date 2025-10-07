@@ -1404,7 +1404,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         })
     }
 
-    fn reassign_subgraph(
+    async fn reassign_subgraph(
         &self,
         deployment: &DeploymentLocator,
         node_id: &NodeId,

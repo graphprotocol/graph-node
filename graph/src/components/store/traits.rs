@@ -103,7 +103,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.
-    fn reassign_subgraph(
+    async fn reassign_subgraph(
         &self,
         deployment: &DeploymentLocator,
         node_id: &NodeId,
