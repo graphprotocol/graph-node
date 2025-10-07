@@ -1643,7 +1643,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         store.set_manifest_raw_yaml(site, raw_yaml).await
     }
 
-    fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError> {
+    async fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let store = self.for_site(&site)?;
 
