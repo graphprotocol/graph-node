@@ -249,6 +249,7 @@ pub async fn create_test_subgraph_with_features(
 
     SUBGRAPH_STORE
         .create_subgraph_features(deployment_features)
+        .await
         .unwrap();
 
     locator
