@@ -1106,8 +1106,10 @@ impl WasmInstanceContext<'_> {
         let hash: String = asc_get(self, hash_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
-        let name = host_exports.ens_name_by_hash(&hash, gas, &mut ctx.state)?;
-        if name.is_none() && self.as_ref().ctx.host_exports.is_ens_data_empty()? {
+        let name = host_exports
+            .ens_name_by_hash(&hash, gas, &mut ctx.state)
+            .await?;
+        if name.is_none() && self.as_ref().ctx.host_exports.is_ens_data_empty().await? {
             return Err(anyhow!(
                 "Missing ENS data: see https://github.com/graphprotocol/ens-rainbow"
             )
