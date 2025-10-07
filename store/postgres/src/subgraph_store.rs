@@ -1588,7 +1588,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         }
     }
 
-    fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
+    async fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         match self.site(id) {
             Ok(_) => Ok(true),
             Err(StoreError::DeploymentNotFound(_)) => Ok(false),
