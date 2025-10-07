@@ -456,15 +456,15 @@ pub async fn flush(deployment: &DeploymentLocator) -> Result<(), StoreError> {
 /// requires. Of course, this does not test that events that are sent are
 /// actually received by anything, but makes ensuring that the right events
 /// get sent much more convenient than trying to receive them
-pub fn tap_store_events<F, R>(f: F) -> (R, Vec<StoreEvent>)
+pub async fn tap_store_events<F, R>(f: F) -> (R, Vec<StoreEvent>)
 where
-    F: FnOnce() -> R,
+    F: AsyncFnOnce() -> R,
 {
     use graph_store_postgres::layout_for_tests::{EVENT_TAP, EVENT_TAP_ENABLED};
 
     EVENT_TAP.lock().unwrap().clear();
     *EVENT_TAP_ENABLED.lock().unwrap() = true;
-    let res = f();
+    let res = f().await;
     *EVENT_TAP_ENABLED.lock().unwrap() = false;
     (res, EVENT_TAP.lock().unwrap().clone())
 }
