@@ -120,7 +120,7 @@ impl StatusStore for Store {
     async fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
         let mut info = self.subgraph_store.version_info(version_id)?;
 
-        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network)?;
+        info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network).await?;
 
         Ok(info)
     }

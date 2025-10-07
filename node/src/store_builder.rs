@@ -173,7 +173,7 @@ impl StoreBuilder {
         (store, pools, coord)
     }
 
-    pub fn make_store(
+    pub async fn make_store(
         logger: &Logger,
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
@@ -200,6 +200,7 @@ impl StoreBuilder {
                 subgraph_store.notification_sender(),
                 chain_store_metrics,
             )
+            .await
             .expect("Creating the BlockStore works"),
         );
         block_store
@@ -292,7 +293,7 @@ impl StoreBuilder {
 
     /// Return a store that combines both a `Store` for subgraph data
     /// and a `BlockStore` for all chain related data
-    pub fn network_store(self, networks: Vec<impl Into<String>>) -> Arc<DieselStore> {
+    pub async fn network_store(self, networks: Vec<impl Into<String>>) -> Arc<DieselStore> {
         Self::make_store(
             &self.logger,
             self.pools,
@@ -301,6 +302,7 @@ impl StoreBuilder {
             networks.into_iter().map(Into::into).collect(),
             self.registry,
         )
+        .await
     }
 
     pub fn subscription_manager(&self) -> Arc<SubscriptionManager> {

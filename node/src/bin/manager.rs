@@ -934,8 +934,8 @@ impl Context {
         pool
     }
 
-    fn subgraph_store(self) -> Arc<SubgraphStore> {
-        self.store_and_pools().0.subgraph_store()
+    async fn subgraph_store(self) -> Arc<SubgraphStore> {
+        self.store_and_pools().await.0.subgraph_store()
     }
 
     fn subscription_manager(&self) -> Arc<SubscriptionManager> {
@@ -948,13 +948,13 @@ impl Context {
         ))
     }
 
-    fn store(&self) -> Arc<Store> {
-        let (store, _) = self.store_and_pools();
+    async fn store(&self) -> Arc<Store> {
+        let (store, _) = self.store_and_pools().await;
         store
     }
 
-    fn pools(self) -> HashMap<Shard, ConnectionPool> {
-        let (_, pools) = self.store_and_pools();
+    async fn pools(self) -> HashMap<Shard, ConnectionPool> {
+        let (_, pools) = self.store_and_pools().await;
         pools
     }
 
@@ -969,7 +969,7 @@ impl Context {
         .await
     }
 
-    fn store_and_pools(&self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
+    async fn store_and_pools(&self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
         let (subgraph_store, pools, _) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
@@ -989,29 +989,30 @@ impl Context {
             HashMap::default(),
             Vec::new(),
             self.registry.cheap_clone(),
-        );
+        )
+        .await;
 
         (store, pools)
     }
 
-    fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
-        let (store, pools) = self.store_and_pools();
+    async fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
+        let (store, pools) = self.store_and_pools().await;
         let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
         (store, primary.clone())
     }
 
-    fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
-        let (store, pools) = self.store_and_pools();
+    async fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
+        let (store, pools) = self.store_and_pools().await;
 
         let primary = pools.get(&*PRIMARY_SHARD).unwrap();
         (store.block_store(), primary.clone())
     }
 
-    fn graphql_runner(self) -> Arc<GraphQlRunner<Store>> {
+    async fn graphql_runner(self) -> Arc<GraphQlRunner<Store>> {
         let logger = self.logger.clone();
         let registry = self.registry.clone();
 
-        let store = self.store();
+        let store = self.store().await;
 
         let load_manager = Arc::new(LoadManager::new(&logger, vec![], vec![], registry.clone()));
 
@@ -1029,6 +1030,7 @@ impl Context {
     async fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
         use graph::components::store::BlockStore;
         self.store()
+            .await
             .block_store()
             .chain_store(chain_name)
             .await
@@ -1154,7 +1156,7 @@ async fn main() -> anyhow::Result<()> {
             brief,
             no_name,
         } => {
-            let (store, primary_pool) = ctx.store_and_primary();
+            let (store, primary_pool) = ctx.store_and_primary().await;
 
             let ctx = commands::deployment::info::Context {
                 primary_pool,
@@ -1175,7 +1177,7 @@ async fn main() -> anyhow::Result<()> {
             commands::deployment::info::run(ctx, args).await
         }
         Unused(cmd) => {
-            let store = ctx.subgraph_store();
+            let store = ctx.subgraph_store().await;
             use UnusedCommand::*;
 
             match cmd {
@@ -1202,7 +1204,7 @@ async fn main() -> anyhow::Result<()> {
                 CheckProviders { timeout_seconds } => {
                     let logger = ctx.logger.clone();
                     let networks = ctx.networks().await?;
-                    let store = ctx.store().block_store();
+                    let store = ctx.store().await.block_store();
                     let timeout = Duration::from_secs(timeout_seconds.unwrap_or(60));
 
                     commands::provider_checks::execute(&logger, &networks, store, timeout).await;
@@ -1223,8 +1225,8 @@ async fn main() -> anyhow::Result<()> {
                 Setting { name } => commands::config::setting(&name),
             }
         }
-        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name).await,
-        Create { name } => commands::create::run(ctx.subgraph_store(), name).await,
+        Remove { name } => commands::remove::run(ctx.subgraph_store().await, &name).await,
+        Create { name } => commands::create::run(ctx.subgraph_store().await, name).await,
         Unassign { deployment } => {
             let notifications_sender = ctx.notification_sender();
             let primary_pool = ctx.primary_pool();
@@ -1283,7 +1285,7 @@ async fn main() -> anyhow::Result<()> {
             start_block,
         } => {
             let notification_sender = ctx.notification_sender();
-            let (store, primary) = ctx.store_and_primary();
+            let (store, primary) = ctx.store_and_primary().await;
 
             commands::rewind::run(
                 primary,
@@ -1351,17 +1353,17 @@ async fn main() -> anyhow::Result<()> {
                     replace,
                 } => {
                     let shards: Vec<_> = ctx.config.stores.keys().cloned().collect();
-                    let (store, primary) = ctx.store_and_primary();
+                    let (store, primary) = ctx.store_and_primary().await;
                     commands::copy::create(
                         store, primary, src, shard, shards, node, offset, activate, replace,
                     )
                     .await
                 }
                 Activate { deployment, shard } => {
-                    commands::copy::activate(ctx.subgraph_store(), deployment, shard)
+                    commands::copy::activate(ctx.subgraph_store().await, deployment, shard)
                 }
-                List => commands::copy::list(ctx.pools()),
-                Status { dst } => commands::copy::status(ctx.pools(), &dst),
+                List => commands::copy::list(ctx.pools().await),
+                Status { dst } => commands::copy::status(ctx.pools().await, &dst),
             }
         }
         Query {
@@ -1370,12 +1372,22 @@ async fn main() -> anyhow::Result<()> {
             target,
             query,
             vars,
-        } => commands::query::run(ctx.graphql_runner(), target, query, vars, output, trace).await,
+        } => {
+            commands::query::run(
+                ctx.graphql_runner().await,
+                target,
+                query,
+                vars,
+                output,
+                trace,
+            )
+            .await
+        }
         Chain(cmd) => {
             use ChainCommand::*;
             match cmd {
                 List => {
-                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    let (block_store, primary) = ctx.block_store_and_primary_pool().await;
                     commands::chain::list(primary, block_store).await
                 }
                 Info {
@@ -1383,15 +1395,15 @@ async fn main() -> anyhow::Result<()> {
                     reorg_threshold,
                     hashes,
                 } => {
-                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    let (block_store, primary) = ctx.block_store_and_primary_pool().await;
                     commands::chain::info(primary, block_store, name, reorg_threshold, hashes).await
                 }
                 Remove { name } => {
-                    let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    commands::chain::remove(primary, block_store, name)
+                    let (block_store, primary) = ctx.block_store_and_primary_pool().await;
+                    commands::chain::remove(primary, block_store, name).await
                 }
                 ChangeShard { chain_name, shard } => {
-                    let (block_store, primary) = ctx.block_store_and_primary_pool();
+                    let (block_store, primary) = ctx.block_store_and_primary_pool().await;
                     commands::chain::change_block_cache_shard(
                         primary,
                         block_store,
@@ -1407,7 +1419,7 @@ async fn main() -> anyhow::Result<()> {
                     chain_name,
                 } => {
                     let store_builder = ctx.store_builder().await;
-                    let store = ctx.store().block_store();
+                    let store = ctx.store().await.block_store();
                     let networks = ctx.networks().await?;
                     let chain_id = ChainName::from(chain_name);
                     let block_hash = BlockHash::from_str(&block_hash)?;
@@ -1505,7 +1517,7 @@ async fn main() -> anyhow::Result<()> {
                     deployment,
                     table,
                 } => {
-                    let (store, primary_pool) = ctx.store_and_primary();
+                    let (store, primary_pool) = ctx.store_and_primary().await;
                     let subgraph_store = store.subgraph_store();
                     commands::stats::account_like(
                         subgraph_store,
@@ -1516,9 +1528,9 @@ async fn main() -> anyhow::Result<()> {
                     )
                     .await
                 }
-                Show { deployment } => commands::stats::show(ctx.pools(), &deployment),
+                Show { deployment } => commands::stats::show(ctx.pools().await, &deployment),
                 Analyze { deployment, entity } => {
-                    let (store, primary_pool) = ctx.store_and_primary();
+                    let (store, primary_pool) = ctx.store_and_primary().await;
                     let subgraph_store = store.subgraph_store();
                     commands::stats::analyze(
                         subgraph_store,
@@ -1528,7 +1540,7 @@ async fn main() -> anyhow::Result<()> {
                     )
                 }
                 Target { deployment } => {
-                    let (store, primary_pool) = ctx.store_and_primary();
+                    let (store, primary_pool) = ctx.store_and_primary().await;
                     let subgraph_store = store.subgraph_store();
                     commands::stats::target(subgraph_store, primary_pool, &deployment)
                 }
@@ -1540,7 +1552,7 @@ async fn main() -> anyhow::Result<()> {
                     entity,
                     columns,
                 } => {
-                    let (store, primary) = ctx.store_and_primary();
+                    let (store, primary) = ctx.store_and_primary().await;
                     let store = store.subgraph_store();
                     let target = if reset { -1 } else { target as i32 };
                     commands::stats::set_target(
@@ -1557,7 +1569,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Index(cmd) => {
             use IndexCommand::*;
-            let (store, primary_pool) = ctx.store_and_primary();
+            let (store, primary_pool) = ctx.store_and_primary().await;
             let subgraph_store = store.subgraph_store();
             match cmd {
                 Create {
@@ -1637,7 +1649,7 @@ async fn main() -> anyhow::Result<()> {
                     delete_threshold,
                     once,
                 } => {
-                    let (store, primary_pool) = ctx.store_and_primary();
+                    let (store, primary_pool) = ctx.store_and_primary().await;
                     let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
                     commands::prune::run(
                         store,
@@ -1656,7 +1668,7 @@ async fn main() -> anyhow::Result<()> {
                     delete_threshold,
                     history,
                 } => {
-                    let (store, primary_pool) = ctx.store_and_primary();
+                    let (store, primary_pool) = ctx.store_and_primary().await;
                     let history = history.unwrap_or(ENV_VARS.min_history_blocks.try_into()?);
                     commands::prune::set(
                         store,
@@ -1669,7 +1681,7 @@ async fn main() -> anyhow::Result<()> {
                     .await
                 }
                 Status { run, deployment } => {
-                    let (store, primary_pool) = ctx.store_and_primary();
+                    let (store, primary_pool) = ctx.store_and_primary().await;
                     commands::prune::status(store, primary_pool, deployment, run).await
                 }
             }
@@ -1680,7 +1692,7 @@ async fn main() -> anyhow::Result<()> {
             name,
             url,
         } => {
-            let store = ctx.store();
+            let store = ctx.store().await;
             let subgraph_store = store.subgraph_store();
 
             commands::deploy::run(subgraph_store, deployment, name, url).await
