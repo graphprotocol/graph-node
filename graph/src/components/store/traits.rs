@@ -447,10 +447,11 @@ pub trait QueryStoreManager: Send + Sync + 'static {
     ) -> Result<Arc<dyn QueryStore + Send + Sync>, QueryExecutionError>;
 }
 
+#[async_trait]
 pub trait BlockStore: ChainIdStore + Send + Sync + 'static {
     type ChainStore: ChainStore;
 
-    fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
+    async fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>>;
 }
 
 /// An interface for tracking the chain head in the store used by most chain

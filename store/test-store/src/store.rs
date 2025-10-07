@@ -635,7 +635,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
                 .into_iter()
                 .collect(),
             );
-            match store.block_store().chain_store(NETWORK_NAME) {
+            match store.block_store().chain_store(NETWORK_NAME).await {
                 Some(cs) => {
                     cs.set_chain_identifier_for_tests(&ChainIdentifier {
                         net_version: NETWORK_VERSION.to_string(),

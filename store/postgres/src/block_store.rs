@@ -601,10 +601,11 @@ impl BlockStore {
     }
 }
 
+#[async_trait]
 impl BlockStoreTrait for BlockStore {
     type ChainStore = ChainStore;
 
-    fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>> {
+    async fn chain_store(&self, network: &str) -> Option<Arc<Self::ChainStore>> {
         self.store(network)
     }
 }
@@ -617,6 +618,7 @@ impl ChainIdStore for BlockStore {
     ) -> Result<ChainIdentifier, anyhow::Error> {
         let chain_store = self
             .chain_store(&chain_name)
+            .await
             .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
 
         chain_store.chain_identifier().await
@@ -632,6 +634,7 @@ impl ChainIdStore for BlockStore {
         // Update the block shard first since that contains a copy from the primary
         let chain_store = self
             .chain_store(&chain_name)
+            .await
             .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
 
         chain_store.set_chain_identifier(ident)?;

@@ -205,7 +205,7 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<BlockHash>("blockHash")
             .expect("Valid blockHash required");
 
-        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
+        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network).await {
             cs
         } else {
             error!(
