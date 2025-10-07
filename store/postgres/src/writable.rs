@@ -1656,7 +1656,7 @@ impl WritableStoreTrait for WritableStore {
         Ok(outcome)
     }
 
-    fn unfail_non_deterministic_error(
+    async fn unfail_non_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
