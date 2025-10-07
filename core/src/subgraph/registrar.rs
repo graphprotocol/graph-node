@@ -395,7 +395,7 @@ where
         let deployment =
             locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
 
-        self.store.pause_subgraph(&deployment)?;
+        self.store.pause_subgraph(&deployment).await?;
 
         Ok(())
     }
