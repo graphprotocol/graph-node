@@ -94,7 +94,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
     /// subgraph
-    fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
+    async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
 
     /// Remove a subgraph and all its versions; if deployments that were used
     /// by this subgraph do not need to be indexed anymore, also remove
