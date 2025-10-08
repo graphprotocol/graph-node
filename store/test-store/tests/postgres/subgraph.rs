@@ -66,14 +66,14 @@ fn unassigned(deployment: &DeploymentLocator) -> AssignmentChange {
 }
 
 async fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
-    let mut primary = primary_connection();
+    let mut primary = primary_connection().await;
     let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
     let current = current.unwrap();
     store.version_info(&current).await.unwrap()
 }
 
-fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
-    let mut primary = primary_connection();
+async fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
+    let mut primary = primary_connection().await;
     primary.get_subgraph_features(id).unwrap()
 }
 
@@ -233,7 +233,7 @@ fn create_subgraph() {
         const ID2: &str = "instant2";
         const ID3: &str = "instant3";
 
-        let mut primary = primary_connection();
+        let mut primary = primary_connection().await;
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let (_, events) =
@@ -286,7 +286,7 @@ fn create_subgraph() {
         const ID2: &str = "synced2";
         const ID3: &str = "synced3";
 
-        let mut primary = primary_connection();
+        let mut primary = primary_connection().await;
 
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let (_, events) =
@@ -556,7 +556,7 @@ fn subgraph_features() {
             has_bytes_as_ids,
             immutable_entities,
             has_aggregations,
-        } = get_subgraph_features(id.to_string()).unwrap();
+        } = get_subgraph_features(id.to_string()).await.unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
         assert_eq!("1.3.0", spec_version);
@@ -582,7 +582,7 @@ fn subgraph_features() {
         );
 
         test_store::remove_subgraph(&id).await;
-        let features = get_subgraph_features(id.to_string());
+        let features = get_subgraph_features(id.to_string()).await;
         // Subgraph was removed, so we expect the entry to be removed from `subgraph_features` table
         assert!(features.is_none());
     })

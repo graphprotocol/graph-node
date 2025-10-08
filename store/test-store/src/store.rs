@@ -260,7 +260,7 @@ pub async fn remove_subgraph(id: &DeploymentHash) {
     let name = SubgraphName::new_unchecked(id.to_string());
     SUBGRAPH_STORE.remove_subgraph(name).await.unwrap();
     let locs = SUBGRAPH_STORE.locators(id.as_str()).await.unwrap();
-    let mut conn = primary_connection();
+    let mut conn = primary_connection().await;
     for loc in locs {
         let site = conn.locate_site(loc.clone()).unwrap().unwrap();
         conn.unassign_subgraph(&site).unwrap();
@@ -403,12 +403,12 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
     flush(deployment).await.unwrap();
 }
 
-pub fn insert_ens_name(hash: &str, name: &str) {
+pub async fn insert_ens_name(hash: &str, name: &str) {
     use diesel::insert_into;
     use diesel::prelude::*;
     use graph_store_postgres::command_support::catalog::ens_names;
 
-    let mut conn = PRIMARY_POOL.get().unwrap();
+    let mut conn = PRIMARY_POOL.get_async().await.unwrap();
 
     insert_into(ens_names::table)
         .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))
@@ -667,8 +667,8 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     .unwrap()
 }
 
-pub fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection<'static> {
-    let conn = PRIMARY_POOL.get().unwrap();
+pub async fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection<'static> {
+    let conn = PRIMARY_POOL.get_async().await.unwrap();
     graph_store_postgres::layout_for_tests::Connection::new(conn)
 }
 
