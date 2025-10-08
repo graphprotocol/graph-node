@@ -286,7 +286,7 @@ async fn create_grafted_subgraph(
     test_store::create_subgraph(subgraph_id, schema, base).await
 }
 
-fn find_entities(
+async fn find_entities(
     store: &DieselSubgraphStore,
     deployment: &DeploymentLocator,
 ) -> (Vec<Entity>, Vec<Id>) {
@@ -303,6 +303,7 @@ fn find_entities(
 
     let entities = store
         .find(query)
+        .await
         .expect("store.find failed to execute query");
 
     let ids = entities
@@ -316,7 +317,7 @@ async fn check_graft(
     store: Arc<DieselSubgraphStore>,
     deployment: DeploymentLocator,
 ) -> Result<(), StoreError> {
-    let (entities, ids) = find_entities(store.as_ref(), &deployment);
+    let (entities, ids) = find_entities(store.as_ref(), &deployment).await;
 
     let ids_str = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
     assert_eq!(vec!["3", "1", "2"], ids_str);
@@ -411,7 +412,7 @@ fn graft() {
         .await
         .expect("grafting onto block 0 works");
 
-        let (entities, ids) = find_entities(store.as_ref(), &deployment);
+        let (entities, ids) = find_entities(store.as_ref(), &deployment).await;
         let ids_str = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
         assert_eq!(vec!["1"], ids_str);
         let shaq = entities.first().unwrap().clone();
@@ -559,7 +560,7 @@ fn prune() {
     struct Progress;
     impl PruneReporter for Progress {}
 
-    fn check_at_block(
+    async fn check_at_block(
         store: &DieselSubgraphStore,
         src: &DeploymentLocator,
         strategy: PruningStrategy,
@@ -579,6 +580,7 @@ fn prune() {
             .collect::<Vec<_>>();
         let act: Vec<_> = store
             .find(query)
+            .await
             .unwrap()
             .into_iter()
             .map(|entity| entity.id())
@@ -664,10 +666,10 @@ fn prune() {
             // Check which versions exist at every block, even if they are
             // before the new earliest block, since we don't have a convenient
             // way to load all entity versions with their block range
-            check_at_block(&store, &src, strategy, 0, vec!["1"]);
-            check_at_block(&store, &src, strategy, 1, vec!["1", "2"]);
+            check_at_block(&store, &src, strategy, 0, vec!["1"]).await;
+            check_at_block(&store, &src, strategy, 1, vec!["1", "2"]).await;
             for block in 2..=5 {
-                check_at_block(&store, &src, strategy, block, vec!["1", "2", "3"]);
+                check_at_block(&store, &src, strategy, block, vec!["1", "2", "3"]).await;
             }
             Ok(())
         })

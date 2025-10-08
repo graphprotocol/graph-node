@@ -245,25 +245,29 @@ impl SyncStore {
         })
     }
 
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        retry::forever(&self.logger, "unfail_deterministic_error", || {
+        retry::forever_async(&self.logger, "unfail_deterministic_error", || async {
             self.writable
                 .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
+                .await
         })
+        .await
     }
 
-    fn unfail_non_deterministic_error(
+    async fn unfail_non_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        retry::forever(&self.logger, "unfail_non_deterministic_error", || {
+        retry::forever_async(&self.logger, "unfail_non_deterministic_error", || async {
             self.writable
                 .unfail_non_deterministic_error(self.site.clone(), current_ptr)
+                .await
         })
+        .await
     }
 
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
@@ -285,25 +289,30 @@ impl SyncStore {
         })
     }
 
-    fn transact_block_operations(
+    async fn transact_block_operations(
         &self,
         batch: &Batch,
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
-        retry::forever(&self.logger, "transact_block_operations", move || {
-            self.writable.transact_block_operations(
-                &self.logger,
-                self.site.clone(),
-                batch,
-                self.last_rollup.get(),
-                stopwatch,
-                &self.manifest_idx_and_name,
-            )?;
-            // unwrap: batch.block_times is never empty
-            let last_block_time = batch.block_times.last().unwrap().1;
-            self.last_rollup.set(Some(last_block_time))?;
-            Ok(())
+        retry::forever_async(&self.logger, "transact_block_operations", move || {
+            async move {
+                self.writable
+                    .transact_block_operations(
+                        &self.logger,
+                        self.site.clone(),
+                        batch,
+                        self.last_rollup.get(),
+                        stopwatch,
+                        &self.manifest_idx_and_name,
+                    )
+                    .await?;
+                // unwrap: batch.block_times is never empty
+                let last_block_time = batch.block_times.last().unwrap().1;
+                self.last_rollup.set(Some(last_block_time))?;
+                Ok(())
+            }
         })
+        .await
     }
 
     fn get_many(
@@ -347,7 +356,7 @@ impl SyncStore {
         .await
     }
 
-    fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
+    async fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "unassign_subgraph", || {
             let mut pconn = self.store.primary_conn()?;
             pconn.transaction(|conn| -> Result<_, StoreError> {
@@ -358,7 +367,7 @@ impl SyncStore {
         })
     }
 
-    fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
+    async fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "unassign_subgraph", || {
             let mut pconn = self.store.primary_conn()?;
             pconn.transaction(|conn| -> Result<_, StoreError> {
@@ -431,14 +440,15 @@ impl SyncStore {
                             pconn.activate(&self.site.as_ref().into())?;
                         }
                         if on_sync.replace() {
-                            self.unassign_subgraph(&src)?;
+                            self.unassign_subgraph(&src).await?;
                         }
                     }
                 }
             }
 
             self.writable
-                .deployment_synced(&self.site.deployment, block_ptr.clone())?;
+                .deployment_synced(&self.site.deployment, block_ptr.clone())
+                .await?;
 
             self.store.send_store_event(&event)
         })
@@ -683,7 +693,7 @@ impl Request {
         }
     }
 
-    fn execute(&self) -> Result<ExecResult, StoreError> {
+    async fn execute(&self) -> Result<ExecResult, StoreError> {
         match self {
             Request::Write {
                 batch,
@@ -702,6 +712,7 @@ impl Request {
                 }
                 let res = store
                     .transact_block_operations(batch.deref(), stopwatch)
+                    .await
                     .map(|()| ExecResult::Continue);
                 info!(store.logger, "Committed write batch";
                         "block_number" => batch.block_ptr.number,
@@ -907,7 +918,7 @@ impl Queue {
                 };
                 let res = {
                     let _section = queue.stopwatch.start_section("queue_execute");
-                    graph::spawn_blocking_allow_panic(move || req.execute()).await
+                    graph::spawn_blocking_allow_panic(move || graph::block_on(req.execute())).await
                 };
 
                 let _section = queue.stopwatch.start_section("queue_pop");
@@ -1367,7 +1378,7 @@ impl Writer {
 
     async fn write(&self, batch: Batch, stopwatch: &StopwatchMetrics) -> Result<(), StoreError> {
         match self {
-            Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch),
+            Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch).await,
             Writer::Async { queue, .. } => {
                 self.check_queue_running()?;
                 queue.push_write(batch).await
@@ -1647,7 +1658,8 @@ impl WritableStoreTrait for WritableStore {
     ) -> Result<UnfailOutcome, StoreError> {
         let outcome = self
             .store
-            .unfail_deterministic_error(current_ptr, parent_ptr)?;
+            .unfail_deterministic_error(current_ptr, parent_ptr)
+            .await?;
 
         if let UnfailOutcome::Unfailed = outcome {
             *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
@@ -1664,7 +1676,7 @@ impl WritableStoreTrait for WritableStore {
         // We don't have to update in memory self.block_ptr
         // because the method call below doesn't rewind/revert
         // any block.
-        self.store.unfail_non_deterministic_error(current_ptr)
+        self.store.unfail_non_deterministic_error(current_ptr).await
     }
 
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
@@ -1736,7 +1748,7 @@ impl WritableStoreTrait for WritableStore {
     }
 
     async fn pause_subgraph(&self) -> Result<(), StoreError> {
-        self.store.pause_subgraph(&self.store.site)
+        self.store.pause_subgraph(&self.store.site).await
     }
 
     async fn load_dynamic_data_sources(

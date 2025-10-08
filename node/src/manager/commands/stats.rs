@@ -183,7 +183,9 @@ pub async fn set_target(
 
     let locator = search.locate_unique(&primary).await?;
 
-    store.set_stats_target(&locator, entity, columns, target)?;
+    store
+        .set_stats_target(&locator, entity, columns, target)
+        .await?;
 
     if !no_analyze {
         analyze_loc(store, &locator, entity)?;
