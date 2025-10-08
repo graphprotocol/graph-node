@@ -802,7 +802,7 @@ impl SubgraphStoreInner {
             + FnOnce(&mut primary::Connection) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let pool = self.mirror.primary();
-        pool.with_conn(move |pg_conn, _| {
+        pool.with_conn_async(async move |pg_conn, _| {
             let mut conn = primary::Connection::new(pg_conn);
             f(&mut conn)
         })
