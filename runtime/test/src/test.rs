@@ -996,7 +996,7 @@ async fn test_ens_name_by_hash(api_version: Version) {
 
     let hash = "0x7f0c1b04d1a4926f9c635a030eeb611d4c26e5e73291b32a1c7a4ac56935b5b3";
     let name = "dealdrafts";
-    test_store::insert_ens_name(hash, name);
+    test_store::insert_ens_name(hash, name).await;
     let converted: AscPtr<AscString> = module.invoke_export1("nameByHash", hash).await;
     let data: String = module.asc_get(converted).unwrap();
     assert_eq!(data, name);
