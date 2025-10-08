@@ -27,7 +27,8 @@ pub async fn run(
         ctx.primary_pool.clone(),
         &deployment,
         &version,
-    )?;
+    )
+    .await?;
 
     let statuses = if load_status {
         graphman::commands::deployment::info::load_deployment_statuses(

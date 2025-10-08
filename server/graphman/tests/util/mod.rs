@@ -25,20 +25,20 @@ where
 {
     let _lock = SEQ_MUX.lock().unwrap_or_else(|err| err.into_inner());
 
-    cleanup_graphman_command_executions_table();
-    remove_subgraphs();
-
     RUNTIME.block_on(async {
+        cleanup_graphman_command_executions_table().await;
+        remove_subgraphs();
+
         server::start().await;
 
         test().await;
     });
 }
 
-fn cleanup_graphman_command_executions_table() {
+async fn cleanup_graphman_command_executions_table() {
     use diesel::prelude::*;
 
-    let mut conn = PRIMARY_POOL.get().unwrap();
+    let mut conn = PRIMARY_POOL.get_async().await.unwrap();
 
     diesel::sql_query("truncate table public.graphman_command_executions;")
         .execute(&mut conn)

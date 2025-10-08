@@ -41,11 +41,11 @@ async fn run(
     deployment: &DeploymentSelector,
     delay_seconds: u64,
 ) -> Result<()> {
-    super::pause::run(ctx, deployment)?;
+    super::pause::run(ctx, deployment).await?;
 
     tokio::time::sleep(Duration::from_secs(delay_seconds)).await;
 
-    super::resume::run(ctx, deployment)?;
+    super::resume::run(ctx, deployment).await?;
 
     Ok(())
 }

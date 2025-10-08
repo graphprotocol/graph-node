@@ -8,17 +8,17 @@ use graphman::commands::deployment::pause::{
 };
 use graphman::deployment::DeploymentSelector;
 
-pub fn run(
+pub async fn run(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: DeploymentSelector,
 ) -> Result<()> {
-    let active_deployment = load_active_deployment(primary_pool.clone(), &deployment);
+    let active_deployment = load_active_deployment(primary_pool.clone(), &deployment).await;
 
     match active_deployment {
         Ok(active_deployment) => {
             println!("Pausing deployment {} ...", active_deployment.locator());
-            pause_active_deployment(primary_pool, notification_sender, active_deployment)?;
+            pause_active_deployment(primary_pool, notification_sender, active_deployment).await?;
         }
         Err(PauseDeploymentError::AlreadyPaused(locator)) => {
             println!("Deployment {} is already paused", locator);

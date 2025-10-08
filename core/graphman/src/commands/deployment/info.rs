@@ -26,12 +26,12 @@ pub struct DeploymentStatus {
     pub chain_head_block: Option<BlockPtr>,
 }
 
-pub fn load_deployments(
+pub async fn load_deployments(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<Vec<Deployment>, GraphmanError> {
-    let mut primary_conn = primary_pool.get()?;
+    let mut primary_conn = primary_pool.get_async().await?;
 
     crate::deployment::load_deployments(&mut primary_conn, &deployment, &version)
 }
