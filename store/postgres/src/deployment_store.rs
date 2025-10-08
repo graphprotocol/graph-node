@@ -395,6 +395,22 @@ impl DeploymentStore {
         self.pool.with_conn(f).await
     }
 
+    /// An async version of `with_conn`. The supplied closure is async and
+    /// is run as a blocking task. The same caveats as for `with_conn`
+    /// apply.
+    #[allow(dead_code)]
+    pub(crate) async fn with_conn_async<T: Send + 'static>(
+        &self,
+        f: impl 'static
+            + Send
+            + AsyncFnOnce(
+                &mut PooledConnection<ConnectionManager<PgConnection>>,
+                &CancelHandle,
+            ) -> Result<T, CancelableError<StoreError>>,
+    ) -> Result<T, StoreError> {
+        self.pool.with_conn_async(f).await
+    }
+
     /// Deprecated. Use `with_conn` instead.
     fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.pool.get()
