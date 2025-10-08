@@ -30,7 +30,6 @@ use diesel::{
     Connection as _,
 };
 use graph::{
-    cheap_clone::CheapClone,
     components::store::DeploymentLocator,
     data::{
         store::scalar::ToPrimitive,
@@ -1961,22 +1960,26 @@ impl Mirror {
     /// An async version of `read` that spawns a blocking task to do the
     /// actual work. This is useful when you want to call `read` from an
     /// async context
-    pub(crate) async fn read_async<T, F>(&self, mut f: F) -> Result<T, StoreError>
+    ///
+    /// The function `f` must not do any blocking work itself
+    pub(crate) async fn read_async<T, F>(&self, f: F) -> Result<T, StoreError>
     where
         T: 'static + Send,
-        F: 'static
-            + Send
-            + FnMut(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, StoreError>,
+        F: 'static + Send + AsyncFn(&mut PgConnection) -> Result<T, StoreError>,
     {
-        let this = self.cheap_clone();
-        let res = graph::spawn_blocking(async move { this.read(|conn| f(conn)) }).await;
-        match res {
-            Ok(v) => v,
-            Err(e) => Err(internal_error!(
-                "spawn_blocking in read_async failed: {}",
-                e
-            )),
+        for pool in self.pools.as_ref() {
+            let mut conn = match pool.get() {
+                Ok(conn) => conn,
+                Err(StoreError::DatabaseUnavailable) => continue,
+                Err(e) => return Err(e),
+            };
+            match f(&mut conn).await {
+                Ok(v) => return Ok(v),
+                Err(StoreError::DatabaseUnavailable) => continue,
+                Err(e) => return Err(e),
+            }
         }
+        Err(StoreError::DatabaseUnavailable)
     }
 
     /// Refresh the contents of mirrored tables from the primary (through
@@ -2076,7 +2079,7 @@ impl Mirror {
 
     pub async fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
         let node = node.clone();
-        self.read_async(move |conn| queries::active_assignments(conn, &node))
+        self.read_async(async move |conn| queries::active_assignments(conn, &node))
             .await
     }
 
@@ -2092,7 +2095,7 @@ impl Mirror {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
-        self.read_async(move |conn| queries::assignment_status(conn, &site))
+        self.read_async(async move |conn| queries::assignment_status(conn, &site))
             .await
     }
 
