@@ -17,7 +17,7 @@ pub async fn run_in_background(
     deployment: DeploymentSelector,
     delay_seconds: u64,
 ) -> Result<ExecutionId> {
-    let id = store.new_execution(CommandKind::RestartDeployment)?;
+    let id = store.new_execution(CommandKind::RestartDeployment).await?;
 
     graph::spawn(async move {
         let tracker = GraphmanExecutionTracker::new(store, id);
@@ -25,10 +25,10 @@ pub async fn run_in_background(
 
         match result {
             Ok(()) => {
-                tracker.track_success().unwrap();
+                tracker.track_success().await.unwrap();
             }
             Err(err) => {
-                tracker.track_failure(format!("{err:#?}")).unwrap();
+                tracker.track_failure(format!("{err:#?}")).await.unwrap();
             }
         };
     });

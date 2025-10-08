@@ -1,4 +1,5 @@
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::Utc;
 use diesel::prelude::*;
 use graphman_store::CommandKind;
@@ -23,9 +24,10 @@ impl GraphmanStore {
     }
 }
 
+#[async_trait]
 impl graphman_store::GraphmanStore for GraphmanStore {
-    fn new_execution(&self, kind: CommandKind) -> Result<ExecutionId> {
-        let mut conn = self.primary_pool.get()?;
+    async fn new_execution(&self, kind: CommandKind) -> Result<ExecutionId> {
+        let mut conn = self.primary_pool.get_async().await?;
 
         let id: i64 = diesel::insert_into(gce::table)
             .values((
@@ -39,15 +41,15 @@ impl graphman_store::GraphmanStore for GraphmanStore {
         Ok(ExecutionId(id))
     }
 
-    fn load_execution(&self, id: ExecutionId) -> Result<Execution> {
-        let mut conn = self.primary_pool.get()?;
+    async fn load_execution(&self, id: ExecutionId) -> Result<Execution> {
+        let mut conn = self.primary_pool.get_async().await?;
         let execution = gce::table.find(id).first(&mut conn)?;
 
         Ok(execution)
     }
 
-    fn mark_execution_as_running(&self, id: ExecutionId) -> Result<()> {
-        let mut conn = self.primary_pool.get()?;
+    async fn mark_execution_as_running(&self, id: ExecutionId) -> Result<()> {
+        let mut conn = self.primary_pool.get_async().await?;
 
         diesel::update(gce::table)
             .set((
@@ -61,8 +63,8 @@ impl graphman_store::GraphmanStore for GraphmanStore {
         Ok(())
     }
 
-    fn mark_execution_as_failed(&self, id: ExecutionId, error_message: String) -> Result<()> {
-        let mut conn = self.primary_pool.get()?;
+    async fn mark_execution_as_failed(&self, id: ExecutionId, error_message: String) -> Result<()> {
+        let mut conn = self.primary_pool.get_async().await?;
 
         diesel::update(gce::table)
             .set((
@@ -76,8 +78,8 @@ impl graphman_store::GraphmanStore for GraphmanStore {
         Ok(())
     }
 
-    fn mark_execution_as_succeeded(&self, id: ExecutionId) -> Result<()> {
-        let mut conn = self.primary_pool.get()?;
+    async fn mark_execution_as_succeeded(&self, id: ExecutionId) -> Result<()> {
+        let mut conn = self.primary_pool.get_async().await?;
 
         diesel::update(gce::table)
             .set((

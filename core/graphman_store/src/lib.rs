@@ -4,6 +4,7 @@
 //!       commands and store implementations.
 
 use anyhow::Result;
+use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::Utc;
 use diesel::deserialize::FromSql;
@@ -23,15 +24,16 @@ use strum::IntoStaticStr;
 /// Describes all the capabilities that graphman commands need from a persistent storage.
 ///
 /// The primary use case for this is background execution of commands.
+#[async_trait]
 pub trait GraphmanStore {
     /// Creates a new pending execution of the specified type.
     /// The implementation is expected to manage execution IDs and return unique IDs on each call.
     ///
     /// Creating a new execution does not mean that a command is actually running or will run.
-    fn new_execution(&self, kind: CommandKind) -> Result<ExecutionId>;
+    async fn new_execution(&self, kind: CommandKind) -> Result<ExecutionId>;
 
     /// Returns all stored execution data.
-    fn load_execution(&self, id: ExecutionId) -> Result<Execution>;
+    async fn load_execution(&self, id: ExecutionId) -> Result<Execution>;
 
     /// When an execution begins to make progress, this method is used to update its status.
     ///
@@ -39,19 +41,19 @@ pub trait GraphmanStore {
     /// to show that the execution is still making progress.
     ///
     /// The implementation is expected to not allow updating the status of completed executions.
-    fn mark_execution_as_running(&self, id: ExecutionId) -> Result<()>;
+    async fn mark_execution_as_running(&self, id: ExecutionId) -> Result<()>;
 
     /// This is a finalizing operation and is expected to be called only once,
     /// when an execution fails.
     ///
     /// The implementation is not expected to prevent overriding the final state of an execution.
-    fn mark_execution_as_failed(&self, id: ExecutionId, error_message: String) -> Result<()>;
+    async fn mark_execution_as_failed(&self, id: ExecutionId, error_message: String) -> Result<()>;
 
     /// This is a finalizing operation and is expected to be called only once,
     /// when an execution succeeds.
     ///
     /// The implementation is not expected to prevent overriding the final state of an execution.
-    fn mark_execution_as_succeeded(&self, id: ExecutionId) -> Result<()>;
+    async fn mark_execution_as_succeeded(&self, id: ExecutionId) -> Result<()>;
 }
 
 /// Data stored about a command execution.
