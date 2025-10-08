@@ -677,7 +677,7 @@ impl PoolInner {
         }
     }
 
-    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+    fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
     }
 
@@ -799,9 +799,9 @@ impl PoolInner {
         permit.unwrap()
     }
 
-    fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+    async fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
         conn.transaction(|conn| {
             let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
@@ -826,8 +826,8 @@ impl PoolInner {
         self: Arc<Self>,
         servers: &[ForeignServer],
     ) -> Result<MigrationCount, StoreError> {
-        self.configure_fdw(servers)?;
-        let mut conn = self.get()?;
+        self.configure_fdw(servers).await?;
+        let mut conn = self.get_async().await?;
         let (this, count) = conn.transaction(|conn| -> Result<_, StoreError> {
             let count = migrate_schema(&self.logger, conn)?;
             Ok((self, count))
@@ -839,13 +839,13 @@ impl PoolInner {
     }
 
     /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
-    fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
+    async fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
         if self.shard != *PRIMARY_SHARD {
             return Ok(());
         }
 
         info!(&self.logger, "Dropping cross-shard views");
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         conn.transaction(|conn| {
             let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
             conn.batch_execute(&query)?;
@@ -855,7 +855,7 @@ impl PoolInner {
 
     /// If this is the primary shard, create the namespace `CROSS_SHARD_NSP`
     /// and populate it with tables that union various imported tables
-    fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+    async fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         fn shard_nsp_pairs<'a>(
             current: &Shard,
             local_nsp: &str,
@@ -878,7 +878,7 @@ impl PoolInner {
             return Ok(());
         }
 
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         let sharded = Namespace::special(CROSS_SHARD_NSP);
         if catalog::has_namespace(&mut conn, &sharded)? {
             // We dropped the namespace before, but another node must have
@@ -925,10 +925,10 @@ impl PoolInner {
     /// The foreign server `server` had schema changes, and we therefore
     /// need to remap anything that we are importing via fdw to make sure we
     /// are using this updated schema
-    pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
+    pub async fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let mut conn = self.get()?;
+            let mut conn = self.get_async().await?;
             conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
@@ -937,18 +937,18 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let mut conn = self.get()?;
+            let mut conn = self.get_async().await?;
             conn.transaction(|conn| server.map_metadata(conn))?;
         }
         Ok(())
     }
 
-    pub fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
+    pub async fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
         if &server.shard == &self.shard {
             return Ok(false);
         }
 
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         server.needs_remap(&mut conn)
     }
 }
