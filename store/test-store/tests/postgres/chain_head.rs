@@ -1,6 +1,7 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
+use diesel::RunQueryDsl;
 use graph::blockchain::{BlockHash, BlockPtr};
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
@@ -494,15 +495,24 @@ fn eth_call_cache() {
 /// Tests mainly query correctness. Requires data in order not to hit early returns when no stale contracts are found.
 fn test_clear_stale_call_cache() {
     let chain = vec![];
-    run_test_async(chain, |store, _, _| async move {
+
+    #[derive(diesel::QueryableByName)]
+    struct Namespace {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        namespace: String,
+    }
+
+    run_test_async(chain, |chain_store, _, _| async move {
         let logger = LOGGER.cheap_clone();
-        let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]);
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
+        let mut conn = PRIMARY_POOL.get().unwrap();
+
         // Insert a call cache entry, otherwise it will hit an early return and won't test all queries
         let call = call::Request::new(address, call.to_vec(), 0);
-        store
+        chain_store
             .set_call(
                 &logger,
                 call.cheap_clone(),
@@ -512,14 +522,38 @@ fn test_clear_stale_call_cache() {
             .unwrap();
 
         // Confirm the call cache entry is there
-        let ret = store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        let ret = chain_store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
         assert!(ret.is_some());
 
-        // Note: The storage field is not accessible from here, so we cannot fetch the Schema for the private chain
-        // and manually populate the cache and meta tables or alter the accessed_at timestamp.
-        // We can only test that the function runs to completion without error.
-        let result = store.clear_stale_call_cache(7, None).await;
+        // Now we need to update the accessed_at timestamp to be stale, so it gets deleted
+        // Get namespace from chains table
+        let namespace: String = diesel::sql_query(format!(
+            "SELECT namespace FROM public.chains WHERE name = '{}'",
+            chain_store.chain
+        ))
+        .get_result::<Namespace>(&mut conn)
+        .unwrap()
+        .namespace;
+
+        // Determine the correct meta table name
+        let meta_table: String = match namespace.as_str() {
+            "public" => "eth_call_meta".to_owned(),
+            _ => format!("{namespace}.call_meta"),
+        };
+
+        // Update accessed_at to be 8 days ago, so it's stale for a 7 day threshold
+        let _ = diesel::sql_query(format!(
+            "UPDATE {meta_table} SET accessed_at = NOW() - INTERVAL '8 days' WHERE contract_address = $1"
+        )).bind::<diesel::sql_types::Bytea, _>(address.as_bytes())
+        .execute(&mut conn)
+        .unwrap();
+
+        let result = chain_store.clear_stale_call_cache(7, None).await;
         assert!(result.is_ok());
+
+        // Confirm the call cache entry was removed
+        let ret = chain_store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        assert!(ret.is_none());
     });
 }
 
