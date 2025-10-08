@@ -2333,6 +2333,7 @@ name = "graphman-store"
 version = "0.36.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "diesel",
  "strum",
