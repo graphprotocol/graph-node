@@ -250,7 +250,7 @@ pub async fn change_block_cache_shard(
 
         let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident)?;
 
-        store.add_chain_store(&chain,ChainStatus::Ingestible, true)?;
+        graph::block_on(store.add_chain_store(&chain,ChainStatus::Ingestible, true))?;
 
         // Drop the foreign key constraint on deployment_schemas
         sql_query(
@@ -273,7 +273,7 @@ pub async fn change_block_cache_shard(
         Ok(())
     })?;
 
-    chain_store.update_name(&new_name)?;
+    chain_store.update_name(&new_name).await?;
 
     println!(
         "Changed block cache shard for {} from {} to {}",

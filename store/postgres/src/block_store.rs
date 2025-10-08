@@ -313,7 +313,7 @@ impl BlockStore {
                     } else {
                         ChainStatus::ReadOnly
                     };
-                    block_store.add_chain_store(chain, status, false)?;
+                    block_store.add_chain_store(chain, status, false).await?;
                 }
                 None => {}
             };
@@ -332,7 +332,9 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
-            block_store.add_chain_store(chain, ChainStatus::ReadOnly, false)?;
+            block_store
+                .add_chain_store(chain, ChainStatus::ReadOnly, false)
+                .await?;
         }
         Ok(block_store)
     }
@@ -376,7 +378,7 @@ impl BlockStore {
         Ok(chain)
     }
 
-    pub fn add_chain_store(
+    pub async fn add_chain_store(
         &self,
         chain: &primary::Chain,
         status: ChainStatus,
@@ -405,7 +407,7 @@ impl BlockStore {
             self.chain_store_metrics.clone(),
         );
         if create {
-            store.create(&ident)?;
+            store.create(&ident).await?;
         }
         let store = Arc::new(store);
         self.stores
@@ -418,7 +420,7 @@ impl BlockStore {
     /// Return a map from network name to the network's chain head pointer.
     /// The information is cached briefly since this method is used heavily
     /// by the indexing status API
-    pub fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {
+    pub async fn chain_head_pointers(&self) -> Result<HashMap<String, BlockPtr>, StoreError> {
         let mut map = HashMap::new();
         for (shard, pool) in &self.pools {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
@@ -429,7 +431,7 @@ impl BlockStore {
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
                     };
-                    let heads = Arc::new(ChainStore::chain_head_pointers(&mut conn)?);
+                    let heads = Arc::new(ChainStore::chain_head_pointers(&mut conn).await?);
                     self.chain_head_cache.set(shard.to_string(), heads.clone());
                     heads
                 }
@@ -448,19 +450,25 @@ impl BlockStore {
             .store(chain)
             .await
             .ok_or_else(|| internal_error!("unknown network `{}`", chain))?;
-        store.chain_head_block(chain)
+        store.chain_head_block(chain).await
     }
 
     async fn lookup_chain(&self, chain: &str) -> Result<Option<Arc<ChainStore>>, StoreError> {
         // See if we have that chain in the database even if it wasn't one
         // of the configured chains
-        self.mirror.read(|conn| {
-            primary::find_chain(conn, chain).and_then(|chain| {
-                chain
-                    .map(|chain| self.add_chain_store(&chain, ChainStatus::ReadOnly, false))
-                    .transpose()
+        let chain = chain.to_string();
+        let this = self.cheap_clone();
+        self.mirror
+            .read_async(async move |conn| match primary::find_chain(conn, &chain)? {
+                Some(chain) => {
+                    let chain_store = this
+                        .add_chain_store(&chain, ChainStatus::ReadOnly, false)
+                        .await?;
+                    Ok(Some(chain_store))
+                }
+                None => Ok(None),
             })
-        })
+            .await
     }
 
     async fn store(&self, chain: &str) -> Option<Arc<ChainStore>> {
@@ -493,11 +501,22 @@ impl BlockStore {
         // deployment_schemas has a fk constraint on chains
         primary::drop_chain(self.mirror.primary(), chain)?;
 
-        chain_store.drop_chain()?;
+        chain_store.drop_chain().await?;
 
         self.stores.write().unwrap().remove(chain);
 
         Ok(())
+    }
+
+    // Helper to clone the list of chain stores to avoid holding the lock
+    // while awaiting
+    fn stores(&self) -> Vec<Arc<ChainStore>> {
+        self.stores
+            .read()
+            .unwrap()
+            .values()
+            .map(CheapClone::cheap_clone)
+            .collect()
     }
 
     // cleanup_ethereum_shallow_blocks will delete cached blocks previously produced by firehose on
@@ -514,32 +533,32 @@ impl BlockStore {
     // hit on graph-node startup.
     //
     // Discussed here: https://github.com/graphprotocol/graph-node/pull/4790
-    pub fn cleanup_ethereum_shallow_blocks(
+    pub async fn cleanup_ethereum_shallow_blocks(
         &self,
         eth_rpc_only_nets: Vec<String>,
     ) -> Result<(), StoreError> {
-        for store in self.stores.read().unwrap().values() {
+        for store in self.stores() {
             if !eth_rpc_only_nets.contains(&&store.chain) {
                 continue;
             };
 
-            if let Some(head_block) = store.remove_cursor(&&store.chain)? {
+            if let Some(head_block) = store.remove_cursor(&&store.chain).await? {
                 let lower_bound = head_block.saturating_sub(ENV_VARS.reorg_threshold() * 2);
                 info!(&self.logger, "Removed cursor for non-firehose chain, now cleaning shallow blocks"; "network" => &store.chain, "lower_bound" => lower_bound);
-                store.cleanup_shallow_blocks(lower_bound)?;
+                store.cleanup_shallow_blocks(lower_bound).await?;
             }
         }
         Ok(())
     }
 
-    fn truncate_block_caches(&self) -> Result<(), StoreError> {
-        for store in self.stores.read().unwrap().values() {
-            store.truncate_block_cache()?
+    async fn truncate_block_caches(&self) -> Result<(), StoreError> {
+        for store in self.stores() {
+            store.truncate_block_cache().await?;
         }
         Ok(())
     }
 
-    pub fn update_db_version(&self) -> Result<(), StoreError> {
+    pub async fn update_db_version(&self) -> Result<(), StoreError> {
         use crate::primary::db_version as dbv;
         use diesel::prelude::*;
 
@@ -547,7 +566,7 @@ impl BlockStore {
         let mut conn = primary_pool.get()?;
         let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
         if version < 3 {
-            self.truncate_block_caches()?;
+            self.truncate_block_caches().await?;
             diesel::update(dbv::table)
                 .set(dbv::version.eq(3))
                 .execute(&mut conn)?;
@@ -614,6 +633,7 @@ impl BlockStore {
             .ok_or_else(|| anyhow!("unable to find shard for network {}", network))?;
         let chain = primary::add_chain(&mut conn, &network, &shard, ident)?;
         self.add_chain_store(&chain, ChainStatus::Ingestible, true)
+            .await
             .map_err(anyhow::Error::from)
     }
 }
@@ -654,7 +674,7 @@ impl ChainIdStore for BlockStore {
             .await
             .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
 
-        chain_store.set_chain_identifier(ident)?;
+        chain_store.set_chain_identifier(ident).await?;
 
         // Update the master copy in the primary
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
