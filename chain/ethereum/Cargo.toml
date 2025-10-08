@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 envconfig = "0.11.0"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }

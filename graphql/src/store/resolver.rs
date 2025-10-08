@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::QueryPermit;
 use graph::data::graphql::load_manager::LoadManager;

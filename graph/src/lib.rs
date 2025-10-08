@@ -77,7 +77,6 @@ pub use url;
 pub mod prelude {
     pub use ::anyhow;
     pub use anyhow::{anyhow, Context as _, Error};
-    pub use async_trait::async_trait;
     pub use atty;
     pub use chrono;
     pub use diesel;

@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
@@ -28,8 +29,7 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak,
-        trace, warn,
+        debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{

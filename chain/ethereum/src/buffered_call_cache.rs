@@ -3,11 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use async_trait::async_trait;
 use graph::{
     cheap_clone::CheapClone,
     components::store::EthereumCallCache,
     data::store::ethereum::call,
-    prelude::{async_trait, BlockPtr, CachedEthereumCall},
+    prelude::{BlockPtr, CachedEthereumCall},
     slog::{error, Logger},
 };
 

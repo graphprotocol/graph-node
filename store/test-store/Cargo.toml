@@ -6,6 +6,7 @@ authors = ["Leonardo Yvens <leoyvens@gmail.com>"]
 description = "Provides static store instance for tests."
 
 [dependencies]
+async-trait = { workspace = true }
 graph-graphql = { path = "../../graphql" }
 graph-node = { path = "../../node" }
 graph = { path = "../../graph" }

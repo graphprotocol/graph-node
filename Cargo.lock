@@ -2007,6 +2007,7 @@ name = "graph-chain-ethereum"
 version = "0.36.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "envconfig",
  "graph",
@@ -2029,6 +2030,7 @@ name = "graph-chain-near"
 version = "0.36.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "diesel",
  "graph",
  "graph-runtime-derive",
@@ -2045,6 +2047,7 @@ name = "graph-chain-substreams"
 version = "0.36.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "graph",
  "graph-runtime-wasm",
@@ -2085,6 +2088,7 @@ version = "0.36.0"
 dependencies = [
  "anyhow",
  "async-recursion",
+ "async-trait",
  "crossbeam",
  "graph",
  "graphql-tools",
@@ -2142,6 +2146,7 @@ dependencies = [
 name = "graph-runtime-test"
 version = "0.36.0"
 dependencies = [
+ "async-trait",
  "graph",
  "graph-chain-ethereum",
  "graph-runtime-derive",
@@ -2175,6 +2180,7 @@ dependencies = [
 name = "graph-server-http"
 version = "0.36.0"
 dependencies = [
+ "async-trait",
  "graph",
  "graph-core",
  "graph-graphql",
@@ -2185,6 +2191,7 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.36.0"
 dependencies = [
+ "async-trait",
  "blake3 1.8.2",
  "git-testament",
  "graph",
@@ -2253,6 +2260,7 @@ dependencies = [
  "anyhow",
  "assert-json-diff",
  "async-stream",
+ "async-trait",
  "graph",
  "graph-chain-ethereum",
  "graph-chain-substreams",
@@ -5473,6 +5481,7 @@ dependencies = [
 name = "test-store"
 version = "0.36.0"
 dependencies = [
+ "async-trait",
  "diesel",
  "graph",
  "graph-chain-ethereum",
