@@ -1321,8 +1321,8 @@ impl EnsLookup {
         }
     }
 
-    fn is_table_empty(pool: &ConnectionPool) -> Result<bool, StoreError> {
-        let conn = pool.get()?;
+    async fn is_table_empty(pool: &ConnectionPool) -> Result<bool, StoreError> {
+        let conn = pool.get_async().await?;
         primary::Connection::new(conn).is_ens_table_empty()
     }
 }
@@ -1330,7 +1330,7 @@ impl EnsLookup {
 #[async_trait]
 impl EnsLookupTrait for EnsLookup {
     async fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
-        let conn = self.primary.get()?;
+        let conn = self.primary.get_async().await?;
         primary::Connection::new(conn).find_ens_name(hash)
     }
 
@@ -1342,7 +1342,7 @@ impl EnsLookupTrait for EnsLookup {
             _ => unreachable!("unsupported state"),
         }
 
-        let is_empty = Self::is_table_empty(&self.primary)?;
+        let is_empty = Self::is_table_empty(&self.primary).await?;
         let new_state = match is_empty {
             true => STATE_ENS_EMPTY,
             false => STATE_ENS_NOT_EMPTY,
