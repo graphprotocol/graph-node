@@ -435,11 +435,16 @@ fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity,
 
 #[tokio::test]
 async fn query() {
-    fn fetch(conn: &mut PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
+    async fn fetch(
+        conn: &mut PgConnection,
+        layout: &Layout,
+        coll: EntityCollection,
+    ) -> Vec<String> {
         let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
         let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
         layout
             .query::<Entity>(&LOGGER, conn, query)
+            .await
             .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()
@@ -461,7 +466,7 @@ async fn query() {
 
         // EntityCollection::All
         let coll = EntityCollection::All(vec![(THING_TYPE.clone(), AttributeNames::All)]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type A, many
@@ -475,7 +480,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![ROOT], things);
 
         // EntityCollection::Window, type A, single
@@ -491,7 +496,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type B, many
@@ -505,7 +510,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type B, single
@@ -519,7 +524,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type C
@@ -534,7 +539,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type D
@@ -549,7 +554,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll);
+        let things = fetch(&mut conn, layout, coll).await;
         assert_eq!(vec![ROOT, ROOT], things);
     })
     .await;

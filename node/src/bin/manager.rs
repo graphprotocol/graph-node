@@ -1185,7 +1185,7 @@ async fn main() -> anyhow::Result<()> {
                     existing,
                     deployment,
                 } => commands::unused_deployments::list(store, existing, deployment),
-                Record => commands::unused_deployments::record(store),
+                Record => commands::unused_deployments::record(store).await,
                 Remove {
                     count,
                     deployment,

@@ -542,7 +542,7 @@ async fn end_block() -> anyhow::Result<()> {
 
     // Simulate a chain reorg and ensure the filter rebuilds accurately post-reorg.
     {
-        ctx.rewind(test_ptr(6));
+        ctx.rewind(test_ptr(6)).await;
 
         let mut blocks = blocks[0..8].to_vec().clone();
 
@@ -727,7 +727,7 @@ async fn file_data_sources() {
 
     // Should not allow creating conflicting entity. ie: Entity created in offchain handler cannot be created in onchain handler
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -752,7 +752,7 @@ async fn file_data_sources() {
 
     // Should not allow accessing entities created in offchain handlers in onchain handlers
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -785,7 +785,7 @@ async fn file_data_sources() {
 
     // Prevent access to entities created by offchain handlers when using derived loaders in onchain handlers.
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -828,7 +828,7 @@ async fn file_data_sources() {
 
     // Should not allow creating entity that is not declared in the manifest for the offchain datasource
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(4)).await;
 
         let mut blocks = blocks.clone();
         blocks.retain(|block| block.block.number() <= 4);
@@ -1153,7 +1153,7 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(poi2 != poi100);
 
     // Test that rewind unfails the subgraph.
-    ctx.rewind(test_ptr(1));
+    ctx.rewind(test_ptr(1)).await;
     let status = ctx.indexing_status().await;
     assert!(status.health == SubgraphHealth::Healthy);
     assert!(status.fatal_error.is_none());

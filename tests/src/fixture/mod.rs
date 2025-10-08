@@ -358,9 +358,10 @@ impl TestContext {
         query_res.indexing_status_for_current_version
     }
 
-    pub fn rewind(&self, block_ptr_to: BlockPtr) {
+    pub async fn rewind(&self, block_ptr_to: BlockPtr) {
         self.store
             .rewind(self.deployment.hash.clone(), block_ptr_to)
+            .await
             .unwrap()
     }
 }
@@ -705,7 +706,7 @@ pub async fn wait_for_sync(
             }
         };
         info!(logger, "TEST: sync status: {:?}", block_ptr);
-        let status = store.status_for_id(deployment.id);
+        let status = store.status_for_id(deployment.id).await;
 
         if let Some(fatal_error) = status.fatal_error {
             return Err(fatal_error);

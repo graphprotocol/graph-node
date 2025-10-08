@@ -90,7 +90,7 @@ impl TablePair {
     /// `final_block` in batches, where each batch is a separate
     /// transaction. Write activity for nonfinal blocks can happen
     /// concurrently to this copy
-    fn copy_final_entities(
+    async fn copy_final_entities(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
@@ -366,7 +366,7 @@ impl Layout {
     /// fails, e.g. because the database is not available. All errors that
     /// happen during pruning itself will be stored in the `prune_state`
     /// table and this method will return `Ok`
-    pub fn prune(
+    pub async fn prune(
         self: Arc<Self>,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
@@ -376,7 +376,9 @@ impl Layout {
     ) -> Result<(), CancelableError<StoreError>> {
         let tracker = status::Tracker::new(conn, self.clone())?;
 
-        let res = self.prune_inner(logger, reporter, conn, req, cancel, &tracker);
+        let res = self
+            .prune_inner(logger, reporter, conn, req, cancel, &tracker)
+            .await;
 
         match res {
             Ok(_) => {
@@ -393,7 +395,7 @@ impl Layout {
         Ok(())
     }
 
-    fn prune_inner(
+    async fn prune_inner(
         self: Arc<Self>,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
@@ -405,7 +407,7 @@ impl Layout {
         reporter.start(req);
         let stats = self.version_stats(conn, reporter, true, cancel)?;
         let prunable_tables: Vec<_> = self.prunable_tables(&stats, req).into_iter().collect();
-        tracker.start(conn, req, &prunable_tables)?;
+        tracker.start(conn, req, &prunable_tables).await?;
         let dst_nsp = Namespace::prune(self.site.id);
         let mut recreate_dst_nsp = true;
         for (table, strat) in &prunable_tables {
@@ -434,7 +436,8 @@ impl Layout {
                         req.earliest_block,
                         req.final_block,
                         cancel,
-                    )?;
+                    )
+                    .await?;
                     // Copy nonfinal entities, and replace the original `src` table with
                     // the smaller `dst` table
                     // see also: deployment-lock-for-update
@@ -739,7 +742,7 @@ mod status {
             Ok(Tracker { layout, run })
         }
 
-        pub(super) fn start(
+        pub(super) async fn start(
             &self,
             conn: &mut PgConnection,
             req: &PruneRequest,

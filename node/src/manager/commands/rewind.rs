@@ -130,7 +130,7 @@ pub async fn run(
             .locate_site(locator.clone())?
             .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
         let deployment_store = subgraph_store.for_site(&site)?;
-        let deployment_details = deployment_store.deployment_details_for_id(locator)?;
+        let deployment_details = deployment_store.deployment_details_for_id(locator).await?;
         let block_number_to = block_ptr_to.as_ref().map(|b| b.number).unwrap_or(0);
 
         if block_number_to < deployment_details.earliest_block_number + ENV_VARS.reorg_threshold() {
@@ -173,11 +173,13 @@ pub async fn run(
 
         match (block_ptr_to, start_block) {
             (Some(block_ptr), _) => {
-                subgraph_store.rewind(loc.hash.clone(), block_ptr)?;
+                subgraph_store.rewind(loc.hash.clone(), block_ptr).await?;
                 println!("  ... rewound {}", loc);
             }
             (None, Some(start_block_ptr)) => {
-                subgraph_store.truncate(loc.hash.clone(), start_block_ptr)?;
+                subgraph_store
+                    .truncate(loc.hash.clone(), start_block_ptr)
+                    .await?;
                 println!("  ... truncated {}", loc);
             }
             (None, None) => {

@@ -207,8 +207,7 @@ struct TestEnv {
 }
 
 impl TestEnv {
-    #[track_caller]
-    fn all_entities(&self, entity_type: &str, block: BlockNumber) -> Vec<Entity> {
+    async fn all_entities(&self, entity_type: &str, block: BlockNumber) -> Vec<Entity> {
         let entity_type = self
             .writable
             .input_schema()
@@ -222,6 +221,7 @@ impl TestEnv {
         self.store
             .subgraph_store()
             .find(query)
+            .await
             .expect("query succeeds")
     }
 }
@@ -289,12 +289,12 @@ fn entity_diff(left: &[Entity], right: &[Entity]) -> Result<String, std::fmt::Er
 #[test]
 fn simple() {
     run_test(|env| async move {
-        let x = env.all_entities("Stats_day", BlockNumber::MAX);
+        let x = env.all_entities("Stats_day", BlockNumber::MAX).await;
         assert_eq!(Vec::<Entity>::new(), x);
 
         let exp = stats_hour(&env.writable.input_schema());
         for i in 0..4 {
-            let act = env.all_entities("Stats_hour", BLOCKS[i].number);
+            let act = env.all_entities("Stats_hour", BLOCKS[i].number).await;
             let diff = entity_diff(&exp[i], &act).unwrap();
             if !diff.is_empty() {
                 panic!("entities for BLOCKS[{}] differ:\n{}", i, diff);
