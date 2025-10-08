@@ -980,7 +980,7 @@ impl PoolInner {
         if self.shard == *PRIMARY_SHARD {
             return Ok(());
         }
-        self.with_conn(|conn, handle| {
+        self.with_conn_async(async |conn, handle| {
             conn.transaction(|conn| {
                 primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
             })

@@ -383,6 +383,7 @@ impl DeploymentStore {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
+    #[allow(dead_code)]
     pub(crate) async fn with_conn<T: Send + 'static>(
         &self,
         f: impl 'static
@@ -398,7 +399,6 @@ impl DeploymentStore {
     /// An async version of `with_conn`. The supplied closure is async and
     /// is run as a blocking task. The same caveats as for `with_conn`
     /// apply.
-    #[allow(dead_code)]
     pub(crate) async fn with_conn_async<T: Send + 'static>(
         &self,
         f: impl 'static
@@ -640,7 +640,7 @@ impl DeploymentStore {
     }
 
     pub(crate) async fn vacuum(&self) -> Result<(), StoreError> {
-        self.with_conn(|conn, _| {
+        self.with_conn_async(async |conn, _| {
             conn.batch_execute("vacuum (analyze) subgraphs.head, subgraphs.deployment")?;
             Ok(())
         })
@@ -726,7 +726,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let (index_name, sql) = generate_index_creation_sql(
@@ -764,7 +764,7 @@ impl DeploymentStore {
     ) -> Result<Vec<CreateIndex>, StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let table = resolve_table_name(&layout, &entity_name)?;
@@ -791,7 +791,7 @@ impl DeploymentStore {
         index_name: &str,
     ) -> Result<(), StoreError> {
         let index_name = String::from(index_name);
-        self.with_conn(move |mut conn, _| {
+        self.with_conn_async(async move |mut conn, _| {
             let schema_name = site.namespace.clone();
             catalog::drop_index(&mut conn, schema_name.as_str(), &index_name).map_err(Into::into)
         })
@@ -806,7 +806,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let table = table.to_string();
-        self.with_conn(move |mut conn, _| {
+        self.with_conn_async(async move |mut conn, _| {
             let layout = store.layout(&mut conn, site.clone())?;
             let table = resolve_table_name(&layout, &table)?;
             catalog::set_account_like(&mut conn, &site, &table.name, is_account_like)
@@ -878,7 +878,7 @@ impl DeploymentStore {
         }
 
         let store = self.clone();
-        self.with_conn(move |conn, cancel| {
+        self.with_conn_async(async move |conn, cancel| {
             // We lock pruning for this deployment to make sure that if the
             // deployment is reassigned to another node, that node won't
             // kick off a pruning run while this node might still be pruning
@@ -900,7 +900,9 @@ impl DeploymentStore {
         let store = self.cheap_clone();
         let layout = self
             .pool
-            .with_conn(move |conn, _| store.layout(conn, site.clone()).map_err(|e| e.into()))
+            .with_conn_async(async move |conn, _| {
+                store.layout(conn, site.clone()).map_err(|e| e.into())
+            })
             .await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
@@ -912,7 +914,7 @@ impl DeploymentStore {
     pub(crate) async fn block_ptr(&self, site: Arc<Site>) -> Result<Option<BlockPtr>, StoreError> {
         let site = site.cheap_clone();
 
-        self.with_conn(|conn, cancel| {
+        self.with_conn_async(async move |conn, cancel| {
             cancel.check_cancel()?;
 
             Self::block_ptr_with_conn(conn, site).map_err(Into::into)
@@ -923,7 +925,7 @@ impl DeploymentStore {
     pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<FirehoseCursor, StoreError> {
         let site = site.cheap_clone();
 
-        self.with_conn(|conn, cancel| {
+        self.with_conn_async(async move |conn, cancel| {
             cancel.check_cancel()?;
 
             deployment::get_subgraph_firehose_cursor(conn, site)
@@ -955,7 +957,7 @@ impl DeploymentStore {
         let poi_digest = layout.input_schema.poi_digest();
 
         let entities: Option<(Vec<Entity>, BlockPtr)> = self
-            .with_conn(move |conn, cancel| {
+            .with_conn_async(async move |conn, cancel| {
                 let site = site.clone();
                 cancel.check_cancel()?;
 
@@ -1435,8 +1437,10 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<DeploymentState, StoreError> {
-        self.with_conn(move |conn, _| deployment::state(conn, &site).map_err(|e| e.into()))
-            .await
+        self.with_conn_async(async move |conn, _| {
+            deployment::state(conn, &site).map_err(|e| e.into())
+        })
+        .await
     }
 
     pub(crate) async fn fail_subgraph(
@@ -1444,7 +1448,7 @@ impl DeploymentStore {
         id: DeploymentHash,
         error: SubgraphError,
     ) -> Result<(), StoreError> {
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             conn.transaction(|conn| deployment::fail(conn, &id, &error))
                 .map_err(Into::into)
         })
@@ -1473,7 +1477,7 @@ impl DeploymentStore {
         block: BlockNumber,
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             conn.transaction(|conn| crate::dynds::load(conn, &site, block, manifest_idx_and_name))
                 .map_err(Into::into)
         })
@@ -1484,14 +1488,14 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<CausalityRegion>, StoreError> {
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             Ok(conn.transaction(|conn| crate::dynds::causality_region_curr_val(conn, &site))?)
         })
         .await
     }
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             conn.transaction(|conn| deployment::exists_and_synced(conn, &id))
                 .map_err(Into::into)
         })
@@ -1839,7 +1843,7 @@ impl DeploymentStore {
                 "info.chain_sizes",
             ];
             store
-                .with_conn(|conn, cancel| {
+                .with_conn_async(async move |conn, cancel| {
                     for view in VIEWS {
                         let query = format!("refresh materialized view {}", view);
                         diesel::sql_query(&query).execute(conn)?;
@@ -1862,7 +1866,7 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
         let id = site.id;
-        self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
+        self.with_conn_async(async move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
     }
 
@@ -1871,7 +1875,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         raw_yaml: String,
     ) -> Result<(), StoreError> {
-        self.with_conn(move |conn, _| {
+        self.with_conn_async(async move |conn, _| {
             deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml).map_err(Into::into)
         })
         .await
