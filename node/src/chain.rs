@@ -354,7 +354,7 @@ pub async fn networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     networks: &Networks,
-    store: Arc<BlockStore>,
+    store: BlockStore,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,

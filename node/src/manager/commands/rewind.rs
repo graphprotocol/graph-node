@@ -14,7 +14,7 @@ use graph_store_postgres::{BlockStore, NotificationSender};
 use graph_store_postgres::{ConnectionPool, Store};
 
 async fn block_ptr(
-    store: Arc<BlockStore>,
+    store: BlockStore,
     locators: &HashSet<(String, DeploymentLocator)>,
     searches: &Vec<DeploymentSearch>,
     hash: &str,

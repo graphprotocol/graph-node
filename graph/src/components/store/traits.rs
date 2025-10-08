@@ -51,12 +51,12 @@ pub trait EnsLookup: Send + Sync + 'static {
 /// layer. It provides access to a [`BlockStore`] and a [`SubgraphStore`].
 pub trait Store: Clone + StatusStore + Send + Sync + 'static {
     /// The [`BlockStore`] implementor used by this [`Store`].
-    type BlockStore: BlockStore;
+    type BlockStore: BlockStore + CheapClone;
 
     /// The [`SubgraphStore`] implementor used by this [`Store`].
     type SubgraphStore: SubgraphStore;
 
-    fn block_store(&self) -> Arc<Self::BlockStore>;
+    fn block_store(&self) -> Self::BlockStore;
 
     fn subgraph_store(&self) -> Arc<Self::SubgraphStore>;
 }

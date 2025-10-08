@@ -98,7 +98,7 @@ pub async fn run(
         Vec::new();
 
     if env_vars.genesis_validation_enabled {
-        let store = chain_id_validator(network_store.block_store());
+        let store = chain_id_validator(Box::new(network_store.block_store()));
         provider_checks.push(Arc::new(
             graph::components::network_provider::GenesisHashCheck::new(store),
         ));

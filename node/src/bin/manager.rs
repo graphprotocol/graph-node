@@ -1001,7 +1001,7 @@ impl Context {
         (store, primary.clone())
     }
 
-    async fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
+    async fn block_store_and_primary_pool(self) -> (BlockStore, ConnectionPool) {
         let (store, pools) = self.store_and_pools().await;
 
         let primary = pools.get(&*PRIMARY_SHARD).unwrap();
@@ -1430,7 +1430,7 @@ async fn main() -> anyhow::Result<()> {
                     commands::chain::update_chain_genesis(
                         &networks,
                         store_builder.coord.cheap_clone(),
-                        store,
+                        Box::new(store),
                         &logger,
                         chain_id,
                         block_hash,

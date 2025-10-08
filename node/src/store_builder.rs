@@ -192,17 +192,15 @@ impl StoreBuilder {
         let logger = logger.new(o!("component" => "BlockStore"));
 
         let chain_store_metrics = Arc::new(ChainStoreMetrics::new(registry));
-        let block_store = Arc::new(
-            DieselBlockStore::new(
-                logger,
-                networks,
-                pools,
-                subgraph_store.notification_sender(),
-                chain_store_metrics,
-            )
-            .await
-            .expect("Creating the BlockStore works"),
-        );
+        let block_store = DieselBlockStore::new(
+            logger,
+            networks,
+            pools,
+            subgraph_store.notification_sender(),
+            chain_store_metrics,
+        )
+        .await
+        .expect("Creating the BlockStore works");
         block_store
             .update_db_version()
             .expect("Updating `db_version` should work");

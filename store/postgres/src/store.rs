@@ -32,11 +32,11 @@ use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
 #[derive(Clone)]
 pub struct Store {
     subgraph_store: Arc<SubgraphStore>,
-    block_store: Arc<BlockStore>,
+    block_store: BlockStore,
 }
 
 impl Store {
-    pub fn new(subgraph_store: Arc<SubgraphStore>, block_store: Arc<BlockStore>) -> Self {
+    pub fn new(subgraph_store: Arc<SubgraphStore>, block_store: BlockStore) -> Self {
         Self {
             subgraph_store,
             block_store,
@@ -47,7 +47,7 @@ impl Store {
         self.subgraph_store.cheap_clone()
     }
 
-    pub fn block_store(&self) -> Arc<BlockStore> {
+    pub fn block_store(&self) -> BlockStore {
         self.block_store.cheap_clone()
     }
 }
@@ -60,7 +60,7 @@ impl StoreTrait for Store {
         self.subgraph_store.cheap_clone()
     }
 
-    fn block_store(&self) -> Arc<Self::BlockStore> {
+    fn block_store(&self) -> Self::BlockStore {
         self.block_store.cheap_clone()
     }
 }

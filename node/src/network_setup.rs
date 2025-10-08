@@ -401,7 +401,7 @@ impl Networks {
         &self,
         config: &Arc<EnvVars>,
         logger: &Logger,
-        store: Arc<BlockStore>,
+        store: BlockStore,
         logger_factory: &LoggerFactory,
         metrics_registry: Arc<MetricsRegistry>,
         chain_head_update_listener: Arc<ChainHeadUpdateListener>,
