@@ -107,7 +107,7 @@ impl NotificationQueueUsage {
         }
         let usage_gauge = self.usage_gauge.clone();
         self.primary
-            .with_conn(move |conn, _| {
+            .with_conn_async(async move |conn, _| {
                 let res = sql_query("select pg_notification_queue_usage() as usage")
                     .get_result::<Usage>(conn)?;
                 usage_gauge.set(res.usage);
