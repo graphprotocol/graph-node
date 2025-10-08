@@ -54,7 +54,7 @@ pub async fn by_range(
     let range = ranges::Range::new(range_from, range_to)?;
     let max = match range.upper_bound {
         // When we have an open upper bound, we use the chain head's block number
-        None => steps::find_chain_head(&chain_store)?,
+        None => steps::find_chain_head(&chain_store).await?,
         Some(x) => x,
     };
     // FIXME: This performs poorly.
@@ -88,7 +88,7 @@ pub async fn by_range(
     Ok(())
 }
 
-pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow::Result<()> {
+pub async fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow::Result<()> {
     let prompt = format!(
         "This will delete all cached blocks for {}.\nProceed?",
         chain_store.chain
@@ -100,6 +100,7 @@ pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow
 
     chain_store
         .truncate_block_cache()
+        .await
         .with_context(|| format!("Failed to truncate block cache for {}", chain_store.chain))
 }
 
@@ -116,7 +117,7 @@ async fn run(
     let diff = steps::diff_block_pair(&cached_block, &provider_block);
     steps::report_difference(diff.as_deref(), block_hash);
     if diff.is_some() {
-        steps::delete_block(block_hash, &chain_store)?;
+        steps::delete_block(block_hash, &chain_store).await?;
     }
     Ok(())
 }
@@ -139,7 +140,7 @@ async fn handle_multiple_block_hashes(
     if delete_duplicates {
         println!("Deleting duplicated blocks...");
         for hash in block_hashes {
-            steps::delete_block(hash, chain_store)?;
+            steps::delete_block(hash, chain_store).await?;
         }
     } else {
         eprintln!(
@@ -246,16 +247,16 @@ mod steps {
     }
 
     /// Attempts to delete a block from the block cache.
-    pub(super) fn delete_block(hash: &H256, chain_store: &ChainStore) -> anyhow::Result<()> {
+    pub(super) async fn delete_block(hash: &H256, chain_store: &ChainStore) -> anyhow::Result<()> {
         println!("Deleting block {hash} from cache.");
-        chain_store.delete_blocks(&[hash])?;
+        chain_store.delete_blocks(&[hash]).await?;
         println!("Done.");
         Ok(())
     }
 
     /// Queries the [`ChainStore`] about the chain head.
-    pub(super) fn find_chain_head(chain_store: &ChainStore) -> anyhow::Result<i32> {
-        let chain_head: Option<i32> = chain_store.chain_head_block(&chain_store.chain)?;
+    pub(super) async fn find_chain_head(chain_store: &ChainStore) -> anyhow::Result<i32> {
+        let chain_head: Option<i32> = chain_store.chain_head_block(&chain_store.chain).await?;
         chain_head.ok_or_else(|| anyhow!("Could not find the chain head for {}", chain_store.chain))
     }
 }

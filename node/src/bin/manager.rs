@@ -1489,7 +1489,7 @@ async fn main() -> anyhow::Result<()> {
                 Truncate { chain_name, force } => {
                     use commands::check_blocks::truncate;
                     let chain_store = ctx.chain_store(&chain_name).await?;
-                    truncate(chain_store, force)
+                    truncate(chain_store, force).await
                 }
                 CallCache { method, chain_name } => {
                     match method {
