@@ -188,14 +188,16 @@ pub async fn create_subgraph_with_manifest(
     let yaml = serde_yaml::to_string(&yaml).unwrap();
     let deployment = DeploymentCreate::new(yaml, &manifest, None).graft(base);
     let name = SubgraphName::new_unchecked(subgraph_id.to_string());
-    let deployment = SUBGRAPH_STORE.create_deployment_replace(
-        name,
-        &schema,
-        deployment,
-        NODE_ID.clone(),
-        NETWORK_NAME.to_string(),
-        SubgraphVersionSwitchingMode::Instant,
-    )?;
+    let deployment = SUBGRAPH_STORE
+        .create_deployment_replace(
+            name,
+            &schema,
+            deployment,
+            NODE_ID.clone(),
+            NETWORK_NAME.to_string(),
+            SubgraphVersionSwitchingMode::Instant,
+        )
+        .await?;
 
     SUBGRAPH_STORE
         .cheap_clone()
