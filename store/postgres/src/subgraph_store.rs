@@ -255,7 +255,7 @@ impl SubgraphStore {
         &self,
         id: &DeploymentHash,
         block_number: BlockNumber,
-        block_store: Arc<impl BlockStore>,
+        block_store: impl BlockStore,
         fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
         self.inner
@@ -1068,7 +1068,7 @@ impl SubgraphStoreInner {
         &self,
         id: &DeploymentHash,
         block_number: BlockNumber,
-        block_store: Arc<impl BlockStore>,
+        block_store: impl BlockStore,
         fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
         let (store, site) = self.store(id)?;

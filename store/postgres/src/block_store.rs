@@ -14,6 +14,7 @@ use diesel::{
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
+    derive::CheapClone,
     prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
     slog::o,
 };
@@ -207,7 +208,20 @@ pub mod primary {
 /// not possible to change its configuration, in particular, the database
 /// shard and namespace, and the genesis block and net version must not
 /// change between runs of `graph-node`
+#[derive(Clone, CheapClone)]
 pub struct BlockStore {
+    inner: Arc<Inner>,
+}
+
+impl std::ops::Deref for BlockStore {
+    type Target = Inner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct Inner {
     logger: Logger,
     /// Map chain names to the corresponding store. This map is updated
     /// dynamically with new chains if an operation would require a chain
@@ -254,7 +268,7 @@ impl BlockStore {
         let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
         let chains = shards.clone();
 
-        let block_store = Self {
+        let inner = Arc::new(Inner {
             logger,
             stores: RwLock::new(HashMap::new()),
             shards,
@@ -263,7 +277,8 @@ impl BlockStore {
             mirror,
             chain_head_cache,
             chain_store_metrics,
-        };
+        });
+        let block_store = Self { inner };
 
         /// Check that the configuration for `chain` hasn't changed so that
         /// it is ok to ingest from it
