@@ -2130,7 +2130,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
-        let mut conn = self.pool.get()?;
+        let mut conn = self.pool.get_async().await?;
         for block in blocks {
             self.storage
                 .upsert_block(&mut conn, &self.chain, *block, false)?;
@@ -2541,7 +2541,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
-        let mut conn = self.pool.get()?;
+        let mut conn = self.pool.get_async().await?;
         use public::ethereum_networks as n;
         let (genesis_block_hash, net_version) = n::table
             .select((n::genesis_block_hash, n::net_version))

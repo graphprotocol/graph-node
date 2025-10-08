@@ -157,8 +157,8 @@ pub mod primary {
         Ok(chains::table.filter(chains::name.eq(name)).first(conn)?)
     }
 
-    pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let mut conn = pool.get()?;
+    pub(super) async fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
+        let mut conn = pool.get_async().await?;
 
         delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
         Ok(())
@@ -426,7 +426,7 @@ impl BlockStore {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
                 Some(cached) => cached,
                 None => {
-                    let mut conn = match pool.get() {
+                    let mut conn = match pool.get_async().await {
                         Ok(conn) => conn,
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
@@ -499,7 +499,7 @@ impl BlockStore {
 
         // Delete from the primary first since that's where
         // deployment_schemas has a fk constraint on chains
-        primary::drop_chain(self.mirror.primary(), chain)?;
+        primary::drop_chain(self.mirror.primary(), chain).await?;
 
         chain_store.drop_chain().await?;
 
@@ -563,7 +563,7 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut conn = primary_pool.get()?;
+        let mut conn = primary_pool.get_async().await?;
         let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
         if version < 3 {
             self.truncate_block_caches().await?;
@@ -598,7 +598,7 @@ impl BlockStore {
             None => {}
         }
 
-        let mut conn = self.mirror.primary().get()?;
+        let mut conn = self.mirror.primary().get_async().await?;
         let shard = self
             .shards
             .iter()
@@ -657,7 +657,7 @@ impl ChainIdStore for BlockStore {
 
         // Update the master copy in the primary
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut conn = primary_pool.get()?;
+        let mut conn = primary_pool.get_async().await?;
 
         diesel::update(c::table.filter(c::name.eq(chain_name.as_str())))
             .set((
