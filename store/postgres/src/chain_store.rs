@@ -1948,7 +1948,7 @@ impl ChainStore {
         let store = self.cheap_clone();
         let pool = self.pool.clone();
         let values = pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 store
                     .storage
                     .blocks(conn, &store.chain, &hashes)
@@ -1966,7 +1966,7 @@ impl ChainStore {
         let pool = self.pool.clone();
 
         let values = pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 store
                     .storage
                     .block_ptrs_by_numbers(conn, &store.chain, &numbers)
@@ -2012,7 +2012,7 @@ impl ChainHeadStore for ChainStore {
         Ok(self
             .cheap_clone()
             .pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 ethereum_networks
                     .select((head_block_hash, head_block_number))
                     .filter(name.eq(&self.chain))
@@ -2073,7 +2073,7 @@ impl ChainHeadStore for ChainStore {
         //this will send an update via postgres, channel: chain_head_updates
         self.chain_head_update_sender.send(&hash, number)?;
 
-        pool.with_conn_async(async move |conn, _| {
+        pool.with_conn(async move |conn, _| {
             conn.transaction(|conn| -> Result<(), StoreError> {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
@@ -2118,7 +2118,7 @@ impl ChainStoreTrait for ChainStore {
         let pool = self.pool.clone();
         let network = self.chain.clone();
         let storage = self.storage.clone();
-        pool.with_conn_async(async move |conn, _| {
+        pool.with_conn(async move |conn, _| {
             conn.transaction(|conn| {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
@@ -2148,7 +2148,7 @@ impl ChainStoreTrait for ChainStore {
             let chain_store = self.clone();
             let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
             self.pool
-                .with_conn_async(async move |conn, _| {
+                .with_conn(async move |conn, _| {
                     let candidate = chain_store
                         .storage
                         .chain_head_candidate(conn, &chain_store.chain)
@@ -2378,7 +2378,7 @@ impl ChainStoreTrait for ChainStore {
         let chain_store = self.cheap_clone();
 
         self.pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 chain_store
                     .storage
                     .ancestor_block(conn, block_ptr_clone, offset, root)
@@ -2486,7 +2486,7 @@ impl ChainStoreTrait for ChainStore {
         let storage = self.storage.clone();
         let chain = self.chain.clone();
         self.pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 storage
                     .block_number(conn, &hash)
                     .map(|opt| {
@@ -2509,7 +2509,7 @@ impl ChainStoreTrait for ChainStore {
 
         let storage = self.storage.clone();
         self.pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 storage
                     .block_numbers(conn, hashes.as_slice())
                     .map_err(|e| e.into())
@@ -2532,7 +2532,7 @@ impl ChainStoreTrait for ChainStore {
         let pool = self.pool.clone();
         let storage = self.storage.clone();
         let block_hash = *block_hash;
-        pool.with_conn_async(async move |conn, _| {
+        pool.with_conn(async move |conn, _| {
             storage
                 .find_transaction_receipts_in_block(conn, block_hash)
                 .map_err(|e| StoreError::from(e).into())
@@ -2867,7 +2867,7 @@ impl EthereumCallCache for ChainStore {
         let id = contract_call_id(&call, &block);
         let this = self.cheap_clone();
         self.pool
-            .with_conn_async(async move |conn, _| {
+            .with_conn(async move |conn, _| {
                 conn.transaction::<_, CancelableError<anyhow::Error>, _>(|conn| {
                     this.storage
                         .set_call(
