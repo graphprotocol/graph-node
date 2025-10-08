@@ -367,6 +367,14 @@ impl ConnectionPool {
         self.get_ready()?.get()
     }
 
+    /// An async version of `get`. For now, this calls `get` synchronously.
+    /// Once `get` is not used anymore, we can make it truly async.
+    pub async fn get_async(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.get()
+    }
+
     /// Get a connection from the pool for foreign data wrapper access;
     /// since that pool can be very contended, periodically log that we are
     /// still waiting for a connection
@@ -385,6 +393,20 @@ impl ConnectionPool {
         self.get_ready()?.get_fdw(logger, timeout)
     }
 
+    /// An async version of `get_fdw`. For now, this calls `get_fdw`
+    /// synchronously. Once `get_fdw` is not used anymore, we can make it
+    /// truly async.
+    pub async fn get_fdw_async<F>(
+        &self,
+        logger: &Logger,
+        timeout: F,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    where
+        F: FnMut() -> bool,
+    {
+        self.get_fdw(logger, timeout)
+    }
+
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
     pub fn try_get_fdw(
@@ -397,6 +419,17 @@ impl ConnectionPool {
         };
         self.state_tracker
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
+    }
+
+    /// An async version of `try_get_fdw`. For now, this calls `try_get_fdw`
+    /// synchronously. Once `try_get_fdw` is not used anymore, we can make it
+    /// truly async.
+    pub async fn try_get_fdw_async(
+        &self,
+        logger: &Logger,
+        timeout: Duration,
+    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+        self.try_get_fdw(logger, timeout)
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
@@ -646,6 +679,14 @@ impl PoolInner {
 
     pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
+    }
+
+    /// An async version of `get`. For now, this calls `get` synchronously.
+    /// Once `get` is not used anymore, we can make it truly async.
+    pub async fn get_async(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.get()
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
