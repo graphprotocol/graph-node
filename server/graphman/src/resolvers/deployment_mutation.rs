@@ -43,7 +43,7 @@ impl DeploymentMutation {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
 
-        pause::run(&ctx, &deployment)?;
+        pause::run(&ctx, &deployment).await?;
 
         Ok(EmptyResponse::new())
     }
@@ -57,7 +57,7 @@ impl DeploymentMutation {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
 
-        resume::run(&ctx, &deployment)?;
+        resume::run(&ctx, &deployment).await?;
 
         Ok(EmptyResponse::new())
     }
@@ -84,14 +84,14 @@ impl DeploymentMutation {
     /// Create a subgraph
     pub async fn create(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
         let ctx = GraphmanContext::new(ctx)?;
-        create::run(&ctx, &name)?;
+        create::run(&ctx, &name).await?;
         Ok(EmptyResponse::new())
     }
 
     /// Remove a subgraph
     pub async fn remove(&self, ctx: &Context<'_>, name: String) -> Result<EmptyResponse> {
         let ctx = GraphmanContext::new(ctx)?;
-        remove::run(&ctx, &name)?;
+        remove::run(&ctx, &name).await?;
         Ok(EmptyResponse::new())
     }
 
@@ -104,7 +104,7 @@ impl DeploymentMutation {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
 
-        unassign::run(&ctx, &deployment)?;
+        unassign::run(&ctx, &deployment).await?;
 
         Ok(EmptyResponse::new())
     }

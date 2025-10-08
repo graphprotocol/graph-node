@@ -15,8 +15,8 @@ pub async fn run(
     deployment: DeploymentSelector,
     node: &NodeId,
 ) -> Result<()> {
-    let deployment = load_deployment(primary_pool.clone(), &deployment)?;
-    let curr_node = deployment.assigned_node(primary_pool.clone())?;
+    let deployment = load_deployment(primary_pool.clone(), &deployment).await?;
+    let curr_node = deployment.assigned_node(primary_pool.clone()).await?;
     let reassign_msg = match &curr_node {
         Some(curr_node) => format!(
             "Reassigning deployment {} (was {})",

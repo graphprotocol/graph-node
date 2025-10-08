@@ -59,7 +59,7 @@ pub async fn run(ctx: Context, args: Args) -> Result<()> {
     };
 
     let version = make_deployment_version_selector(current, pending, used);
-    let deployments = load_deployments(primary_pool.clone(), &deployment, &version)?;
+    let deployments = load_deployments(primary_pool.clone(), &deployment, &version).await?;
 
     if deployments.is_empty() {
         println!("No matches");

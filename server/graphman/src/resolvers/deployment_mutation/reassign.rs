@@ -13,8 +13,8 @@ pub async fn run(
     deployment: &DeploymentSelector,
     node: &NodeId,
 ) -> Result<ReassignResult, anyhow::Error> {
-    let deployment = load_deployment(ctx.primary_pool.clone(), deployment)?;
-    let curr_node = deployment.assigned_node(ctx.primary_pool.clone())?;
+    let deployment = load_deployment(ctx.primary_pool.clone(), deployment).await?;
+    let curr_node = deployment.assigned_node(ctx.primary_pool.clone()).await?;
 
     let reassign_result = reassign_deployment(
         ctx.primary_pool.clone(),
