@@ -33,11 +33,14 @@ impl ActiveDeployment {
     }
 }
 
-pub fn load_active_deployment(
+pub async fn load_active_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<ActiveDeployment, PauseDeploymentError> {
-    let mut primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool
+        .get_async()
+        .await
+        .map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
@@ -68,12 +71,12 @@ pub fn load_active_deployment(
     Ok(ActiveDeployment { locator, site })
 }
 
-pub fn pause_active_deployment(
+pub async fn pause_active_deployment(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     active_deployment: ActiveDeployment,
 ) -> Result<(), GraphmanError> {
-    let primary_conn = primary_pool.get()?;
+    let primary_conn = primary_pool.get_async().await?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let changes = catalog_conn.pause_subgraph(&active_deployment.site)?;

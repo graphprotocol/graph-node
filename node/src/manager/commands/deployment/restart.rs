@@ -7,7 +7,7 @@ use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graphman::deployment::DeploymentSelector;
 
-pub fn run(
+pub async fn run(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: DeploymentSelector,
@@ -17,7 +17,8 @@ pub fn run(
         primary_pool.clone(),
         notification_sender.clone(),
         deployment.clone(),
-    )?;
+    )
+    .await?;
 
     println!(
         "Waiting {}s to make sure pausing was processed ...",
@@ -26,7 +27,7 @@ pub fn run(
 
     sleep(delay);
 
-    super::resume::run(primary_pool, notification_sender, deployment.clone())?;
+    super::resume::run(primary_pool, notification_sender, deployment.clone()).await?;
 
     Ok(())
 }

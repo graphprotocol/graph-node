@@ -1240,6 +1240,7 @@ async fn main() -> anyhow::Result<()> {
             let primary_pool = ctx.primary_pool();
             let deployment = make_deployment_selector(deployment);
             commands::deployment::unassign::run(primary_pool, notifications_sender, deployment)
+                .await
         }
         Reassign { deployment, node } => {
             let notifications_sender = ctx.notification_sender();
@@ -1259,14 +1260,14 @@ async fn main() -> anyhow::Result<()> {
             let primary_pool = ctx.primary_pool();
             let deployment = make_deployment_selector(deployment);
 
-            commands::deployment::pause::run(primary_pool, notifications_sender, deployment)
+            commands::deployment::pause::run(primary_pool, notifications_sender, deployment).await
         }
         Resume { deployment } => {
             let notifications_sender = ctx.notification_sender();
             let primary_pool = ctx.primary_pool();
             let deployment = make_deployment_selector(deployment);
 
-            commands::deployment::resume::run(primary_pool, notifications_sender, deployment)
+            commands::deployment::resume::run(primary_pool, notifications_sender, deployment).await
         }
         Restart { deployments, sleep } => {
             let notifications_sender = ctx.notification_sender();
@@ -1280,7 +1281,8 @@ async fn main() -> anyhow::Result<()> {
                     notifications_sender.clone(),
                     deployment,
                     sleep,
-                )?;
+                )
+                .await?;
             }
 
             Ok(())
