@@ -34,7 +34,7 @@ use graph_store_postgres::{command_support::catalog::block_store, ConnectionPool
 
 use crate::network_setup::Networks;
 
-pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
+pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
     let mut chains = {
         let mut conn = primary.get_async().await?;
         block_store::load_chains(&mut conn)?
@@ -98,7 +98,7 @@ pub async fn clear_stale_call_cache(
 
 pub async fn info(
     primary: ConnectionPool,
-    store: Arc<BlockStore>,
+    store: BlockStore,
     name: String,
     offset: BlockNumber,
     hashes: bool,
@@ -153,11 +153,7 @@ pub async fn info(
     Ok(())
 }
 
-pub async fn remove(
-    primary: ConnectionPool,
-    store: Arc<BlockStore>,
-    name: String,
-) -> Result<(), Error> {
+pub async fn remove(primary: ConnectionPool, store: BlockStore, name: String) -> Result<(), Error> {
     let sites = {
         let mut conn = graph_store_postgres::command_support::catalog::Connection::new(
             primary.get_async().await?,
@@ -185,7 +181,7 @@ pub async fn remove(
 pub async fn update_chain_genesis(
     networks: &Networks,
     coord: Arc<PoolCoordinator>,
-    store: Arc<dyn ChainIdStore>,
+    store: Box<dyn ChainIdStore>,
     logger: &Logger,
     chain_id: ChainName,
     genesis_hash: BlockHash,
@@ -228,7 +224,7 @@ pub async fn update_chain_genesis(
 
 pub async fn change_block_cache_shard(
     primary_store: ConnectionPool,
-    store: Arc<BlockStore>,
+    store: BlockStore,
     chain_name: String,
     shard: String,
 ) -> Result<(), Error> {

@@ -69,7 +69,7 @@ lazy_static! {
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
     pub static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
-    static ref BLOCK_STORE: Arc<DieselBlockStore> = STORE.block_store();
+    static ref BLOCK_STORE: DieselBlockStore = STORE.block_store();
     pub static ref GENESIS_PTR: BlockPtr = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"

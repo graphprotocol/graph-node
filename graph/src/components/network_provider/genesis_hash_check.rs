@@ -29,7 +29,7 @@ impl GenesisHashCheck {
         }
     }
 
-    pub fn from_id_store(id_store: Arc<dyn ChainIdStore>) -> Self {
+    pub fn from_id_store(id_store: Box<dyn ChainIdStore>) -> Self {
         Self {
             chain_identifier_store: chain_id_validator(id_store),
         }

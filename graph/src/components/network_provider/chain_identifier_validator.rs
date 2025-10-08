@@ -53,16 +53,16 @@ pub enum ChainIdentifierValidationError {
     Store(#[source] anyhow::Error),
 }
 
-pub fn chain_id_validator(store: Arc<dyn ChainIdStore>) -> Arc<dyn ChainIdentifierValidator> {
+pub fn chain_id_validator(store: Box<dyn ChainIdStore>) -> Arc<dyn ChainIdentifierValidator> {
     Arc::new(ChainIdentifierStore::new(store))
 }
 
 pub(crate) struct ChainIdentifierStore {
-    store: Arc<dyn ChainIdStore>,
+    store: Box<dyn ChainIdStore>,
 }
 
 impl ChainIdentifierStore {
-    pub fn new(store: Arc<dyn ChainIdStore>) -> Self {
+    pub fn new(store: Box<dyn ChainIdStore>) -> Self {
         Self { store }
     }
 }

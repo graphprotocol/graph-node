@@ -104,7 +104,7 @@ async fn build_blockchain_map(
 
     if env_vars.genesis_validation_enabled {
         provider_checks.push(Arc::new(network_provider::GenesisHashCheck::from_id_store(
-            block_store.clone(),
+            Box::new(block_store.cheap_clone()),
         )));
     }
 
