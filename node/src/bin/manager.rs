@@ -1152,7 +1152,7 @@ async fn main() -> anyhow::Result<()> {
 
     use Command::*;
     match opt.cmd {
-        TxnSpeed { delay } => commands::txn_speed::run(ctx.primary_pool(), delay),
+        TxnSpeed { delay } => commands::txn_speed::run(ctx.primary_pool(), delay).await,
         Info {
             deployment,
             current,
@@ -1371,8 +1371,8 @@ async fn main() -> anyhow::Result<()> {
                 Activate { deployment, shard } => {
                     commands::copy::activate(ctx.subgraph_store().await, deployment, shard)
                 }
-                List => commands::copy::list(ctx.pools().await),
-                Status { dst } => commands::copy::status(ctx.pools().await, &dst),
+                List => commands::copy::list(ctx.pools().await).await,
+                Status { dst } => commands::copy::status(ctx.pools().await, &dst).await,
             }
         }
         Query {
@@ -1548,7 +1548,7 @@ async fn main() -> anyhow::Result<()> {
                     )
                     .await
                 }
-                Show { deployment } => commands::stats::show(ctx.pools().await, &deployment),
+                Show { deployment } => commands::stats::show(ctx.pools().await, &deployment).await,
                 Analyze { deployment, entity } => {
                     let (store, primary_pool) = ctx.store_and_primary().await;
                     let subgraph_store = store.subgraph_store();
@@ -1558,11 +1558,12 @@ async fn main() -> anyhow::Result<()> {
                         deployment,
                         entity.as_deref(),
                     )
+                    .await
                 }
                 Target { deployment } => {
                     let (store, primary_pool) = ctx.store_and_primary().await;
                     let subgraph_store = store.subgraph_store();
-                    commands::stats::target(subgraph_store, primary_pool, &deployment)
+                    commands::stats::target(subgraph_store, primary_pool, &deployment).await
                 }
                 SetTarget {
                     target,
@@ -1584,6 +1585,7 @@ async fn main() -> anyhow::Result<()> {
                         target,
                         no_analyze,
                     )
+                    .await
                 }
             }
         }
