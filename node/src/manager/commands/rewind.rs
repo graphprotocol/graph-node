@@ -78,7 +78,7 @@ pub async fn run(
     if !start_block && (block_hash.is_none() || block_number.is_none()) {
         bail!("--block-hash and --block-number must be specified when --start-block is not set");
     }
-    let pconn = primary.get()?;
+    let pconn = primary.get_async().await?;
     let mut conn = store_catalog::Connection::new(pconn);
 
     let subgraph_store = store.subgraph_store();
@@ -87,7 +87,7 @@ pub async fn run(
     let mut locators = HashSet::new();
 
     for search in &searches {
-        let results = search.lookup(&primary)?;
+        let results = search.lookup(&primary).await?;
 
         let deployment_locators: HashSet<(String, DeploymentLocator)> = results
             .iter()
@@ -146,7 +146,7 @@ pub async fn run(
 
     println!("Pausing deployments");
     for (_, locator) in &locators {
-        pause_or_resume(primary.clone(), &sender, &locator, true)?;
+        pause_or_resume(primary.clone(), &sender, &locator, true).await?;
     }
 
     // There's no good way to tell that a subgraph has in fact stopped
@@ -188,7 +188,7 @@ pub async fn run(
 
     println!("Resuming deployments");
     for (_, locator) in &locators {
-        pause_or_resume(primary.clone(), &sender, locator, false)?;
+        pause_or_resume(primary.clone(), &sender, locator, false).await?;
     }
     Ok(())
 }

@@ -176,7 +176,7 @@ async fn check_args(
     history: usize,
 ) -> Result<Args, anyhow::Error> {
     let history = history as BlockNumber;
-    let deployment = search.locate_unique(&primary_pool)?;
+    let deployment = search.locate_unique(&primary_pool).await?;
     let mut info = store
         .status(status::Filter::DeploymentIds(vec![deployment.id]))
         .await?
@@ -334,7 +334,7 @@ pub async fn status(
 
     let mut term = Terminal::new();
 
-    let deployment = search.locate_unique(&primary_pool)?;
+    let deployment = search.locate_unique(&primary_pool).await?;
 
     let viewer = store.subgraph_store().prune_viewer(&deployment).await?;
     let runs = viewer.runs()?;

@@ -36,7 +36,7 @@ use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
-        let mut conn = primary.get()?;
+        let mut conn = primary.get_async().await?;
         block_store::load_chains(&mut conn)?
     };
     chains.sort_by_key(|chain| chain.name.clone());
@@ -121,7 +121,7 @@ pub async fn info(
         }
     }
 
-    let mut conn = primary.get()?;
+    let mut conn = primary.get_async().await?;
 
     let chain = block_store::find_chain(&mut conn, &name)?
         .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
@@ -159,8 +159,9 @@ pub async fn remove(
     name: String,
 ) -> Result<(), Error> {
     let sites = {
-        let mut conn =
-            graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
+        let mut conn = graph_store_postgres::command_support::catalog::Connection::new(
+            primary.get_async().await?,
+        );
         conn.find_sites_for_network(&name)?
     };
 
@@ -233,7 +234,7 @@ pub async fn change_block_cache_shard(
 ) -> Result<(), Error> {
     println!("Changing block cache shard for {} to {}", chain_name, shard);
 
-    let mut conn = primary_store.get()?;
+    let mut conn = primary_store.get_async().await?;
 
     let chain = find_chain(&mut conn, &chain_name)?
         .ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;

@@ -1,7 +1,7 @@
 use graph::components::store::DeploymentLocator;
 use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
+use graph::tokio;
 use graph_store_postgres::{command_support::catalog, ConnectionPool, NotificationSender};
-use std::thread;
 use std::time::Duration;
 
 use crate::manager::deployment::DeploymentSearch;
@@ -11,9 +11,9 @@ pub async fn unassign(
     sender: &NotificationSender,
     search: &DeploymentSearch,
 ) -> Result<(), Error> {
-    let locator = search.locate_unique(&primary)?;
+    let locator = search.locate_unique(&primary).await?;
 
-    let pconn = primary.get()?;
+    let pconn = primary.get_async().await?;
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
@@ -34,9 +34,9 @@ pub async fn reassign(
     node: String,
 ) -> Result<(), Error> {
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
-    let locator = search.locate_unique(&primary)?;
+    let locator = search.locate_unique(&primary).await?;
 
-    let pconn = primary.get()?;
+    let pconn = primary.get_async().await?;
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
@@ -71,13 +71,13 @@ pub async fn reassign(
     Ok(())
 }
 
-pub fn pause_or_resume(
+pub async fn pause_or_resume(
     primary: ConnectionPool,
     sender: &NotificationSender,
     locator: &DeploymentLocator,
     should_pause: bool,
 ) -> Result<(), Error> {
-    let pconn = primary.get()?;
+    let pconn = primary.get_async().await?;
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
@@ -109,18 +109,18 @@ pub fn pause_or_resume(
     Ok(())
 }
 
-pub fn restart(
+pub async fn restart(
     primary: ConnectionPool,
     sender: &NotificationSender,
     locator: &DeploymentLocator,
     sleep: Duration,
 ) -> Result<(), Error> {
-    pause_or_resume(primary.clone(), sender, locator, true)?;
+    pause_or_resume(primary.clone(), sender, locator, true).await?;
     println!(
         "Waiting {}s to make sure pausing was processed",
         sleep.as_secs()
     );
-    thread::sleep(sleep);
-    pause_or_resume(primary, sender, locator, false)?;
+    tokio::time::sleep(sleep).await;
+    pause_or_resume(primary, sender, locator, false).await?;
     Ok(())
 }
