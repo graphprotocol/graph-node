@@ -555,14 +555,21 @@ pub enum ChainCommand {
 pub enum CallCacheCommand {
     /// Remove the call cache of the specified chain.
     ///
-    /// Either remove entries in the range `--from` and `--to`, or remove
-    /// the entire cache with `--remove-entire-cache`. Removing the entire
+    /// Either remove entries in the range `--from` and `--to`,
+    /// remove the cache for contracts that have not been accessed for the specified duration --ttl_days,
+    /// or remove the entire cache with `--remove-entire-cache`. Removing the entire
     /// cache can reduce indexing performance significantly and should
     /// generally be avoided.
     Remove {
         /// Remove the entire cache
         #[clap(long, conflicts_with_all = &["from", "to"])]
         remove_entire_cache: bool,
+        /// Remove the cache for contracts that have not been accessed in the last <TTL_DAYS> days
+        #[clap(long, conflicts_with_all = &["from", "to", "remove-entire-cache"], value_parser = clap::value_parser!(i32).range(1..))]
+        ttl_days: Option<i32>,
+        /// Limits the number of contracts to consider for cache removal when using --ttl_days
+        #[clap(long, conflicts_with_all = &["remove-entire-cache", "to", "from"], requires = "ttl_days", value_parser = clap::value_parser!(i64).range(1..))]
+        ttl_max_contracts: Option<i64>,
         /// Starting block number
         #[clap(long, short, conflicts_with = "remove-entire-cache", requires = "to")]
         from: Option<i32>,
@@ -1472,8 +1479,19 @@ async fn main() -> anyhow::Result<()> {
                             from,
                             to,
                             remove_entire_cache,
+                            ttl_days,
+                            ttl_max_contracts,
                         } => {
                             let chain_store = ctx.chain_store(&chain_name)?;
+                            if let Some(ttl_days) = ttl_days {
+                                return commands::chain::clear_stale_call_cache(
+                                    chain_store,
+                                    ttl_days,
+                                    ttl_max_contracts,
+                                )
+                                .await;
+                            }
+
                             if !remove_entire_cache && from.is_none() && to.is_none() {
                                 bail!("you must specify either --from and --to or --remove-entire-cache");
                             }
