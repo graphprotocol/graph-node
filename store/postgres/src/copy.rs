@@ -931,7 +931,7 @@ impl Connection {
     /// will block until it was able to get a fdw connection. The overall
     /// effect is that new copy requests will not start until a connection
     /// is available.
-    pub fn new(
+    pub async fn new(
         logger: &Logger,
         primary: Primary,
         pool: ConnectionPool,
@@ -952,13 +952,15 @@ impl Connection {
         }
 
         let mut last_log = Instant::now();
-        let conn = pool.get_fdw(&logger, || {
-            if last_log.elapsed() > LOG_INTERVAL {
-                info!(&logger, "waiting for other copy operations to finish");
-                last_log = Instant::now();
-            }
-            false
-        })?;
+        let conn = pool
+            .get_fdw_async(&logger, || {
+                if last_log.elapsed() > LOG_INTERVAL {
+                    info!(&logger, "waiting for other copy operations to finish");
+                    last_log = Instant::now();
+                }
+                false
+            })
+            .await?;
         let src_manifest_idx_and_name = Arc::new(src_manifest_idx_and_name);
         let dst_manifest_idx_and_name = Arc::new(dst_manifest_idx_and_name);
         let conn = Some(LockTrackingConnection::new(conn));

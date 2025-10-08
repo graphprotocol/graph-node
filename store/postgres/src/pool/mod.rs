@@ -713,7 +713,7 @@ impl PoolInner {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    pub fn get_fdw<F>(
+    fn get_fdw<F>(
         &self,
         logger: &Logger,
         mut timeout: F,

@@ -1566,7 +1566,8 @@ impl DeploymentStore {
                 block.clone(),
                 src_manifest_idx_and_name,
                 dst_manifest_idx_and_name,
-            )?;
+            )
+            .await?;
             let status = copy_conn.copy_data(index_list).await?;
             if status == crate::copy::Status::Cancelled {
                 return Err(StoreError::Canceled);
