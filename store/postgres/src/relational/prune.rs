@@ -949,10 +949,10 @@ mod status {
             Self { pool, layout }
         }
 
-        pub fn runs(&self) -> StoreResult<Vec<usize>> {
+        pub async fn runs(&self) -> StoreResult<Vec<usize>> {
             use prune_state as ps;
 
-            let mut conn = self.pool.get()?;
+            let mut conn = self.pool.get_async().await?;
             let runs = ps::table
                 .filter(ps::id.eq(self.layout.site.id))
                 .select(ps::run)
@@ -963,11 +963,14 @@ mod status {
             Ok(runs)
         }
 
-        pub fn state(&self, run: usize) -> StoreResult<Option<(PruneState, Vec<PruneTableState>)>> {
+        pub async fn state(
+            &self,
+            run: usize,
+        ) -> StoreResult<Option<(PruneState, Vec<PruneTableState>)>> {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            let mut conn = self.pool.get()?;
+            let mut conn = self.pool.get_async().await?;
 
             let ptss = pts::table
                 .filter(pts::id.eq(self.layout.site.id))
