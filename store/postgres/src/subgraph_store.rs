@@ -565,7 +565,7 @@ impl SubgraphStoreInner {
     /// is careful to make sure this process is at least idempotent, so that
     /// a failed deployment creation operation can be fixed by deploying
     /// again.
-    fn create_deployment_internal(
+    async fn create_deployment_internal(
         &self,
         name: SubgraphName,
         schema: &InputSchema,
@@ -643,15 +643,17 @@ impl SubgraphStoreInner {
             None
         };
 
-        deployment_store.create_deployment(
-            schema,
-            deployment,
-            site.clone(),
-            graft_base_layout,
-            replace,
-            OnSync::None,
-            index_def,
-        )?;
+        deployment_store
+            .create_deployment(
+                schema,
+                deployment,
+                site.clone(),
+                graft_base_layout,
+                replace,
+                OnSync::None,
+                index_def,
+            )
+            .await?;
 
         let exists_and_synced = |id: &DeploymentHash| {
             let (store, _) = self.store(id)?;
@@ -729,15 +731,17 @@ impl SubgraphStoreInner {
             .get(&shard)
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
 
-        deployment_store.create_deployment(
-            &src_layout.input_schema,
-            deployment,
-            dst.clone(),
-            Some(graft_base),
-            false,
-            on_sync,
-            Some(index_def),
-        )?;
+        deployment_store
+            .create_deployment(
+                &src_layout.input_schema,
+                deployment,
+                dst.clone(),
+                Some(graft_base),
+                false,
+                on_sync,
+                Some(index_def),
+            )
+            .await?;
 
         let mut pconn = self.primary_conn()?;
         pconn.transaction(|conn| -> Result<_, StoreError> {
@@ -767,7 +771,7 @@ impl SubgraphStoreInner {
     // Only for tests to simplify their handling of test fixtures, so that
     // tests can reset the block pointer of a subgraph by recreating it
     #[cfg(debug_assertions)]
-    pub fn create_deployment_replace(
+    pub async fn create_deployment_replace(
         &self,
         name: SubgraphName,
         schema: &InputSchema,
@@ -777,6 +781,7 @@ impl SubgraphStoreInner {
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<DeploymentLocator, StoreError> {
         self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
+            .await
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
@@ -1379,6 +1384,7 @@ impl SubgraphStoreTrait for SubgraphStore {
             mode,
             false,
         )
+        .await
     }
 
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
