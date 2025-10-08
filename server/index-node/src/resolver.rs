@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
+use async_trait::async_trait;
 use graph::data::query::Trace;
 use graph::data::store::Id;
 use graph::schema::EntityType;

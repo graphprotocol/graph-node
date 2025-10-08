@@ -60,11 +60,12 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
+    use async_trait::async_trait;
+    use graph::runtime::HostExportError;
     pub use graph::runtime::{
         asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
         DeterministicHostError, IndexForAscTypeId, ToAscObj,
     };
-    use graph::{prelude::async_trait, runtime::HostExportError};
     use graph_runtime_wasm::asc_abi::class::AscString;
 
     #[async_trait]

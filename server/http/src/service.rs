@@ -446,6 +446,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use graph::data::store::SqlQueryObject;
     use graph::data::value::{Object, Word};
     use graph::http_body_util::{BodyExt, Full};

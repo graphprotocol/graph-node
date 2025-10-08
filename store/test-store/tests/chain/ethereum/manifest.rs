@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use graph::blockchain::DataSource;
 use graph::components::store::BLOCK_NUMBER_MAX;
 use graph::data::store::scalar::Bytes;
@@ -19,8 +20,8 @@ use graph::entity;
 use graph::env::ENV_VARS;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link,
-    SubgraphManifest, SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
+    anyhow, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest,
+    SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
     UnvalidatedSubgraphManifest,
 };
 use graph::{

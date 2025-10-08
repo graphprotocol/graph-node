@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::blockchain::BlockTime;
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::store::*;

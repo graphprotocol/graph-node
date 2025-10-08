@@ -1,7 +1,7 @@
 use crate::codec;
 use crate::trigger::ReceiptWithOutcome;
+use async_trait::async_trait;
 use graph::anyhow::anyhow;
-use graph::prelude::async_trait;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, HostExportError, ToAscObj};
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};

@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail};
+use async_trait::async_trait;
 use graph::blockchain::ChainIdentifier;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::NetworkDetails;
@@ -12,7 +13,7 @@ use itertools::Itertools;
 use std::sync::Arc;
 
 pub use graph::impl_slog_value;
-use graph::prelude::{async_trait, Error};
+use graph::prelude::Error;
 
 use crate::adapter::EthereumAdapter as _;
 use crate::capabilities::NodeCapabilities;

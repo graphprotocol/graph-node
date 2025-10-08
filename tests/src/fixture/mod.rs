@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Error;
 use async_stream::stream;
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -40,10 +41,10 @@ use graph::ipfs::{IpfsClient, IpfsMetrics};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    async_trait, lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
-    GraphQlRunner as _, IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError,
-    SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
-    SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
+    lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
+    IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
+    SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::schema::InputSchema;
 use graph_chain_ethereum::chain::RuntimeAdapterBuilder;

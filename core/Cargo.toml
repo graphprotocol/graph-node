@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = { workspace = true}
 atomic_refcell = "0.1.13"
 bytes = "1.0"
 graph = { path = "../graph" }

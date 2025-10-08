@@ -1,10 +1,10 @@
+use async_trait::async_trait;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
-use graph::prelude::async_trait;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::ethabi::ethereum_types::U128;

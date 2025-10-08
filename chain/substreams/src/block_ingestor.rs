@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::mapper::Mapper;
 use anyhow::{Context, Error};
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{BlockStreamError, FirehoseCursor};
 use graph::blockchain::BlockchainKind;
 use graph::blockchain::{
@@ -16,7 +17,7 @@ use graph::tokio_stream::StreamExt;
 use graph::{
     blockchain::block_stream::BlockStreamEvent,
     cheap_clone::CheapClone,
-    prelude::{async_trait, error, info, DeploymentHash, Logger},
+    prelude::{error, info, DeploymentHash, Logger},
     util::backoff::ExponentialBackoff,
 };
 use prost::Message;

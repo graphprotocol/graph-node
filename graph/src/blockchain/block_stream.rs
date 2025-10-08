@@ -5,6 +5,7 @@ use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
+use async_trait::async_trait;
 use futures03::Stream;
 use prost_types::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};

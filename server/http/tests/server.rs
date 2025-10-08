@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::{
     data::{query::SqlQueryReq, store::SqlQueryObject},
     http::StatusCode,

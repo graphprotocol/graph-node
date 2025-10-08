@@ -1,8 +1,10 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
+
 use graph::components::store::QueryPermit;
 use graph::data::query::{CacheStatus, Trace};
-use graph::prelude::{async_trait, s, Error, QueryExecutionError};
+use graph::prelude::{s, Error, QueryExecutionError};
 use graph::schema::ApiSchema;
 use graph::{
     data::graphql::ObjectOrInterface,

@@ -1,6 +1,7 @@
 use crate::block_ingestor::SubstreamsBlockIngestor;
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
+use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopDecoderHook,
@@ -19,7 +20,7 @@ use graph::{
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{async_trait, BlockNumber},
+    prelude::BlockNumber,
     slog::Logger,
 };
 
