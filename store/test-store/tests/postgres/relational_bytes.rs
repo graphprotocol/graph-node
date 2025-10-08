@@ -4,9 +4,9 @@ use diesel::pg::PgConnection;
 use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
-use graph::entity;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::{EntityKey, EntityType, InputSchema};
+use graph::{entity, tokio};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -189,11 +189,11 @@ macro_rules! assert_entity_eq {
     }};
 }
 
-fn run_test<F>(test: F)
+async fn run_test<F>(test: F)
 where
-    F: FnOnce(&mut PgConnection, &Layout),
+    F: AsyncFnOnce(&mut PgConnection, &Layout),
 {
-    run_test_with_conn(|conn| {
+    run_test_with_conn(async |conn| {
         // Reset state before starting
         remove_test_data(conn);
 
@@ -201,13 +201,14 @@ where
         let layout = create_schema(conn);
 
         // Run test
-        test(conn, &layout);
-    });
+        test(conn, &layout).await;
+    })
+    .await;
 }
 
-#[test]
-fn bad_id() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn bad_id() {
+    run_test(async |conn, layout| {
         fn find(
             conn: &mut PgConnection,
             layout: &Layout,
@@ -246,12 +247,12 @@ fn bad_id() {
             "store error: can not convert `nope` to Id::Bytes: Invalid character 'n' at position 0",
             res.err().unwrap().to_string()
         );
-    });
+    }).await;
 }
 
-#[test]
-fn find() {
-    run_test(|mut conn, layout| {
+#[tokio::test]
+async fn find() {
+    run_test(async |mut conn, layout| {
         fn find_entity(conn: &mut PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
             let key = THING_TYPE.parse_key(id).unwrap();
             layout
@@ -271,12 +272,13 @@ fn find() {
         // Find non-existing entity
         let entity = find_entity(conn, layout, "badd");
         assert!(entity.is_none());
-    });
+    })
+    .await;
 }
 
-#[test]
-fn find_many() {
-    run_test(|mut conn, layout| {
+#[tokio::test]
+async fn find_many() {
+    run_test(async |mut conn, layout| {
         const ID: &str = "0xdeadbeef";
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
@@ -303,12 +305,13 @@ fn find_many() {
         let id2_key = THING_TYPE.parse_key(ID2).unwrap();
         assert!(entities.contains_key(&id_key), "Missing ID");
         assert!(entities.contains_key(&id2_key), "Missing ID2");
-    });
+    })
+    .await;
 }
 
-#[test]
-fn update() {
-    run_test(|mut conn, layout| {
+#[tokio::test]
+async fn update() {
+    run_test(async |mut conn, layout| {
         insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
 
         // Update the entity
@@ -331,12 +334,13 @@ fn update() {
             .unwrap();
 
         assert_entity_eq!(entity, actual);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn delete() {
-    run_test(|mut conn, layout| {
+#[tokio::test]
+async fn delete() {
+    run_test(async |mut conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
         insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
@@ -365,7 +369,8 @@ fn delete() {
             .delete(&mut conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
-    });
+    })
+    .await;
 }
 
 //
@@ -428,8 +433,8 @@ fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity,
     (root, child1, child2)
 }
 
-#[test]
-fn query() {
+#[tokio::test]
+async fn query() {
     fn fetch(conn: &mut PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
         let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
         let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
@@ -442,7 +447,7 @@ fn query() {
             .collect::<Vec<_>>()
     }
 
-    run_test(|mut conn, layout| {
+    run_test(async |mut conn, layout| {
         // This test exercises the different types of queries we generate;
         // the type of query is based on knowledge of what the test data
         // looks like, not on just an inference from the GraphQL model.
@@ -546,5 +551,6 @@ fn query() {
         }]);
         let things = fetch(&mut conn, layout, coll);
         assert_eq!(vec![ROOT, ROOT], things);
-    });
+    })
+    .await;
 }
