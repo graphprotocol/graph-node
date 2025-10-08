@@ -350,7 +350,7 @@ impl ConnectionPool {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn_async<T: Send + 'static>(
+    pub(crate) async fn with_conn<T: Send + 'static>(
         &self,
         f: impl 'static
             + Send
@@ -360,7 +360,7 @@ impl ConnectionPool {
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let pool = self.get_ready()?;
-        pool.with_conn_async(f).await
+        pool.with_conn(f).await
     }
 
     pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
@@ -629,7 +629,7 @@ impl PoolInner {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn_async<T: Send + 'static>(
+    pub(crate) async fn with_conn<T: Send + 'static>(
         &self,
         f: impl 'static
             + Send
@@ -913,7 +913,7 @@ impl PoolInner {
         if self.shard == *PRIMARY_SHARD {
             return Ok(());
         }
-        self.with_conn_async(async |conn, handle| {
+        self.with_conn(async |conn, handle| {
             conn.transaction(|conn| {
                 primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
             })
